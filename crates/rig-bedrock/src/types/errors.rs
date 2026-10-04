@@ -1,11 +1,9 @@
-use std::fmt;
-
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
-use aws_sdk_bedrockruntime::types::error::ConverseStreamOutputError;
 use rig_core::error::ProviderError;
 use rig_core::http_client::StatusCode;
+use rig_core::json_utils::Lenient;
 
 /// Rig's diagnostic for a failed call that carried neither a provider
 /// message nor an HTTP status.
@@ -35,25 +33,22 @@ pub(crate) fn sdk_error<E: ProvideErrorMetadata>(
         .with_provider_request_id(error.request_id().map(str::to_owned))
 }
 
-/// Converts an exception Bedrock sent mid-stream. The event stream's error
-/// metadata does not carry the exception type, so the variant names the code.
-pub(crate) fn stream_error(error: ConverseStreamOutputError) -> ProviderError {
-    use ConverseStreamOutputError as E;
-    let (message, code) = match error {
-        E::InternalServerException(e) => (e.message, Some("InternalServerException".into())),
-        E::ModelStreamErrorException(e) => (e.message, Some("ModelStreamErrorException".into())),
-        E::ServiceUnavailableException(e) => {
-            (e.message, Some("ServiceUnavailableException".into()))
-        }
-        E::ThrottlingException(e) => (e.message, Some("ThrottlingException".into())),
-        E::ValidationException(e) => (e.message, Some("ValidationException".into())),
-        other => (
-            other.message().map(str::to_owned),
-            other.code().map(str::to_owned),
-        ),
-    };
-    reply(message, code, None, None, "Bedrock event stream failed")
+/// Converts an exception Bedrock sent mid-stream, `{"<type>": <payload>}`
+/// as its event-stream message states it. The type names the code.
+pub(crate) fn exception(kind: &str, payload: &serde_json::Value) -> ProviderError {
+    let (first, rest) = kind.split_at_checked(1).unwrap_or_default();
+    let code = first.to_ascii_uppercase() + rest;
+    let message = payload.str("message").or_else(|| payload.str("Message"));
+    reply(
+        message.map(str::to_owned),
+        Some(code),
+        None,
+        None,
+        STREAM_FAILED,
+    )
 }
+
+const STREAM_FAILED: &str = "Bedrock event stream failed";
 
 /// The trimmed, nonempty UTF-8 body the SDK retained. It carries the
 /// service's diagnostic for exceptions absent from the parsed metadata.
@@ -105,30 +100,6 @@ fn reply(
         .with_provider_status(status)
         .with_provider_code(code)
         .with_transient(transient)
-}
-
-#[derive(Debug)]
-pub struct TypeConversionError(String);
-
-impl TypeConversionError {
-    pub fn new(input: &str) -> Self {
-        Self(input.to_string())
-    }
-}
-
-impl fmt::Display for TypeConversionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let message = self.0.clone();
-        write!(f, "{message}")
-    }
-}
-
-impl std::error::Error for TypeConversionError {}
-
-impl From<std::convert::Infallible> for TypeConversionError {
-    fn from(value: std::convert::Infallible) -> Self {
-        match value {}
-    }
 }
 
 #[cfg(test)]

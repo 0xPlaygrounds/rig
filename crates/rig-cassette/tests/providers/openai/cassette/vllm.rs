@@ -1,9 +1,7 @@
 //! vLLM OpenAI-compatible Responses API regression tests.
 
 use rig::providers::openai::OpenAIConfig;
-use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -29,7 +27,7 @@ where
 
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -42,23 +40,21 @@ async fn responses_api_accepts_null_metadata() {
         "vllm/responses_api_accepts_null_metadata",
         |client| async move {
             let model = client.completion("Qwen/Qwen3-0.6B");
-            let request = CompletionRequest::new("Reply with a short acknowledgement.")
-                .max_tokens(8);
+            let request =
+                CompletionRequest::new("Reply with a short acknowledgement.").max_tokens(8);
 
             // `metadata` is a provider-native wire field, so it is read off the
-            // Responses API's own response type, deserialized from
-            // `CompletionResponse::raw`. One request therefore yields both
+            // Responses API's own response object, `CompletionResponse::raw`.
+            // One request therefore yields both
             // views, which is what the single recorded interaction allows.
             let response = model
                 .call(request)
                 .await
                 .expect("vLLM Responses API completion with null metadata should deserialize");
-            let reply = ProviderResponse::deserialize(&response.raw)
-                .expect("`raw` is the serialized responses_api::CompletionResponse");
-
+            let metadata = &response.raw["metadata"];
             assert!(
-                reply.additional_parameters.metadata.is_empty(),
-                "vLLM returns metadata: null; Rig should preserve the public map API as an empty map"
+                metadata.is_null() || metadata.as_object().is_some_and(|map| map.is_empty()),
+                "vLLM returns metadata: null, and `raw` keeps it as the provider sent it"
             );
             assert!(
                 !response.choice.is_empty(),

@@ -10,20 +10,18 @@
 //! `Value::Null` only on a record built by hand, never on one a stream
 //! yielded. Unlike a unary `raw` — which is the provider's verbatim reply
 //! document — a streamed `raw` is the record the decoder assembled from the
-//! reply's frames, because no single frame is the terminal. So it
-//! round-trips into that terminal type and re-serializes equal, it exposes a
-//! terminal-only field the normalized `CompletionResponse` does not model, and —
-//! because capture is unconditional and must stay an escape hatch — running
-//! the decoder's own mapper over the captured record reproduces the `usage`,
-//! `finish_reason`, `model` and identity the stream reported.
+//! reply's frames, because no single frame is the terminal. A cell reads it
+//! as JSON. It exposes a terminal-only field the normalized
+//! `CompletionResponse` does not model, and its `usage`, `finish_reason`,
+//! `model` and identity are the ones the stream reported.
 //!
-//! Terminal types: Chat Completions' `openai::wire::StreamingCompletionResponse`
-//! (whose `additional_params` accumulates the unmodeled top-level chunk
-//! fields — `service_tier`, `system_fingerprint` — and whose `ChatUsage`
-//! keeps the dialect's extra usage counters), and the Responses API's
-//! `openai::responses_api::CompletionResponse` (whose
-//! `status` and `message_id` come from the terminal `response.completed`
-//! event alone).
+//! Terminal records: on Chat Completions, a JSON object with the keys
+//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Its `additional_params` accumulates the unmodeled
+//! top-level chunk fields (`service_tier`, `system_fingerprint`), and its
+//! `usage` is the provider's usage object, extra counters included. On the
+//! Responses API, the response object, verbatim (whose `status` and message
+//! id come from the terminal `response.completed` event alone).
 //!
 //! Cells 5–6 are the streamed twins of the reasoning and tool-call cells in
 //! `raw_capture_matrix`: a Responses reasoning stream, whose terminal
@@ -37,12 +35,12 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | chat terminal type round trip; the decoder's mapper over `raw` ≡ terminal | recorded |
+//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the chat terminal record; its fields ≡ terminal | recorded |
 //! | 2 | `chat_stream_raw_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
 //! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
 //! | 5 | `responses_reasoning_stream_raw_round_trips_typed` | Responses, reasoning stream (`reasoning: { effort, summary }`) | terminal round trip; `raw["reasoning_metadata"]` = `response.completed`'s `reasoning`; premise: a `reasoning` output item with `encrypted_content` | recorded |
-//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | terminal round trip; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
+//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the terminal record; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
 //! cell's fixture after the wrapper returns: the recorded stream ends with a
@@ -53,14 +51,17 @@
 //! with a string `encrypted_content`; cell 6 requires a chunk whose delta
 //! carries `tool_calls` and a chunk finishing with `"tool_calls"`.
 
+use rig::completion::CompletionRequest;
 use rig::completion::CompletionResponse;
-use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
+use rig::completion::FinishReason;
+use rig::completion::ToolDefinition;
 use rig::message::ToolChoice;
 use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{sse_json_frames, with_openai_cassette_result};
-use crate::raw_capture::{assert_normalized_lacks, capture_terminal, chat, responses};
+use crate::raw_capture::chat;
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal, responses};
 use crate::support::normalized_without_raw;
 use crate::support::{Observed, assert_matches_recorded_token};
 
@@ -188,35 +189,31 @@ async fn chat_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal response object.
     captured_raw(SCENARIO, &terminal);
-    // It reads back as the chat terminal type, re-serializes to exactly the
-    // captured value, and agrees with the normalized terminal on identity,
-    // model, finish reason and the accounting it normalized — two views of
-    // one record.
+    // It is the chat terminal record, read as JSON. It agrees with the
+    // normalized terminal on identity, model, finish reason and the
+    // accounting it normalized: two views of one record.
     let typed = chat::assert_terminal_round_trips(&terminal);
     // The captured value is *this* stream's terminal.
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        typed["response_id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        typed.model.as_deref(),
+        typed["model"].as_str(),
         last_chunk_field(&frames, "model").as_str(),
         "{SCENARIO}: terminal model"
     );
-    assert_eq!(typed.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(typed["finish_reason"], serde_json::json!("stop"));
     let recorded_usage = last_chunk_field(&frames, "usage");
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
+    let usage = &typed["usage"];
     assert_eq!(
-        Some(usage.openai.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
-        usage.openai.completion_tokens.map(|tokens| tokens as u64),
+        usage["completion_tokens"].as_u64(),
         recorded_usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
     );
@@ -276,27 +273,27 @@ async fn responses_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal record, serialized.
     captured_raw(SCENARIO, &terminal);
-    // It reads back as the Responses response type and agrees with the
+    // It is the Responses response object and agrees with the
     // normalized response on identity, model and the accounting it
     // normalized: two views of one document.
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        Some(typed.model.as_str()),
+        typed["model"].as_str(),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.input_tokens),
+        typed["usage"]["input_tokens"].as_u64(),
         completed["usage"]["input_tokens"].as_u64(),
         "{SCENARIO}: terminal input tokens"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.output_tokens),
+        typed["usage"]["output_tokens"].as_u64(),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
@@ -346,7 +343,7 @@ async fn responses_stream_raw_exposes_status() {
     // normalized one must agree on it.
     assert_eq!(
         captured_message_id,
-        terminal.message_id.as_deref(),
+        responses::message_item_id(&terminal),
         "{SCENARIO}: captured and normalized message ids agree"
     );
     assert_normalized_lacks(&normalized_without_raw(terminal.clone()), &["status"]);
@@ -418,26 +415,22 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     let raw = captured_raw(SCENARIO, &terminal);
     let typed = responses::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        Some(typed.id.as_str()),
+        typed["id"].as_str(),
         completed["id"].as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        Some(typed.model.as_str()),
+        typed["model"].as_str(),
         completed["model"].as_str(),
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.output_tokens),
+        typed["usage"]["output_tokens"].as_u64(),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.output_tokens_details.as_ref())
-            .map(|details| details.reasoning_tokens),
+        typed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: terminal reasoning tokens"
     );
@@ -448,9 +441,9 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         "{SCENARIO}: `reasoning` off the captured response equals the completed event's"
     );
     assert_eq!(
-        typed.reasoning_metadata.as_ref(),
+        typed["reasoning"].as_object(),
         Some(recorded_reasoning),
-        "{SCENARIO}: the typed response reads it back"
+        "{SCENARIO}: the returned document reads it back"
     );
     assert_normalized_lacks(
         &normalized_without_raw(terminal.clone()),
@@ -465,10 +458,11 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     );
 }
 
-/// A forced Chat tool-call stream: the terminal record round-trips, `raw`
-/// spells `finish_reason` as OpenAI's own `"tool_calls"` — the same word the
-/// last finishing chunk carried — and the normalized terminal reports
-/// `FinishReason::ToolCalls`. Premise: a chunk's delta carried `tool_calls`.
+/// A forced Chat tool-call stream: the terminal record agrees with the
+/// normalized terminal, and `raw` spells `finish_reason` as OpenAI's own
+/// `"tool_calls"`, the same word the last finishing chunk carried, while the
+/// normalized terminal reports `FinishReason::ToolCalls`. Premise: a chunk's
+/// delta carried `tool_calls`.
 #[tokio::test]
 async fn chat_tool_call_stream_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed";
@@ -517,7 +511,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     // nothing to change and the round trip's comparison stays exact.
     let typed = chat::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        typed.response_id.as_deref(),
+        typed["response_id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
@@ -525,19 +519,16 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         raw["finish_reason"], recorded_finish,
         "{SCENARIO}: raw keeps OpenAI's own finish-reason spelling"
     );
-    assert_eq!(typed.finish_reason, Some(FinishReason::ToolCalls));
+    assert_eq!(typed["finish_reason"], serde_json::json!("tool_calls"));
     assert_eq!(
         terminal.finish_reason(),
         Some(FinishReason::ToolCalls),
         "{SCENARIO}: the normalized terminal reports the tool call"
     );
     let recorded_usage = last_chunk_field(&frames, "usage");
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
+    let usage = &typed["usage"];
     assert_eq!(
-        Some(usage.openai.prompt_tokens as u64),
+        usage["prompt_tokens"].as_u64(),
         recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );

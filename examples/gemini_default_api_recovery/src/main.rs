@@ -9,13 +9,10 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, MultiTurnStreamItem,
     PromptResponse, StreamingResult,
 };
+use rig::message::AssistantContent;
 use rig::message::ToolResultContent;
-use rig::message::{AssistantContent, Reasoning};
 use rig::prelude::*;
-use rig::providers::gemini::{
-    Gemini,
-    completion::gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig},
-};
+use rig::providers::gemini::Gemini;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
@@ -210,20 +207,15 @@ impl WorkspaceStreamObservation {
     }
 }
 
-fn gemini_canary_additional_params() -> Result<serde_json::Value, serde_json::Error> {
-    let additional_params = AdditionalParameters {
-        generation_config: Some(GenerationConfig {
-            thinking_config: Some(ThinkingConfig {
-                include_thoughts: Some(true),
-                thinking_budget: Some(THINKING_BUDGET),
-                thinking_level: None,
-            }),
-            ..Default::default()
-        }),
-        additional_params: None,
-    };
-
-    serde_json::to_value(&additional_params)
+fn gemini_canary_additional_params() -> serde_json::Value {
+    json!({
+        "generationConfig": {
+            "thinkingConfig": {
+                "thinkingBudget": THINKING_BUDGET,
+                "includeThoughts": true
+            }
+        }
+    })
 }
 
 async fn consume_workspace_like_stream(
@@ -245,12 +237,7 @@ async fn consume_workspace_like_stream(
                 ..
             })) => {
                 observation.events.push("reasoning");
-                observation.reasoning_text.push_str(
-                    &reasoning
-                        .open(reasoning.issuer())
-                        .map(Reasoning::display_text)
-                        .unwrap_or_default(),
-                );
+                observation.reasoning_text.push_str(&reasoning.text.clone());
             }
             MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Reasoning {
                 text: reasoning,
@@ -265,7 +252,7 @@ async fn consume_workspace_like_stream(
                     .tool_calls
                     .push(tool_call.function.name.clone().into());
                 let execution: JavaScriptProgram =
-                    serde_json::from_value(tool_call.function.arguments.clone())
+                    serde_json::from_value(tool_call.function.arguments_value())
                         .map_err(|error| error.to_string())?;
                 observation.executions.push(execution);
             }
@@ -344,7 +331,7 @@ async fn run_workspace_canary_attempt(
     let agent = AgentBuilder::new(client.completion(GEMINI_CANARY_MODEL))
         .name(&agent_name)
         .preamble(WORKSPACE_STYLE_PREAMBLE)
-        .additional_params(gemini_canary_additional_params().map_err(|error| error.to_string())?)
+        .additional_params(gemini_canary_additional_params())
         .tool(JavaScript)
         .default_max_turns(CANARY_MAX_TURNS)
         .temperature(0.0)

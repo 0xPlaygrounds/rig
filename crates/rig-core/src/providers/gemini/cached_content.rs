@@ -20,9 +20,11 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
+use serde_json::{Value, json};
+
 use crate::error::EncodeError;
 use crate::error::ProviderError;
+use crate::json_utils::Lenient;
 use crate::operation::Whole;
 use crate::providers::internal::{
     wire::{classify_or, classify_untyped_line},
@@ -94,13 +96,13 @@ pub struct NewCachedContent {
     /// uses the cache must name the same model.
     model: String,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    contents: Vec<Content>,
+    contents: Vec<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    system_instruction: Option<Content>,
+    system_instruction: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<Tool>>,
+    tools: Option<Vec<Value>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_config: Option<ToolConfig>,
+    tool_config: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -124,39 +126,39 @@ impl NewCachedContent {
 
     /// Append a user-role text content block.
     pub fn content(mut self, text: impl Into<String>) -> Self {
-        self.contents.push(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::User),
-        });
+        let text = text.into();
+        self.contents
+            .push(json!({ "parts": [{ "text": text, "thought": false }], "role": "user" }));
         self
     }
 
-    /// Append an already-built content block (multimodal payloads).
-    pub fn content_block(mut self, content: Content) -> Self {
+    /// Append a content block in Gemini's REST JSON (multimodal payloads).
+    pub fn content_block(mut self, content: Value) -> Self {
         self.contents.push(content);
         self
     }
 
     pub fn system_instruction(mut self, text: impl Into<String>) -> Self {
-        self.system_instruction = Some(Content {
-            parts: vec![Part::from(text.into())],
-            role: Some(Role::Model),
-        });
+        let text = text.into();
+        self.system_instruction =
+            Some(json!({ "parts": [{ "text": text, "thought": false }], "role": "model" }));
         self
     }
 
-    /// Set the tools inherited by requests using this cache.
+    /// Set the tools inherited by requests using this cache, in Gemini's
+    /// REST JSON.
     /// Requests must not supply their own tools. Cached function declarations
     /// require a caller-managed tool loop; provider-hosted tools do not.
-    pub fn tools(mut self, tools: Vec<Tool>) -> Self {
+    pub fn tools(mut self, tools: Vec<Value>) -> Self {
         self.tools = Some(tools);
         self
     }
 
-    /// Set the tool configuration inherited by requests using this cache.
+    /// Set the tool configuration inherited by requests using this cache,
+    /// in Gemini's REST JSON.
     /// Requests must not supply their own tool configuration. May be set
     /// without a tool set.
-    pub fn tool_config(mut self, tool_config: ToolConfig) -> Self {
+    pub fn tool_config(mut self, tool_config: Value) -> Self {
         self.tool_config = Some(tool_config);
         self
     }
@@ -375,6 +377,73 @@ impl CachedContents {
         let path = with_query_pairs(CACHED_CONTENTS_PATH, &pairs);
         http::Request::get(self.provider.uri(&path)).body(Body::empty())
     }
+}
+
+/// Set `name`, a `cachedContents/<id>` handle, as the prefix `body` reads.
+///
+/// # Errors
+///
+/// When `name` is not a handle, `body` names another one, or it sets a
+/// system instruction, tools or a tool choice, which the cache owns.
+pub fn with_cached_content(
+    body: &mut serde_json::Map<String, Value>,
+    name: &str,
+) -> Result<(), EncodeError> {
+    let fail = |message: String| Err(EncodeError::request(message));
+    if !name.starts_with("cachedContents/") {
+        return fail(format!(
+            "gemini cached content handle should look like `cachedContents/<id>`, got `{name}`"
+        ));
+    }
+    if let Some(existing) = body
+        .get("cachedContent")
+        .and_then(Value::as_str)
+        .filter(|existing| *existing != name)
+    {
+        return fail(format!(
+            "a Gemini request set cached content twice, to `{existing}` and `{name}`: set it \
+             one way or the other"
+        ));
+    }
+    let conflicts: Vec<&str> = [
+        (
+            &super::completion::SYSTEM_INSTRUCTION[..],
+            "a system instruction (preamble)",
+        ),
+        (&["tools"][..], "tools"),
+        (&super::completion::TOOL_CONFIG[..], "a tool choice"),
+    ]
+    .into_iter()
+    .filter_map(|(spellings, what)| super::completion::present(body, spellings).map(|_| what))
+    .collect();
+    if conflicts.is_empty() {
+        body.insert("cachedContent".to_owned(), Value::String(name.to_owned()));
+        return Ok(());
+    }
+    // Cached function declarations need caller-side dispatch; hosted tools
+    // run on Gemini's side.
+    let tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .map_or(&[][..], Vec::as_slice);
+    let declares_functions = tools.iter().any(|tool| {
+        !tool.arr("functionDeclarations").is_empty()
+            || !tool.arr("function_declarations").is_empty()
+    });
+    let caveat = match declares_functions {
+        true => {
+            " Function declarations in a cache are declarations only: an `Agent` dispatches \
+             only tools it advertised, so a cached function tool runs only when you drive \
+             `GenerateContent` yourself. Hosted tools such as `codeExecution` are fine to cache."
+        }
+        false => "",
+    };
+    fail(format!(
+        "a Gemini request using cached content `{name}` also set {}. The cached content owns \
+         the system instruction, tools and tool choice of every request that uses it: move \
+         them into the cache, or drop the cache handle.{caveat}",
+        conflicts.join(" and ")
+    ))
 }
 
 impl super::GeminiConfig {

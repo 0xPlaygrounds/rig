@@ -10,10 +10,8 @@ use rig::agent::AgentBuilder;
 use rig::completion::{FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};
 use rig::tool::Tool;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
@@ -94,18 +92,13 @@ async fn incomplete_response_surfaces_partial_output() {
                 .call(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
-            let reply = ResponsesReply::deserialize(&response.raw)
-                .expect("`raw` is the serialized responses_api::CompletionResponse");
+            let reply = &response.raw;
 
             assert_eq!(
-                reply.status,
-                ResponseStatus::Incomplete,
+                reply["status"], "incomplete",
                 "hitting max_output_tokens should mark the response incomplete"
             );
-            let reason = reply
-                .incomplete_details
-                .as_ref()
-                .map(|details| details.reason.as_str());
+            let reason = reply["incomplete_details"]["reason"].as_str();
             assert_eq!(
                 reason,
                 Some("max_output_tokens"),
@@ -149,6 +142,7 @@ async fn system_messages_as_input_items_mid_conversation() {
                 .map_wire(|wire| wire.with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")
+                .additional_params(serde_json::json!({ "store": false }))
                 .build();
             let mut history = vec![
                 Message::user("Hello!"),

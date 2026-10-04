@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,102 +7,26 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"}],"model":"command-a-03-2025","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   body: |+
-    event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"8b773a4f-7786-4e45-a2e6-102d82d2ee97","type":"message-start"}
+    data: {"choices":[{"delta":{"role":"assistant","tool_calls":[{"function":{"name":"subtract"},"id":"subtract_1z6130gr5k38","index":0,"type":"function"}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}"},"index":0}]},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" will"}},"type":"tool-plan-delta"}
+    data: {"choices":[{"delta":{},"finish_reason":"tool_calls","index":0,"logprobs":null}],"created":0,"id":"3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" use"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" the"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" subtract"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" tool"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" to"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" calculate"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" 2"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" -"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":" 5"}},"type":"tool-plan-delta"}
-
-    event: tool-plan-delta
-    data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
-
-    event: tool-call-start
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"subtract_tmz3pj52h3zv","type":"function"}}},"index":0,"type":"tool-call-start"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"x"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"2"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":","}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" \""}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"y"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"5"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-delta
-    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"}"}}}},"index":0,"type":"tool-call-delta"}
-
-    event: tool-call-end
-    data: {"index":0,"type":"tool-call-end"}
-
-    event: message-end
-    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":125,"output_tokens":24},"cached_tokens":112,"tokens":{"input_tokens":1600,"output_tokens":56}}},"type":"message-end"}
+    data: {"choices":[],"created":0,"id":"3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498","model":"command-a-03-2025","object":"chat.completion.chunk","usage":{"completion_tokens":24,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":125,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":149}}
 
     data: [DONE]
 
 ---
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -110,60 +34,38 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_tmz3pj52h3zv","type":"function"}],"tool_plan":null},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"subtract_tmz3pj52h3zv"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_1z6130gr5k38","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"subtract_1z6130gr5k38"}],"model":"command-a-03-2025","stream":true,"stream_options":{"include_usage":true},"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream
   body: |+
-    event: message-start
-    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"c6436a32-3153-424e-9e5e-3917994c0764","type":"message-start"}
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-start
-    data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
+    data: {"choices":[{"delta":{"content":"The"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":"The"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" result"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" result"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" of"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" of"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" 2"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" 2"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" -"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" -"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" 5"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" 5"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" is"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" is"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":" -"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":" -"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":"3"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":"3"}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{"content":"."},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: content-delta
-    data: {"delta":{"message":{"content":{"text":"."}}},"index":0,"type":"content-delta"}
+    data: {"choices":[{"delta":{},"finish_reason":"stop","index":0,"logprobs":null}],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":null}
 
-    event: citation-start
-    data: {"delta":{"message":{"citations":{"end":26,"sources":[{"id":"subtract_tmz3pj52h3zv:0","tool_output":{"content":"-3"},"type":"tool"}],"start":23,"text":"-3.","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
-
-    event: citation-end
-    data: {"index":0,"type":"citation-end"}
-
-    event: content-end
-    data: {"index":0,"type":"content-end"}
-
-    event: message-end
-    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":129,"output_tokens":12},"cached_tokens":112,"tokens":{"input_tokens":1689,"output_tokens":24}}},"type":"message-end"}
+    data: {"choices":[],"created":0,"id":"daed140e-9554-4320-b81e-f211229aed82","model":"command-a-03-2025","object":"chat.completion.chunk","usage":{"completion_tokens":12,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":129,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":141}}
 
     data: [DONE]
 

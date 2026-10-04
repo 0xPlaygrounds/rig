@@ -1,31 +1,26 @@
-//! rig#2447: a streamed tool call that closes with input that is not JSON
-//! must not end the run by itself. The provider stream reports it as a
-//! typed `ErrorReport`; the engine routes that into the same invalid-tool
-//! recovery it offers for an unknown name. One test per action, each
-//! proving what the *model* sees on the next request — the observable
-//! contract — and that the default is still fail-fast.
+//! rig#2447: a tool call whose arguments are not a JSON object never ends a
+//! run. The reply keeps the call with its raw text; the agent never runs the
+//! tool and answers the call with an error result, so the model reads why and
+//! calls again, as pi does. Each test proves what the *model* sees on the
+//! next request.
 
 use super::MultiTurnStreamItem;
 use crate::agent::AgentBuilder;
 use crate::agent::hook::{AgentHook, HookContext};
-use crate::agent::{InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason};
-use crate::completion::PromptError;
+use crate::agent::{InvalidToolCallAction, InvalidToolCallContext};
 use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent};
 use futures::StreamExt;
-use rig_core::error::ErrorKind;
-use rig_core::message::{Message, ToolResultContent, UserContent};
+use rig_core::message::{Message, ToolResult, ToolResultContent, UserContent};
 
 const RAW: &str = "{\"x\": 2, \"y\": \x01";
 
 /// A stream whose tool call closes with malformed arguments, followed by a
-/// healthy second turn the model would produce after feedback.
+/// healthy second turn the model would produce after the error result.
 fn model_with_malformed_call() -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_name_delta("tool_call_1", "add"),
             MockStreamEvent::tool_call_arguments_delta("tool_call_1", RAW),
-            // The wire promised a complete call: arguments that do not parse
-            // are the call's error.
             MockStreamEvent::tool_call_end("tool_call_1"),
             MockStreamEvent::final_response_with_total_tokens(4),
         ],
@@ -36,215 +31,65 @@ fn model_with_malformed_call() -> MockCompletionModel {
     ])
 }
 
+/// A hook that fails the test if consulted: malformed arguments are not an
+/// invalid call to resolve.
 #[derive(Clone)]
-struct DecideHook(InvalidToolCallAction);
+struct NeverConsulted;
 
-impl AgentHook for DecideHook {
+impl AgentHook for NeverConsulted {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
         context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        // The hook sees the typed reason and the raw text, not a string.
-        assert_eq!(context.tool_name, "add");
-        assert!(
-            matches!(&context.reason, InvalidToolCallReason::MalformedArguments { error } if !error.is_empty()),
-            "hook must see MalformedArguments, got {:?}",
-            context.reason
-        );
-        assert_eq!(context.args.as_deref(), Some(RAW));
-        assert!(context.is_streaming);
-        Some(self.0.clone())
+        panic!("malformed arguments reached the invalid-call hook: {context:?}");
     }
 }
 
-/// Everything the consumer observed from one streamed run.
-struct Observed {
-    items: Vec<MultiTurnStreamItem>,
-    error: Option<PromptError>,
-}
-
-async fn run_with(action: Option<InvalidToolCallAction>) -> (Observed, MockCompletionModel) {
-    let model = model_with_malformed_call();
-    let recorded = model.clone();
-    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
-    let prompt = agent
-        .prompt("add 2 and something")
-        .max_turns(3)
-        .max_invalid_tool_call_retries(1);
-    let mut stream = match action {
-        Some(action) => prompt.add_hook(DecideHook(action)).stream(),
-        None => prompt.stream(),
-    };
-    let mut items = Vec::new();
-    let mut error = None;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(item) => items.push(item),
-            Err(err) => {
-                error = Some(err);
-                break;
-            }
-        }
-    }
-    (Observed { items, error }, recorded)
-}
-
-fn assert_original_report(error: PromptError) {
-    match error {
-        PromptError::Report(report) => {
-            assert_eq!(report.kind, ErrorKind::Response);
-            assert!(
-                report
-                    .message
-                    .contains("tool call `add` arrived with malformed JSON input"),
-                "{}",
-                report.message
-            );
-        }
-        other => panic!("expected the provider report, got {other:?}"),
-    }
-}
-
-/// No hook, default policy: identical to before — the run ends with the
-/// provider's own report and no second request is made.
-#[tokio::test]
-async fn malformed_arguments_fail_fast_by_default() {
-    let (observed, recorded) = run_with(None).await;
-    assert!(
-        !observed
-            .items
-            .iter()
-            .any(|item| matches!(item, MultiTurnStreamItem::ToolCall { .. })),
-        "a malformed call must never be executed"
-    );
-    assert_original_report(observed.error.expect("run must fail"));
-    assert_eq!(recorded.request_count(), 1);
-}
-
-/// `Fail` from a hook is the same outcome as no hook.
-#[tokio::test]
-async fn malformed_arguments_fail_action_reproduces_the_report() {
-    let (observed, recorded) = run_with(Some(InvalidToolCallAction::fail())).await;
-    assert_original_report(observed.error.expect("run must fail"));
-    assert_eq!(recorded.request_count(), 1);
-}
-
-/// `Retry`: the partial turn is rolled back with feedback and a **second
-/// model request** happens instead of run termination.
-#[tokio::test]
-async fn malformed_arguments_retry_reissues_the_model_request() {
-    let (observed, recorded) = run_with(Some(InvalidToolCallAction::retry(
-        "arguments were not JSON; try again",
-    )))
-    .await;
-    assert!(observed.error.is_none(), "{:?}", observed.error);
-    assert!(observed.items.iter().any(|item| matches!(
-        item,
-        MultiTurnStreamItem::FinalResponse(response) if response.output() == "recovered"
-    )));
-    let requests = recorded.requests();
-    assert_eq!(requests.len(), 2, "retry must re-issue the model request");
-    let feedback_present = requests[1].chat_history.iter().any(|message| {
-        matches!(message, Message::User { content } if content.iter().any(|item| matches!(
-            item,
+/// The result answering `tool_call_1` in the second request.
+fn answer(history: &[Message]) -> Option<&ToolResult> {
+    history.iter().find_map(|message| match message {
+        Message::User { content } => content.iter().find_map(|item| match item {
             UserContent::ToolResult(result)
-                if result.name == "add"
-                    && result.content.iter().any(|content| matches!(
-                        content,
-                        ToolResultContent::Text(text) if text.text.contains("not JSON")
-                    ))
-        )))
-    });
-    assert!(
-        feedback_present,
-        "the retry request must carry the feedback as a tool result for the call: {:?}",
-        requests[1].chat_history
-    );
-}
-
-/// `Skip`: the model receives a tool result naming the parse failure (never
-/// the raw bytes) so it can re-emit the call.
-#[tokio::test]
-async fn malformed_arguments_skip_feeds_the_parse_failure_back() {
-    let (observed, recorded) = run_with(Some(InvalidToolCallAction::skip(
-        "add: arguments were not valid JSON",
-    )))
-    .await;
-    assert!(observed.error.is_none(), "{:?}", observed.error);
-    let skipped = observed
-        .items
-        .iter()
-        .find_map(|item| match item {
-            MultiTurnStreamItem::ToolResult { tool_result, .. } => Some(tool_result.clone()),
+                if result.call.provider().map(|id| id.as_str()) == Some("tool_call_1") =>
+            {
+                Some(result)
+            }
             _ => None,
-        })
-        .expect("skip must emit a synthetic tool result");
-    assert_eq!(
-        skipped
-            .call
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
-        Some("tool_call_1")
-    );
-    assert!(skipped.content.iter().any(|content| matches!(
-        content,
-        ToolResultContent::Text(text) if text.text.contains("not valid JSON") && !text.text.contains(RAW)
-    )));
-
-    let requests = recorded.requests();
-    assert_eq!(requests.len(), 2);
-    assert!(requests[1].chat_history.iter().any(|message| {
-        matches!(message, Message::User { content } if content.iter().any(|item| matches!(
-            item,
-            UserContent::ToolResult(result) if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("tool_call_1")
-        )))
-    }));
+        }),
+        Message::System { .. } | Message::Assistant(_) => None,
+    })
 }
 
-/// `Repair` replaces a *name*; it cannot rewrite argument bytes. It fails
-/// closed with the same report `Fail` produces, and makes no second request.
 #[tokio::test]
-async fn malformed_arguments_repair_fails_closed() {
-    let (observed, recorded) = run_with(Some(InvalidToolCallAction::repair("add"))).await;
-    assert_original_report(observed.error.expect("repair of malformed input must fail"));
-    assert_eq!(recorded.request_count(), 1);
-}
-
-/// `Stop`: the run ends cleanly with the hook's reason, not with an error
-/// report, and no second request.
-#[tokio::test]
-async fn malformed_arguments_stop_ends_the_run_cleanly() {
-    let (observed, recorded) = run_with(Some(InvalidToolCallAction::stop("operator halted"))).await;
-    match observed.error.expect("stop is surfaced as a cancellation") {
-        PromptError::Cancelled { reason, .. } => {
-            assert_eq!(reason, "operator halted");
-        }
-        other => panic!("expected Cancelled, got {other:?}"),
-    }
-    assert_eq!(recorded.request_count(), 1);
-}
-
-/// Under the default retry budget (zero) a `Retry` is rejected exactly as
-/// it is for an unknown name — with the original provider report — so the
-/// new reason does not widen the budget.
-#[tokio::test]
-async fn malformed_arguments_retry_respects_the_retry_budget() {
+async fn malformed_arguments_are_answered_with_an_error_result() {
     let model = model_with_malformed_call();
     let recorded = model.clone();
     let agent = AgentBuilder::new(model).tool(MockAddTool).build();
     let mut stream = agent
         .prompt("add 2 and something")
-        .add_hook(DecideHook(InvalidToolCallAction::retry("try again")))
         .max_turns(3)
+        .add_hook(NeverConsulted)
         .stream();
-    let mut error = None;
+    let mut items = Vec::new();
     while let Some(item) = stream.next().await {
-        if let Err(err) = item {
-            error = Some(err);
-            break;
-        }
+        items.push(item.expect("a malformed call does not fail the run"));
     }
-    assert_original_report(error.expect("a retry past the budget must fail"));
-    assert_eq!(recorded.request_count(), 1);
+    assert!(items.iter().any(|item| matches!(
+        item,
+        MultiTurnStreamItem::FinalResponse(response) if response.output() == "recovered"
+    )));
+
+    let requests = recorded.requests();
+    assert_eq!(requests.len(), 2, "the model gets another turn");
+    let result = answer(&requests[1].chat_history).expect("the call is answered");
+    assert!(result.is_error, "the answer is an error result: {result:?}");
+    assert!(
+        result.content.iter().any(|content| matches!(
+            content,
+            ToolResultContent::Text(text)
+                if text.text.contains("not a JSON object") && text.text.contains(RAW)
+        )),
+        "the answer names the problem and the arguments sent: {result:?}"
+    );
 }

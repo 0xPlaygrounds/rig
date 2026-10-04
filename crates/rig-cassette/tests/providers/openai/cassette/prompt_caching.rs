@@ -81,11 +81,17 @@ pub(super) fn probe() -> CacheProbe {
     CacheProbe::new("openai prompt caching")
 }
 
-/// The probe plus the `prompt_cache_key` the Responses surface needs to route
+/// The probe on the Responses surface, which stores no response.
+fn responses_probe() -> CacheProbe {
+    probe().with_additional_params(json!({ "store": false }))
+}
+
+/// The Responses probe plus the `prompt_cache_key` that surface needs to route
 /// same-prefix traffic to the same cache.
 fn keyed_probe() -> CacheProbe {
     probe().with_additional_params(json!({
         "prompt_cache_key": "rig-cache-conformance-openai",
+        "store": false,
     }))
 }
 
@@ -142,7 +148,7 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
 
     with_openai_prompt_caching_cassette("prompt_caching/responses_unkeyed_probe", |client| async move {
         let model = client.openai.completion(CACHE_MODEL);
-        let observation = run_cache_probe(model, &probe()).await;
+        let observation = run_cache_probe(model, &responses_probe()).await;
 
         // Not `assert_cache_conformance`: turn 2 legitimately misses here, and
         // pretending otherwise would either fail forever or force the floor

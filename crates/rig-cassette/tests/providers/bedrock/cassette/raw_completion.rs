@@ -1,8 +1,7 @@
 //! AWS Bedrock raw completion cassette coverage ported from OpenAI completions tests.
 
 use rig::bedrock;
-use rig::bedrock::types::converse_output::{ContentBlock, InternalConverseOutput};
-use serde::Deserialize;
+use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
@@ -21,27 +20,24 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .temperature(0.0);
 
-            // `raw` is the unary Converse frame the response was normalized
-            // from, so raw-vs-normalized parity is checked against one
-            // recorded interaction.
+            // `raw` is the body Bedrock sent, so raw-vs-normalized parity is
+            // checked against one recorded interaction.
             let response = model
                 .call(request)
                 .await
                 .expect("Bedrock request should succeed");
-            let raw = InternalConverseOutput::deserialize(&response.raw)
-                .expect("raw should deserialize into the Converse frame");
-            let raw_text = raw
-                .output
-                .as_ref()
-                .and_then(|output| output.as_message().ok())
-                .map(|message| {
-                    message
-                        .content
+            super::super::history::assert_recorded_history(
+                bedrock::completion::AMAZON_NOVA_LITE,
+                &response,
+            );
+            let raw_text = response
+                .raw
+                .pointer("/output/message/content")
+                .and_then(Value::as_array)
+                .map(|content| {
+                    content
                         .iter()
-                        .filter_map(|block| match block {
-                            ContentBlock::Text(text) => Some(text.as_str()),
-                            _ => None,
-                        })
+                        .filter_map(|block| block.get("text").and_then(Value::as_str))
                         .collect::<Vec<_>>()
                         .join("\n")
                 })

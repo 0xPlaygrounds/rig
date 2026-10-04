@@ -2,71 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 7,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 8,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 9,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 10,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 12,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 13,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 15,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 34,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,21 +10,21 @@
         }
       },
       {
-        "batch": 34,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 35,
+        "batch": 28,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 41,
+        "batch": 34,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -96,7 +32,7 @@
         }
       },
       {
-        "batch": 42,
+        "batch": 36,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -104,7 +40,39 @@
         }
       },
       {
-        "batch": 43,
+        "batch": 37,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 38,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 39,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 41,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 42,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -120,39 +88,7 @@
         }
       },
       {
-        "batch": 45,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 48,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 50,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
+        "batch": 44,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -273,15 +209,9 @@
           "outcome": "completion",
           "choice": [
             {
-              "type": "text",
-              "text": "I'll calculate that for you."
-            },
-            {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_C6W8PxUhD9Rza6ykq6FM3341"
-                }
+                "provider": "call_00_zmDM1QABr6f6liL1PVDL7615"
               },
               "function": {
                 "name": "add",
@@ -290,34 +220,46 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 2, \"y\": 3}",
+                    "name": "add"
+                  },
+                  "id": "call_00_zmDM1QABr6f6liL1PVDL7615",
+                  "type": "function"
+                },
+                "fingerprint": "714c4e011964a6c8"
+              }
             }
           ],
           "usage": {
             "input_tokens": 309,
-            "output_tokens": 58,
-            "total_tokens": 367,
+            "output_tokens": 52,
+            "total_tokens": 361,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "35a2eef8-a320-48a3-a3c0-3d35ca906617",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "6998c659-65e9-40b6-9f4c-cac4b3fcaaec"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
+              "completion_tokens": 52,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 181,
               "prompt_tokens": 309,
-              "completion_tokens": 58,
-              "total_tokens": 367,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 181
+              "total_tokens": 361
             },
             "finish_reason": "tool_calls",
-            "response_id": "35a2eef8-a320-48a3-a3c0-3d35ca906617",
+            "response_id": "6998c659-65e9-40b6-9f4c-cac4b3fcaaec",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -333,81 +275,6 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "text"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "I"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "'ll"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " calculate"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " that"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " for"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " you"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "text",
-              "text": "I'll calculate that for you."
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 1,
             "kind": "tool_call"
           }
         },
@@ -415,7 +282,7 @@
           "item": "event",
           "value": {
             "event": "arguments",
-            "part": 1,
+            "part": 0,
             "json": "{\"x\": 2, \"y\": 3}"
           }
         },
@@ -423,13 +290,11 @@
           "item": "event",
           "value": {
             "event": "end",
-            "part": 1,
+            "part": 0,
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_C6W8PxUhD9Rza6ykq6FM3341"
-                }
+                "provider": "call_00_zmDM1QABr6f6liL1PVDL7615"
               },
               "function": {
                 "name": "add",
@@ -438,12 +303,26 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 2, \"y\": 3}",
+                    "name": "add"
+                  },
+                  "id": "call_00_zmDM1QABr6f6liL1PVDL7615",
+                  "type": "function"
+                },
+                "fingerprint": "714c4e011964a6c8"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -495,18 +374,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
-                {
-                  "type": "text",
-                  "text": "I'll calculate that for you."
-                },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_C6W8PxUhD9Rza6ykq6FM3341"
-                    }
+                    "provider": "call_00_zmDM1QABr6f6liL1PVDL7615"
                   },
                   "function": {
                     "name": "add",
@@ -515,10 +387,27 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 2, \"y\": 3}",
+                        "name": "add"
+                      },
+                      "id": "call_00_zmDM1QABr6f6liL1PVDL7615",
+                      "type": "function"
+                    },
+                    "fingerprint": "714c4e011964a6c8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "6998c659-65e9-40b6-9f4c-cac4b3fcaaec"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -526,9 +415,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_C6W8PxUhD9Rza6ykq6FM3341"
-                    }
+                    "provider": "call_00_zmDM1QABr6f6liL1PVDL7615"
                   },
                   "name": "add",
                   "content": [
@@ -579,33 +466,36 @@
           "choice": [
             {
               "type": "text",
-              "text": "2 + 3 = **5**"
+              "text": "2 + 3 = 5"
             }
           ],
           "usage": {
-            "input_tokens": 380,
-            "output_tokens": 8,
-            "total_tokens": 388,
+            "input_tokens": 374,
+            "output_tokens": 7,
+            "total_tokens": 381,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "b1af49c9-a7ef-4fff-9528-48a67f3c204d",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "7ae222ca-4375-4099-8737-6861f91300e0"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 380,
-              "completion_tokens": 8,
-              "total_tokens": 388,
+              "completion_tokens": 7,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 246,
+              "prompt_tokens": 374,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 252
+              "total_tokens": 381
             },
             "finish_reason": "stop",
-            "response_id": "b1af49c9-a7ef-4fff-9528-48a67f3c204d",
+            "response_id": "7ae222ca-4375-4099-8737-6861f91300e0",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -669,7 +559,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " **"
+            "text": " "
           }
         },
         {
@@ -683,23 +573,20 @@
         {
           "item": "event",
           "value": {
-            "event": "text",
-            "part": 0,
-            "text": "**"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
             "event": "end",
             "part": 0,
             "content": {
               "type": "text",
-              "text": "2 + 3 = **5**"
+              "text": "2 + 3 = 5"
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     }
   ]

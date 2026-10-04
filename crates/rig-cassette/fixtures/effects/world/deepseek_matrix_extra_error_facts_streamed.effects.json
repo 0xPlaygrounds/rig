@@ -115,6 +115,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v9-nonexistent"
+      },
       "scope": "parity/run#0"
     }
   ]

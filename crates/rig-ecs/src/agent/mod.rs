@@ -19,7 +19,9 @@ use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use rig_core::{
     completion::{
         Usage as WireUsage,
-        message::{AssistantContent, CallId, Message, ToolChoice, ToolName, UserContent},
+        message::{
+            AssistantContent, AssistantMessage, CallId, Message, ToolChoice, ToolName, UserContent,
+        },
     },
     error::ErrorReport,
     tool::ToolContext,
@@ -438,13 +440,8 @@ pub enum MessageParts {
         /// The parts.
         content: Vec<UserContent>,
     },
-    /// An assistant message's parts and provider id.
-    Assistant {
-        /// The provider-assigned message id, when the wire had one.
-        id: Option<String>,
-        /// The parts.
-        content: Vec<AssistantContent>,
-    },
+    /// An assistant message: its parts, origin, stop and provider message.
+    Assistant(AssistantMessage),
 }
 
 impl MessageParts {
@@ -459,18 +456,15 @@ impl MessageParts {
         Ok(Self::User { content })
     }
 
-    /// An assistant message of `content` under `id`, or
-    /// [`ContentError::Shape`] when it has no parts.
+    /// The assistant message `message`, or [`ContentError::Shape`] when it
+    /// has no parts.
     ///
     /// [`ContentError::Shape`]: content::parts::ContentError::Shape
-    pub fn assistant(
-        id: Option<String>,
-        content: Vec<AssistantContent>,
-    ) -> Result<Self, content::parts::ContentError> {
-        if content.is_empty() {
+    pub fn assistant(message: AssistantMessage) -> Result<Self, content::parts::ContentError> {
+        if message.content.is_empty() {
             return Err(content::parts::ContentError::Shape);
         }
-        Ok(Self::Assistant { id, content })
+        Ok(Self::Assistant(message))
     }
 
     /// The message, verbatim.
@@ -479,10 +473,7 @@ impl MessageParts {
             Self::User { content } => Message::User {
                 content: content.clone(),
             },
-            Self::Assistant { id, content } => Message::Assistant {
-                id: id.clone(),
-                content: content.clone(),
-            },
+            Self::Assistant(message) => Message::Assistant(message.clone()),
         }
     }
 
@@ -494,10 +485,7 @@ impl MessageParts {
             Message::User { content } => Some(Self::User {
                 content: content.clone(),
             }),
-            Message::Assistant { id, content } => Some(Self::Assistant {
-                id: id.clone(),
-                content: content.clone(),
-            }),
+            Message::Assistant(message) => Some(Self::Assistant(message.clone())),
         }
     }
 
@@ -827,8 +815,8 @@ pub struct Outputs {
     /// The parts so far.
     #[reflect(remote = crate::agent::reflect::AssistantContentsReflect)]
     pub content: Vec<AssistantContent>,
-    /// The provider's message id, when the answer carried one.
-    pub message_id: Option<String>,
+    /// The answer's origin, stop and provider message.
+    pub head: content::parts::AssistantHead,
     /// Whether the answer is complete.
     pub done: bool,
     /// Whether this turn's completed provider usage has entered the run total.
@@ -947,6 +935,12 @@ pub struct InvalidCall {
     /// This distinguishes reused block identifiers within one stream.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream_offset: Option<usize>,
+    /// Who the stream the prefix came from is from. The prefix keeps no
+    /// provider item, so the rolled-back turn replays canonically. `None`
+    /// for calls discovered from an already completed turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[reflect(remote = crate::agent::content::reflect::OriginReflect)]
+    pub origin: Option<rig_core::message::Origin>,
 }
 
 /// What to do with an invalid call. Written by a user system before

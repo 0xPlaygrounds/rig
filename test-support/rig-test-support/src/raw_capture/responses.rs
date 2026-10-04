@@ -8,37 +8,29 @@
 //! `metadata.system_fingerprint`), and its transport id contract.
 
 use rig_core::completion::{CompletionResponse, FinishReason};
-use rig_core::providers::openai::responses_api;
-use serde::Deserialize as _;
 use serde_json::Value;
 
 use crate::support::{assert_matches_recorded_token, assistant_text};
 
 /// The provider-native document a Responses stream's `raw` holds: the
-/// response object its terminal event carried, the type a blocking reply's
-/// `raw` also is.
-pub type Terminal = responses_api::CompletionResponse;
+/// response object its terminal event carried, verbatim, which is also what
+/// a blocking reply's `raw` is.
+pub type Terminal = Value;
 
-/// The response object `raw` holds, read back as the Responses type, with
-/// the normalized fields the decoder mapped from it.
+/// The response object `raw` holds, checked against the normalized fields
+/// the decoder mapped from it.
 ///
 /// A streamed reply is many events; the terminal `response.completed` event
 /// carries the whole response object, so `raw` is the same document a
-/// blocking reply keeps. The returned typed document is the cell's handle on
+/// blocking reply keeps. The returned document is the cell's handle on
 /// whatever its dialect keeps beside the shared fields.
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
-    let typed = Terminal::deserialize(&terminal.raw).expect("raw is the Responses response object");
-    assert_eq!(
-        terminal.response_id.as_deref(),
-        Some(typed.id.as_str()),
-        "response id"
-    );
-    assert_eq!(
-        terminal.model.as_deref(),
-        Some(typed.model.as_str()),
-        "model"
-    );
-    let usage = typed.usage.as_ref().expect("the terminal reports usage");
+    let raw = terminal.raw.clone();
+    assert!(raw.is_object(), "raw is the Responses response object");
+    assert_eq!(terminal.response_id(), raw["id"].as_str(), "response id");
+    assert_eq!(terminal.model(), raw["model"].as_str(), "model");
+    let usage = &raw["usage"];
+    assert!(usage.is_object(), "the terminal reports usage");
     assert_eq!(
         (
             terminal.usage.input_tokens,
@@ -46,13 +38,13 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Terminal {
             terminal.usage.total_tokens
         ),
         (
-            Some(usage.input_tokens),
-            Some(usage.output_tokens),
-            Some(usage.total_tokens),
+            usage["input_tokens"].as_u64(),
+            usage["output_tokens"].as_u64(),
+            usage["total_tokens"].as_u64(),
         ),
         "the normalized usage is the terminal event's accounting, normalized"
     );
-    typed
+    raw
 }
 
 /// The recorded `output` message item's id and its concatenated output text.
@@ -97,23 +89,19 @@ pub fn assert_reproduces_body(
     body: &Value,
     context: &str,
 ) {
-    assert_eq!(response.provider, provider, "{context}: provider");
+    assert_eq!(response.provider(), provider, "{context}: provider");
     let (message_id, text) = recorded_message(body);
     assert_matches_recorded_token(
-        response.response_id.as_deref(),
+        response.response_id(),
         body["id"].as_str(),
         &format!("{context}: response id"),
     );
     assert_matches_recorded_token(
-        response.message_id.as_deref(),
+        message_item_id(response),
         Some(message_id),
         &format!("{context}: message id"),
     );
-    assert_eq!(
-        response.model.as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
+    assert_eq!(response.model(), body["model"].as_str(), "{context}: model");
     assert_eq!(
         response.finish_reason(),
         Some(recorded_finish_reason(body)),
@@ -149,30 +137,27 @@ pub fn assert_reproduces_body(
 /// the id arrives on a header.
 pub fn assert_native_matches_normalized(
     response: &CompletionResponse,
-    native: &responses_api::CompletionResponse,
+    native: &Value,
     context: &str,
 ) {
     assert_eq!(
-        response.response_id.as_deref(),
-        Some(native.id.as_str()),
+        response.response_id(),
+        native["id"].as_str(),
         "{context}: native response id"
     );
     assert_eq!(
-        response.model.as_deref(),
-        Some(native.model.as_str()),
+        response.model(),
+        native["model"].as_str(),
         "{context}: native model"
     );
-    assert_eq!(
-        native.status,
-        responses_api::ResponseStatus::Completed,
-        "{context}: native status"
-    );
+    assert_eq!(native["status"], "completed", "{context}: native status");
     assert_eq!(
         response.finish_reason(),
         Some(FinishReason::Stop),
         "{context}: the normalized reason is that status"
     );
-    let native_usage = native.usage.as_ref().expect("the reply reports usage");
+    let native_usage = &native["usage"];
+    assert!(native_usage.is_object(), "the reply reports usage");
     assert_eq!(
         (
             response.usage.input_tokens,
@@ -180,23 +165,29 @@ pub fn assert_native_matches_normalized(
             response.usage.total_tokens
         ),
         (
-            Some(native_usage.input_tokens),
-            Some(native_usage.output_tokens),
-            Some(native_usage.total_tokens),
+            native_usage["input_tokens"].as_u64(),
+            native_usage["output_tokens"].as_u64(),
+            native_usage["total_tokens"].as_u64(),
         ),
         "{context}: the normalized counters are the native ones"
     );
-    let message = native
-        .output
-        .iter()
-        .find_map(|item| match item {
-            responses_api::Output::Message(message) => Some(message),
-            _ => None,
-        })
+    let message = native["output"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["type"] == "message"))
         .expect("the reply carries a message item");
     assert_eq!(
-        response.message_id.as_deref(),
-        Some(message.id.as_str()),
+        message_item_id(response),
+        message["id"].as_str(),
         "{context}: native message id"
     );
+}
+
+/// The id of the message item the first text block of `response` holds.
+pub fn message_item_id(response: &CompletionResponse) -> Option<&str> {
+    response.choice.iter().find_map(|block| match block {
+        rig_core::message::AssistantContent::Text(text) => {
+            text.native.as_ref()?.item["id"].as_str()
+        }
+        _ => None,
+    })
 }

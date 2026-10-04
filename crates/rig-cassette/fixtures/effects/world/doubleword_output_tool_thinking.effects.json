@@ -101,23 +101,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "doubleword",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n"
-                  }
-                }
-              ]
+              "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
+                  "reasoning_details": [
+                    {
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "The user is asking me to create a concise event object for a local Rust meetup in Seattle. This seems like a straightforward request to generate event information, not something that requires me to search for actual existing events.\n\nI should create a reasonable event object with typical meetup details like title, category, and summary. Let me structure this appropriately.\n\nFor a Rust meetup in Seattle:\n- Title: Something like \"Seattle Rust Meetup\" or \"Rust Developers Seattle\"\n- Category: \"Technology\" or \"Programming\" or \"Meetup\"\n- Summary: A brief description of what the meetup is about\n\nLet me create this event object.\n",
+                      "type": "reasoning.text"
+                    }
+                  ]
+                },
+                "fingerprint": "87b484a385dfaf96"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00a91a28eb7346ad91e4bc46"
-                }
+                "provider": "call_00a91a28eb7346ad91e4bc46"
               },
               "function": {
                 "name": "final_result",
@@ -127,8 +130,17 @@
                   "summary": "Monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network with the local Rust community."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"Monthly gathering for Rust developers and enthusiasts in Seattle to discuss projects, share knowledge, and network with the local Rust community.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_00a91a28eb7346ad91e4bc46",
+                  "type": "function"
+                },
+                "fingerprint": "1c40fba05a661aff"
+              }
             }
           ],
           "usage": {
@@ -138,11 +150,14 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_029f29ee-820c-4031-bd4c-298186c75772",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "resp_029f29ee-820c-4031-bd4c-298186c75772"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "choices": [
               {

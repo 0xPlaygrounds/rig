@@ -1,6 +1,32 @@
 use super::*;
+use crate::proto;
 use rig_core::Model;
 use rig_core::streaming::CompletionStream;
+
+/// The protobuf request `request` sends to `model`.
+fn create_grpc_request(
+    model: &str,
+    request: CompletionRequest,
+) -> Result<GenerateContentRequest, EncodeError> {
+    GenerateContent::new(model).encode(request, Mode::Unary)
+}
+
+/// The function declaration a tool taking `parameters` sends, as its REST
+/// JSON.
+fn declaration_of(parameters: &serde_json::Value) -> serde_json::Value {
+    let tool = rig_core::completion::ToolDefinition {
+        name: message::ToolName::new("probe").expect("a tool name"),
+        description: "probe".to_owned(),
+        parameters: parameters.clone(),
+    };
+    let request = create_grpc_request(
+        GEMINI_2_5_FLASH,
+        CompletionRequest::new("q").tools(vec![tool]),
+    )
+    .expect("the request encodes");
+    let json = crate::rest::to_rest(&request).expect("the request transcodes");
+    json["tools"][0]["functionDeclarations"][0].clone()
+}
 
 /// Answers every request with scripted protobuf replies, one per frame.
 #[derive(Clone)]
@@ -35,7 +61,7 @@ fn hello() -> CompletionRequest {
 /// `response` as the unary endpoint answers it.
 pub(crate) fn complete(
     response: GenerateContentResponse,
-) -> Result<completion::CompletionResponse, ProviderError> {
+) -> Result<rig_core::completion::CompletionResponse, ProviderError> {
     futures::executor::block_on(scripted(vec![Ok(response)]).call(hello()))
 }
 
@@ -63,214 +89,70 @@ fn rpc_error_preserves_status_text_without_http_status() {
     assert_eq!(err.provider_response_status(), None);
 }
 
+/// A call rebuilt for Gemini 3 carries Google's placeholder signature as
+/// the bytes its URL-safe base64 spells, the bytes Gemini's REST API reads
+/// it as.
 #[test]
-fn test_decode_base64_bytes_accepts_url_safe_with_padding() {
-    assert!(matches!(
-        decode_base64_bytes("_-wgVQA="),
-        Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_url_safe_no_pad() {
-    assert!(matches!(
-        decode_base64_bytes("_-wgVQA"),
-        Ok(bytes) if bytes == vec![0xFF, 0xEC, 0x20, 0x55, 0x00]
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_standard_no_pad() {
-    assert!(matches!(
-        decode_base64_bytes("Zg"),
-        Ok(bytes) if bytes == b"f".to_vec()
-    ));
-}
-
-#[test]
-fn test_decode_base64_bytes_accepts_data_uri_prefix() {
-    assert!(matches!(
-        decode_base64_bytes("data:text/plain;base64,Zm9v"),
-        Ok(bytes) if bytes == b"foo".to_vec()
-    ));
-}
-
-// ============================================================
-// tool_parameters_to_proto_schema — regression coverage for #1710
-// ============================================================
-
-#[test]
-fn tool_params_empty_object_maps_to_none() {
-    let v = serde_json::json!({"type": "object", "properties": {}});
-    assert!(tool_parameters_to_proto_schema(&v).unwrap().is_none());
-}
-
-#[test]
-fn tool_params_null_maps_to_none() {
-    assert!(
-        tool_parameters_to_proto_schema(&serde_json::Value::Null)
-            .unwrap()
-            .is_none()
+fn a_rebuilt_gemini_3_call_carries_the_placeholder_signature_bytes() {
+    use base64::Engine as _;
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("a tool name"),
+            serde_json::json!({"q": "rig"}),
+        ),
+    );
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = vec![
+        message::Message::user("q"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::ToolCall(call.clone()),
+        ])),
+        message::Message::User {
+            content: vec![message::UserContent::ToolResult(
+                call.result(vec![message::ToolResultContent::text("ok")]),
+            )],
+        },
+    ];
+    let request = create_grpc_request("gemini-3-flash-preview", request).expect("encodes");
+    let signature = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .find(|part| matches!(part.data, Some(proto::part::Data::FunctionCall(_))))
+        .map(|part| part.thought_signature.clone())
+        .expect("the call is sent");
+    assert_eq!(
+        signature,
+        base64::engine::general_purpose::URL_SAFE
+            .decode("skip_thought_signature_validator")
+            .expect("URL-safe base64")
     );
 }
 
+/// A tool's JSON Schema reaches gRPC unchanged as `parametersJsonSchema`
+/// (#1710 was a declaration sent with no parameters), and a tool with no
+/// schema declares none.
 #[test]
-fn tool_params_object_with_scalar_properties_round_trips() {
-    let v = serde_json::json!({
+fn a_tool_schema_goes_as_parameters_json_schema_unchanged() {
+    let parameters = serde_json::json!({
         "type": "object",
+        "$defs": {"unit": {"type": "string", "enum": ["c", "f"]}},
         "properties": {
-            "city":      { "type": "string",  "description": "City name" },
-            "max_price": { "type": "integer", "description": "Cap, USD"  }
+            "city": {"type": "string", "description": "City name"},
+            "unit": {"$ref": "#/$defs/unit"},
+            "days": {"anyOf": [{"type": "integer"}, {"type": "null"}]}
         },
         "required": ["city"]
     });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::Object as i32);
-    assert_eq!(schema.required, vec!["city".to_string()]);
-    assert_eq!(schema.properties.len(), 2);
-
-    let city = schema.properties.get("city").expect("city prop");
-    assert_eq!(city.r#type, proto::Type::String as i32);
-    assert_eq!(city.description, "City name");
-
-    let max_price = schema.properties.get("max_price").expect("max_price prop");
-    assert_eq!(max_price.r#type, proto::Type::Integer as i32);
-}
-
-#[test]
-fn tool_params_array_with_typed_items() {
-    let v = serde_json::json!({
-        "type": "array",
-        "items": { "type": "string" }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::Array as i32);
-    let items = schema.items.expect("items");
-    assert_eq!(items.r#type, proto::Type::String as i32);
-}
-
-#[test]
-fn tool_params_enum_strings_preserved() {
-    let v = serde_json::json!({
-        "type": "string",
-        "enum": ["celsius", "fahrenheit"]
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    assert_eq!(schema.r#type, proto::Type::String as i32);
+    let declaration = declaration_of(&parameters);
     assert_eq!(
-        schema.r#enum,
-        vec!["celsius".to_string(), "fahrenheit".to_string()]
+        declaration["parametersJsonSchema"], parameters,
+        "{declaration}"
     );
-}
-
-#[test]
-fn tool_params_resolves_defs_ref_properties() {
-    let v = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "destination": { "$ref": "#/$defs/Destination" }
-        },
-        "required": ["destination"],
-        "$defs": {
-            "Destination": {
-                "type": "object",
-                "properties": {
-                    "city": { "type": "string" },
-                    "country_code": { "type": "string" }
-                },
-                "required": ["city"]
-            }
-        }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    let destination = schema
-        .properties
-        .get("destination")
-        .expect("destination prop");
-
-    assert_eq!(destination.r#type, proto::Type::Object as i32);
-    assert_eq!(destination.required, vec!["city".to_string()]);
-    assert_eq!(
-        destination
-            .properties
-            .get("city")
-            .expect("city prop")
-            .r#type,
-        proto::Type::String as i32
-    );
-}
-
-#[test]
-fn tool_params_nullable_type_array_preserves_non_null_type() {
-    let v = serde_json::json!({
-        "type": "object",
-        "properties": {
-            "nickname": { "type": ["null", "string"] }
-        }
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-    let nickname = schema.properties.get("nickname").expect("nickname prop");
-
-    assert_eq!(nickname.r#type, proto::Type::String as i32);
-    assert!(nickname.nullable);
-}
-
-#[test]
-fn tool_params_any_of_uses_non_null_schema() {
-    let v = serde_json::json!({
-        "anyOf": [
-            { "type": "null" },
-            {
-                "type": "object",
-                "properties": {
-                    "query": { "type": "string" }
-                },
-                "required": ["query"]
-            }
-        ]
-    });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-
-    assert_eq!(schema.r#type, proto::Type::Object as i32);
-    assert!(schema.nullable);
-    assert_eq!(schema.required, vec!["query".to_string()]);
-    assert_eq!(
-        schema.properties.get("query").expect("query prop").r#type,
-        proto::Type::String as i32
-    );
-}
-
-#[test]
-fn tool_params_array_without_items_defaults_to_string_items() {
-    let v = serde_json::json!({ "type": "array" });
-
-    let schema = tool_parameters_to_proto_schema(&v)
-        .expect("schema conversion")
-        .expect("schema");
-
-    assert_eq!(schema.r#type, proto::Type::Array as i32);
-    assert_eq!(
-        schema.items.expect("items").r#type,
-        proto::Type::String as i32
-    );
+    assert!(declaration.get("parameters").is_none(), "{declaration}");
+    let none = declaration_of(&serde_json::Value::Null);
+    assert!(none.get("parametersJsonSchema").is_none(), "{none}");
 }
 
 /// `FunctionResponse.name` is the executed function's name: read from
@@ -282,18 +164,18 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
         AssistantContent, ToolCall, ToolFunction, ToolResult, ToolResultContent,
     };
 
-    let call = |wire_id: &str, name: &str| message::Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::from_wire(
+    let call = |wire_id: &str, name: &str| {
+        message::Message::from(vec![AssistantContent::ToolCall(ToolCall::from_wire(
             wire_id,
-            ToolFunction {
-                name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
-                arguments: serde_json::json!({}),
-            },
-        ))],
+            ToolFunction::new(
+                rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
+                serde_json::json!({}),
+            ),
+        ))])
     };
     let result = |wire_id: &str, name: &str| message::Message::User {
         content: vec![message::UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: rig_core::message::CallId::from_wire(wire_id),
             name: rig_core::message::ToolName::new(name.to_owned()).expect("tool name"),
             content: vec![ToolResultContent::text("out")],
@@ -301,7 +183,7 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     };
 
     let req = create_grpc_request(
-        "gemini-2.5-flash",
+        "gemini-3-flash-preview",
         CompletionRequest {
             model: None,
             chat_history: vec![
@@ -344,8 +226,8 @@ fn create_grpc_request_sends_the_executed_name_not_an_identifier() {
     );
 }
 
-/// Messages go through the shared Gemini conversion. Raw image bytes and
-/// text documents are sent; media inside a tool result is refused.
+/// Adapted messages go through the shared Gemini conversion. Raw image
+/// bytes, text documents and media inside a tool result are all sent.
 #[test]
 fn create_grpc_request_transcodes_the_shared_gemini_content() {
     use rig_core::message::{
@@ -354,8 +236,12 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
     };
 
     let encode = |content: Vec<UserContent>| {
-        let request = CompletionRequest::new(message::Message::User { content });
-        create_grpc_request("gemini-2.5-flash", request)
+        let mut request = CompletionRequest::new("next");
+        request.chat_history = rig_core::completion::adapt(
+            &[message::Message::User { content }],
+            &GenerateContent::new(GEMINI_2_5_FLASH),
+        );
+        create_grpc_request(GEMINI_2_5_FLASH, request)
     };
     let image = Image {
         data: DocumentSourceKind::Raw(vec![1, 2, 3]),
@@ -385,67 +271,88 @@ fn create_grpc_request_transcodes_the_shared_gemini_content() {
         ]
     );
 
-    let error = encode(vec![UserContent::ToolResult(ToolResult {
-        call: rig_core::message::CallId::from_wire("call_1"),
-        name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
-        content: vec![ToolResultContent::Image(Image {
-            data: DocumentSourceKind::Base64("AQID".to_owned()),
-            ..image
+    let request = CompletionRequest::new(message::Message::User {
+        content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
+            call: rig_core::message::CallId::from_wire("call_1"),
+            name: rig_core::message::ToolName::new("draw".to_owned()).expect("tool name"),
+            content: vec![ToolResultContent::Image(Image {
+                data: DocumentSourceKind::Base64("AQID".to_owned()),
+                ..image
+            })],
         })],
-    })])
-    .expect_err("tool-result media has no proto field");
-    assert!(
-        error.to_string().contains("images in tool results"),
-        "{error}"
+    });
+    let request = create_grpc_request(GEMINI_2_5_FLASH, request)
+        .expect("tool-result media rides the function response");
+    let Some(proto::part::Data::FunctionResponse(response)) = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .find_map(|part| part.data.clone())
+    else {
+        panic!("a function response: {request:?}");
+    };
+    assert_eq!(
+        response.parts,
+        vec![proto::FunctionResponsePart {
+            data: Some(proto::function_response_part::Data::InlineData(
+                proto::FunctionResponseBlob {
+                    mime_type: "image/png".to_owned(),
+                    data: vec![1, 2, 3],
+                }
+            )),
+        }]
     );
 }
 
+/// Gemini's `FunctionResponsePart` declares inline data only, so a URL
+/// image a tool returns reaches Gemini 3 in the user turn after the results.
 #[test]
-fn create_grpc_request_populates_tool_parameters() {
-    use rig_core::completion::ToolDefinition;
-
-    let tool = ToolDefinition {
-        name: rig_core::message::ToolName::new("get_weather").expect("tool name"),
-        description: "Look up the current weather for a city.".to_string(),
-        parameters: serde_json::json!({
-            "type": "object",
-            "properties": {
-                "city": { "type": "string", "description": "City name" }
-            },
-            "required": ["city"]
-        }),
+fn a_url_tool_result_image_follows_the_results_on_gemini_3() {
+    use rig_core::message::{Image, ImageMediaType, ToolResultContent, UserContent};
+    const URL: &str = "https://example.com/shot.png";
+    let model = "gemini-3-flash-preview";
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("shoot").expect("a tool name"),
+            serde_json::json!({}),
+        ),
+    );
+    let image = Image {
+        data: message::DocumentSourceKind::url(URL),
+        media_type: Some(ImageMediaType::PNG),
+        ..Default::default()
     };
-
-    let req = create_grpc_request(
-        "gemini-2.5-flash",
-        CompletionRequest {
-            model: None,
-            chat_history: vec![message::Message::user("forecast in Berlin?")],
-            documents: Vec::new(),
-            tools: vec![tool],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
+    let history = vec![
+        message::Message::user("q"),
+        message::Message::Assistant(message::AssistantMessage::new(vec![
+            message::AssistantContent::ToolCall(call.clone()),
+        ])),
+        message::Message::User {
+            content: vec![UserContent::ToolResult(
+                call.result(vec![ToolResultContent::Image(image)]),
+            )],
         },
-    )
-    .expect("request build");
-
-    assert_eq!(req.tools.len(), 1);
-    let tool = req.tools.first().expect("tool entry");
-    let decl = tool
-        .function_declarations
-        .first()
-        .expect("function declaration");
-    assert_eq!(decl.name, "get_weather");
-
-    // The regression in #1710 was `parameters: None` here.
-    let params = decl.parameters.as_ref().expect("parameters populated");
-    assert_eq!(params.r#type, proto::Type::Object as i32);
-    assert_eq!(params.required, vec!["city".to_string()]);
-    assert!(params.properties.contains_key("city"));
+    ];
+    let mut request = CompletionRequest::new("next");
+    request.chat_history = rig_core::completion::adapt(&history, &GenerateContent::new(model));
+    let request = create_grpc_request(model, request).expect("the history encodes");
+    let data: Vec<_> = request
+        .contents
+        .iter()
+        .flat_map(|content| &content.parts)
+        .filter_map(|part| part.data.as_ref())
+        .collect();
+    let response = data
+        .iter()
+        .position(|data| matches!(data, proto::part::Data::FunctionResponse(_)))
+        .expect("the result is sent");
+    let file = data
+        .iter()
+        .position(|data| matches!(data, proto::part::Data::FileData(file) if file.file_uri == URL))
+        .expect("the image is sent");
+    assert!(response < file, "{data:?}");
 }
 
 /// The gRPC wire carries the model's chain-of-thought in the same `parts`
@@ -455,99 +362,12 @@ fn create_grpc_request_populates_tool_parameters() {
 /// gRPC, not HTTP), so the wire shape is stated directly.
 /// A signature on answer text stays on that text: Gemini's rules return a
 /// signature inside the part that carried it, never merged into another.
+/// A reply's `raw` is its REST JSON, which reads back as the same
+/// message, and normalizing the restored message agrees with normalizing
+/// the original. Fields rig never normalizes (`cachedContentTokenCount`,
+/// the candidate's `finishMessage`) survive both directions.
 #[test]
-fn a_signature_on_answer_text_stays_on_that_text() {
-    let response = proto::GenerateContentResponse {
-        candidates: vec![proto::Candidate {
-            content: Some(proto::Content {
-                parts: vec![
-                    proto::Part {
-                        data: Some(proto::part::Data::Text("the chain".to_string())),
-                        thought: true,
-                        ..Default::default()
-                    },
-                    proto::Part {
-                        data: Some(proto::part::Data::Text("answer".to_string())),
-                        thought: false,
-                        thought_signature: b"sig-bytes".to_vec(),
-                        ..Default::default()
-                    },
-                ],
-                ..Default::default()
-            }),
-            finish_reason: proto::candidate::FinishReason::Stop as i32,
-            ..Default::default()
-        }],
-        ..Default::default()
-    };
-
-    let normalized = complete(response).expect("payload should normalize");
-    assert_eq!(normalized.choice.len(), 2, "{:?}", normalized.choice);
-    assert!(
-        matches!(
-            normalized.choice.first(),
-            Some(completion::AssistantContent::Reasoning(reasoning))
-                if reasoning.open(reasoning.issuer()).expect("sealed reasoning").first_signature().is_none()
-        ),
-        "the reasoning stays unsigned: {:?}",
-        normalized.choice
-    );
-    let signature = match normalized.choice.get(1) {
-        Some(completion::AssistantContent::Text(text)) => {
-            rig_core::providers::gemini::text_thought_signature(text)
-        }
-        _ => None,
-    }
-    .expect("the answer text carries its signature");
-
-    // It replays on the answer part.
-    let request = create_grpc_request(
-        "gemini-3-flash-preview",
-        CompletionRequest {
-            model: None,
-            chat_history: vec![
-                message::Message::user("q"),
-                message::Message::Assistant {
-                    id: None,
-                    content: normalized.choice.clone(),
-                },
-                message::Message::user("again"),
-            ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
-    )
-    .expect("request build");
-    let answer = request
-        .contents
-        .get(1)
-        .expect("the assistant turn")
-        .parts
-        .iter()
-        .find(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text == "answer"))
-        .expect("the answer part");
-    assert_eq!(answer.thought_signature, b"sig-bytes".to_vec());
-    assert!(!signature.is_empty());
-}
-
-/// The load-bearing property behind `CompletionResponse::raw` for the
-/// gRPC provider: the captured value is
-/// `serde_json::to_value(&GenerateContentResponse)` — the prost message
-/// `raw_completion` returns, with the serde derives `build.rs` attaches to
-/// every generated type — and a consumer must be able to read it back as
-/// the same message and get the same JSON. There is no cassette harness
-/// for gRPC, so this is the unit-form pin. Fields rig never normalizes
-/// (`cached_content_token_count` under `usage_metadata`, the candidate's
-/// `finish_message`) survive both directions, and normalizing the
-/// restored message agrees with normalizing the original.
-#[test]
-fn generate_content_response_round_trips_through_serde_json_value() {
+fn generate_content_response_round_trips_through_its_rest_json() {
     let raw = proto::GenerateContentResponse {
         candidates: vec![proto::Candidate {
             content: Some(proto::Content {
@@ -560,58 +380,48 @@ fn generate_content_response_round_trips_through_serde_json_value() {
             finish_reason: proto::candidate::FinishReason::Stop as i32,
             index: Some(0),
             finish_message: Some("done".to_string()),
+            ..Default::default()
         }],
         usage_metadata: Some(proto::UsageMetadata {
             prompt_token_count: 10,
             candidates_token_count: 20,
             total_token_count: 30,
             cached_content_token_count: 4,
-            tool_use_prompt_token_count: 0,
-            thoughts_token_count: 0,
+            ..Default::default()
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-1".to_string(),
         prompt_feedback: None,
     };
 
-    let value = serde_json::to_value(&raw).expect("serialize");
+    let value = crate::rest::to_rest(&raw).expect("transcodes");
     assert_eq!(
-        value.pointer("/usage_metadata/cached_content_token_count"),
+        value.pointer("/usageMetadata/cachedContentTokenCount"),
         Some(&serde_json::json!(4))
     );
     assert_eq!(
-        value.pointer("/candidates/0/finish_message"),
+        value.pointer("/candidates/0/finishMessage"),
         Some(&serde_json::json!("done"))
     );
     assert_eq!(
-        value.pointer("/model_version"),
-        Some(&serde_json::json!("gemini-2.5-flash"))
+        value.pointer("/candidates/0/finishReason"),
+        Some(&serde_json::json!("STOP"))
     );
 
     let back: proto::GenerateContentResponse =
-        serde_json::from_value(value.clone()).expect("deserialize");
-    assert_eq!(
-        serde_json::to_value(&back).expect("re-serialize"),
-        value,
-        "the capture must read back into GenerateContentResponse and re-serialize identically"
-    );
+        crate::rest::from_rest(value.clone()).expect("reads back");
     assert_eq!(back, raw);
 
     let original = complete(raw.clone()).expect("original converts");
-    assert_eq!(original.raw, value, "the response's raw is the capture");
+    assert_eq!(original.raw, value, "the response's raw is its REST JSON");
     let restored = complete(back).expect("restored converts");
     assert_eq!(restored.identity(), original.identity());
     assert_eq!(restored.finish_reason(), original.finish_reason());
-    assert_eq!(restored.model, original.model);
     assert_eq!(restored.usage, original.usage);
     assert_eq!(restored.choice, original.choice);
     assert_eq!(
-        restored.identity().response_id.as_deref(),
-        Some("resp-grpc-1")
-    );
-    assert_eq!(
         restored.finish_reason(),
-        Some(completion::FinishReason::Stop)
+        Some(rig_core::completion::FinishReason::Stop)
     );
 }
 
@@ -662,14 +472,7 @@ fn missing_call_ids_remain_distinct_and_do_not_collide_with_explicit_ids() {
     assert_eq!(second.id, rig_core::message::CallId::from_wire("tool-0"));
     assert!(calls.first().unwrap().id.provider().is_none());
     assert_eq!(
-        calls
-            .get(1)
-            .unwrap()
-            .id
-            .provider()
-            .as_ref()
-            .unwrap()
-            .call_id,
+        calls.get(1).unwrap().id.provider().unwrap().as_str(),
         "tool-0"
     );
     assert!(calls.get(2).unwrap().id.provider().is_none());
@@ -719,61 +522,6 @@ fn rpc_codes_classify_retryability_and_keep_the_code() {
     }
 }
 
-#[test]
-fn only_gemini_reasoning_is_replayed() {
-    use base64::Engine;
-    use rig_core::message::{AssistantContent, Reasoning};
-
-    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
-    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
-        AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
-        )
-    };
-    let req = create_grpc_request(
-        "gemini-2.5-flash",
-        CompletionRequest {
-            model: None,
-            chat_history: vec![
-                message::Message::user("What is 2 + 2?"),
-                message::Message::Assistant {
-                    id: None,
-                    content: vec![
-                        reasoning("grpc thought", b"grpc", REASONING_ISSUER),
-                        reasoning(
-                            "rest thought",
-                            b"rest",
-                            rig_core::providers::gemini::completion::PROVIDER_NAME,
-                        ),
-                        reasoning("anthropic thought", b"anthropic", "anthropic"),
-                        AssistantContent::text("4"),
-                    ],
-                },
-                message::Message::user("And 3 + 3?"),
-            ],
-            documents: Vec::new(),
-            tools: Vec::new(),
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-        },
-    )
-    .expect("request build");
-
-    // The Gemini service issued both the gRPC and the REST reasoning.
-    let signatures: Vec<&[u8]> = req
-        .contents
-        .iter()
-        .flat_map(|content| content.parts.iter())
-        .filter(|part| part.thought)
-        .map(|part| part.thought_signature.as_slice())
-        .collect();
-    assert_eq!(signatures, vec![b"grpc".as_slice(), b"rest".as_slice()]);
-}
-
 /// Answers with one text reply and keeps every request it was given.
 #[derive(Clone, Default)]
 struct Recording(std::sync::Arc<std::sync::Mutex<Vec<GenerateContentRequest>>>);
@@ -788,7 +536,10 @@ impl Transport<GenerateContent> for Recording {
         let reply = GenerateContentResponse {
             candidates: vec![crate::proto::Candidate {
                 content: Some(crate::proto::Content {
-                    parts: vec![text_part("6".to_owned())],
+                    parts: vec![proto::Part {
+                        data: Some(proto::part::Data::Text("6".to_owned())),
+                        ..Default::default()
+                    }],
                     role: "model".to_owned(),
                 }),
                 finish_reason: crate::proto::candidate::FinishReason::Stop as i32,
@@ -800,31 +551,50 @@ impl Transport<GenerateContent> for Recording {
     }
 }
 
-/// Through the driver, which scopes history to the wire's replay issuers
-/// before encoding, Gemini's own reasoning still reaches the request.
+/// Through the driver, which adapts history for the wire's model before
+/// encoding, a thought signature reaches the request only from a turn this
+/// wire and model produced: the REST wire's turn and another provider's
+/// replay as plain text.
 #[test]
-fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
+fn the_driver_replays_only_this_wires_thought_signatures() {
     use base64::Engine;
-    use rig_core::message::{AssistantContent, Reasoning};
+    use rig_core::message::{AssistantContent, AssistantMessage, Origin};
 
-    let signature = |bytes: &[u8]| base64::prelude::BASE64_STANDARD.encode(bytes);
-    let reasoning = |text: &str, bytes: &[u8], issuer: &str| {
-        AssistantContent::Reasoning(
-            Reasoning::new_with_signature(text, Some(signature(bytes))).sealed(issuer.to_owned()),
-        )
+    let turn = |api: &str, provider: &str, text: &str, bytes: &[u8]| {
+        let signature = base64::prelude::BASE64_STANDARD.encode(bytes);
+        let reasoning = AssistantContent::reasoning(text).with_native(serde_json::json!({
+            "text": text,
+            "thought": true,
+            "thoughtSignature": signature,
+        }));
+        message::Message::from(AssistantMessage {
+            origin: Some(Origin::new(api.to_owned(), provider, GEMINI_2_5_FLASH)),
+            ..AssistantMessage::new(vec![reasoning, AssistantContent::text("4")])
+        })
     };
     let mut request = hello();
     request.chat_history = vec![
         message::Message::user("What is 2 + 2?"),
-        message::Message::Assistant {
-            id: None,
-            content: vec![
-                reasoning("gemini thought", b"gemini", REASONING_ISSUER),
-                reasoning("anthropic thought", b"anthropic", "anthropic"),
-                AssistantContent::text("4"),
-            ],
-        },
+        turn(
+            "gemini.generate_content",
+            PROVIDER_NAME,
+            "grpc thought",
+            b"grpc",
+        ),
         message::Message::user("And 3 + 3?"),
+        turn(
+            "gemini.generate_content",
+            rig_core::providers::gemini::completion::PROVIDER_NAME,
+            "rest thought",
+            b"rest",
+        ),
+        message::Message::user("And 4 + 4?"),
+        turn(
+            "anthropic.messages",
+            "anthropic",
+            "anthropic thought",
+            b"anthropic",
+        ),
     ];
     let recording = Recording::default();
     futures::executor::block_on(
@@ -833,33 +603,28 @@ fn the_driver_replays_gemini_reasoning_to_the_grpc_wire() {
     .expect("the call succeeds");
 
     let sent = recording.0.lock().expect("recording lock");
-    let signatures: Vec<&[u8]> = sent
+    let parts: Vec<(bool, &[u8])> = sent
         .first()
         .expect("one request")
         .contents
         .iter()
+        .filter(|content| content.role == "model")
         .flat_map(|content| content.parts.iter())
-        .filter(|part| part.thought)
-        .map(|part| part.thought_signature.as_slice())
+        .filter(|part| matches!(&part.data, Some(proto::part::Data::Text(text)) if text.ends_with("thought")))
+        .map(|part| (part.thought, part.thought_signature.as_slice()))
         .collect();
-    assert_eq!(signatures, vec![b"gemini".as_slice()]);
+    assert_eq!(
+        parts,
+        vec![
+            (true, b"grpc".as_slice()),
+            (false, b"".as_slice()),
+            (false, b"".as_slice())
+        ]
+    );
 }
 
 /// A tool schema the shared Gemini conversion cannot flatten is a request that
 /// could not be built, as it is on the HTTP wire.
-#[test]
-fn an_unflattenable_tool_schema_is_a_request_failure() {
-    let parameters = serde_json::json!({
-        "type": "object",
-        "$defs": 5,
-        "properties": {"a": {"$ref": "#/$defs/x"}},
-    });
-    let error = tool_parameters_to_proto_schema(&parameters).expect_err("schema must not convert");
-    let error = ProviderError::from(error);
-    assert!(matches!(error, ProviderError::Request(_)), "{error:?}");
-    assert_eq!(error.to_string(), "RequestError: $defs must be an object");
-}
-
 /// The usage mapping's arithmetic, through the real unary conversion.
 /// rig-gemini-grpc has no cassette harness (its gRPC transport is not
 /// recorded), so the mapping from the protobuf fields is pinned here.
@@ -887,6 +652,7 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
             cached_content_token_count: 40,
             tool_use_prompt_token_count: 75,
             thoughts_token_count: 34,
+            ..Default::default()
         }),
         ..Default::default()
     };
@@ -896,7 +662,7 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
         .usage;
     assert_eq!(
         usage,
-        completion::Usage {
+        rig_core::completion::Usage {
             input_tokens: Some(175),
             output_tokens: Some(64),
             total_tokens: Some(239),
@@ -905,5 +671,176 @@ fn usage_counts_thoughts_as_output_and_the_tool_use_prompt_as_input() {
             tool_use_prompt_tokens: Some(75),
             reasoning_tokens: Some(34),
         }
+    );
+}
+
+/// The REST JSON `history` sends to `model` over gRPC, prepared as the
+/// driver prepares it: the protobuf request read back as its REST JSON.
+fn sent(model: &str, history: Vec<message::Message>) -> serde_json::Value {
+    use rig_core::wire::Operation;
+    let wire = GenerateContent::new(model);
+    let request = rig_core::operation::Completion::prepare(
+        CompletionRequest::from(history),
+        &wire.describe(),
+    )
+    .expect("the history prepares");
+    crate::rest::to_rest(
+        &wire
+            .encode(request, Mode::Unary)
+            .expect("the history encodes"),
+    )
+    .expect("the request has REST JSON")
+}
+
+/// #2658, round 4 NEW-1: a user video with Gemini's `videoMetadata` (clip
+/// offsets), which the shared encoder sends, reaches the gRPC request: the
+/// proto declares every part field that encoder emits.
+#[test]
+fn a_user_video_keeps_its_video_metadata() {
+    let video = message::Video {
+        data: message::DocumentSourceKind::Url("https://www.youtube.com/watch?v=abc".to_owned()),
+        media_type: Some(message::VideoMediaType::MP4),
+        additional_params: Some(
+            serde_json::json!({"videoMetadata": {"startOffset": "10s", "endOffset": "20s"}}),
+        ),
+    };
+    let body = sent(
+        "gemini-2.5-flash",
+        vec![message::Message::User {
+            content: vec![
+                message::UserContent::Video(video),
+                message::UserContent::text("summarise this clip"),
+            ],
+        }],
+    );
+    assert_eq!(
+        body["contents"][0]["parts"][0]["videoMetadata"],
+        serde_json::json!({"startOffset": "10s", "endOffset": "20s"}),
+        "{body}"
+    );
+}
+
+/// The shared encoder's whole request transcodes: generation, thinking and
+/// image config, safety settings, hosted tools and the tool choice all reach
+/// the gRPC request rather than being dropped.
+#[test]
+fn the_rest_request_transcodes_in_full() {
+    let mut request = CompletionRequest::new("hi").tools(vec![rig_core::completion::ToolDefinition {
+        name: message::ToolName::new("add").expect("a tool name"),
+        description: "add".to_owned(),
+        parameters: serde_json::json!({"type": "object", "properties": {"x": {"type": "number"}}}),
+    }]);
+    request.tool_choice = Some(message::ToolChoice::Specific {
+        function_names: vec![message::ToolName::new("add").expect("a tool name")],
+    });
+    request.temperature = Some(0.5);
+    request.additional_params = Some(serde_json::json!({
+        "generationConfig": {
+            "topK": 3,
+            "thinkingConfig": {"thinkingLevel": "low", "includeThoughts": true},
+            "imageConfig": {"aspectRatio": "1:1"},
+        },
+        "safetySettings": [{"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"}],
+        "tools": [{"googleSearch": {}}, {"codeExecution": {}}],
+    }));
+    let body = crate::rest::to_rest(
+        &GenerateContent::new("gemini-3-flash-preview")
+            .encode(request, Mode::Unary)
+            .expect("the request transcodes"),
+    )
+    .expect("the request has REST JSON");
+    assert_eq!(body["generationConfig"]["topK"], 3, "{body}");
+    assert_eq!(body["generationConfig"]["temperature"], 0.5, "{body}");
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"]["thinkingLevel"], "LOW",
+        "{body}"
+    );
+    assert_eq!(
+        body["generationConfig"]["imageConfig"]["aspectRatio"], "1:1",
+        "{body}"
+    );
+    assert_eq!(
+        body["safetySettings"][0]["threshold"], "BLOCK_NONE",
+        "{body}"
+    );
+    assert_eq!(
+        body["toolConfig"]["functionCallingConfig"]["mode"], "ANY",
+        "{body}"
+    );
+    assert_eq!(
+        body["toolConfig"]["functionCallingConfig"]["allowedFunctionNames"],
+        serde_json::json!(["add"]),
+        "{body}"
+    );
+    assert_eq!(
+        body["tools"][1],
+        serde_json::json!({"googleSearch": {}}),
+        "{body}"
+    );
+    assert_eq!(
+        body["tools"][2],
+        serde_json::json!({"codeExecution": {}}),
+        "{body}"
+    );
+}
+
+/// Round 4 NEW-3: a streamed part that carries only a thought signature
+/// joins the text before it, so the signature replays to the same model.
+#[test]
+fn a_signature_only_part_replays_its_signature() {
+    let chunk = |parts: serde_json::Value, finish: Option<&str>| {
+        let mut candidate = serde_json::json!({"content": {"role": "model", "parts": parts}});
+        if let Some(finish) = finish {
+            candidate["finishReason"] = serde_json::json!(finish);
+        }
+        crate::rest::from_rest::<GenerateContentResponse>(
+            serde_json::json!({"candidates": [candidate], "modelVersion": "m"}),
+        )
+        .expect("a reply chunk")
+    };
+    let frames = vec![
+        chunk(serde_json::json!([{"text": "Answer"}]), None),
+        chunk(
+            serde_json::json!([{"thoughtSignature": "c2ln"}]),
+            Some("STOP"),
+        ),
+    ];
+    let response = rig_core::test_utils::history::decode(
+        &GenerateContent::new("gemini-3-flash-preview"),
+        Mode::Streaming,
+        frames,
+    )
+    .expect("the reply decodes");
+    let history = vec![
+        message::Message::user("q"),
+        response.message().expect("a turn"),
+        message::Message::user("n"),
+    ];
+    let body = sent("gemini-3-flash-preview", history);
+    assert_eq!(
+        body["contents"][1]["parts"][0]["thoughtSignature"], "c2ln",
+        "{body}"
+    );
+}
+
+/// A user part's own `mediaResolution` has no field in the gRPC `Part`
+/// (Google's `google/ai/generativelanguage/v1beta/content.proto` and the
+/// vendored `proto/gemini.proto` declare none; v1alpha neither), so the wire
+/// refuses it loudly rather than dropping it. The REST API honours one
+/// (`gemini/media_resolution/per_part_low`); Rig sends none on any wire.
+#[test]
+fn a_part_with_its_own_media_resolution_is_refused() {
+    let content = serde_json::json!({
+        "role": "user",
+        "parts": [{
+            "inlineData": {"mimeType": "image/png", "data": "iVBORw0KGgo="},
+            "mediaResolution": {"level": "MEDIA_RESOLUTION_LOW"}
+        }]
+    });
+    let error = crate::rest::from_rest::<proto::Content>(content)
+        .expect_err("a part's mediaResolution is not a gRPC field");
+    assert!(
+        error.to_string().contains("mediaResolution"),
+        "the refusal names the field: {error}"
     );
 }

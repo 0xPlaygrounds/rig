@@ -48,31 +48,31 @@ impl Serve for FinishingName {
                     total_tokens: Some(3),
                     ..ProviderUsage::default()
                 },
-                "boundary",
+                rig_core::message::Origin::new("test.api", "boundary", ""),
                 serde_json::json!({}),
             ))));
         };
 
-        Reply::written(move |mut writer| async move {
-            writer
-                .tool_call("wrong", serde_json::json!({"x": 2, "y": 3}))
-                .await
-                .expect("stream open");
-            gate.await.expect("test releases producer");
-            writer
-                .finish(
-                    "boundary",
-                    rig_core::operation::Finish {
+        Reply::written(
+            rig_core::message::Origin::new("boundary", "boundary", "boundary"),
+            move |mut writer| async move {
+                writer
+                    .tool_call("wrong", serde_json::json!({"x": 2, "y": 3}))
+                    .await
+                    .expect("stream open");
+                gate.await.expect("test releases producer");
+                writer
+                    .finish(rig_core::operation::Finish {
                         usage: ProviderUsage {
                             total_tokens: Some(7),
                             ..ProviderUsage::default()
                         },
                         ..rig_core::operation::Finish::default()
-                    },
-                )
-                .await
-                .expect("stream open");
-        })
+                    })
+                    .await
+                    .expect("stream open");
+            },
+        )
     }
 }
 
@@ -185,7 +185,9 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid history graph")
             {
-                MessageParts::Assistant { content, .. } => content
+                MessageParts::Assistant(rig_core::message::AssistantMessage {
+                    content, ..
+                }) => content
                     .iter()
                     .filter_map(|part| match part {
                         AssistantContent::ToolCall(call) => Some(call.clone()),
@@ -201,7 +203,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     assert!(calls[0].id.is_local());
     assert_eq!(calls[0].function.name, "wrong");
     assert_eq!(
-        calls[0].function.arguments,
+        calls[0].function.arguments_value(),
         serde_json::json!({"x": 2, "y": 3}),
         "the retained prefix holds the call as it ended"
     );
@@ -285,7 +287,9 @@ fn early_repair_survives_the_calls_completion() {
             match rig_ecs::agent::content::parts::read_message(app.world(), entity)
                 .expect("valid history graph")
             {
-                MessageParts::Assistant { content, .. } => content
+                MessageParts::Assistant(rig_core::message::AssistantMessage {
+                    content, ..
+                }) => content
                     .iter()
                     .filter_map(|part| match part {
                         AssistantContent::ToolCall(call) => Some(call.clone()),
@@ -300,7 +304,7 @@ fn early_repair_survives_the_calls_completion() {
     assert!(calls[0].id.is_local(), "the writer issues the call's id");
     assert_eq!(calls[0].function.name, "add");
     assert_eq!(
-        calls[0].function.arguments,
+        calls[0].function.arguments_value(),
         serde_json::json!({"x": 2, "y": 3})
     );
 }
@@ -327,13 +331,16 @@ impl Serve for NameThenGate {
             .take()
             .expect("one request");
 
-        Reply::written(move |mut writer| async move {
-            writer
-                .tool_call("unavailable_tool", serde_json::json!({}))
-                .await
-                .expect("stream open");
-            let _ = gate.await;
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            move |mut writer| async move {
+                writer
+                    .tool_call("unavailable_tool", serde_json::json!({}))
+                    .await
+                    .expect("stream open");
+                let _ = gate.await;
+            },
+        )
     }
 }
 

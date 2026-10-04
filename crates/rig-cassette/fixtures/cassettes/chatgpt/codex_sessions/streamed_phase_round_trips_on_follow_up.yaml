@@ -55,7 +55,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Remember the codeword ALPHA-17. Reply exactly: ACK-1","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"ACK-1","type":"output_text"}],"id":"msg_0f892fbd3994996e016abc8bbc3e3c87d2913ed196f7d239c2","phase":"final_answer","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Reply with exactly the remembered codeword.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Be concise.","model":"gpt-6-astra","store":false,"stream":true}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Remember the codeword ALPHA-17. Reply exactly: ACK-1","type":"input_text"}],"role":"user","type":"message"},{"content":[{"annotations":[],"logprobs":[],"text":"ACK-1","type":"output_text"}],"id":"msg_0f892fbd3994996e016abc8bbc3e3c87d2913ed196f7d239c2","phase":"final_answer","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"Reply with exactly the remembered codeword.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"Be concise.","model":"gpt-6-astra","store":false,"stream":true}'
 then:
   status: 200
   header: []

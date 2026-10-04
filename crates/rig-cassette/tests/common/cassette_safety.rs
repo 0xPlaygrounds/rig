@@ -76,6 +76,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         source_dir: "tests/providers/anthropic/cassette",
         wrapper_names: &[
             "with_anthropic_cassette",
+            "with_anthropic_checked_cassette",
             "with_anthropic_long_run_cassette",
             "with_anthropic_model_session_cassette",
             "with_anthropic_lifecycle_cassette",
@@ -141,6 +142,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_gemini_prompt_caching_cassette",
             "with_gemini_cassette",
+            "with_gemini_checked_cassette",
             "with_gemini_corpus_retrieval_cassette",
             "with_gemini_corpus_delta_cassette",
             "with_gemini_corpus_breadth_cassette",
@@ -200,6 +202,7 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
         wrapper_names: &[
             "with_openrouter_prompt_caching_cassette",
             "with_openrouter_cassette",
+            "with_openrouter_checked_cassette",
             "with_openrouter_cassette_result",
             "with_openrouter_cassette_bogus_key_result",
             "with_openrouter_openai_cassette",

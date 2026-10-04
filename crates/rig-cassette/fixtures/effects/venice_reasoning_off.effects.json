@@ -78,11 +78,14 @@
             "output_tokens": 55,
             "total_tokens": 1063
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-R3NNjDULxbjt1uAXipIVFbdd"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "choices": [
               {

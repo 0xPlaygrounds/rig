@@ -2,11 +2,19 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 6,
         "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 2
+        }
+      },
+      {
+        "batch": 7,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
         }
       },
       {
@@ -18,15 +26,7 @@
         }
       },
       {
-        "batch": 11,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 11,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -108,24 +108,27 @@
             "total_tokens": 27,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "38f7edaf-b6a7-479c-ab12-9856a8cb9c3a",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "2bf5b388-8e69-4417-a14c-3e14fe4540b6"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 25,
               "completion_tokens": 2,
-              "total_tokens": 27,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 25,
+              "prompt_tokens": 25,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 25
+              "total_tokens": 27
             },
             "finish_reason": "stop",
-            "response_id": "38f7edaf-b6a7-479c-ab12-9856a8cb9c3a",
+            "response_id": "2bf5b388-8e69-4417-a14c-3e14fe4540b6",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -172,6 +175,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "parity/run#0"
     }
   ]

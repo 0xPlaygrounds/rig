@@ -329,6 +329,10 @@ pub struct Streamed {
     pub events: Transcript,
     /// The text deltas concatenated.
     pub text: String,
+    /// Who the reply is from, as the relay stated it before its first item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[reflect(remote = crate::agent::content::reflect::OriginReflect)]
+    pub origin: Option<rig_core::message::Origin>,
     /// The fold's outcome at the terminal record, or the error that ended
     /// the stream.
     #[reflect(remote = crate::bus::reflect::StreamedOutcomeReflect)]

@@ -17,10 +17,10 @@
 //! **per attempt**: a multi-turn tool run records two different payloads, a
 //! retried turn records the retried attempt's own.
 //!
-//! The chat route is the primary surface (each turn's payload is an
-//! `openai::CompletionResponse` whose `id` is a `chatcmpl-` id); the
+//! The chat route is the primary surface (each turn's payload is the
+//! provider's reply document, whose `id` is a `chatcmpl-` id); the
 //! Responses route repeats the hook and multi-turn cells (payload
-//! `openai::responses_api::CompletionResponse`, `resp_` ids). Per-attempt
+//! the Responses response object, `resp_` ids). Per-attempt
 //! identity is proven the way `response_identity.rs` proves it: each
 //! recorded interaction's response id, in wire order, is the id the matching
 //! `raw` carries — replay-exact, presence-checked while recording because
@@ -348,8 +348,8 @@ fn raw_id(raw: &Value) -> Option<&str> {
 }
 
 /// The assistant text a *blocking* chat payload carries. The captured value is
-/// the response as rig's wire type parsed it, and that type models assistant
-/// content as parts — so a wire string comes back as one text part.
+/// the provider's reply document verbatim, so its `content` is a string or an
+/// array of parts, whichever the wire sent.
 fn chat_raw_text(raw: &Value) -> String {
     match &raw["choices"][0]["message"]["content"] {
         Value::String(text) => text.clone(),

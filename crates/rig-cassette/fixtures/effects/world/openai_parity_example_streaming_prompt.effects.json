@@ -42,14 +42,6 @@
         }
       },
       {
-        "batch": 23,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
         "batch": 24,
         "id": 0,
         "kind": {
@@ -66,7 +58,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 26,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -74,7 +66,7 @@
         }
       },
       {
-        "batch": 28,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -86,7 +78,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -94,7 +86,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -110,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -158,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -166,7 +158,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -178,7 +170,7 @@
         }
       },
       {
-        "batch": 48,
+        "batch": 43,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -259,7 +251,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "f11898725dbb9a4c"
+              }
             }
           ],
           "usage": {
@@ -270,32 +279,96 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-          "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757"
+          },
           "provider_request_id": "req_7bc3ba5616cf4f76924c005708acd637",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_078c61b87dcc50cb006ab3969fba7487d08371f6bf93261757",
             "incomplete_details": null,
             "instructions": "Be precise and concise.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.5,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 28,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 29,
               "output_tokens_details": {
@@ -303,35 +376,7 @@
               },
               "total_tokens": 57
             },
-            "output": [
-              {
-                "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "user": null
           }
         }
       },
@@ -575,11 +620,33 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas."
+              "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "The next solar eclipse is a partial solar eclipse on October 14, 2023. It will be visible in parts of the Americas.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_078c61b87dcc50cb006ab396a050bc87d0bfddb10e5df4c9b1",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "f11898725dbb9a4c"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      },
       "scope": "parity/run#0"
     }
   ]

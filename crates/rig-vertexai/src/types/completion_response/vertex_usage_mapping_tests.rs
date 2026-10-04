@@ -18,11 +18,13 @@ fn thinking_tokens_are_output_in_the_real_conversion() {
     let response = vertexai::model::GenerateContentResponse::new()
         .set_usage_metadata(usage_metadata)
         .set_candidates(vec![
-            vertexai::model::Candidate::new().set_content(
-                vertexai::model::Content::new()
-                    .set_role("model")
-                    .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
-            ),
+            vertexai::model::Candidate::new()
+                .set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+                .set_content(
+                    vertexai::model::Content::new()
+                        .set_role("model")
+                        .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
+                ),
         ]);
 
     let converted = crate::types::completion_response::tests::complete(response)
@@ -60,11 +62,13 @@ fn tool_use_prompt_tokens_are_input_in_the_real_conversion() {
     let response = vertexai::model::GenerateContentResponse::new()
         .set_usage_metadata(usage_metadata)
         .set_candidates(vec![
-            vertexai::model::Candidate::new().set_content(
-                vertexai::model::Content::new()
-                    .set_role("model")
-                    .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
-            ),
+            vertexai::model::Candidate::new()
+                .set_finish_reason(vertexai::model::candidate::FinishReason::Stop)
+                .set_content(
+                    vertexai::model::Content::new()
+                        .set_role("model")
+                        .set_parts(vec![vertexai::model::Part::new().set_text("hi")]),
+                ),
         ]);
 
     let converted = crate::types::completion_response::tests::complete(response)

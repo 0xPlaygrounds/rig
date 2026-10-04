@@ -33,7 +33,7 @@ fn gpt_5_mini(models: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::
         model: models.completion(GPT_5_MINI),
         route: None,
         temperature: None,
-        additional_params: None,
+        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
     }
 }
 

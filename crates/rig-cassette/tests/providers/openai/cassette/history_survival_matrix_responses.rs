@@ -5,7 +5,7 @@ use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
 fn params() -> Option<serde_json::Value> {
-    Some(serde_json::json!({ "reasoning": { "effort": "low" } }))
+    Some(serde_json::json!({ "reasoning": { "effort": "low" }, "store": false }))
 }
 
 fn model(

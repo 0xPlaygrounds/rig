@@ -12,6 +12,8 @@
 //! | a tool child despawned fails the run `Cancelled` | `despawning_a_tool_child_fails_the_run_cancelled` |
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
+//! | a turn that ends in an error runs none of its calls, fails the run and stays in its history | `a_failed_turn_runs_no_tools_and_fails_the_run` |
+//! | a turn the token limit ended runs its complete call | `a_length_turn_with_a_complete_call_runs_it` |
 
 use crate::run_support;
 
@@ -50,9 +52,16 @@ fn add_system<M>(
 
 /// An app with a scripted model and the adder granted to one agent.
 fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
+    tooling_replies(turns.into_iter().map(reply).collect())
+}
+
+/// [`tooling`] over whole replies.
+fn tooling_replies(
+    replies: Vec<rig_core::completion::CompletionResponse>,
+) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (agent, requests) = scripted_agent(&mut app, MODEL, turns);
+    let (agent, requests) = replied_agent(&mut app, MODEL, replies);
     let adder = Arc::new(Adder::new(ADD));
     let tool = register(&mut app, ADD, Arc::clone(&adder));
     app.world_mut()
@@ -84,7 +93,7 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider test ID")
                             .to_owned(),
                         result
@@ -110,7 +119,7 @@ fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(Strin
                     | UserContent::Document(_) => None,
                 })
                 .collect::<Vec<_>>(),
-            Message::System { .. } | Message::Assistant { .. } => Vec::new(),
+            Message::System { .. } | Message::Assistant(_) => Vec::new(),
         })
         .collect()
 }
@@ -728,7 +737,9 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
     let log = app.world().resource::<EffectLogResource>().log();
     assert!(matches!(&log.records[1].kind, EffectKind::ToolCall { name, .. } if name == "add"));
     let requests = requests.lock().unwrap();
-    let Message::Assistant { content, .. } = &requests[1].chat_history[2] else {
+    let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) =
+        &requests[1].chat_history[2]
+    else {
         panic!("the assistant turn");
     };
     assert!(
@@ -769,27 +780,27 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
             CallId::from_wire(""),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "multiply"
                 } else {
                     "peer_add"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x": 2, "y": 3}),
-            },
+                serde_json::json!({"x": 2, "y": 3}),
+            ),
         );
         let explicit = ToolCall::from_wire(
             generated.id.wire(),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "peer_add"
                 } else {
                     "multiply"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x": 4, "y": 5}),
-            },
+                serde_json::json!({"x": 4, "y": 5}),
+            ),
         );
         let original = [generated, explicit];
         let (mut app, agent, _, requests) = tooling(vec![
@@ -818,7 +829,9 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
             .chat_history
             .iter()
             .filter_map(|message| match message {
-                Message::Assistant { content, .. } => Some(content),
+                Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                    Some(content)
+                }
                 _ => None,
             })
             .flatten()
@@ -938,27 +951,27 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
     for generated_invalid in [false, true] {
         let generated = ToolCall::new(
             CallId::from_wire(""),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "multiply"
                 } else {
                     "add"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x":2,"y":3}),
-            },
+                serde_json::json!({"x":2,"y":3}),
+            ),
         );
         let explicit = ToolCall::from_wire(
             generated.id.wire(),
-            ToolFunction {
-                name: rig_core::message::ToolName::new(if generated_invalid {
+            ToolFunction::new(
+                rig_core::message::ToolName::new(if generated_invalid {
                     "add"
                 } else {
                     "multiply"
                 })
                 .expect("tool name"),
-                arguments: serde_json::json!({"x":4,"y":5}),
-            },
+                serde_json::json!({"x":4,"y":5}),
+            ),
         );
         let calls = [generated, explicit];
         let (mut app, agent, _, requests) = tooling(vec![
@@ -1078,7 +1091,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                     .iter_mut()
                     .find(|entity| entity.contains_key(type_name::<BatchHeld>()))
                     .expect("a batch-held call is in the checkpoint");
-                held.remove(missing).unwrap();
+                held.shift_remove(missing).unwrap();
                 let (mut destination, _, _, _) = tooling(vec![]);
                 let before = destination.world().entities().len();
                 assert!(
@@ -1188,4 +1201,111 @@ fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consis
         )
         .unwrap_or_else(|error| panic!("{route}: the checkpoint loads: {error}"));
     }
+}
+
+/// A call whose arguments are not a JSON object never reaches the tool:
+/// the batch answers it at once with an error result naming the problem,
+/// and the model gets another turn.
+#[test]
+fn a_call_with_malformed_arguments_is_answered_without_dispatch() {
+    let malformed = AssistantContent::ToolCall(rig_core::message::ToolCall::new(
+        rig_core::message::CallId::from_wire("c1"),
+        rig_core::message::ToolFunction::parse(
+            rig_core::message::ToolName::new("add").unwrap(),
+            r#"{"x": 1, "y": "#,
+        ),
+    ));
+    let (mut app, agent, adder, requests) = tooling(vec![
+        vec![malformed],
+        vec![AssistantContent::text("retrying")],
+    ]);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    ended(&mut app, run, "answered");
+    let log = app.world().resource::<EffectLogResource>().log();
+    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+    assert_eq!(keys, [MODEL, MODEL], "the tool never ran");
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 0);
+    let requests = requests.lock().unwrap();
+    let result = requests[1]
+        .chat_history
+        .iter()
+        .find_map(|message| match message {
+            Message::User { content } => content.iter().find_map(|part| match part {
+                UserContent::ToolResult(result) => Some(result.clone()),
+                _ => None,
+            }),
+            _ => None,
+        })
+        .expect("the call is answered");
+    assert!(result.is_error, "{result:?}");
+    assert!(
+        result.content.iter().any(|part| part
+            .as_text()
+            .is_some_and(|text| text.contains("not a JSON object"))),
+        "{result:?}"
+    );
+}
+
+/// A turn calling `add` that ends with `finish`, failed with `error` when
+/// one is given.
+fn ended_call_reply(
+    finish: rig_core::completion::FinishReason,
+    error: Option<&str>,
+) -> rig_core::completion::CompletionResponse {
+    let mut response = reply(vec![
+        AssistantContent::text("checking"),
+        call("c1", "add", serde_json::json!({"x": 1, "y": 2})),
+    ])
+    .with_finish_reason(finish);
+    response.error = error.map(str::to_owned);
+    response
+}
+
+#[test]
+fn a_failed_turn_runs_no_tools_and_fails_the_run() {
+    let reason = "Provider finish_reason: pause_turn_unmapped";
+    let (mut app, agent, adder, requests) = tooling_replies(vec![ended_call_reply(
+        rig_core::completion::FinishReason::Other("pause_turn_unmapped".to_owned()),
+        Some(reason),
+    )]);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add once", false, None);
+    ended(&mut app, run, "the failed turn ends the run");
+    match app.world().get::<Failed>(run) {
+        Some(Failed(Failure::Provider(report))) => {
+            let report = report.to_string();
+            assert!(report.contains("none of its tool calls ran"), "{report}");
+            assert!(report.contains(reason), "{report}");
+        }
+        other => panic!("the run did not fail on the turn: {other:?}"),
+    }
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 0, "no tool ran");
+    assert_eq!(requests.lock().unwrap().len(), 1);
+    let history = graph_messages(app.world_mut(), run);
+    assert!(
+        history
+            .iter()
+            .any(|message| matches!(message, Message::Assistant(turn)
+            if turn.stop.as_ref().is_some_and(rig_core::message::StopReason::is_failure)
+                && turn.tool_calls().count() == 1)),
+        "the failed turn is kept: {history:?}"
+    );
+}
+
+#[test]
+fn a_length_turn_with_a_complete_call_runs_it() {
+    let (mut app, agent, adder, _) = tooling_replies(vec![
+        ended_call_reply(rig_core::completion::FinishReason::Length, None),
+        reply(vec![AssistantContent::text("3")]),
+    ]);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add once", false, None);
+    ended(&mut app, run, "answered");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
+        Some("3")
+    );
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "the call ran");
 }

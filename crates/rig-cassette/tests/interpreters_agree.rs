@@ -246,7 +246,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     .expect("never hangs")
                     .expect("the model");
                 run.model_response(ModelTurn::new(
-                    None,
+                    response.head(),
                     response.choice,
                     response.usage,
                     executable,
@@ -263,7 +263,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                         Duration::from_secs(5),
                         tool_handle(&name).call(
                             name.clone(),
-                            call.tool_call.function.arguments.to_string(),
+                            call.tool_call.function.arguments_value().to_string(),
                             ToolContext::new(),
                         ),
                     )
@@ -273,7 +273,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     results.push(transcript::tool_result_output(
                         call.tool_call.id.clone(),
                         name,
-                        answer.result.output().clone(),
+                        &answer.result,
                     ));
                 }
                 run.tool_results(results).expect("tool results");

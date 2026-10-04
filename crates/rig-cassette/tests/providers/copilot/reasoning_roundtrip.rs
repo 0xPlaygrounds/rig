@@ -28,11 +28,9 @@ async fn streaming() {
         let response = finals
             .first()
             .expect("Copilot reasoning stream should yield a provider final response");
-        let response: rig::providers::openai::responses_api::CompletionResponse =
-            serde_json::from_value(response.raw.clone())
-                .expect("Copilot reasoning stream should use the Responses route");
-        assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));
-        assert_eq!(response.reasoning_metadata.as_ref(), expected.as_object());
+        let reasoning = &response.raw["reasoning"];
+        assert_eq!(reasoning["context"].as_str(), Some("current_turn"));
+        assert_eq!(reasoning.as_object(), expected.as_object());
     })
     .await;
 }

@@ -1,8 +1,8 @@
-//! Venice model identifiers, request parameters, and typed provider responses.
+//! Venice model identifiers and request parameters.
 //!
 //! [`from_env`] and [`new`] build a client on the [`VENICE`](crate::providers::openai::wire::VENICE) dialect.
-//! [`VeniceParameters`] supplies request extensions; [`CompletionResponse`]
-//! decodes provider-specific fields from the normalized response's `raw` value.
+//! Its `venice_parameters` request block goes through `additional_params`;
+//! provider fields of a reply stay in the response's `raw` value.
 //!
 //! ```no_run
 //! use rig_core::providers::venice;

@@ -18,10 +18,10 @@ use serde_json::{Value, json};
 use rig::completion::CompletionResponse;
 use rig::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig::error::ErrorKind;
-use rig::message::{AssistantContent, ReasoningContent};
+use rig::message::AssistantContent;
 use rig::providers::openai::wire::{
-    Chat, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig,
-    PERPLEXITY, VENICE,
+    COHERE, Chat, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OLLAMA, OPENAI,
+    OPENROUTER, OpenAIConfig, PERPLEXITY, VENICE,
 };
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 use rig::wire::{Encoded, Framing, WireFrame};
@@ -32,6 +32,7 @@ const REGENERATE: &str = "RIG_REGENERATE_PARITY";
 /// The provider directories whose recorded chat-completions replies decode
 /// through the chat wire.
 pub const PROVIDERS: &[&str] = &[
+    "cohere",
     "copilot",
     "deepseek",
     "doubleword",
@@ -39,6 +40,7 @@ pub const PROVIDERS: &[&str] = &[
     "llamacpp",
     "mistral",
     "mistralrs",
+    "ollama",
     "openai",
     "openrouter",
     "perplexity",
@@ -48,6 +50,7 @@ pub const PROVIDERS: &[&str] = &[
 /// The dialect each provider directory was recorded under.
 pub fn dialect(provider: &str) -> Dialect {
     match provider {
+        "cohere" => COHERE,
         "copilot" => rig::providers::copilot::wire::DIALECT,
         "deepseek" => DEEPSEEK,
         "doubleword" => DOUBLEWORD,
@@ -55,6 +58,7 @@ pub fn dialect(provider: &str) -> Dialect {
         "llamacpp" => LLAMACPP,
         "mistral" => MISTRAL,
         "mistralrs" | "openai" => OPENAI,
+        "ollama" => OLLAMA,
         "openrouter" => OPENROUTER,
         "perplexity" => PERPLEXITY,
         "venice" => VENICE,
@@ -127,6 +131,12 @@ fn yaml_files(dir: &Path, found: &mut Vec<PathBuf>) {
 /// Every 200-status chat-completions reply recorded for `provider`, in path
 /// order.
 pub fn interactions(provider: &str) -> Vec<Interaction> {
+    interactions_at(provider, "/chat/completions")
+}
+
+/// Every 200-status reply recorded for `provider` on a path ending in
+/// `endpoint`, in path order.
+pub fn interactions_at(provider: &str, endpoint: &str) -> Vec<Interaction> {
     let root = cassette_root().join(provider);
     let mut files = Vec::new();
     yaml_files(&root, &mut files);
@@ -142,9 +152,7 @@ pub fn interactions(provider: &str) -> Vec<Interaction> {
         for (index, document) in serde_yaml::Deserializer::from_str(&contents).enumerate() {
             let interaction = RecordedInteraction::deserialize(document)
                 .unwrap_or_else(|error| panic!("{scenario} should deserialize: {error}"));
-            if interaction.then.status != 200
-                || !interaction.when.path.ends_with("/chat/completions")
-            {
+            if interaction.then.status != 200 || !interaction.when.path.ends_with(endpoint) {
                 continue;
             }
             let streaming = interaction
@@ -264,10 +272,9 @@ pub fn project(streaming: bool, outcome: &Result<CompletionResponse, ErrorKind>)
             "mode": mode,
             "choice": response.choice.iter().map(project_content).collect::<Vec<_>>(),
             "usage": response.usage,
-            "message_id": response.message_id,
-            "response_id": response.response_id,
+            "response_id": response.response_id(),
             "finish_reason": response.finish_reason(),
-            "model": response.model,
+            "model": response.model(),
             "provider_request_id": response.provider_request_id,
             "raw": response.raw,
         }),
@@ -278,44 +285,31 @@ fn project_content(content: &AssistantContent) -> Value {
     match content {
         AssistantContent::Text(text) => json!({
             "text": text.text,
-            "additional_params": text.additional_params,
+            "native": text.native,
         }),
         AssistantContent::ToolCall(call) => {
-            let (id, item_id) = match call.id.provider() {
-                Some(provider) => (provider.call_id.clone(), provider.item_id.clone()),
-                None => ("rig-issued".to_owned(), None),
+            let id = match call.id.provider() {
+                Some(provider) => provider.as_str().to_owned(),
+                None => "rig-issued".to_owned(),
             };
             json!({
                 "tool_call": {
                     "id": id,
-                    "item_id": item_id,
                     "name": call.function.name,
                     "arguments": call.function.arguments,
-                    "signature": call.signature,
-                    "additional_params": call.additional_params,
+                    "native": call.native,
                 }
             })
         }
-        AssistantContent::Reasoning(sealed) => {
-            let reasoning = sealed
-                .open(sealed.issuer())
-                .expect("reasoning opens for its issuer");
-            json!({
-                "reasoning": {
-                    "id": reasoning.id,
-                    "issuer": sealed.issuer(),
-                    "content": reasoning.content.iter().map(|part| match part {
-                        ReasoningContent::Text { text, signature } => {
-                            json!({ "text": text, "signature": signature })
-                        }
-                        ReasoningContent::Encrypted(data) => json!({ "encrypted": data }),
-                        ReasoningContent::Redacted { data } => json!({ "redacted": data }),
-                        ReasoningContent::Summary(summary) => json!({ "summary": summary }),
-                    }).collect::<Vec<_>>(),
-                }
-            })
-        }
+        AssistantContent::Reasoning(reasoning) => json!({
+            "reasoning": {
+                "text": reasoning.text,
+                "redacted": reasoning.redacted,
+                "native": reasoning.native,
+            }
+        }),
         AssistantContent::Image(image) => json!({ "image": image }),
+        AssistantContent::Opaque(opaque) => json!({ "opaque": opaque }),
     }
 }
 
@@ -380,4 +374,101 @@ pub async fn check(provider: &str) {
             .collect::<Vec<_>>()
             .join("\n")
     );
+}
+
+/// The chat wire `provider` was recorded under.
+pub fn wire(provider: &str) -> Chat {
+    Chat::new(
+        OpenAIConfig::with_key(&dialect(provider), "parity-key"),
+        "parity",
+    )
+}
+
+/// `text` in two pieces, as a stream delivers it.
+fn halves(text: &str) -> [String; 2] {
+    let at = text
+        .char_indices()
+        .map(|(at, _)| at)
+        .nth(text.chars().count() / 2)
+        .unwrap_or(text.len());
+    [text[..at].to_owned(), text[at..].to_owned()]
+}
+
+/// A whole `chat.completion` body restated as the chunks a stream of the
+/// same turn carries: the message's other fields first, then its reasoning
+/// in two pieces (every reasoning key in one delta, as a relaying gateway
+/// sends them), each reasoning detail whole, its text in two pieces, each
+/// call opened then its arguments in two pieces, and the finish reason and
+/// usage last.
+pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
+    let chunk = |delta: Value, finish: &Value| {
+        let mut choice = json!({"index": 0, "delta": delta, "finish_reason": finish});
+        if let Some(native) = body["choices"][0]
+            .get("native_finish_reason")
+            .filter(|_| !finish.is_null())
+        {
+            choice["native_finish_reason"] = native.clone();
+        }
+        json!({
+            "id": body["id"],
+            "model": body["model"],
+            "object": "chat.completion.chunk",
+            "choices": [choice],
+        })
+    };
+    let mut message = body["choices"][0]["message"]
+        .as_object()
+        .cloned()
+        .unwrap_or_default();
+    let mut deltas = Vec::new();
+    let mut reasoning = [serde_json::Map::new(), serde_json::Map::new()];
+    for key in ["reasoning_content", "reasoning", "reasoning_text"] {
+        if let Some(Value::String(text)) = message.get_mut(key) {
+            for (delta, piece) in reasoning.iter_mut().zip(halves(text)) {
+                delta.insert(key.to_owned(), json!(piece));
+            }
+            text.clear();
+        }
+    }
+    deltas.extend(
+        reasoning
+            .into_iter()
+            .filter(|delta| !delta.is_empty())
+            .map(Value::Object),
+    );
+    if let Some(Value::Array(details)) = message.shift_remove("reasoning_details") {
+        deltas.extend(
+            details
+                .into_iter()
+                .map(|detail| json!({ "reasoning_details": [detail] })),
+        );
+    }
+    if let Some(Value::String(text)) = message.get_mut("content") {
+        deltas.extend(halves(text).map(|piece| json!({ "content": piece })));
+        text.clear();
+    }
+    if let Some(Value::Array(calls)) = message.shift_remove("tool_calls") {
+        for (index, call) in calls.into_iter().enumerate() {
+            let mut opening = call.clone();
+            opening["index"] = json!(index);
+            let arguments = call["function"]["arguments"].as_str().map(halves);
+            if arguments.is_some() {
+                opening["function"]["arguments"] = json!("");
+            }
+            deltas.push(json!({ "tool_calls": [opening] }));
+            deltas.extend(arguments.into_iter().flatten().map(|piece| {
+                json!({ "tool_calls": [{"index": index, "function": {"arguments": piece}}] })
+            }));
+        }
+    }
+    let mut frames = vec![chunk(Value::Object(message), &Value::Null)];
+    frames.extend(deltas.into_iter().map(|delta| chunk(delta, &Value::Null)));
+    let mut last = chunk(json!({}), &body["choices"][0]["finish_reason"]);
+    last["usage"] = body["usage"].clone();
+    frames.push(last);
+    frames
+        .into_iter()
+        .map(|frame| WireFrame::Text(frame.to_string()))
+        .chain([WireFrame::Text("[DONE]".to_owned())])
+        .collect()
 }

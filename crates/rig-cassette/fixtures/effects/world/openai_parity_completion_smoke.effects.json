@@ -75,7 +75,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance and safety, particularly emphasizing safe concurrent code. Memory safety is crucial because it prevents common programming errors like null pointer dereferences and buffer overflows, reducing bugs and security vulnerabilities."
+              "text": "Rust is a systems programming language designed for performance and safety, particularly emphasizing safe concurrent code. Memory safety is crucial because it prevents common programming errors like null pointer dereferences and buffer overflows, reducing bugs and security vulnerabilities.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a systems programming language designed for performance and safety, particularly emphasizing safe concurrent code. Memory safety is crucial because it prevents common programming errors like null pointer dereferences and buffer overflows, reducing bugs and security vulnerabilities.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_031b2e58a567ee75006ab395d2621887d08a493a8d820c288b",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "fadc135dbfb2f4f4"
+              }
             }
           ],
           "usage": {
@@ -86,12 +103,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_031b2e58a567ee75006ab395d2621887d08a493a8d820c288b",
-          "response_id": "resp_031b2e58a567ee75006ab395d125e487d0af315292a0723bb9",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_031b2e58a567ee75006ab395d125e487d0af315292a0723bb9"
+          },
           "provider_request_id": "req_df833998285e4ac2b006d357abe85ac3",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

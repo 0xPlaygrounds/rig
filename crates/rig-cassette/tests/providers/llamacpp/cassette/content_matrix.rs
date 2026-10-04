@@ -8,8 +8,8 @@
 //!
 //! | Cell | Shape | Pinned |
 //! | --- | --- | --- |
-//! | [`an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_response`] | empty content | 200 on the wire, `EMPTY_RESPONSE_ERROR` at the seam |
-//! | [`consecutive_same_role_messages_are_sent_as_sent`] | user, user | rig does not merge or reorder them; the template accepts both |
+//! | [`an_answer_fully_consumed_by_a_stop_sequence_is_an_empty_turn`] | empty content | 200 on the wire, an empty successful turn |
+//! | [`consecutive_user_messages_become_one`] | user, user | the history adapter makes adjacent user messages one |
 //! | [`unicode_split_across_stream_chunks_reassembles`] | emoji + CJK, streaming | multi-byte characters survive SSE chunk boundaries |
 //! | [`a_very_long_tool_output_survives_the_round_trip`] | 8 KiB tool result | the payload reaches the model intact |
 //! | [`a_system_message_plus_history_keeps_its_order`] | system + 3 turns | the system message stays first and the turns keep their order |
@@ -18,15 +18,8 @@
 //!
 //! A `stop` sequence that matches the model's very first token leaves
 //! `content: ""` with `finish_reason: "stop"` and a perfectly healthy 200.
-//! Rig rejects an empty converted choice on *every* wire — the shared
-//! `EMPTY_RESPONSE_ERROR`, on the stated ground that "a completion that
-//! carried no message and no tool call is a provider defect" — so the caller
-//! gets a `ResponseError` whose text says nothing about stop sequences.
-//!
-//! That is a deliberate rig rule, not a llama.cpp defect, and it is left
-//! alone. What the cell adds is the ability to tell the two readings apart:
-//! the fixture holds the 200 beside the error, so a maintainer looking at
-//! this failure mode does not have to guess whether the server broke.
+//! Rig keeps that as an empty turn, as pi does: the core fold judges
+//! emptiness once for every wire, and the fixture holds the 200 beside it.
 
 use rig::message::{AssistantContent, CallId, Message, ToolResult, ToolResultContent, UserContent};
 use serde_json::{Value, json};
@@ -41,58 +34,30 @@ use rig::completion::CompletionRequest;
 
 const NO_THINK: &str = "/no_think ";
 
-/// A turn whose whole answer is eaten by a stop sequence is a **rig error**,
-/// not a provider failure — and the distinction is worth being able to make.
-///
-/// llama.cpp answers `200` with `finish_reason: "stop"` and `content: ""`.
-/// Rig rejects an empty converted choice on every wire
-/// ([`EMPTY_RESPONSE_ERROR`](rig::message::EMPTY_RESPONSE_ERROR)) — "a
-/// completion that carried no message and no tool call is a provider defect"
-/// — so the caller sees `ResponseError`, with nothing in the message about
-/// stop sequences.
-///
-/// That is a deliberate, uniform rig rule rather than a llama.cpp defect, and
-/// this cell is what makes it debuggable: the recorded bytes show a healthy
-/// 200 next to the error, so "the server broke" and "your stop sequence
-/// matched the first token" stop being the same symptom.
+/// A turn whose whole answer is eaten by a stop sequence is an empty turn:
+/// llama.cpp answers `200` with `finish_reason: "stop"` and `content: ""`,
+/// and rig keeps it as pi does, a success with no blocks, decided once by
+/// the core fold for whole and streamed replies alike.
 #[tokio::test]
-async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_response() {
+async fn an_answer_fully_consumed_by_a_stop_sequence_is_an_empty_turn() {
     with_llamacpp_cassette(
         "content_matrix/empty_answer_with_stop",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let error = model
+            let response = model
                 .call(
                     CompletionRequest::new("Reply with exactly this and nothing else: STOPWORD")
                         .max_tokens(64)
                         // Qwen3 opens every turn with a `<think>` block, so
                         // this matches the model's very first emitted token
                         // and the whole answer is consumed before a character
-                        // of it exists. A stop sequence matching the *answer*
-                        // would still leave the reasoning preamble behind.
+                        // of it exists.
                         .additional_params(json!({ "stop": ["<think>"] })),
                 )
                 .await
-                .expect_err("rig rejects an empty converted choice");
-
-            match &error {
-                rig::error::ProviderError::Response(message) => assert_eq!(
-                    message,
-                    rig::message::EMPTY_RESPONSE_ERROR,
-                    "the shared empty-response wording, not a provider-specific one"
-                ),
-                other => panic!("expected the shared empty-response error, got {other:?}"),
-            }
-            // Deliberately *not* `provider_response_status().is_none()`: that
-            // is structurally true for `ResponseError` and would assert
-            // nothing. The real claim is that the error carries no preserved
-            // provider body either — rig built it locally from a healthy
-            // response, so there is nothing of the server's in it.
-            assert!(
-                error.provider_response_body().is_none(),
-                "the error is rig's own reading of a 200, not a preserved \
-                 provider failure: {error}"
-            );
+                .expect("an empty turn that ended cleanly decodes");
+            assert!(response.choice.is_empty(), "{:?}", response.choice);
+            assert!(!response.stop().is_failure(), "{:?}", response.stop());
         },
     )
     .await;
@@ -119,14 +84,13 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
     );
 }
 
-/// Two consecutive `user` messages go out as two messages.
+/// Two consecutive `user` messages and the prompt go out as one message.
 ///
-/// Some providers reject alternation violations and some clients silently
-/// merge them; llama.cpp's chat templates accept them, and rig sends what it
-/// was given. The cell reads the recorded request so a future "helpful"
-/// merge in the shared conversion cannot land unnoticed.
+/// Some providers reject alternation violations, so the history adapter
+/// makes adjacent user messages one on every wire. The cell reads the
+/// recorded request so the merge stays visible.
 #[tokio::test]
-async fn consecutive_same_role_messages_are_sent_as_sent() {
+async fn consecutive_user_messages_become_one() {
     with_llamacpp_cassette(
         "content_matrix/consecutive_same_role",
         |client| async move {
@@ -160,9 +124,8 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
         .collect::<Vec<_>>();
     assert_eq!(
         roles,
-        vec!["user".to_string(), "user".to_string(), "user".to_string()],
-        "the two history turns plus the prompt must all arrive as separate user \
-         messages — nothing merged them: {roles:?}"
+        vec!["user".to_string()],
+        "the two history turns and the prompt arrive as one user message: {roles:?}"
     );
 }
 
@@ -264,6 +227,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                 .call(
                     CompletionRequest::new(Message::User {
                         content: vec![UserContent::ToolResult(ToolResult {
+                            is_error: false,
                             call: CallId::from_wire("call_long"),
                             name: rig_core::message::ToolName::new("dump".to_string())
                                 .expect("tool name"),
@@ -277,14 +241,13 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
                         Message::User {
                             content: vec![UserContent::text("What code does the dump end with?")],
                         },
-                        Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::tool_call(
+                        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                            AssistantContent::tool_call(
                                 "call_long",
                                 rig_core::message::ToolName::new("dump").expect("tool name"),
                                 json!({}),
-                            )],
-                        },
+                            ),
+                        ])),
                     ])
                     .max_tokens(256),
                 )
@@ -328,10 +291,9 @@ async fn a_system_message_plus_history_keeps_its_order() {
                         Message::User {
                             content: vec![UserContent::text("Codeword one is heliotrope.")],
                         },
-                        Message::Assistant {
-                            id: None,
-                            content: vec![AssistantContent::text("Noted.")],
-                        },
+                        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+                            AssistantContent::text("Noted."),
+                        ])),
                         Message::User {
                             content: vec![UserContent::text("Codeword two is quicksilver.")],
                         },
@@ -363,8 +325,8 @@ async fn a_system_message_plus_history_keeps_its_order() {
             "user".to_string(),
             "assistant".to_string(),
             "user".to_string(),
-            "user".to_string(),
         ],
-        "the preamble leads and the history keeps its order: {roles:?}"
+        "the preamble leads, the history keeps its order, and its last user turn \
+         and the prompt are one message: {roles:?}"
     );
 }

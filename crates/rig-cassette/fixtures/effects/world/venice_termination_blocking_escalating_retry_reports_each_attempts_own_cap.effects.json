@@ -90,11 +90,14 @@
             "output_tokens": 16,
             "total_tokens": 994
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RksqIpS1YjkKzh20XFj5i27Y",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RksqIpS1YjkKzh20XFj5i27Y"
+          },
           "finish_reason": "length",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {
@@ -189,11 +192,14 @@
             "output_tokens": 44,
             "total_tokens": 1022
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RfbejHKvIRtkt6XPwh9A9dJS",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RfbejHKvIRtkt6XPwh9A9dJS"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

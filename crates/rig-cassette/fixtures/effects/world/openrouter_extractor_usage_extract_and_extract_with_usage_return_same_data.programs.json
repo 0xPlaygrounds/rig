@@ -233,9 +233,7 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_4D9c9lzfuevNRwhu75VqsCkj"
-                  }
+                  "provider": "call_4D9c9lzfuevNRwhu75VqsCkj"
                 },
                 "function": {
                   "name": "submit",
@@ -245,11 +243,29 @@
                     "profession": "retired teacher"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
+                    "type": "function"
+                  },
+                  "fingerprint": "30ed285c02df8e12"
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o-mini",
+                "response_model": "openai/gpt-4o-mini",
+                "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1"
+              },
+              "stop": "tool_use"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -271,9 +287,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_4D9c9lzfuevNRwhu75VqsCkj"
-                    }
+                    "provider": "call_4D9c9lzfuevNRwhu75VqsCkj"
                   },
                   "function": {
                     "name": "submit",
@@ -283,8 +297,17 @@
                       "profession": "retired teacher"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"name\":\"Bob Johnson\",\"age\":55,\"profession\":\"retired teacher\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_4D9c9lzfuevNRwhu75VqsCkj",
+                      "type": "function"
+                    },
+                    "fingerprint": "30ed285c02df8e12"
+                  }
                 }
               ],
               "usage": {
@@ -295,11 +318,14 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
-              "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o-mini",
+                "response_model": "openai/gpt-4o-mini",
+                "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1"
+              },
               "finish_reason": "tool_calls",
-              "provider": "openrouter",
-              "model": "openai/gpt-4o-mini",
               "raw": {
                 "choices": [
                   {
@@ -360,14 +386,23 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "openrouter",
+              "model": "openai/gpt-4o-mini",
+              "response_model": "openai/gpt-4o-mini",
+              "response_id": "gen-1790152491-dVUe6IZtE3v1lV1YV1G1"
+            },
+            "stop": "tool_use"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,

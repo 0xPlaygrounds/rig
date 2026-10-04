@@ -35,6 +35,7 @@ struct Seen {
 }
 struct Observer(Arc<Mutex<Seen>>);
 impl Observe for Observer {
+    fn origin(&mut self, _origin: &rig_core::message::Origin) {}
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         self.0
             .lock()
@@ -93,10 +94,13 @@ impl Serve for Answer {
             assert_eq!(&*scope, "scope");
         }
         if self.streaming {
-            Reply::written(|mut out| async move {
-                out.text("original").await.unwrap();
-                out.finish("proof", Finish::default()).await.unwrap();
-            })
+            Reply::written(
+                rig_core::message::Origin::new("proof", "proof", "proof"),
+                |mut out| async move {
+                    out.text("original").await.unwrap();
+                    out.finish(Finish::default()).await.unwrap();
+                },
+            )
         } else {
             let EffectKind::Custom { payload, .. } = kind else {
                 panic!("custom")
@@ -263,7 +267,7 @@ impl Serve for ImageAnswer {
                 ..Image::default()
             })],
             Usage::default(),
-            "proof",
+            rig_core::message::Origin::new("test.api", "proof", ""),
             serde_json::json!({}),
         ))))
     }

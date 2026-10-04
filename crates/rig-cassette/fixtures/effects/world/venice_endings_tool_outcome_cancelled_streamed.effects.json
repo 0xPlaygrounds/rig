@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 16,
+        "batch": 27,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 28,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 18,
+        "batch": 29,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -140,9 +140,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "VHGTYUUqS"
-                }
+                "provider": "VHGTYUUqS"
               },
               "function": {
                 "name": "add",
@@ -151,8 +149,17 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "VHGTYUUqS",
+                  "type": "function"
+                },
+                "fingerprint": "6bba653d42fe5e7c"
+              }
             }
           ],
           "usage": {
@@ -160,15 +167,18 @@
             "output_tokens": 18,
             "total_tokens": 1111
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RyjZu811lhnvWrEFsDewD3kC",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RyjZu811lhnvWrEFsDewD3kC"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 1093,
               "completion_tokens": 18,
+              "prompt_tokens": 1093,
               "total_tokens": 1111
             },
             "finish_reason": "tool_calls",
@@ -211,9 +221,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "VHGTYUUqS"
-                }
+                "provider": "VHGTYUUqS"
               },
               "function": {
                 "name": "add",
@@ -222,12 +230,26 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "VHGTYUUqS",
+                  "type": "function"
+                },
+                "fingerprint": "6bba653d42fe5e7c"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "golden/run#0"
     },
     {

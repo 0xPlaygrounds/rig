@@ -363,7 +363,7 @@ fn calls_to(history: &[Message], from: usize, tool: &str) -> usize {
     history[from..]
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content.iter()),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => Some(content.iter()),
             _ => None,
         })
         .flatten()
@@ -377,7 +377,7 @@ fn last_text(history: &[Message]) -> String {
         .iter()
         .rev()
         .find_map(|message| match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 let text: String = content
                     .iter()
                     .filter_map(|part| match part {
@@ -395,7 +395,7 @@ fn last_text(history: &[Message]) -> String {
 /// Whether any assistant turn from index `from` on carries reasoning.
 fn has_reasoning(history: &[Message], from: usize) -> bool {
     history[from..].iter().any(|message| {
-        matches!(message, Message::Assistant { content, .. }
+        matches!(message, Message::Assistant(rig_core::message::AssistantMessage { content, .. })
             if content.iter().any(|part| matches!(part, AssistantContent::Reasoning(_))))
     })
 }
@@ -697,20 +697,18 @@ pub async fn anthropic(
                     .to_owned(),
             ),
             media_type: Some(DocumentMediaType::TXT),
-            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({
+            additional_params: Some(json!({
                 "title": "Rust Goals",
                 "citations": { "enabled": true }
-            }))
-            .unwrap_or_default(),
+            })),
         });
         let pdf = UserContent::Document(Document {
             data: DocumentSourceKind::Url(PDF_URL.to_owned()),
             media_type: None,
-            additional_params: rig_core::message::AdditionalParams::try_from_value(json!({
+            additional_params: Some(json!({
                 "title": "Bitcoin Whitepaper",
                 "citations": { "enabled": true }
-            }))
-            .unwrap_or_default(),
+            })),
         });
         let mut history =
             main_conversation(&mut session, &agent, &clock, wire, pdf, Some(rust_goals)).await;
@@ -729,11 +727,17 @@ pub async fn anthropic(
         )
         .await;
         let cited = history[from..].iter().any(|message| match message {
-            Message::Assistant { content, .. } => content.iter().any(|part| match part {
-                AssistantContent::Text(text) => anthropic::completion::anthropic_citations(text)
-                    .is_ok_and(|citations| !citations.is_empty()),
-                _ => false,
-            }),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                content.iter().any(|part| match part {
+                    AssistantContent::Text(text) => text
+                        .native
+                        .as_ref()
+                        .and_then(|native| native.item.get("citations"))
+                        .and_then(Value::as_array)
+                        .is_some_and(|citations| !citations.is_empty()),
+                    _ => false,
+                })
+            }
             _ => false,
         });
         assert!(cited, "{}: the answer carries citations", session.run);
@@ -924,10 +928,10 @@ pub async fn anthropic(
     session.recorded(
         "stop_sequence",
         wire,
-        json!({ "message_id": response.message_id.is_some(), "request_id": response.provider_request_id.is_some() }),
+        json!({ "message_id": response.response_id().is_some(), "request_id": response.provider_request_id.is_some() }),
     );
     assert!(
-        response.message_id.is_some(),
+        response.response_id().is_some(),
         "{}: a message id",
         session.run
     );
@@ -957,15 +961,10 @@ pub async fn anthropic(
     use futures::StreamExt;
     while let Some(item) = stream.next().await {
         if let rig_core::streaming::Item::Event(rig_core::streaming::StreamEvent::End {
-            content: AssistantContent::Text(text),
+            content: AssistantContent::Opaque(opaque),
             ..
         }) = item.unwrap_or_else(|error| panic!("{}: web search item: {error}", session.run))
-            && let Some(kind) = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.get("anthropic_content"))
-                .and_then(|raw| raw.get("type"))
-                .and_then(Value::as_str)
+            && let Some(kind) = opaque.kind()
         {
             raw_types.push(kind.to_owned());
         }
@@ -1396,7 +1395,7 @@ pub async fn openai(
         .await
         .unwrap_or_else(|error| panic!("{}: metadata: {error}", session.run));
     assert!(
-        response.response_id.is_some(),
+        response.response_id().is_some(),
         "{}: a response id",
         session.run
     );
@@ -1493,7 +1492,7 @@ async fn chat_conversation(
         .await
         .unwrap_or_else(|error| panic!("{}: chat metadata: {error}", session.run));
     assert!(
-        response.response_id.is_some(),
+        response.response_id().is_some(),
         "{}: a chat completion id",
         session.run
     );
@@ -1523,9 +1522,9 @@ async fn chat_conversation(
         profile.chat,
         ChatSupport::TextOnly | ChatSupport::ToolsAtEffortNone
     ) {
-        // Function tools at the default effort are refused before anything
-        // is sent (rig's `EncodeError`), and so is the extractor, whose
-        // `submit` is a function tool.
+        // Function tools at the default effort are refused by OpenAI, whose
+        // 400 names the fix, and so is the extractor, whose `submit` is a
+        // function tool.
         let tools_agent = AgentBuilder::new(plain())
             .preamble("Use lookup_order to answer order questions.")
             .tool(LookupOrder)
@@ -1537,7 +1536,7 @@ async fn chat_conversation(
             .expect_err("tools at the default effort are refused on Chat Completions");
         let message = error.to_string();
         assert!(
-            message.contains("Responses wire"),
+            message.contains("/v1/responses"),
             "{}: {message}",
             session.run
         );
@@ -1551,7 +1550,7 @@ async fn chat_conversation(
                 .scenario_refused(
                     "structured_extraction",
                     wire,
-                    "Responses wire",
+                    "/v1/responses",
                     structured_extraction(plain(), None),
                 )
                 .await;

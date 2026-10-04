@@ -30,7 +30,7 @@ where
     let (cassette, client) = xai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -49,7 +49,7 @@ where
     let (cassette, client) = xai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -75,7 +75,7 @@ where
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -101,7 +101,7 @@ pub(super) async fn with_xai_prompt_caching_cassette<F, Fut>(
     let (cassette, client) = xai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

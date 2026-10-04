@@ -1,6 +1,6 @@
 {
   "header": {
-    "run_spec": 15991439691162022817,
+    "run_spec": 18359721998203171151,
     "handlers": [
       {
         "key": "golden/model:default",
@@ -62,7 +62,8 @@
             },
             "include": [
               "reasoning.encrypted_content"
-            ]
+            ],
+            "store": false
           },
           "output_schema": null
         },
@@ -74,39 +75,64 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "openai",
-              "id": "rs_0566716749391e92006ab2b4c7909887d09df3273cb5a05195",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "**Explaining Rust succinctly**\n\nThe user wants me to provide 1-2 sentences on Rust and the importance of memory safety. I can say: \"Rust is a systems programming language that prioritizes speed, concurrency, and memory safety without using garbage collection, utilizing ownership and borrowing instead. Memory safety is crucial because it helps prevent bugs such as use-after-free errors, data races, and security vulnerabilities, resulting in more reliable and secure software.\" That feels concise and informative!"
+              "text": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language that emphasizes performance, concurrency, and memory safety through ownership and borrowing, avoiding the need for garbage collection. Memory safety is crucial because it helps prevent crashes, undefined behavior, and security vulnerabilities, such as buffer overflows.",
+              "native": {
+                "item": {
+                  "content": [],
+                  "encrypted_content": "gAAAAABqv2mJ-aq4XaR554pFsuLadRji9oGiHfYv54e0OoqNAYk-nIoZxMjsDMDaB4V5a263NNmtCpOjSBYfILLjrzB5K11YgkZfm1fg9N02hvdwgsEQBB5fzXWgt5Yy1qdUvNXj_V4I6gLU_ccht4X-XRPU0kk0Z6fkB7cO05hMSvbjHIfQP3zcmr_DohOvrFtgRkDylr88yVAu0e0RI7IdbqC6pJL_tpcYnuwgrL-gz9GIAPpBG9np7Ik-lr5QjZtt43X9I3V4sjQnfk7nzyktYhifrItyJhvNrM3ksSNftQiug37y1lt8sUdaQhZESLql-AuXOCbx1uXEO--MuBm2ujLky-hLYVXycmhgs1vn1mthNUBb6LJPdyPYbbtUkNG_9_7mCmBsp1DKzm7D309un-H6HOXJkzuaEhVma8PpwzdUY2WiT8C_gFvZc4hF3sFkNGhbIqdavNN-F5Dk5LXR_g2ZUxtDDKrzavFfvHakPBh_-uS5272DnJ8yZ3f_bg_YBA72B2zbgkM8HMT2akWI6Z1fRVOAf9gWtAdkKHahp4kPX9bUnjAfkMFTEutmnQtQH6UV_4ALIR6UUAxgd7b4jEn1HZNLjGuJWU2MA9R5-J5ENAvW0_-o7xQYbd__BDaiRNpWTNNt1JKqmAroFSgiaSQYdUo_cdfcxPDtX2dpd7rokA8jCtMGM-diwWToAg-0HsvER7azPf0Fr85nmr1KV7MJKmrPselJ_xhW8M3XJhMWQnFgAfgX_QIzX0mP-Q1Pw5KHJrdsjErTF7i70_l9__ljlI1RPyZfMuPYCIuW96sEOeJ7quGctG3jJUL1YvbG-FyEMGkjSE0YW3AG6pugMouBCNhz10WDmH6EjsdKKcJ1_9nRHktY8N_rS0P5lbjC0bu874MkfDlP-WG4YoPR5gjQKFay3o1OmZi9SojiAeA0Icf_wHZbW_-AvfP5YDiZIEyRDWH6-_V8MNYVQn0vyj9SysIdQwJWGgwC65VDL95RMa5ygzv-8dS4kmrgME5fZ5Kju-Uz57BkamJC_SobUWwMv0wzSdDCDhdNt1FRbxHYDqRdfyTS7XYe9qMZTz9n-PD55WMCqkW9n37NT5XmxfkXTk82bo0D5IxWUs_p_v2gh41v5qqUwQAYB2sPoBP7Tfr1hGikPnYqLn1iw1dsjg2yRh5nuQp_hdKsYxirmYwWAcmV0JdKhzUAUSXWdqWGhUED6-PtTObre4cS7z2s8FzNqjfBUSTal0P78skqSdnKJcM-yPYXIAed7dtrEvZJVJ-yK3ar0CXWGL-KJSniOI4mkP8jjEaHpDeybmJIjk5XMCBgRJ8qD4uGY2xdmpJAMkXH9zo4uU2EimRUTgTS82F7NkT36qliQNMDe7pOxPWR_elraIOUC0LQ4RRWWDn6ueU_yPsuhFOIaJ72PA611sp1pgC01y2Ox24ejf-Y5gSNY9ulrA8bkdiTKB615ACWx7W0Lg0rgIKdBjepRXiQQn9yhBo5ghEeGyT18c2sr-PszkWHVuT4-Q8JI0xu0IyUiax1HZ5UTX7QDm36_0ym88l2Cyul6F5ZYR2KkrjQcgiQjgd3QdigxVtzTTdTdkwYQMlvpsxMheYAUGGVhcOhOL-JSRRr3GBfgsDJ8lYgTocfOkPB4XCPIbd60ObUzqUFn-EazM_VFRgjL-D_NVx_95I8bKIEAnXyJ_nhZs4mPVBwF2OkXHw=",
+                  "id": "rs_0ab05ba3e86c8fa5016abf6988011087d095533fbbb30a40dd",
+                  "summary": [
+                    {
+                      "text": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language that emphasizes performance, concurrency, and memory safety through ownership and borrowing, avoiding the need for garbage collection. Memory safety is crucial because it helps prevent crashes, undefined behavior, and security vulnerabilities, such as buffer overflows.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
                 },
-                {
-                  "type": "encrypted",
-                  "content": "gAAAAABqsrTJaMrS6056M0O4G-PMZLxCzm0YMtAeFMchRs_xUw-pt_890ru5QkZazBJEOVla1-UdZiSs9fMBkyhbC4tHYiZPQ_a6p-ZGWAahzaGnIALBG6pcX2mlgOA2Uo9NMRJgT0UhlJPU49MRLEy0r9swMNa7GlPMb1fIm0TAUn5y4QNn0afldR2j6FEOR5RVU1QwoJ4Xo7vq9ShfjDavUGxyQtHexxRLWRL5i5mXQ9gvBVYFYZRpwF4pz4L3EsA0XPz6giApYjI3lQ_MV5IwOIN5HtKJkBTYBXtmW64GP_tBO2nswMVv7TOFMcHGZJC7PVrKOJJFocRHXlEN2vHleaLr0xgcoRWVSxXgvuS9Eza50QMHN2cjN7KYaxRrUtltnrGuONOecFQwiwID6vP4oONPr_KXzQNm_SO6lNZoF4BZM2ItBrGc7V4EVwI-PSI7NmuRlK8KpbeT2mXKHs_ya_rgjWCt0-draoO2ZlvvkGcVYOY-JX4iRYeu2_Bm6dlTEHZoUQ3kb-nOq0cAkfg5v3KBEMnXCcj2lK0jDgSbe8xp49b-hBAeg2H1NXViBXwPX5byQp3hbrdeAlKAux7cjx-fKnfBZL27R4fvVKB4UEKEXwUaPr990DCljrGoiH_zl1OsJpL-pOKmTuVUoJ8VcfPIs4CBEd03hPnd090p6LCTzO5SAktlgqAdYLKoL00csGBhipyLqc_UJHCelJHRyfS26MMUber5TJtkAuOfuwi4CNrwhvVA7JeERXsKaGyFIFaVx5v8CUmTrUmmrDDN95rRFUT66HzQ0Vx0lcUszjm-ECHAOlKHNt_P8Qm9_lpAJ0mw52U6RJIzLE4d7LQuNC_zZurgQW1FnfhuL8VgEvOBrCDysB4WqE09EdrFYVUtgO0X9tGtWGV70ZRLQN_BTdPw_QOZvSfMYz4DKHSkivdYiYp44QK5WE7J6dbaGnuEX8FsLjxPNVAE408qF9OHmJcerd2VIQHC3TyiRXOyGmkWcHjUel9mP9-jl5UJeHnUvnQPppJvXvSNuBiUG1jttM0uLKhQh_ZsI-s9CeRusmJkLD-K0AbFwvCMWqTFoFfzi-gYRh8qxba_LThdMgB6oF_6W5qLdt2OTGg5eG_TNtym__TX-51eAkwh_pPGOdj7KohQk9IITQ77ZDxdF9GazxqEzwOmOpchQKJWahzwxNNoxPKw2x6vtBrGfr7YLqkP5ciPC4TUJmDIxNrh9_9QlikrWBHJMbhjHHl3-RRgl3FlQ25q-j8Sckgjo2G9d4wpk3zGNI8fjwhFnqjMZHYVd7zuKEuB-jBkUfBtxiz5XjnmCUm0GyGMNqxKTwkQ9O71Zompt81tuBddf8aoVCsaJTVwtodLARa3_GGHiTeYX_iBy-BGW7q7zkPmcBQ5jsyfyXEpHKutvjamuu7T12gKqa0NXpkOksVdygHx-fuAgSt-bbQ807HwKYKALgwthVA8KOG2RaF8Q9klxl2DRTrSmpu6QIxDk9y9HWiTZI3nvGggUpM8FmfGJlv5Q5tblSUhbNNffvU5I1v9mFqXSFUT4AD5UNsyuGyTslzzy8Y_3xfqZ_6eRQ4ltNKYLeYZnl28XrwDv5HyQDB-D8LLign913Gf49Zr06u0Q1V4t2OHeSYg9IGGAdiykvjZMaSFoz8UqVIJQ_23-rG7EqsfcMLLIQPiSW_E25e6s8KncN3nf9SD57cYgkAEVY52XLwp7_RR_cfEKZjN"
-                }
-              ]
+                "fingerprint": "7a918fe91ca4bfe2"
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a modern systems programming language that provides high performance and fearless concurrency by enforcing ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety matters because it prevents bugs like null/dangling-pointer accesses, buffer overflows, and data races, which improve program reliability, correctness, and security."
+              "text": "Rust is a modern systems programming language that delivers C-like performance and fine-grained control while enforcing memory safety and concurrency guarantees through its ownership and borrowing system rather than a garbage collector. Memory safety matters because it prevents crashes, undefined behavior, data races, and security vulnerabilities (e.g., buffer overflows), making software more reliable and secure.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a modern systems programming language that delivers C-like performance and fine-grained control while enforcing memory safety and concurrency guarantees through its ownership and borrowing system rather than a garbage collector. Memory safety matters because it prevents crashes, undefined behavior, data races, and security vulnerabilities (e.g., buffer overflows), making software more reliable and secure.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0ab05ba3e86c8fa5016abf6989359887d0973e9d2e0a9f8b92",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "4d85e6c8b781a2fa"
+              }
             }
           ],
           "usage": {
             "input_tokens": 37,
-            "output_tokens": 148,
-            "total_tokens": 185,
+            "output_tokens": 147,
+            "total_tokens": 184,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 64
           },
-          "message_id": "msg_0566716749391e92006ab2b4c97aac87d0a9506cf3f8a47f79",
-          "response_id": "resp_0566716749391e92006ab2b4c7274087d0bcbe986103a631e1",
-          "provider_request_id": "req_ddd005b119d7480aa692c5cf9614bbd2",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "resp_0ab05ba3e86c8fa5016abf698770fc87d0a901e885e6475a22"
+          },
+          "provider_request_id": "req_71d48b7ae580451991b473add3de420a",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
+            "access_programs": null,
             "background": false,
             "billing": {
               "payer": "developer"
@@ -115,7 +141,7 @@
             "created_at": 0,
             "error": null,
             "frequency_penalty": 0.0,
-            "id": "resp_0566716749391e92006ab2b4c7274087d0bcbe986103a631e1",
+            "id": "resp_0ab05ba3e86c8fa5016abf698770fc87d0a901e885e6475a22",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": 4096,
@@ -127,11 +153,11 @@
             "output": [
               {
                 "content": [],
-                "encrypted_content": "gAAAAABqsrTJaMrS6056M0O4G-PMZLxCzm0YMtAeFMchRs_xUw-pt_890ru5QkZazBJEOVla1-UdZiSs9fMBkyhbC4tHYiZPQ_a6p-ZGWAahzaGnIALBG6pcX2mlgOA2Uo9NMRJgT0UhlJPU49MRLEy0r9swMNa7GlPMb1fIm0TAUn5y4QNn0afldR2j6FEOR5RVU1QwoJ4Xo7vq9ShfjDavUGxyQtHexxRLWRL5i5mXQ9gvBVYFYZRpwF4pz4L3EsA0XPz6giApYjI3lQ_MV5IwOIN5HtKJkBTYBXtmW64GP_tBO2nswMVv7TOFMcHGZJC7PVrKOJJFocRHXlEN2vHleaLr0xgcoRWVSxXgvuS9Eza50QMHN2cjN7KYaxRrUtltnrGuONOecFQwiwID6vP4oONPr_KXzQNm_SO6lNZoF4BZM2ItBrGc7V4EVwI-PSI7NmuRlK8KpbeT2mXKHs_ya_rgjWCt0-draoO2ZlvvkGcVYOY-JX4iRYeu2_Bm6dlTEHZoUQ3kb-nOq0cAkfg5v3KBEMnXCcj2lK0jDgSbe8xp49b-hBAeg2H1NXViBXwPX5byQp3hbrdeAlKAux7cjx-fKnfBZL27R4fvVKB4UEKEXwUaPr990DCljrGoiH_zl1OsJpL-pOKmTuVUoJ8VcfPIs4CBEd03hPnd090p6LCTzO5SAktlgqAdYLKoL00csGBhipyLqc_UJHCelJHRyfS26MMUber5TJtkAuOfuwi4CNrwhvVA7JeERXsKaGyFIFaVx5v8CUmTrUmmrDDN95rRFUT66HzQ0Vx0lcUszjm-ECHAOlKHNt_P8Qm9_lpAJ0mw52U6RJIzLE4d7LQuNC_zZurgQW1FnfhuL8VgEvOBrCDysB4WqE09EdrFYVUtgO0X9tGtWGV70ZRLQN_BTdPw_QOZvSfMYz4DKHSkivdYiYp44QK5WE7J6dbaGnuEX8FsLjxPNVAE408qF9OHmJcerd2VIQHC3TyiRXOyGmkWcHjUel9mP9-jl5UJeHnUvnQPppJvXvSNuBiUG1jttM0uLKhQh_ZsI-s9CeRusmJkLD-K0AbFwvCMWqTFoFfzi-gYRh8qxba_LThdMgB6oF_6W5qLdt2OTGg5eG_TNtym__TX-51eAkwh_pPGOdj7KohQk9IITQ77ZDxdF9GazxqEzwOmOpchQKJWahzwxNNoxPKw2x6vtBrGfr7YLqkP5ciPC4TUJmDIxNrh9_9QlikrWBHJMbhjHHl3-RRgl3FlQ25q-j8Sckgjo2G9d4wpk3zGNI8fjwhFnqjMZHYVd7zuKEuB-jBkUfBtxiz5XjnmCUm0GyGMNqxKTwkQ9O71Zompt81tuBddf8aoVCsaJTVwtodLARa3_GGHiTeYX_iBy-BGW7q7zkPmcBQ5jsyfyXEpHKutvjamuu7T12gKqa0NXpkOksVdygHx-fuAgSt-bbQ807HwKYKALgwthVA8KOG2RaF8Q9klxl2DRTrSmpu6QIxDk9y9HWiTZI3nvGggUpM8FmfGJlv5Q5tblSUhbNNffvU5I1v9mFqXSFUT4AD5UNsyuGyTslzzy8Y_3xfqZ_6eRQ4ltNKYLeYZnl28XrwDv5HyQDB-D8LLign913Gf49Zr06u0Q1V4t2OHeSYg9IGGAdiykvjZMaSFoz8UqVIJQ_23-rG7EqsfcMLLIQPiSW_E25e6s8KncN3nf9SD57cYgkAEVY52XLwp7_RR_cfEKZjN",
-                "id": "rs_0566716749391e92006ab2b4c7909887d09df3273cb5a05195",
+                "encrypted_content": "gAAAAABqv2mJ-aq4XaR554pFsuLadRji9oGiHfYv54e0OoqNAYk-nIoZxMjsDMDaB4V5a263NNmtCpOjSBYfILLjrzB5K11YgkZfm1fg9N02hvdwgsEQBB5fzXWgt5Yy1qdUvNXj_V4I6gLU_ccht4X-XRPU0kk0Z6fkB7cO05hMSvbjHIfQP3zcmr_DohOvrFtgRkDylr88yVAu0e0RI7IdbqC6pJL_tpcYnuwgrL-gz9GIAPpBG9np7Ik-lr5QjZtt43X9I3V4sjQnfk7nzyktYhifrItyJhvNrM3ksSNftQiug37y1lt8sUdaQhZESLql-AuXOCbx1uXEO--MuBm2ujLky-hLYVXycmhgs1vn1mthNUBb6LJPdyPYbbtUkNG_9_7mCmBsp1DKzm7D309un-H6HOXJkzuaEhVma8PpwzdUY2WiT8C_gFvZc4hF3sFkNGhbIqdavNN-F5Dk5LXR_g2ZUxtDDKrzavFfvHakPBh_-uS5272DnJ8yZ3f_bg_YBA72B2zbgkM8HMT2akWI6Z1fRVOAf9gWtAdkKHahp4kPX9bUnjAfkMFTEutmnQtQH6UV_4ALIR6UUAxgd7b4jEn1HZNLjGuJWU2MA9R5-J5ENAvW0_-o7xQYbd__BDaiRNpWTNNt1JKqmAroFSgiaSQYdUo_cdfcxPDtX2dpd7rokA8jCtMGM-diwWToAg-0HsvER7azPf0Fr85nmr1KV7MJKmrPselJ_xhW8M3XJhMWQnFgAfgX_QIzX0mP-Q1Pw5KHJrdsjErTF7i70_l9__ljlI1RPyZfMuPYCIuW96sEOeJ7quGctG3jJUL1YvbG-FyEMGkjSE0YW3AG6pugMouBCNhz10WDmH6EjsdKKcJ1_9nRHktY8N_rS0P5lbjC0bu874MkfDlP-WG4YoPR5gjQKFay3o1OmZi9SojiAeA0Icf_wHZbW_-AvfP5YDiZIEyRDWH6-_V8MNYVQn0vyj9SysIdQwJWGgwC65VDL95RMa5ygzv-8dS4kmrgME5fZ5Kju-Uz57BkamJC_SobUWwMv0wzSdDCDhdNt1FRbxHYDqRdfyTS7XYe9qMZTz9n-PD55WMCqkW9n37NT5XmxfkXTk82bo0D5IxWUs_p_v2gh41v5qqUwQAYB2sPoBP7Tfr1hGikPnYqLn1iw1dsjg2yRh5nuQp_hdKsYxirmYwWAcmV0JdKhzUAUSXWdqWGhUED6-PtTObre4cS7z2s8FzNqjfBUSTal0P78skqSdnKJcM-yPYXIAed7dtrEvZJVJ-yK3ar0CXWGL-KJSniOI4mkP8jjEaHpDeybmJIjk5XMCBgRJ8qD4uGY2xdmpJAMkXH9zo4uU2EimRUTgTS82F7NkT36qliQNMDe7pOxPWR_elraIOUC0LQ4RRWWDn6ueU_yPsuhFOIaJ72PA611sp1pgC01y2Ox24ejf-Y5gSNY9ulrA8bkdiTKB615ACWx7W0Lg0rgIKdBjepRXiQQn9yhBo5ghEeGyT18c2sr-PszkWHVuT4-Q8JI0xu0IyUiax1HZ5UTX7QDm36_0ym88l2Cyul6F5ZYR2KkrjQcgiQjgd3QdigxVtzTTdTdkwYQMlvpsxMheYAUGGVhcOhOL-JSRRr3GBfgsDJ8lYgTocfOkPB4XCPIbd60ObUzqUFn-EazM_VFRgjL-D_NVx_95I8bKIEAnXyJ_nhZs4mPVBwF2OkXHw=",
+                "id": "rs_0ab05ba3e86c8fa5016abf6988011087d095533fbbb30a40dd",
                 "summary": [
                   {
-                    "text": "**Explaining Rust succinctly**\n\nThe user wants me to provide 1-2 sentences on Rust and the importance of memory safety. I can say: \"Rust is a systems programming language that prioritizes speed, concurrency, and memory safety without using garbage collection, utilizing ownership and borrowing instead. Memory safety is crucial because it helps prevent bugs such as use-after-free errors, data races, and security vulnerabilities, resulting in more reliable and secure software.\" That feels concise and informative!",
+                    "text": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language that emphasizes performance, concurrency, and memory safety through ownership and borrowing, avoiding the need for garbage collection. Memory safety is crucial because it helps prevent crashes, undefined behavior, and security vulnerabilities, such as buffer overflows.",
                     "type": "summary_text"
                   }
                 ],
@@ -142,11 +168,11 @@
                   {
                     "annotations": [],
                     "logprobs": [],
-                    "text": "Rust is a modern systems programming language that provides high performance and fearless concurrency by enforcing ownership, borrowing, and lifetimes instead of a garbage collector. Memory safety matters because it prevents bugs like null/dangling-pointer accesses, buffer overflows, and data races, which improve program reliability, correctness, and security.",
+                    "text": "Rust is a modern systems programming language that delivers C-like performance and fine-grained control while enforcing memory safety and concurrency guarantees through its ownership and borrowing system rather than a garbage collector. Memory safety matters because it prevents crashes, undefined behavior, data races, and security vulnerabilities (e.g., buffer overflows), making software more reliable and secure.",
                     "type": "output_text"
                   }
                 ],
-                "id": "msg_0566716749391e92006ab2b4c97aac87d0a9506cf3f8a47f79",
+                "id": "msg_0ab05ba3e86c8fa5016abf6989359887d0973e9d2e0a9f8b92",
                 "role": "assistant",
                 "status": "completed",
                 "type": "message"
@@ -166,7 +192,7 @@
             "safety_identifier": null,
             "service_tier": "default",
             "status": "completed",
-            "store": true,
+            "store": false,
             "temperature": 1.0,
             "text": {
               "format": {
@@ -203,11 +229,11 @@
                 "cache_write_tokens": 0,
                 "cached_tokens": 0
               },
-              "output_tokens": 148,
+              "output_tokens": 147,
               "output_tokens_details": {
                 "reasoning_tokens": 64
               },
-              "total_tokens": 185
+              "total_tokens": 184
             },
             "user": null
           }

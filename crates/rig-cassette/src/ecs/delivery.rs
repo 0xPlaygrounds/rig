@@ -323,7 +323,8 @@ impl Buffered {
                 Err(futures::channel::mpsc::TryRecvError::Empty) => Poll::Pending,
                 Err(futures::channel::mpsc::TryRecvError::Closed) => Poll::Ready(None),
             };
-            if matches!(polled, Poll::Ready(Some(_)))
+            // The origin is not one of the recorded items.
+            if matches!(&polled, Poll::Ready(Some(item)) if !matches!(item, Ok(Relayed::Origin(_))))
                 && let Some(remaining) = remaining
             {
                 *remaining -= 1;
@@ -365,7 +366,7 @@ fn cancelled_prefix(
             return Poll::Pending;
         }
         let item = stream.as_mut().poll_next(cx);
-        if matches!(item, Poll::Ready(Some(_))) {
+        if matches!(&item, Poll::Ready(Some(item)) if !matches!(item, Ok(Relayed::Origin(_)))) {
             remaining -= 1;
         }
         item
@@ -519,7 +520,7 @@ pub fn collect_replayed(world: &mut World) {
                     // Batches count items and errors, never the response.
                     let buffered = items
                         .iter()
-                        .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                        .filter(|item| !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))))
                         .count();
                     if buffered < *total {
                         if *closed {
@@ -569,7 +570,7 @@ pub fn collect_replayed(world: &mut World) {
                         Some(Buffered::Stream { items, .. }) if replay.folded.contains(&step.id) => {
                             items
                                 .iter()
-                                .filter(|item| !matches!(item, Ok(Relayed::Done(_))))
+                                .filter(|item| !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))))
                                 .count()
                         }
                         _ => 0,
@@ -695,7 +696,7 @@ fn deliver_stream(
         let end = items
             .iter()
             .position(|item| {
-                if !matches!(item, Ok(Relayed::Done(_))) {
+                if !matches!(item, Ok(Relayed::Done(_) | Relayed::Origin(_))) {
                     taken += 1;
                 }
                 taken > count
@@ -703,6 +704,7 @@ fn deliver_stream(
             .unwrap_or(items.len());
         for item in items.drain(..end) {
             match &item {
+                Ok(Relayed::Origin(origin)) => streamed.origin = Some(origin.clone()),
                 Ok(Relayed::Item(event)) => delivered.push(Ok(event.clone())),
                 Ok(Relayed::Done(_)) => {}
                 Err(error) => {
@@ -715,6 +717,7 @@ fn deliver_stream(
                 && recording.keep_events()
             {
                 match &item {
+                    Ok(Relayed::Origin(origin)) => recording.origin(id, origin),
                     Ok(Relayed::Item(item)) => recording.event(id, item),
                     Ok(Relayed::Done(_)) => {}
                     Err(error) => recording.stream_error(id, error),

@@ -1,9 +1,6 @@
 use super::*;
 use crate::http_client::{HeaderMap, StatusCode};
 use crate::providers::openai::OpenAIConfig;
-use crate::providers::openai::responses_api::{
-    IncompleteDetailsReason, ResponseError, ResponseObject, ResponsesUsage,
-};
 use crate::ws_client::CloseFrame;
 use serde_json::json;
 
@@ -213,35 +210,22 @@ fn websocket_error_event_preserves_provider_payload_as_json() {
     assert_eq!(json["error"]["type"], "invalid_request_error");
 }
 
-fn sample_response(status: ResponseStatus) -> CompletionResponse {
-    CompletionResponse {
-        id: "resp_123".to_string(),
-        object: ResponseObject::Response,
-        created_at: 0,
-        status,
-        error: None,
-        incomplete_details: None,
-        instructions: None,
-        max_output_tokens: None,
-        model: "gpt-5.4".to_string(),
-        usage: Some(ResponsesUsage {
-            input_tokens: 1,
-            input_tokens_details: None,
-            output_tokens: 2,
-            output_tokens_details: Some(
-                crate::providers::openai::responses_api::OutputTokensDetails {
-                    reasoning_tokens: 0,
-                },
-            ),
-            total_tokens: 3,
-        }),
-        output: Vec::new(),
-        tools: Vec::new(),
-        additional_parameters: Default::default(),
-        provider_reasoning: None,
-        reasoning_metadata: None,
-        reasoning_context: None,
-    }
+fn sample_response(status: &str) -> Value {
+    json!({
+        "id": "resp_123",
+        "object": "response",
+        "created_at": 0,
+        "status": status,
+        "model": "gpt-5.4",
+        "usage": {
+            "input_tokens": 1,
+            "output_tokens": 2,
+            "output_tokens_details": { "reasoning_tokens": 0 },
+            "total_tokens": 3
+        },
+        "output": [],
+        "tools": []
+    })
 }
 
 #[test]
@@ -330,7 +314,7 @@ fn parse_response_completed_event_is_terminal() {
         .expect("response event should deserialize")
         .expect("response event should not be skipped");
 
-    assert!(matches!(event, ResponsesWebSocketEvent::Response(_)));
+    assert!(matches!(event, ResponsesWebSocketEvent::Response { .. }));
     assert!(event.is_terminal());
     assert_eq!(event.response_id(), Some("resp_completed_1"));
 }
@@ -435,38 +419,37 @@ fn unknown_event_type_is_forwarded_raw() {
     }
 }
 
+/// A terminal event that states no response object still ends the turn:
+/// nothing in it is needed to build a block (#2668).
 #[test]
-fn malformed_known_event_returns_error() {
+fn a_terminal_without_its_response_object_still_ends_the_turn() {
     let payload = json!({
         "type": "response.completed"
     });
 
-    let error =
-        parse_server_event(&payload.to_string()).expect_err("malformed known event should error");
-    assert!(
-        error.to_string().contains("StreamingCompletionChunk"),
-        "expected strict decode failure, got {error}"
-    );
+    let event = parse_server_event(&payload.to_string())
+        .expect("a sparse known event classifies")
+        .expect("it is not skipped");
+    assert!(event.is_terminal());
+    assert_eq!(event.response_id(), None);
 }
 
 #[test]
 fn terminal_response_requires_completed_status() {
-    let completed = terminal_response_result(sample_response(ResponseStatus::Completed))
+    let completed = terminal_response_result(sample_response("completed"))
         .expect("completed response should succeed");
-    assert_eq!(completed.id, "resp_123");
+    assert_eq!(completed["id"], "resp_123");
 
-    let failed = terminal_response_result(sample_response(ResponseStatus::Failed))
+    let failed = terminal_response_result(sample_response("failed"))
         .expect_err("failed response should error");
     assert!(failed.to_string().contains("failed response"));
 }
 
 #[test]
 fn terminal_failed_response_with_error_preserves_raw_payload() {
-    let mut response = sample_response(ResponseStatus::Failed);
-    response.error = Some(ResponseError {
-        code: "server_error".to_string(),
-        message: "the model failed to generate a response".to_string(),
-    });
+    let mut response = sample_response("failed");
+    response["error"] =
+        json!({ "code": "server_error", "message": "the model failed to generate a response" });
 
     let Err(err) = terminal_response_result(response) else {
         panic!("failed response with an error object should fail")
@@ -491,7 +474,7 @@ fn terminal_failed_response_with_error_preserves_raw_payload() {
 
 #[test]
 fn terminal_failed_response_without_error_is_rig_diagnostic() {
-    let Err(err) = terminal_response_result(sample_response(ResponseStatus::Failed)) else {
+    let Err(err) = terminal_response_result(sample_response("failed")) else {
         panic!("failed response should fail")
     };
 
@@ -505,13 +488,11 @@ fn terminal_failed_response_without_error_is_rig_diagnostic() {
 /// and usage are kept and normalization maps the status downstream.
 #[test]
 fn terminal_incomplete_response_is_a_terminal_success() {
-    let mut response = sample_response(ResponseStatus::Incomplete);
-    response.incomplete_details = Some(IncompleteDetailsReason {
-        reason: "max_output_tokens".to_string(),
-    });
+    let mut response = sample_response("incomplete");
+    response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
 
     let response = terminal_response_result(response).expect("incomplete is a terminal");
-    assert!(matches!(response.status, ResponseStatus::Incomplete));
+    assert_eq!(response["status"], "incomplete");
 }
 
 /// A close frame mid-turn is an error naming the peer's reason; a keepalive

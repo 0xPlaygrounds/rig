@@ -1,5 +1,6 @@
 use super::*;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 #[derive(Serialize)]
 struct SortedMapHolder {
@@ -218,6 +219,33 @@ fn test_parse_tool_arguments_whitespace_string() {
 fn test_parse_tool_arguments_valid_json() {
     let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
     assert_eq!(parsed, serde_json::json!({"key": "value"}));
+}
+
+#[test]
+fn a_cut_off_object_keeps_what_it_states() {
+    let cases = [
+        (r#"{"q": "ab"#, json!({"q": "ab"})),
+        (r#"{"q": "ab", "n": 1"#, json!({"q": "ab", "n": 1})),
+        (r#"{"q": "ab", "n""#, json!({"q": "ab"})),
+        (r#"{"q": "ab", "n":"#, json!({"q": "ab"})),
+        (r#"{"list": [1, 2, {"a": tr"#, json!({"list": [1, 2, {}]})),
+        (r#"{"q": "a\"#, json!({"q": "a"})),
+        ("{", json!({})),
+    ];
+    for (text, expected) in cases {
+        assert_eq!(
+            parse_partial_object(text).map(serde_json::Value::Object),
+            Some(expected),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn text_that_states_no_object_has_none() {
+    for text in ["not json", "[1, 2", "\"str", "12"] {
+        assert_eq!(parse_partial_object(text), None, "{text}");
+    }
 }
 
 mod string_or_vec_shapes {

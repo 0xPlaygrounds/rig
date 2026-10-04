@@ -79,9 +79,9 @@ async fn observe_stream(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                observation.streamed_encrypted.extend(encrypted_blocks_of(
-                    reasoning.open(reasoning.issuer()).expect("reasoning opens"),
-                ));
+                observation
+                    .streamed_encrypted
+                    .extend(encrypted_blocks_of(&reasoning));
             }
             Ok(Item::Event(StreamEvent::End {
                 content: AssistantContent::ToolCall(tool_call),
@@ -97,15 +97,22 @@ async fn observe_stream(
     observation
 }
 
+/// The encrypted `reasoning_details` entries a reasoning block holds in its
+/// provider item, as `(id, data)`.
 fn encrypted_blocks_of(reasoning: &rig::message::Reasoning) -> Vec<(Option<String>, String)> {
     reasoning
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            rig::message::ReasoningContent::Encrypted(data) => {
-                Some((reasoning.id.clone(), data.clone()))
-            }
-            _ => None,
+        .native
+        .as_ref()
+        .and_then(|native| native.item.get("reasoning_details"))
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|detail| detail["type"] == "reasoning.encrypted")
+        .filter_map(|detail| {
+            Some((
+                detail["id"].as_str().map(str::to_owned),
+                detail["data"].as_str()?.to_owned(),
+            ))
         })
         .collect()
 }
@@ -114,9 +121,7 @@ fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String
     choice
         .iter()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => {
-                reasoning.open(reasoning.issuer()).map(encrypted_blocks_of)
-            }
+            AssistantContent::Reasoning(reasoning) => Some(encrypted_blocks_of(reasoning)),
             _ => None,
         })
         .flatten()
@@ -161,11 +166,14 @@ async fn stream_encrypted_reasoning_reaches_the_choice() {
                 .expect("expected a streamed get_weather tool call");
             // The encrypted blob is not tool-call metadata: a decoration keyed
             // by the detail's own `rs_*` id could never match this `call_*` id.
+            let call_item = &tool_call
+                .native
+                .as_ref()
+                .expect("the call holds its provider item")
+                .item;
             assert!(
-                tool_call.signature.is_none() && tool_call.additional_params.is_none(),
-                "encrypted reasoning must not ride on the tool call: signature={:?} additional_params={:?}",
-                tool_call.signature,
-                tool_call.additional_params
+                call_item.get("reasoning_details").is_none(),
+                "encrypted reasoning must not ride on the tool call: {call_item}"
             );
 
             let streamed = observation.streamed_encrypted.clone();
@@ -240,10 +248,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
 
             // The whole choice — reasoning block included — is what a caller
             // replays as history.
-            let assistant_message = Message::Assistant {
-                id: stream.message_id(),
-                content: stream.partial().choice,
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(stream.partial().choice));
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text("Weather in Tokyo, Japan: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW")])],
     };
@@ -325,10 +330,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
                 .cloned()
                 .expect("raw stream should yield lookup_harbor_label");
-            let assistant_message = Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
             let tool_result_message = Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
     };

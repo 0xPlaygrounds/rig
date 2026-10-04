@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 26,
+        "batch": 44,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,14 +10,14 @@
         }
       },
       {
-        "batch": 26,
+        "batch": 46,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 47,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -169,9 +169,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
-                }
+                "provider": "call_TECOyioASt9BQxP1WvwgbCYW"
               },
               "function": {
                 "name": "record_payload",
@@ -187,8 +185,17 @@
                   }
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                    "name": "record_payload"
+                  },
+                  "id": "call_TECOyioASt9BQxP1WvwgbCYW",
+                  "type": "function"
+                },
+                "fingerprint": "1f6613aedcef5014"
+              }
             }
           ],
           "usage": {
@@ -198,23 +205,30 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N"
+          },
           "provider_request_id": "req_03654d5d0dab4f9ca2c7f7cee73925e1",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "usage": {
-              "prompt_tokens": 93,
               "completion_tokens": 30,
-              "total_tokens": 123,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 93,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 123
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-ERDB0439VFyNvCjBxSEI1402WWD8N",
@@ -254,9 +268,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_TECOyioASt9BQxP1WvwgbCYW"
-                }
+                "provider": "call_TECOyioASt9BQxP1WvwgbCYW"
               },
               "function": {
                 "name": "record_payload",
@@ -272,12 +284,26 @@
                   }
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"label\":\"café 東京\",\"values\":[3,5,8],\"meta\":{\"active\":true}}",
+                    "name": "record_payload"
+                  },
+                  "id": "call_TECOyioASt9BQxP1WvwgbCYW",
+                  "type": "function"
+                },
+                "fingerprint": "1f6613aedcef5014"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-4o-mini"
+      },
       "scope": "parity/run#0"
     },
     {

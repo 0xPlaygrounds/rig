@@ -236,9 +236,7 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
-                  }
+                  "provider": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                 },
                 "function": {
                   "name": "submit",
@@ -248,11 +246,29 @@
                     "profession": "developer"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
+                    "type": "function"
+                  },
+                  "fingerprint": "4e5507c6c8eb26de"
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o-mini",
+                "response_model": "openai/gpt-4o-mini",
+                "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
+              },
+              "stop": "tool_use"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -274,9 +290,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_rQP7FA75ifQdrMM6nMT3t3eT"
-                    }
+                    "provider": "call_rQP7FA75ifQdrMM6nMT3t3eT"
                   },
                   "function": {
                     "name": "submit",
@@ -286,8 +300,17 @@
                       "profession": "developer"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_rQP7FA75ifQdrMM6nMT3t3eT",
+                      "type": "function"
+                    },
+                    "fingerprint": "4e5507c6c8eb26de"
+                  }
                 }
               ],
               "usage": {
@@ -298,11 +321,14 @@
                 "cache_creation_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
-              "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openrouter",
+                "model": "openai/gpt-4o-mini",
+                "response_model": "openai/gpt-4o-mini",
+                "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
+              },
               "finish_reason": "tool_calls",
-              "provider": "openrouter",
-              "model": "openai/gpt-4o-mini",
               "raw": {
                 "choices": [
                   {
@@ -363,14 +389,23 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "openrouter",
+              "model": "openai/gpt-4o-mini",
+              "response_model": "openai/gpt-4o-mini",
+              "response_id": "gen-1790152494-2mDRRCmlQsPPhPCtTpXo"
+            },
+            "stop": "tool_use"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,

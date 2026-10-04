@@ -104,9 +104,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "MixWwdT5P"
-                }
+                "provider": "MixWwdT5P"
               },
               "function": {
                 "name": "final_result",
@@ -116,8 +114,17 @@
                   "summary": "Check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information on local Rust meetups in Seattle."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\": \"Local Rust Meetup in Seattle\", \"category\": \"Technology/Software Development\", \"summary\": \"Check popular event platforms like Meetup.com, Eventbrite, or local tech community websites for the most up-to-date information on local Rust meetups in Seattle.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "MixWwdT5P",
+                  "type": "function"
+                },
+                "fingerprint": "29aa04100fdbb8f2"
+              }
             }
           ],
           "usage": {
@@ -125,11 +132,14 @@
             "output_tokens": 159,
             "total_tokens": 1290
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RYlzicuxx1nHRNRD35qZVlDJ",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RYlzicuxx1nHRNRD35qZVlDJ"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

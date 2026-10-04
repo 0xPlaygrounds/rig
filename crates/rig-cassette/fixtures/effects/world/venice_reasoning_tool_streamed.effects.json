@@ -6,7 +6,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -14,7 +14,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 2
         }
       },
       {
@@ -22,7 +22,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -38,7 +38,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -46,7 +46,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -62,7 +62,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -102,7 +102,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -110,7 +110,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -118,7 +118,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -126,7 +126,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 7
         }
       },
       {
@@ -142,7 +142,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -150,7 +150,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -166,7 +166,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -174,7 +174,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -182,7 +182,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -190,7 +190,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
@@ -198,7 +198,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -206,7 +206,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 6
         }
       },
       {
@@ -214,7 +214,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 13
+          "items": 7
         }
       },
       {
@@ -222,7 +222,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 20
+          "items": 2
         }
       },
       {
@@ -230,7 +230,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 8
+          "items": 3
         }
       },
       {
@@ -246,7 +246,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 3
         }
       },
       {
@@ -254,7 +254,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 4
         }
       },
       {
@@ -262,7 +262,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
@@ -270,7 +270,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -278,439 +278,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 40,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 41,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 42,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 43,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 44,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 45,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 46,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 48,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 49,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 50,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 51,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 52,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 53,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 54,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 55,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 56,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 57,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 58,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 59,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 60,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 61,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 62,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 63,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 64,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 65,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 66,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 67,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 68,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 69,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 70,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 71,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 72,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 73,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 74,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 75,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 76,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 77,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 78,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 79,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 80,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 81,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 82,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 83,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 84,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 85,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 86,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 87,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 88,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 89,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 90,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 91,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 92,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 93,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 94,
-        "id": 0,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 3
         }
       },
       {
@@ -718,7 +286,7 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 4
         }
       },
       {
@@ -726,50 +294,12 @@
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 101,
-        "id": 0,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 102,
-        "id": 1,
-        "kind": {
-          "delivery": "outcome"
-        }
-      },
-      {
-        "batch": 108,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 2
-        }
-      },
-      {
-        "batch": 109,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
+          "items": 24
         }
       },
       {
         "batch": 110,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 111,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -777,23 +307,15 @@
       },
       {
         "batch": 112,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
         "batch": 113,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 114,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -801,7 +323,7 @@
       },
       {
         "batch": 115,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -809,15 +331,15 @@
       },
       {
         "batch": 116,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 117,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -825,7 +347,7 @@
       },
       {
         "batch": 118,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -833,7 +355,7 @@
       },
       {
         "batch": 119,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -841,7 +363,7 @@
       },
       {
         "batch": 120,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -849,15 +371,7 @@
       },
       {
         "batch": 121,
-        "id": 2,
-        "kind": {
-          "delivery": "stream",
-          "items": 1
-        }
-      },
-      {
-        "batch": 122,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -865,15 +379,15 @@
       },
       {
         "batch": 123,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 2
+          "items": 1
         }
       },
       {
         "batch": 124,
-        "id": 2,
+        "id": 0,
         "kind": {
           "delivery": "stream",
           "items": 1
@@ -881,6 +395,252 @@
       },
       {
         "batch": 125,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 126,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 128,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 129,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 130,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 132,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 133,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 134,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 135,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 136,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 137,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 138,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 139,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 140,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 141,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 143,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 144,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 145,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 146,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 147,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 148,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 150,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 151,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 152,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 153,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 154,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 155,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 160,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 161,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 161,
+        "id": 0,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 162,
+        "id": 1,
+        "kind": {
+          "delivery": "outcome"
+        }
+      },
+      {
+        "batch": 174,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -888,7 +648,215 @@
         }
       },
       {
-        "batch": 125,
+        "batch": 175,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 10
+        }
+      },
+      {
+        "batch": 176,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 4
+        }
+      },
+      {
+        "batch": 177,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 179,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 183,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 187,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 190,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 194,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 196,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 201,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 204,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 206,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 210,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 214,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 218,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 222,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 226,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 230,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 234,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 239,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 245,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 249,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 252,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 256,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 258,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 1
+        }
+      },
+      {
+        "batch": 264,
+        "id": 2,
+        "kind": {
+          "delivery": "stream",
+          "items": 2
+        }
+      },
+      {
+        "batch": 264,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -1014,23 +982,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
-                  }
-                }
-              ]
+              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
+                },
+                "fingerprint": "8a46a3f10a6bee6a"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-860b566f9f15b4d3"
-                }
+                "provider": "chatcmpl-tool-b888298fe6521bfb"
               },
               "function": {
                 "name": "add",
@@ -1039,28 +1002,44 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-b888298fe6521bfb",
+                  "type": "function"
+                },
+                "fingerprint": "06b4ca126310e2ec"
+              }
             }
           ],
           "usage": {
             "input_tokens": 1308,
             "output_tokens": 191,
-            "total_tokens": 1499
+            "total_tokens": 1499,
+            "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf"
+          },
           "finish_reason": "tool_calls",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
             "usage": {
-              "prompt_tokens": 1308,
               "completion_tokens": 191,
+              "prompt_tokens": 1308,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
               "total_tokens": 1499
             },
             "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-R9DjMSE5HUohU8sIgUG8voCg",
+            "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf",
             "model": "qwen3-235b-a22b-thinking-2507",
             "additional_params": {
               "created": 0,
@@ -1520,7 +1499,15 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " 1"
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "1"
           }
         },
         {
@@ -1592,7 +1579,31 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "`\n3."
+            "text": "`"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "3"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
           }
         },
         {
@@ -1848,7 +1859,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " will"
+            "text": " should"
           }
         },
         {
@@ -2064,15 +2075,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "1"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "."
+            "text": "-"
           }
         },
         {
@@ -2104,7 +2107,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "`"
+            "text": "("
           }
         },
         {
@@ -2112,7 +2115,494 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " with"
+            "text": "1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ","
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "5"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": ")"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "`."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "-"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " Return"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " result"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "Let"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "'s"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " do"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " it"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "\n"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 1,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 1,
+            "json": "{\"x\": 17, \"y\": 25}"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 1,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": "chatcmpl-tool-b888298fe6521bfb"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "chatcmpl-tool-b888298fe6521bfb",
+                  "type": "function"
+                },
+                "fingerprint": "06b4ca126310e2ec"
+              }
+            }
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "reasoning",
+              "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
+                },
+                "fingerprint": "8a46a3f10a6bee6a"
+              }
+            }
+          }
+        }
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "qwen3-235b-a22b-thinking-2507"
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": {},
+      "id": 1,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "json",
+                "value": 42
+              }
+            ]
+          }
+        }
+      },
+      "scope": "golden/run#0"
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "reasoning",
+                  "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n"
+                    },
+                    "fingerprint": "8a46a3f10a6bee6a"
+                  }
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "provider": "chatcmpl-tool-b888298fe6521bfb"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "chatcmpl-tool-b888298fe6521bfb",
+                      "type": "function"
+                    },
+                    "fingerprint": "06b4ca126310e2ec"
+                  }
+                }
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "qwen3-235b-a22b-thinking-2507",
+                "response_model": "qwen3-235b-a22b-thinking-2507",
+                "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf"
+              },
+              "stop": "tool_use"
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "provider": "chatcmpl-tool-b888298fe6521bfb"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "json",
+                      "value": 42
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "venice_parameters": {
+              "strip_thinking_response": false
+            }
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "text": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n"
+                },
+                "fingerprint": "20d3cf6c2620d954"
+              }
+            },
+            {
+              "type": "text",
+              "text": "\n\n42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 1516,
+            "output_tokens": 45,
+            "total_tokens": 1561,
+            "cached_input_tokens": 0
+          },
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "response_model": "qwen3-235b-a22b-thinking-2507",
+            "response_id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI"
+          },
+          "finish_reason": "stop",
+          "raw": {
+            "usage": {
+              "completion_tokens": 45,
+              "prompt_tokens": 1516,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "total_tokens": 1561
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.0008397
+              }
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "reasoning"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "The"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " user"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " asked"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " to"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " add"
           }
         },
         {
@@ -2176,39 +2666,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "2"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": "."
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " Return"
+            "text": " using"
           }
         },
         {
@@ -2224,7 +2682,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " result"
+            "text": " tool"
           }
         },
         {
@@ -2232,7 +2690,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " \""
+            "text": " and"
           }
         },
         {
@@ -2240,7 +2698,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "4"
+            "text": " reply"
           }
         },
         {
@@ -2248,7 +2706,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "2"
+            "text": " with"
           }
         },
         {
@@ -2256,7 +2714,31 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "\"."
+            "text": " just"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": " number"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "reasoning",
+            "part": 0,
+            "text": "."
           }
         },
         {
@@ -2265,271 +2747,6 @@
             "event": "reasoning",
             "part": 0,
             "text": "\n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 1,
-            "kind": "tool_call"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 1,
-            "json": "{\"x\": 17, \"y\": 25}"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 1,
-            "content": {
-              "type": "toolcall",
-              "id": {
-                "provider": {
-                  "call_id": "chatcmpl-tool-860b566f9f15b4d3"
-                }
-              },
-              "function": {
-                "name": "add",
-                "arguments": {
-                  "x": 17,
-                  "y": 25
-                }
-              },
-              "signature": null,
-              "additional_params": null
-            }
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "end",
-            "part": 0,
-            "content": {
-              "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
-                  }
-                }
-              ]
-            }
-          }
-        }
-      ],
-      "scope": "golden/run#0"
-    },
-    {
-      "tool_output": {},
-      "id": 1,
-      "key": "golden/tool:add#0",
-      "kind": {
-        "effect": "tool_call",
-        "name": "add",
-        "args": "{\"x\":17,\"y\":25}"
-      },
-      "outcome": {
-        "Ok": {
-          "outcome": "tool_result",
-          "result": {
-            "status": "success",
-            "value": [
-              {
-                "type": "json",
-                "value": 42
-              }
-            ]
-          }
-        }
-      },
-      "scope": "golden/run#0"
-    },
-    {
-      "tool_output": null,
-      "id": 2,
-      "key": "golden/model:default",
-      "kind": {
-        "effect": "completion",
-        "request": {
-          "model": null,
-          "chat_history": [
-            {
-              "role": "system",
-              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
-            },
-            {
-              "role": "user",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
-                }
-              ]
-            },
-            {
-              "role": "assistant",
-              "id": null,
-              "content": [
-                {
-                  "type": "reasoning",
-                  "issuer": "venice",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool will return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n1. Call `add` with 17 and 25.\n2. Return the result \"42\".\n"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "toolcall",
-                  "id": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-860b566f9f15b4d3"
-                    }
-                  },
-                  "function": {
-                    "name": "add",
-                    "arguments": {
-                      "x": 17,
-                      "y": 25
-                    }
-                  },
-                  "signature": null,
-                  "additional_params": null
-                }
-              ]
-            },
-            {
-              "role": "user",
-              "content": [
-                {
-                  "type": "toolresult",
-                  "call": {
-                    "provider": {
-                      "call_id": "chatcmpl-tool-860b566f9f15b4d3"
-                    }
-                  },
-                  "name": "add",
-                  "content": [
-                    {
-                      "type": "json",
-                      "value": 42
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
-          "documents": [],
-          "tools": [
-            {
-              "name": "add",
-              "description": "Add x and y together",
-              "parameters": {
-                "type": "object",
-                "properties": {
-                  "x": {
-                    "type": "number",
-                    "description": "The first number to add"
-                  },
-                  "y": {
-                    "type": "number",
-                    "description": "The second number to add"
-                  }
-                },
-                "required": [
-                  "x",
-                  "y"
-                ]
-              }
-            }
-          ],
-          "temperature": 0.0,
-          "max_tokens": 4096,
-          "tool_choice": null,
-          "additional_params": {
-            "venice_parameters": {
-              "strip_thinking_response": false
-            }
-          },
-          "output_schema": null
-        },
-        "stream": true
-      },
-      "outcome": {
-        "Ok": {
-          "outcome": "completion",
-          "choice": [
-            {
-              "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The tool returned 42. The user requested \"just the number\".\n"
-                  }
-                }
-              ]
-            },
-            {
-              "type": "text",
-              "text": "\n\n42"
-            }
-          ],
-          "usage": {
-            "input_tokens": 1516,
-            "output_tokens": 21,
-            "total_tokens": 1537
-          },
-          "message_id": null,
-          "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-          "finish_reason": "stop",
-          "provider": "venice",
-          "model": "qwen3-235b-a22b-thinking-2507",
-          "raw": {
-            "usage": {
-              "prompt_tokens": 1516,
-              "completion_tokens": 21,
-              "total_tokens": 1537
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-ROFyu8CyihasDXdZKwx06xTG",
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "additional_params": {
-              "created": 0,
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "cost": {
-                "diem": 0,
-                "usd": 0.0007557
-              }
-            }
-          }
-        }
-      },
-      "events": [
-        {
-          "item": "event",
-          "value": {
-            "event": "start",
-            "part": 0,
-            "kind": "reasoning"
           }
         },
         {
@@ -2593,7 +2810,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " The"
+            "text": "\n"
           }
         },
         {
@@ -2601,7 +2818,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " user"
+            "text": "I"
           }
         },
         {
@@ -2609,7 +2826,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " requested"
+            "text": " will reply with"
           }
         },
         {
@@ -2617,7 +2834,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": " \""
+            "text": " \"4"
           }
         },
         {
@@ -2625,23 +2842,7 @@
           "value": {
             "event": "reasoning",
             "part": 0,
-            "text": "just"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "reasoning",
-            "part": 0,
-            "text": " number"
+            "text": "2"
           }
         },
         {
@@ -2702,20 +2903,22 @@
             "part": 0,
             "content": {
               "type": "reasoning",
-              "issuer": "venice",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The tool returned 42. The user requested \"just the number\".\n"
-                  }
-                }
-              ]
+              "text": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n"
+                },
+                "fingerprint": "20d3cf6c2620d954"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "qwen3-235b-a22b-thinking-2507"
+      },
       "scope": "golden/run#0"
     }
   ]

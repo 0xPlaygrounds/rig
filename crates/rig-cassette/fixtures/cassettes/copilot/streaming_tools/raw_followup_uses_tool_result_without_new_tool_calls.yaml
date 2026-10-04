@@ -34,7 +34,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":[{"text":"Use the provided tool result and answer directly.","type":"text"}],"role":"system"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"Now reply in one short sentence using the provided tool result. Do not call any tools.","role":"user"}],"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true}}'
+  body: '{"messages":[{"content":[{"text":"Use the provided tool result and answer directly.","type":"text"}],"role":"system"},{"content":"[called tool lookup_harbor_label with {}]","role":"assistant"},{"content":[{"text":"[tool lookup_harbor_label result] crimson-harbor","type":"text"},{"text":"Now reply in one short sentence using the provided tool result. Do not call any tools.","type":"text"}],"role":"user"}],"model":"gpt-4o","stream":true,"stream_options":{"include_usage":true}}'
 then:
   status: 200
   header:

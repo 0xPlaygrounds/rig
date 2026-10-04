@@ -24,7 +24,7 @@ pub(crate) fn delivery_only(before: &str, after: &str) -> bool {
     let strip = |text: &str| -> Option<Value> {
         let mut value: Value = serde_json::from_str(text).ok()?;
         if let Some(header) = value.get_mut("header").and_then(Value::as_object_mut) {
-            header.remove("deliveries");
+            header.shift_remove("deliveries");
         }
         Some(value)
     };
@@ -343,7 +343,7 @@ pub(crate) fn same_event(old: &Value, new: &Value) -> bool {
     let strip = |event: &Value| {
         let mut event = event.clone();
         if let Some(object) = event.as_object_mut() {
-            object.remove("block");
+            object.shift_remove("block");
         }
         event
     };

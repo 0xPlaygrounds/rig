@@ -18,9 +18,10 @@ use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
+use rig_core::message::AssistantContent;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::operation::{Completion, Finish, TextPart};
+use rig_core::operation::{Block, Completion, Finish};
 use rig_core::wire::{Flow, Mode, Out, WireEvent};
 #[cfg(test)]
 use tokenizers::Tokenizer;
@@ -79,7 +80,11 @@ impl CandleModel {
     /// The completion model this runtime serves: the [`Generation`] wire on
     /// this runtime.
     pub fn completion(&self) -> rig_core::Model<Generation, Self> {
-        rig_core::Model::new(Generation, self.clone())
+        let generation = Generation {
+            model: self.state.model_id.clone(),
+            protocol: self.state.profile.definition.protocol,
+        };
+        rig_core::Model::new(generation, self.clone())
     }
 
     /// Loads a model from config, tokenizer, and one unsharded safetensors buffer.
@@ -133,6 +138,13 @@ impl CandleModel {
     #[cfg(not(target_family = "wasm"))]
     pub async fn from_safetensors_async(data: ModelData) -> Result<Self, CandleError> {
         Self::builder(data).build_async().await
+    }
+
+    /// The id replay names this checkpoint by: its protocol and a digest of
+    /// its config and tokenizer, such as `qwen3-1f0c4e5a9b2d7c38`. A turn
+    /// from another id replays as another model's.
+    pub fn model_id(&self) -> &str {
+        &self.state.model_id
     }
 
     /// Returns the validated conversation/output protocol.
@@ -303,8 +315,21 @@ fn stream_infer(
 ///     candle.completion()
 /// }
 /// ```
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Generation;
+#[derive(Clone, Debug, PartialEq)]
+pub struct Generation {
+    /// The loaded checkpoint's id ([`CandleModel::model_id`]).
+    pub model: String,
+    /// The protocol its prompts are rendered in.
+    pub protocol: ConversationProtocol,
+}
+
+impl Generation {
+    /// The prompt this wire's protocol renders for a prepared `request`.
+    #[doc(hidden)]
+    pub fn prompt(&self, request: &CompletionRequest) -> Result<String, CandleError> {
+        crate::protocol::render_prompt(request, self.protocol)
+    }
+}
 
 /// One unit of a local generation's reply.
 pub enum CandleFrame {
@@ -322,6 +347,8 @@ impl rig_core::wire::Wire for Generation {
 
     fn describe(&self) -> rig_core::wire::Descriptor<'_> {
         rig_core::wire::Descriptor::new(crate::types::PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
     /// The prompt protocol decides which reasoning a local model can render
@@ -339,14 +366,49 @@ impl rig_core::wire::Wire for Generation {
     }
 }
 
+impl rig_core::completion::ReplayTarget for Generation {
+    // A local runtime has no finish vocabulary: its decoder states a stop.
+    fn states_finish_reason(&self) -> bool {
+        false
+    }
+
+    fn api(&self) -> rig_core::message::Api {
+        rig_core::message::Api::from_static("candle.generate")
+    }
+
+    fn provider(&self) -> &str {
+        crate::types::PROVIDER_NAME
+    }
+
+    /// A local runtime addresses the one checkpoint it loaded.
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// A local model reads text, and tools only in the Qwen3 protocol, so
+    /// another model's tool exchange reaches Llama 3 and SmolLM2 as text.
+    fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
+        rig_core::completion::Accepts {
+            tools: self.protocol == ConversationProtocol::Qwen3,
+            ..rig_core::completion::Accepts::TEXT
+        }
+    }
+
+    /// The prompt renderers take text only: a text document arrives as its
+    /// text, and every other media part as a placeholder.
+    fn encodes(&self, _model: &str, _media: rig_core::completion::Media<'_>) -> bool {
+        false
+    }
+}
+
 /// Writes local generation events into the reply. Every input is modeled;
 /// no byte decoding or unknown-frame classification occurs. Channel EOF
 /// without a `Final` event means the generator failed or was cancelled: the
-/// reply is truncated.
+/// reply is truncated. Local generation has no provider items: every block
+/// is canonical.
 #[derive(Default)]
 pub struct CandleAdapter<'id> {
-    /// The text part text fragments extend.
-    text: Option<TextPart<'id>>,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapter<'id> {
@@ -365,26 +427,26 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
             CandleFrame::Event(event) => event,
             CandleFrame::Whole(inferred) => {
                 for content in inferred.choice {
-                    out.content(content)?;
+                    whole(&mut out, content)?;
                 }
                 GenerationEvent::Final(inferred.response)
             }
         };
         match event {
             GenerationEvent::Text(text) => {
-                out.extend_text(&mut self.text, &text);
+                out.run(Block::Text, &text)?;
             }
             GenerationEvent::ToolCall(call) => {
-                out.close_open_text(&mut self.text);
-                out.tool_call(call)?;
+                out.end_run()?;
+                whole(&mut out, AssistantContent::ToolCall(call))?;
             }
             GenerationEvent::Reasoning(reasoning) => {
-                out.close_open_text(&mut self.text);
-                out.reasoning_block(reasoning);
+                out.end_run()?;
+                whole(&mut out, AssistantContent::Reasoning(reasoning))?;
             }
             // The local response record is the response's `raw`.
             GenerationEvent::Final(response) => {
-                out.close_open_text(&mut self.text);
+                out.end_run()?;
                 out.raw(serde_json::to_value(&response)?);
                 return Ok(out.end(Finish {
                     usage: (&response).into(),
@@ -395,6 +457,40 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
         }
         Ok(Flow::More)
     }
+}
+
+/// Write `content`, a block local generation produced whole, at the next
+/// index. Local generation has no provider items and makes no images.
+fn whole(out: &mut Out<'_, Completion>, content: AssistantContent) -> Result<(), ProviderError> {
+    let (block, text) = match content {
+        AssistantContent::Text(text) => (Block::Text, text.text),
+        AssistantContent::Reasoning(reasoning) => (
+            Block::Reasoning {
+                redacted: reasoning.redacted,
+            },
+            reasoning.text,
+        ),
+        AssistantContent::ToolCall(call) => {
+            let arguments = call
+                .function
+                .invalid_arguments
+                .unwrap_or_else(|| serde_json::Value::Object(call.function.arguments).to_string());
+            (
+                Block::Call {
+                    id: call.id,
+                    name: call.function.name,
+                },
+                arguments,
+            )
+        }
+        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {
+            return Err(ProviderError::Response(
+                "local generation produced a block it has no form for".to_owned(),
+            ));
+        }
+    };
+    let index = out.fresh_index();
+    out.whole(index, block, serde_json::Value::Null, &text)
 }
 
 impl Transport<Generation> for CandleModel {

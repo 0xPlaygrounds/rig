@@ -9,84 +9,77 @@
 //! # }
 //! ```
 
-use super::completion::gemini_api_types::{
-    Content, GenerateContentRequest, GenerateContentResponse, GenerationConfig, ImageConfig, Part,
-    PartKind, ResponseModality, Role,
-};
-use crate::completion::Usage;
-use crate::error::EncodeError;
-use crate::error::ProviderError;
+use super::completion::usage_of;
+use crate::error::{EncodeError, ProviderError};
 use crate::image_generation;
-use crate::image_generation::{ImageGenerationRequest, NormalizeImageGenerationResponse};
+use crate::image_generation::ImageGenerationRequest;
+use crate::json_utils::Lenient;
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::Flow;
 use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Wire, WireEvent, WireFrame,
+    Body, Decoder, Descriptor, Encoded, Flow, Framing, Mode, Out, Wire, WireEvent, WireFrame,
 };
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// `gemini-2.5-flash-image` image generation model, commonly referred to as Nano Banana.
 pub const GEMINI_2_5_FLASH_IMAGE: &str = super::completion::GEMINI_2_5_FLASH_IMAGE;
 
-impl NormalizeImageGenerationResponse for GenerateContentResponse {
-    fn normalize(self) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
-        let image = first_image_bytes(&self)?;
-        let usage = self
-            .usage_metadata
-            .as_ref()
-            .map(Usage::from)
-            .unwrap_or_default();
-
-        Ok(image_generation::ImageGenerationResponse {
-            model: self.model_version,
-            response_id: Some(self.response_id),
-            usage,
-            ..image_generation::ImageGenerationResponse::new(image)
+/// The first non-thought image in `reply`, with its usage and identity.
+///
+/// # Errors
+///
+/// When `reply` holds no image data, or data that is not base64.
+pub fn image_of(reply: &Value) -> Result<image_generation::ImageGenerationResponse, ProviderError> {
+    let data = reply
+        .arr("candidates")
+        .iter()
+        .flat_map(|candidate| {
+            candidate
+                .get("content")
+                .map(|content| content.arr("parts"))
+                .unwrap_or_default()
         })
+        .filter(|part| part.bool("thought") != Some(true))
+        .filter_map(|part| part.get("inlineData"))
+        .find(|blob| {
+            blob.str("mimeType")
+                .is_some_and(|mime| mime.starts_with("image/"))
+        })
+        .and_then(|blob| blob.str("data"))
+        .ok_or_else(|| {
+            ProviderError::Response(
+                "Gemini image generation response did not include image data".into(),
+            )
+        })?;
+    let image = BASE64_STANDARD.decode(data).map_err(|err| {
+        ProviderError::Response(format!("Gemini image data was not valid base64: {err}"))
+    })?;
+    Ok(image_generation::ImageGenerationResponse {
+        model: reply.str("modelVersion").map(str::to_owned),
+        response_id: Some(reply.str("responseId").unwrap_or_default().to_owned()),
+        usage: reply.get("usageMetadata").map(usage_of).unwrap_or_default(),
+        ..image_generation::ImageGenerationResponse::new(image)
+    })
+}
+
+fn create_request_body(generation_request: ImageGenerationRequest) -> Value {
+    let mut image_config = serde_json::Map::new();
+    if let Some(ratio) = aspect_ratio(generation_request.width, generation_request.height) {
+        image_config.insert("aspectRatio".to_owned(), json!(ratio));
     }
-}
-
-fn generate_content_path(model: &str) -> String {
-    format!("/v1beta/models/{model}:generateContent")
-}
-
-fn create_request_body(generation_request: ImageGenerationRequest) -> Result<Value, EncodeError> {
-    let request = GenerateContentRequest {
-        contents: vec![Content {
-            role: Some(Role::User),
-            parts: vec![Part {
-                thought: None,
-                thought_signature: None,
-                part: PartKind::Text(generation_request.prompt),
-                additional_params: None,
-            }],
-        }],
-        tools: None,
-        tool_config: None,
-        generation_config: Some(GenerationConfig {
-            response_modalities: Some(vec![ResponseModality::Image]),
-            image_config: Some(ImageConfig {
-                aspect_ratio: aspect_ratio(generation_request.width, generation_request.height),
-                image_size: None,
-            }),
-            ..Default::default()
-        }),
-        safety_settings: None,
-        system_instruction: None,
-        cached_content: None,
-        additional_params: None,
-    };
-
-    let mut body = serde_json::to_value(request)?;
-
+    let mut body = json!({
+        "contents": [{ "role": "user", "parts": [{ "text": generation_request.prompt }] }],
+        "toolConfig": null,
+        "generationConfig": { "responseModalities": ["IMAGE"], "imageConfig": image_config },
+        "safetySettings": null,
+        "systemInstruction": null,
+    });
     if let Some(additional_params) = generation_request.additional_params {
         merge_json_deep(&mut body, additional_params);
     }
-
-    Ok(body)
+    body
 }
 
 fn merge_json_deep(target: &mut Value, source: Value) {
@@ -114,36 +107,6 @@ fn aspect_ratio(width: u32, height: u32) -> Option<String> {
         (w, h) if w.saturating_mul(16) == h.saturating_mul(9) => Some("16:9".to_string()),
         _ => None,
     }
-}
-
-fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, ProviderError> {
-    for candidate in &response.candidates {
-        let Some(content) = &candidate.content else {
-            continue;
-        };
-
-        for part in &content.parts {
-            if part.thought == Some(true) {
-                continue;
-            }
-
-            if let PartKind::InlineData(inline_data) = &part.part {
-                if !inline_data.mime_type.starts_with("image/") {
-                    continue;
-                }
-
-                return BASE64_STANDARD.decode(&inline_data.data).map_err(|err| {
-                    ProviderError::Response(format!(
-                        "Gemini image data was not valid base64: {err}"
-                    ))
-                });
-            }
-        }
-    }
-
-    Err(ProviderError::Response(
-        "Gemini image generation response did not include image data".into(),
-    ))
 }
 
 /// The image generation wire: `POST /v1beta/models/{model}:generateContent`.
@@ -178,11 +141,11 @@ impl Wire for Images {
     }
 
     fn encode(&self, request: ImageGenerationRequest, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = serde_json::to_vec(&create_request_body(request)?)?;
+        let body = serde_json::to_vec(&create_request_body(request))?;
         let request = http::Request::post(format!(
-            "{}{}?key={}",
+            "{}/v1beta/models/{}:generateContent?key={}",
             self.provider.base_url,
-            generate_content_path(&self.model),
+            self.model,
             self.provider.api_key.expose()
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
@@ -202,7 +165,7 @@ impl Wire for Images {
 pub struct ImagesDecoder;
 
 impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
-    type Event = GenerateContentResponse;
+    type Event = Value;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_marker_keyed_frame(
@@ -216,7 +179,14 @@ impl<'id> Decoder<'id, ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: Out<'id, ImageGeneration>,
     ) -> Result<Flow, ProviderError> {
-        Ok(out.end(event.normalize()?))
+        Ok(out.end(image_of(&event)?))
+    }
+}
+
+impl super::GeminiConfig {
+    /// The image generation wire.
+    pub(crate) fn image_generation(&self, model: impl Into<String>) -> Images {
+        Images::new(self.clone(), model)
     }
 }
 

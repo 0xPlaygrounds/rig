@@ -184,7 +184,7 @@ async fn main() -> Result<(), anyhow::Error> {
             Message::User { content } => {
                 println!("\nUser [{}]: {}", i, serde_json::to_string_pretty(content)?)
             }
-            Message::Assistant { content, .. } => println!(
+            Message::Assistant(rig::message::AssistantMessage { content, .. }) => println!(
                 "Assistant [{}]: {}",
                 i,
                 serde_json::to_string_pretty(content)?

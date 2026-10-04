@@ -2,7 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 26,
+        "batch": 29,
+        "id": 0,
+        "kind": {
+          "delivery": "stream",
+          "items": 3
+        }
+      },
+      {
+        "batch": 29,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -114,31 +122,48 @@
       "outcome": {
         "Ok": {
           "outcome": "completion",
-          "choice": [],
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_hSMctW9vwud6wTNGLLJI3760"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {
+                  "summary": "Log this incident: the nightly build broke"
+                },
+                "invalid_arguments": "{\"summary\": \"Log this incident: the nightly build broke"
+              }
+            }
+          ],
           "usage": {
             "input_tokens": 363,
             "output_tokens": 32,
             "total_tokens": 395,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "08dba19e-2206-4021-8a5f-be6656109fdd",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "a5e3d54f-8a52-486d-8666-a6112bfcaf77"
+          },
           "finish_reason": "length",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 363,
               "completion_tokens": 32,
-              "total_tokens": 395,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 235,
+              "prompt_tokens": 363,
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 235
+              "total_tokens": 395
             },
             "finish_reason": "length",
-            "response_id": "08dba19e-2206-4021-8a5f-be6656109fdd",
+            "response_id": "a5e3d54f-8a52-486d-8666-a6112bfcaf77",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -148,7 +173,49 @@
           }
         }
       },
-      "events": [],
+      "events": [
+        {
+          "item": "event",
+          "value": {
+            "event": "start",
+            "part": 0,
+            "kind": "tool_call"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "{\"summary\": \"Log this incident: the nightly build broke"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "end",
+            "part": 0,
+            "content": {
+              "type": "toolcall",
+              "id": {
+                "provider": "call_00_hSMctW9vwud6wTNGLLJI3760"
+              },
+              "function": {
+                "name": "file_report",
+                "arguments": {
+                  "summary": "Log this incident: the nightly build broke"
+                },
+                "invalid_arguments": "{\"summary\": \"Log this incident: the nightly build broke"
+              }
+            }
+          }
+        }
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

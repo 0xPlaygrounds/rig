@@ -84,7 +84,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Based on the provided document, a **glarb-glarb** is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+              "text": "Based on the provided document, a **glarb-glarb** is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+              "native": {
+                "item": {
+                  "text": "Based on the provided document, a **glarb-glarb** is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+                  "type": "text"
+                },
+                "fingerprint": "6377946f5ff206b5"
+              }
             }
           ],
           "usage": {
@@ -94,12 +101,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcdTwG9zbZ2pRRzaKUw",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcdTVUfLLTfd65rvXb4",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfdxrMiDXuD7NJNEzQ7TQ"
+          },
+          "provider_request_id": "req_011CfdxrMPNaxi23xyunF7XR",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -108,7 +118,8 @@
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLcdTwG9zbZ2pRRzaKUw",
+            "diagnostics": null,
+            "id": "msg_011CfdxrMiDXuD7NJNEzQ7TQ",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

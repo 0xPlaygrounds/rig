@@ -171,9 +171,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                }
+                "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -181,8 +179,17 @@
                   "token": "start"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"token\":\"start\"}",
+                    "name": "checkpoint_step"
+                  },
+                  "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
+                  "type": "function"
+                },
+                "fingerprint": "57a0649bdb15d124"
+              }
             }
           ],
           "usage": {
@@ -192,12 +199,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD3SXAulRX0LGvigQGx5CBC1d6e",
-          "provider_request_id": "req_0913373b6e154975855662b52a173806",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF"
+          },
+          "provider_request_id": "req_a15450b47f1a4df89acc8201ceb0a93a",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -215,7 +225,7 @@
                         "arguments": "{\"token\":\"start\"}",
                         "name": "checkpoint_step"
                       },
-                      "id": "call_6GZnEIRdJB8K2UhVclRBBFCk",
+                      "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
                       "type": "function"
                     }
                   ]
@@ -223,11 +233,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDD3SXAulRX0LGvigQGx5CBC1d6e",
+            "id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_d61fb25583",
+            "system_fingerprint": "fp_dcb3412bd8",
             "usage": {
               "completion_tokens": 15,
               "completion_tokens_details": {
@@ -301,14 +311,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -316,10 +323,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"start\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
+                      "type": "function"
+                    },
+                    "fingerprint": "57a0649bdb15d124"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -327,9 +351,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -380,9 +402,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                }
+                "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -390,8 +410,17 @@
                   "token": "cobalt-17"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"token\":\"cobalt-17\"}",
+                    "name": "checkpoint_step"
+                  },
+                  "id": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX",
+                  "type": "function"
+                },
+                "fingerprint": "07b86be4b145b0d8"
+              }
             }
           ],
           "usage": {
@@ -401,12 +430,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD4xFqNo5wJpXixV1q2CjH7haVX",
-          "provider_request_id": "req_e65f989974f146b089613aabcc37da85",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUfuvNgDBbKnooglvpxvCzAv50NRf"
+          },
+          "provider_request_id": "req_bba41ca184144fafbd434603bfc10850",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -424,7 +456,7 @@
                         "arguments": "{\"token\":\"cobalt-17\"}",
                         "name": "checkpoint_step"
                       },
-                      "id": "call_KLbEauam4OmzoCFDXufZsdzm",
+                      "id": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX",
                       "type": "function"
                     }
                   ]
@@ -432,11 +464,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDD4xFqNo5wJpXixV1q2CjH7haVX",
+            "id": "chatcmpl-EUfuvNgDBbKnooglvpxvCzAv50NRf",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_d61fb25583",
+            "system_fingerprint": "fp_dcb3412bd8",
             "usage": {
               "completion_tokens": 18,
               "completion_tokens_details": {
@@ -510,14 +542,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -525,10 +554,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"start\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
+                      "type": "function"
+                    },
+                    "fingerprint": "57a0649bdb15d124"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -536,9 +582,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -556,14 +600,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -571,10 +612,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"cobalt-17\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX",
+                      "type": "function"
+                    },
+                    "fingerprint": "07b86be4b145b0d8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvNgDBbKnooglvpxvCzAv50NRf"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -582,9 +640,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -635,9 +691,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d7rIpwWouKNE5bIOOOTnPfhu"
-                }
+                "provider": "call_MWnWsq7BfEKEBBVz8acdDlJ3"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -645,8 +699,17 @@
                   "token": "orchard-29"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"token\":\"orchard-29\"}",
+                    "name": "checkpoint_step"
+                  },
+                  "id": "call_MWnWsq7BfEKEBBVz8acdDlJ3",
+                  "type": "function"
+                },
+                "fingerprint": "3e5bc44e441d9623"
+              }
             }
           ],
           "usage": {
@@ -656,12 +719,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD4TdmDjerfJCEVcymSESC1HOJe",
-          "provider_request_id": "req_b4525619bec647ab928e39d13afa0b54",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUfuwIyig5V7yKvEOUIpBc9wQpTR4"
+          },
+          "provider_request_id": "req_314e426ae5fa4c7fbe6e09d509dc532f",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -679,7 +745,7 @@
                         "arguments": "{\"token\":\"orchard-29\"}",
                         "name": "checkpoint_step"
                       },
-                      "id": "call_d7rIpwWouKNE5bIOOOTnPfhu",
+                      "id": "call_MWnWsq7BfEKEBBVz8acdDlJ3",
                       "type": "function"
                     }
                   ]
@@ -687,11 +753,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDD4TdmDjerfJCEVcymSESC1HOJe",
+            "id": "chatcmpl-EUfuwIyig5V7yKvEOUIpBc9wQpTR4",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_d61fb25583",
+            "system_fingerprint": "fp_dcb3412bd8",
             "usage": {
               "completion_tokens": 18,
               "completion_tokens_details": {
@@ -765,14 +831,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -780,10 +843,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"start\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
+                      "type": "function"
+                    },
+                    "fingerprint": "57a0649bdb15d124"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -791,9 +871,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -811,14 +889,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -826,10 +901,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"cobalt-17\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX",
+                      "type": "function"
+                    },
+                    "fingerprint": "07b86be4b145b0d8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvNgDBbKnooglvpxvCzAv50NRf"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -837,9 +929,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -857,14 +947,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_d7rIpwWouKNE5bIOOOTnPfhu"
-                    }
+                    "provider": "call_MWnWsq7BfEKEBBVz8acdDlJ3"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -872,10 +959,27 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"orchard-29\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_MWnWsq7BfEKEBBVz8acdDlJ3",
+                      "type": "function"
+                    },
+                    "fingerprint": "3e5bc44e441d9623"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuwIyig5V7yKvEOUIpBc9wQpTR4"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -883,9 +987,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_d7rIpwWouKNE5bIOOOTnPfhu"
-                    }
+                    "provider": "call_MWnWsq7BfEKEBBVz8acdDlJ3"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -936,9 +1038,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_GfVYDHmhNKTKVnHbunR7KTJn"
-                }
+                "provider": "call_xwk3va2slTXwWUILdeFlj59y"
               },
               "function": {
                 "name": "checkpoint_step",
@@ -946,8 +1046,17 @@
                   "token": "harbor-43"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"token\":\"harbor-43\"}",
+                    "name": "checkpoint_step"
+                  },
+                  "id": "call_xwk3va2slTXwWUILdeFlj59y",
+                  "type": "function"
+                },
+                "fingerprint": "7b22070ec2fbb8d3"
+              }
             }
           ],
           "usage": {
@@ -957,12 +1066,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD5dtkCRmKJ6TpmCtmL8Dcc5XuY",
-          "provider_request_id": "req_d03ad7872f5d412690a304bcce13c8c4",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUfuxtpQQRofhr3CDbC0TmkmOADPN"
+          },
+          "provider_request_id": "req_dca15a1914fc4764a451b7a446d8bc94",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -980,7 +1092,7 @@
                         "arguments": "{\"token\":\"harbor-43\"}",
                         "name": "checkpoint_step"
                       },
-                      "id": "call_GfVYDHmhNKTKVnHbunR7KTJn",
+                      "id": "call_xwk3va2slTXwWUILdeFlj59y",
                       "type": "function"
                     }
                   ]
@@ -988,11 +1100,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDD5dtkCRmKJ6TpmCtmL8Dcc5XuY",
+            "id": "chatcmpl-EUfuxtpQQRofhr3CDbC0TmkmOADPN",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_d61fb25583",
+            "system_fingerprint": "fp_dcb3412bd8",
             "usage": {
               "completion_tokens": 18,
               "completion_tokens_details": {
@@ -1066,14 +1178,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1081,10 +1190,27 @@
                       "token": "start"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"start\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_vh0Y3m4RDUuB9V6lJTgydQG2",
+                      "type": "function"
+                    },
+                    "fingerprint": "57a0649bdb15d124"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvWvAK2h3rNJn2DhVNiZIcd6eF"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1092,9 +1218,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_6GZnEIRdJB8K2UhVclRBBFCk"
-                    }
+                    "provider": "call_vh0Y3m4RDUuB9V6lJTgydQG2"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1112,14 +1236,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1127,10 +1248,27 @@
                       "token": "cobalt-17"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"cobalt-17\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX",
+                      "type": "function"
+                    },
+                    "fingerprint": "07b86be4b145b0d8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuvNgDBbKnooglvpxvCzAv50NRf"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1138,9 +1276,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_KLbEauam4OmzoCFDXufZsdzm"
-                    }
+                    "provider": "call_Y5vwMlMRQUDpH9Ct7jcqwAxX"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1158,14 +1294,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_d7rIpwWouKNE5bIOOOTnPfhu"
-                    }
+                    "provider": "call_MWnWsq7BfEKEBBVz8acdDlJ3"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1173,10 +1306,27 @@
                       "token": "orchard-29"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"orchard-29\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_MWnWsq7BfEKEBBVz8acdDlJ3",
+                      "type": "function"
+                    },
+                    "fingerprint": "3e5bc44e441d9623"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuwIyig5V7yKvEOUIpBc9wQpTR4"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1184,9 +1334,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_d7rIpwWouKNE5bIOOOTnPfhu"
-                    }
+                    "provider": "call_MWnWsq7BfEKEBBVz8acdDlJ3"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1204,14 +1352,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_GfVYDHmhNKTKVnHbunR7KTJn"
-                    }
+                    "provider": "call_xwk3va2slTXwWUILdeFlj59y"
                   },
                   "function": {
                     "name": "checkpoint_step",
@@ -1219,10 +1364,27 @@
                       "token": "harbor-43"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"token\":\"harbor-43\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_xwk3va2slTXwWUILdeFlj59y",
+                      "type": "function"
+                    },
+                    "fingerprint": "7b22070ec2fbb8d3"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "chatcmpl-EUfuxtpQQRofhr3CDbC0TmkmOADPN"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1230,9 +1392,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_GfVYDHmhNKTKVnHbunR7KTJn"
-                    }
+                    "provider": "call_xwk3va2slTXwWUILdeFlj59y"
                   },
                   "name": "checkpoint_step",
                   "content": [
@@ -1292,12 +1452,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDD65aZUOboU35bZ1ckDmGd90h6a",
-          "provider_request_id": "req_8205deedf1c94410b7f5a89f9c526b82",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "chatcmpl-EUfuxfsMs397UA3ZZAlWIGpJyIMpI"
+          },
+          "provider_request_id": "req_e5e280ba41674579bce2b05ba8bba73b",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "choices": [
               {
@@ -1313,11 +1476,11 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDD65aZUOboU35bZ1ckDmGd90h6a",
+            "id": "chatcmpl-EUfuxfsMs397UA3ZZAlWIGpJyIMpI",
             "model": "gpt-4.1-mini-2025-04-14",
             "object": "chat.completion",
             "service_tier": "default",
-            "system_fingerprint": "fp_d61fb25583",
+            "system_fingerprint": "fp_dcb3412bd8",
             "usage": {
               "completion_tokens": 4,
               "completion_tokens_details": {

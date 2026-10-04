@@ -22,9 +22,8 @@
 //! requested text. This matrix checks transport integrity, not instruction
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
-use rig::providers::{doubleword, openai};
+use rig::providers::doubleword;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize as _;
 
 use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
@@ -43,12 +42,18 @@ async fn exercise_blocking(client: OpenAiModels, model_name: &'static str) {
     // The census is about what the backend actually returned, so it reads the
     // provider's own payload out of the captured document rather than the
     // normalized view.
-    let reply = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the shared chat-completions response");
-    assert!(!reply.id.is_empty());
-    assert_eq!(reply.model, model_name);
-    assert!(!reply.choices.is_empty());
-    assert!(reply.usage.is_some(), "the live route should report usage");
+    let reply = response.raw.clone();
+    assert!(reply["id"].as_str().is_some_and(|id| !id.is_empty()));
+    assert_eq!(reply["model"], model_name);
+    assert!(
+        reply["choices"]
+            .as_array()
+            .is_some_and(|choices| !choices.is_empty())
+    );
+    assert!(
+        reply["usage"].is_object(),
+        "the live route should report usage"
+    );
 }
 
 fn assert_recorded_model(scenario: &str, requested_model: &str, streaming: bool) {

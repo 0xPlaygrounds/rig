@@ -10,7 +10,7 @@ use super::*;
 use crate::message::AssistantContent;
 use crate::test_utils::json_body;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
-use crate::wire::{Framing, Mode, Wire};
+use crate::wire::{Framing, Mode, Wire, WireFrame};
 
 /// `text_turn_parity.yaml`'s reply body, verbatim.
 const UNARY: &str = r#"{"content":[{"text":"parity probe","type":"text"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":14,"output_tokens":6,"service_tier":"standard"}}"#;
@@ -72,13 +72,13 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
-    assert_eq!(buffered.model, streamed.model);
+    assert_eq!(buffered.model(), streamed.model());
     assert_eq!(buffered.finish_reason(), streamed.finish_reason());
-    assert_eq!(buffered.message_id, streamed.message_id);
+    assert_eq!(buffered.response_id(), streamed.response_id());
     assert_eq!(buffered.provider_request_id, streamed.provider_request_id);
     assert_eq!(
-        buffered.choice.first(),
-        Some(&AssistantContent::text("parity probe"))
+        buffered.choice.first().map(AssistantContent::canonical),
+        Some(AssistantContent::text("parity probe"))
     );
     assert_eq!(buffered.usage.output_tokens, Some(6));
     assert_eq!(buffered.usage.input_tokens, Some(14));
@@ -181,5 +181,66 @@ fn a_base_url_that_already_names_the_endpoint_is_trimmed() {
         "https://example.invalid/",
     ] {
         assert_eq!(normalize_base_url(pasted), "https://example.invalid");
+    }
+}
+
+/// pi's rule for a call id another model issued: characters outside
+/// `[a-zA-Z0-9_-]` become `_`, and the id keeps at most 64 of them.
+#[test]
+fn a_foreign_call_id_is_normalized_to_anthropic_spelling() {
+    use crate::completion::ReplayTarget;
+
+    let wire = wire();
+    assert_eq!(
+        wire.normalize_tool_call_id("call_1|fc_2.x", wire.model(), None),
+        "call_1_fc_2_x"
+    );
+    let long = "a".repeat(80);
+    assert_eq!(
+        wire.normalize_tool_call_id(&long, wire.model(), None).len(),
+        64
+    );
+    assert_eq!(
+        wire.normalize_tool_call_id("toolu_01-Ab", wire.model(), None),
+        "toolu_01-Ab"
+    );
+}
+
+/// Each dialect reads images on its documented vision models only, in user
+/// turns and tool results; no Messages model reads assistant images.
+#[test]
+fn each_dialect_reads_images_on_its_vision_models() {
+    use crate::completion::ReplayTarget;
+
+    for (dialect, model, images) in [
+        (&ANTHROPIC, "claude-sonnet-4-6", true),
+        (&ZAI, "glm-4.6", false),
+        (&ZAI, "glm-4.5-air", false),
+        (&ZAI, "glm-4.5v", true),
+        (&ZAI, "glm-4.6v-flash", true),
+        (&ZAI, "glm-5v-turbo", true),
+        (&MOONSHOT, "kimi-k2-thinking", false),
+        (&MOONSHOT, "kimi-k2-0905-preview", false),
+        (&MOONSHOT, "moonshot-v1-8k", false),
+        (&MOONSHOT, "moonshot-v1-8k-vision-preview", true),
+        (&MOONSHOT, "kimi-k2.6", true),
+        (&MOONSHOT, "kimi-k3", true),
+        (&MINIMAX, "MiniMax-M2.7", false),
+        (&MINIMAX, "MiniMax-M3", true),
+        (&XIAOMIMIMO, "mimo-v2-flash", false),
+        (&XIAOMIMIMO, "mimo-v2-pro", false),
+        (&XIAOMIMIMO, "mimo-v2.5-pro", false),
+        (&XIAOMIMIMO, "mimo-v2-omni", true),
+        (&XIAOMIMIMO, "mimo-v2.5", true),
+        (&XIAOMIMIMO, "mimo-v2.6-flash", true),
+    ] {
+        // The model the request addresses decides, not the wire's own.
+        let accepts = AnthropicConfig::with_key(dialect, "sk-test")
+            .completion("another-model")
+            .accepts(model);
+        assert_eq!(accepts.user_images, images, "{model}");
+        assert_eq!(accepts.tool_result_images, images, "{model}");
+        assert!(!accepts.assistant_images, "{model}");
+        assert!(accepts.tools, "{model}");
     }
 }

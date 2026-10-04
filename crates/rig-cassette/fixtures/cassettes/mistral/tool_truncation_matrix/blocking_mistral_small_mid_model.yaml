@@ -7,12 +7,12 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"max_tokens":16,"messages":[{"content":"Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.","role":"system"},{"content":"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.","role":"user"}],"model":"mistral-small-latest","tool_choice":"any","tools":[{"function":{"description":"File an incident report","name":"file_report","parameters":{"properties":{"summary":{"type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.","type":"text"}],"role":"system"},{"content":"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.","role":"user"}],"model":"mistral-small-latest","tool_choice":"any","tools":[{"function":{"description":"File an incident report","name":"file_report","parameters":{"properties":{"summary":{"type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: mistral-correlation-id
-    value: req_REDACTED_1
-  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\": \"The cache warmer raced the artifact uploader","name":"file_report"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":16,"prompt_tokens":137,"prompt_tokens_details":{"cached_tokens":112},"service_tier":"standard","total_tokens":153}}'
+    value: 01a1030b-4b6b-7c89-bbae-56e3e49fff39
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\": \"The cache warmer raced the artifact uploader","name":"file_report"},"id":"LoSNdpckS","index":0,"type":"function"}]}}],"created":0,"id":"0d767f1d28ac4aa5b7d701eb84970166","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":16,"prompt_tokens":137,"prompt_tokens_details":{"cached_tokens":112},"service_tier":"standard","total_tokens":153}}'

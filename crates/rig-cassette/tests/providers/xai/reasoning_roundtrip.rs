@@ -13,7 +13,7 @@ async fn streaming() {
     with_xai_cassette("reasoning_roundtrip/streaming", |client| async move {
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
             client.completion(xai::GROK_3_MINI),
-            None,
+            Some(serde_json::json!({ "store": false })),
         ))
         .await;
     })
@@ -25,7 +25,7 @@ async fn nonstreaming() {
     with_xai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
             client.completion(xai::GROK_3_MINI),
-            None,
+            Some(serde_json::json!({ "store": false })),
         ))
         .await;
     })

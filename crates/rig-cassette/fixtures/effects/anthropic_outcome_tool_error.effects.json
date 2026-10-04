@@ -112,9 +112,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "toolu_012hdU7HPmz1atPSBse2A9QS"
-                }
+                "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
               },
               "function": {
                 "name": "add",
@@ -123,8 +121,21 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "caller": {
+                    "type": "direct"
+                  },
+                  "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
+                  "input": {
+                    "x": 17,
+                    "y": 25
+                  },
+                  "name": "add",
+                  "type": "tool_use"
+                },
+                "fingerprint": "12df7f5c7f0213bc"
+              }
             }
           ],
           "usage": {
@@ -134,12 +145,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcc9UjGVcaFPoVDkVg1",
-          "response_id": null,
-          "provider_request_id": "req_011CfLcc8iLVsPHc2JpPQc34",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfdxoaUMFk38egpVzpmV5"
+          },
+          "provider_request_id": "req_011Cfdxoa8FYRtCe4bNnPxyb",
           "finish_reason": "tool_calls",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -147,7 +161,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_012hdU7HPmz1atPSBse2A9QS",
+                "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -156,7 +170,8 @@
                 "type": "tool_use"
               }
             ],
-            "id": "msg_011CfLcc9UjGVcaFPoVDkVg1",
+            "diagnostics": null,
+            "id": "msg_011CfdxoaUMFk38egpVzpmV5",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -235,14 +250,11 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcc9UjGVcaFPoVDkVg1",
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "toolu_012hdU7HPmz1atPSBse2A9QS"
-                    }
+                    "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
                   },
                   "function": {
                     "name": "add",
@@ -251,10 +263,31 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "caller": {
+                        "type": "direct"
+                      },
+                      "id": "toolu_01GmpHwJXurhNw5UrrUqd8RX",
+                      "input": {
+                        "x": 17,
+                        "y": 25
+                      },
+                      "name": "add",
+                      "type": "tool_use"
+                    },
+                    "fingerprint": "12df7f5c7f0213bc"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfdxoaUMFk38egpVzpmV5"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -262,9 +295,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "toolu_012hdU7HPmz1atPSBse2A9QS"
-                    }
+                    "provider": "toolu_01GmpHwJXurhNw5UrrUqd8RX"
                   },
                   "name": "add",
                   "content": [
@@ -272,7 +303,8 @@
                       "type": "text",
                       "text": "the adder is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -313,31 +345,42 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!"
+              "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
+              "native": {
+                "item": {
+                  "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
+                  "type": "text"
+                },
+                "fingerprint": "0403ecaff038be47"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 697,
-            "output_tokens": 30,
-            "total_tokens": 727,
+            "input_tokens": 705,
+            "output_tokens": 27,
+            "total_tokens": 732,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLccH2QBHkqDABfGnsbJ",
-          "response_id": null,
-          "provider_request_id": "req_011CfLccGa7hnTiMHLrjbdbn",
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011Cfdxognc525yeMyiG5cik"
+          },
+          "provider_request_id": "req_011CfdxogTWCnS58dEQEgNfq",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "I'm sorry, it seems the add tool is currently broken and unable to return a result. You may want to try again later!",
+                "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                 "type": "text"
               }
             ],
-            "id": "msg_011CfLccH2QBHkqDABfGnsbJ",
+            "diagnostics": null,
+            "id": "msg_011Cfdxognc525yeMyiG5cik",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -352,8 +395,8 @@
               "cache_creation_input_tokens": 0,
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
-              "input_tokens": 697,
-              "output_tokens": 30,
+              "input_tokens": 705,
+              "output_tokens": 27,
               "service_tier": "standard"
             }
           }

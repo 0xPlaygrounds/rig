@@ -61,7 +61,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     // already-exchanged token, so the cache the record above seeded is read
     // first — on the very transport the completion then speaks over, and with
     // the device flow refused so a stale cache fails loudly.
-    let http = rig::rig_reqwest::shared();
+    let http = rig_test_support::cassettes::local_http();
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(auth_file),
@@ -90,7 +90,7 @@ where
     let (cassette, client) = chatgpt_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -109,7 +109,7 @@ pub(super) async fn with_chatgpt_cassette_default_instructions<F, Fut>(
         chatgpt_cassette_with_default_instructions(spec, default_instructions).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -126,7 +126,7 @@ pub(super) async fn with_chatgpt_noninteractive_oauth_cassette<F, Fut>(
     let (cassette, client, _temp) = chatgpt_noninteractive_oauth_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

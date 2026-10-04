@@ -113,6 +113,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "openai",
+        "model": "gpt-5-mini-nonexistent-rig-test"
+      },
       "scope": "parity/run#0"
     }
   ]

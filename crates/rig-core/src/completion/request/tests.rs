@@ -4,8 +4,9 @@ use crate::error::ProviderError;
 use crate::message::AssistantContent;
 use crate::{http_client, provider_response};
 
-/// An empty conversation, message or tool result parses, and the request
-/// boundary rejects it by role and index.
+/// An empty conversation or message parses, and the request boundary
+/// rejects it by role and index. An empty tool result is the adapter's to
+/// fill, as pi says `(no tool output)`.
 mod empty_lists_parse_and_are_rejected_when_sent {
     use crate::message::Message;
     use crate::test_utils::{MockCompletionModel, MockTurn};
@@ -26,20 +27,8 @@ mod empty_lists_parse_and_are_rejected_when_sent {
                 "user message at index 0 has no content",
             ),
             (
-                with(json!({"role": "assistant", "id": null, "content": []})),
+                with(json!({"role": "assistant", "content": []})),
                 "assistant message at index 0 has no content",
-            ),
-            (
-                with(json!({
-                    "role": "user",
-                    "content": [{
-                        "type": "toolresult",
-                        "call": {"provider": {"call_id": "call_1"}},
-                        "name": "lookup",
-                        "content": [],
-                    }],
-                })),
-                "tool result for `lookup` at index 0 of the user message at index 0 has no content",
             ),
         ]
     }
@@ -115,7 +104,7 @@ mod empty_lists_parse_and_are_rejected_when_sent {
             "role": "user",
             "content": [{
                 "type": "toolresult",
-                "call": {"provider": {"call_id": "call_1"}},
+                "call": {"provider": "call_1"},
                 "name": "lookup",
                 "content": [{"type": "text", "text": ""}],
             }],
@@ -181,12 +170,11 @@ fn normalized_response_round_trips_through_serde() {
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
             },
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
         )
         .with_finish_reason(FinishReason::Stop);
-        response.message_id = Some("msg_123".into());
-        response.model = Some("provider-model-v2".into());
+        response.origin.response_model = Some("provider-model-v2".into());
         response
     };
 
@@ -208,7 +196,7 @@ fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     ))
     .expect("serialize response");
@@ -227,20 +215,18 @@ fn deserializing_empty_identifiers_yields_none() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         vec![AssistantContent::text("hello")],
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     ))
     .expect("serialize response");
-    encoded["message_id"] = serde_json::json!("");
-    encoded["response_id"] = serde_json::json!("");
-    encoded["model"] = serde_json::json!("");
+    encoded["origin"]["response_id"] = serde_json::json!("");
+    encoded["origin"]["response_model"] = serde_json::json!("");
 
     let decoded =
         serde_json::from_value::<CompletionResponse>(encoded).expect("deserialize response");
 
-    assert_eq!(decoded.message_id, None);
-    assert_eq!(decoded.response_id, None);
-    assert_eq!(decoded.model, None);
+    assert_eq!(decoded.response_id(), None);
+    assert_eq!(decoded.model(), None);
 }
 
 #[test]
@@ -257,7 +243,7 @@ fn stop_with_a_tool_call_reconciles_to_tool_calls() {
     let response = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -273,14 +259,14 @@ fn optional_setter_reconciles_exactly_like_the_plain_setter() {
     let via_option = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_optional_finish_reason(Some(FinishReason::Stop));
     let via_plain = CompletionResponse::new(
         tool_call_choice(),
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -301,7 +287,7 @@ fn reconciliation_only_upgrades_a_natural_stop() {
         let response = CompletionResponse::new(
             tool_call_choice(),
             Usage::default(),
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
         )
         .with_finish_reason(reason.clone());
@@ -315,7 +301,7 @@ fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
     let response = CompletionResponse::new(
         vec![AssistantContent::text("done")],
         Usage::default(),
-        "example",
+        crate::message::Origin::new("test.api", "example", ""),
         serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop);
@@ -407,10 +393,10 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
         let mut response = CompletionResponse::new(
             vec![AssistantContent::text("hello")],
             Usage::default(),
-            "example",
+            crate::message::Origin::new("test.api", "example", ""),
             payload.clone(),
         );
-        response.response_id = Some("chatcmpl-1".into());
+        response.origin.response_id = Some("chatcmpl-1".into());
         response
     };
 
@@ -419,7 +405,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     let decoded: CompletionResponse =
         serde_json::from_value(encoded.clone()).expect("deserialize response");
     assert_eq!(decoded.raw, payload);
-    assert_eq!(decoded.response_id.as_deref(), Some("chatcmpl-1"));
+    assert_eq!(decoded.response_id(), Some("chatcmpl-1"));
     assert_eq!(
         serde_json::to_value(&decoded).expect("re-serialize"),
         encoded
@@ -428,7 +414,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     let without_raw = serde_json::json!({
         "choice": [{"type": "text", "text": "hello"}],
         "usage": serde_json::to_value(Usage::default()).unwrap(),
-        "provider": "example"
+        "origin": {"api": "test.api", "provider": "example", "model": ""}
     });
     let error = serde_json::from_value::<CompletionResponse>(without_raw)
         .expect_err("a response without `raw` is refused");
@@ -450,17 +436,18 @@ fn message_telemetry_includes_normalized_documents() {
         .message(Message::user("history"))
         .document(test_document("doc1", "static context secret"));
 
+    // The documents open the first user message, so roles keep alternating.
     let messages = request.messages_for_telemetry();
-    assert_eq!(messages.len(), 4);
+    assert_eq!(messages.len(), 3);
     assert!(matches!(messages[0], Message::System { .. }));
     assert!(is_document_message(&messages[1], "doc1"));
     assert!(matches!(
-        &messages[2],
+        &messages[1],
         Message::User { content }
-            if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "history")
+            if matches!(content.last(), Some(UserContent::Text(text)) if text.text == "history")
     ));
     assert!(matches!(
-        &messages[3],
+        &messages[2],
         Message::User { content }
             if matches!(content.first(), Some(UserContent::Text(text)) if text.text == "prompt")
     ));
@@ -581,13 +568,12 @@ fn build_places_documents_after_preamble_system_message() {
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
-    assert_eq!(history.len(), 3);
+    assert_eq!(history.len(), 2);
     assert!(matches!(
         history[0],
         Message::System { content } if content == "System prompt"
     ));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::User { .. }));
 }
 
 #[test]
@@ -601,7 +587,7 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
 
     let history = request.chat_history_with_documents();
     let history = history.iter().collect::<Vec<_>>();
-    assert_eq!(history.len(), 6);
+    assert_eq!(history.len(), 5);
     assert!(matches!(
         history[0],
         Message::System { content } if content == "System one"
@@ -611,9 +597,35 @@ fn build_places_documents_after_leading_system_messages_before_prior_history() {
         Message::System { content } if content == "System two"
     ));
     assert!(is_document_message(history[2], "doc1"));
-    assert!(matches!(history[3], Message::User { .. }));
-    assert!(matches!(history[4], Message::Assistant { .. }));
-    assert!(matches!(history[5], Message::User { .. }));
+    assert!(matches!(history[3], Message::Assistant(_)));
+    assert!(matches!(history[4], Message::User { .. }));
+}
+
+#[test]
+fn documents_join_the_first_user_message_so_roles_alternate() {
+    let request = CompletionRequest::new(Message::user("Prompt"))
+        .message(Message::system("System prompt"))
+        .message(Message::user("Earlier user turn"))
+        .document(test_document("doc1", "Document text."));
+    let history = request.chat_history_with_documents();
+    let roles: Vec<&str> = history
+        .iter()
+        .map(|message| match message {
+            Message::System { .. } => "system",
+            Message::User { .. } => "user",
+            Message::Assistant(_) => "assistant",
+        })
+        .collect();
+    assert_eq!(roles, ["system", "user", "user"]);
+    let Message::User { content } = &history[1] else {
+        panic!("the first user message: {history:?}");
+    };
+    assert!(matches!(content.first(), Some(UserContent::Document(_))));
+    assert!(
+        content.iter().any(
+            |part| matches!(part, UserContent::Text(text) if text.text == "Earlier user turn")
+        )
+    );
 }
 
 #[test]
@@ -649,7 +661,7 @@ fn chat_history_with_documents_places_documents_after_leading_system_messages() 
     assert_eq!(history.len(), 5);
     assert!(matches!(history[0], Message::System { .. }));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::Assistant { .. }));
+    assert!(matches!(history[2], Message::Assistant(_)));
     assert!(matches!(history[3], Message::User { .. }));
     assert!(matches!(history[4], Message::User { .. }));
 }
@@ -672,7 +684,7 @@ fn chat_history_with_documents_places_documents_before_mid_conversation_system_m
         Message::System { content } if content == "Leading system prompt"
     ));
     assert!(is_document_message(history[1], "doc1"));
-    assert!(matches!(history[2], Message::Assistant { .. }));
+    assert!(matches!(history[2], Message::Assistant(_)));
     assert!(matches!(
         history[3],
         Message::System { content } if content == "Mid-conversation instruction"

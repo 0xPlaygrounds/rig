@@ -66,7 +66,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "Rust is a systems programming language designed for performance and reliability, featuring a unique ownership model that enforces memory safety at compile time without needing a garbage collector. Memory safety matters because violations like null pointer dereferences, buffer overflows, and use-after-free bugs are among the most common sources of critical security vulnerabilities and crashes in software.\n\nDONE"
+              "text": "Rust is a systems programming language designed for performance and reliability, featuring a unique ownership model that enforces memory safety at compile time without needing a garbage collector. Memory safety matters because violations like null pointer dereferences, buffer overflows, and use-after-free bugs are among the most common sources of critical security vulnerabilities and crashes in software.\n\nDONE",
+              "native": {
+                "item": {
+                  "text": "Rust is a systems programming language designed for performance and reliability, featuring a unique ownership model that enforces memory safety at compile time without needing a garbage collector. Memory safety matters because violations like null pointer dereferences, buffer overflows, and use-after-free bugs are among the most common sources of critical security vulnerabilities and crashes in software.\n\nDONE",
+                  "type": "text"
+                },
+                "fingerprint": "9223e502db60ef1a"
+              }
             }
           ],
           "usage": {
@@ -76,12 +83,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcd5pVcV7z1Kd8iaYhB",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcd5pVcV7z1Kd8iaYhB"
+          },
           "provider_request_id": "req_011CfLcd5MxBirMtg1KFFFMP",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

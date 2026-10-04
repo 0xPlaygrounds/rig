@@ -6,7 +6,7 @@
 //!
 //! Capture is always on. mistral.rs streams through the plain `OPENAI`
 //! chat-completions wire pointed at its base URL, and the decoder assembles
-//! a terminal record — [`StreamingCompletionResponse`] over [`ChatUsage`] —
+//! a terminal record —
 //! from the stream's final `data:` frame plus the envelope fields the chunks
 //! carried (`object`, `created`, `system_fingerprint`) accumulated under
 //! `additional_params`. Every terminal record carries `raw`: that record
@@ -21,7 +21,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `raw` is the terminal record and carries the reply's accounting | unrecorded (no mistral.rs server in this environment) |
 //! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded chunks; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
 //!
 //! Every cell is unrecorded: no mistral.rs server was listening on
@@ -33,8 +33,6 @@
 //! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
@@ -48,11 +46,6 @@ const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// attributed to the dialect that produced it.
 const NORMALIZED_PROVIDER: &str = "openai";
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
-
-/// The wire's terminal record over the wire's own accounting, which for
-/// mistral.rs carries its per-second throughput counters in `ChatUsage`'s
-/// flattened extras.
-type MistralRsTerminal = StreamingCompletionResponse<ChatUsage>;
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT).max_tokens(64)
@@ -88,19 +81,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     // mistral.rs keeps its per-second throughput counters beside the
     // OpenAI-compatible ones, so the flattened shared counts are the halves
     // the normalized usage is made of.
-    let usage = typed
-        .usage
-        .as_ref()
-        .expect("the terminal record carries the reply's accounting");
+    let usage = &typed["usage"];
+    assert_eq!(usage["prompt_tokens"].as_u64(), terminal.usage.input_tokens);
     assert_eq!(
-        Some(usage.openai.prompt_tokens as u64),
-        terminal.usage.input_tokens
-    );
-    assert_eq!(
-        usage.openai.completion_tokens.map(|tokens| tokens as u64),
+        usage["completion_tokens"].as_u64(),
         terminal.usage.output_tokens
     );
-    assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
+    assert_eq!(terminal.provider(), NORMALIZED_PROVIDER);
 
     let (_, terminal_frame) = chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
     let raw = &terminal.raw;
@@ -170,11 +157,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = MistralRsTerminal::deserialize(raw)
-        .expect("raw must deserialize into the wire's terminal record");
-    let typed_params = typed
-        .additional_params
-        .expect("typed terminal must carry additional_params");
+    let typed_params = &raw["additional_params"];
     assert_eq!(
         typed_params.get("system_fingerprint"),
         frames[0].get("system_fingerprint")

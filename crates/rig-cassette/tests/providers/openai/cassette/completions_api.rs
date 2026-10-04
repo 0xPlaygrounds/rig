@@ -54,23 +54,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
                 .call(request)
                 .await
                 .expect("completions api request should succeed");
-            let reply: openai::completion::CompletionResponse =
-                serde_json::from_value(response.raw.clone())
-                    .expect("`raw` is the serialized openai::completion::CompletionResponse");
-            let raw_text = reply
-                .choices
-                .iter()
-                .filter_map(|choice| match &choice.message {
-                    openai::completion::Message::Assistant { content, .. } => Some(content),
-                    _ => None,
-                })
-                .flatten()
-                .filter_map(|content| match content {
-                    openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
-                    openai::completion::AssistantContent::Refusal { .. } => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
+            let raw_text = crate::raw_capture::chat::native_text(&response.raw);
 
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");
@@ -229,10 +213,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
                 .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
                 .cloned()
                 .expect("raw completions api stream should yield lookup_harbor_label");
-            let assistant_message = Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
             let tool_result_message =
                 Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],

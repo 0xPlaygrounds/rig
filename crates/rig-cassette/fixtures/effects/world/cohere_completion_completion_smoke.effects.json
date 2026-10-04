@@ -16,7 +16,7 @@
           "family": "completion",
           "model": "parity",
           "capabilities": {
-            "composes_native_output_with_tools": false
+            "composes_native_output_with_tools": true
           }
         }
       }
@@ -31,7 +31,7 @@
         "required": {
           "parity/model": "completion"
         },
-        "policy": 7953835700414325703
+        "policy": 17099172561117899546
       }
     }
   },
@@ -79,38 +79,50 @@
             }
           ],
           "usage": {
-            "input_tokens": 556,
-            "output_tokens": 71,
-            "total_tokens": 627,
-            "cached_input_tokens": 480
+            "input_tokens": 27,
+            "output_tokens": 68,
+            "total_tokens": 95,
+            "cached_input_tokens": 0,
+            "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "48c5ebe5-cc86-4a10-907a-68008b396265",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "cohere",
+            "model": "command-a-03-2025",
+            "response_model": "command-a-03-2025",
+            "response_id": "595c79ba-519c-4b8c-9486-d101dcfad3b5"
+          },
           "finish_reason": "stop",
-          "provider": "cohere",
-          "model": null,
           "raw": {
-            "finish_reason": "COMPLETE",
-            "id": "48c5ebe5-cc86-4a10-907a-68008b396265",
-            "message": {
-              "content": [
-                {
-                  "text": "Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector by using a strict ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.",
-                  "type": "text"
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "Rust is a systems programming language that focuses on safety, speed, and concurrency, achieving memory safety without a garbage collector by using a strict ownership model. Memory safety matters because it prevents common bugs like null pointer dereferencing, buffer overflows, and data races, which can lead to crashes, security vulnerabilities, and unpredictable behavior in software.",
+                  "role": "assistant"
                 }
-              ],
-              "role": "assistant"
-            },
-            "usage": {
-              "billed_units": {
-                "input_tokens": 27,
-                "output_tokens": 68
-              },
-              "cached_tokens": 480,
-              "tokens": {
-                "input_tokens": 556,
-                "output_tokens": 71
               }
+            ],
+            "created": 0,
+            "id": "595c79ba-519c-4b8c-9486-d101dcfad3b5",
+            "model": "command-a-03-2025",
+            "object": "chat.completion",
+            "usage": {
+              "completion_tokens": 68,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 27,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 0
+              },
+              "total_tokens": 95
             }
           }
         }

@@ -78,11 +78,14 @@
             "total_tokens": 89,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "a203b9f2-825d-45a9-8117-4783c120be85",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "9a8aadaa-6714-48c3-8d3b-a0d899b798df"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -96,7 +99,7 @@
               }
             ],
             "created": 0,
-            "id": "a203b9f2-825d-45a9-8117-4783c120be85",
+            "id": "9a8aadaa-6714-48c3-8d3b-a0d899b798df",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

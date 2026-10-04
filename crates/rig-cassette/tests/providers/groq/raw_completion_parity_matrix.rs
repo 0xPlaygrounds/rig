@@ -19,14 +19,14 @@
 //! is the dialect datum `GROQ.request_id_header`, and the driver stamps
 //! `provider_request_id` from it. The reply document has no field for it in
 //! the shared chat-completions shape; Groq happens to mirror it in its own
-//! `x_groq.id` envelope, which no shared type models and which reaches a
+//! `x_groq.id` envelope, which the shared shape does not name and which reaches a
 //! caller only because `raw` is the document. So the header and the body
 //! agree, and the cells assert that they do rather than assuming it.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `encode_is_deterministic_and_raw_is_faithful` | two turns, one seam | both turns send identical request bytes; each response reproduces *its own* interaction's body and `x-request-id`, and its `raw["x_groq"]["id"]` is that same id | recorded |
-//! | 2 | `the_transport_id_comes_from_the_header_not_the_body` | header vs document | `provider_request_id` is populated from the header; the shared typed view of `raw` has no slot for it, and the document carries it only in Groq's own envelope | recorded |
+//! | 2 | `the_transport_id_comes_from_the_header_not_the_body` | header vs document | `provider_request_id` is populated from the header; the shared chat-completions fields of `raw` have no slot for it, and the document carries it only in Groq's own envelope | recorded |
 //!
 //! The scenario literals — and therefore the fixture filenames — keep the
 //! names they were recorded under; the cell names describe what the cells now
@@ -41,9 +41,7 @@
 //! responses carry the `x-request-id` header at all.
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai;
 use rig::providers::openai::wire::GROQ;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::RAW_CAPTURE_MODEL;
@@ -82,10 +80,6 @@ fn assert_reproduces_fixture(
 ) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
     let identity = response.identity();
-    assert_eq!(
-        identity.message_id, None,
-        "{context}: chat has no message id"
-    );
     assert_matches_recorded_token(
         identity.provider_request_id.as_deref(),
         Some(request_id),
@@ -173,10 +167,9 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
     assert_raw_is_the_reply_document(&second, &interactions[1].1, &second_id, "second turn");
 
     // Where the wire makes the two turns equal, they are equal.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
+    assert_eq!(second.provider(), first.provider());
+    assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
-    assert_eq!(second.identity().message_id, first.identity().message_id);
     // Identical request bytes tokenize identically; the output side is the
     // model's to vary.
     assert_eq!(second.usage.input_tokens, first.usage.input_tokens);
@@ -214,18 +207,15 @@ async fn the_transport_id_comes_from_the_header_not_the_body() {
         Some(request_id.as_str()),
         "the driver stamps the transport id from the header Groq contracts",
     );
-    assert!(response.response_id.is_some());
+    assert!(response.response_id().is_some());
 
-    // The shared typed view of the document has no slot for a transport id —
-    // which is why reading it off the header is the only way to have it.
-    let typed = openai::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the shared OpenAI chat-completions reply Groq sends");
-    let typed_document = serde_json::to_value(&typed).expect("typed serializes");
+    // The document has no top-level slot for a transport id, which is why
+    // reading it off the header is the only way to have it.
     assert!(
-        typed_document.get("x-request-id").is_none()
-            && typed_document.get("provider_request_id").is_none()
-            && typed_document.get("x_groq").is_none(),
-        "no shared chat-completions field carries the transport id: {typed_document}"
+        response.raw.get("x-request-id").is_none()
+            && response.raw.get("provider_request_id").is_none(),
+        "no chat-completions field carries the transport id: {}",
+        response.raw
     );
     // The document itself carries it only in Groq's own envelope, and that
     // reaches the caller because `raw` is the body rather than the parse.

@@ -134,7 +134,7 @@ pub fn install_reflect(world: &mut World) {
             agent::DocumentProps,
             agent::Utterance,
             agent::Role,
-            agent::content::parts::MessageId,
+            agent::content::parts::AssistantHead,
             agent::content::parts::RequestPartEdit,
             agent::content::parts::ContentPart,
             agent::content::parts::ToolResultStatus,

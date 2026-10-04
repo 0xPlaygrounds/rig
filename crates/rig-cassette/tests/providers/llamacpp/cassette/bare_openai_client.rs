@@ -182,9 +182,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
 ///
 /// This cell used to be framed around
 /// `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` differing between the two paths.
-/// It no longer does: this PR measured llama.cpp's streaming and left
-/// `emits_complete_single_chunk_tool_calls` at the OpenAI default of `false`
-/// for both dialects, so both take the same branch. Keeping the old framing
+/// It no longer does: that setting is gone. The shared writer tells calls
+/// apart by wire index and id under every dialect, so both take the same
+/// path. Keeping the old framing
 /// would have left a cell whose doc described a difference that does not
 /// exist.
 ///
@@ -290,7 +290,8 @@ async fn raw_response_text_matches_normalized_choice_text() {
                 .await
                 .expect("completions api request should succeed");
             assert_eq!(
-                response.provider, "openai",
+                response.provider(),
+                "openai",
                 "the `OPENAI` dialect names itself, whatever server answered"
             );
             let raw_text = response.raw["choices"][0]["message"]["content"]

@@ -127,7 +127,7 @@ where
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -146,7 +146,7 @@ where
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -168,7 +168,7 @@ macro_rules! server_config_wrapper {
             Fut: Future<Output = ()>,
         {
             let (cassette, client) = llamacpp_cassette_on(spec, &upstream($var, $port)).await;
-            let result = AssertUnwindSafe(test_body(OpenAiModels::new(client, rig::rig_reqwest::shared()))).catch_unwind().await;
+            let result = AssertUnwindSafe(test_body(OpenAiModels::new(client, rig_test_support::cassettes::local_http()))).catch_unwind().await;
             cassette.finish_after_test(result).await;
         }
     };
@@ -310,7 +310,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
         .with_base_url(versioned(&cassette.base_url()));
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         llamacpp,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -336,7 +336,7 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
     cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -429,7 +429,7 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
         .with_route(Route::Chat);
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bare,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

@@ -144,9 +144,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_253646"
-                }
+                "provider": "call_952769"
               },
               "function": {
                 "name": "lookup",
@@ -154,8 +152,19 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": "EukCCuYCAWkUfROF4dCtGeAt4T+Kq+q6hUzMnUyRyl+q590WR76oZis21Nlql2VKDzIu50Rmumb5WoOK+iNcIi/Lu3UDNoOsFMFIl97CvIjIpzCzPelpl+Ndzp61GjFwx0jdhTpDV60bEGYYLf7cF1CknfdPNMwdbxu2codBvw+JlQcwC/gfMU2UjdMKHVSZeLFJo20Smg4ysb7hy4x/z+4zfnPddSkI/xD9FzoCIXadhP81euv5St5UsindHa1eYeHGa8fqRXAdsTx411mFo8ZYGNGR9c/AJ0RVla0Pe2xglpfnKN/Yp2eFfeG2d99PUsu2un8xryuGUxV5DAUReJeTVVeDprfKUXDEd9dRMkIGSFerrlsK6F0MMksny8Jvj8jynNxRdFW/ZsQ9Ek9JcqvmVzRTOxQftgUlzG+k5QszqmyOgIpRtb1llKvkI5v5+dZWzS7no64jJFMxltqmB+JqSOiD599NtkUfZQ==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "q": "What is the capital of France?"
+                    },
+                    "id": "call_952769",
+                    "name": "lookup"
+                  },
+                  "thoughtSignature": "EukCCuYCAWkUfRNg4ZhfOxNFM64PUxOcN3MZj6qc56RdaXgFvI5p77nbaG3Ge4T5Tyxi6vh6JAILnqWOyKMQcxjEmfzgUSQNwfEQX7P+ZjVIEQjr7876qFnJzVt8YL2uosgE9Js+yAADPnb9935Ur7vTmqnVrK6bcRF/K0aL3muJzlLqbAQalMMEPcV7ENp2RPan0PfkrGRelkDbRa/+yxo7+BPH+WOItWY8LhITevwkTjlY/cTPOd/Vn7fI2MlMxW54QnUdLPKYVBmNaAfsGVvLU2SrLqc+URQCIufWD9QIXm2GTY1QDRDmw1c0yurhnUq9pV5UhqmBPNHBxEt3CnNDpoOUdsmv3HrbXW7pqlxiqND6a5AU2LIPBiOTXzJ6HOJb+W++Y2kk4PUKepkihm+zcQMYbiwhluIf0X/KVVePJhrzqsuNFPLpSN7LmvjGf6A3nNpY7hhigCnlVLtXd99p03VRy8w/GkcmjA=="
+                },
+                "fingerprint": "61712cfe417e33f7"
+              }
             }
           ],
           "usage": {
@@ -164,11 +173,14 @@
             "total_tokens": 197,
             "reasoning_tokens": 68
           },
-          "message_id": null,
-          "response_id": "PKyyav3AOdCLqtsPx7z4sAw",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "zArBap7PB72gqtsPq4LhqQo"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -179,10 +191,10 @@
                         "args": {
                           "q": "What is the capital of France?"
                         },
-                        "id": "call_253646",
+                        "id": "call_952769",
                         "name": "lookup"
                       },
-                      "thoughtSignature": "EukCCuYCAWkUfROF4dCtGeAt4T+Kq+q6hUzMnUyRyl+q590WR76oZis21Nlql2VKDzIu50Rmumb5WoOK+iNcIi/Lu3UDNoOsFMFIl97CvIjIpzCzPelpl+Ndzp61GjFwx0jdhTpDV60bEGYYLf7cF1CknfdPNMwdbxu2codBvw+JlQcwC/gfMU2UjdMKHVSZeLFJo20Smg4ysb7hy4x/z+4zfnPddSkI/xD9FzoCIXadhP81euv5St5UsindHa1eYeHGa8fqRXAdsTx411mFo8ZYGNGR9c/AJ0RVla0Pe2xglpfnKN/Yp2eFfeG2d99PUsu2un8xryuGUxV5DAUReJeTVVeDprfKUXDEd9dRMkIGSFerrlsK6F0MMksny8Jvj8jynNxRdFW/ZsQ9Ek9JcqvmVzRTOxQftgUlzG+k5QszqmyOgIpRtb1llKvkI5v5+dZWzS7no64jJFMxltqmB+JqSOiD599NtkUfZQ=="
+                      "thoughtSignature": "EukCCuYCAWkUfRNg4ZhfOxNFM64PUxOcN3MZj6qc56RdaXgFvI5p77nbaG3Ge4T5Tyxi6vh6JAILnqWOyKMQcxjEmfzgUSQNwfEQX7P+ZjVIEQjr7876qFnJzVt8YL2uosgE9Js+yAADPnb9935Ur7vTmqnVrK6bcRF/K0aL3muJzlLqbAQalMMEPcV7ENp2RPan0PfkrGRelkDbRa/+yxo7+BPH+WOItWY8LhITevwkTjlY/cTPOd/Vn7fI2MlMxW54QnUdLPKYVBmNaAfsGVvLU2SrLqc+URQCIufWD9QIXm2GTY1QDRDmw1c0yurhnUq9pV5UhqmBPNHBxEt3CnNDpoOUdsmv3HrbXW7pqlxiqND6a5AU2LIPBiOTXzJ6HOJb+W++Y2kk4PUKepkihm+zcQMYbiwhluIf0X/KVVePJhrzqsuNFPLpSN7LmvjGf6A3nNpY7hhigCnlVLtXd99p03VRy8w/GkcmjA=="
                     }
                   ],
                   "role": "model"
@@ -193,7 +205,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "PKyyav3AOdCLqtsPx7z4sAw",
+            "responseId": "zArBap7PB72gqtsPq4LhqQo",
             "usageMetadata": {
               "candidatesTokenCount": 20,
               "promptTokenCount": 109,
@@ -277,24 +289,29 @@
             {
               "type": "text",
               "text": "Paris",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "EvABCu0BAWkUfRPFh2C2/6O8gz+ze8XEurSZqkKWoHv7k19Xh6gs5a/pZPqKjC6hSgF9+D7NJ1c6/Z1NXFG4hslNo4NN9dCzz4fS4xfDcMxFktVgwWx0iBcZfTViUzciIoRG4fMrvWpmaTDUBhEb6HcVZv48fS1+dQ9ZB2m5FL1pcxSfiJhIK21VC2g5CKmm8zN9rZJLyDaJdEfp4jVh88BeM0GS8XyazWxsF61iySG99uuAHzPWA6EDtoMYWHv+tkY4FVCF4bUDWNo/yCqBYWMzxMtdNRhU9Ft2aqBy0zo9qN+JKl4tvJKztMCQZOXB2G9E"
-                }
+              "native": {
+                "item": {
+                  "text": "Paris",
+                  "thoughtSignature": "EqsCCqgCAWkUfRMfIFz+v6JeKByPKbmNUB6WsLPsqD4gCTinDBBlM0TXr1d529i3YHKpihWqHsHU32hCNz116KrVg+Zn2wyHEKw0DSn/ehuB0WSgfCcmPXpFhQwLWTEK/xgdntfO0uGY4QzD+zZtuKGK7WVbi1M4v5erSmMyru2BnKiRTC72bMfkrSKpRtJy5J0yn/cC0L2cdA+rkZkQabaY+VhjvSlzbYYuVJ/12Bb/0IcFHF0Ed4dA6rw6evv1M9m8Xs4/edRUMfJ75eYSnBNTeswEY8IVLeTWnjetGqTe5a56kZg4KxDQWpQQZShQy3N9Yobqitj7oK6JcsIgyDGkmR23ScoC0oDxGLbwkOkyqBvONch1yYhCF4vTiyJkNCegvrgXRVL+rrpvFVY="
+                },
+                "fingerprint": "7693826edb17268a"
               }
             }
           ],
           "usage": {
             "input_tokens": 14,
-            "output_tokens": 34,
-            "total_tokens": 48,
-            "reasoning_tokens": 33
+            "output_tokens": 53,
+            "total_tokens": 67,
+            "reasoning_tokens": 52
           },
-          "message_id": null,
-          "response_id": "PqyyaoavB_qcqtsPsvfd4Ag",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "zQrBaoL-DPu3qtsP4saRkAk"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -302,7 +319,7 @@
                   "parts": [
                     {
                       "text": "Paris",
-                      "thoughtSignature": "EvABCu0BAWkUfRPFh2C2/6O8gz+ze8XEurSZqkKWoHv7k19Xh6gs5a/pZPqKjC6hSgF9+D7NJ1c6/Z1NXFG4hslNo4NN9dCzz4fS4xfDcMxFktVgwWx0iBcZfTViUzciIoRG4fMrvWpmaTDUBhEb6HcVZv48fS1+dQ9ZB2m5FL1pcxSfiJhIK21VC2g5CKmm8zN9rZJLyDaJdEfp4jVh88BeM0GS8XyazWxsF61iySG99uuAHzPWA6EDtoMYWHv+tkY4FVCF4bUDWNo/yCqBYWMzxMtdNRhU9Ft2aqBy0zo9qN+JKl4tvJKztMCQZOXB2G9E"
+                      "thoughtSignature": "EqsCCqgCAWkUfRMfIFz+v6JeKByPKbmNUB6WsLPsqD4gCTinDBBlM0TXr1d529i3YHKpihWqHsHU32hCNz116KrVg+Zn2wyHEKw0DSn/ehuB0WSgfCcmPXpFhQwLWTEK/xgdntfO0uGY4QzD+zZtuKGK7WVbi1M4v5erSmMyru2BnKiRTC72bMfkrSKpRtJy5J0yn/cC0L2cdA+rkZkQabaY+VhjvSlzbYYuVJ/12Bb/0IcFHF0Ed4dA6rw6evv1M9m8Xs4/edRUMfJ75eYSnBNTeswEY8IVLeTWnjetGqTe5a56kZg4KxDQWpQQZShQy3N9Yobqitj7oK6JcsIgyDGkmR23ScoC0oDxGLbwkOkyqBvONch1yYhCF4vTiyJkNCegvrgXRVL+rrpvFVY="
                     }
                   ],
                   "role": "model"
@@ -312,7 +329,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "PqyyaoavB_qcqtsPsvfd4Ag",
+            "responseId": "zQrBaoL-DPu3qtsP4saRkAk",
             "usageMetadata": {
               "candidatesTokenCount": 1,
               "promptTokenCount": 14,
@@ -323,8 +340,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 33,
-              "totalTokenCount": 48
+              "thoughtsTokenCount": 52,
+              "totalTokenCount": 67
             }
           }
         }
@@ -356,14 +373,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_253646"
-                    }
+                    "provider": "call_952769"
                   },
                   "function": {
                     "name": "lookup",
@@ -371,10 +385,29 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": "EukCCuYCAWkUfROF4dCtGeAt4T+Kq+q6hUzMnUyRyl+q590WR76oZis21Nlql2VKDzIu50Rmumb5WoOK+iNcIi/Lu3UDNoOsFMFIl97CvIjIpzCzPelpl+Ndzp61GjFwx0jdhTpDV60bEGYYLf7cF1CknfdPNMwdbxu2codBvw+JlQcwC/gfMU2UjdMKHVSZeLFJo20Smg4ysb7hy4x/z+4zfnPddSkI/xD9FzoCIXadhP81euv5St5UsindHa1eYeHGa8fqRXAdsTx411mFo8ZYGNGR9c/AJ0RVla0Pe2xglpfnKN/Yp2eFfeG2d99PUsu2un8xryuGUxV5DAUReJeTVVeDprfKUXDEd9dRMkIGSFerrlsK6F0MMksny8Jvj8jynNxRdFW/ZsQ9Ek9JcqvmVzRTOxQftgUlzG+k5QszqmyOgIpRtb1llKvkI5v5+dZWzS7no64jJFMxltqmB+JqSOiD599NtkUfZQ==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "q": "What is the capital of France?"
+                        },
+                        "id": "call_952769",
+                        "name": "lookup"
+                      },
+                      "thoughtSignature": "EukCCuYCAWkUfRNg4ZhfOxNFM64PUxOcN3MZj6qc56RdaXgFvI5p77nbaG3Ge4T5Tyxi6vh6JAILnqWOyKMQcxjEmfzgUSQNwfEQX7P+ZjVIEQjr7876qFnJzVt8YL2uosgE9Js+yAADPnb9935Ur7vTmqnVrK6bcRF/K0aL3muJzlLqbAQalMMEPcV7ENp2RPan0PfkrGRelkDbRa/+yxo7+BPH+WOItWY8LhITevwkTjlY/cTPOd/Vn7fI2MlMxW54QnUdLPKYVBmNaAfsGVvLU2SrLqc+URQCIufWD9QIXm2GTY1QDRDmw1c0yurhnUq9pV5UhqmBPNHBxEt3CnNDpoOUdsmv3HrbXW7pqlxiqND6a5AU2LIPBiOTXzJ6HOJb+W++Y2kk4PUKepkihm+zcQMYbiwhluIf0X/KVVePJhrzqsuNFPLpSN7LmvjGf6A3nNpY7hhigCnlVLtXd99p03VRy8w/GkcmjA=="
+                    },
+                    "fingerprint": "61712cfe417e33f7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-3-flash-preview",
+                "response_model": "gemini-3-flash-preview",
+                "response_id": "zArBap7PB72gqtsPq4LhqQo"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -382,9 +415,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_253646"
-                    }
+                    "provider": "call_952769"
                   },
                   "name": "lookup",
                   "content": [
@@ -434,7 +465,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Paris"
+              "text": "Paris",
+              "native": {
+                "item": {
+                  "text": "Paris"
+                },
+                "fingerprint": "7693826edb17268a"
+              }
             }
           ],
           "usage": {
@@ -442,11 +479,14 @@
             "output_tokens": 1,
             "total_tokens": 210
           },
-          "message_id": null,
-          "response_id": "P6yyavzHCbikqtsP19Xo-QE",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-3-flash-preview",
+            "response_model": "gemini-3-flash-preview",
+            "response_id": "zgrBatvZAd2J6dkP2J3MkAc"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-3-flash-preview",
           "raw": {
             "candidates": [
               {
@@ -463,7 +503,7 @@
               }
             ],
             "modelVersion": "gemini-3-flash-preview",
-            "responseId": "P6yyavzHCbikqtsP19Xo-QE",
+            "responseId": "zgrBatvZAd2J6dkP2J3MkAc",
             "usageMetadata": {
               "candidatesTokenCount": 1,
               "promptTokenCount": 209,

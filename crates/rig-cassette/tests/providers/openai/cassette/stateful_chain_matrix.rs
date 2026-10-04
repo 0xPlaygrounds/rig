@@ -196,7 +196,7 @@ async fn stored_chain_with_tool_call() {
                     ))
                     .await
                     .expect("turn one");
-                let first_id = first.response_id.clone().expect("a stored response id");
+                let first_id = first.response_id().expect("a stored response id");
                 created(&resources, format!("responses/{first_id}"));
                 let call = only_call(&first.choice);
 
@@ -204,13 +204,13 @@ async fn stored_chain_with_tool_call() {
                     .call(request(
                         vec![answer(&call)],
                         vec![lookup_tool()],
-                        stored(Some(&first_id)),
+                        stored(Some(first_id)),
                     ))
                     .await
                     .expect(
                         "turn two continues from the stored response with the tool output alone",
                     );
-                let second_id = second.response_id.clone().expect("a stored response id");
+                let second_id = second.response_id().expect("a stored response id");
                 created(&resources, format!("responses/{second_id}"));
                 assert!(text(&second.choice).contains(CODE), "{:?}", second.choice);
 
@@ -220,11 +220,11 @@ async fn stored_chain_with_tool_call() {
                             "Repeat the code you reported, exactly, and nothing else.",
                         )],
                         vec![],
-                        stored(Some(&second_id)),
+                        stored(Some(second_id)),
                     ))
                     .await
                     .expect("turn three continues from turn two");
-                let third_id = third.response_id.clone().expect("a stored response id");
+                let third_id = third.response_id().expect("a stored response id");
                 created(&resources, format!("responses/{third_id}"));
                 assert!(text(&third.choice).contains(CODE), "{:?}", third.choice);
             })
@@ -294,7 +294,7 @@ async fn stored_then_stateless_mid_conversation() {
                     ))
                     .await
                     .expect("turn one");
-                let first_id = first.response_id.clone().expect("a stored response id");
+                let first_id = first.response_id().expect("a stored response id");
                 created(&resources, format!("responses/{first_id}"));
                 let call = only_call(&first.choice);
                 let tool_answer = answer(&call);
@@ -303,24 +303,24 @@ async fn stored_then_stateless_mid_conversation() {
                     .call(request(
                         vec![tool_answer.clone()],
                         vec![lookup_tool()],
-                        params(Some(&first_id), true),
+                        params(Some(first_id), true),
                     ))
                     .await
                     .expect("turn two chains");
-                let second_id = second.response_id.clone().expect("a stored response id");
+                let second_id = second.response_id().expect("a stored response id");
                 created(&resources, format!("responses/{second_id}"));
 
                 let history = vec![
                     prompt,
-                    Message::Assistant {
-                        id: first.message_id.clone(),
+                    Message::Assistant(rig_core::message::AssistantMessage {
                         content: first.choice.clone(),
-                    },
+                        ..first.head()
+                    }),
                     tool_answer,
-                    Message::Assistant {
-                        id: second.message_id.clone(),
+                    Message::Assistant(rig_core::message::AssistantMessage {
                         content: second.choice.clone(),
-                    },
+                        ..second.head()
+                    }),
                     Message::user("Repeat the code you reported, exactly, and nothing else."),
                 ];
                 let third = model
@@ -415,10 +415,10 @@ async fn file_id_chain() {
                 .expect("turn one reads the file by id");
             let history = vec![
                 document,
-                Message::Assistant {
-                    id: first.message_id.clone(),
+                Message::Assistant(rig_core::message::AssistantMessage {
                     content: first.choice.clone(),
-                },
+                    ..first.head()
+                }),
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];
             let second = model

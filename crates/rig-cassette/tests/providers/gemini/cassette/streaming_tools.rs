@@ -2,9 +2,6 @@
 
 use rig::message::ToolChoice;
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig,
-};
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
@@ -18,8 +15,7 @@ use crate::support::{
 use rig::completion::CompletionRequest;
 
 fn streaming_tool_params() -> serde_json::Value {
-    serde_json::to_value(AdditionalParameters::default().with_config(GenerationConfig::default()))
-        .expect("Gemini additional params should serialize")
+    serde_json::json!({ "generationConfig": {} })
 }
 
 #[tokio::test]

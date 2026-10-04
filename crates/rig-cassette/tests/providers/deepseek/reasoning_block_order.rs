@@ -80,7 +80,7 @@ fn block_kinds(choice: &[AssistantContent]) -> Vec<&'static str> {
             AssistantContent::Text(_) => "text",
             AssistantContent::ToolCall(_) => "tool_call",
             AssistantContent::Reasoning(_) => "reasoning",
-            AssistantContent::Image(_) => "image",
+            AssistantContent::Image(_) | AssistantContent::Opaque(_) => "image",
         })
         .collect()
 }
@@ -407,7 +407,7 @@ async fn agent_blocking_reasoner_roundtrip_keeps_reasoning_first_in_history() {
             let assistant_turns = history
                 .iter()
                 .filter_map(|message| match message {
-                    Message::Assistant { content, .. } => Some(block_kinds(content)),
+                    Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => Some(block_kinds(content)),
                     _ => None,
                 })
                 .collect::<Vec<_>>();

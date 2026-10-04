@@ -108,23 +108,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit."
-                  }
-                }
-              ]
+              "text": "The user wants me to extract structured data from the text \"John Doe is a 30 year old software engineer.\"\n\nFields:\n- name: \"John Doe\"\n- age: 30\n- profession: \"software engineer\"",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to extract structured data from the text \"John Doe is a 30 year old software engineer.\"\n\nFields:\n- name: \"John Doe\"\n- age: 30\n- profession: \"software engineer\""
+                },
+                "fingerprint": "fe28838fd3a58332"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_SgewdJKcqwzsfe6l5NSP9539"
-                }
+                "provider": "call_00_IVKQsyTGmniwHtZSTxEW3207"
               },
               "function": {
                 "name": "submit",
@@ -134,22 +129,34 @@
                   "profession": "software engineer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_IVKQsyTGmniwHtZSTxEW3207",
+                  "type": "function"
+                },
+                "fingerprint": "4013f32521d343ab"
+              }
             }
           ],
           "usage": {
             "input_tokens": 448,
-            "output_tokens": 112,
-            "total_tokens": 560,
+            "output_tokens": 117,
+            "total_tokens": 565,
             "cached_input_tokens": 256,
-            "reasoning_tokens": 40
+            "reasoning_tokens": 45
           },
-          "message_id": null,
-          "response_id": "94a6a107-2a96-46af-866a-cd59898befa3",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "77537341-0c2e-4c37-8787-8a710053d479"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -158,7 +165,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need to extract data from the text: \"John Doe is a 30 year old software engineer.\"\n\nName: John Doe\nAge: 30\nProfession: software engineer\n\nCall submit.",
+                  "reasoning_content": "The user wants me to extract structured data from the text \"John Doe is a 30 year old software engineer.\"\n\nFields:\n- name: \"John Doe\"\n- age: 30\n- profession: \"software engineer\"",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -166,7 +173,7 @@
                         "arguments": "{\"name\": \"John Doe\", \"age\": 30, \"profession\": \"software engineer\"}",
                         "name": "submit"
                       },
-                      "id": "call_00_SgewdJKcqwzsfe6l5NSP9539",
+                      "id": "call_00_IVKQsyTGmniwHtZSTxEW3207",
                       "index": 0,
                       "type": "function"
                     }
@@ -175,14 +182,14 @@
               }
             ],
             "created": 0,
-            "id": "94a6a107-2a96-46af-866a-cd59898befa3",
+            "id": "77537341-0c2e-4c37-8787-8a710053d479",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 112,
+              "completion_tokens": 117,
               "completion_tokens_details": {
-                "reasoning_tokens": 40
+                "reasoning_tokens": 45
               },
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 192,
@@ -190,7 +197,7 @@
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 560
+              "total_tokens": 565
             }
           }
         }

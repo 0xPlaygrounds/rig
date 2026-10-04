@@ -2,65 +2,47 @@
 //! (rig#2447).
 //!
 //! **Bug.** Anthropic streams tool input as `input_json_delta` fragments and
-//! closes the block with `content_block_stop`, so rig's accumulator treats a
-//! close as "the wire promised a complete block" and, when the assembled
-//! fragments are not JSON, raised a bare `ErrorReport`. The agent engine
-//! turned any stream error into a fatal run error before the
-//! invalid-tool recovery seam saw it: one bad byte from the model ended the
-//! run, the model never learned why, and the application got a string.
+//! closes the block with `content_block_stop`. When the assembled fragments
+//! were not JSON, the reply failed and the run ended: one bad byte from the
+//! model ended the run, and the model never learned why.
 //!
-//! **Fix.** The report carries a typed `MalformedToolInput` detail (name,
-//! durable id, provider id, raw text, parser reason); the engine routes it
-//! into the same `InvalidToolCallAction` recovery an unknown tool name gets.
-//! Default stays fail-fast.
+//! **Contract.** A malformed call never fails the reply. It is kept with
+//! the arguments its text still states and the text itself in
+//! `invalid_arguments`, and with no provider item, so it replays from its
+//! canonical fields. The agent never runs the tool and never consults the
+//! invalid-call hook: it answers the call with an `is_error` tool result
+//! saying "The arguments for tool `X` are not a JSON object: ...", and the
+//! run continues, as pi does.
 //!
-//! **Fixtures.** Cells 1–2 are recorded live and are the controls. Cells 3–5
-//! are hand-derived from cell 2: the recorded *response* stream's last
-//! `input_json_delta` for the tool call has its `partial_json` replaced with
-//! `"\u0001}"` — a control byte where a number belongs — so the assembled
-//! input is not JSON. The corrupt turn's request section is byte-identical
-//! to the control's. Cells 4–5 also need the follow-up interactions the
-//! recovery produces: the engine rolls the turn back and sends a *feedback*
-//! request (the malformed call with `{}` input — Anthropic requires a dict —
-//! plus a `tool_result` carrying the hook's text). Those request bodies are
-//! derived from the control's turn 2 by substituting that history, and are
-//! answered with the control's own recorded responses (cell 4: the final
-//! text; cell 5: the healthy tool call, then the tool-result follow-up with
-//! the full five-message history). Each derived cell asserts its fixture
-//! really carries the control byte, so a re-record cannot silently heal it.
-//! Cells 3–5 were derived from an earlier recording of cell 2, so they still
-//! carry that recording's scrubbed `REDACTED_<n>` ids rather than cell 2's
-//! current ones.
+//! **Fixtures.** Every cell is recorded live. Cell 3 caps its first request
+//! at [`CUT_AT`] output tokens, which cuts Sonnet 4.6's `subtract` call
+//! inside its input, so the assembled input is not JSON and the turn stops
+//! on `max_tokens`. Its follow-up carries the call rebuilt from the
+//! arguments the cut text states, with no `caller` (which lived only in the
+//! provider item), and the `is_error` result naming the raw text. The cell
+//! asserts its fixture really holds a cut input, so a re-record that heals
+//! it fails.
 //!
-//! Anthropic is the provider for this matrix because its wire uses the
-//! `Error` policy on block close; OpenAI-compatible wires use `Drop` /
-//! `EmptyObject` and never reach this path. Bedrock (`contentBlockStop`,
-//! same policy) needs AWS credentials to record and is left as follow-up.
+//! Anthropic is the provider for this matrix because its wire states the
+//! close of every tool-input block. Bedrock (`contentBlockStop`) needs AWS
+//! credentials to record and is left as follow-up.
 //!
-//! **How these cells fail on `origin/main`.** Cells 4–5 fail: the run ends
-//! with the provider report before any hook runs. Cell 3 asserts that very
-//! report and passes on both sides — it is the "default unchanged" control.
-//! Cells 1–2 pass on both sides.
-//!
-//! | # | cell | transport | input on the wire | hook action | fixture |
-//! |---|------|-----------|-------------------|-------------|---------|
-//! | 1 | `blocking_healthy_control` | blocking | valid | — | recorded |
-//! | 2 | `streaming_healthy_control` | streaming | valid | — | recorded |
-//! | 3 | `streaming_malformed_fails_by_default` | streaming | corrupt | none (default) | derived from 2 |
-//! | 4 | `streaming_malformed_skip_feeds_result_back` | streaming | corrupt | `Skip` | derived from 2 |
-//! | 5 | `streaming_malformed_retry_reissues_request` | streaming | corrupt | `Retry` | derived from 2, + 2 follow-ups |
+//! | # | cell | transport | input on the wire | fixture |
+//! |---|------|-----------|-------------------|---------|
+//! | 1 | `blocking_healthy_control` | blocking | valid | recorded |
+//! | 2 | `streaming_healthy_control` | streaming | valid | recorded |
+//! | 3 | `streaming_malformed_call_is_answered_with_an_error` | streaming | cut by `max_tokens` | recorded |
 //!
 //! Unit cells for the seam itself live beside the code:
-//! `crates/rig-core/src/streaming/accumulator/tests.rs` (typed detail, raw
-//! bytes) and `crates/rig-agent/src/agent/streaming/malformed_tool_args_tests.rs`
-//! (one test per action, blocking-surface parity).
+//! `crates/rig-agent/src/agent/streaming/malformed_tool_args_tests.rs` (what
+//! the model sees on the next request) and the history conformance row
+//! `h06_malformed_arguments`.
 
 use futures::StreamExt;
 use rig::agent::{
-    AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
-    MultiTurnStreamItem,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, InvalidToolCallAction,
+    InvalidToolCallContext, MultiTurnStreamItem, RequestPatch,
 };
-use rig::completion::PromptError;
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::AnthropicModels;
 use serde_json::Value;
@@ -71,12 +53,12 @@ use crate::support::{
     assert_mentions_expected_number, collect_stream_final_response,
 };
 
-/// Every `partial_json` fragment of every recorded response stream in
-/// `scenario`, in wire order.
-fn recorded_partial_json(scenario: &str) -> Vec<String> {
+/// The tool input each recorded response stream in `scenario` assembles
+/// from its `partial_json` fragments, for each response that streams any.
+fn recorded_inputs(scenario: &str) -> Vec<String> {
     crate::cassettes::recorded_interaction_bodies("anthropic", scenario)
         .into_iter()
-        .flat_map(|(_, response)| {
+        .map(|(_, response)| {
             response
                 .lines()
                 .filter_map(|line| line.strip_prefix("data: "))
@@ -88,76 +70,88 @@ fn recorded_partial_json(scenario: &str) -> Vec<String> {
                         .and_then(Value::as_str)
                         .map(str::to_owned)
                 })
-                .collect::<Vec<_>>()
+                .collect::<String>()
         })
+        .filter(|input| !input.is_empty())
         .collect()
 }
 
-fn assert_fixture_is_corrupt(scenario: &str) {
-    let fragments = recorded_partial_json(scenario);
+fn assert_fixture_is_cut(scenario: &str) {
+    let inputs = recorded_inputs(scenario);
+    let first = inputs
+        .first()
+        .unwrap_or_else(|| panic!("{scenario}: fixture should stream tool input fragments"));
     assert!(
-        !fragments.is_empty(),
-        "{scenario}: fixture should stream tool input fragments"
+        serde_json::from_str::<Value>(first).is_err(),
+        "{scenario}: the first call's input must be cut short of JSON; a re-record healed it: {first:?}"
     );
-    let assembled = fragments.concat();
+    let interactions = crate::cassettes::recorded_interaction_bodies("anthropic", scenario);
     assert!(
-        serde_json::from_str::<Value>(&assembled).is_err(),
-        "{scenario}: this derived fixture must assemble to invalid JSON, got {assembled:?}"
-    );
-    assert!(
-        assembled.contains('\u{1}'),
-        "{scenario}: the corruption is a control byte; a re-record healed it: {assembled:?}"
+        interactions
+            .first()
+            .is_some_and(|(_, response)| response.contains(r#""stop_reason":"max_tokens""#)),
+        "{scenario}: the first reply must stop on `max_tokens`"
     );
 }
 
 fn assert_fixture_is_healthy(scenario: &str) {
-    let fragments = recorded_partial_json(scenario);
+    let inputs = recorded_inputs(scenario);
     assert!(
-        !fragments.is_empty(),
+        !inputs.is_empty(),
         "{scenario}: fixture should stream tool input fragments"
     );
-    let assembled = fragments.concat();
-    assert!(
-        serde_json::from_str::<Value>(&assembled).is_ok(),
-        "{scenario}: the recorded control must assemble to valid JSON, got {assembled:?}"
-    );
+    for input in inputs {
+        assert!(
+            serde_json::from_str::<Value>(&input).is_ok(),
+            "{scenario}: the recorded control must assemble to valid JSON, got {input:?}"
+        );
+    }
 }
 
-#[derive(Clone)]
-struct OnMalformed(InvalidToolCallAction);
+/// The output cap that cuts Sonnet 4.6's first `subtract` call inside its
+/// input.
+const CUT_AT: u64 = 60;
 
-impl AgentHook for OnMalformed {
+/// Caps the first request at [`CUT_AT`] output tokens.
+#[derive(Clone)]
+struct CutFirstCall;
+
+impl AgentHook for CutFirstCall {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        event: CompletionCallEvent<'_>,
+    ) -> CompletionCallAction {
+        if event.turn == 1 {
+            CompletionCallAction::patch(RequestPatch::new().max_tokens(CUT_AT))
+        } else {
+            CompletionCallAction::Continue
+        }
+    }
+}
+
+/// A hook that fails the cell if consulted: malformed arguments are not an
+/// invalid call to resolve.
+#[derive(Clone)]
+struct NeverConsulted;
+
+impl AgentHook for NeverConsulted {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
         context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        assert!(
-            matches!(
-                context.reason,
-                InvalidToolCallReason::MalformedArguments { .. }
-            ),
-            "hook must be consulted for malformed arguments, got {:?}",
-            context.reason
-        );
-        assert!(
-            context
-                .args
-                .as_deref()
-                .is_some_and(|raw| raw.contains('\u{1}')),
-            "hook must see the raw wire text: {:?}",
-            context.args
-        );
-        Some(self.0.clone())
+        panic!("malformed arguments reached the invalid-call hook: {context:?}");
     }
 }
 
-fn agent(client: AnthropicModels) -> rig::agent::Agent {
+/// The calculator agent, allowed `calls` model calls.
+fn agent(client: AnthropicModels, calls: usize) -> rig::agent::Agent {
     rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(Subtract)
-        .default_max_turns(2)
+        .default_max_turns(calls)
         .build()
 }
 
@@ -166,7 +160,7 @@ async fn blocking_healthy_control() {
     with_anthropic_cassette(
         "malformed_tool_args_matrix/blocking_healthy_control",
         |client| async move {
-            let response = agent(client)
+            let response = agent(client, 2)
                 .prompt(STREAMING_TOOLS_PROMPT)
                 .await
                 .expect("blocking tool prompt should succeed");
@@ -181,7 +175,7 @@ async fn streaming_healthy_control() {
     with_anthropic_cassette(
         "malformed_tool_args_matrix/streaming_healthy_control",
         |client| async move {
-            let mut stream = agent(client).prompt(STREAMING_TOOLS_PROMPT).stream();
+            let mut stream = agent(client, 2).prompt(STREAMING_TOOLS_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
@@ -193,126 +187,50 @@ async fn streaming_healthy_control() {
 }
 
 #[tokio::test]
-async fn streaming_malformed_fails_by_default() {
-    if crate::cassettes::skip_when_recording(
-        "cell 3 is hand-derived from cell 2: its tool-input stream carries a control byte no provider emits",
-    ) {
-        return;
-    }
+async fn streaming_malformed_call_is_answered_with_an_error() {
     with_anthropic_cassette(
-        "malformed_tool_args_matrix/streaming_malformed_fails_by_default",
+        "malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error",
         |client| async move {
-            let mut stream = agent(client).prompt(STREAMING_TOOLS_PROMPT).stream();
-            let mut error = None;
+            // Room for the call the model makes again after the error result.
+            let mut stream = agent(client, 4)
+                .prompt(STREAMING_TOOLS_PROMPT)
+                .add_hook(CutFirstCall)
+                .add_hook(NeverConsulted)
+                .stream();
+            let mut executed = false;
+            let mut text = String::new();
             while let Some(item) = stream.next().await {
-                match item {
-                    Ok(MultiTurnStreamItem::ToolCall { .. }) => {
-                        panic!("a malformed call must never be executed")
+                match item.expect("a malformed call never ends the run") {
+                    MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => {
+                        executed |= tool_call.function.invalid_arguments.is_some();
                     }
-                    Ok(_) => {}
-                    Err(err) => {
-                        error = Some(err);
-                        break;
+                    MultiTurnStreamItem::FinalResponse(response) => {
+                        text = response.output().to_owned();
                     }
+                    _ => {}
                 }
             }
-            match error.expect("default policy is fail-fast") {
-                PromptError::Report(report) => assert!(
-                    report.message.contains("malformed JSON input"),
-                    "{}",
-                    report.message
-                ),
-                other => panic!("expected the provider report, got {other:?}"),
-            }
+            assert!(!executed, "a malformed call must never be executed");
+            assert_mentions_expected_number(&text, -3);
         },
     )
     .await;
-    assert_fixture_is_corrupt("malformed_tool_args_matrix/streaming_malformed_fails_by_default");
-}
-
-#[tokio::test]
-async fn streaming_malformed_skip_feeds_result_back() {
-    if crate::cassettes::skip_when_recording(
-        "cell 4 is hand-derived from cell 2, including the recovery follow-up interactions",
-    ) {
-        return;
-    }
-    with_anthropic_cassette(
-        "malformed_tool_args_matrix/streaming_malformed_skip_feeds_result_back",
-        |client| async move {
-            let mut stream = agent(client)
-                .prompt(STREAMING_TOOLS_PROMPT)
-                .add_hook(OnMalformed(InvalidToolCallAction::skip(
-                    "subtract: arguments were not valid JSON",
-                )))
-                .stream();
-            let mut skipped = None;
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(MultiTurnStreamItem::ToolResult { tool_result, .. }) => {
-                        skipped = Some(tool_result)
-                    }
-                    Ok(MultiTurnStreamItem::ToolCall { .. }) => {
-                        panic!("a malformed call must never be executed")
-                    }
-                    // The follow-up turn is not recorded for this cell; the
-                    // replay ends after the abandoned turn drains.
-                    Ok(_) => {}
-                    Err(_) => break,
-                }
-            }
-            let skipped = skipped.expect("skip must emit a synthetic tool result");
-            assert_eq!(skipped.name, "subtract");
-            assert!(skipped.content.iter().any(|content| matches!(
-                content,
-                rig::message::ToolResultContent::Text(text)
-                    if text.text.contains("not valid JSON") && !text.text.contains('\u{1}')
-            )));
-        },
-    )
-    .await;
-    assert_fixture_is_corrupt(
-        "malformed_tool_args_matrix/streaming_malformed_skip_feeds_result_back",
-    );
-}
-
-#[tokio::test]
-async fn streaming_malformed_retry_reissues_request() {
-    if crate::cassettes::skip_when_recording(
-        "cell 5 is hand-derived from cell 2, including the two retry follow-up interactions",
-    ) {
-        return;
-    }
-    with_anthropic_cassette(
-        "malformed_tool_args_matrix/streaming_malformed_retry_reissues_request",
-        |client| async move {
-            // The retry consumes a model-call slot (documented budget
-            // semantics), so this cell needs one more turn than the control.
-            let mut stream = agent(client)
-                .prompt(STREAMING_TOOLS_PROMPT)
-                .max_turns(3)
-                .max_invalid_tool_call_retries(1)
-                .add_hook(OnMalformed(InvalidToolCallAction::retry(
-                    "arguments were not valid JSON; call the tool again",
-                )))
-                .stream();
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("retry must recover through a second model request");
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
-    .await;
-    assert_fixture_is_corrupt(
-        "malformed_tool_args_matrix/streaming_malformed_retry_reissues_request",
-    );
-    let interactions = crate::cassettes::recorded_interaction_bodies(
-        "anthropic",
-        "malformed_tool_args_matrix/streaming_malformed_retry_reissues_request",
-    );
+    let scenario = "malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error";
+    assert_fixture_is_cut(scenario);
+    // The follow-up the model answers carries the error result, which the
+    // cassette matched against this request.
+    let interactions = crate::cassettes::recorded_interaction_bodies("anthropic", scenario);
+    let follow_up: Value = interactions
+        .get(1)
+        .and_then(|(request, _)| serde_json::from_str(request).ok())
+        .expect("the follow-up request is recorded");
+    let result = &follow_up["messages"][2]["content"][0];
+    assert_eq!(result["is_error"], Value::Bool(true));
     assert!(
-        interactions.len() >= 3,
-        "retry needs the corrupt turn, the re-issued turn, and the tool-result follow-up; got {}",
-        interactions.len()
+        result["content"][0]["text"]
+            .as_str()
+            .is_some_and(|text| text
+                .starts_with("The arguments for tool `subtract` are not a JSON object: ")),
+        "{result}"
     );
 }

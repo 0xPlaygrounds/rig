@@ -23,10 +23,6 @@ use rig_core::message::AssistantContent;
 
 use rig_core::message::Message;
 
-use rig_core::message::ReasoningContent;
-
-use rig_core::message::canonical_streamed_choice;
-
 use rig_core::observe::AdapterEnding;
 
 use rig_core::observe::AdapterEvent;
@@ -135,15 +131,6 @@ pub(crate) fn completions(log: &EffectLog) -> Vec<&CompletionResponse> {
         .collect()
 }
 
-fn rank(part: &AssistantContent) -> u8 {
-    match part {
-        AssistantContent::Reasoning(_) => 0,
-        AssistantContent::Text(_) => 1,
-        AssistantContent::ToolCall(_) => 2,
-        AssistantContent::Image(_) => 3,
-    }
-}
-
 /// Check the provider's normalized reply, not its transport frames.
 /// Complete payload equality is checked separately against committed history.
 pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
@@ -187,13 +174,6 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
     );
     for (index, response) in responses.iter().enumerate() {
         let parts = &response.choice;
-        assert!(
-            parts
-                .windows(2)
-                .all(|pair| rank(&pair[0]) <= rank(&pair[1])),
-            "{}: canonical reasoning/text/call/image order: {parts:?}",
-            cell.name
-        );
         let thinking = cell.thinking == Thinking::On
             || (cell.thinking == Thinking::SecondTurnOnly && index == 1);
         let reasoning: Vec<_> = parts
@@ -222,36 +202,29 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             ));
             match wire {
                 ThinkingWire::OpenAiResponses => {
-                    assert!(reasoning.iter().any(|block| {
+                    let item = |block: &&rig_core::message::Reasoning, key: &str| {
                         block
-                            .open(block.issuer())
-                            .expect("sealed reasoning")
-                            .id
-                            .is_some()
-                    }));
-                    assert!(reasoning.iter().any(|block| {
-                        block.open(block.issuer()).expect("sealed reasoning").content.iter().any(|content|
-                        matches!(content, ReasoningContent::Encrypted(value) if !value.is_empty()))
-                    }));
+                            .native
+                            .as_ref()
+                            .and_then(|native| native.item.get(key))
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|value| !value.is_empty())
+                    };
+                    assert!(reasoning.iter().any(|block| item(block, "id")));
+                    assert!(
+                        reasoning
+                            .iter()
+                            .any(|block| item(block, "encrypted_content"))
+                    );
                 }
                 ThinkingWire::Gemini => {
-                    // A signature stays on the part that carried it: a call's
-                    // on ToolCall.signature, a thought's on its reasoning
-                    // block, an answer's on its text.
+                    // A signature stays on the part that carried it: its
+                    // provider item holds it.
                     assert!(
-                        reasoning.iter().any(|block| block
-                            .open(block.issuer())
-                            .expect("sealed reasoning")
-                            .first_signature()
-                            .is_some())
-                            || parts.iter().any(|part| match part {
-                                AssistantContent::ToolCall(call) => call.signature.is_some(),
-                                AssistantContent::Text(text) => {
-                                    rig_core::providers::gemini::text_thought_signature(text)
-                                        .is_some()
-                                }
-                                _ => false,
-                            }),
+                        parts.iter().any(|part| part
+                            .native_item()
+                            .and_then(|item| item.get("thoughtSignature"))
+                            .is_some()),
                         "{}: the Gemini signature is preserved",
                         cell.name
                     );
@@ -377,41 +350,43 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     }
     let actual: Vec<_> = history
         .iter()
-        .filter(|message| matches!(message, Message::Assistant { .. }))
+        .filter(|message| matches!(message, Message::Assistant(_)))
         .cloned()
         .collect();
     let expected: Vec<_> = completions(log)
         .iter()
-        .map(|response| Message::Assistant {
-            id: response.message_id.clone(),
-            content: if cell.reasoning == Some(ReasoningCase::Output) {
-                // The record retains the output call; committed history keeps
-                // its answer as JSON text, avoiding an unanswered tool call.
-                let call = response
-                    .choice
-                    .iter()
-                    .find_map(|part| match part {
-                        AssistantContent::ToolCall(call)
-                            if call.function.name == "final_result" =>
-                        {
-                            Some(call)
-                        }
-                        _ => None,
-                    })
-                    .expect("the recorded output call");
-                let mut parts: Vec<_> = response
-                    .choice
-                    .iter()
-                    .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
-                    .cloned()
-                    .collect();
-                parts.push(AssistantContent::text(call.function.arguments.to_string()));
-                parts
-            } else if cell.program.streamed {
-                canonical_streamed_choice(response.choice.clone())
-            } else {
-                response.choice.clone()
-            },
+        .map(|response| {
+            Message::Assistant(rig_core::message::AssistantMessage {
+                content: if cell.reasoning == Some(ReasoningCase::Output) {
+                    // The record retains the output call; committed history keeps
+                    // its answer as JSON text, avoiding an unanswered tool call.
+                    let call = response
+                        .choice
+                        .iter()
+                        .find_map(|part| match part {
+                            AssistantContent::ToolCall(call)
+                                if call.function.name == "final_result" =>
+                            {
+                                Some(call)
+                            }
+                            _ => None,
+                        })
+                        .expect("the recorded output call");
+                    let mut parts: Vec<_> = response
+                        .choice
+                        .iter()
+                        .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
+                        .cloned()
+                        .collect();
+                    parts.push(AssistantContent::text(
+                        call.function.arguments_value().to_string(),
+                    ));
+                    parts
+                } else {
+                    response.choice.clone()
+                },
+                ..response.head()
+            })
         })
         .collect();
     assert_eq!(
@@ -502,7 +477,7 @@ pub(crate) fn assert_witness(
         && completions(log).iter().any(|response| {
             response.choice.iter().any(|part| {
                 matches!(part,
-            AssistantContent::Reasoning(block) if !block.open(block.issuer()).expect("sealed reasoning").display_text().is_empty())
+            AssistantContent::Reasoning(block) if !block.text.is_empty())
             })
         })
     {

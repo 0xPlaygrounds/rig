@@ -238,9 +238,9 @@ impl AgentRunner {
 
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(true);
-        // A resumed run loads nothing and saves nothing (see `run`).
+        // A resumed run loads nothing and appends what it adds (see `run`).
         let resolved = match &self.origin {
-            RunOrigin::Resume(_) => Ok((None, None)),
+            RunOrigin::Resume(_) => self.resumed_memory(),
             RunOrigin::Prompt(_) => {
                 let resolve = self.resolve_history_and_memory(&hook_ctx);
                 futures::pin_mut!(resolve);
@@ -477,11 +477,7 @@ pub async fn stream_to_stdout(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                let reasoning = reasoning
-                    .open(reasoning.issuer())
-                    .map(|reasoning| reasoning.display_text())
-                    .unwrap_or_default();
-                write!(stdout, "{reasoning}")?;
+                write!(stdout, "{}", reasoning.text)?;
                 stdout.flush()?;
             }
             MultiTurnStreamItem::FinalResponse(response) => return Ok(response),

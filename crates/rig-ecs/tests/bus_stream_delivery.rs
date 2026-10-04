@@ -459,24 +459,24 @@ impl Serve for RetryingStream {
             requests.push(request);
             requests.len() == 1
         };
-        Reply::written(move |mut writer| async move {
-            writer
-                .text(if first { "partial" } else { "done" })
-                .await
-                .unwrap();
-            if !first {
+        Reply::written(
+            rig_core::message::Origin::new("mock", "mock", "mock"),
+            move |mut writer| async move {
                 writer
-                    .finish(
-                        "mock",
-                        rig_core::operation::Finish {
-                            usage: Usage::default(),
-                            ..rig_core::operation::Finish::default()
-                        },
-                    )
+                    .text(if first { "partial" } else { "done" })
                     .await
                     .unwrap();
-            }
-        })
+                if !first {
+                    writer
+                        .finish(rig_core::operation::Finish {
+                            usage: Usage::default(),
+                            ..rig_core::operation::Finish::default()
+                        })
+                        .await
+                        .unwrap();
+                }
+            },
+        )
     }
 }
 

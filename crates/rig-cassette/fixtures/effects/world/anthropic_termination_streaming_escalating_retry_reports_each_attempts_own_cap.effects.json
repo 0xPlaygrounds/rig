@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 6,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,7 +10,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 10,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -18,30 +18,30 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 11,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 14,
+        "batch": 20,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 4
+          "items": 3
         }
       },
       {
-        "batch": 15,
+        "batch": 21,
         "id": 1,
         "kind": {
           "delivery": "stream",
-          "items": 1
+          "items": 2
         }
       },
       {
-        "batch": 15,
+        "batch": 22,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -114,7 +114,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbr"
+              "text": "alpha\nbr",
+              "native": {
+                "item": {
+                  "text": "alpha\nbr",
+                  "type": "text"
+                },
+                "fingerprint": "750a1414f22fd69f"
+              }
             }
           ],
           "usage": {
@@ -124,22 +131,25 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgTgxmtjTZAVWc25nw",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgTgxmtjTZAVWc25nw"
+          },
           "provider_request_id": "req_011CfLcgT8EPc86XmCi7yzvi",
           "finish_reason": "length",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 3,
               "input_tokens": 40,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "max_tokens",
             "message_id": "msg_011CfLcgTgxmtjTZAVWc25nw",
@@ -179,11 +189,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "alpha\nbr"
+              "text": "alpha\nbr",
+              "native": {
+                "item": {
+                  "text": "alpha\nbr",
+                  "type": "text"
+                },
+                "fingerprint": "750a1414f22fd69f"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -225,7 +247,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "alpha\nbravo\ncharlie\ndelta"
+              "text": "alpha\nbravo\ncharlie\ndelta",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\ncharlie\ndelta",
+                  "type": "text"
+                },
+                "fingerprint": "ad358e1eb225a2af"
+              }
             }
           ],
           "usage": {
@@ -235,22 +264,25 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcgWf4VhtXBK2SQFfKt",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcgWf4VhtXBK2SQFfKt"
+          },
           "provider_request_id": "req_011CfLcgW4bGUJWoL27ChS8v",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "usage": {
               "output_tokens": 11,
               "input_tokens": 40,
               "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
-              },
-              "cache_read_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              }
             },
             "stop_reason": "end_turn",
             "message_id": "msg_011CfLcgWf4VhtXBK2SQFfKt",
@@ -298,11 +330,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "alpha\nbravo\ncharlie\ndelta"
+              "text": "alpha\nbravo\ncharlie\ndelta",
+              "native": {
+                "item": {
+                  "text": "alpha\nbravo\ncharlie\ndelta",
+                  "type": "text"
+                },
+                "fingerprint": "ad358e1eb225a2af"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "anthropic.messages",
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
       "scope": "parity/run#0"
     }
   ]

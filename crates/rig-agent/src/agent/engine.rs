@@ -17,7 +17,7 @@ use rig_core::{
     completion::ModelRef,
     effect::{EffectId, EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
-    message::{AssistantContent, Message, ToolCall, UserContent},
+    message::{AssistantContent, Message, ToolCall, ToolFunction, UserContent},
     telemetry::SpanCombinator,
     wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
@@ -38,7 +38,10 @@ use super::{
     },
     run::{
         response::{MemoryAppend, PromptResponse, finalize_output_tool_choice},
-        transcript::{assistant_text_from_choice, is_empty_assistant_turn, tool_result_output},
+        transcript::{
+            assistant_text_from_choice, is_empty_assistant_turn, tool_result_message,
+            tool_result_output,
+        },
     },
     runner::AgentRunner,
     streaming::MultiTurnStreamItem,
@@ -47,7 +50,6 @@ use super::{
 use crate::run::UnhandledInvalidToolCall;
 use crate::{
     completion::PromptError,
-    json_utils,
     streaming::{Item, StreamEvent},
     tool::{ToolCatalog, ToolResult},
 };
@@ -693,7 +695,7 @@ pub(crate) struct StreamingTurnSource {
     /// The raw provider choice of the most recent turn; the final response
     /// surfaces it as-is, even when canonical reordering was recorded in history.
     last_final_choice: Vec<AssistantContent>,
-    last_message_id: Option<String>,
+    last_response_id: Option<String>,
     /// Resolved agent name, kept only for the empty-turn diagnostic warning.
     agent_name: String,
     /// Whether we created the agent span (vs. adopting a caller's ambient span);
@@ -722,7 +724,7 @@ impl StreamingTurnSource {
         Self {
             // Nothing has streamed yet, so the last final choice is nothing.
             last_final_choice: Vec::new(),
-            last_message_id: None,
+            last_response_id: None,
             agent_name,
             created_agent_span,
             record_telemetry_content,
@@ -800,10 +802,9 @@ impl TurnSource for StreamingTurnSource {
             let mut held: Vec<StreamEvent> = Vec::new();
 
             'turn: while let Some(item) = stream.next().await {
-                // A stream error ends the reply. Unparsable tool-call input
-                // still takes the same recovery seam as an unknown tool name.
-                // At most one event per item forwards the item itself, so moving
-                // it out of the slot avoids cloning every streamed fragment.
+                // A stream error ends the reply. At most one event per item
+                // forwards the item itself, so moving it out of the slot
+                // avoids cloning every streamed fragment.
                 let (mut item_slot, mut events, ended): (
                     Option<Item<StreamEvent>>,
                     VecDeque<StreamedTurnEvent>,
@@ -816,15 +817,10 @@ impl TurnSource for StreamingTurnSource {
                             return;
                         }
                     },
-                    Err(err) => match ErrorReport::from(&err).detail {
-                        Some(rig_core::error::ErrorDetail::MalformedToolInput(detail)) => {
-                            (None, assembler.surface_malformed_input(&detail).into(), true)
-                        }
-                        _ => {
-                            yield Err(err.into());
-                            return;
-                        }
-                    },
+                    Err(err) => {
+                        yield Err(err.into());
+                        return;
+                    }
                 };
                 while let Some(event) = events.pop_front() {
                     match event {
@@ -935,10 +931,7 @@ impl TurnSource for StreamingTurnSource {
                         StreamedTurnEvent::InvalidToolCall(invalid) => {
                             // The rejected call's items are not forwarded.
                             held.clear();
-                            let partial = assembler.partial_turn(
-                                stream.message_id(),
-                                &stream.partial().choice,
-                            );
+                            let partial = assembler.partial_turn(&stream.partial());
                             // Gated on `has_hooks`: building the diagnostic context
                             // clones the chat history, so an empty stack skips it and
                             // fails fast.
@@ -1060,8 +1053,8 @@ impl TurnSource for StreamingTurnSource {
                 }
             }
 
-            let streamed_turn = assembler.finish(response.message_id.clone(), &response);
-            self.last_message_id.clone_from(&streamed_turn.message_id);
+            let streamed_turn = assembler.finish(&response);
+            self.last_response_id = response.response_id().map(str::to_owned);
             // The hooks and run history see the assembled turn: the
             // response's choice without ignored calls, with repaired names.
             // The final item keeps the provider's choice.
@@ -1154,7 +1147,7 @@ impl TurnSource for StreamingTurnSource {
                 if is_empty_assistant_turn(&self.last_final_choice) {
                     tracing::warn!(
                         agent_name = self.agent_name.as_str(),
-                        message_id = ?self.last_message_id,
+                        response_id = ?self.last_response_id,
                         "Streaming turn completed without assistant text; final response will be empty"
                     );
                 }
@@ -1225,12 +1218,11 @@ pub(crate) async fn settle_model_turn(
     let mut folded = rig_core::completion::CompletionResponse::new(
         response.choice.clone(),
         response.usage,
-        &response.provider,
+        response.origin.clone(),
         response.raw.clone(),
     )
     .with_optional_finish_reason(finish_reason.clone());
-    folded.message_id = identity.message_id.clone();
-    folded.response_id = identity.response_id.clone();
+    folded.error = response.error.clone();
     folded.provider_request_id = identity.provider_request_id.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
@@ -1474,7 +1466,20 @@ pub(crate) async fn run_single_tool(
     let tool_context = &runner.tool_context;
     let record_content = runner.config.record_telemetry_content;
     let tool_name = tool_call.function.name.as_str();
-    let args = json_utils::serialize_json_value(&tool_call.function.arguments);
+    // Arguments the model sent that are not a JSON object never reach the
+    // tool: the model reads why, and calls again.
+    if let Some(raw) = &tool_call.function.invalid_arguments {
+        let content = tool_result_message(
+            tool_call.id.clone(),
+            tool_call.function.name.clone(),
+            rig_core::transcript::invalid_arguments_feedback(tool_name, raw),
+        );
+        return Ok(ToolCallOutcome {
+            content,
+            execution: ToolExecution::Skipped,
+        });
+    }
+    let args = tool_call.function.arguments_value().to_string();
 
     let tool_span = tracing::Span::current();
     tool_span.record("gen_ai.tool.name", tool_name);
@@ -1528,8 +1533,8 @@ pub(crate) async fn run_single_tool(
         ToolExecution::Skipped
     } else {
         let mut effective_tool_call = tool_call.clone();
-        effective_tool_call.function.arguments = serde_json::from_str(&effective_args)
-            .unwrap_or_else(|_| serde_json::Value::String(effective_args.clone()));
+        effective_tool_call.function =
+            ToolFunction::parse(tool_call.function.name.clone(), &effective_args);
         ToolExecution::Executed(effective_tool_call)
     };
     // Outcome metadata describes the execution itself, while result content
@@ -1539,11 +1544,7 @@ pub(crate) async fn run_single_tool(
     if record_content {
         tool_span.record("gen_ai.tool.call.result", exec.output().render());
     }
-    let content = tool_result_output(
-        tool_call.id.clone(),
-        tool_call.function.name.clone(),
-        exec.output().clone(),
-    );
+    let content = tool_result_output(tool_call.id.clone(), tool_call.function.name.clone(), &exec);
     Ok(ToolCallOutcome { content, execution })
 }
 

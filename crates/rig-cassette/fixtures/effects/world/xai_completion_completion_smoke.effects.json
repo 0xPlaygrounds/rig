@@ -75,18 +75,42 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_3e6e5491-75f1-9865-806f-a702d8c64dbe",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "I need to explain Rust and why memory safety matters in one or two sentences."
-                }
-              ]
+              "text": "I need to explain Rust and why memory safety matters in one or two sentences.",
+              "native": {
+                "item": {
+                  "id": "rs_3e6e5491-75f1-9865-806f-a702d8c64dbe",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "I need to explain Rust and why memory safety matters in one or two sentences.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "d17b5bb9bb90733a"
+              }
             },
             {
               "type": "text",
-              "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety through its ownership model and compile-time checks, without relying on a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++."
+              "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety through its ownership model and compile-time checks, without relying on a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "Rust is a systems programming language that emphasizes performance, concurrency, and memory safety through its ownership model and compile-time checks, without relying on a garbage collector. Memory safety matters because it eliminates entire classes of bugs (e.g., buffer overflows, use-after-free) that cause crashes and security vulnerabilities in languages like C/C++.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_3e6e5491-75f1-9865-806f-a702d8c64dbe",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "fa5752787c1677eb"
+              }
             }
           ],
           "usage": {
@@ -96,12 +120,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 175
           },
-          "message_id": "msg_3e6e5491-75f1-9865-806f-a702d8c64dbe",
-          "response_id": "3e6e5491-75f1-9865-806f-a702d8c64dbe",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "3e6e5491-75f1-9865-806f-a702d8c64dbe"
+          },
           "provider_request_id": "3e6e5491-75f1-9865-806f-a702d8c64dbe",
           "finish_reason": "stop",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,

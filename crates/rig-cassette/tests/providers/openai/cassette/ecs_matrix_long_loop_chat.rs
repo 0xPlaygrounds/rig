@@ -102,7 +102,7 @@ crate::matrix::resume_matrix! {
     /// rig-agent refuses the turn ("produced no answer ...
     /// finish_reason=Length"; round 3).
     #[tokio::test]
-    output_cap_midway: ("long_loop_matrix_chat/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY, long_loop::OUTPUT_CAP_MIDWAY.resume_after, "openai_matrix_long_loop_chat_output_cap_midway");
+    output_cap_midway: ("long_loop_matrix_chat/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY_MAX_TURNS, long_loop::OUTPUT_CAP_MIDWAY_MAX_TURNS.resume_after, "openai_matrix_long_loop_chat_output_cap_midway");
 }
 
 crate::matrix::case_matrix! {

@@ -1,5 +1,5 @@
 use super::*;
-use rig_core::streaming::{Item, PartKind, StreamEvent};
+use rig_core::streaming::{Item, StreamEvent};
 
 /// Return the successful item count before the first error, or the full length.
 /// The first error's item position equals the number of preceding successful items.
@@ -10,49 +10,6 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
         .map_or(stream.events.len(), |(position, _)| {
             (*position).min(stream.events.len())
         })
-}
-
-/// The assistant content `items` delivered, in start order: every part that
-/// ended, and the text still open where the stream stands (a text part the
-/// model was writing when the prefix was cut is part of it). Open reasoning
-/// names no issuer yet, so it is left out.
-pub(super) fn delivered_prefix(items: &[Item<StreamEvent>]) -> Vec<AssistantContent> {
-    let mut parts: Vec<Option<AssistantContent>> = Vec::new();
-    let mut open_text: std::collections::BTreeMap<usize, String> = Default::default();
-    for item in items {
-        match item {
-            Item::Event(StreamEvent::Start { kind, .. }) => {
-                if *kind == PartKind::Text {
-                    open_text.insert(parts.len(), String::new());
-                }
-                parts.push(None);
-            }
-            Item::Event(StreamEvent::Text { part, text }) => {
-                if let Some(open) = open_text.get_mut(&part.index()) {
-                    open.push_str(text);
-                }
-            }
-            Item::Event(StreamEvent::End { part, content }) => {
-                open_text.remove(&part.index());
-                if let Some(slot) = parts.get_mut(part.index()) {
-                    *slot = Some(content.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-    parts
-        .into_iter()
-        .enumerate()
-        .filter_map(|(index, part)| {
-            part.or_else(|| {
-                open_text
-                    .remove(&index)
-                    .filter(|text| !text.is_empty())
-                    .map(AssistantContent::text)
-            })
-        })
-        .collect()
 }
 
 /// Publish invalid tool calls from real delivered prefixes, before EOF.
@@ -130,7 +87,10 @@ pub fn discover_streamed_invalid_calls(
             if pending.iter().any(|(_, pending, _)| pending.id == call.id) {
                 continue;
             }
-            let mut prefix = delivered_prefix(items.get(..index).unwrap_or_default());
+            // The prefix up to and with this call, folded as the core folds a
+            // partial reply.
+            let mut prefix =
+                rig_core::streaming::delivered(items.get(..=index).unwrap_or_default());
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
             for (_, pending, resolution) in &pending {
@@ -151,14 +111,14 @@ pub fn discover_streamed_invalid_calls(
                     _ => {}
                 }
             }
-            prefix.push(AssistantContent::ToolCall(call.clone()));
             commands.spawn((
                 InvalidCall {
                     id: call.id.clone(),
                     name: name.to_owned(),
-                    arguments: call.function.arguments.clone(),
+                    arguments: call.function.arguments_value(),
                     prefix,
                     stream_offset: Some(index),
+                    origin: stream.origin.clone(),
                 },
                 ChildOf(turn),
             ));
@@ -166,6 +126,3 @@ pub fn discover_streamed_invalid_calls(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

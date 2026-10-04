@@ -7,7 +7,7 @@
 //! assert_eq!(history.len(), 1);
 //! ```
 
-use rig_core::message::{AssistantContent, CallId, Message};
+use rig_core::message::{AssistantContent, AssistantMessage, CallId, Message};
 pub use rig_core::transcript::{
     TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
     is_empty_assistant_turn, tool_result_message, tool_result_output, validate_canonical,
@@ -46,23 +46,23 @@ pub fn invalid_tool_retry_user_message(
     (!content.is_empty()).then_some(Message::User { content })
 }
 
-/// The assistant message carrying `choice` under `id`, or `None` when the
-/// choice is empty.
-pub fn assistant_message(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
+/// The assistant message carrying `choice` with `head`'s origin, stop and
+/// provider message, or `None` when the choice is empty.
+pub fn assistant_message(head: AssistantMessage, choice: Vec<AssistantContent>) -> Option<Message> {
     if choice.is_empty() {
         return None;
     }
-    Some(Message::Assistant {
-        id,
+    Some(Message::Assistant(AssistantMessage {
         content: choice,
-    })
+        ..head
+    }))
 }
 
 /// The assistant message for a generated turn, or `None` for an empty turn
 /// ([`is_empty_assistant_turn`]), which must not enter provider history.
-pub fn assistant_turn(id: Option<String>, choice: Vec<AssistantContent>) -> Option<Message> {
+pub fn assistant_turn(head: AssistantMessage, choice: Vec<AssistantContent>) -> Option<Message> {
     if is_empty_assistant_turn(&choice) {
         return None;
     }
-    assistant_message(id, choice)
+    assistant_message(head, choice)
 }

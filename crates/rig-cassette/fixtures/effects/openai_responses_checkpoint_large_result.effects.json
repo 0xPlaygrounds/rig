@@ -92,17 +92,23 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                  "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
-                }
+                "provider": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
               },
               "function": {
                 "name": "checkpoint_large",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{}",
+                  "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                  "id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2",
+                  "name": "checkpoint_large",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "e2ec3c9cb5f595d0"
+              }
             }
           ],
           "usage": {
@@ -113,12 +119,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0d89c97b8630415c006ab39667f60c87d0be91cdab09d498ff",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_0d89c97b8630415c006ab39667f60c87d0be91cdab09d498ff"
+          },
           "provider_request_id": "req_2b56293af2694273bcbc26236b045b73",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -270,24 +279,37 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                      "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
-                    }
+                    "provider": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
                   },
                   "function": {
                     "name": "checkpoint_large",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{}",
+                      "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
+                      "id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2",
+                      "name": "checkpoint_large",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "e2ec3c9cb5f595d0"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.responses",
+                "provider": "openai",
+                "model": "gpt-4.1-mini",
+                "response_model": "gpt-4.1-mini-2025-04-14",
+                "response_id": "resp_0d89c97b8630415c006ab39667f60c87d0be91cdab09d498ff"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -295,10 +317,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_3JHEJHsuDmyF2BhOH9zYeFGK",
-                      "item_id": "fc_0d89c97b8630415c006ab39668515c87d0bf35e59f1635f1a2"
-                    }
+                    "provider": "call_3JHEJHsuDmyF2BhOH9zYeFGK"
                   },
                   "name": "checkpoint_large",
                   "content": [
@@ -337,7 +356,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "checkpoint-complete"
+              "text": "checkpoint-complete",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "checkpoint-complete",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0d89c97b8630415c006ab39669559487d0a0f11a4be7421ed7",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "2e3d3d4a66aba08f"
+              }
             }
           ],
           "usage": {
@@ -348,12 +384,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_0d89c97b8630415c006ab39669559487d0a0f11a4be7421ed7",
-          "response_id": "resp_0d89c97b8630415c006ab39668b19487d0a89098eee379808e",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4.1-mini",
+            "response_model": "gpt-4.1-mini-2025-04-14",
+            "response_id": "resp_0d89c97b8630415c006ab39668b19487d0a89098eee379808e"
+          },
           "provider_request_id": "req_8b4cfbd1d65049618225b8f7f16d4bda",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
             "access_programs": null,
             "background": false,

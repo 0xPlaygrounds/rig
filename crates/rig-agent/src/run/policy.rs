@@ -9,23 +9,6 @@
 use rig_core::message::{Message, ToolChoice};
 use serde::{Deserialize, Serialize};
 
-/// Why a model-emitted tool call was rejected. Name repair is permitted for
-/// unknown tools, not malformed argument bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(tag = "reason", rename_all = "snake_case")]
-pub enum InvalidToolCallReason {
-    /// The name is not an executable tool for this turn, or the active
-    /// tool choice does not allow it.
-    #[default]
-    UnknownTool,
-    /// A complete call has non-JSON arguments. `error` is the parser's description;
-    /// [`InvalidToolCallContext::args`] retains the raw text.
-    MalformedArguments {
-        /// What the JSON parser rejected.
-        error: String,
-    },
-}
-
 /// Diagnostics for an invalid model-emitted tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidToolCallContext {
@@ -34,9 +17,7 @@ pub struct InvalidToolCallContext {
     /// Durable tool-call id: the provider's when it issued one, else rig's
     /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<rig_core::message::CallId>,
-    /// Emitted JSON arguments, when present. For
-    /// [`InvalidToolCallReason::MalformedArguments`] this is the raw text
-    /// exactly as the wire delivered it.
+    /// Emitted JSON arguments, when present.
     pub args: Option<String>,
     /// Executable tools advertised for the turn.
     pub available_tools: Vec<String>,
@@ -48,8 +29,6 @@ pub struct InvalidToolCallContext {
     pub chat_history: Vec<Message>,
     /// Whether the call came from the streaming path.
     pub is_streaming: bool,
-    /// Why the call was rejected.
-    pub reason: InvalidToolCallReason,
 }
 
 /// How an accepted, tool-free model turn should be retried.

@@ -199,7 +199,7 @@ pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserConten
             }
             let output = execute_arithmetic(
                 &call.tool_call.function.name,
-                &call.tool_call.function.arguments,
+                &call.tool_call.function.arguments_value(),
             );
             let content = vec![ToolResultContent::json(serde_json::json!(output))];
             UserContent::tool_result(
@@ -227,7 +227,7 @@ pub(crate) async fn call_model(
         .await
         .expect("gemini completion should succeed");
     ModelTurn::new(
-        response.message_id.clone(),
+        response.head(),
         response.choice.clone(),
         response.usage,
         executable.clone(),
@@ -238,7 +238,7 @@ pub(crate) async fn call_model(
 
 pub(crate) fn assistant_tool_call_names(message: &Message) -> Vec<String> {
     match message {
-        Message::Assistant { content, .. } => content
+        Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
             .iter()
             .filter_map(|item| match item {
                 AssistantContent::ToolCall(tool_call) => Some(tool_call.function.name.clone()),
@@ -304,7 +304,8 @@ pub(crate) fn sum_completion_call_usage(calls: &[CompletionCall]) -> Usage {
 /// replay order: reasoning blocks, then text, then tool calls.
 pub(crate) fn assert_canonical_assistant_order(messages: &[Message]) {
     for message in messages {
-        let Message::Assistant { content, .. } = message else {
+        let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message
+        else {
             continue;
         };
         let kind_rank = |item: &AssistantContent| match item {

@@ -93,8 +93,34 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "result=169\n"
+                }
+              },
+              "replay": true
+            },
+            {
               "type": "text",
-              "text": "The number is 169."
+              "text": "The number is 169.",
+              "native": {
+                "item": {
+                  "text": "The number is 169."
+                },
+                "fingerprint": "dfe9d28b3160b005"
+              }
             }
           ],
           "usage": {
@@ -104,11 +130,14 @@
             "tool_use_prompt_tokens": 79,
             "reasoning_tokens": 35
           },
-          "message_id": null,
-          "response_id": "kHizasKhO4DcqtsPz8-qwAY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -137,7 +166,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "kHizasKhO4DcqtsPz8-qwAY",
+            "responseId": "b1a_arSRN6b6qtsP5v6ZgQg",
             "usageMetadata": {
               "candidatesTokenCount": 25,
               "promptTokenCount": 20,
@@ -187,13 +216,46 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
+                  "type": "opaque",
+                  "item": {
+                    "executableCode": {
+                      "code": "result = 13 * 13\nprint(f'{result=}')\n",
+                      "language": "PYTHON"
+                    }
+                  },
+                  "replay": true
+                },
+                {
+                  "type": "opaque",
+                  "item": {
+                    "codeExecutionResult": {
+                      "outcome": "OUTCOME_OK",
+                      "output": "result=169\n"
+                    }
+                  },
+                  "replay": true
+                },
+                {
                   "type": "text",
-                  "text": "The number is 169."
+                  "text": "The number is 169.",
+                  "native": {
+                    "item": {
+                      "text": "The number is 169."
+                    },
+                    "fingerprint": "dfe9d28b3160b005"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "b1a_arSRN6b6qtsP5v6ZgQg"
+              },
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -226,22 +288,51 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "opaque",
+              "item": {
+                "executableCode": {
+                  "code": "previous_result = 169\ndoubled_result = previous_result * 2\nprint(f'{doubled_result=}')\n",
+                  "language": "PYTHON"
+                }
+              },
+              "replay": true
+            },
+            {
+              "type": "opaque",
+              "item": {
+                "codeExecutionResult": {
+                  "outcome": "OUTCOME_OK",
+                  "output": "doubled_result=338\n"
+                }
+              },
+              "replay": true
+            },
+            {
               "type": "text",
-              "text": "The result of doubling 169 is 338."
+              "text": "The result of doubling 169 is 338.",
+              "native": {
+                "item": {
+                  "text": "The result of doubling 169 is 338."
+                },
+                "fingerprint": "4e84c4a9311fa26a"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 133,
-            "output_tokens": 64,
-            "total_tokens": 197,
-            "tool_use_prompt_tokens": 94,
-            "reasoning_tokens": 41
+            "input_tokens": 147,
+            "output_tokens": 73,
+            "total_tokens": 220,
+            "tool_use_prompt_tokens": 108,
+            "reasoning_tokens": 28
           },
-          "message_id": null,
-          "response_id": "knizauimBbC0qtsP5bHOkQc",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "cVa_avqMCL2gqtsP3N3AqQ0"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -249,14 +340,14 @@
                   "parts": [
                     {
                       "executableCode": {
-                        "code": "print(169 * 2)\n",
+                        "code": "previous_result = 169\ndoubled_result = previous_result * 2\nprint(f'{doubled_result=}')\n",
                         "language": "PYTHON"
                       }
                     },
                     {
                       "codeExecutionResult": {
                         "outcome": "OUTCOME_OK",
-                        "output": "338\n"
+                        "output": "doubled_result=338\n"
                       }
                     },
                     {
@@ -270,9 +361,9 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "knizauimBbC0qtsP5bHOkQc",
+            "responseId": "cVa_avqMCL2gqtsP3N3AqQ0",
             "usageMetadata": {
-              "candidatesTokenCount": 23,
+              "candidatesTokenCount": 45,
               "promptTokenCount": 39,
               "promptTokensDetails": [
                 {
@@ -281,15 +372,15 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 41,
-              "toolUsePromptTokenCount": 94,
+              "thoughtsTokenCount": 28,
+              "toolUsePromptTokenCount": 108,
               "toolUsePromptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 94
+                  "tokenCount": 108
                 }
               ],
-              "totalTokenCount": 197
+              "totalTokenCount": 220
             }
           }
         }

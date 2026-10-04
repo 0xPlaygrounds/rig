@@ -254,14 +254,13 @@ async fn a_forced_tool_choice_beside_a_response_format_is_accepted() -> Result<(
 /// tool call and the result of running it.
 fn turn_one_history() -> Vec<rig::completion::Message> {
     vec![
-        rig::completion::Message::Assistant {
-            id: None,
-            content: vec![rig::message::AssistantContent::tool_call(
+        rig::completion::Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+            rig::message::AssistantContent::tool_call(
                 "call_REDACTED_1",
                 rig_core::message::ToolName::new("add").expect("tool name"),
                 serde_json::json!({"x": 2, "y": 3}),
-            )],
-        },
+            ),
+        ])),
         rig::completion::Message::User {
             content: vec![rig::message::UserContent::tool_result(
                 rig_core::message::CallId::from_wire("call_REDACTED_1"),

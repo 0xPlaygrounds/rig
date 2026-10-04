@@ -2,10 +2,10 @@ use super::{
     ApiKeyRecord, AuthContext, AuthError, Authenticator, DeviceCodePrompt, refresh_api_key,
 };
 use crate::http_client::HttpClientExt;
-use crate::providers::internal::auth::{request, send_json};
-use crate::providers::internal::device_auth::{
+use crate::providers::internal::auth::device::{
     emit_device_code_prompt, ensure_parent_dir, read_json_record, token_expired, write_json_record,
 };
+use crate::providers::internal::auth::{request, send_json};
 use bytes::Bytes;
 use http::Method;
 use serde::Deserialize;

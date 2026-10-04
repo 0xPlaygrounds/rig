@@ -14,21 +14,21 @@ fn assistant(text: &str) -> Message {
 }
 
 fn tool_call_msg() -> Message {
-    Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::ToolCall(ToolCall::new(
+    Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        AssistantContent::ToolCall(ToolCall::new(
             CallId::from_wire("call_1"),
             ToolFunction::new(
                 rig_core::message::ToolName::new("t").expect("tool name"),
                 serde_json::json!({}),
             ),
-        ))],
-    }
+        )),
+    ]))
 }
 
 fn tool_result_msg() -> Message {
     Message::User {
         content: vec![UserContent::ToolResult(ToolResult {
+            is_error: false,
             call: rig_core::message::CallId::from_wire("call_1"),
             name: rig_core::message::ToolName::new("t").expect("tool name"),
             content: vec![ToolResultContent::text("ok")],
@@ -142,10 +142,7 @@ fn mixed_tool_exchange() -> Vec<Message> {
         results.push(UserContent::text("Result received."));
     }
     vec![
-        Message::Assistant {
-            id: None,
-            content: calls,
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(calls)),
         Message::User { content: results },
     ]
 }

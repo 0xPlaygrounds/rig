@@ -80,20 +80,29 @@
           "choice": [
             {
               "type": "text",
-              "text": "GAMMA-33 ZULU-99"
+              "text": "GAMMA-33 ZULU-99",
+              "native": {
+                "item": {
+                  "text": "GAMMA-33 ZULU-99"
+                },
+                "fingerprint": "456f696721a2c6b8"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 53,
+            "input_tokens": 52,
             "output_tokens": 60,
-            "total_tokens": 113,
+            "total_tokens": 112,
             "reasoning_tokens": 51
           },
-          "message_id": null,
-          "response_id": "pXizar31Ooi-qtsPpfaNwQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "PRDAarjIHYCoqtsP3L2PqQM"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -110,19 +119,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "pXizar31Ooi-qtsPpfaNwQQ",
+            "responseId": "PRDAarjIHYCoqtsP3L2PqQM",
             "usageMetadata": {
               "candidatesTokenCount": 9,
-              "promptTokenCount": 53,
+              "promptTokenCount": 52,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 53
+                  "tokenCount": 52
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 51,
-              "totalTokenCount": 113
+              "totalTokenCount": 112
             }
           }
         }

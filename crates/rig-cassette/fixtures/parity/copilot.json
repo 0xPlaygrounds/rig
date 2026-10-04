@@ -4,7 +4,7 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on performance, safety, and concurrency, enforcing memory safety without a garbage collector. Memory safety matters to prevent common bugs like null pointer dereferencing or data races, which can lead to crashes or security vulnerabilities.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -14,7 +14,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -126,15 +125,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "first_name": "Ada",
             "last_name": "Lovelace",
             "job": "mathematician"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "6f8222bd0cb32fd5"
+          }
         }
       }
     ],
@@ -145,7 +152,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
@@ -249,15 +255,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 55,
             "name": "Bob Johnson",
             "profession": "retired teacher"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "a47ea9a6413b5ab1"
+          }
         }
       }
     ],
@@ -268,7 +282,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -355,15 +368,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 55,
             "name": "Bob Johnson",
             "profession": "retired teacher"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":55,\"name\":\"Bob Johnson\",\"profession\":\"retired teacher\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "913184daf54632d6"
+          }
         }
       }
     ],
@@ -374,7 +395,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -461,15 +481,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 30,
             "name": "John Doe",
             "profession": "software engineer"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":30,\"name\":\"John Doe\",\"profession\":\"software engineer\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "c00135dd3c435ac8"
+          }
         }
       }
     ],
@@ -480,7 +508,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -567,7 +594,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "city": "Springfield",
@@ -575,8 +601,17 @@
             "street": "123 Main St",
             "zip_code": "62701"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"city\":\"Springfield\",\"state\":\"IL\",\"street\":\"123 Main St\",\"zip_code\":\"62701\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "a70dec64fc949366"
+          }
         }
       }
     ],
@@ -587,7 +622,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -674,15 +708,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 45,
             "name": "Jane Smith",
             "profession": "data scientist"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":45,\"name\":\"Jane Smith\",\"profession\":\"data scientist\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "82512fff8459d3b4"
+          }
         }
       }
     ],
@@ -693,7 +735,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -780,15 +821,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "age": 25,
             "name": "Alice",
             "profession": "developer"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "728c3beb92d5624d"
+          }
         }
       }
     ],
@@ -799,7 +848,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -886,7 +934,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "city": "Cambridge",
@@ -894,8 +941,17 @@
             "street": "456 Oak Avenue",
             "zip_code": "02139"
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"city\":\"Cambridge\",\"state\":\"MA\",\"street\":\"456 Oak Avenue\",\"zip_code\":\"02139\"}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "7c80b43bd986330e"
+          }
         }
       }
     ],
@@ -906,7 +962,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -993,7 +1048,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
@@ -1002,8 +1056,17 @@
               "milk"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"store\",\"buying\",\"milk\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "4711f29471e159a6"
+          }
         }
       }
     ],
@@ -1014,7 +1077,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1101,7 +1163,6 @@
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
@@ -1112,8 +1173,17 @@
               "hate"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"dog\",\"cat\",\"pets\",\"love\",\"hate\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "0092a907ef0ded71"
+          }
         }
       }
     ],
@@ -1124,7 +1194,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1211,15 +1280,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_3",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": [
               "Putin"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[\"Putin\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_3",
+              "type": "function"
+            },
+            "fingerprint": "936af8b72f66f1ee"
+          }
         }
       }
     ],
@@ -1230,7 +1307,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_3",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1317,13 +1393,21 @@
       {
         "tool_call": {
           "id": "call_REDACTED_4",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": []
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_4",
+              "type": "function"
+            },
+            "fingerprint": "e238dcabaccb6653"
+          }
         }
       }
     ],
@@ -1334,7 +1418,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_4",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1421,14 +1504,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_5",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.9,
             "sentiment": 0.1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\":0.9,\"sentiment\":0.1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_5",
+              "type": "function"
+            },
+            "fingerprint": "704a1a405a4d6dd9"
+          }
         }
       }
     ],
@@ -1439,7 +1530,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_5",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1526,14 +1616,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_6",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.95,
             "sentiment": -1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\":0.95,\"sentiment\":-1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_6",
+              "type": "function"
+            },
+            "fingerprint": "b1fa4c2db602860a"
+          }
         }
       }
     ],
@@ -1544,7 +1642,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_6",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1631,13 +1728,21 @@
       {
         "tool_call": {
           "id": "call_REDACTED_7",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "names": []
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"names\":[]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_7",
+              "type": "function"
+            },
+            "fingerprint": "aa35eaab010999c0"
+          }
         }
       }
     ],
@@ -1648,7 +1753,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-DoeiBTLftGwzzunFKGuKWkUYYSZQy",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1735,27 +1839,43 @@
       {
         "tool_call": {
           "id": "call_REDACTED_8",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.9,
             "sentiment": 1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\": 0.9, \"sentiment\": 1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_8",
+              "type": "function"
+            },
+            "fingerprint": "ed279aa15c20a0be"
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_9",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "confidence": 0.8,
             "sentiment": -1
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"confidence\": 0.8, \"sentiment\": -1}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_9",
+              "type": "function"
+            },
+            "fingerprint": "cdbecfc1469c3e2d"
+          }
         }
       }
     ],
@@ -1766,7 +1886,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_7",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1861,15 +1980,23 @@
       {
         "tool_call": {
           "id": "call_REDACTED_10",
-          "item_id": null,
           "name": "submit",
           "arguments": {
             "topics": [
               "Putin"
             ]
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"topics\":[\"Putin\"]}",
+                "name": "submit"
+              },
+              "id": "call_REDACTED_10",
+              "type": "function"
+            },
+            "fingerprint": "8c311885a522f452"
+          }
         }
       }
     ],
@@ -1880,7 +2007,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_8",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -1966,7 +2092,7 @@
     "choice": [
       {
         "text": "Rust is a systems programming language focused on safety, speed, and concurrency, offering memory safety without needing a garbage collector. Memory safety matters to prevent issues like data races, null pointer dereferencing, and buffer overflows, which can lead to unpredictable behavior, security vulnerabilities, or crashes.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -1976,7 +2102,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2088,21 +2213,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "read_file_head",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "read_file_head"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "6e10b610da2aec72"
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "read_file_tail",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "read_file_tail"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "09cc45c10a533025"
+          }
         }
       }
     ],
@@ -2113,7 +2254,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-mini-2024-07-18",
@@ -2207,7 +2347,7 @@
     "choice": [
       {
         "text": "The last line of the file `test.txt` is: \"hello world\". However, I am unable to read the first line at this time.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2217,7 +2357,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-mini-2024-07-18",
@@ -2294,7 +2433,7 @@
     "choice": [
       {
         "text": "Alright, buckle up! Let’s start with some giggles:\n\nWhy don’t skeletons fight each other?\n\n**Because they don’t have the guts!** 🦴😂\n\n---\n\nDid you hear about the mathematician who’s afraid of negative numbers?\n\n**He’ll stop at nothing to avoid them.** ➖\n\n---\n\nWhat’s orange, sounds like a parrot, and makes no sense?\n\n**A carrot.** 🥕\n\n---\n\nAnd if none of these work, just remember: I’ve told a lot of jokes in my life... but never one in space.  \nBecause **it’s impossible to follow through when there’s no atmosphere.**\n\n---\n\nYour turn! What's your favorite type of joke? I'll hit you with the best one in my arsenal.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2304,7 +2443,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -2415,7 +2553,7 @@
     "choice": [
       {
         "text": "The next solar eclipse is an **annular solar eclipse** on **October 14, 2023**. It will be visible across parts of the **Western Hemisphere**, including the western United States, Central America, and South America.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2425,23 +2563,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 28,
         "completion_tokens": 49,
-        "total_tokens": 77,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 28,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 77
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2509,7 +2647,7 @@
     "choice": [
       {
         "text": "A solar eclipse occurs when the Moon passes between the Earth and the Sun, temporarily blocking all or part of the Sun's light from reaching the Earth. This alignment happens only during a new moon and can result in a total, partial, or annular eclipse, depending on the Moon's distance from Earth and the observer's location. The phenomenon is visible only from specific regions along the Moon's shadow path.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2519,23 +2657,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 35,
         "completion_tokens": 82,
-        "total_tokens": 117,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 35,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 117
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2604,14 +2742,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "subtract",
           "arguments": {
             "x": 2,
             "y": 5
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\":2,\"y\":5}",
+                "name": "subtract"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "1cc4684b4589a826"
+          }
         }
       }
     ],
@@ -2622,23 +2768,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 136,
         "completion_tokens": 18,
-        "total_tokens": 154,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 136,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 154
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2706,7 +2852,7 @@
     "choice": [
       {
         "text": "The result of 2 - 5 is -3.",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2716,23 +2862,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 162,
         "completion_tokens": 14,
-        "total_tokens": 176,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 162,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 176
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -2801,11 +2947,19 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "fe8e00cc819cb428"
+          }
         }
       }
     ],
@@ -2816,23 +2970,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 110,
         "completion_tokens": 14,
-        "total_tokens": 124,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 110,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 124
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -2900,7 +3054,7 @@
     "choice": [
       {
         "text": "The harbor label is \"crimson-harbor.\"",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -2910,23 +3064,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 67,
         "completion_tokens": 12,
-        "total_tokens": 79,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 67,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 79
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -2995,11 +3149,19 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "ping",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "ping"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "3acffcf0f9d74934"
+          }
         }
       }
     ],
@@ -3010,23 +3172,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 57,
         "completion_tokens": 11,
-        "total_tokens": 68,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 57,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 68
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3095,21 +3257,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "fe8e00cc819cb428"
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "lookup_orchard_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_orchard_label"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "e1ddd11cf4b2ab8c"
+          }
         }
       }
     ],
@@ -3120,23 +3298,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 157,
         "completion_tokens": 46,
-        "total_tokens": 203,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 157,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 203
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3205,14 +3383,22 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "subtract",
           "arguments": {
             "x": 2,
             "y": 5
           },
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\":2,\"y\":5}",
+                "name": "subtract"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "1cc4684b4589a826"
+          }
         }
       }
     ],
@@ -3223,23 +3409,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 122,
         "completion_tokens": 18,
-        "total_tokens": 140,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 122,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 140
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3307,7 +3493,7 @@
     "choice": [
       {
         "text": "\\( 2 - 5 = -3 \\)",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3317,23 +3503,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 148,
         "completion_tokens": 13,
-        "total_tokens": 161,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 148,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 161
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -3402,21 +3588,37 @@
       {
         "tool_call": {
           "id": "call_REDACTED_1",
-          "item_id": null,
           "name": "lookup_harbor_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_harbor_label"
+              },
+              "id": "call_REDACTED_1",
+              "type": "function"
+            },
+            "fingerprint": "fe8e00cc819cb428"
+          }
         }
       },
       {
         "tool_call": {
           "id": "call_REDACTED_2",
-          "item_id": null,
           "name": "lookup_orchard_label",
           "arguments": {},
-          "signature": null,
-          "additional_params": null
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{}",
+                "name": "lookup_orchard_label"
+              },
+              "id": "call_REDACTED_2",
+              "type": "function"
+            },
+            "fingerprint": "e1ddd11cf4b2ab8c"
+          }
         }
       }
     ],
@@ -3427,23 +3629,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "tool_calls",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 157,
         "completion_tokens": 46,
-        "total_tokens": 203,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 157,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 203
       },
       "finish_reason": "tool_calls",
       "response_id": "chatcmpl-REDACTED_1",
@@ -3511,7 +3713,7 @@
     "choice": [
       {
         "text": "The alpha signal marker is \"crimson-harbor\" and the beta signal marker is \"silver-orchard\".",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3521,23 +3723,23 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
     "provider_request_id": null,
     "raw": {
       "usage": {
-        "prompt_tokens": 225,
         "completion_tokens": 26,
-        "total_tokens": 251,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 225,
         "prompt_tokens_details": {
           "cached_tokens": 0
         },
-        "completion_tokens_details": {
-          "reasoning_tokens": 0
-        },
-        "reasoning_tokens": 0
+        "reasoning_tokens": 0,
+        "total_tokens": 251
       },
       "finish_reason": "stop",
       "response_id": "chatcmpl-REDACTED_2",
@@ -3605,7 +3807,7 @@
     "choice": [
       {
         "text": "{\"city\":\"New York City\",\"current\":{\"description\":\"Mostly sunny\",\"humidity_pct\":60,\"temperature_f\":75.0}}",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3615,7 +3817,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3726,7 +3927,7 @@
     "choice": [
       {
         "text": "{\"city\":\"Los Angeles\",\"current\":{\"description\":\"Sunny\",\"humidity_pct\":40,\"temperature_f\":75.0}}",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3736,7 +3937,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_2",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3847,7 +4047,7 @@
     "choice": [
       {
         "text": "{\"city\":\"Chicago\",\"current\":{\"description\":\"Partly cloudy\",\"humidity_pct\":65,\"temperature_f\":55.0}}",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3857,7 +4057,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_3",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",
@@ -3968,7 +4167,7 @@
     "choice": [
       {
         "text": "{\"category\":\"Technology Meetups\",\"summary\":\"A gathering for Rust programming enthusiasts to network and share knowledge.\",\"title\":\"Rust Enthusiasts Seattle Meetup\"}",
-        "additional_params": null
+        "native": null
       }
     ],
     "usage": {
@@ -3978,7 +4177,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0
     },
-    "message_id": null,
     "response_id": "chatcmpl-REDACTED_1",
     "finish_reason": "stop",
     "model": "gpt-4o-2024-11-20",

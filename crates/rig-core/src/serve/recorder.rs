@@ -70,6 +70,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// An error item at its original position in a kept stream. Unlike the
     /// folded outcome, this includes errors after an earlier terminal item.
     fn stream_error(&self, _id: EffectId, _error: &ErrorReport) {}
+    /// Who the streamed reply of `id` is from, before its first item, when
+    /// [`keep_events`](Self::keep_events) says so.
+    fn origin(&self, id: EffectId, origin: &crate::message::Origin);
     /// Explicitly published tool output, delivered before `resolve`. A driver
     /// snapshots it without consuming the caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);

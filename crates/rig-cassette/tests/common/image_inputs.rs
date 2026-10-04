@@ -136,10 +136,10 @@ pub async fn as_tool_result<W, T>(
         .expect("the model calls render_swatch");
     let history = vec![
         prompt,
-        Message::Assistant {
-            id: first.message_id.clone(),
+        Message::Assistant(rig_core::message::AssistantMessage {
             content: first.choice.clone(),
-        },
+            ..first.head()
+        }),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),

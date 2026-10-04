@@ -154,8 +154,18 @@
                   "y": 3
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 2,
+                      "y": 3
+                    },
+                    "name": "add"
+                  }
+                },
+                "fingerprint": "f5a095034c79f7b3"
+              }
             }
           ],
           "usage": {
@@ -163,11 +173,14 @@
             "output_tokens": 18,
             "total_tokens": 90
           },
-          "message_id": null,
-          "response_id": "p3izar7ZKLrVz7IP_6PO0Qc",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "kg3Bat-vGeqfz7IPoLWP6Qc"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -191,7 +204,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "p3izar7ZKLrVz7IP_6PO0Qc",
+            "responseId": "kg3Bat-vGeqfz7IPoLWP6Qc",
             "usageMetadata": {
               "candidatesTokenCount": 18,
               "promptTokenCount": 72,
@@ -258,7 +271,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -272,10 +284,28 @@
                       "y": 3
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "x": 2,
+                          "y": 3
+                        },
+                        "name": "add"
+                      }
+                    },
+                    "fingerprint": "f5a095034c79f7b3"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "kg3Bat-vGeqfz7IPoLWP6Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -340,7 +370,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "The sum of 2 and 3 is 5."
+              "text": "The sum of 2 and 3 is 5.",
+              "native": {
+                "item": {
+                  "text": "The sum of 2 and 3 is 5."
+                },
+                "fingerprint": "04268375e36733b1"
+              }
             }
           ],
           "usage": {
@@ -348,11 +384,14 @@
             "output_tokens": 12,
             "total_tokens": 115
           },
-          "message_id": null,
-          "response_id": "qHizatjDEaWhz7IP7aXA-QY",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "kg3BavOlOPuez7IPnq3-KA"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -369,7 +408,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "qHizatjDEaWhz7IP7aXA-QY",
+            "responseId": "kg3BavOlOPuez7IPnq3-KA",
             "usageMetadata": {
               "candidatesTokenCount": 12,
               "promptTokenCount": 103,

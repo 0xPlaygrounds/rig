@@ -9,7 +9,9 @@
 //! assert_eq!(request.temperature, Some(0.5));
 //! ```
 
-use super::message::{AssistantContent, DocumentMediaType, Reasoning, ReasoningContent, ToolCall};
+use super::message::{
+    AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
+};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::{
@@ -174,54 +176,47 @@ impl FinishReason {
 /// available through [`Self::raw`] without retaining a concrete model type.
 ///
 /// A response goes straight back into the conversation as the assistant
-/// turn: `history.push(response.into())`.
+/// turn: `history.extend(response.message())`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
-    /// Assistant content returned by the provider, possibly empty.
+    /// Assistant content returned by the provider, one block per provider
+    /// output item, in provider order. Possibly empty.
     pub choice: Vec<AssistantContent>,
     /// Tokens used during prompting and responding
     pub usage: Usage,
-    /// Provider-issued assistant message ID suitable for replay in
-    /// [`Message::Assistant`]. Response-wide IDs belong in [`Self::response_id`].
-    #[serde(default)]
-    pub message_id: Option<String>,
-    /// Provider-issued response ID for telemetry and diagnostics.
-    /// Must not be replayed as an assistant message ID.
-    #[serde(default)]
-    pub response_id: Option<String>,
+    /// The wire, provider and requested model that produced the response,
+    /// with the model and response id the provider reported.
+    pub origin: Origin,
+    /// The provider's report that the turn failed, such as a refusal's
+    /// explanation. The turn's message then ends in [`StopReason::Error`]
+    /// and is never replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Why the reply stopped before the provider ended it, when the caller
+    /// stopped reading: the turn's message then ends in
+    /// [`StopReason::Aborted`] and is never replayed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aborted: Option<String>,
     /// Request identifier from HTTP headers or SDK metadata, not the body's
-    /// message or response ID. `None` when the provider reports none.
+    /// response ID. `None` when the provider reports none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_request_id: Option<String>,
     /// Reported finish reason, reconciled by the setters with tool-call output.
     /// Read through [`Self::finish_reason`].
     #[serde(default)]
     finish_reason: Option<FinishReason>,
-    /// Stable descriptor name of the provider that produced this response, for
-    /// example `"openai"`. Always populated, including for responses derived
-    /// from a stream that ended before its terminal record.
-    pub provider: String,
-    /// Provider-reported model identifier for the response.
-    ///
-    /// This is the model named by the wire response, not the model that was
-    /// requested; it is `None` when the provider reports no identifier.
-    #[serde(default)]
-    pub model: Option<String>,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
     pub raw: serde_json::Value,
 }
 
-/// Distinct message, response, and transport identifiers for one model call.
+/// Distinct response and transport identifiers for one model call.
 /// Unreported identifiers remain `None`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResponseIdentity {
-    /// Provider-issued assistant message ID suitable for replay.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub message_id: Option<String>,
-    /// Response-wide ID, never replayed as a message ID.
+    /// Response-wide ID.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
     /// Transport request ID from HTTP headers or SDK metadata.
@@ -236,20 +231,34 @@ impl CompletionResponse {
     pub fn new(
         choice: Vec<AssistantContent>,
         usage: Usage,
-        provider: impl Into<String>,
+        origin: Origin,
         raw: serde_json::Value,
     ) -> Self {
         Self {
             choice,
             usage,
-            message_id: None,
-            response_id: None,
+            origin,
+            error: None,
+            aborted: None,
             provider_request_id: None,
             finish_reason: None,
-            provider: provider.into(),
-            model: None,
             raw,
         }
+    }
+
+    /// The provider descriptor name (`"openai"`).
+    pub fn provider(&self) -> &str {
+        &self.origin.provider
+    }
+
+    /// The model the provider reported, when it reported one.
+    pub fn model(&self) -> Option<&str> {
+        self.origin.response_model.as_deref()
+    }
+
+    /// The provider's response id, when it sent one.
+    pub fn response_id(&self) -> Option<&str> {
+        self.origin.response_id.as_deref()
     }
 
     /// Why the model stopped generating, when the provider reported it.
@@ -257,11 +266,38 @@ impl CompletionResponse {
         self.finish_reason.clone()
     }
 
+    /// How the turn ended, for history. It fails closed: only a natural
+    /// stop, the token limit and a stop to call tools are successes. A
+    /// reported failure, filtered content and any finish reason outside
+    /// that set are [`StopReason::Error`]; a reply the caller stopped
+    /// reading is [`StopReason::Aborted`].
+    pub fn stop(&self) -> StopReason {
+        if let Some(error) = &self.error {
+            return StopReason::Error(error.clone());
+        }
+        if let Some(reason) = &self.aborted {
+            return StopReason::Aborted(reason.clone());
+        }
+        match &self.finish_reason {
+            Some(FinishReason::Length) => StopReason::Length,
+            Some(FinishReason::ToolCalls) => StopReason::ToolUse,
+            Some(FinishReason::ContentFilter) => {
+                StopReason::Error("Provider finish_reason: content_filter".to_owned())
+            }
+            Some(FinishReason::Other(reason)) => {
+                StopReason::Error(format!("Provider finish_reason: {reason}"))
+            }
+            Some(FinishReason::Stop) | None if self.tool_calls().next().is_some() => {
+                StopReason::ToolUse
+            }
+            Some(FinishReason::Stop) | None => StopReason::Stop,
+        }
+    }
+
     /// This response's identity metadata as one [`ResponseIdentity`] carrier.
     pub fn identity(&self) -> ResponseIdentity {
         ResponseIdentity {
-            message_id: self.message_id.clone(),
-            response_id: self.response_id.clone(),
+            response_id: self.origin.response_id.clone(),
             provider_request_id: self.provider_request_id.clone(),
         }
     }
@@ -283,30 +319,60 @@ impl CompletionResponse {
             .collect()
     }
 
-    /// The reasoning text of [`Self::choice`] (text and summaries), concatenated
-    /// in order. Encrypted and redacted reasoning has no text.
+    /// The reasoning text of [`Self::choice`], concatenated in order.
+    /// Redacted reasoning has no text.
     pub fn reasoning(&self) -> String {
         self.choice
             .iter()
             .filter_map(|part| match part {
-                AssistantContent::Reasoning(reasoning) => {
-                    reasoning.open(reasoning.issuer()).map(reasoning_text)
-                }
+                AssistantContent::Reasoning(reasoning) => Some(reasoning.text.as_str()),
                 _ => None,
             })
             .collect()
     }
 
     /// The assistant turn to append to the conversation: [`Self::choice`] in
-    /// order under the provider's message id, or `None` for an empty choice.
+    /// order with its origin and stop, or `None` for an
+    /// empty choice.
     pub fn message(&self) -> Option<Message> {
         if self.choice.is_empty() {
             return None;
         }
-        Some(Message::Assistant {
-            id: self.message_id.clone(),
+        Some(Message::Assistant(AssistantMessage {
             content: self.choice.clone(),
-        })
+            ..self.head()
+        }))
+    }
+
+    /// The turn this response began, holding `content`, for a runtime that
+    /// cut the reply short and answers its calls itself (an agent rolling a
+    /// turn back over an invalid call). It keeps the origin, and stops to
+    /// call tools, since the runtime answers them. A block keeps its provider
+    /// item only when this response holds the same block with it. A response
+    /// the provider did not end, or one the consumer has not wholly taken,
+    /// holds no provider item, so its turn replays canonically.
+    pub fn continued(&self, content: Vec<AssistantContent>) -> AssistantMessage {
+        let content = content
+            .into_iter()
+            .map(|block| {
+                if self.choice.contains(&block) {
+                    block
+                } else {
+                    crate::operation::completion::canonical(block)
+                }
+            })
+            .collect();
+        AssistantMessage::rolled_back(Some(self.origin.clone()), content)
+    }
+
+    /// The turn's origin and stop with no content, for a
+    /// runtime that carries the content separately.
+    pub fn head(&self) -> AssistantMessage {
+        AssistantMessage {
+            content: Vec::new(),
+            origin: Some(self.origin.clone()),
+            stop: Some(self.stop()),
+        }
     }
 
     /// The tool calls in [`Self::choice`], in order.
@@ -329,36 +395,21 @@ impl CompletionResponse {
     }
 }
 
-/// The text and summaries of one reasoning part, concatenated in order.
-pub(crate) fn reasoning_text(reasoning: &Reasoning) -> String {
-    reasoning
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            ReasoningContent::Text { text, .. } => Some(text.as_str()),
-            ReasoningContent::Summary(summary) => Some(summary.as_str()),
-            ReasoningContent::Encrypted(_) | ReasoningContent::Redacted { .. } => None,
-        })
-        .collect()
-}
-
 /// Deserialization shape routed through builders for finish-reason reconciliation
 /// and empty-identifier normalization.
 #[derive(Deserialize)]
 struct CompletionResponseRepr {
     choice: Vec<AssistantContent>,
     usage: Usage,
+    origin: Origin,
     #[serde(default)]
-    message_id: Option<String>,
+    error: Option<String>,
     #[serde(default)]
-    response_id: Option<String>,
+    aborted: Option<String>,
     #[serde(default)]
     provider_request_id: Option<String>,
     #[serde(default)]
     finish_reason: Option<FinishReason>,
-    provider: String,
-    #[serde(default)]
-    model: Option<String>,
     raw: serde_json::Value,
 }
 
@@ -367,21 +418,21 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         let CompletionResponseRepr {
             choice,
             usage,
-            message_id,
-            response_id,
+            mut origin,
+            error,
+            aborted,
             provider_request_id,
             finish_reason,
-            provider,
-            model,
             raw,
         } = repr;
         use crate::provider_response::reported;
+        origin.response_id = reported(origin.response_id);
+        origin.response_model = reported(origin.response_model);
         let mut response =
-            Self::new(choice, usage, provider, raw).with_optional_finish_reason(finish_reason);
-        response.message_id = reported(message_id);
-        response.response_id = reported(response_id);
+            Self::new(choice, usage, origin, raw).with_optional_finish_reason(finish_reason);
+        response.error = error;
+        response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);
-        response.model = reported(model);
         response
     }
 }
@@ -560,8 +611,8 @@ impl CompletionRequest {
     ///
     /// Every wire rejects an empty turn, so this turns a remote 400 into a
     /// local error. It checks the request direction only: a provider may
-    /// return empty assistant content, and each wire judges its own replies
-    /// with [`crate::message::require_non_empty`]. `System` content is a
+    /// return empty assistant content, which the reply keeps and the
+    /// runtime judges. `System` content is a
     /// `String` and is not checked. A tool result holding one empty text
     /// block is not empty.
     ///
@@ -589,7 +640,7 @@ impl CompletionRequest {
         for (index, message) in self.chat_history.iter().enumerate() {
             match message {
                 Message::System { .. } => {}
-                Message::Assistant { content, .. } => {
+                Message::Assistant(AssistantMessage { content, .. }) => {
                     if content.is_empty() {
                         return Err(empty_message("assistant", index));
                     }
@@ -598,51 +649,11 @@ impl CompletionRequest {
                     if content.is_empty() {
                         return Err(empty_message("user", index));
                     }
-                    for (position, item) in content.iter().enumerate() {
-                        // Exhaustive, so a new variant with its own block
-                        // list decides here whether its emptiness is checked.
-                        match item {
-                            UserContent::ToolResult(result) if result.content.is_empty() => {
-                                let name = &result.name;
-                                return Err(ProviderError::request(format!(
-                                    "tool result for `{name}` at index {position} of the user \
-                                     message at index {index} has no content; providers \
-                                     reject empty content blocks"
-                                )));
-                            }
-                            UserContent::ToolResult(_)
-                            | UserContent::Text(_)
-                            | UserContent::Image(_)
-                            | UserContent::Audio(_)
-                            | UserContent::Video(_)
-                            | UserContent::Document(_) => {}
-                        }
-                    }
                 }
             }
         }
 
         Ok(())
-    }
-
-    /// This request as a service replaying reasoning `issuers` issued reads
-    /// it: assistant messages holding only reasoning none of them opens are
-    /// left out ([`Message::replays_to`]). A wire reads each remaining
-    /// reasoning part through [`Sealed::open_for`](crate::message::Sealed::open_for).
-    ///
-    /// Returns a request error when nothing is left to send.
-    pub fn replayable_to(
-        mut self,
-        issuers: &[crate::message::Issuer],
-    ) -> Result<Self, crate::error::EncodeError> {
-        self.chat_history
-            .retain(|message| message.replays_to(issuers));
-        if self.chat_history.is_empty() {
-            return Err(crate::error::EncodeError::request(
-                "no message is left once reasoning another service issued is left out",
-            ));
-        }
-        Ok(self)
     }
 
     /// Extracts a name from the output schema's `"title"` field, falling back to `"response_schema"`.
@@ -687,15 +698,24 @@ impl CompletionRequest {
     }
 }
 
-/// Insert `message` at the first non-system position so document context lands
-/// after any leading system messages; telemetry and the sent request must
+/// Place the documents message `message` at the first non-system position,
+/// so document context lands after any leading system messages. A user
+/// message already there takes the documents at its front instead, so the
+/// history keeps alternating roles. Telemetry and the sent request must
 /// agree on this placement.
 fn insert_after_leading_system(chat_history: &mut Vec<Message>, message: Message) {
     let insert_at = chat_history
         .iter()
         .position(|message| !matches!(message, Message::System { .. }))
         .unwrap_or(chat_history.len());
-    chat_history.insert(insert_at, message);
+    match (chat_history.get_mut(insert_at), message) {
+        (Some(Message::User { content }), Message::User { content: documents })
+            if !content.is_empty() =>
+        {
+            content.splice(0..0, documents);
+        }
+        (_, message) => chat_history.insert(insert_at, message),
+    }
 }
 
 fn merge_provider_tools_into_additional_params(
@@ -725,7 +745,7 @@ fn merge_provider_tools_into_additional_params(
         _ => serde_json::Map::new(),
     };
 
-    let mut merged_tools = match params_map.remove("tools") {
+    let mut merged_tools = match params_map.shift_remove("tools") {
         Some(serde_json::Value::Array(existing)) => existing,
         _ => Vec::new(),
     };

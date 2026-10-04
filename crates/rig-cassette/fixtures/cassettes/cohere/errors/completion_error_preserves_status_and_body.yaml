@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"command-does-not-exist"}'
+  body: '{"messages":[{"content":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","role":"user"}],"model":"command-does-not-exist"}'
 then:
   status: 404
   header:
   - name: content-type
     value: application/json
-  body: '{"id":"2da0d1db-941a-4db3-ba16-436533566b78","message":"model ''command-does-not-exist'' not found, make sure the correct model ID was used and that you have access to the model."}'
+  body: '{"id":"a9a94239-15e6-469e-93de-b3557cb3b5b2","message":"model ''command-does-not-exist'' not found, make sure the correct model ID was used and that you have access to the model."}'

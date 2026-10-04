@@ -9,8 +9,8 @@
 //! {"delta":{"stop_details":null,"stop_reason":"stop_sequence","stop_sequence":"charlie"},...}
 //! ```
 //!
-//! `MessageDelta` parsed that field and the adapter then dropped it:
-//! `StreamingCompletionResponse` had no slot for it, so the streamed terminal
+//! The decoder read that field and then dropped it: the terminal record
+//! had no slot for it, so the streamed terminal
 //! answered a request with strictly less than the blocking response answered
 //! the same request with (`CompletionResponse::stop_sequence` has carried it
 //! all along).
@@ -54,12 +54,6 @@
 //! | 24 | `blocking_max_tokens_control` | blocking twin of #13 | `None` | recorded |
 //! | 25 | `normalized_stream_single_sequence` | adjacent path: normalized stream | n/a | recorded |
 //! | 26 | `agent_stream_single_sequence` | adjacent path: agent stream | n/a | recorded |
-//! | 27 | `terminal_record_round_trips_stop_sequence` | serde of the record itself | `charlie` | unit |
-//! | 28 | `terminal_record_omits_absent_stop_sequence` | serde of the record itself | `None` | unit |
-//!
-//! Cells 27–28 are unit tests because they are about the *type's* serde
-//! contract, not about anything a provider turn can vary: no recording can
-//! witness whether `stop_sequence` is skipped when `None`.
 //!
 //! Cells 25–26 assert the adjacent surfaces that share the same terminal
 //! construction still behave: rig's normalized `CompletionResponse` deliberately has
@@ -70,10 +64,8 @@ use futures::StreamExt;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::driver::Model;
 use rig::providers::anthropic;
-use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;
 use rig_test_support::cassette_models::MapWire;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_stop_sequence_cassette;
@@ -112,10 +104,7 @@ fn weather_tool() -> ToolDefinition {
 }
 
 /// Drain a provider-native stream and return its terminal record.
-async fn raw_terminal(
-    model: &AnthropicModel,
-    request: CompletionRequest,
-) -> StreamingCompletionResponse {
+async fn raw_terminal(model: &AnthropicModel, request: CompletionRequest) -> serde_json::Value {
     let mut stream = model
         .stream(request)
         .expect("stop-sequence stream should open");
@@ -126,7 +115,7 @@ async fn raw_terminal(
         .finish()
         .await
         .expect("stream should yield a terminal record");
-    serde_json::from_value(record.raw).expect("the terminal's raw is the provider record")
+    record.raw
 }
 
 /// Anthropic's own blocking reply, read back out of
@@ -135,13 +124,12 @@ async fn raw_terminal(
 async fn provider_response(
     model: &AnthropicModel,
     request: CompletionRequest,
-) -> anthropic::completion::CompletionResponse {
+) -> serde_json::Value {
     let response = model
         .call(request)
         .await
         .expect("blocking stop-sequence request should succeed");
-    anthropic::completion::CompletionResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
+    response.raw
 }
 
 /// Assert the terminal record a streamed cell produced.
@@ -151,17 +139,17 @@ async fn provider_response(
 /// record mode the fixture is written by `finish_after_test`, so an in-body
 /// read would assert against the previous recording.
 fn assert_terminal(
-    terminal: &StreamingCompletionResponse,
+    terminal: &serde_json::Value,
     expected_sequence: Option<&str>,
     expected_reason: &str,
 ) {
     assert_eq!(
-        terminal.stop_sequence.as_deref(),
+        terminal["stop_sequence"].as_str(),
         expected_sequence,
         "the terminal record must carry the sequence the wire reported"
     );
     assert_eq!(
-        terminal.stop_reason.as_deref(),
+        terminal["stop_reason"].as_str(),
         Some(expected_reason),
         "unexpected stop reason"
     );
@@ -678,8 +666,8 @@ async fn blocking_single_sequence_parity() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let raw = provider_response(&model, request(LIST_PROMPT, &["charlie"], 64)).await;
-            assert_eq!(raw.stop_reason.as_deref(), Some("stop_sequence"));
-            assert_eq!(raw.stop_sequence.as_deref(), Some("charlie"));
+            assert_eq!(raw["stop_reason"].as_str(), Some("stop_sequence"));
+            assert_eq!(raw["stop_sequence"].as_str(), Some("charlie"));
         },
     )
     .await;
@@ -702,7 +690,7 @@ async fn blocking_second_listed_sequence_parity() {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let raw =
                 provider_response(&model, request(LIST_PROMPT, &["zulu", "charlie"], 64)).await;
-            assert_eq!(raw.stop_sequence.as_deref(), Some("charlie"));
+            assert_eq!(raw["stop_sequence"].as_str(), Some("charlie"));
         },
     )
     .await;
@@ -723,8 +711,8 @@ async fn blocking_end_turn_control() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let raw = provider_response(&model, request(LIST_PROMPT, &["zulu"], 64)).await;
-            assert_eq!(raw.stop_reason.as_deref(), Some("end_turn"));
-            assert_eq!(raw.stop_sequence, None);
+            assert_eq!(raw["stop_reason"].as_str(), Some("end_turn"));
+            assert!(raw["stop_sequence"].is_null());
         },
     )
     .await;
@@ -742,8 +730,8 @@ async fn blocking_max_tokens_control() {
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let raw = provider_response(&model, request(LIST_PROMPT, &["zulu"], 3)).await;
-            assert_eq!(raw.stop_reason.as_deref(), Some("max_tokens"));
-            assert_eq!(raw.stop_sequence, None);
+            assert_eq!(raw["stop_reason"].as_str(), Some("max_tokens"));
+            assert!(raw["stop_sequence"].is_null());
         },
     )
     .await;
@@ -816,42 +804,4 @@ async fn agent_stream_single_sequence() {
         "stop_sequence_terminal_matrix/agent_stream_single_sequence",
         Some("charlie"),
     );
-}
-
-// ---------------------------------------------------------------------------
-// 27–28: serde of the terminal record itself (no provider turn can vary this)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn terminal_record_round_trips_stop_sequence() {
-    let record = StreamingCompletionResponse {
-        stop_reason: Some("stop_sequence".to_string()),
-        stop_sequence: Some("charlie".to_string()),
-        ..Default::default()
-    };
-
-    let encoded = serde_json::to_value(&record).expect("terminal record should serialize");
-    assert_eq!(encoded["stop_sequence"], json!("charlie"));
-
-    let decoded: StreamingCompletionResponse =
-        serde_json::from_value(encoded).expect("terminal record should round-trip");
-    assert_eq!(decoded.stop_sequence.as_deref(), Some("charlie"));
-}
-
-#[test]
-fn terminal_record_omits_absent_stop_sequence() {
-    let record = StreamingCompletionResponse {
-        stop_reason: Some("end_turn".to_string()),
-        ..Default::default()
-    };
-
-    let encoded = serde_json::to_value(&record).expect("terminal record should serialize");
-    assert!(
-        encoded.get("stop_sequence").is_none(),
-        "an absent sequence must not be written as an explicit null: {encoded}"
-    );
-
-    let decoded: StreamingCompletionResponse =
-        serde_json::from_value(encoded).expect("terminal record should round-trip");
-    assert_eq!(decoded.stop_sequence, None);
 }

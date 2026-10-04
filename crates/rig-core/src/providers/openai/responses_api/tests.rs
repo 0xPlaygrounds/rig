@@ -1,35 +1,34 @@
 use super::*;
+use crate::error::EncodeError;
 use crate::error::ProviderError;
 use crate::message;
-use crate::test_utils::MockCompletionModel;
 use serde_json::json;
 use std::collections::HashMap;
 
 /// The choice a body's `output[]` folds to, through the ONE interpreter: the
 /// decoder's unary variant synthesizes the stream's events and the shared
 /// fold turns them into the response — the two steps a unary reply takes.
-pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantContent> {
-    let response = CompletionResponse {
-        id: "resp_1".to_string(),
-        object: ResponseObject::Response,
-        created_at: 0,
-        status: ResponseStatus::Completed,
-        error: None,
-        incomplete_details: None,
-        instructions: None,
-        max_output_tokens: None,
-        model: "gpt-5-mini".to_string(),
-        provider_reasoning: None,
-        reasoning_metadata: None,
-        reasoning_context: None,
-        usage: None,
-        output,
-        tools: Vec::new(),
-        additional_parameters: AdditionalParameters::default(),
-    };
-    wire::fold_body("openai", response)
-        .expect("the body folds")
-        .choice
+pub(super) fn folded_choice(output: Vec<Value>) -> Vec<completion::AssistantContent> {
+    let response = json!({
+        "id": "resp_1",
+        "object": "response",
+        "status": "completed",
+        "model": "gpt-5-mini",
+        "output": output,
+    });
+    fold_body(response).expect("the body folds").choice
+}
+
+/// A whole Responses body decoded as the OpenAI wire's unary reply.
+fn fold_body(response: Value) -> Result<completion::CompletionResponse, ProviderError> {
+    let body = serde_json::to_string(&response)?;
+    crate::test_utils::decode_reply(
+        &openai_wire("gpt-5-mini"),
+        &crate::completion::CompletionRequest::new("hello"),
+        crate::wire::Mode::Unary,
+        [crate::wire::WireFrame::Text(body)],
+        serde_json::Value::Null,
+    )
 }
 
 /// The OpenAI Responses wire, for the request-shaping assertions.
@@ -39,131 +38,35 @@ fn openai_wire(model: &str) -> wire::Responses {
 
 /// The Responses request a wire builds for a Rig request — the one
 /// conversion every caller reaches, whatever opened the socket.
-fn wire_request(
-    wire: &wire::Responses,
-    request: completion::CompletionRequest,
-) -> CompletionRequest {
-    wire.responses_request(request, vec![crate::message::Issuer::from("openai")], false)
+fn wire_request(wire: &wire::Responses, request: completion::CompletionRequest) -> Value {
+    wire.responses_request(request, false)
         .expect("request should convert")
 }
 
-#[test]
-fn output_text_extras_survive_generic_conversion_and_replay() {
-    // Ingest capture is unconditional: the wire's sibling keys ride the
-    // generic block under this wire's params key. Replay is gated: only
-    // this wire's serializer reads them back, value-equal.
-    let mut extras = Map::new();
-    extras.insert(
-        "annotations".to_string(),
-        json!([{"type": "url_citation", "url": "https://example.com"}]),
-    );
-    let wire = OutputText {
-        text: "cited".to_string(),
-        extras: extras.clone(),
-    };
-    let generic: completion::AssistantContent = AssistantContent::OutputText(wire).into();
-    let completion::AssistantContent::Text(text) = &generic else {
-        panic!("expected a text block, got: {generic:?}");
-    };
-    assert_eq!(
-        text.additional_params
-            .as_ref()
-            .and_then(|params| params.get(OPENAI_RESPONSES_EXTRAS_KEY)),
-        Some(&Value::Object(extras.clone()))
-    );
+/// The request the OpenAI wire for `model` builds for `request`.
+fn convert(model: &str, request: completion::CompletionRequest) -> Result<Value, EncodeError> {
+    openai_wire(model).responses_request(request, false)
+}
 
-    let replayed = OutputText::from_message_text(text.text.clone(), text.additional_params.clone());
-    assert_eq!(replayed.text, "cited");
-    assert_eq!(replayed.extras, extras);
+/// The request the OpenAI wire for `model` sends for `request`, prepared as
+/// the driver prepares it.
+fn prepared(model: &str, request: completion::CompletionRequest) -> Value {
+    use crate::wire::{Operation, Wire};
+    let wire = openai_wire(model);
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
+        .expect("the request prepares");
+    wire.responses_request(request, false)
+        .expect("request should convert")
+}
 
-    // Extras ride a serde flatten, so the reserved keys the named field
-    // and the tag own must never replay from history — a duplicate JSON
-    // key would let persisted data shadow the block's real text or tag.
-    let hostile = message::AdditionalParams::try_from_value(json!({
-        OPENAI_RESPONSES_EXTRAS_KEY: {
-            "text": "evil",
-            "type": "evil_type",
-            "annotations": ["kept"],
-        }
-    }))
-    .expect("object params");
-    let replayed = OutputText::from_message_text("real", hostile);
-    assert_eq!(replayed.text, "real");
-    assert!(replayed.extras.get("text").is_none());
-    assert!(replayed.extras.get("type").is_none());
-    assert_eq!(replayed.extras.get("annotations"), Some(&json!(["kept"])));
-    let wire = serde_json::to_value(&replayed).expect("serialize");
-    assert_eq!(wire.get("text"), Some(&json!("real")));
-
-    // Replay honors only this wire's extras: an empty text block
-    // annotated with a *foreign* wire's extras (the shape anthropic
-    // ingest writes for raw server-tool content) produces no Responses
-    // item at all — its extras cannot reach this wire, and an empty
-    // assistant item the wire never sent risks a rejection — while an
-    // `openai_responses`-annotated empty block still replays.
-    let foreign = message::Message::Assistant {
-        id: None,
-        content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                "anthropic_content": {"type": "server_tool_use", "id": "srv_1"}
-            }))
-            .expect("object params"),
-        })],
+/// The input items `message` alone becomes.
+fn input_items(message: completion::Message) -> Result<Vec<Value>, EncodeError> {
+    let wire = openai_wire("gpt-5");
+    let mut custom = Custom {
+        tools: Default::default(),
+        calls: Default::default(),
     };
-    let items: Vec<InputItem> = foreign.try_into().expect("convert");
-    assert!(
-        items.is_empty(),
-        "foreign-annotated empty block must produce no Responses item: {items:?}"
-    );
-
-    let own_annotated_empty = |id: Option<String>| message::Message::Assistant {
-        id,
-        content: vec![completion::AssistantContent::Text(message::Text {
-            text: String::new(),
-            additional_params: message::AdditionalParams::try_from_value(json!({
-                OPENAI_RESPONSES_EXTRAS_KEY: {"annotations": ["kept"]}
-            }))
-            .expect("object params"),
-        })],
-    };
-    // With a message id, the Assistant form carries the extras.
-    let items: Vec<InputItem> = own_annotated_empty(Some("msg_1".to_string()))
-        .try_into()
-        .expect("convert");
-    assert_eq!(
-        items.len(),
-        1,
-        "own-wire-annotated empty block must replay when deliverable: {items:?}"
-    );
-    let serialized = serde_json::to_value(&items).expect("serialize");
-    assert_eq!(
-        serialized[0]["content"][0]["annotations"],
-        json!(["kept"]),
-        "the replayed item must carry the extras: {serialized}"
-    );
-    // Without an id the only form is the bare-string `AssistantInput`,
-    // which cannot carry extras — an empty block is skipped rather than
-    // sent as a content-free item with its extras dropped.
-    let items: Vec<InputItem> = own_annotated_empty(None).try_into().expect("convert");
-    assert!(
-        items.is_empty(),
-        "undeliverable annotated empty block must be skipped: {items:?}"
-    );
-
-    // A bare block stays bare in both directions.
-    let bare: completion::AssistantContent =
-        AssistantContent::OutputText(OutputText::new("plain")).into();
-    let completion::AssistantContent::Text(text) = &bare else {
-        panic!("expected a text block, got: {bare:?}");
-    };
-    assert_eq!(text.additional_params, None);
-    assert!(
-        OutputText::from_message_text("plain", None)
-            .extras
-            .is_empty(),
-        "no params, no extras"
-    );
+    super::input(&[message], &wire, "gpt-5", &mut custom, false)
 }
 
 fn test_document(id: &str, text: &str) -> crate::completion::Document {
@@ -190,11 +93,16 @@ fn weather_tool_definition() -> completion::ToolDefinition {
 }
 
 fn rig_tool_result(content: message::ToolResultContent) -> message::Message {
+    rig_tool_result_of(vec![content])
+}
+
+fn rig_tool_result_of(content: Vec<message::ToolResultContent>) -> message::Message {
     message::Message::User {
         content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
+            is_error: false,
+            call: crate::message::CallId::from_wire("call-id"),
             name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content: vec![content],
+            content,
         })],
     }
 }
@@ -205,7 +113,7 @@ fn mixed_user_content_preserves_order_around_tool_results() {
         content: vec![
             message::UserContent::text("before"),
             message::UserContent::tool_result(
-                crate::message::CallId::from_dual_wire("result-id", "call-id".to_string()),
+                crate::message::CallId::from_wire("call-id"),
                 crate::message::ToolName::new("tool").expect("tool name"),
                 vec![message::ToolResultContent::text("tool output")],
             ),
@@ -213,291 +121,74 @@ fn mixed_user_content_preserves_order_around_tool_results() {
         ],
     };
 
-    let items = super::input_items(input, &["openai".into()]).expect("input item conversion");
+    let items = input_items(input).expect("input item conversion");
 
-    assert!(matches!(
-        items.as_slice(),
+    assert_eq!(
+        items,
         [
-            InputItem {
-                input: InputContent::Message(Message::User { content: before, .. }),
-                ..
-            },
-            InputItem {
-                input: InputContent::FunctionCallOutput(ToolResult { call_id, .. }),
-                ..
-            },
-            InputItem {
-                input: InputContent::Message(Message::User { content: after, .. }),
-                ..
-            },
-        ] if matches!(before.first(), Some(UserContent::InputText { text }) if text == "before")
-            && call_id == "call-id"
-            && matches!(after.first(), Some(UserContent::InputText { text }) if text == "after")
-    ));
-}
-
-fn reasoning_input_items(items: &[InputItem]) -> Vec<serde_json::Value> {
-    items
-        .iter()
-        .map(|item| serde_json::to_value(item).expect("input item should serialize"))
-        .filter(|value| value["type"] == "reasoning")
-        .collect()
-}
-
-/// F7 leak route (a): reasoning replayed cross-provider — another
-/// provider's stream aggregated under a boundary-minted id and swapped
-/// onto a Responses model — must not serialize the fabricated id
-/// upstream; the item is dropped like main dropped id-less reasoning.
-/// A wire-plausible id keeps round-tripping.
-#[tokio::test]
-async fn cross_provider_minted_reasoning_ids_are_not_serialized_upstream() {
-    use crate::test_utils::MockStreamEvent;
-    use futures::StreamExt as _;
-
-    // The constant-id shape gemini/ollama/chat-compat streams leave in
-    // history, via the mock model's streaming pipeline.
-    let model = MockCompletionModel::from_stream_turns([vec![
-        // A minted-key part, closed before the text as every adapter closes it.
-        MockStreamEvent::reasoning("thinking hard"),
-        MockStreamEvent::text("answer"),
-        MockStreamEvent::final_response_with_default_usage(),
-    ]]);
-    let request = crate::completion::CompletionRequest::new("hi");
-    let mut stream = model.stream(request).expect("mock stream");
-    while stream.next().await.is_some() {}
-    let choice = stream.finish().await.expect("the reply ended").choice;
-    // The provenance funnel: a minted stream identity never becomes the
-    // durable `Reasoning::id`, so the replayed history carries no id at
-    // all — there is nothing for a serializer gate to filter, and no
-    // gate exists.
-    assert!(
-        choice.iter().any(
-            |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                if reasoning.value().id.is_none())
-        ),
-        "a minted stream identity must aggregate as an id-less reasoning part"
-    );
-
-    let items = super::input_items(
-        crate::completion::Message::Assistant {
-            id: None,
-            content: choice,
-        },
-        &["openai".into()],
-    )
-    .expect("history should convert");
-    assert!(
-        reasoning_input_items(&items).is_empty(),
-        "an id-less reasoning part must not reach the request input"
-    );
-
-    // A wire-plausible id is provider-issued and must round-trip.
-    let items = super::input_items(
-        crate::completion::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::Reasoning(
-                message::Reasoning {
-                    id: Some("rs_0123".to_string()),
-                    content: vec![message::ReasoningContent::Text {
-                        text: "real item".to_string(),
-                        signature: None,
-                    }],
-                }
-                .sealed("openai"),
-            )],
-        },
-        &["openai".into()],
-    )
-    .expect("history should convert");
-    let reasoning = reasoning_input_items(&items);
-    assert_eq!(reasoning.len(), 1);
-    assert_eq!(reasoning[0]["id"], "rs_0123");
-}
-
-/// F7 leak route (b), closed structurally: a same-provider delta-only
-/// Responses stream whose reasoning deltas lack `item_id` keys
-/// accumulation by a minted identity that never becomes a durable id, so
-/// the next request carries no fabricated `output-{index}` item.
-#[tokio::test]
-async fn delta_only_stream_minted_output_ids_are_not_serialized_upstream() {
-    use crate::test_utils::streaming_conformance::{fixtures, ok_chunks};
-    use bytes::Bytes;
-
-    let sse = |frame: &serde_json::Value| Bytes::from(format!("data: {frame}\n\n"));
-    let frames = vec![
-        // No `item_id`: the streaming adapter mints `output-0`.
-        sse(&json!({
-            "type": "response.reasoning_text.delta",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 1,
-            "delta": "unattributed thought",
-        })),
-        sse(&json!({
-            "type": "response.completed",
-            "sequence_number": 2,
-            "response": {
-                "id": "resp_1",
-                "object": "response",
-                "created_at": 0,
-                "status": "completed",
-                "model": "gpt-5.4",
-                "output": [],
-                "tools": [],
-                "usage": null,
-            },
-        })),
-    ];
-    let drained = fixtures::openai_responses::driver()
-        .drive(ok_chunks(frames))
-        .await
-        .expect("stream should complete");
-    // The minted `output_index` identity keys accumulation only; the
-    // aggregated part carries no durable id, so nothing can go upstream.
-    assert!(
-        drained.choice.iter().any(
-            |content| matches!(content, message::AssistantContent::Reasoning(reasoning)
-                if reasoning.value().id.is_none())
-        ),
-        "an id-less delta stream must aggregate as an id-less reasoning part"
-    );
-
-    let items = super::input_items(
-        crate::completion::Message::Assistant {
-            id: None,
-            content: drained.choice,
-        },
-        &["openai".into()],
-    )
-    .expect("history should convert");
-    assert!(
-        reasoning_input_items(&items).is_empty(),
-        "an id-less reasoning part must not reach the request input"
+            json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "before"}]}),
+            json!({"type": "function_call_output", "call_id": "call-id", "output": "tool output", "status": "completed"}),
+            json!({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "after"}]}),
+        ]
     );
 }
 
 #[test]
 fn tool_result_literal_text_and_structured_json_render_without_reparsing() {
-    let cases = [
-        (
-            message::ToolResultContent::text(r#"{"status":"ok"}"#),
-            r#"{"status":"ok"}"#.to_string(),
-        ),
-        (
-            message::ToolResultContent::json(json!({ "status": "ok" })),
-            r#"{"status":"ok"}"#.to_string(),
-        ),
-    ];
-
-    for (content, expected) in cases {
-        let input = rig_tool_result(content);
-
-        let items: Vec<InputItem> = input.try_into().expect("input item conversion");
-        assert!(matches!(
-            items.as_slice(),
-            [InputItem {
-                input: InputContent::FunctionCallOutput(ToolResult {
-                    output: ToolResultOutput::Text(output),
-                    ..
-                }),
-                ..
-            }] if output == &expected
-        ));
+    for content in [
+        message::ToolResultContent::text(r#"{"status":"ok"}"#),
+        message::ToolResultContent::json(json!({ "status": "ok" })),
+    ] {
+        let items = input_items(rig_tool_result(content)).expect("input item conversion");
+        assert_eq!(items[0]["output"], json!(r#"{"status":"ok"}"#));
     }
 }
 
 #[test]
 fn multiple_text_tool_result_blocks_preserve_order_as_rich_function_output() {
-    let content = vec![
+    let input = rig_tool_result_of(vec![
         message::ToolResultContent::text("first"),
         message::ToolResultContent::text("second"),
-    ];
-
-    let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
-            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content,
-        })],
-    };
-
-    let expected = ToolResultOutput::Content(vec![
-        ToolResultOutputContent::InputText {
-            text: "first".to_string(),
-        },
-        ToolResultOutputContent::InputText {
-            text: "second".to_string(),
-        },
     ]);
 
-    let items: Vec<InputItem> = input.try_into().expect("input item conversion");
-
-    match items.as_slice() {
-        [
-            InputItem {
-                input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
-                ..
-            },
-        ] => {
-            assert_eq!(output, &expected);
-        }
-        other => panic!("expected one function-call output, got {other:?}"),
-    }
-
-    let wire = serde_json::to_value(&items[0]).expect("input item should serialize");
+    let items = input_items(input).expect("input item conversion");
 
     assert_eq!(
-        wire,
-        json!({
+        items,
+        [json!({
             "type": "function_call_output",
             "call_id": "call-id",
             "output": [
-                {
-                    "type": "input_text",
-                    "text": "first"
-                },
-                {
-                    "type": "input_text",
-                    "text": "second"
-                }
+                {"type": "input_text", "text": "first"},
+                {"type": "input_text", "text": "second"}
             ],
             "status": "completed"
-        })
+        })]
     );
 }
 
 #[test]
 fn multiple_text_and_json_tool_result_blocks_preserve_boundaries() {
-    let content = vec![
+    let output = super::result_output(&[
         message::ToolResultContent::text("before"),
-        message::ToolResultContent::json(json!({
-            "status": "ok"
-        })),
+        message::ToolResultContent::json(json!({"status": "ok"})),
         message::ToolResultContent::text("after"),
-    ];
-
-    let output =
-        responses_tool_result_output(content).expect("tool-result conversion should succeed");
+    ])
+    .expect("tool-result conversion should succeed");
 
     assert_eq!(
         output,
-        ToolResultOutput::Content(vec![
-            ToolResultOutputContent::InputText {
-                text: "before".to_string(),
-            },
-            ToolResultOutputContent::InputText {
-                text: r#"{"status":"ok"}"#.to_string(),
-            },
-            ToolResultOutputContent::InputText {
-                text: "after".to_string(),
-            },
+        json!([
+            {"type": "input_text", "text": "before"},
+            {"type": "input_text", "text": r#"{"status":"ok"}"#},
+            {"type": "input_text", "text": "after"},
         ])
     );
 }
 
 #[test]
 fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
-    let content = vec![
+    let input = rig_tool_result_of(vec![
         message::ToolResultContent::text("before"),
         message::ToolResultContent::image_base64(
             "aW1hZ2U=",
@@ -505,39 +196,17 @@ fn tool_result_images_and_text_preserve_order_as_rich_function_output() {
             None,
         ),
         message::ToolResultContent::json(json!({ "after": true })),
-    ];
-    let input = message::Message::User {
-        content: vec![message::UserContent::ToolResult(message::ToolResult {
-            call: crate::message::CallId::from_dual_wire("result-id", "call-id"),
-            name: crate::message::ToolName::new("tool".to_string()).expect("tool name"),
-            content,
-        })],
-    };
+    ]);
 
-    let assert_output = |output: &ToolResultOutput| {
-        assert!(matches!(
-            output,
-            ToolResultOutput::Content(content)
-                if matches!(content.as_slice(), [
-                    ToolResultOutputContent::InputText { text: before },
-                    ToolResultOutputContent::InputImage { image_url, .. },
-                    ToolResultOutputContent::InputText { text: after },
-                ] if before == "before"
-                    && image_url.as_deref() == Some("data:image/png;base64,aW1hZ2U=")
-                    && after == r#"{"after":true}"#)
-        ));
-    };
-
-    let items: Vec<InputItem> = input.try_into().expect("input item conversion");
-    match items.as_slice() {
-        [
-            InputItem {
-                input: InputContent::FunctionCallOutput(ToolResult { output, .. }),
-                ..
-            },
-        ] => assert_output(output),
-        other => panic!("expected one rich function output, got {other:?}"),
-    }
+    let items = input_items(input).expect("input item conversion");
+    assert_eq!(
+        items[0]["output"],
+        json!([
+            {"type": "input_text", "text": "before"},
+            {"type": "input_image", "image_url": "data:image/png;base64,aW1hZ2U=", "detail": "auto"},
+            {"type": "input_text", "text": r#"{"after":true}"#},
+        ])
+    );
 }
 
 #[test]
@@ -546,13 +215,12 @@ fn tool_result_file_id_image_uses_the_native_wire_field() {
         data: message::DocumentSourceKind::FileId("file-image-123".to_string()),
         media_type: None,
         detail: None,
-        additional_params: None,
+        native: None,
     }));
 
-    let items: Vec<InputItem> = input.try_into().expect("input item conversion");
-    let wire = serde_json::to_value(&items[0]).expect("serialize input item");
+    let items = input_items(input).expect("input item conversion");
     assert_eq!(
-        wire,
+        items[0],
         json!({
             "type": "function_call_output",
             "call_id": "call-id",
@@ -577,9 +245,8 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
         (message::ToolChoice::None, json!("none")),
         (message::ToolChoice::Required, json!("required")),
     ] {
-        let converted = ToolChoice::try_from(choice).expect("mode should convert");
         assert_eq!(
-            serde_json::to_value(&converted).expect("serialize tool choice"),
+            super::tool_choice(choice).expect("mode should convert"),
             expected
         );
     }
@@ -587,20 +254,20 @@ fn responses_tool_choice_modes_serialize_as_plain_strings() {
 
 #[test]
 fn responses_tool_choice_specific_single_name_serializes_as_named_function() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     })
     .expect("single specific tool should convert");
 
     assert_eq!(
-        serde_json::to_value(&converted).expect("serialize tool choice"),
+        converted,
         json!({"type": "function", "name": "get_weather"})
     );
 }
 
 #[test]
 fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![
             crate::message::ToolName::new("add").expect("tool name"),
             crate::message::ToolName::new("subtract").expect("tool name"),
@@ -609,7 +276,7 @@ fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
     .expect("multiple specific tools should convert");
 
     assert_eq!(
-        serde_json::to_value(&converted).expect("serialize tool choice"),
+        converted,
         json!({
             "type": "allowed_tools",
             "mode": "required",
@@ -623,7 +290,7 @@ fn responses_tool_choice_specific_multiple_names_serialize_as_allowed_tools() {
 
 #[test]
 fn responses_tool_choice_specific_empty_names_error() {
-    let converted = ToolChoice::try_from(message::ToolChoice::Specific {
+    let converted = super::tool_choice(message::ToolChoice::Specific {
         function_names: vec![],
     });
 
@@ -641,8 +308,7 @@ fn responses_request_with_specific_tool_choice_serializes_named_function() {
         function_names: vec![crate::message::ToolName::new("get_weather").expect("tool name")],
     });
 
-    let request = CompletionRequest::try_from(("gpt-test".to_string(), request)).expect("convert");
-    let request_json = serde_json::to_value(&request).expect("serialize request");
+    let request_json = convert("gpt-test", request).expect("convert");
 
     assert_eq!(
         request_json.get("tool_choice"),
@@ -740,11 +406,8 @@ fn system_only_request(system_text: &str) -> completion::CompletionRequest {
 
 #[test]
 fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
-    let req = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
-        request_with_preamble("You are concise."),
-    ))
-    .expect("request should convert");
+    let req = convert("gpt-4o-mini", request_with_preamble("You are concise."))
+        .expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -758,8 +421,7 @@ fn responses_request_uses_top_level_instructions_for_preamble_by_default() {
 #[test]
 fn responses_request_drops_whitespace_only_preamble() {
     let req =
-        CompletionRequest::try_from(("gpt-4o-mini".to_string(), request_with_preamble("  \n ")))
-            .expect("request should convert");
+        convert("gpt-4o-mini", request_with_preamble("  \n ")).expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -779,8 +441,7 @@ fn responses_request_lifts_system_messages_to_top_level_instructions_by_default(
         .preamble("System one")
         .message(completion::Message::system("System two"));
 
-    let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request should convert");
+    let req = convert("gpt-4o-mini", request).expect("request should convert");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -796,11 +457,8 @@ fn responses_request_lifts_system_messages_to_top_level_instructions_by_default(
 
 #[test]
 fn responses_request_with_only_system_messages_keeps_them_in_input() {
-    let req = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
-        system_only_request("System only"),
-    ))
-    .expect("request conversion should succeed");
+    let req = convert("gpt-4o-mini", system_only_request("System only"))
+        .expect("request conversion should succeed");
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -860,13 +518,10 @@ fn responses_wire_can_lift_all_system_messages_via_placement() {
 
 #[test]
 fn all_instructions_system_only_input_reports_non_system_requirement() {
-    let err = CompletionRequest::try_from(ResponsesRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        model: "gpt-4o-mini".to_string(),
-        request: system_only_request("System only"),
-        system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
-    })
-    .expect_err("system-only input should fail once every item is lifted");
+    let err = openai_wire("gpt-4o-mini")
+        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
+        .responses_request(system_only_request("System only"), false)
+        .expect_err("system-only input should fail once every item is lifted");
 
     assert!(
         err.to_string().contains("non-system item"),
@@ -876,13 +531,10 @@ fn all_instructions_system_only_input_reports_non_system_requirement() {
 
 #[test]
 fn all_instructions_whitespace_only_system_input_reports_non_system_requirement() {
-    let err = CompletionRequest::try_from(ResponsesRequestParams {
-        issuers: vec![crate::message::Issuer::from("openai")],
-        model: "gpt-4o-mini".to_string(),
-        request: system_only_request("   "),
-        system_instructions_placement: SystemInstructionsPlacement::AllInstructions,
-    })
-    .expect_err("whitespace-only system input should fail once every item is lifted");
+    let err = openai_wire("gpt-4o-mini")
+        .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
+        .responses_request(system_only_request("   "), false)
+        .expect_err("whitespace-only system input should fail once every item is lifted");
 
     assert!(
         err.to_string().contains("non-system item"),
@@ -893,13 +545,12 @@ fn all_instructions_whitespace_only_system_input_reports_non_system_requirement(
 
 #[test]
 fn responses_request_conversion_keeps_tools_non_strict_by_default() {
-    let req = CompletionRequest::try_from(("gpt-4o-mini".to_string(), weather_tool_request()))
-        .expect("request should convert");
+    let req = convert("gpt-4o-mini", weather_tool_request()).expect("request should convert");
 
-    let tool = &req.tools[0];
-    assert!(!tool.strict);
-    assert_eq!(tool.parameters["required"], json!(["location"]));
-    assert!(tool.parameters.get("additionalProperties").is_none());
+    let tool = &req["tools"][0];
+    assert_eq!(tool["strict"], json!(false));
+    assert_eq!(tool["parameters"]["required"], json!(["location"]));
+    assert!(tool["parameters"].get("additionalProperties").is_none());
 }
 
 #[test]
@@ -928,10 +579,16 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
 
     let req = wire_request(&wire, request);
 
-    assert_eq!(req.tools.len(), 3);
-    for tool in &req.tools {
-        assert!(tool.strict, "{} should be strict", tool.name);
-        assert_eq!(tool.parameters["additionalProperties"], json!(false));
+    let tools = req["tools"].as_array().expect("tools");
+    assert_eq!(tools.len(), 3);
+    for tool in tools {
+        assert_eq!(
+            tool["strict"],
+            json!(true),
+            "{} should be strict",
+            tool["name"]
+        );
+        assert_eq!(tool["parameters"]["additionalProperties"], json!(false));
     }
 }
 
@@ -951,10 +608,16 @@ fn responses_wire_default_preserves_all_function_tools_as_constructed() {
 
     let req = wire_request(&wire, request);
 
-    assert_eq!(req.tools.len(), 3);
-    for tool in &req.tools {
-        assert!(!tool.strict, "{} should not be strict", tool.name);
-        assert!(tool.parameters.get("additionalProperties").is_none());
+    let tools = req["tools"].as_array().expect("tools");
+    assert_eq!(tools.len(), 3);
+    for tool in tools {
+        assert_eq!(
+            tool["strict"],
+            json!(false),
+            "{} should not be strict",
+            tool["name"]
+        );
+        assert!(tool["parameters"].get("additionalProperties").is_none());
     }
 }
 
@@ -968,172 +631,12 @@ fn responses_explicit_strict_tool_stays_strict_on_a_default_wire() {
 
     let req = wire_request(&wire, weather_tool_request());
 
-    assert!(!req.tools[0].strict);
-    assert!(req.tools[1].strict);
+    assert_eq!(req["tools"][0]["strict"], json!(false));
+    assert_eq!(req["tools"][1]["strict"], json!(true));
     assert_eq!(
-        req.tools[1].parameters["additionalProperties"],
+        req["tools"][1]["parameters"]["additionalProperties"],
         json!(false)
     );
-}
-
-fn response_with_service_tier(service_tier: &str) -> Value {
-    json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.4",
-        "output": [],
-        "service_tier": service_tier,
-    })
-}
-
-#[test]
-fn completion_response_deserializes_standard_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("standard"))
-            .expect("response should deserialize");
-
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Standard)
-    ));
-}
-
-#[test]
-fn completion_response_deserializes_priority_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("priority"))
-            .expect("response should deserialize");
-
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Priority)
-    ));
-}
-
-#[test]
-fn completion_response_preserves_unknown_service_tier() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_service_tier("provider_experimental"))
-            .expect("response should deserialize");
-
-    let Some(OpenAIServiceTier::Other(service_tier)) = response.additional_parameters.service_tier
-    else {
-        panic!("expected provider-specific service tier");
-    };
-
-    assert_eq!(service_tier, "provider_experimental");
-}
-
-/// A response whose echoed `top_p` is object-shaped, as MiniMax-style
-/// Responses endpoints emit it, carrying a valid tool call (rig#2483).
-fn response_with_object_top_p() -> Value {
-    json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "MiniMax-M2",
-        "top_p": { "value": 0.95 },
-        "service_tier": "default",
-        "output": [{
-            "type": "function_call",
-            "id": "fc_1",
-            "call_id": "call_1",
-            "name": "get_weather",
-            "arguments": "{\"location\":\"Paris\"}",
-            "status": "completed"
-        }],
-        "usage": {
-            "input_tokens": 10,
-            "output_tokens": 5,
-            "total_tokens": 15
-        }
-    })
-}
-
-/// One optional metadata field disagreeing with its Rust type must never
-/// discard the response: the tool call and usage survive, `top_p` reads
-/// back as `None`, and sibling metadata still decodes (rig#2483).
-#[test]
-fn completion_response_tolerates_object_shaped_top_p() {
-    let response: CompletionResponse = serde_json::from_value(response_with_object_top_p())
-        .expect("an object-shaped top_p must not fail the response");
-
-    assert_eq!(response.additional_parameters.top_p, None);
-    assert!(matches!(
-        response.additional_parameters.service_tier,
-        Some(OpenAIServiceTier::Default)
-    ));
-    assert!(
-        matches!(response.output.first(), Some(Output::FunctionCall(call)) if call.name == "get_weather"),
-        "the tool call must survive metadata decode failures: {:?}",
-        response.output
-    );
-    assert_eq!(response.usage.map(|usage| usage.total_tokens), Some(15));
-}
-
-/// Numeric `top_p` still decodes — including under
-/// `serde_json/arbitrary_precision`, where a `#[serde(flatten)]` into `f64`
-/// used to reject it because buffered numbers arrive as an internal map
-/// (rig#2493). Run this module with and without that feature.
-#[test]
-fn completion_response_decodes_numeric_top_p() {
-    let mut body = response_with_object_top_p();
-    body["top_p"] = json!(0.95);
-    let response: CompletionResponse =
-        serde_json::from_str(&body.to_string()).expect("numeric top_p must decode");
-
-    assert_eq!(response.additional_parameters.top_p, Some(0.95));
-    assert!(matches!(
-        response.output.first(),
-        Some(Output::FunctionCall(_))
-    ));
-}
-
-/// The metadata projection is per key: a bad `top_p` does not take
-/// `service_tier` or `store` down with it, and vice versa.
-#[test]
-fn completion_response_drops_only_the_mistyped_metadata_key() {
-    let mut body = response_with_object_top_p();
-    body["store"] = json!("not-a-bool");
-    body["top_p"] = json!(0.5);
-    body["prompt_cache_key"] = json!("cache-1");
-    let response: CompletionResponse =
-        serde_json::from_value(body).expect("a mistyped store must not fail the response");
-
-    assert_eq!(response.additional_parameters.store, None);
-    assert_eq!(response.additional_parameters.top_p, Some(0.5));
-    assert_eq!(
-        response.additional_parameters.prompt_cache_key.as_deref(),
-        Some("cache-1")
-    );
-}
-
-/// The serializer still emits the echoed metadata it decoded, so a well-formed
-/// OpenAI body round-trips on every field the wire serializer writes.
-#[test]
-fn completion_response_round_trips_echoed_metadata() {
-    let mut body = response_with_object_top_p();
-    body["top_p"] = json!(1.0);
-    body["store"] = json!(true);
-    body["metadata"] = json!({ "k": "v" });
-    let response: CompletionResponse =
-        serde_json::from_value(body.clone()).expect("response should deserialize");
-    let serialized = serde_json::to_value(&response).expect("response should serialize");
-
-    for key in [
-        "top_p",
-        "store",
-        "metadata",
-        "service_tier",
-        "usage",
-        "output",
-        "model",
-    ] {
-        assert_eq!(serialized[key], body[key], "field {key} must round-trip");
-    }
 }
 
 #[test]
@@ -1144,8 +647,7 @@ fn responses_request_keeps_documents_after_lifted_system_messages() {
         .message(completion::Message::assistant("Earlier assistant turn"))
         .document(test_document("doc1", "Document text."));
 
-    let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request conversion should succeed");
+    let responses_request = prepared("gpt-4o-mini", request);
 
     let serialized = serde_json::to_value(&responses_request).expect("request should serialize");
     let input = serialized["input"]
@@ -1186,8 +688,7 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
     ])
     .documents(vec![test_document("doc1", "Document text.")]);
 
-    let responses_request = CompletionRequest::try_from(("gpt-4o-mini".to_string(), request))
-        .expect("request conversion should succeed");
+    let responses_request = prepared("gpt-4o-mini", request);
 
     let serialized = serde_json::to_value(&responses_request).expect("request should serialize");
     let input = serialized["input"]
@@ -1225,81 +726,8 @@ fn responses_direct_request_keeps_mid_conversation_system_messages_in_input() {
 }
 
 #[test]
-fn service_tier_serializes_expected_strings() {
-    let cases = [
-        (OpenAIServiceTier::Auto, "auto"),
-        (OpenAIServiceTier::Default, "default"),
-        (OpenAIServiceTier::Flex, "flex"),
-        (OpenAIServiceTier::Priority, "priority"),
-        (OpenAIServiceTier::Standard, "standard"),
-    ];
-
-    for (service_tier, expected) in cases {
-        assert_eq!(
-            serde_json::to_value(service_tier).expect("service tier should serialize"),
-            json!(expected)
-        );
-    }
-
-    assert_eq!(
-        serde_json::to_value(OpenAIServiceTier::Other(
-            "provider_experimental".to_string()
-        ))
-        .expect("provider-specific service tier should serialize"),
-        json!("provider_experimental")
-    );
-}
-
-#[test]
-fn responses_usage_token_usage_preserves_reasoning_tokens() {
-    let usage = ResponsesUsage {
-        input_tokens: 100,
-        input_tokens_details: Some(InputTokensDetails {
-            cached_tokens: 25,
-            cache_write_tokens: None,
-        }),
-        output_tokens: 50,
-        output_tokens_details: Some(OutputTokensDetails {
-            reasoning_tokens: 15,
-        }),
-        total_tokens: 150,
-    };
-
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(100));
-    assert_eq!(token_usage.cached_input_tokens, Some(25));
-    assert_eq!(token_usage.output_tokens, Some(50));
-    assert_eq!(token_usage.reasoning_tokens, Some(15));
-    assert_eq!(token_usage.total_tokens, Some(150));
-}
-
-#[test]
-fn responses_usage_deserializes_without_output_token_details() {
-    let usage: ResponsesUsage = serde_json::from_value(json!({
-        "input_tokens": 100,
-        "input_tokens_details": {
-            "cached_tokens": 25
-        },
-        "output_tokens": 50,
-        "total_tokens": 150
-    }))
-    .expect("usage should deserialize when output token details are omitted");
-
-    assert!(usage.output_tokens_details.is_none());
-
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(100));
-    assert_eq!(token_usage.cached_input_tokens, Some(25));
-    assert_eq!(token_usage.output_tokens, Some(50));
-    assert_eq!(token_usage.reasoning_tokens, None);
-    assert_eq!(token_usage.total_tokens, Some(150));
-}
-
-#[test]
 fn completion_response_accepts_top_level_reasoning_string() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1323,22 +751,10 @@ fn completion_response_accepts_top_level_reasoning_string() {
             }]
         }],
         "tools": []
-    }))
-    .expect("mistral.rs-style reasoning string should deserialize");
-
-    assert_eq!(
-        response.provider_reasoning.as_deref(),
-        Some("thinking through the answer")
-    );
-    assert_eq!(response.reasoning_metadata, None);
-    assert_eq!(response.reasoning_context, None);
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!("thinking through the answer")
-    );
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
+        fold_body(response).expect("response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
     assert!(matches!(
         items[0],
@@ -1348,35 +764,8 @@ fn completion_response_accepts_top_level_reasoning_string() {
 }
 
 #[test]
-fn completion_response_accepts_null_metadata() {
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "openai-compatible-model",
-        "metadata": null,
-        "output": [{
-            "type": "message",
-            "id": "msg_123",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{
-                "type": "output_text",
-                "annotations": [],
-                "text": "done"
-            }]
-        }],
-        "tools": []
-    }))
-    .expect("response with null metadata should deserialize");
-
-    assert!(response.additional_parameters.metadata.is_empty());
-}
-
-#[test]
 fn completion_response_accepts_reasoning_only_response() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1390,11 +779,10 @@ fn completion_response_accepts_reasoning_only_response() {
         },
         "output": [],
         "tools": []
-    }))
-    .expect("reasoning-only response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("reasoning-only response should convert");
+        fold_body(response).expect("reasoning-only response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
 
     assert_eq!(items.len(), 1);
@@ -1411,7 +799,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
     // rig-induced-empty. On `status: incomplete` the finish reason is the
     // diagnostic the caller needs — the emptiness guard must not eat it,
     // which is exactly how the streaming path already behaves.
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1420,11 +808,10 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
         "model": "gpt-test",
         "output": [],
         "tools": []
-    }))
-    .expect("incomplete response shape should deserialize");
+    });
 
-    let completion = wire::fold_body("openai", response)
-        .expect("truncated incomplete response must not be an error");
+    let completion =
+        fold_body(response).expect("truncated incomplete response must not be an error");
 
     assert!(completion.choice.is_empty());
     assert_eq!(
@@ -1433,154 +820,9 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
     );
 }
 
-fn incomplete_because(reason: &str) -> IncompleteDetailsReason {
-    IncompleteDetailsReason {
-        reason: reason.to_string(),
-    }
-}
-
-#[test]
-fn finish_reason_maps_every_documented_terminal_state() {
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Completed, None),
-        Some(completion::FinishReason::Stop)
-    );
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("max_output_tokens"))
-        ),
-        Some(completion::FinishReason::Length)
-    );
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("content_filter"))
-        ),
-        Some(completion::FinishReason::ContentFilter)
-    );
-    // `incomplete_details` on a completed turn is not a termination reason.
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Completed,
-            Some(&incomplete_because("noise"))
-        ),
-        Some(completion::FinishReason::Stop)
-    );
-    // In-flight statuses are not terminations at all.
-    assert_eq!(map_finish_reason(&ResponseStatus::InProgress, None), None);
-    assert_eq!(map_finish_reason(&ResponseStatus::Queued, None), None);
-}
-
-#[test]
-fn finish_reason_preserves_unknown_values_verbatim() {
-    // A reason OpenAI adds later must survive in OpenAI's own spelling
-    // rather than being smoothed into a natural stop.
-    assert_eq!(
-        map_finish_reason(
-            &ResponseStatus::Incomplete,
-            Some(&incomplete_because("MAX_TOOL_CALLS"))
-        ),
-        Some(completion::FinishReason::Other(
-            "MAX_TOOL_CALLS".to_string()
-        ))
-    );
-    // So must a terminal status with no normalized counterpart, and an
-    // `incomplete` that states no reason.
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Failed, None),
-        Some(completion::FinishReason::Other("failed".to_string()))
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Cancelled, None),
-        Some(completion::FinishReason::Other("cancelled".to_string()))
-    );
-    let status: ResponseStatus = serde_json::from_str(r#""throttled""#)
-        .expect("an unknown provider status should deserialize");
-    assert_eq!(status, ResponseStatus::Other("throttled".to_string()));
-    assert_eq!(
-        map_finish_reason(&status, None),
-        Some(completion::FinishReason::Other("throttled".to_string()))
-    );
-    assert_eq!(
-        serde_json::to_string(&status).expect("unknown status should serialize"),
-        r#""throttled""#
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Incomplete, None),
-        Some(completion::FinishReason::Other("incomplete".to_string()))
-    );
-    assert_eq!(
-        map_finish_reason(&ResponseStatus::Incomplete, Some(&incomplete_because(""))),
-        Some(completion::FinishReason::Other("incomplete".to_string()))
-    );
-}
-
-#[test]
-fn completion_response_carries_the_message_id_not_the_response_id() {
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.4",
-        "output": [{
-            "type": "message",
-            "id": "msg_456",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{
-                "type": "output_text",
-                "annotations": [],
-                "text": "done"
-            }]
-        }],
-        "tools": []
-    }))
-    .expect("response should deserialize");
-
-    let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
-
-    // The two IDs are distinct in this API: `resp_...` names the response,
-    // `msg_...` names the assistant message.
-    assert_eq!(completion.message_id.as_deref(), Some("msg_456"));
-    assert_eq!(completion.provider, "openai");
-    assert_eq!(completion.model.as_deref(), Some("gpt-5.4"));
-    assert_eq!(
-        completion.finish_reason(),
-        Some(completion::FinishReason::Stop)
-    );
-}
-
-#[test]
-fn completion_response_provider_name_is_an_input() {
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.3-codex",
-        "output": [{
-            "type": "message",
-            "id": "msg_456",
-            "status": "completed",
-            "role": "assistant",
-            "content": [{ "type": "output_text", "annotations": [], "text": "done" }]
-        }],
-        "tools": []
-    }))
-    .expect("response should deserialize");
-
-    let completion: completion::CompletionResponse =
-        wire::fold_body("chatgpt", response).expect("response should convert");
-
-    assert_eq!(completion.provider, "chatgpt");
-}
-
 #[test]
 fn completion_response_completed_with_tool_call_reports_tool_calls() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1595,11 +837,10 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
             "status": "completed"
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
+        fold_body(response).expect("response should convert");
 
     // `completed` is reconciled up to `ToolCalls` because the turn carried
     // a function call.
@@ -1611,7 +852,7 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
 
 #[test]
 fn completion_response_incomplete_reports_the_truncation_reason() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1626,11 +867,10 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
             "content": [{ "type": "output_text", "annotations": [], "text": "half an ans" }]
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
+        fold_body(response).expect("response should convert");
 
     assert_eq!(
         completion.finish_reason(),
@@ -1640,7 +880,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 
 #[test]
 fn completion_response_preserves_context_without_treating_config_as_text() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1664,141 +904,20 @@ fn completion_response_preserves_context_without_treating_config_as_text() {
             }]
         }],
         "tools": []
-    }))
-    .expect("object-shaped reasoning should be tolerated");
-
-    assert!(response.provider_reasoning.is_none());
-    assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
-    assert_eq!(
-        response.reasoning_metadata.as_ref(),
-        json!({
-            "context": "all_turns",
-            "effort": "high",
-            "mode": "standard",
-            "summary": null
-        })
-        .as_object()
-    );
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({
-            "context": "all_turns",
-            "effort": "high",
-            "mode": "standard",
-            "summary": null
-        })
-    );
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
+        fold_body(response).expect("response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
     assert_eq!(items.len(), 1);
     assert!(matches!(items[0], completion::AssistantContent::Text(_)));
 }
 
-#[test]
-fn completion_response_preserves_unknown_reasoning_metadata_and_nulls() {
-    let metadata = json!({
-        "context": "future_context",
-        "effort": "ultra",
-        "summary": null,
-        "future_control": { "depth": 3 }
-    });
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-future",
-        "reasoning": metadata,
-        "output": [],
-        "tools": []
-    }))
-    .expect("unknown reasoning metadata should deserialize");
-
-    assert_eq!(
-        response.reasoning_context.as_deref(),
-        Some("future_context")
-    );
-    assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        metadata
-    );
-}
-
-#[test]
-fn completion_response_ignores_unsupported_reasoning_shapes() {
-    for reasoning in [Value::Null, json!(["unexpected"]), json!(42), json!(true)] {
-        let response: CompletionResponse = serde_json::from_value(json!({
-            "id": "resp_123",
-            "object": "response",
-            "created_at": 0,
-            "status": "completed",
-            "model": "openai-compatible-model",
-            "reasoning": reasoning,
-            "output": [],
-            "tools": []
-        }))
-        .expect("unsupported reasoning shapes should remain non-fatal");
-
-        assert_eq!(response.provider_reasoning, None);
-        assert_eq!(response.reasoning_metadata, None);
-        assert_eq!(response.reasoning_context, None);
-        let serialized = serde_json::to_value(&response).expect("response should serialize");
-        assert!(
-            !serialized
-                .as_object()
-                .expect("response should serialize as an object")
-                .contains_key("reasoning")
-        );
-    }
-}
-
-#[test]
-fn completion_response_reasoning_serialization_precedence_is_stable() {
-    let mut response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "gpt-5.6",
-        "reasoning": { "context": "all_turns", "effort": "max" },
-        "output": [],
-        "tools": []
-    }))
-    .expect("reasoning metadata should deserialize");
-
-    response.reasoning_context = Some("current_turn".to_owned());
-    response.additional_parameters.reasoning =
-        Some(Reasoning::new().with_effort(ReasoningEffort::Low));
-    let serialized = serde_json::to_string(&response).expect("response should serialize");
-    assert_eq!(serialized.matches("\"reasoning\":").count(), 1);
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({ "context": "all_turns", "effort": "max" })
-    );
-
-    let metadata = response.reasoning_metadata.take();
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!({ "context": "current_turn" })
-    );
-
-    response.reasoning_metadata = metadata;
-    response.provider_reasoning = Some("compatible-provider text".to_owned());
-    assert_eq!(
-        serde_json::to_value(&response).expect("response should serialize")["reasoning"],
-        json!("compatible-provider text")
-    );
-}
-
-fn request_with_reasoning_params(reasoning: Value) -> CompletionRequest {
+fn request_with_reasoning_params(reasoning: Value) -> Value {
     let mut request = request_with_preamble("You are concise.");
     request.additional_params = Some(json!({ "reasoning": reasoning }));
 
-    CompletionRequest::try_from(("gpt-5.6".to_string(), request))
-        .expect("request with reasoning params should convert")
+    convert("gpt-5.6", request).expect("request with reasoning params should convert")
 }
 
 #[test]
@@ -1822,15 +941,7 @@ fn reasoning_mode_pro_composes_with_independent_effort() {
 
 #[test]
 fn reasoning_context_values_survive_request_conversion() {
-    for (context, wire_value) in [
-        (ReasoningContext::Auto, "auto"),
-        (ReasoningContext::AllTurns, "all_turns"),
-        (ReasoningContext::CurrentTurn, "current_turn"),
-    ] {
-        let typed = serde_json::to_value(Reasoning::new().with_context(context))
-            .expect("typed reasoning should serialize");
-        assert_eq!(typed, json!({ "context": wire_value }));
-
+    for wire_value in ["auto", "all_turns", "current_turn"] {
         let request = request_with_reasoning_params(json!({ "context": wire_value }));
         let serialized = serde_json::to_value(&request).expect("request should serialize");
         assert_eq!(serialized["reasoning"], json!({ "context": wire_value }));
@@ -1838,35 +949,8 @@ fn reasoning_context_values_survive_request_conversion() {
 }
 
 #[test]
-fn reasoning_omits_unset_optional_fields() {
-    let reasoning = serde_json::to_value(Reasoning::new().with_mode(ReasoningMode::Pro))
-        .expect("reasoning should serialize");
-
-    assert_eq!(reasoning, json!({ "mode": "pro" }));
-
-    let reasoning = serde_json::to_value(
-        Reasoning::new()
-            .with_effort(ReasoningEffort::Max)
-            .with_mode(ReasoningMode::Pro)
-            .with_context(ReasoningContext::CurrentTurn)
-            .with_summary_level(ReasoningSummaryLevel::Detailed),
-    )
-    .expect("reasoning should serialize");
-
-    assert_eq!(
-        reasoning,
-        json!({
-            "effort": "max",
-            "mode": "pro",
-            "context": "current_turn",
-            "summary": "detailed"
-        })
-    );
-}
-
-#[test]
 fn completion_response_does_not_duplicate_structured_reasoning() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+    let response = json!({
         "id": "resp_123",
         "object": "response",
         "created_at": 0,
@@ -1892,11 +976,10 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
             }]
         }],
         "tools": []
-    }))
-    .expect("response should deserialize");
+    });
 
     let completion: completion::CompletionResponse =
-        wire::fold_body("openai", response).expect("response should convert");
+        fold_body(response).expect("response should convert");
     let reasoning_count = completion
         .choice
         .iter()
@@ -1904,305 +987,6 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
         .count();
 
     assert_eq!(reasoning_count, 1);
-}
-
-#[test]
-fn idless_reasoning_only_is_skipped_without_empty_input_item() {
-    let assistant = completion::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::Reasoning(
-            message::Reasoning::new("provider reasoning").sealed("openai"),
-        )],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("idless reasoning should degrade gracefully");
-
-    assert!(converted.is_empty());
-}
-
-#[test]
-fn completion_history_idless_reasoning_plus_text_preserves_text_input_item() {
-    let assistant = completion::Message::Assistant {
-        id: Some("msg_123".to_string()),
-        content: vec![
-            message::AssistantContent::Reasoning(
-                message::Reasoning::new("provider reasoning").sealed("openai"),
-            ),
-            message::AssistantContent::Text(Text::new("final answer")),
-        ],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("assistant history should convert");
-
-    assert_eq!(converted.len(), 1);
-    assert!(matches!(converted[0].role, Some(Role::Assistant)));
-    let InputContent::Message(Message::Assistant { content, .. }) = &converted[0].input else {
-        panic!("expected assistant message input item");
-    };
-    assert!(matches!(
-        content.first(),
-        Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
-    ));
-}
-
-#[test]
-fn assistant_text_without_idless_reasoning_replays_as_output_text() {
-    let assistant = completion::Message::Assistant {
-        id: Some("msg_123".to_string()),
-        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("assistant history should convert");
-
-    assert_eq!(converted.len(), 1);
-    let InputContent::Message(Message::Assistant { content, .. }) = &converted[0].input else {
-        panic!("expected assistant message input item");
-    };
-    assert!(matches!(
-        content.first(),
-        Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. }))) if text == "final answer"
-    ));
-}
-
-/// Text blocks that name no message item of their own replay as one message
-/// item under the turn's id: the wire refuses two input items with one id.
-#[test]
-fn assistant_turn_with_several_text_parts_replays_as_one_message_item() {
-    let assistant = completion::Message::Assistant {
-        id: Some("msg_turn".to_string()),
-        content: vec![
-            message::AssistantContent::Text(Text::new("first part")),
-            message::AssistantContent::Text(Text::new("second part")),
-        ],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("assistant history should convert");
-
-    assert_eq!(converted.len(), 1, "{converted:?}");
-    let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[0].input else {
-        panic!("expected assistant message input item");
-    };
-    assert_eq!(id, "msg_turn");
-    let texts: Vec<&str> = content
-        .iter()
-        .map(|part| match part {
-            AssistantContentType::Text(AssistantContent::OutputText(OutputText {
-                text, ..
-            })) => text.as_str(),
-            other => panic!("an output text, not {other:?}"),
-        })
-        .collect();
-    assert_eq!(texts, ["first part", "second part"]);
-}
-
-#[test]
-fn idless_completion_assistant_text_replays_as_easy_input_message() {
-    let assistant = completion::Message::Assistant {
-        id: None,
-        content: vec![message::AssistantContent::Text(Text::new("final answer"))],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("assistant history should convert");
-
-    assert_eq!(converted.len(), 1);
-    assert!(matches!(converted[0].role, Some(Role::Assistant)));
-    let InputContent::Message(Message::AssistantInput { content, .. }) = &converted[0].input else {
-        panic!("expected assistant input message item");
-    };
-    assert_eq!(content, "final answer");
-
-    let serialized =
-        serde_json::to_value(&converted[0]).expect("input item should serialize to JSON");
-    assert_eq!(serialized["type"], json!("message"));
-    assert_eq!(serialized["role"], json!("assistant"));
-    assert_eq!(serialized["content"], json!("final answer"));
-    assert!(serialized.get("id").is_none());
-    assert!(serialized.get("status").is_none());
-}
-
-#[test]
-fn structured_reasoning_with_id_still_converts_to_input_item() {
-    let assistant = completion::Message::Assistant {
-        id: Some("msg_123".to_string()),
-        content: vec![message::AssistantContent::Reasoning(
-            message::Reasoning {
-                id: Some("rs_123".to_string()),
-                content: vec![message::ReasoningContent::Summary(
-                    "structured summary".to_string(),
-                )],
-            }
-            .sealed("openai"),
-        )],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("structured reasoning should convert");
-
-    assert_eq!(converted.len(), 1);
-    assert!(converted[0].role.is_none());
-    assert!(matches!(
-        &converted[0].input,
-        InputContent::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
-    ));
-}
-
-#[test]
-fn assistant_reasoning_text_tool_call_convert_in_responses_replay_order() {
-    let assistant = completion::Message::Assistant {
-        id: Some("msg_123".to_string()),
-        content: vec![
-            message::AssistantContent::Reasoning(
-                message::Reasoning {
-                    id: Some("rs_123".to_string()),
-                    content: vec![message::ReasoningContent::Summary(
-                        "structured summary".to_string(),
-                    )],
-                }
-                .sealed("openai"),
-            ),
-            message::AssistantContent::Text(Text::new("final answer")),
-            message::AssistantContent::tool_call_with_call_id(
-                "fc_123",
-                "call_123".to_string(),
-                crate::message::ToolName::new("lookup").expect("tool name"),
-                json!({"query": "rig"}),
-            ),
-        ],
-    };
-
-    let converted = super::input_items(assistant, &["openai".into()])
-        .expect("assistant history should convert");
-
-    assert_eq!(converted.len(), 3);
-    assert!(converted[0].role.is_none());
-    assert!(matches!(
-        &converted[0].input,
-        InputContent::Reasoning(OpenAIReasoning { id, .. }) if id == "rs_123"
-    ));
-
-    assert!(matches!(converted[1].role, Some(Role::Assistant)));
-    let InputContent::Message(Message::Assistant { content, id, .. }) = &converted[1].input else {
-        panic!("expected assistant output message");
-    };
-    assert_eq!(id, "msg_123");
-    assert!(matches!(
-        content.first(),
-        Some(AssistantContentType::Text(AssistantContent::OutputText(OutputText { text, .. })))
-            if text == "final answer"
-    ));
-
-    assert!(converted[2].role.is_none());
-    let InputContent::FunctionCall(OutputFunctionCall {
-        id, call_id, name, ..
-    }) = &converted[2].input
-    else {
-        panic!("expected function call input item");
-    };
-    assert_eq!(id, "fc_123");
-    assert_eq!(call_id, "call_123");
-    assert_eq!(name, "lookup");
-}
-
-#[test]
-fn mocked_second_turn_request_omits_unreplayable_reasoning() {
-    let request = crate::completion::CompletionRequest::from(vec![
-        completion::Message::system("You are concise."),
-        completion::Message::User {
-            content: vec![message::UserContent::Text(Text::new(
-                "Think briefly, then answer.",
-            ))],
-        },
-        completion::Message::Assistant {
-            id: Some("msg_123".to_string()),
-            content: vec![
-                message::AssistantContent::Reasoning(
-                    message::Reasoning::new("provider reasoning").sealed("openai"),
-                ),
-                message::AssistantContent::Text(Text::new("final answer")),
-            ],
-        },
-        completion::Message::Assistant {
-            id: None,
-            content: vec![
-                message::AssistantContent::Reasoning(
-                    message::Reasoning::new("provider reasoning only").sealed("openai"),
-                ),
-                message::AssistantContent::Text(Text::new("")),
-            ],
-        },
-        completion::Message::User {
-            content: vec![message::UserContent::Text(Text::new(
-                "/no_think Reply with exactly: OK",
-            ))],
-        },
-    ])
-    .max_tokens(64);
-
-    let request = CompletionRequest::try_from(("Qwen/Qwen3-4B".to_string(), request))
-        .expect("request should convert");
-    let value = serde_json::to_value(&request).expect("request should serialize");
-    let input = value["input"]
-        .as_array()
-        .expect("mocked multi-turn request should serialize input as an array");
-
-    assert!(
-        !input.iter().any(|item| {
-            item.get("type") == Some(&json!("reasoning")) && item.get("id").is_none()
-        })
-    );
-    assert!(!input.iter().any(|item| {
-        item.get("role") == Some(&json!("assistant"))
-            && item
-                .get("content")
-                .and_then(Value::as_array)
-                .is_some_and(Vec::is_empty)
-    }));
-
-    let assistant_items = input
-        .iter()
-        .filter(|item| item.get("role") == Some(&json!("assistant")))
-        .collect::<Vec<_>>();
-
-    assert_eq!(assistant_items.len(), 1);
-    assert_eq!(assistant_items[0]["content"][0]["type"], "output_text");
-    assert_eq!(assistant_items[0]["content"][0]["text"], "final answer");
-}
-
-#[test]
-fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
-    let lhs = ResponsesUsage {
-        input_tokens: 10,
-        input_tokens_details: None,
-        output_tokens: 20,
-        output_tokens_details: None,
-        total_tokens: 30,
-    };
-    let rhs = ResponsesUsage {
-        input_tokens: 3,
-        input_tokens_details: Some(InputTokensDetails {
-            cached_tokens: 2,
-            cache_write_tokens: None,
-        }),
-        output_tokens: 5,
-        output_tokens_details: Some(OutputTokensDetails {
-            reasoning_tokens: 4,
-        }),
-        total_tokens: 8,
-    };
-
-    let usage = lhs + rhs;
-    let token_usage = crate::completion::Usage::from(&usage);
-
-    assert_eq!(token_usage.input_tokens, Some(13));
-    assert_eq!(token_usage.cached_input_tokens, Some(2));
-    assert_eq!(token_usage.output_tokens, Some(25));
-    assert_eq!(token_usage.reasoning_tokens, Some(4));
-    assert_eq!(token_usage.total_tokens, Some(38));
 }
 
 #[test]
@@ -2215,7 +999,7 @@ fn file_id_document_serializes_as_input_item_content() {
         })],
     };
 
-    let converted: Vec<InputItem> = message.try_into().expect("conversion should succeed");
+    let converted = input_items(message).expect("conversion should succeed");
     let json = serde_json::to_value(&converted[0]).expect("serialize input item");
 
     assert_eq!(json["type"], "message");
@@ -2258,54 +1042,6 @@ async fn responses_completion_http_non_success_preserves_status_and_body() {
 }
 
 #[test]
-fn output_unknown_preserves_hosted_tool_payload() {
-    let item = json!({
-        "type": "web_search_call",
-        "id": "ws_001",
-        "status": "completed",
-        "action": { "type": "search", "queries": ["rig framework"] },
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("unknown output should deserialize");
-
-    let Output::Unknown(value) = output else {
-        panic!("expected Output::Unknown for an unmodeled item type");
-    };
-    assert_eq!(value, item);
-}
-
-#[test]
-fn output_unknown_round_trips_value_equal() {
-    let item = json!({
-        "type": "file_search_call",
-        "id": "fs_007",
-        "status": "in_progress",
-        "queries": ["lifecycle"],
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("unknown output should deserialize");
-    let serialized = serde_json::to_value(&output).expect("unknown output should serialize");
-
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn output_known_variant_with_bad_body_errors() {
-    // A recognized `type` tag with a malformed body must still error rather
-    // than silently degrading to `Output::Unknown`.
-    let malformed = json!({
-        "type": "function_call",
-        "id": "call_1",
-        // missing `arguments`, `call_id`, `name`
-    });
-
-    let result: Result<Output, _> = serde_json::from_value(malformed);
-    assert!(result.is_err());
-}
-
-#[test]
 fn completion_response_with_unknown_output_keeps_usage() {
     // Guards the original reason the catch-all exists: an unknown item must
     // not break decoding of the whole response or drop token usage.
@@ -2338,197 +1074,14 @@ fn completion_response_with_unknown_output_keeps_usage() {
         },
     });
 
-    let response: CompletionResponse =
-        serde_json::from_value(response).expect("response should deserialize");
-
-    assert!(matches!(response.output.first(), Some(Output::Unknown(_))));
-    let usage = response.usage.expect("usage should be present");
-    assert_eq!(usage.total_tokens, 150);
-}
-
-#[test]
-fn output_known_variant_round_trips_value_equal() {
-    // The hand-written Serialize must reproduce the modeled wire shape, so a
-    // decoded known item re-serializes value-equal to what it came from
-    // (guards the `function_call` arm, including its stringified `arguments`).
-    // The item ID uses the provider-native `fc_` prefix; other IDs are
-    // intentionally dropped on serialization (see `OutputFunctionCall::id`).
-    let item = json!({
-        "type": "function_call",
-        "id": "fc_1",
-        "arguments": "{}",
-        "call_id": "c1",
-        "name": "search",
-        "status": "completed",
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("known output should deserialize");
-    assert!(matches!(output, Output::FunctionCall(_)));
-
-    let serialized = serde_json::to_value(&output).expect("known output should serialize");
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn output_reasoning_round_trips_value_equal() {
-    // Highest-value parity guard: the `Reasoning` struct variant threads its
-    // fields by hand in *both* directions. Populated `encrypted_content` /
-    // `status` (the `#[serde(default)]` optionals) must survive
-    // serialize -> deserialize unchanged — catching a dropped field or a
-    // forgotten `reasoning` dispatch arm (which would degrade to `Unknown`).
-    let original = Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![ReasoningSummary::SummaryText {
-            text: "weighing options".to_string(),
-        }],
-        content: vec!["private reasoning".to_string()],
-        encrypted_content: Some("ENCRYPTED".to_string()),
-        signature: None,
-        status: Some(ToolStatus::Completed),
-    };
-
-    let value = serde_json::to_value(&original).expect("reasoning should serialize");
-    let round_tripped: Output =
-        serde_json::from_value(value).expect("reasoning should deserialize");
-
-    assert_eq!(round_tripped, original);
-}
-
-#[test]
-fn output_reasoning_conversion_omits_empty_encrypted_content() {
-    let output = Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![],
-        content: vec!["visible reasoning".to_string()],
-        encrypted_content: Some(String::new()),
-        signature: None,
-        status: Some(ToolStatus::Completed),
-    };
-
-    let converted = folded_choice(vec![output]);
-
-    assert_eq!(converted.len(), 1);
-    let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
-        panic!("expected reasoning output");
-    };
-    assert_eq!(reasoning.value().id.as_deref(), Some("reasoning_1"));
-    assert_eq!(reasoning.value().content.len(), 1);
+    let completion = fold_body(response).expect("an unknown item decodes");
     assert!(matches!(
-        reasoning.value().content.first(),
-        Some(message::ReasoningContent::Text { text, .. })
-            if text == "visible reasoning"
+        completion.choice.first(),
+        Some(completion::AssistantContent::Opaque(_))
     ));
-}
-
-#[test]
-fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
-    let output = Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![],
-        content: vec![],
-        encrypted_content: Some("ciphertext".to_string()),
-        signature: None,
-        status: Some(ToolStatus::Completed),
-    };
-
-    let converted = folded_choice(vec![output]);
-
-    assert_eq!(converted.len(), 1);
-    let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
-        panic!("expected reasoning output");
-    };
-    assert_eq!(
-        reasoning.value().content,
-        vec![message::ReasoningContent::Encrypted(
-            "ciphertext".to_string()
-        )]
-    );
-}
-
-#[test]
-fn output_reasoning_none_optionals_serialize_as_explicit_null() {
-    // Wire-anchored complement to the round-trip test: with `None`
-    // optionals, the keys must still be emitted as explicit `null` (the
-    // derived behavior this hand-written serde replaced has no
-    // `skip_serializing_if`). Guards against a future refactor silently
-    // dropping the keys and changing the wire shape.
-    let value = serde_json::to_value(Output::Reasoning {
-        id: "reasoning_1".to_string(),
-        summary: vec![],
-        content: vec![],
-        encrypted_content: None,
-        signature: None,
-        status: None,
-    })
-    .expect("reasoning should serialize");
-
-    assert_eq!(value["type"], "reasoning");
-    assert_eq!(value["encrypted_content"], Value::Null);
-    assert_eq!(value["status"], Value::Null);
-    assert!(value.get("encrypted_content").is_some());
-    assert!(value.get("status").is_some());
-}
-
-#[test]
-fn output_message_round_trips_value_equal() {
-    // Wire-anchored serialize check for the `message` arm (only
-    // `function_call` was anchored): a decoded message item re-serializes
-    // value-equal to the input, tag included.
-    let item = json!({
-        "type": "message",
-        "id": "msg_1",
-        "role": "assistant",
-        "status": "completed",
-        "content": [ { "type": "output_text", "text": "hello", "annotations": [] } ],
-    });
-
-    let output: Output =
-        serde_json::from_value(item.clone()).expect("message item should deserialize");
-    assert!(matches!(output, Output::Message(_)));
-
-    let serialized = serde_json::to_value(&output).expect("message should serialize");
-    assert_eq!(serialized, item);
-}
-
-#[test]
-fn each_known_tag_decodes_to_its_modeled_variant() {
-    // Guards every modeled dispatch arm: a well-formed item for each known
-    // `type` must decode to its specific variant, never to `Unknown`. Adding
-    // an `Output` variant without a matching deserialize arm fails here
-    // instead of silently routing real items to `Unknown`.
-    let message: Output = serde_json::from_value(json!({
-        "type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
-        "content": [ { "type": "output_text", "text": "hi", "annotations": [] } ],
-    }))
-    .expect("message item should decode");
-    assert!(matches!(message, Output::Message(_)));
-
-    let function_call: Output = serde_json::from_value(json!({
-        "type": "function_call", "id": "call_1", "arguments": "{}",
-        "call_id": "c1", "name": "f", "status": "completed",
-    }))
-    .expect("function_call item should decode");
-    assert!(matches!(function_call, Output::FunctionCall(_)));
-
-    let reasoning: Output =
-        serde_json::from_value(json!({ "type": "reasoning", "id": "r1", "summary": [] }))
-            .expect("reasoning item should decode");
-    assert!(matches!(reasoning, Output::Reasoning { .. }));
-}
-
-#[test]
-fn output_without_usable_type_tag_decodes_to_unknown() {
-    // An absent or non-string `type` is itself unmodeled, so it is captured
-    // verbatim as `Unknown` rather than erroring.
-    for item in [
-        json!({ "id": "x", "note": "no type field" }),
-        json!({ "type": 7, "id": "x" }),
-    ] {
-        let output: Output =
-            serde_json::from_value(item.clone()).expect("should decode to Unknown");
-        assert_eq!(output, Output::Unknown(item));
-    }
+    assert_eq!(completion.usage.total_tokens, Some(150));
+    assert_eq!(completion.usage.cached_input_tokens, Some(25));
+    assert_eq!(completion.usage.reasoning_tokens, Some(15));
 }
 
 // Regression tests for issue #1429: `file_url` and `filename` are mutually
@@ -2599,8 +1152,7 @@ fn assert_url_only_input_file(input_file: &serde_json::Value) {
 
 #[test]
 fn url_pdf_via_input_item_path_omits_filename() {
-    let items = super::input_items(url_pdf_message(), &["openai".into()])
-        .expect("URL PDF should convert to input items");
+    let items = input_items(url_pdf_message()).expect("URL PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     assert_url_only_input_file(&sole_input_file(&json));
 }
@@ -2609,8 +1161,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 fn url_pdf_in_full_completion_request_omits_filename() {
     let core_request = crate::completion::CompletionRequest::new(url_pdf_message());
 
-    let request = CompletionRequest::try_from(("gpt-4o".to_string(), core_request))
-        .expect("request should convert");
+    let request = convert("gpt-4o", core_request).expect("request should convert");
     let json = serde_json::to_value(&request).expect("request should serialize");
     assert_url_only_input_file(&sole_input_file(&json));
 }
@@ -2625,8 +1176,7 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
         })],
     };
 
-    let items = super::input_items(input, &["openai".into()])
-        .expect("base64 PDF should convert to input items");
+    let items = input_items(input).expect("base64 PDF should convert to input items");
     let json = serde_json::to_value(&items).expect("input items should serialize");
     let input_file = sole_input_file(&json);
 
@@ -2690,16 +1240,13 @@ mod raw_capture {
             "tools": []
         }"#;
 
-    /// The load-bearing capture property: `raw` is the Responses
-    /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value — and folding
-    /// that capture again (with the header id reattached, since the
-    /// capture is body only) reproduces every normalized field. Also
-    /// reads `service_tier` off the capture, and pins that the transport id
-    /// is not part of the capture while the normalized response beside it
-    /// carries the header.
+    /// The load-bearing capture property: `raw` is the provider's body
+    /// exactly as it arrived, and folding that capture again (with the
+    /// header id reattached, since the capture is body only) reproduces
+    /// every normalized field. The transport id is not part of the capture,
+    /// while the normalized response beside it carries the header.
     #[tokio::test]
-    async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
+    async fn completion_captures_the_provider_body_as_raw() {
         let mut headers = http::HeaderMap::new();
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
         let model = crate::driver::Model::new(
@@ -2713,88 +1260,20 @@ mod raw_capture {
             .expect("completion");
 
         let raw = &response.raw;
-        let typed: CompletionResponse =
-            serde_json::from_value(raw.clone()).expect("raw must deserialize");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
-        );
-        assert!(matches!(
-            typed.additional_parameters.service_tier,
-            Some(OpenAIServiceTier::Default)
-        ));
+        let body: Value = serde_json::from_str(BODY).expect("the body is JSON");
+        assert_eq!(*raw, body, "the capture is the provider's body");
         assert_eq!(raw["service_tier"], "default");
         assert!(raw.get("provider_request_id").is_none());
 
-        let mut refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
-            .expect("re-fold the capture");
+        let mut refolded = fold_body(raw.clone()).expect("re-fold the capture");
         refolded.provider_request_id = Some(REQUEST_ID.to_string());
         assert_eq!(response.identity(), refolded.identity());
         assert_eq!(response.finish_reason(), refolded.finish_reason());
-        assert_eq!(response.model, refolded.model);
+        assert_eq!(response.model(), refolded.model());
         assert_eq!(response.usage, refolded.usage);
         assert_eq!(response.choice, refolded.choice);
         assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(response.identity().message_id.as_deref(), Some("msg_raw_1"));
     }
-}
-
-/// Synthetic transcript tests required-ID request correlation without a paid call.
-#[test]
-fn full_request_preserves_typed_tool_pairs_across_turns() {
-    use crate::providers::internal::wire_ids::tests::{adapter_requests, assert_adapter_pairs};
-    for request in adapter_requests() {
-        let wire = CompletionRequest::try_from(("test".to_owned(), request.clone())).unwrap();
-        assert_adapter_pairs(serde_json::to_value(wire).unwrap());
-    }
-}
-
-/// A reasoning item a gateway returns with a signature and no text (Gemini
-/// on OpenRouter's Responses route), with or without a summary, keeps the
-/// signature and replays it without inventing reasoning text.
-#[test]
-fn a_signature_only_reasoning_item_round_trips_without_text() {
-    for summary in [Vec::new(), vec![ReasoningSummary::new("a summary")]] {
-        let reasoning = super::streaming::reasoning_from_done_item(
-            Some("rs_1"),
-            summary.clone(),
-            Vec::new(),
-            None,
-            Some("signed".to_owned()),
-        )
-        .expect("the signature is kept");
-        assert_eq!(reasoning.first_signature(), Some("signed"));
-
-        let item = openai_reasoning_from_core(&reasoning).expect("identified reasoning replays");
-        assert_eq!(item.signature.as_deref(), Some("signed"));
-        assert!(item.content.is_empty(), "{item:?}");
-        assert_eq!(item.summary, summary);
-        let json = serde_json::to_value(&item).expect("the item serializes");
-        assert!(json.get("content").is_none(), "{json}");
-    }
-}
-
-/// A reasoning with several signed text blocks replays the last signature,
-/// the one decoding puts on the item's final text.
-#[test]
-fn the_last_text_signature_is_the_items() {
-    let reasoning = crate::message::Reasoning {
-        id: Some("rs_1".to_owned()),
-        content: vec![
-            crate::message::ReasoningContent::Text {
-                text: "first".to_owned(),
-                signature: Some("early".to_owned()),
-            },
-            crate::message::ReasoningContent::Text {
-                text: "second".to_owned(),
-                signature: Some("final".to_owned()),
-            },
-        ],
-    };
-    let item = openai_reasoning_from_core(&reasoning).expect("identified reasoning replays");
-    assert_eq!(item.signature.as_deref(), Some("final"));
-    assert_eq!(item.content, ["first", "second"]);
 }
 
 /// A tool round trip in plain values: the decoded call goes back as the
@@ -2803,9 +1282,14 @@ fn the_last_text_signature_is_the_items() {
 /// its item id.
 #[test]
 fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
-    let response: CompletionResponse =
-        serde_json::from_value(response_with_object_top_p()).expect("response should deserialize");
-    let choice = folded_choice(response.output);
+    let choice = folded_choice(vec![json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "get_weather",
+        "arguments": "{\"location\":\"Paris\"}",
+        "status": "completed"
+    })]);
     let Some(completion::AssistantContent::ToolCall(call)) = choice.first() else {
         panic!("the body's one output is a call: {choice:?}");
     };
@@ -2813,17 +1297,14 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
         completion::Message::tool_result(call.id.clone(), call.function.name.clone(), "sunny");
     let history = vec![
         completion::Message::user("Weather in Paris?"),
-        completion::Message::Assistant {
-            id: None,
-            content: choice.clone(),
-        },
+        completion::Message::Assistant(crate::message::AssistantMessage::new(choice.clone())),
         result,
     ];
 
-    let request = CompletionRequest::try_from((
-        "gpt-4o-mini".to_string(),
+    let request = convert(
+        "gpt-4o-mini",
         crate::completion::CompletionRequest::from(history),
-    ))
+    )
     .expect("request conversion should succeed");
     let input = serde_json::to_value(&request).expect("request should serialize")["input"].clone();
 
@@ -2840,4 +1321,386 @@ fn a_tool_result_named_by_the_call_id_pairs_with_the_call_s_call_id() {
             ("function_call_output", "call_1")
         ]
     );
+}
+
+/// The `input` the OpenAI wire for `model` sends for `history`, shaped by
+/// the driver's own `prepare`.
+fn input_of(model: &str, history: Vec<completion::Message>) -> Vec<Value> {
+    use crate::wire::{Operation, Wire};
+    let wire = openai_wire(model);
+    let request = crate::operation::Completion::prepare(
+        crate::completion::CompletionRequest::from(history).tools(vec![lookup_tool()]),
+        &wire.describe(),
+    )
+    .expect("the history is valid");
+    let encoded = wire
+        .encode(request, crate::wire::Mode::Unary)
+        .expect("the request encodes");
+    crate::test_utils::json_body(&encoded.request)["input"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The `lookup` tool the histories below call.
+fn lookup_tool() -> completion::ToolDefinition {
+    completion::ToolDefinition {
+        name: message::ToolName::new("lookup").expect("tool name"),
+        description: "Look something up".to_owned(),
+        parameters: json!({"type": "object"}),
+    }
+}
+
+/// A turn from `model` on the OpenAI Responses wire.
+fn turn_from(model: &str, content: Vec<message::AssistantContent>) -> completion::Message {
+    completion::Message::Assistant(message::AssistantMessage {
+        content,
+        origin: Some(message::Origin::new("openai.responses", "openai", model)),
+        stop: Some(message::StopReason::ToolUse),
+    })
+}
+
+fn reasoning_item() -> Value {
+    json!({
+        "type": "reasoning",
+        "id": "rs_1",
+        "summary": [{"type": "summary_text", "text": "Plan."}],
+        "encrypted_content": "cipher",
+    })
+}
+
+fn message_item(id: &str, text: &str) -> Value {
+    json!({
+        "type": "message",
+        "id": id,
+        "role": "assistant",
+        "status": "completed",
+        "phase": "commentary",
+        "content": [{"type": "output_text", "text": text, "annotations": [], "logprobs": []}],
+    })
+}
+
+fn call_item() -> Value {
+    json!({
+        "type": "function_call",
+        "id": "fc_1",
+        "call_id": "call_1",
+        "name": "lookup",
+        "arguments": "{\"q\":\"rig\"}",
+        "status": "completed",
+    })
+}
+
+/// The blocks a decoder makes of [`reasoning_item`], [`message_item`] and
+/// [`call_item`], each holding its item.
+fn decoded_blocks() -> Vec<message::AssistantContent> {
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({"q": "rig"}),
+        ),
+    );
+    vec![
+        message::AssistantContent::Reasoning(message::Reasoning::new("Plan."))
+            .with_native(reasoning_item()),
+        message::AssistantContent::text("Looking.").with_native(message_item("msg_1", "Looking.")),
+        message::AssistantContent::ToolCall(call).with_native(call_item()),
+    ]
+}
+
+fn history_with(turn: completion::Message) -> Vec<completion::Message> {
+    vec![
+        completion::Message::user("hello"),
+        turn,
+        completion::Message::tool_result(
+            message::CallId::from_wire("call_1"),
+            message::ToolName::new("lookup").expect("tool name"),
+            "found",
+        ),
+    ]
+}
+
+#[test]
+fn a_turn_from_the_same_model_replays_each_item_verbatim_in_order() {
+    let input = input_of(
+        "gpt-5.4",
+        history_with(turn_from("gpt-5.4", decoded_blocks())),
+    );
+    assert_eq!(
+        input[1..4],
+        [
+            reasoning_item(),
+            message_item("msg_1", "Looking."),
+            call_item()
+        ]
+    );
+    assert_eq!(input[4]["type"], "function_call_output");
+    assert_eq!(input[4]["call_id"], "call_1");
+}
+
+/// Another model's turn is rebuilt from its canonical fields as pi rebuilds
+/// it: text as completed messages under synthetic ids, reasoning (now text)
+/// in its place, the call without an item id under a sanitized call id
+/// that its result follows.
+#[test]
+fn another_models_turn_is_rebuilt_from_its_fields() {
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("toolu_01|odd id"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({"q": "rig"}),
+        ),
+    );
+    let foreign = completion::Message::Assistant(message::AssistantMessage {
+        content: vec![
+            message::AssistantContent::Reasoning(message::Reasoning::new("Thinking."))
+                .with_native(json!({"type": "thinking", "signature": "sig"})),
+            message::AssistantContent::text("First."),
+            message::AssistantContent::ToolCall(call.clone()),
+            message::AssistantContent::text("Second."),
+        ],
+        origin: Some(message::Origin::new(
+            "anthropic.messages",
+            "anthropic",
+            "claude-sonnet-4-5",
+        )),
+        stop: Some(message::StopReason::ToolUse),
+    });
+    let history = vec![
+        completion::Message::user("hello"),
+        foreign,
+        completion::Message::User {
+            content: vec![message::UserContent::ToolResult(
+                call.result(vec![message::ToolResultContent::text("found")]),
+            )],
+        },
+    ];
+    let rebuilt = |id: &str, text: &str| {
+        json!({
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "output_text", "text": text, "annotations": []}],
+            "status": "completed",
+            "id": id,
+        })
+    };
+    let input = input_of("gpt-5.4", history);
+    assert_eq!(
+        input[1..],
+        [
+            rebuilt("msg_rig_1", "Thinking."),
+            rebuilt("msg_rig_1_1", "First."),
+            json!({
+                "type": "function_call",
+                "call_id": "toolu_01_odd_id",
+                "name": "lookup",
+                "arguments": "{\"q\":\"rig\"}",
+            }),
+            rebuilt("msg_rig_1_2", "Second."),
+            json!({
+                "type": "function_call_output",
+                "call_id": "toolu_01_odd_id",
+                "output": "found",
+                "status": "completed",
+            }),
+        ]
+    );
+}
+
+/// A block edited after decoding no longer holds its item: each is rebuilt
+/// from its fields under its item's identity, reasoning keeping its id and
+/// ciphertext, so every item stays paired.
+#[test]
+fn an_edited_block_is_rebuilt_under_its_item_id_and_reasoning_still_goes() {
+    let mut blocks = decoded_blocks();
+    for block in &mut blocks {
+        match block {
+            message::AssistantContent::Reasoning(reasoning) => reasoning.text.push('!'),
+            message::AssistantContent::Text(text) => text.text.push('!'),
+            message::AssistantContent::ToolCall(call) => {
+                call.function.arguments = json!({"q": "edited"})
+                    .as_object()
+                    .cloned()
+                    .unwrap_or_default();
+            }
+            message::AssistantContent::Image(_) | message::AssistantContent::Opaque(_) => {}
+        }
+    }
+    let input = input_of("gpt-5.4", history_with(turn_from("gpt-5.4", blocks)));
+    let kinds: Vec<(&str, Option<&str>)> = input[1..5]
+        .iter()
+        .map(|item| {
+            (
+                item["type"].as_str().unwrap_or_default(),
+                item["id"].as_str(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("reasoning", Some("rs_1")),
+            ("message", Some("msg_1")),
+            ("function_call", Some("fc_1")),
+            ("function_call_output", None),
+        ]
+    );
+    assert_eq!(
+        input[1],
+        json!({
+            "type": "reasoning",
+            "id": "rs_1",
+            "summary": [{"type": "summary_text", "text": "Plan.!"}],
+            "encrypted_content": "cipher",
+        })
+    );
+    assert_eq!(input[2]["content"][0]["text"], "Looking.!");
+    assert_eq!(input[2]["phase"], "commentary");
+    assert_eq!(input[3]["arguments"], "{\"q\":\"edited\"}");
+}
+
+#[test]
+fn a_custom_tool_call_is_answered_with_a_custom_tool_call_output() {
+    let item = json!({
+        "type": "custom_tool_call",
+        "id": "ctc_1",
+        "call_id": "call_1",
+        "name": "lookup",
+        "input": "rig",
+    });
+    let call = message::ToolCall::new(
+        message::CallId::from_wire("call_1"),
+        message::ToolFunction::new(
+            message::ToolName::new("lookup").expect("tool name"),
+            json!({"input": "rig"}),
+        ),
+    );
+    let turn = turn_from(
+        "gpt-5.4",
+        vec![message::AssistantContent::ToolCall(call).with_native(item.clone())],
+    );
+    let input = input_of("gpt-5.4", history_with(turn));
+    assert_eq!(input[1], item);
+    assert_eq!(
+        input[2],
+        json!({"type": "custom_tool_call_output", "call_id": "call_1", "output": "found"})
+    );
+}
+
+#[test]
+fn foreign_call_ids_are_normalized_as_pi_normalizes_them() {
+    use crate::completion::ReplayTarget;
+    let wire = openai_wire("gpt-5.4");
+    let long = format!("call_{}", "a".repeat(80));
+    for (id, expected) in [
+        ("call_1", "call_1".to_owned()),
+        ("toolu_01|fc_abc", "toolu_01_fc_abc".to_owned()),
+        ("call.with spaces..", "call_with_spaces".to_owned()),
+        (long.as_str(), long[..64].to_owned()),
+    ] {
+        assert_eq!(
+            wire.normalize_tool_call_id(id, wire.model(), None),
+            expected,
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn a_stateless_request_asks_for_the_reasoning_ciphertext() {
+    let include = |params: Option<Value>| {
+        let mut request = crate::completion::CompletionRequest::new("hello");
+        request.additional_params = params;
+        serde_json::to_value(wire_request(&openai_wire("gpt-5.4"), request))
+            .expect("the request serializes")
+            .get("include")
+            .cloned()
+    };
+    assert_eq!(
+        include(Some(json!({"store": false}))),
+        Some(json!(["reasoning.encrypted_content"]))
+    );
+    assert_eq!(
+        include(Some(json!({"reasoning": {"effort": "low"}}))),
+        Some(json!(["reasoning.encrypted_content"]))
+    );
+    assert_eq!(include(None), None);
+}
+
+/// #305: no dialect sends a blank system message, blank instructions or a
+/// blank input text, which xAI answers with "An empty message was
+/// provided".
+#[test]
+fn no_dialect_sends_blank_system_or_input_text() {
+    use crate::wire::{Operation, Wire};
+    for dialect in [
+        &crate::providers::openai::wire::OPENAI,
+        &crate::providers::xai::DIALECT,
+        &crate::providers::copilot::wire::DIALECT,
+        &crate::providers::chatgpt::DIALECT,
+    ] {
+        let wire = wire::Responses::new(
+            crate::providers::openai::OpenAIConfig::with_key(dialect, "key"),
+            "gpt-5.4",
+        );
+        let mut request = crate::completion::CompletionRequest::new("hi");
+        request.chat_history = vec![
+            completion::Message::system(""),
+            completion::Message::system("  "),
+            completion::Message::User {
+                content: vec![
+                    message::UserContent::text(""),
+                    message::UserContent::text("hi"),
+                ],
+            },
+        ];
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        let body = serde_json::to_value(wire.responses_request(request, false).expect("encodes"))
+            .expect("serializes");
+        let text = body.to_string();
+        assert!(
+            !text.contains(r#""text":"""#) && !text.contains(r#""text":"  ""#),
+            "{}: {body}",
+            dialect.name
+        );
+        assert!(
+            body.get("instructions")
+                .and_then(serde_json::Value::as_str)
+                .is_none_or(|instructions| !instructions.trim().is_empty()),
+            "{}: {body}",
+            dialect.name
+        );
+    }
+}
+
+/// A request continuing a stored response sends the results of that
+/// response's calls alone: the adapter keeps them, since the provider holds
+/// the calls they answer.
+#[test]
+fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
+    use crate::wire::{Operation, Wire};
+    let wire = openai_wire("gpt-5.4");
+    let result = completion::Message::tool_result(
+        message::CallId::from_wire("call_1"),
+        message::ToolName::new("lookup").expect("tool name"),
+        "sunny",
+    );
+    let mut request =
+        crate::completion::CompletionRequest::from(vec![result]).tools(vec![lookup_tool()]);
+    request.additional_params = Some(json!({"previous_response_id": "resp_1", "store": true}));
+    let prepared = crate::operation::Completion::prepare(request.clone(), &wire.describe())
+        .expect("the continuation prepares");
+    let body = serde_json::to_value(wire.responses_request(prepared, false).expect("encodes"))
+        .expect("serializes");
+    assert_eq!(body["input"][0]["type"], "function_call_output");
+    assert_eq!(body["input"][0]["call_id"], "call_1");
+    assert_eq!(body["previous_response_id"], "resp_1");
+
+    // Without a stored response, the same result answers nothing.
+    request.additional_params = None;
+    let error = crate::operation::Completion::prepare(request, &wire.describe())
+        .and_then(|prepared| wire.responses_request(prepared, false).map_err(Into::into));
+    assert!(error.is_err(), "{error:?}");
 }

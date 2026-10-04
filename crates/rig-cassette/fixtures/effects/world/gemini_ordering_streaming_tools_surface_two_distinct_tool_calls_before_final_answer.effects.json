@@ -24,7 +24,7 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,21 +32,21 @@
         }
       },
       {
-        "batch": 17,
+        "batch": 16,
         "id": 2,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 19,
+        "batch": 17,
         "id": 3,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 27,
+        "batch": 24,
         "id": 4,
         "kind": {
           "delivery": "stream",
@@ -54,7 +54,7 @@
         }
       },
       {
-        "batch": 27,
+        "batch": 24,
         "id": 4,
         "kind": {
           "delivery": "outcome"
@@ -185,38 +185,50 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "CiQBaRR9E10sOghWE26uZU0ztl0NhP9aBzfMZfJIWwA/l9AfnlIKVwFpFH0TDz4OPCJrR+O5zBp6nybo2WhDs52WFmfBm76seU0+uNfn8vtDtzK4vqAfoHTSCUxRRj/Xl0ndu3SjmN4TR8D5Pe2gPlkoXXTDdMWwhBdlhaRHEQqdAQFpFH0ThCgQE8+XOHCv1FtkfaxkD1CRLj08F6bQvnIbyAM56ayzDOFGP0zAtHSC6cGugRUIu4FxU0mqKMm2uiXAUKleBjlFVWLZMMVzB/5LnQKbUEcGbmPus7fs73XnQlN4XoE10GGoa7K1KtDIIcp7kzfNnRnT5EtHTsSRxHqs9JBex8IaKqOcd6dIGaeNhDcz4D2FutIJImcBzhc=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "CiQBaRR9E1A4H0p11iRdKxdacXQKmnLAefwzxertH6Kh5UhggBkKVwFpFH0TDrvITx1DuYCLwSaGgMU+yJFKtcuxlgalxU48vAyGx8iLucKpz1preWufhdlWd7rOU7WHcR3i2RFsFsQwEhcQ6u6cSDooo6DHiBjOP/8oZiXlJQrTAQFpFH0TSrrIoHg/w/Eq2GJ/528QpfXhNrdGw+BqC2oBZegfoZbJMqpnBN9/CnO1qwQwf3oPoy3lOs1D/TRooD7jxttDVA3i7A5xOzb6lMCYNX8KzL1NSFSvjlBmYccgmAjH8kJ7iRRtqBwpNCt6fswUoGPH1FJlNCtafOMj+wpuTLcYnfuVT3ncq8nPOUStq9ZtzRVkwjkuFy7T7QoguZ2Jfiv7Hu1RWU2P+IIWDqexanTklcOM895ZSz2vRHTxqTPkfACXhoQ1el03fZF7UC8/ZoMKUAFpFH0Ti2KoY5xW68y3Fw2b1gmMTC9DloU/Pd0pnHLlsDkWeakxtqNL+2P7AxftCYCKPx3vADgt72od92+KsiJo7dYuQx0O0QaSZ+n/CgIy"
+                },
+                "fingerprint": "58766188075a0b9a"
+              }
             }
           ],
           "usage": {
             "input_tokens": 166,
-            "output_tokens": 57,
-            "total_tokens": 223,
-            "reasoning_tokens": 44
+            "output_tokens": 89,
+            "total_tokens": 255,
+            "reasoning_tokens": 76
           },
-          "message_id": null,
-          "response_id": "jLCyarTfFPmfz7IPxrOKwAQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "Hg3BaqX5OJjVz7IPgc7LiQg"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 166,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 223,
-              "thoughtsTokenCount": 44,
+              "promptTokenCount": 166,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 166
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 76,
+              "totalTokenCount": 255
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "jLCyarTfFPmfz7IPxrOKwAQ"
+            "response_id": "Hg3BaqX5OJjVz7IPgc7LiQg"
           }
         }
       },
@@ -251,12 +263,25 @@
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": "CiQBaRR9E10sOghWE26uZU0ztl0NhP9aBzfMZfJIWwA/l9AfnlIKVwFpFH0TDz4OPCJrR+O5zBp6nybo2WhDs52WFmfBm76seU0+uNfn8vtDtzK4vqAfoHTSCUxRRj/Xl0ndu3SjmN4TR8D5Pe2gPlkoXXTDdMWwhBdlhaRHEQqdAQFpFH0ThCgQE8+XOHCv1FtkfaxkD1CRLj08F6bQvnIbyAM56ayzDOFGP0zAtHSC6cGugRUIu4FxU0mqKMm2uiXAUKleBjlFVWLZMMVzB/5LnQKbUEcGbmPus7fs73XnQlN4XoE10GGoa7K1KtDIIcp7kzfNnRnT5EtHTsSRxHqs9JBex8IaKqOcd6dIGaeNhDcz4D2FutIJImcBzhc=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_harbor_label"
+                  },
+                  "thoughtSignature": "CiQBaRR9E1A4H0p11iRdKxdacXQKmnLAefwzxertH6Kh5UhggBkKVwFpFH0TDrvITx1DuYCLwSaGgMU+yJFKtcuxlgalxU48vAyGx8iLucKpz1preWufhdlWd7rOU7WHcR3i2RFsFsQwEhcQ6u6cSDooo6DHiBjOP/8oZiXlJQrTAQFpFH0TSrrIoHg/w/Eq2GJ/528QpfXhNrdGw+BqC2oBZegfoZbJMqpnBN9/CnO1qwQwf3oPoy3lOs1D/TRooD7jxttDVA3i7A5xOzb6lMCYNX8KzL1NSFSvjlBmYccgmAjH8kJ7iRRtqBwpNCt6fswUoGPH1FJlNCtafOMj+wpuTLcYnfuVT3ncq8nPOUStq9ZtzRVkwjkuFy7T7QoguZ2Jfiv7Hu1RWU2P+IIWDqexanTklcOM895ZSz2vRHTxqTPkfACXhoQ1el03fZF7UC8/ZoMKUAFpFH0Ti2KoY5xW68y3Fw2b1gmMTC9DloU/Pd0pnHLlsDkWeakxtqNL+2P7AxftCYCKPx3vADgt72od92+KsiJo7dYuQx0O0QaSZ+n/CgIy"
+                },
+                "fingerprint": "58766188075a0b9a"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -308,7 +333,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -319,10 +343,26 @@
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "CiQBaRR9E10sOghWE26uZU0ztl0NhP9aBzfMZfJIWwA/l9AfnlIKVwFpFH0TDz4OPCJrR+O5zBp6nybo2WhDs52WFmfBm76seU0+uNfn8vtDtzK4vqAfoHTSCUxRRj/Xl0ndu3SjmN4TR8D5Pe2gPlkoXXTDdMWwhBdlhaRHEQqdAQFpFH0ThCgQE8+XOHCv1FtkfaxkD1CRLj08F6bQvnIbyAM56ayzDOFGP0zAtHSC6cGugRUIu4FxU0mqKMm2uiXAUKleBjlFVWLZMMVzB/5LnQKbUEcGbmPus7fs73XnQlN4XoE10GGoa7K1KtDIIcp7kzfNnRnT5EtHTsSRxHqs9JBex8IaKqOcd6dIGaeNhDcz4D2FutIJImcBzhc=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "lookup_harbor_label"
+                      },
+                      "thoughtSignature": "CiQBaRR9E1A4H0p11iRdKxdacXQKmnLAefwzxertH6Kh5UhggBkKVwFpFH0TDrvITx1DuYCLwSaGgMU+yJFKtcuxlgalxU48vAyGx8iLucKpz1preWufhdlWd7rOU7WHcR3i2RFsFsQwEhcQ6u6cSDooo6DHiBjOP/8oZiXlJQrTAQFpFH0TSrrIoHg/w/Eq2GJ/528QpfXhNrdGw+BqC2oBZegfoZbJMqpnBN9/CnO1qwQwf3oPoy3lOs1D/TRooD7jxttDVA3i7A5xOzb6lMCYNX8KzL1NSFSvjlBmYccgmAjH8kJ7iRRtqBwpNCt6fswUoGPH1FJlNCtafOMj+wpuTLcYnfuVT3ncq8nPOUStq9ZtzRVkwjkuFy7T7QoguZ2Jfiv7Hu1RWU2P+IIWDqexanTklcOM895ZSz2vRHTxqTPkfACXhoQ1el03fZF7UC8/ZoMKUAFpFH0Ti2KoY5xW68y3Fw2b1gmMTC9DloU/Pd0pnHLlsDkWeakxtqNL+2P7AxftCYCKPx3vADgt72od92+KsiJo7dYuQx0O0QaSZ+n/CgIy"
+                    },
+                    "fingerprint": "58766188075a0b9a"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "Hg3BaqX5OJjVz7IPgc7LiQg"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -387,38 +427,50 @@
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": "ClMBaRR9E9XqM7Ts4Rfva10LGWmnZOFq4zWZSC59L3ba8I3FBffd9vCPkBFSNJEnmDPxHai5Fe1+6ROQYOihtXWYGCrWH7tW37BZoBlXdv8bP0+L3Ao+AWkUfRMzWEwq265pb8bkXsnDDQxX4l47jXNhyZtapPKNKcpJ7Pf1sf3eHv3HLYu4iauDdB/mBLUUTI8hK1w=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_orchard_label"
+                  },
+                  "thoughtSignature": "Cl0BaRR9E06phNZr8EbKdvEw8OjJCziDzZfitGBKR/v5Via1gqt0A5ghFM+KCYFNgTuaxvJHqBSR94zu0P2JQQiA+MHYMaIBeE2O6UoePnBboYFtCs/ysdnRms3P5ewKQQFpFH0TVm2fpmh3c4OyAiRUsbKBVvhx/XjeXLO+DeoCeKf0PaNZ4UlJ7gwaYF3dhsAW6MNDvWz+pHvQLE0pVnvZ"
+                },
+                "fingerprint": "7a4cb7bd29e80315"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 245,
-            "output_tokens": 37,
-            "total_tokens": 282,
-            "reasoning_tokens": 24
+            "input_tokens": 277,
+            "output_tokens": 38,
+            "total_tokens": 315,
+            "reasoning_tokens": 25
           },
-          "message_id": null,
-          "response_id": "jbCyasbwBLrVz7IP-Yy84AQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "Hw3BatCQKPPrz7IP6I6QsQg"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 245,
               "candidatesTokenCount": 13,
-              "totalTokenCount": 282,
-              "thoughtsTokenCount": 24,
+              "promptTokenCount": 277,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 245
+                  "tokenCount": 277
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 25,
+              "totalTokenCount": 315
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "jbCyasbwBLrVz7IP-Yy84AQ"
+            "response_id": "Hw3BatCQKPPrz7IP6I6QsQg"
           }
         }
       },
@@ -453,12 +505,25 @@
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": "ClMBaRR9E9XqM7Ts4Rfva10LGWmnZOFq4zWZSC59L3ba8I3FBffd9vCPkBFSNJEnmDPxHai5Fe1+6ROQYOihtXWYGCrWH7tW37BZoBlXdv8bP0+L3Ao+AWkUfRMzWEwq265pb8bkXsnDDQxX4l47jXNhyZtapPKNKcpJ7Pf1sf3eHv3HLYu4iauDdB/mBLUUTI8hK1w=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "lookup_orchard_label"
+                  },
+                  "thoughtSignature": "Cl0BaRR9E06phNZr8EbKdvEw8OjJCziDzZfitGBKR/v5Via1gqt0A5ghFM+KCYFNgTuaxvJHqBSR94zu0P2JQQiA+MHYMaIBeE2O6UoePnBboYFtCs/ysdnRms3P5ewKQQFpFH0TVm2fpmh3c4OyAiRUsbKBVvhx/XjeXLO+DeoCeKf0PaNZ4UlJ7gwaYF3dhsAW6MNDvWz+pHvQLE0pVnvZ"
+                },
+                "fingerprint": "7a4cb7bd29e80315"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -510,7 +575,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -521,10 +585,26 @@
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": "CiQBaRR9E10sOghWE26uZU0ztl0NhP9aBzfMZfJIWwA/l9AfnlIKVwFpFH0TDz4OPCJrR+O5zBp6nybo2WhDs52WFmfBm76seU0+uNfn8vtDtzK4vqAfoHTSCUxRRj/Xl0ndu3SjmN4TR8D5Pe2gPlkoXXTDdMWwhBdlhaRHEQqdAQFpFH0ThCgQE8+XOHCv1FtkfaxkD1CRLj08F6bQvnIbyAM56ayzDOFGP0zAtHSC6cGugRUIu4FxU0mqKMm2uiXAUKleBjlFVWLZMMVzB/5LnQKbUEcGbmPus7fs73XnQlN4XoE10GGoa7K1KtDIIcp7kzfNnRnT5EtHTsSRxHqs9JBex8IaKqOcd6dIGaeNhDcz4D2FutIJImcBzhc=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "lookup_harbor_label"
+                      },
+                      "thoughtSignature": "CiQBaRR9E1A4H0p11iRdKxdacXQKmnLAefwzxertH6Kh5UhggBkKVwFpFH0TDrvITx1DuYCLwSaGgMU+yJFKtcuxlgalxU48vAyGx8iLucKpz1preWufhdlWd7rOU7WHcR3i2RFsFsQwEhcQ6u6cSDooo6DHiBjOP/8oZiXlJQrTAQFpFH0TSrrIoHg/w/Eq2GJ/528QpfXhNrdGw+BqC2oBZegfoZbJMqpnBN9/CnO1qwQwf3oPoy3lOs1D/TRooD7jxttDVA3i7A5xOzb6lMCYNX8KzL1NSFSvjlBmYccgmAjH8kJ7iRRtqBwpNCt6fswUoGPH1FJlNCtafOMj+wpuTLcYnfuVT3ncq8nPOUStq9ZtzRVkwjkuFy7T7QoguZ2Jfiv7Hu1RWU2P+IIWDqexanTklcOM895ZSz2vRHTxqTPkfACXhoQ1el03fZF7UC8/ZoMKUAFpFH0Ti2KoY5xW68y3Fw2b1gmMTC9DloU/Pd0pnHLlsDkWeakxtqNL+2P7AxftCYCKPx3vADgt72od92+KsiJo7dYuQx0O0QaSZ+n/CgIy"
+                    },
+                    "fingerprint": "58766188075a0b9a"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "Hg3BaqX5OJjVz7IPgc7LiQg"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -546,7 +626,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -557,10 +636,26 @@
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": "ClMBaRR9E9XqM7Ts4Rfva10LGWmnZOFq4zWZSC59L3ba8I3FBffd9vCPkBFSNJEnmDPxHai5Fe1+6ROQYOihtXWYGCrWH7tW37BZoBlXdv8bP0+L3Ao+AWkUfRMzWEwq265pb8bkXsnDDQxX4l47jXNhyZtapPKNKcpJ7Pf1sf3eHv3HLYu4iauDdB/mBLUUTI8hK1w=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "lookup_orchard_label"
+                      },
+                      "thoughtSignature": "Cl0BaRR9E06phNZr8EbKdvEw8OjJCziDzZfitGBKR/v5Via1gqt0A5ghFM+KCYFNgTuaxvJHqBSR94zu0P2JQQiA+MHYMaIBeE2O6UoePnBboYFtCs/ysdnRms3P5ewKQQFpFH0TVm2fpmh3c4OyAiRUsbKBVvhx/XjeXLO+DeoCeKf0PaNZ4UlJ7gwaYF3dhsAW6MNDvWz+pHvQLE0pVnvZ"
+                    },
+                    "fingerprint": "7a4cb7bd29e80315"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "Hw3BatCQKPPrz7IP6I6QsQg"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -619,40 +714,46 @@
             {
               "type": "text",
               "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CiIBaRR9E/s8BP5WMjX1UfTAX5dHpNoqyRv+XwNAm09tLbOAClkBaRR9E5ph7lK2i9e+V1Laqm7Ec4s1GjPIksVCIHlENNM0Lo5cgMN+HapPKzks2SAJWgZhTajiUGR17aJls0I7F7OcrEJEffmQUlK32QwJWIY5CB9+JVBNKwqxAQFpFH0Tsi3ZMRVLH/2W7745H+VTh24d/jeBQCtE+UIzPODlAhgz7jquK5tv7zNdkjsd54ij6AYfFzpm9PM2Mr6CFJI4uFg5aQpw5npGDgOYJWrdHiuc8AGtI9jSN84RZX9r/3LdIRnK34vzFoXSW7NLP51fZnWbftfdE8MfFYloXsAvqgsgJQJYMU1Sl7IyvXAX8lcHzwiJF0xp/VCm7IMnsq78HOEfulo/vEDBsC/qpgpmAWkUfRPRigTiD+l0DVhjXnTWKNV3jbqKfJ+D0JG9glcweOlO5S4a9oWt1Wgk6jgyHZSbONN6AnCV3yHCOrqOIqI1xo3MJnLN+P1DlyCVB2maRB1/eMFDS3NiM2ZJh6NzPDJouMAY"
-                }
+              "native": {
+                "item": {
+                  "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
+                  "thoughtSignature": "CiIBaRR9Ezsgb7bBedH+uTk2IO/TvL2wYBjV0u4xHN6h/6vMCmIBaRR9E0LUj1UT3uYgC9pNA8YUL8S+7yS8wzFCMqJSOZFfdH0Le9ylu6PDfk4TcnTG223gLEnKFgef5tmPVkfv7mF9OW4BqG48CJvExWbZXD4nFEq8mWVf5gwYpaSIdjRVqgq1AQFpFH0TDKAL8zAyq9+6bDDXJtKHyDMUNoFAZsSDWML1a8wTM+4UhwiGBGGVusZZl2mOsg0N61bcTa/r44eQSDVJ973d/IRKLTWxaq8qzAmqtuxfMlul15IGy1iSwCz1CN0y+0gC3qAEIK7JMCkq/aDjLyLXGW+3YbTvS+PdG9OQCeRKGNwvGASyXMS4c8bcJFfHzeR8FZM3u0/s63dMjw01LP+tHtfXRwCHkINJXkH5+RBaMUoKSAFpFH0TKL4LGc1w2Vv5hjZ+e/bXsKib/8nahRPrDOOPIJ1XjjGKPU3qKBuVVlZlSnj384qS592ZyPADLMRLG2u5cwFg4LYZMw=="
+                },
+                "fingerprint": "0d20edf319acb5d1"
               }
             }
           ],
           "usage": {
-            "input_tokens": 303,
-            "output_tokens": 98,
-            "total_tokens": 401,
-            "reasoning_tokens": 77
+            "input_tokens": 336,
+            "output_tokens": 94,
+            "total_tokens": 430,
+            "reasoning_tokens": 73
           },
-          "message_id": null,
-          "response_id": "jbCyat6cKvmtz7IPqZ2j0QQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "IA3BaqeODu_mz7IPusSH4Ac"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 303,
               "candidatesTokenCount": 21,
-              "totalTokenCount": 401,
-              "thoughtsTokenCount": 77,
+              "promptTokenCount": 336,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 303
+                  "tokenCount": 336
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 73,
+              "totalTokenCount": 430
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "jbCyat6cKvmtz7IPqZ2j0QQ"
+            "response_id": "IA3BaqeODu_mz7IPusSH4Ac"
           }
         }
       },
@@ -681,15 +782,22 @@
             "content": {
               "type": "text",
               "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CiIBaRR9E/s8BP5WMjX1UfTAX5dHpNoqyRv+XwNAm09tLbOAClkBaRR9E5ph7lK2i9e+V1Laqm7Ec4s1GjPIksVCIHlENNM0Lo5cgMN+HapPKzks2SAJWgZhTajiUGR17aJls0I7F7OcrEJEffmQUlK32QwJWIY5CB9+JVBNKwqxAQFpFH0Tsi3ZMRVLH/2W7745H+VTh24d/jeBQCtE+UIzPODlAhgz7jquK5tv7zNdkjsd54ij6AYfFzpm9PM2Mr6CFJI4uFg5aQpw5npGDgOYJWrdHiuc8AGtI9jSN84RZX9r/3LdIRnK34vzFoXSW7NLP51fZnWbftfdE8MfFYloXsAvqgsgJQJYMU1Sl7IyvXAX8lcHzwiJF0xp/VCm7IMnsq78HOEfulo/vEDBsC/qpgpmAWkUfRPRigTiD+l0DVhjXnTWKNV3jbqKfJ+D0JG9glcweOlO5S4a9oWt1Wgk6jgyHZSbONN6AnCV3yHCOrqOIqI1xo3MJnLN+P1DlyCVB2maRB1/eMFDS3NiM2ZJh6NzPDJouMAY"
-                }
+              "native": {
+                "item": {
+                  "text": "The alpha signal marker is crimson-harbor, and the beta signal marker is silver-orchard.",
+                  "thoughtSignature": "CiIBaRR9Ezsgb7bBedH+uTk2IO/TvL2wYBjV0u4xHN6h/6vMCmIBaRR9E0LUj1UT3uYgC9pNA8YUL8S+7yS8wzFCMqJSOZFfdH0Le9ylu6PDfk4TcnTG223gLEnKFgef5tmPVkfv7mF9OW4BqG48CJvExWbZXD4nFEq8mWVf5gwYpaSIdjRVqgq1AQFpFH0TDKAL8zAyq9+6bDDXJtKHyDMUNoFAZsSDWML1a8wTM+4UhwiGBGGVusZZl2mOsg0N61bcTa/r44eQSDVJ973d/IRKLTWxaq8qzAmqtuxfMlul15IGy1iSwCz1CN0y+0gC3qAEIK7JMCkq/aDjLyLXGW+3YbTvS+PdG9OQCeRKGNwvGASyXMS4c8bcJFfHzeR8FZM3u0/s63dMjw01LP+tHtfXRwCHkINJXkH5+RBaMUoKSAFpFH0TKL4LGc1w2Vv5hjZ+e/bXsKib/8nahRPrDOOPIJ1XjjGKPU3qKBuVVlZlSnj384qS592ZyPADLMRLG2u5cwFg4LYZMw=="
+                },
+                "fingerprint": "0d20edf319acb5d1"
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

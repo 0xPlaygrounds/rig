@@ -17,14 +17,13 @@ fn request() -> CompletionRequest {
     CompletionRequest::from(vec![
         Message::system("be brief"),
         "probe".into(),
-        Message::Assistant {
-            id: None,
-            content: vec![AssistantContent::tool_call(
+        Message::Assistant(crate::message::AssistantMessage::new(vec![
+            AssistantContent::tool_call(
                 "call_1",
                 crate::message::ToolName::new("lookup").expect("tool name"),
                 serde_json::json!({"q": "x"}),
-            )],
-        },
+            ),
+        ])),
         Message::User {
             content: vec![UserContent::tool_result(
                 crate::message::CallId::from_wire("call_1"),

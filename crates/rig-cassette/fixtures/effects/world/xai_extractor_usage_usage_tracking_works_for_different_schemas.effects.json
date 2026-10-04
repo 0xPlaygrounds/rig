@@ -121,22 +121,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured data from the text about Alice."
-                }
-              ]
+              "text": "Extracting structured data from the text about Alice.",
+              "native": {
+                "item": {
+                  "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Extracting structured data from the text about Alice.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "4a6705d4e60a8498"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                  "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
-                }
+                "provider": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
               },
               "function": {
                 "name": "submit",
@@ -146,8 +150,17 @@
                   "profession": "developer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                  "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                  "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "eb0d491f8d38103d"
+              }
             }
           ],
           "usage": {
@@ -157,12 +170,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 177
           },
-          "message_id": null,
-          "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
+          },
           "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,
@@ -357,22 +373,26 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "xai",
-              "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured address data from the provided text."
-                }
-              ]
+              "text": "Extracting structured address data from the provided text.",
+              "native": {
+                "item": {
+                  "id": "rs_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Extracting structured address data from the provided text.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "930672292d4c4b3c"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
-                  "item_id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0"
-                }
+                "provider": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0"
               },
               "function": {
                 "name": "submit",
@@ -383,8 +403,17 @@
                   "zip_code": "02139"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
+                  "call_id": "call-8870dc1d-c8ff-4bc2-bdd2-8c2424792f67-0",
+                  "id": "fc_12f9ab78-5f5a-9e31-92b4-8f4ea09febb1_0",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "a08afaf03a47c6ed"
+              }
             }
           ],
           "usage": {
@@ -394,12 +423,15 @@
             "cached_input_tokens": 192,
             "reasoning_tokens": 155
           },
-          "message_id": null,
-          "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "xai",
+            "model": "grok-3-mini",
+            "response_model": "grok-4.3",
+            "response_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1"
+          },
           "provider_request_id": "12f9ab78-5f5a-9e31-92b4-8f4ea09febb1",
           "finish_reason": "tool_calls",
-          "provider": "xai",
-          "model": "grok-4.3",
           "raw": {
             "background": false,
             "completed_at": 0,

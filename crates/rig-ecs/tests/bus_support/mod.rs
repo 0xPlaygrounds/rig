@@ -153,40 +153,40 @@ impl Serve for MockModel {
                 Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                     vec![AssistantContent::text(&self.text)],
                     Usage::default(),
-                    "mock",
+                    rig_core::message::Origin::new("test.api", "mock", ""),
                     serde_json::json!({ "provider": "mock" }),
                 ))))
             }
             EffectKind::Completion { stream: true, .. } => {
                 let counters = self.counters.clone();
                 let cap = self.cap;
-                Reply::written(move |mut out| async move {
-                    let mut guard = StreamGuard {
-                        counters: counters.clone(),
-                        finished: false,
-                    };
-                    loop {
-                        counters.hold.wait().await;
-                        if out.text("tick ").await.is_err() {
-                            return;
-                        }
-                        let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
-                        if sent >= cap {
-                            out.raw(serde_json::json!({ "provider": "mock" }));
-                            guard.finished = out
-                                .finish(
-                                    "mock",
-                                    rig_core::operation::Finish {
+                Reply::written(
+                    rig_core::message::Origin::new("mock", "mock", "mock"),
+                    move |mut out| async move {
+                        let mut guard = StreamGuard {
+                            counters: counters.clone(),
+                            finished: false,
+                        };
+                        loop {
+                            counters.hold.wait().await;
+                            if out.text("tick ").await.is_err() {
+                                return;
+                            }
+                            let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
+                            if sent >= cap {
+                                out.raw(serde_json::json!({ "provider": "mock" }));
+                                guard.finished = out
+                                    .finish(rig_core::operation::Finish {
                                         usage: Usage::default(),
                                         ..rig_core::operation::Finish::default()
-                                    },
-                                )
-                                .await
-                                .is_ok();
-                            return;
+                                    })
+                                    .await
+                                    .is_ok();
+                                return;
+                            }
                         }
-                    }
-                })
+                    },
+                )
             }
             other => Reply::Outcome(Err(ErrorReport::new(
                 ErrorKind::HandlerUnavailable,
@@ -296,6 +296,7 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
                 AssistantContent::Text(text) => Some(text.text.clone()),
                 AssistantContent::Reasoning(_)
                 | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_)
                 | AssistantContent::ToolCall(_) => None,
             })
             .collect(),
@@ -387,7 +388,7 @@ pub fn done(provider: &str) -> Relay {
     Ok(Relayed::Done(Box::new(CompletionResponse::new(
         Vec::new(),
         Usage::default(),
-        provider,
+        rig_core::message::Origin::new("test.api", provider, ""),
         serde_json::json!({}),
     ))))
 }

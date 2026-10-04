@@ -77,11 +77,24 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                         code::states(&first, "169"),
                         "first answer should carry 169, got {first:?}"
                     );
-                    let history =
-                        [Message::user(prompt), Message::assistant(first)].map(|message| {
-                            rig_ecs::agent::MessageParts::from_message(&message)
-                                .expect("conversation message")
-                        });
+                    // The code-execution turn as the world recorded it, code
+                    // parts included, replays to the same model.
+                    let turn = ecs
+                        .effect_log()
+                        .records
+                        .iter()
+                        .rev()
+                        .find_map(|record| match &record.outcome {
+                            Ok(rig_core::effect::Outcome::Completion(response)) => {
+                                response.message()
+                            }
+                            _ => None,
+                        })
+                        .expect("the code-execution turn");
+                    let history = [Message::user(prompt), turn].map(|message| {
+                        rig_ecs::agent::MessageParts::from_message(&message)
+                            .expect("conversation message")
+                    });
                     let run = ecs.app.world_mut().spawn_run(
                         ecs.agent,
                         &history,
@@ -101,6 +114,17 @@ async fn blocking_code_execution_replayed_in_chat_history() {
                 "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
                 code::CODE_PART_MARKERS,
             );
+            let bodies = crate::cassettes::recorded_interaction_bodies(
+                "gemini",
+                "code_execution_matrix/blocking_code_execution_replayed_in_chat_history",
+            );
+            let replayed = &bodies.last().expect("a continuation").0;
+            for marker in code::CODE_PART_MARKERS {
+                assert!(
+                    replayed.contains(marker),
+                    "the continuation replays the turn's {marker} part"
+                );
+            }
         },
         |log| {
             rig_test_support::goldens::world_golden_effects(

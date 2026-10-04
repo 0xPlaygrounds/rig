@@ -12,16 +12,12 @@
 //! # }
 //! ```
 
-use crate::error::ProviderError;
-use crate::wire::Flow;
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
 use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
-use crate::model::{ModelInfo, ModelList};
-use crate::operation::{Completion, ModelListing, ModelPage};
-use crate::providers::internal::wire::classify_untyped_line;
+use crate::operation::Completion;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// Copilot's embeddings wire is the shared one, pointed at Copilot by
 /// [`Copilot::embedding`](crate::providers::copilot::Copilot::embedding); the editor envelope is the dialect's modality
@@ -31,15 +27,13 @@ use crate::providers::openai::wire::{
     Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
     ResponsesQuirks, Route,
 };
-use crate::wire::{
-    Body, Decoder, Descriptor, Encoded, Framing, Mode, Out, Secret, Wire, WireEvent, WireFrame,
-};
+use crate::wire::{Body, Descriptor, Encoded, Mode, Secret, Wire};
 
 use super::{CopilotIntent, PROVIDER_NAME};
 
 /// The reply header carrying Copilot's transport request id. Copilot relays
 /// OpenAI's wire on both routes, header included.
-const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
+pub(super) const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 
 /// Credential variable named in missing-credential errors.
 const PRIMARY_API_KEY_ENV: &str = "GITHUB_COPILOT_API_KEY";
@@ -60,6 +54,8 @@ pub const DIALECT: Dialect = Dialect {
         hooks: Some(&HOOKS),
         verify_path: "",
         base_url_env_alias: Some("COPILOT_BASE_URL"),
+        // Copilot keeps no files, so no file id resolves there.
+        accepts_file_ids: false,
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
@@ -79,7 +75,7 @@ pub const DIALECT: Dialect = Dialect {
 };
 
 static HOOKS: DialectHooks = DialectHooks {
-    default_endpoint: Some(super::base_url_from_token),
+    default_endpoint: Some(super::auth::base_url_from_token),
     model_route: Some(|model| {
         if routes_through_responses(model) {
             Route::Responses
@@ -145,7 +141,11 @@ impl CopilotConfig {
     /// Derive a permitted endpoint from `proxy-ep=` when present, otherwise use
     /// the default. Explicit base-URL settings override token-derived routing.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        credential_of(&OpenAIConfig::with_key(&DIALECT, api_key))
+        let provider = OpenAIConfig::with_key(&DIALECT, api_key);
+        Self {
+            api_key: provider.api_key,
+            base_url: provider.base_url,
+        }
     }
 
     /// Configure Copilot from an exchanged auth context.
@@ -184,11 +184,6 @@ impl CopilotConfig {
 
     /// The completion wire for `model`, on whichever route answers it.
     pub(crate) fn completion(&self, model: impl Into<String>) -> CopilotWire {
-        self.wire_for(model)
-    }
-
-    /// Shared construction for the inherent and trait completion entry points.
-    fn wire_for(&self, model: impl Into<String>) -> CopilotWire {
         CopilotWire {
             wire: self.openai().completion(model),
             intent: CopilotIntent::default(),
@@ -201,20 +196,13 @@ impl CopilotConfig {
         Embeddings::new(self.openai(), model, ndims)
     }
 
-    /// The model-listing wire.
-    pub(crate) fn models(&self) -> Models {
-        Models {
-            provider: self.clone(),
-        }
-    }
-
     /// Convert to shared configuration with Copilot's dialect and explicit endpoint.
     fn openai(&self) -> OpenAIConfig {
         OpenAIConfig::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
     }
 
     /// Resolve `path` against the base URL.
-    fn uri(&self, path: &str) -> String {
+    pub(super) fn uri(&self, path: &str) -> String {
         format!("{}{path}", self.base_url.trim_end_matches('/'))
     }
 }
@@ -235,7 +223,7 @@ fn first_env(names: &[&'static str]) -> Result<Option<String>, EnvError> {
 /// Used by the modality hook and the catalogue wire. `insert` replaces the
 /// shared authentication header rather than appending a second credential.
 /// Completion routes use `completion_envelope` during encoding instead.
-fn stamp(
+pub(super) fn stamp(
     request: &mut http::Request<Body>,
     api_key: &str,
     initiator: &'static str,
@@ -306,20 +294,11 @@ impl CopilotWire {
     }
 }
 
-/// The Copilot credential behind the shared configuration
-/// [`Copilot::new`] resolves its endpoint through.
-fn credential_of(provider: &OpenAIConfig) -> CopilotConfig {
-    CopilotConfig {
-        api_key: provider.api_key.clone(),
-        base_url: provider.base_url.clone(),
-    }
-}
-
 impl Wire for CopilotWire {
     type Op = Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = OpenAiDecoder<'id>;
+    type Decoder<'id> = OpenAiDecoder;
 
     fn describe(&self) -> Descriptor<'_> {
         self.wire.describe()
@@ -334,112 +313,6 @@ impl Wire for CopilotWire {
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         self.wire.decoder()
-    }
-}
-
-/// Copilot's model-listing wire.
-///
-/// `GET /models` answers with the whole catalogue, so a page never names a
-/// next one.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Models {
-    /// Which Copilot, and how to reach it.
-    pub provider: CopilotConfig,
-}
-
-/// Catalogue entry with model identity, vendor, and modality under `capabilities.type`.
-#[derive(Debug, Deserialize)]
-pub struct ModelEntry {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    vendor: Option<String>,
-    #[serde(default)]
-    capabilities: Option<ModelEntryCapabilities>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelEntryCapabilities {
-    #[serde(default, rename = "type")]
-    kind: Option<String>,
-}
-
-/// The `{ "data": [...] }` envelope.
-#[derive(Debug, Deserialize)]
-pub struct ModelsReply {
-    #[serde(default)]
-    data: Vec<ModelEntry>,
-}
-
-impl ModelsReply {
-    /// The catalogue as normalized models.
-    pub fn into_models(self) -> Vec<ModelInfo> {
-        self.data.into_iter().map(ModelInfo::from).collect()
-    }
-}
-
-impl From<ModelEntry> for ModelInfo {
-    fn from(entry: ModelEntry) -> Self {
-        let mut model = ModelInfo::from_id(entry.id);
-        model.name = entry.name;
-        model.owned_by = entry.vendor;
-        if let Some(capabilities) = entry.capabilities {
-            model.r#type = capabilities.kind;
-        }
-        model
-    }
-}
-
-/// The model-listing decoder.
-#[derive(Default)]
-pub struct ModelsDecoder;
-
-impl<'id> Decoder<'id, ModelListing> for ModelsDecoder {
-    type Event = ModelsReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn decode(
-        &mut self,
-        event: Self::Event,
-        out: Out<'id, ModelListing>,
-    ) -> Result<Flow, ProviderError> {
-        Ok(out.end(ModelPage {
-            models: ModelList::new(event.into_models()),
-            next: None,
-        }))
-    }
-}
-
-impl Wire for Models {
-    type Op = ModelListing;
-    type Payload = crate::wire::Encoded;
-    type Frame = crate::wire::WireFrame;
-    type Decoder<'id> = ModelsDecoder;
-
-    fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME)
-    }
-
-    fn encode(&self, _cursor: Option<String>, _mode: Mode) -> Result<Encoded, EncodeError> {
-        let mut request = http::Request::get(self.provider.uri(super::MODEL_LISTING_PATH))
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::empty())?;
-        stamp(
-            &mut request,
-            self.provider.api_key.expose(),
-            "user",
-            false,
-            CopilotIntent::Panel,
-        )?;
-        Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
-    }
-
-    fn decoder<'id>(&self) -> Self::Decoder<'id> {
-        ModelsDecoder
     }
 }
 

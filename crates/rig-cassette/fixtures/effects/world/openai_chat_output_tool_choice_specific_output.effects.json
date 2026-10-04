@@ -106,9 +106,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_WrSxGNmyHGwN3740degKUBAg"
-                }
+                "provider": "call_WrSxGNmyHGwN3740degKUBAg"
               },
               "function": {
                 "name": "final_result",
@@ -118,8 +116,17 @@
                   "summary": "recurrence: Monthly (1st Tuesday); time: 18:00–20:30 PDT; location: Impact Hub Seattle (Capitol Hill), 220 12th Ave S, Seattle, WA; description: Community meetup for Rust developers—lightning talks, a main deep-dive talk/workshop, and networking; agenda: 18:00 doors/networking; 18:30 welcome; 18:40 lightning talks (3×10m); 19:20 main talk/workshop (45m); 20:05 Q&A & networking; organizer: Seattle Rust Community (organizer@seattlerust.org); RSVP: https://www.meetup.com/seattle-rust; cost: Free (donations welcome); capacity: ~80; accessibility: wheelchair accessible; notes: bring laptop; community talk slots available—contact organizer to propose a talk."
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Tech Meetup\",\"summary\":\"recurrence: Monthly (1st Tuesday); time: 18:00–20:30 PDT; location: Impact Hub Seattle (Capitol Hill), 220 12th Ave S, Seattle, WA; description: Community meetup for Rust developers—lightning talks, a main deep-dive talk/workshop, and networking; agenda: 18:00 doors/networking; 18:30 welcome; 18:40 lightning talks (3×10m); 19:20 main talk/workshop (45m); 20:05 Q&A & networking; organizer: Seattle Rust Community (organizer@seattlerust.org); RSVP: https://www.meetup.com/seattle-rust; cost: Free (donations welcome); capacity: ~80; accessibility: wheelchair accessible; notes: bring laptop; community talk slots available—contact organizer to propose a talk.\"}",
+                    "name": "final_result"
+                  },
+                  "id": "call_WrSxGNmyHGwN3740degKUBAg",
+                  "type": "function"
+                },
+                "fingerprint": "36fb894d57509147"
+              }
             }
           ],
           "usage": {
@@ -129,12 +136,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 1472
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDCKDhp8fBlXDKUJ9qw6thQSeUxF",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDCKDhp8fBlXDKUJ9qw6thQSeUxF"
+          },
           "provider_request_id": "req_f359eaff7be943bdbf3d7c606b1fb488",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

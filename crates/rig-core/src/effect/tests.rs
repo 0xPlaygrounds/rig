@@ -295,7 +295,7 @@ fn every_outcome_round_trips() {
             Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
-                "mock",
+                crate::message::Origin::new("test.api", "mock", ""),
                 serde_json::json!({}),
             )),
             EffectFamily::Completion,
@@ -425,7 +425,7 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let response = CompletionResponse::new(
         vec![AssistantContent::text("hi")],
         Usage::default(),
-        "mock",
+        crate::message::Origin::new("test.api", "mock", ""),
         serde_json::json!({}),
     );
     let answer =

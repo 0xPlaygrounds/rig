@@ -403,7 +403,7 @@ async fn the_chat_route_folds_its_recorded_turn() {
     .await
     .expect("the recorded chat body folds");
 
-    assert_eq!(response.provider, PROVIDER_NAME);
+    assert_eq!(response.provider(), PROVIDER_NAME);
     assert!(
         text_of(&response)
             .is_some_and(|text| text.contains("Rust is a systems programming language")),
@@ -426,14 +426,14 @@ async fn the_responses_route_folds_its_recorded_turn() {
     .await
     .expect("the recorded responses body folds");
 
-    assert_eq!(response.provider, PROVIDER_NAME);
-    assert_eq!(response.model.as_deref(), Some(super::super::GPT_5_3_CODEX));
+    assert_eq!(response.provider(), PROVIDER_NAME);
+    assert_eq!(response.model(), Some(super::super::GPT_5_3_CODEX));
     assert!(
         text_of(&response).is_some_and(|text| text.contains("Refactoring is the process")),
         "{:?}",
         response.choice
     );
-    assert_eq!(response.response_id.as_deref(), Some("resp_REDACTED_1"));
+    assert_eq!(response.response_id(), Some("resp_REDACTED_1"));
 }
 
 /// Copilot's Responses route answers a tool-calling turn with a
@@ -460,12 +460,17 @@ async fn a_contentless_reasoning_item_survives_the_fold() {
     let reasoning = response
         .choice
         .iter()
-        .find_map(|content| match content {
-            crate::message::AssistantContent::Reasoning(reasoning) => Some(reasoning),
-            _ => None,
-        })
+        .find(|content| matches!(content, crate::message::AssistantContent::Reasoning(_)))
         .unwrap_or_else(|| panic!("the turn's reasoning item survives: {:?}", response.choice));
-    assert_eq!(reasoning.value().id.as_deref(), Some("id_REDACTED_1"));
+    assert_eq!(
+        reasoning.native_item(),
+        Some(&serde_json::json!({
+            "content": [],
+            "id": "id_REDACTED_1",
+            "summary": [],
+            "type": "reasoning"
+        }))
+    );
 }
 
 // ── the modality wires ──────────────────────────────────────────────────

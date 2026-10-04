@@ -1,8 +1,4 @@
 use super::*;
-use crate::providers::gemini::completion::gemini_api_types::{
-    Blob, ContentCandidate, FinishReason, UsageMetadata,
-};
-use serde_json::json;
 
 fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
     ImageGenerationRequest {
@@ -15,13 +11,23 @@ fn image_generation_request(prompt: &str) -> ImageGenerationRequest {
 
 #[test]
 fn request_body_uses_gemini_image_generation_shape() {
-    let body = create_request_body(image_generation_request("Generate an image of an axolotl"))
-        .expect("request should serialize");
+    let body = create_request_body(image_generation_request("Generate an image of an axolotl"));
+    let wire = Images::new(
+        crate::providers::gemini::GeminiConfig::new("test-key"),
+        GEMINI_2_5_FLASH_IMAGE,
+    );
+    let encoded = wire
+        .encode(
+            image_generation_request("Generate an image of an axolotl"),
+            Mode::Unary,
+        )
+        .expect("the request encodes");
 
     assert_eq!(
-        generate_content_path(GEMINI_2_5_FLASH_IMAGE),
+        encoded.request.uri().path(),
         "/v1beta/models/gemini-2.5-flash-image:generateContent"
     );
+    assert_eq!(crate::test_utils::json_body(&encoded.request), body);
     assert_eq!(body["contents"][0]["role"], "user");
     assert_eq!(
         body["contents"][0]["parts"][0]["text"],
@@ -49,7 +55,7 @@ fn request_body_allows_additional_params_to_override_image_config() {
         }
     }));
 
-    let body = create_request_body(request).expect("request should serialize");
+    let body = create_request_body(request);
 
     assert_eq!(
         body["generationConfig"]["imageConfig"]["aspectRatio"],
@@ -64,124 +70,84 @@ fn request_body_allows_additional_params_to_override_image_config() {
 
 #[test]
 fn response_parsing_returns_first_non_thought_inline_image() {
-    let response = GenerateContentResponse {
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                role: Some(Role::Model),
-                parts: vec![
-                    Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::Text("Here you go".to_string()),
-                        additional_params: None,
+    let reply = json!({
+        "candidates": [{
+            "content": {
+                "role": "model",
+                "parts": [
+                    { "thought": false, "text": "Here you go" },
+                    {
+                        "thought": true,
+                        "inlineData": {
+                            "mimeType": "image/png",
+                            "data": BASE64_STANDARD.encode("thought image"),
+                        },
                     },
-                    Part {
-                        thought: Some(true),
-                        thought_signature: None,
-                        part: PartKind::InlineData(Blob {
-                            mime_type: "image/png".to_string(),
-                            data: BASE64_STANDARD.encode("thought image"),
-                        }),
-                        additional_params: None,
-                    },
-                    Part {
-                        thought: Some(false),
-                        thought_signature: None,
-                        part: PartKind::InlineData(Blob {
-                            mime_type: "image/png".to_string(),
-                            data: BASE64_STANDARD.encode("final image"),
-                        }),
-                        additional_params: None,
+                    {
+                        "thought": false,
+                        "inlineData": {
+                            "mimeType": "image/png",
+                            "data": BASE64_STANDARD.encode("final image"),
+                        },
                     },
                 ],
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: None,
-            finish_message: None,
+            },
+            "finishReason": "STOP",
         }],
-        prompt_feedback: None,
-        usage_metadata: Some(UsageMetadata {
-            prompt_token_count: 1,
-            cached_content_token_count: None,
-            candidates_token_count: Some(1),
-            total_token_count: 2,
-            thoughts_token_count: None,
-            prompt_tokens_details: None,
-            cache_tokens_details: None,
-            candidates_tokens_details: None,
-            tool_use_prompt_token_count: None,
-            tool_use_prompt_tokens_details: None,
-            traffic_type: None,
-        }),
-        model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
-        response_id: "response-id".to_string(),
-        error: None,
-    };
+        "usageMetadata": { "promptTokenCount": 1, "candidatesTokenCount": 1, "totalTokenCount": 2 },
+        "modelVersion": GEMINI_2_5_FLASH_IMAGE,
+        "responseId": "response-id",
+    });
 
-    let parsed = response
-        .normalize()
-        .expect("response should contain an image");
+    let parsed = image_of(&reply).expect("response should contain an image");
 
     assert_eq!(parsed.image, b"final image");
+    assert_eq!(parsed.usage.input_tokens, Some(1));
+    assert_eq!(parsed.usage.output_tokens, Some(1));
+    assert_eq!(parsed.response_id.as_deref(), Some("response-id"));
 }
 
 #[test]
 fn response_parsing_rejects_text_only_response() {
-    let response = GenerateContentResponse {
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                role: Some(Role::Model),
-                parts: vec![Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::Text("No image".to_string()),
-                    additional_params: None,
-                }],
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: None,
-            finish_message: None,
+    let reply = json!({
+        "candidates": [{
+            "content": { "role": "model", "parts": [{ "thought": false, "text": "No image" }] },
+            "finishReason": "STOP",
         }],
-        prompt_feedback: None,
-        usage_metadata: None,
-        model_version: Some(GEMINI_2_5_FLASH_IMAGE.to_string()),
-        response_id: "response-id".to_string(),
-        error: None,
-    };
+        "modelVersion": GEMINI_2_5_FLASH_IMAGE,
+        "responseId": "response-id",
+    });
 
-    let err = response
-        .normalize()
-        .expect_err("text-only responses should fail");
+    let err = image_of(&reply).expect_err("text-only responses should fail");
 
     assert!(err.to_string().contains("did not include image data"));
 }
 
 /// A blocked prompt is a *successful* `generateContent` document: no
-/// candidates, only `promptFeedback`. Every field of the response type is
-/// optional or defaulted so that a reply carrying nothing but the block
-/// still parses and the block can be reported, instead of the parse failing
-/// and hiding the reason.
+/// candidates, only `promptFeedback`. The wire recognizes it as a reply and
+/// reports a response error, instead of failing to read it.
 #[test]
-fn a_blocked_prompt_reply_parses_as_a_candidate_less_response() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "promptFeedback": {
-            "blockReason": "SAFETY"
-        }
-    }))
-    .expect("blocked prompt response should deserialize");
+fn a_blocked_prompt_reply_decodes_to_a_response_error() {
+    let wire = Images::new(
+        crate::providers::gemini::GeminiConfig::new("test-key"),
+        GEMINI_2_5_FLASH_IMAGE,
+    );
 
-    assert!(response.candidates.is_empty());
-    assert!(response.prompt_feedback.is_some());
+    let err = crate::test_utils::decode_reply(
+        &wire,
+        &image_generation_request("a banana"),
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(
+            json!({ "promptFeedback": { "blockReason": "SAFETY" } }).to_string(),
+        )],
+        serde_json::Value::Null,
+    )
+    .expect_err("a blocked prompt carries no image");
+
+    assert!(
+        matches!(&err, ProviderError::Response(message) if message.contains("did not include image data")),
+        "{err:?}"
+    );
 }
 
 /// The 200 reply recorded in

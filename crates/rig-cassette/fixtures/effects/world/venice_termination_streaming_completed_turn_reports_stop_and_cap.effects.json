@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 9,
+        "batch": 8,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -107,15 +107,18 @@
             "output_tokens": 3,
             "total_tokens": 982
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RKZzUEQtOYKxtb8g2l1u9MOK"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "usage": {
-              "prompt_tokens": 979,
               "completion_tokens": 3,
+              "prompt_tokens": 979,
               "total_tokens": 982
             },
             "finish_reason": "stop",
@@ -170,6 +173,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "venice",
+        "model": "mistral-small-3-2-24b-instruct"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -234,22 +234,26 @@
             "content": [
               {
                 "type": "reasoning",
-                "issuer": "xai",
-                "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
-                "content": [
-                  {
-                    "type": "summary",
-                    "content": "Extracting structured data from the text about Alice."
-                  }
-                ]
+                "text": "Extracting structured data from the text about Alice.",
+                "native": {
+                  "item": {
+                    "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                    "status": "completed",
+                    "summary": [
+                      {
+                        "text": "Extracting structured data from the text about Alice.",
+                        "type": "summary_text"
+                      }
+                    ],
+                    "type": "reasoning"
+                  },
+                  "fingerprint": "4a6705d4e60a8498"
+                }
               },
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                    "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
-                  }
+                  "provider": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
                 },
                 "function": {
                   "name": "submit",
@@ -259,11 +263,29 @@
                     "profession": "developer"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                    "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                    "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                    "name": "submit",
+                    "status": "completed",
+                    "type": "function_call"
+                  },
+                  "fingerprint": "eb0d491f8d38103d"
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-3-mini",
+                "response_model": "grok-4.3",
+                "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
+              },
+              "stop": "tool_use"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -284,22 +306,26 @@
               "choice": [
                 {
                   "type": "reasoning",
-                  "issuer": "xai",
-                  "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
-                  "content": [
-                    {
-                      "type": "summary",
-                      "content": "Extracting structured data from the text about Alice."
-                    }
-                  ]
+                  "text": "Extracting structured data from the text about Alice.",
+                  "native": {
+                    "item": {
+                      "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                      "status": "completed",
+                      "summary": [
+                        {
+                          "text": "Extracting structured data from the text about Alice.",
+                          "type": "summary_text"
+                        }
+                      ],
+                      "type": "reasoning"
+                    },
+                    "fingerprint": "4a6705d4e60a8498"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
-                      "item_id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0"
-                    }
+                    "provider": "call-12cf4203-021a-4973-8651-a02b1228b883-0"
                   },
                   "function": {
                     "name": "submit",
@@ -309,8 +335,17 @@
                       "profession": "developer"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                      "call_id": "call-12cf4203-021a-4973-8651-a02b1228b883-0",
+                      "id": "fc_41b2457e-5f07-939d-ad83-e81bc313df73_0",
+                      "name": "submit",
+                      "status": "completed",
+                      "type": "function_call"
+                    },
+                    "fingerprint": "eb0d491f8d38103d"
+                  }
                 }
               ],
               "usage": {
@@ -320,12 +355,15 @@
                 "cached_input_tokens": 192,
                 "reasoning_tokens": 177
               },
-              "message_id": null,
-              "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
+              "origin": {
+                "api": "openai.responses",
+                "provider": "xai",
+                "model": "grok-3-mini",
+                "response_model": "grok-4.3",
+                "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
+              },
               "provider_request_id": "41b2457e-5f07-939d-ad83-e81bc313df73",
               "finish_reason": "tool_calls",
-              "provider": "xai",
-              "model": "grok-4.3",
               "raw": {
                 "background": false,
                 "completed_at": 0,
@@ -444,27 +482,43 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.responses",
+              "provider": "xai",
+              "model": "grok-3-mini",
+              "response_model": "grok-4.3",
+              "response_id": "41b2457e-5f07-939d-ad83-e81bc313df73"
+            },
+            "stop": "tool_use"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Reasoning": {
-              "issuer": "xai",
-              "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
-              "content": [
-                {
-                  "type": "summary",
-                  "content": "Extracting structured data from the text about Alice."
-                }
-              ]
+              "text": "Extracting structured data from the text about Alice.",
+              "native": {
+                "item": {
+                  "id": "rs_41b2457e-5f07-939d-ad83-e81bc313df73",
+                  "status": "completed",
+                  "summary": [
+                    {
+                      "text": "Extracting structured data from the text about Alice.",
+                      "type": "summary_text"
+                    }
+                  ],
+                  "type": "reasoning"
+                },
+                "fingerprint": "4a6705d4e60a8498"
+              }
             }
           }
         },

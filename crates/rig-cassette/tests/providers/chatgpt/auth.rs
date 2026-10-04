@@ -47,7 +47,7 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &DynHttpClient) -> Ope
 
 /// [`oauth_provider_with_auth_file`], on the shared default transport.
 async fn oauth_client_with_auth_file(path: &Path) -> OpenAiModels {
-    let http = rig::rig_reqwest::shared();
+    let http = rig_test_support::cassettes::local_http();
     OpenAiModels::new(oauth_provider_with_auth_file(path, &http).await, http)
 }
 

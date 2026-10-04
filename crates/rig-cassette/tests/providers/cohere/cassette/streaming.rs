@@ -2,12 +2,14 @@
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{
-    STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
+    Observed, STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response,
     collect_stream_final_response_and_provider_final,
 };
 
 #[tokio::test]
 async fn streaming_smoke() {
+    let usage = Observed::default();
+    let parked = usage.clone();
     with_cohere_cassette("streaming/streaming_smoke", |client| async move {
         // Capped so the recorded SSE body stays reviewable; uncapped, the model can
         // run to its 8k output limit and the fixture balloons past 800 KB.
@@ -23,15 +25,20 @@ async fn streaming_smoke() {
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-
-        // Cassette's `message-end` usage: tokens.{input,output} = 553/64,
-        // cached_tokens = 480. `tokens` is the counter rig reports, not
-        // `billed_units`, which excludes cached input and understates usage.
-        let usage = provider_final.usage;
-        assert_eq!(usage.input_tokens, Some(553));
-        assert_eq!(usage.output_tokens, Some(64));
-        assert_eq!(usage.total_tokens, Some(553 + 64));
-        assert_eq!(usage.cached_input_tokens, Some(480));
+        parked.put(provider_final.usage);
     })
     .await;
+
+    // The usage is the stream's usage chunk, counted as Cohere sent it.
+    let usage = usage.take();
+    let frame =
+        crate::raw_capture::chat::recorded_sole_usage_frame("cohere", "streaming/streaming_smoke");
+    let count = |pointer: &str| frame.pointer(pointer).and_then(serde_json::Value::as_u64);
+    assert_eq!(usage.input_tokens, count("/usage/prompt_tokens"));
+    assert_eq!(usage.output_tokens, count("/usage/completion_tokens"));
+    assert_eq!(usage.total_tokens, count("/usage/total_tokens"));
+    assert_eq!(
+        usage.cached_input_tokens,
+        count("/usage/prompt_tokens_details/cached_tokens")
+    );
 }

@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // when the provider sent none.
     let mut results = Vec::new();
     for call in response.tool_calls() {
-        let AddArgs { a, b } = serde_json::from_value(call.function.arguments.clone())?;
+        let AddArgs { a, b } = serde_json::from_value(call.function.arguments_value())?;
         println!("{} [{}] = {}", call.function.name, call.id, a + b);
         // A result is built from the call it answers, so its id and name match.
         results.push(call.result(vec![ToolResultContent::text((a + b).to_string())]));

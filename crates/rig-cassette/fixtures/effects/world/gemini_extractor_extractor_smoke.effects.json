@@ -114,21 +114,36 @@
                   "last_name": "Lovelace"
                 }
               },
-              "signature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "first_name": "Ada",
+                      "job": "mathematician",
+                      "last_name": "Lovelace"
+                    },
+                    "name": "submit"
+                  },
+                  "thoughtSignature": "Ct4CAWkUfRNXq1SG+3dDtEv6WNUlRQ8hPyL5//p6MIwIidKeJ8jtYsTcOnQ6c1X+0nLKWLfv/LkNNYzVMn8usMo2oOlnTPdneQuOPZmrPkK8zOGTdSbjPc6xsqKYZJJJ8n2b7io3ZhvF0CJIYR0DsKOlYZ9L4t6qPPo3vbwJaDCuo3K0WAuWpOqKYd3icO8aovTRJqn0/lBueOhORrh5LjIulFYnxbNxKbNhhx1c5Fgs9egBZYosp5g70zReDH+kBueXqH1FOJSwogcmxWQ7dEsfZvQQ178xF+nAzZscnXJeYNuIoJx+EfZCPU5PN7QXdftO65bOZ96Y9Pk0ZWZ06hnHgPL7OgLe8T3S5R3UIS5ZqsMhrbOlnc47+HPbgN+sULi07eRxKCWuf5BmjhqHMNSxXFDB8/zj0mGBXGnjlxTLhZw5k68GRv3mri0Rs+wPIpl/mOBI3MjbDPH+AUiN78c="
+                },
+                "fingerprint": "8e0536808a962a83"
+              }
             }
           ],
           "usage": {
             "input_tokens": 168,
-            "output_tokens": 122,
-            "total_tokens": 290,
-            "reasoning_tokens": 91
+            "output_tokens": 125,
+            "total_tokens": 293,
+            "reasoning_tokens": 94
           },
-          "message_id": null,
-          "response_id": "9K2yavfuHYGhz7IPkZKquQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "qwzBat2tFPSHqtsPgfqfaQ"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -143,7 +158,7 @@
                         },
                         "name": "submit"
                       },
-                      "thoughtSignature": "CtECAWkUfRPNbgdIrhQTb8VG+R4Vvo/R1ubAAKGJRj3w0HT0ByVyd7O66VUHI6uLIVLK8/v6n8hgDnq0Mvb0ERu4Ut69yG/QnHLxOeMefHGJMDgEoLKt018vS+/Ss2yT/zNT4EscCN3zZJoi1erAcQGQBueCyv+v+vgylNRuv2UiZzuysUMC7vkQWzm755pCrsWJpI4qAyCBrIxqVNU/OYAihJicq6WypwTFnvY/m7djQ8X6UuZqJ1hBdplnZHvwnR0RNoccBpOeWoXS0ygA4KLBrO/ewMRd6rqCX8hJI6gSGddEqSgYIlr6Sftyw/0i1VWgN8gUsiMkgPcb/YHuM6Uq7kDTj16hGqdEpGfyM+MbYiFMmNEePGLua6OsruL3AePLHmHYgxdcn+a5A/AH2oNNC8F+3ywm3ES2LjI4dzgC4rp8ZFDpaZj0E+NyX3MWYEjHzA=="
+                      "thoughtSignature": "Ct4CAWkUfRNXq1SG+3dDtEv6WNUlRQ8hPyL5//p6MIwIidKeJ8jtYsTcOnQ6c1X+0nLKWLfv/LkNNYzVMn8usMo2oOlnTPdneQuOPZmrPkK8zOGTdSbjPc6xsqKYZJJJ8n2b7io3ZhvF0CJIYR0DsKOlYZ9L4t6qPPo3vbwJaDCuo3K0WAuWpOqKYd3icO8aovTRJqn0/lBueOhORrh5LjIulFYnxbNxKbNhhx1c5Fgs9egBZYosp5g70zReDH+kBueXqH1FOJSwogcmxWQ7dEsfZvQQ178xF+nAzZscnXJeYNuIoJx+EfZCPU5PN7QXdftO65bOZ96Y9Pk0ZWZ06hnHgPL7OgLe8T3S5R3UIS5ZqsMhrbOlnc47+HPbgN+sULi07eRxKCWuf5BmjhqHMNSxXFDB8/zj0mGBXGnjlxTLhZw5k68GRv3mri0Rs+wPIpl/mOBI3MjbDPH+AUiN78c="
                     }
                   ],
                   "role": "model"
@@ -154,7 +169,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "9K2yavfuHYGhz7IPkZKquQQ",
+            "responseId": "qwzBat2tFPSHqtsPgfqfaQ",
             "usageMetadata": {
               "candidatesTokenCount": 31,
               "promptTokenCount": 168,
@@ -165,8 +180,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 91,
-              "totalTokenCount": 290
+              "thoughtsTokenCount": 94,
+              "totalTokenCount": 293
             }
           }
         }

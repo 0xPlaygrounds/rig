@@ -102,10 +102,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_YC0vDLqQWqOflDQ0wAJYrXM6",
-                  "item_id": "fc_0a4281d4764347e5006ab39698f0c887d08246289f5ba4f252"
-                }
+                "provider": "call_YC0vDLqQWqOflDQ0wAJYrXM6"
               },
               "function": {
                 "name": "submit",
@@ -115,8 +112,17 @@
                   "job": "mathematician"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"first_name\":\"Ada\",\"last_name\":\"Lovelace\",\"job\":\"mathematician\"}",
+                  "call_id": "call_YC0vDLqQWqOflDQ0wAJYrXM6",
+                  "id": "fc_0a4281d4764347e5006ab39698f0c887d08246289f5ba4f252",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "2f2fc4a2cd12e0ed"
+              }
             }
           ],
           "usage": {
@@ -127,12 +133,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0a4281d4764347e5006ab3969865a487d081611b19227044ba",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0a4281d4764347e5006ab3969865a487d081611b19227044ba"
+          },
           "provider_request_id": "req_6e109d1bd8ee41cf9a6d4a555f89c8dc",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
             "access_programs": null,
             "background": false,

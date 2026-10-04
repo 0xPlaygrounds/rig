@@ -62,7 +62,10 @@ impl Wire for Embeddings {
                 let request = EmbedContentRequest {
                     model: format!("models/{}", self.model),
                     content: Some(proto::Content {
-                        parts: vec![super::completion::text_part(text.clone())],
+                        parts: vec![proto::Part {
+                            data: Some(proto::part::Data::Text(text.clone())),
+                            ..proto::Part::default()
+                        }],
                         role: String::new(),
                     }),
                     task_type: None,

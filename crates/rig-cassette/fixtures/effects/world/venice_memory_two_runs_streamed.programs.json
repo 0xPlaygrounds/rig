@@ -208,8 +208,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -220,7 +220,16 @@
                 "text": "ready"
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 3
@@ -249,19 +258,22 @@
                 "output_tokens": 2,
                 "total_tokens": 977
               },
-              "message_id": null,
-              "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "venice",
+                "model": "mistral-small-3-2-24b-instruct",
+                "response_model": "mistral-small-3-2-24b-instruct",
+                "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
+              },
               "finish_reason": "stop",
-              "provider": "venice",
-              "model": "mistral-small-3-2-24b-instruct",
               "raw": {
                 "usage": {
-                  "prompt_tokens": 975,
                   "completion_tokens": 2,
+                  "prompt_tokens": 975,
                   "total_tokens": 977
                 },
                 "finish_reason": "stop",
-                "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+                "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3",
                 "model": "mistral-small-3-2-24b-instruct",
                 "additional_params": {
                   "created": 0,
@@ -276,7 +288,6 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
           "rig_ecs::bus::effect::Seq": 1,
           "rig_ecs::bus::effect::Streamed": {
             "errors": [],
@@ -310,6 +321,11 @@
               }
             ],
             "text": "ready",
+            "origin": {
+              "api": "openai.chat",
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct"
+            },
             "outcome": {
               "Ok": {
                 "outcome": "completion",
@@ -324,19 +340,22 @@
                   "output_tokens": 2,
                   "total_tokens": 977
                 },
-                "message_id": null,
-                "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+                "origin": {
+                  "api": "openai.chat",
+                  "provider": "venice",
+                  "model": "mistral-small-3-2-24b-instruct",
+                  "response_model": "mistral-small-3-2-24b-instruct",
+                  "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
+                },
                 "finish_reason": "stop",
-                "provider": "venice",
-                "model": "mistral-small-3-2-24b-instruct",
                 "raw": {
                   "usage": {
-                    "prompt_tokens": 975,
                     "completion_tokens": 2,
+                    "prompt_tokens": 975,
                     "total_tokens": 977
                   },
                   "finish_reason": "stop",
-                  "response_id": "chatcmpl-RuVEyQPpi7zfOimaHsJTSBfE",
+                  "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3",
                   "model": "mistral-small-3-2-24b-instruct",
                   "additional_params": {
                     "created": 0,
@@ -350,13 +369,23 @@
                 }
               }
             }
-          }
+          },
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "venice",
+              "model": "mistral-small-3-2-24b-instruct",
+              "response_model": "mistral-small-3-2-24b-instruct",
+              "response_id": "chatcmpl-RYHnUVgsFhyd52Pnxq6WmIl3"
+            },
+            "stop": "stop"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 9,
@@ -375,8 +404,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

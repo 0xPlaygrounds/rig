@@ -1,7 +1,10 @@
 //! OpenAI streaming tools coverage, including the migrated example path.
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::streaming::StreamingCompletionChunk;
+use rig::providers::openai::responses_api::streaming::{
+    ResponsesEvent, classify_responses_payload,
+};
+use rig::wire::WireEvent;
 
 use serde::Deserialize;
 
@@ -58,7 +61,17 @@ fn streaming_tools_smoke_cassette_sse_events_parse() {
                 function_call_delta_count += 1;
             }
 
-            if let Err(error) = serde_json::from_str::<StreamingCompletionChunk>(data) {
+            let failure = match classify_responses_payload(data) {
+                WireEvent::Known(ResponsesEvent::Frame { .. }) => None,
+                WireEvent::Known(ResponsesEvent::Whole(_)) => Some("a whole body".to_owned()),
+                WireEvent::Known(ResponsesEvent::Failure(_)) => Some("an error event".to_owned()),
+                WireEvent::Known(ResponsesEvent::Sentinel) => Some("a sentinel".to_owned()),
+                WireEvent::Unknown { event_type, .. } => {
+                    Some(format!("an unknown event `{event_type}`"))
+                }
+                WireEvent::Corrupt(error) => Some(error.to_string()),
+            };
+            if let Some(error) = failure {
                 failures.push(format!(
                     "interaction {interaction_index}, body line {line_index}: {error}\n{data}"
                 ));
@@ -76,7 +89,7 @@ fn streaming_tools_smoke_cassette_sse_events_parse() {
     );
     assert!(
         failures.is_empty(),
-        "all cassette SSE data events should parse as StreamingCompletionChunk; failures:\n{}",
+        "all cassette SSE data events should classify as known Responses events; failures:\n{}",
         failures.join("\n\n")
     );
 }
@@ -162,7 +175,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
             let model = client.openai.completion(openai::GPT_4O);
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal));
+                .tool(rig::tool::tool_definition(&AlphaSignal))
+                .additional_params(serde_json::json!({ "store": false }));
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -179,10 +193,7 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
                 .cloned()
                 .expect("raw responses stream should yield lookup_harbor_label");
-            let assistant_message = Message::Assistant {
-                id: None,
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
-            };
+            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
             let tool_result_message =
                 Message::User {
         content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
@@ -192,7 +203,8 @@ async fn raw_responses_stream_preserves_tool_then_followup_text_ordering() {
                 )
                 .preamble("Use the provided tool result and answer directly.")
                 .message(assistant_message)
-                .message(tool_result_message);
+                .message(tool_result_message)
+                .additional_params(serde_json::json!({ "store": false }));
 
             let second_turn = collect_raw_stream_observation(
                 model

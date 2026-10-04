@@ -118,30 +118,44 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7ae078410b5249eea6b86568"
-                }
+                "provider": "chatcmpl-tool-bf9287fc95d6f0a9"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "chatcmpl-tool-bf9287fc95d6f0a9",
+                  "type": "function"
+                },
+                "fingerprint": "ce2a027db51ba720"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d519a11aefe343b786a0157d"
-                }
+                "provider": "chatcmpl-tool-911aaf86629020a3"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "chatcmpl-tool-911aaf86629020a3",
+                  "type": "function"
+                },
+                "fingerprint": "64d3f6d969d8207e"
+              }
             }
           ],
           "usage": {
@@ -151,33 +165,40 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790975961-LH4yiVsXwmkCnIKfRkiW"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 425,
-              "completion_tokens": 36,
-              "total_tokens": 461,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 36,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 425,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 461
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790145982-A767sEQ2L1iLRO7gJswt",
+            "response_id": "gen-1790975961-LH4yiVsXwmkCnIKfRkiW",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -211,16 +232,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_7ae078410b5249eea6b86568"
-                }
+                "provider": "chatcmpl-tool-bf9287fc95d6f0a9"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "chatcmpl-tool-bf9287fc95d6f0a9",
+                  "type": "function"
+                },
+                "fingerprint": "ce2a027db51ba720"
+              }
             }
           }
         },
@@ -248,20 +276,32 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_d519a11aefe343b786a0157d"
-                }
+                "provider": "chatcmpl-tool-911aaf86629020a3"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "chatcmpl-tool-911aaf86629020a3",
+                  "type": "function"
+                },
+                "fingerprint": "64d3f6d969d8207e"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     },
     {
       "tool_output": {},
@@ -343,37 +383,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_7ae078410b5249eea6b86568"
-                    }
+                    "provider": "chatcmpl-tool-bf9287fc95d6f0a9"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "chatcmpl-tool-bf9287fc95d6f0a9",
+                      "type": "function"
+                    },
+                    "fingerprint": "ce2a027db51ba720"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_d519a11aefe343b786a0157d"
-                    }
+                    "provider": "chatcmpl-tool-911aaf86629020a3"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "chatcmpl-tool-911aaf86629020a3",
+                      "type": "function"
+                    },
+                    "fingerprint": "64d3f6d969d8207e"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790975961-LH4yiVsXwmkCnIKfRkiW"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -381,9 +442,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_7ae078410b5249eea6b86568"
-                    }
+                    "provider": "chatcmpl-tool-bf9287fc95d6f0a9"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -396,9 +455,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_d519a11aefe343b786a0157d"
-                    }
+                    "provider": "chatcmpl-tool-911aaf86629020a3"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -406,7 +463,8 @@
                       "type": "text",
                       "text": "the orchard lookup is broken"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -448,43 +506,50 @@
           "choice": [
             {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
+              "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
             }
           ],
           "usage": {
             "input_tokens": 494,
-            "output_tokens": 25,
-            "total_tokens": 519,
+            "output_tokens": 26,
+            "total_tokens": 520,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790975963-GRVx1YOGQBSoUFdYZEJa"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 494,
-              "completion_tokens": 25,
-              "total_tokens": 519,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 26,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 494,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 520
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790145983-bSCz8j3SG1SZsyhBGnGz",
+            "response_id": "gen-1790975963-GRVx1YOGQBSoUFdYZEJa",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
@@ -563,7 +628,31 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "bor and the orch"
+            "text": "bor"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " and"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " the"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " orch"
           }
         },
         {
@@ -587,15 +676,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " reported"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
+            "text": "'s"
           }
         },
         {
@@ -611,7 +692,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": ":"
+            "text": " text"
           }
         },
         {
@@ -619,7 +700,23 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the"
+            "text": " is"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": " \""
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "text",
+            "part": 0,
+            "text": "the"
           }
         },
         {
@@ -667,7 +764,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "."
+            "text": "\"."
           }
         },
         {
@@ -677,11 +774,16 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "The harbor label is crimson-harbor and the orchard tool reported the error: the orchard lookup is broken."
+              "text": "The harbor label is crimson-harbor and the orchard tool's error text is \"the orchard lookup is broken\"."
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     }
   ]
 }

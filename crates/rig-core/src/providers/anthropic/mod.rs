@@ -14,6 +14,7 @@
 //! Pair a wire with a transport in a [`Model`](crate::Model) to send it.
 
 pub mod completion;
+pub mod modality;
 pub mod streaming;
 pub mod wire;
 
@@ -23,6 +24,5 @@ pub use completion::{
     CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
     CLAUDE_SONNET_5_5,
 };
-pub use wire::{
-    ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Models, Quirks, Verify, compatible,
-};
+pub use modality::{Models, Verify};
+pub use wire::{ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Quirks, compatible};

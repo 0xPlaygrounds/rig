@@ -52,7 +52,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 15552043832097724109
+        "policy": 6993931544729069526
       }
     }
   },
@@ -81,7 +81,9 @@
           "temperature": null,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -128,7 +130,9 @@
           "temperature": null,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -175,7 +179,9 @@
           "temperature": null,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false
@@ -222,7 +228,9 @@
           "temperature": null,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false

@@ -11,10 +11,7 @@ use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent, AdapterUsage};
 use rig::providers::gemini::{
     self,
-    completion::{
-        GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW,
-        gemini_api_types::{AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel},
-    },
+    completion::{GEMINI_2_5_FLASH, GEMINI_3_FLASH_PREVIEW},
 };
 use rig_ecs::agent::{AdditionalParams, MaxTokens, Preamble, Role};
 use rig_test_support::cassette_models::GeminiModels;
@@ -365,21 +362,17 @@ crate::goldens::world_golden_effects("gemini_stream_faults_in_band_error_after_c
 async fn witnessed_success_matches_the_unwitnessed_run() {
     crate::goldens::capture_world_programs(async {
         let configure = |ecs: &mut EcsAgent| {
-            let config = GenerationConfig {
-                thinking_config: Some(ThinkingConfig {
-                    thinking_budget: None,
-                    thinking_level: Some(ThinkingLevel::Medium),
-                    include_thoughts: Some(true),
-                }),
-                ..Default::default()
-            };
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
-                .insert(AdditionalParams(Some(
-                    serde_json::to_value(AdditionalParameters::default().with_config(config))
-                        .expect("thinking configuration"),
-                )));
+                .insert(AdditionalParams(Some(serde_json::json!({
+                    "generationConfig": {
+                        "thinkingConfig": {
+                            "thinkingLevel": "medium",
+                            "includeThoughts": true
+                        }
+                    }
+                }))));
         };
         let mut runs = Vec::new();
         for witness in [true, false] {

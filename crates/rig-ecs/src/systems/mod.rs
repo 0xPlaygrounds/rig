@@ -23,15 +23,14 @@ use crate::agent::content::{
 };
 use bevy_reflect::Reflect;
 
-use crate::agent::content::parts::{EditTarget, RequestPartEdit};
+use crate::agent::content::parts::{AssistantHead, EditTarget, RequestPartEdit};
 use bevy_ecs::{
     prelude::*,
     query::{QueryData, QueryFilter},
 };
 use rig_core::{
     completion::message::{
-        AssistantContent, ToolChoice, ToolResultContent, UserContent, canonical_streamed_choice,
-        turn_delivered_no_answer,
+        AssistantContent, AssistantMessage, ToolChoice, ToolResultContent, UserContent,
     },
     effect::{EffectKind, FamilyDescriptor, Outcome},
     error::ErrorKind,
@@ -276,8 +275,8 @@ pub struct GrantedTool {
 /// [`RigSet::Materialise`] pass; removed when the turn finishes processing.
 #[derive(Component, Debug, Clone)]
 pub struct TurnRead {
-    /// The provider's message id, when the answer carried one.
-    pub message_id: Option<String>,
+    /// The turn's origin, stop and provider message.
+    pub head: AssistantHead,
     /// The turn's parts as read.
     pub content: Vec<AssistantContent>,
     /// The tools the turn may call, in advertisement order.
@@ -293,7 +292,8 @@ impl TurnRead {
             AssistantContent::ToolCall(call) => Some(call),
             AssistantContent::Text(_)
             | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_) => None,
+            | AssistantContent::Image(_)
+            | AssistantContent::Opaque(_) => None,
         })
     }
 }
@@ -1594,7 +1594,7 @@ pub fn fold_turn(
 }
 
 /// Update turn outputs from streamed text or final outcomes. Changed outputs
-/// signal progress; completed streamed responses use canonical content order.
+/// signal progress; a completed response's content keeps the provider's order.
 pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outputs, With<Turn>>) {
     for EffectViewItem {
         turn_of,
@@ -1610,14 +1610,8 @@ pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outp
         }
         match outcome {
             Some(EffectOutcome(Ok(Outcome::Completion(response)))) => {
-                // Wire arrival order is not conversation order; commit reasoning,
-                // text, and calls in the canonical sequence.
-                outputs.content = if streamed.is_some() {
-                    canonical_streamed_choice(response.choice.clone())
-                } else {
-                    response.choice.clone()
-                };
-                outputs.message_id = response.message_id.clone();
+                outputs.content = response.choice.clone();
+                outputs.head = AssistantHead::of(&response.head());
                 outputs.done = true;
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
@@ -1862,12 +1856,13 @@ pub fn land_batch(
         let output_call = minted.0.as_deref().and_then(|name| {
             outs.content.iter().find_map(|part| match part {
                 AssistantContent::ToolCall(call) if call.function.name == name => {
-                    Some(call.function.arguments.to_string())
+                    Some(call.function.arguments_value().to_string())
                 }
                 AssistantContent::ToolCall(_)
                 | AssistantContent::Text(_)
                 | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => None,
+                | AssistantContent::Image(_)
+                | AssistantContent::Opaque(_) => None,
             })
         });
         match output_call {
@@ -2031,7 +2026,8 @@ fn edited_content(
                     AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
                     AssistantContent::Text(_)
                     | AssistantContent::Reasoning(_)
-                    | AssistantContent::Image(_) => true,
+                    | AssistantContent::Image(_)
+                    | AssistantContent::Opaque(_) => true,
                 });
             }
             Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}
@@ -2047,11 +2043,17 @@ fn fail_unknown_call(
     assets: &mut BinaryAssets,
     run: Entity,
     turn: Entity,
-    outs: &Outputs,
     call: InvalidCall,
 ) -> Result<(), ContentError> {
     commands.entity(turn).insert(Materialised);
-    if let Ok(assistant) = MessageParts::assistant(outs.message_id.clone(), call.prefix.clone()) {
+    // The run fails on the call: the delivered prefix is history, a turn
+    // that never ended and is never replayed.
+    let prefix = AssistantMessage::aborted(
+        call.origin.clone(),
+        call.prefix.clone(),
+        format!("the run failed on the unknown tool call `{}`", call.name),
+    );
+    if let Ok(assistant) = MessageParts::assistant(prefix) {
         spawn_deferred(commands, assets, run, assistant)?;
     }
     commands
@@ -2084,13 +2086,20 @@ fn abandon_turn(
         call.prefix.clone()
     };
     let diagnostic_id = &call.id;
-    let assistant = MessageParts::assistant(outs.message_id.clone(), content.clone())?;
+    // A streamed prefix keeps the stream's origin but no provider item; the
+    // run answers its calls, so it stops to use tools.
+    let message = if call.prefix.is_empty() {
+        outs.head.message(content.clone())
+    } else {
+        AssistantMessage::rolled_back(call.origin.clone(), content.clone())
+    };
+    let assistant = MessageParts::assistant(message)?;
     spawn_deferred(commands, assets, run, assistant)?;
     let results = MessageParts::user(invalid_call_feedback(&content, diagnostic_id, feedback))
         .map_err(|_| ContentError::Shape)?;
     let skipped = match &results {
         MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
-        MessageParts::Assistant { .. } => Vec::new(),
+        MessageParts::Assistant(_) => Vec::new(),
     };
     spawn_deferred_with(commands, assets, run, results, skipped)?;
     let mut run_commands = commands.entity(run);
@@ -2168,7 +2177,7 @@ pub fn judge_invalid_calls(
         }
         let judged = match verdict {
             InvalidVerdict::Fail(call) => {
-                fail_unknown_call(&mut commands, &mut assets, run, turn, &outs, call)
+                fail_unknown_call(&mut commands, &mut assets, run, turn, call)
             }
             InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
                 let retries = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..))
@@ -2232,9 +2241,11 @@ fn provider_failed(
 }
 
 /// Read completed turns without pending invalid calls into [`TurnRead`].
-/// Unsupported outcomes and truncated, answerless responses fail the run;
-/// provider errors retry within budget or fail. Unpermitted ordinary tool calls
-/// create invalid-call entities and leave the turn unread until resolved.
+/// Unsupported outcomes and the turns
+/// [`turn_failure`](rig_core::completion::message::turn_failure) fails end the
+/// run, a failed turn with calls kept in its history; provider errors retry
+/// within budget or fail. Unpermitted ordinary tool calls create invalid-call
+/// entities and leave the turn unread until resolved.
 pub fn read_turn(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
@@ -2254,6 +2265,7 @@ pub fn read_turn(
     provider_retries: Query<&ProviderRetries>,
     subjects: crate::bus::Subjects,
     witness: Option<Res<crate::bus::Witnessing>>,
+    mut assets: ResMut<BinaryAssets>,
 ) {
     let mut turns: Vec<_> = turns
         .iter()
@@ -2304,13 +2316,28 @@ pub fn read_turn(
                 continue;
             }
         };
-        if turn_delivered_no_answer(&outs.content)
-            && let Some(reason) = response
-                .finish_reason()
-                .filter(|reason| reason.truncated_output())
-        {
+        if let Some(message) = rig_core::completion::message::turn_failure(
+            &outs.content,
+            Some(&response.stop()),
+            response.finish_reason().as_ref(),
+        ) {
+            // A failed turn's calls never run; the turn stays in the run's
+            // history for display, as pi keeps it.
+            let calls = outs
+                .content
+                .iter()
+                .any(|block| matches!(block, AssistantContent::ToolCall(_)));
+            if calls {
+                let head = AssistantHead::of(&response.head());
+                let kept = MessageParts::assistant(head.message(outs.content.clone()))
+                    .and_then(|turn| spawn_deferred(&mut commands, &mut assets, run, turn));
+                if let Err(error) = kept {
+                    fail_content(&mut commands, run, error);
+                    continue;
+                }
+            }
             let report = rig_core::error::ErrorReport::from(
-                &rig_core::error::ProviderError::Response(reason.no_answer_message()),
+                &rig_core::error::ProviderError::Response(message),
             );
             commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;
@@ -2319,7 +2346,7 @@ pub fn read_turn(
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
         let allowed = access.and_then(|access| access.allowed.as_ref());
         let read = TurnRead {
-            message_id: response.message_id.clone(),
+            head: AssistantHead::of(&response.head()),
             content: outs.content.clone(),
             granted,
             assistant: None,
@@ -2340,9 +2367,10 @@ pub fn read_turn(
                     InvalidCall {
                         id: call.id.clone(),
                         name: call.function.name.to_string(),
-                        arguments: call.function.arguments.clone(),
+                        arguments: call.function.arguments_value(),
                         prefix: Vec::new(),
                         stream_offset: None,
+                        origin: None,
                     },
                     ChildOf(turn),
                 ));
@@ -2387,7 +2415,7 @@ fn say_assistant(
         }
         return Ok(());
     }
-    let assistant = MessageParts::assistant(read.message_id.clone(), read.content.clone())?;
+    let assistant = MessageParts::assistant(read.head.message(read.content.clone()))?;
     if let Some(Retry { feedback }) = retry {
         commands.entity(turn).remove::<(Retry, TurnRead)>();
         if read.calls().next().is_some() {
@@ -2472,12 +2500,33 @@ pub fn materialise_batch(
             .unwrap_or_default();
         let count = batch.len();
         for (index, (call, tool)) in batch.into_iter().enumerate() {
+            // Arguments that are not a JSON object never reach the tool: the
+            // call is answered at once, and the model reads why.
+            if let Some(raw) = &call.function.invalid_arguments {
+                commands.spawn((
+                    ToolCallSlot {
+                        index,
+                        id: call.id.clone(),
+                        name: call.function.name.clone(),
+                    },
+                    EffectOutcome(Ok(rig_core::effect::Outcome::ToolResult {
+                        result: rig_core::tool::ToolResult::skipped(
+                            rig_core::transcript::invalid_arguments_feedback(
+                                call.function.name.as_str(),
+                                raw,
+                            ),
+                        ),
+                    })),
+                    ChildOf(turn),
+                ));
+                continue;
+            }
             let mut effect = commands.spawn((
                 PendingEffect::new(
                     tool.key.clone(),
                     EffectKind::ToolCall {
                         name: call.function.name.to_string(),
-                        args: call.function.arguments.to_string(),
+                        args: call.function.arguments_value().to_string(),
                     },
                 ),
                 ToolInputs(inputs.clone()),
@@ -2518,8 +2567,9 @@ pub fn materialise_batch(
 }
 
 /// The reprompt a read turn in `Tool` mode earns while the budget lasts
-/// (one `OutputRetries`, under `MaxTurns`): an output-tool call missing
-/// required fields is answered with a `Skipped` result naming them; a text
+/// (one `OutputRetries`, under `MaxTurns`): an output-tool call whose
+/// arguments are not a JSON object, or that misses required fields, is
+/// answered with a `Skipped` result saying so; a text
 /// where the tool was due, unless it already is the structured output
 /// (CONTRACT §4), is asked for the tool. `None` when the turn earns no
 /// reprompt: `materialise_answer` settles it.
@@ -2530,16 +2580,20 @@ fn reprompt_for(
 ) -> Option<(MessageParts, Vec<ToolResultStatus>)> {
     match read.calls().find(|call| call.function.name == name) {
         Some(call) => {
-            let missing = schema
-                .map(|schema| missing_required_fields(schema, &call.function.arguments))
-                .unwrap_or_default();
-            if missing.is_empty() {
-                return None;
-            }
-            let feedback = reprompt_missing_fields(name, &missing);
+            let feedback = if let Some(raw) = &call.function.invalid_arguments {
+                rig_core::transcript::invalid_arguments_feedback(name, raw)
+            } else {
+                let missing = schema
+                    .map(|schema| missing_required_fields(schema, &call.function.arguments_value()))
+                    .unwrap_or_default();
+                if missing.is_empty() {
+                    return None;
+                }
+                reprompt_missing_fields(name, &missing)
+            };
             let reprompt = MessageParts::User {
                 content: vec![UserContent::ToolResult(
-                    call.result(vec![ToolResultContent::text(feedback)]),
+                    call.error_result(vec![ToolResultContent::text(feedback)]),
                 )],
             };
             Some((reprompt, vec![ToolResultStatus::Skipped]))
@@ -2610,7 +2664,8 @@ pub fn materialise_reprompt(
 /// Settle remaining reads with output-tool arguments or assistant text.
 /// Output-tool history retains non-call content and appends the JSON answer;
 /// the effect record retains the original call. Clears transient reads and fails
-/// the run if history conversion fails.
+/// the run if history conversion fails, or if the output-tool call's
+/// arguments are not a JSON object.
 pub fn materialise_answer(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2643,7 +2698,17 @@ pub fn materialise_answer(
             ));
             continue;
         };
-        let output = call.function.arguments.to_string();
+        if let Some(raw) = &call.function.invalid_arguments {
+            let report = rig_core::error::ErrorReport::from(
+                &rig_core::error::ProviderError::Response(format!(
+                    "the output tool `{}` was called with arguments that are not a JSON object: {raw}",
+                    call.function.name
+                )),
+            );
+            commands.entity(run).end(Failed(Failure::Provider(report)));
+            continue;
+        }
+        let output = call.function.arguments_value().to_string();
         let mut final_content: Vec<_> = read
             .content
             .iter()
@@ -2651,7 +2716,7 @@ pub fn materialise_answer(
             .cloned()
             .collect();
         final_content.push(AssistantContent::text(output.clone()));
-        let restated = MessageParts::assistant(read.message_id.clone(), final_content);
+        let restated = MessageParts::assistant(read.head.message(final_content));
         match restated
             .and_then(|restated| replace_deferred(&mut commands, &mut assets, assistant, restated))
         {

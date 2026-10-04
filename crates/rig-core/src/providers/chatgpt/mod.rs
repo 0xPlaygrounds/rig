@@ -54,6 +54,9 @@ pub const DIALECT: Dialect = Dialect {
         account_id_env: Some("CHATGPT_ACCOUNT_ID"),
         default_instructions: Some(DEFAULT_INSTRUCTIONS),
         instructions_env: Some("CHATGPT_DEFAULT_INSTRUCTIONS"),
+        // The subscription backend keeps no files, so no file id resolves
+        // there.
+        accepts_file_ids: false,
         identity: Some(Identity {
             originator: DEFAULT_ORIGINATOR,
             originator_env: "CHATGPT_ORIGINATOR",

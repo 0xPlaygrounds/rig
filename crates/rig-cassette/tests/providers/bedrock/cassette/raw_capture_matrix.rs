@@ -4,48 +4,37 @@
 //! # The feature
 //!
 //! Capture is always on. Every completion the seam returns carries `raw`: the
-//! unary Converse frame, [`InternalConverseOutput`], rig's serializable
-//! mirror of the SDK's `ConverseOutput`, serialized with
-//! `serde_json::to_value` before normalization. Nothing about it is sent to Bedrock. `raw == Value::Null`
-//! means only that a `CompletionResponse` was built by hand without a provider
-//! response behind it, which no cell here can produce.
+//! JSON body Bedrock sent, read off the HTTP response the SDK decoded. Nothing
+//! about it is sent to Bedrock. `raw == Value::Null` means only that a
+//! `CompletionResponse` was built by hand without a provider response behind
+//! it, which no cell here can produce.
 //!
 //! Bedrock's response carries `metrics.latencyMs`, the server-side latency the
 //! normalized [`rig::completion::CompletionResponse`] has no field for; cell 2
-//! reads it back through `raw` and checks it against the fixture body. Two
-//! Converse fields are deliberately *not* on `raw` even when the wire carried
-//! them: the guardrail `trace`, `performance_config` and `service_tier` keep
-//! the SDK's own (non-`Serialize`) types and are `#[serde(skip)]` on
-//! [`InternalConverseOutput`], so `raw`, being the serialized value, omits
-//! them.
+//! reads it back through `raw` and checks it against the fixture body.
 //!
 //! Every cell runs its one recorded turn through the shared execution helper
 //! [`capture_completion`](crate::raw_capture::capture_completion) and asserts
 //! against the parked response after the wrapper returns. The shared *format*
 //! contracts (`raw_capture::chat`, `raw_capture::responses`) do not apply:
-//! Converse is neither dialect, `raw` mirrors an SDK type instead of the reply
-//! bytes, and the types that would name the claim ([`InternalConverseOutput`]) live
-//! in `rig-bedrock`, which the shared support crate does not depend on. The
-//! mirror-type round trip, the `#[serde(skip)]` boundary and the fixture
-//! premises below are therefore local by necessity.
+//! Converse is neither dialect.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `InternalConverseOutput::deserialize(&*raw)` re-serializes equal | unrecorded (no valid AWS credentials in this environment) |
-//! | 2 | `raw_exposes_latency_metrics` | provider-only field | `raw.metrics.latency_ms` equals the fixture's `metrics.latencyMs` | unrecorded (no valid AWS credentials in this environment) |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`try_into`); choice text and usage equal the fixture body | unrecorded (no valid AWS credentials in this environment) |
+//! | 1 | `raw_is_the_recorded_body` | provider JSON | `raw` equals the recorded body | unrecorded (no valid AWS credentials in this environment) |
+//! | 2 | `raw_exposes_latency_metrics` | provider-only field | `raw.metrics.latencyMs` equals the fixture's | unrecorded (no valid AWS credentials in this environment) |
+//! | 3 | `normalized_fields_match_the_recorded_body` | normalized view | choice text and usage equal the fixture body | unrecorded (no valid AWS credentials in this environment) |
 //!
-//! Every cell is unrecorded: the `AWS_*` variables present when this matrix
-//! was written carried an expired session token (`aws sts get-caller-identity`
-//! failed), and a fixture is never fabricated. The bodies are complete and
-//! would pass once recorded; the `#[ignore]` attribute is the only thing
-//! standing between them and the table's `recorded` status.
+//! Every cell is unrecorded: no valid AWS credentials were available when
+//! this matrix was written, and a fixture is never fabricated. The bodies are
+//! complete and would pass once recorded; the `#[ignore]` attribute is the
+//! only thing standing between them and the table's `recorded` status.
 //!
 //! To record once valid credentials exist (they are read by the AWS SDK's
-//! default provider chain — `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`/
-//! `AWS_SECRET_ACCESS_KEY`[/`AWS_SESSION_TOKEN`] — with region `us-east-1`):
+//! default provider chain, `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`/
+//! `AWS_SECRET_ACCESS_KEY`[/`AWS_SESSION_TOKEN`], with region `us-east-1`):
 //! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test bedrock bedrock::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review the new fixtures under `crates/rig-cassette/fixtures/cassettes/bedrock/raw_capture_matrix/`
@@ -53,11 +42,6 @@
 //! body is account state).
 
 use rig::bedrock;
-use rig::bedrock::completion::{Converse, ConverseFrame, ConverseRequest};
-use rig::bedrock::types::converse_output::InternalConverseOutput;
-use rig::completion::CompletionResponse as RigCompletionResponse;
-use rig::driver::{Exchange, Model, Opened, Opening, Transport};
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
@@ -76,24 +60,6 @@ fn request() -> rig::completion::CompletionRequest {
         .max_tokens(16)
 }
 
-/// Answers every Converse request with one stored reply.
-#[derive(Clone)]
-struct Reply(InternalConverseOutput);
-
-impl Transport<Converse> for Reply {
-    fn send(&self, payload: ConverseRequest, _exchange: Exchange) -> Opening<ConverseFrame> {
-        let output = self.0.clone();
-        let request_id = output.request_id().map(str::to_owned);
-        Opening::ready(Opened::new(futures::stream::iter([
-            Ok(ConverseFrame::Opened {
-                model: payload.model,
-                request_id,
-            }),
-            Ok(ConverseFrame::Whole(Box::new(output))),
-        ])))
-    }
-}
-
 /// The premise every cell rests on: the recorded body is a completed Converse
 /// response reporting `metrics.latencyMs` and usage.
 fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
@@ -101,7 +67,7 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
         body.pointer("/metrics/latencyMs")
             .and_then(Value::as_i64)
             .is_some(),
-        "{scenario}: the recorded body must report `metrics.latencyMs` — without \
+        "{scenario}: the recorded body must report `metrics.latencyMs`; without \
          it this cell cannot prove raw exposes a provider-only field"
     );
     assert!(
@@ -115,17 +81,17 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_completion value, serialized
+// 1: raw is the body Bedrock sent
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn raw_round_trips_provider_type() {
-    let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
+async fn raw_is_the_recorded_body() {
+    let scenario = "raw_capture_matrix/raw_is_the_recorded_body";
     let captured = Observed::default();
     let sink = captured.clone();
     with_bedrock_cassette(
-        "raw_capture_matrix/raw_round_trips_provider_type",
+        "raw_capture_matrix/raw_is_the_recorded_body",
         |client| async move {
             capture_completion(client.completion(MODEL), request(), sink)
                 .await
@@ -133,20 +99,11 @@ async fn raw_round_trips_provider_type() {
         },
     )
     .await;
-
     let response = captured.take();
-    let raw = &response.raw;
-    let typed = InternalConverseOutput::deserialize(raw)
-        .expect("raw must deserialize into InternalConverseOutput");
-    assert_eq!(
-        serde_json::to_value(&typed).expect("provider type should serialize"),
-        *raw,
-        "InternalConverseOutput must round-trip through its own serde"
-    );
-    assert!(!response.choice.is_empty());
-
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
+    assert_eq!(response.raw, body, "raw is the recorded body");
+    assert!(!response.choice.is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +125,6 @@ async fn raw_exposes_latency_metrics() {
         },
     )
     .await;
-
     let response = captured.take();
     let raw = response.raw.clone();
     // The normalized `CompletionResponse` must not grow a `metrics` field:
@@ -177,45 +133,27 @@ async fn raw_exposes_latency_metrics() {
 
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
-
-    // The mirror type spells the field `latency_ms`; the wire spells it
-    // `latencyMs`. Same value either way.
     assert_eq!(
-        raw.pointer("/metrics/latency_ms"),
+        raw.pointer("/metrics/latencyMs"),
         body.pointer("/metrics/latencyMs"),
-        "raw.metrics.latency_ms must equal the recorded wire value"
+        "raw.metrics.latencyMs must equal the recorded wire value"
     );
-    let typed = InternalConverseOutput::deserialize(&raw).expect("raw must deserialize");
-    assert_eq!(
-        typed.metrics.map(|metrics| metrics.latency_ms),
-        body.pointer("/metrics/latencyMs").and_then(Value::as_i64)
-    );
-    // The SDK-typed extras are `#[serde(skip)]`, so `raw` never carries them
-    // — the documented boundary of the serialized escape hatch.
-    for skipped in ["trace", "performance_config", "service_tier"] {
-        assert!(
-            raw.get(skipped).is_none(),
-            "raw must not carry the serde-skipped `{skipped}` field"
-        );
-    }
 }
 
 // ---------------------------------------------------------------------------
-// 3: raw and the typed route tell one story
+// 3: raw and the normalized view tell one story
 // ---------------------------------------------------------------------------
 
-/// The normalized response, with `raw` stripped, must equal the normalization
-/// (`try_into`) of `raw` read back through the mirror type — and the fields
-/// the wire body decides (choice text, usage) must equal the recorded body.
-/// Capture is a pure serialization of the value normalization consumed.
+/// The fields the wire body decides (choice text, usage) equal the
+/// recorded body.
 #[tokio::test]
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
-async fn normalized_fields_equal_raw_renormalized() {
-    let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
+async fn normalized_fields_match_the_recorded_body() {
+    let scenario = "raw_capture_matrix/normalized_fields_match_the_recorded_body";
     let captured = Observed::default();
     let sink = captured.clone();
     with_bedrock_cassette(
-        "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
+        "raw_capture_matrix/normalized_fields_match_the_recorded_body",
         |client| async move {
             capture_completion(client.completion(MODEL), request(), sink)
                 .await
@@ -223,41 +161,14 @@ async fn normalized_fields_equal_raw_renormalized() {
         },
     )
     .await;
-
     let response = captured.take();
-    // The AWS request id is the `x-amzn-requestid` header, not part of the
-    // Converse body, so the raw-derived normalization is given the same one
-    // before the field-for-field comparison.
-    let stored = InternalConverseOutput::deserialize(&response.raw)
-        .expect("raw must deserialize into InternalConverseOutput");
-    let replay = Model::new(Converse::new(MODEL), Reply(stored));
-    let mut from_raw: RigCompletionResponse =
-        replay.call(request()).await.expect("raw must normalize");
-    from_raw
-        .provider_request_id
-        .clone_from(&response.provider_request_id);
-
-    assert_eq!(response.provider, BEDROCK_PROVIDER);
-    assert_eq!(from_raw.provider, response.provider);
-    assert_eq!(from_raw.model, response.model);
-    assert_eq!(from_raw.finish_reason(), response.finish_reason());
-    assert_eq!(from_raw.identity(), response.identity());
-    assert_eq!(from_raw.usage, response.usage);
-    assert!(!response.choice.is_empty());
-    assert_eq!(
-        normalized_without_raw(from_raw),
-        normalized_without_raw(response.clone()),
-        "re-normalizing raw must reproduce the normalized response field-for-field"
-    );
-
-    let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
-    assert_recorded_converse_with_metrics(&body, scenario);
+    assert_eq!(response.provider(), BEDROCK_PROVIDER);
     assert!(
         response.provider_request_id.is_some(),
         "Bedrock always reports an x-amzn-requestid on success"
     );
-    // Only the fields the wire body decides are compared against it: the
-    // request id lives in a header the scrubber placeholders on disk.
+    let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
+    assert_recorded_converse_with_metrics(&body, scenario);
     let live = normalized_without_raw(response);
     let text = body
         .pointer("/output/message/content/0/text")

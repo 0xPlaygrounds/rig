@@ -34,7 +34,7 @@ use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 use rig_core::wire::{Capabilities, Mode};
 use rig_core::{
     error::ErrorKind,
-    message::{AssistantContent, ReasoningContent, ToolCall, ToolFunction, UserContent},
+    message::{AssistantContent, Origin, ToolCall, ToolFunction, UserContent},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -179,7 +179,7 @@ impl Turn {
                 ),
             ))],
             Self::Rich { text, .. } => vec![
-                AssistantContent::reasoning("test", "considering the evidence"),
+                AssistantContent::reasoning("considering the evidence"),
                 AssistantContent::text(text),
             ],
             Self::Error(_) => vec![AssistantContent::text("unreachable")],
@@ -262,10 +262,10 @@ fn completion_from_script(
         let mut response = CompletionResponse::new(
             turn.choice(),
             turn.usage(),
-            script.provider,
+            Origin::new("test.api", script.provider, ""),
             serde_json::json!({}),
         );
-        response.message_id = Some(turn.message_id());
+        response.origin.response_id = Some(turn.message_id());
         response
     })
 }
@@ -279,7 +279,7 @@ fn stream_from_script(
     if let Turn::Error(message) = &turn {
         return Err(ProviderError::Provider(message.clone()));
     }
-    let mut events = vec![MockStreamEvent::MessageId(turn.message_id())];
+    let mut events = Vec::new();
     match &turn {
         Turn::Text { text, .. } => {
             events.push(MockStreamEvent::text(text.clone()));
@@ -307,7 +307,7 @@ fn stream_from_script(
             // unmodeled provider event, then the answer.
             events.push(MockStreamEvent::Reasoning {
                 id: "reasoning-1".to_owned(),
-                content: ReasoningContent::Summary("summary".to_owned()),
+                text: "summary".to_owned(),
             });
             events.push(MockStreamEvent::reasoning_delta_with_id(
                 "reasoning-2",
@@ -324,7 +324,7 @@ fn stream_from_script(
     }
     events.push(MockStreamEvent::FinalResponse(Finish {
         usage: turn.usage(),
-        message_id: Some(turn.message_id()),
+        response_id: Some(turn.message_id()),
         ..Finish::default()
     }));
 
@@ -455,7 +455,7 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
         .call(CompletionRequest::new("low-level unary"))
         .await
         .expect("direct unary response");
-    assert_eq!(unary.provider, "alpha");
+    assert_eq!(unary.provider(), "alpha");
 
     let mut low_level_stream = beta
         .stream(CompletionRequest::new("low-level stream"))
@@ -468,7 +468,8 @@ async fn downstream_models_keep_typed_low_level_apis_and_share_a_concrete_agent_
             .finish()
             .await
             .expect("the stream ends")
-            .provider,
+            .provider()
+            .to_owned(),
         "beta",
         "direct model streams report their provider on the response"
     );
@@ -1180,7 +1181,7 @@ async fn retries_reenter_selection_without_leaking_rejected_turn_state() {
     assert!(!beta_request.chat_history.iter().any(|message| {
         matches!(
             message,
-            Message::Assistant { content, .. }
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. })
                 if content.iter().any(|item| matches!(
                     item,
                     AssistantContent::Text(text) if text.text == "rejected draft"
@@ -1283,14 +1284,16 @@ async fn normalized_stream_preserves_events_message_id_and_usage() {
     let completion_call = completion_call.expect("the model call is recorded");
     assert_eq!(completion_call.usage, usage(13));
     assert_eq!(
-        completion_call.message_id.as_deref(),
+        completion_call.response_id.as_deref(),
         Some("rich-message-id")
     );
     let final_response = final_response.expect("agent final response");
     assert_eq!(final_response.output(), "final text");
     assert_eq!(final_response.usage, usage(13));
     assert!(final_response.messages.iter().any(|message| {
-        matches!(message, Message::Assistant { id: Some(id), .. } if id == "rich-message-id")
+        matches!(message, Message::Assistant(turn)
+            if turn.origin.as_ref().and_then(|origin| origin.response_id.as_deref())
+                == Some("rich-message-id"))
     }));
 }
 
@@ -1375,10 +1378,10 @@ fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
                         let mut response = CompletionResponse::new(
                             turn.choice(),
                             turn.usage(),
-                            "gated",
+                            Origin::new("test.api", "gated", ""),
                             serde_json::json!({}),
                         );
-                        response.message_id = Some(turn.message_id());
+                        response.origin.response_id = Some(turn.message_id());
                         response
                     };
                     answered(response)
@@ -1496,7 +1499,7 @@ fn pending_streaming_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> F
             Mode::Unary => Box::pin(std::future::ready(answered(CompletionResponse::new(
                 vec![AssistantContent::text("unused")],
                 Usage::default(),
-                "pending",
+                Origin::new("test.api", "pending", ""),
                 serde_json::json!({}),
             )))),
             Mode::Streaming => Box::pin(std::future::ready(Opened::new(PendingRawStream {

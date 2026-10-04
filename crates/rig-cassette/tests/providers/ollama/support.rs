@@ -32,7 +32,7 @@ where
     let (cassette, client) = ollama_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OllamaModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

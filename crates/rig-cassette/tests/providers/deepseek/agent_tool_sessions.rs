@@ -339,7 +339,7 @@ pub(super) struct ToolEvent {
 pub(super) fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig_core::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
@@ -688,14 +688,11 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .message(Message::user("For this release, use the canary lane."))
                 .message(Message::assistant("Understood: the release lane is canary."))
                 .message(Message::user("Look up the harbor label with the tool."))
-                .message(Message::Assistant {
-                    id: None,
-                    content: vec![AssistantContent::tool_call(
+                .message(Message::Assistant(rig_core::message::AssistantMessage::new(vec![AssistantContent::tool_call(
                         "call_REDACTED_1",
                         rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"),
                         json!({}),
-                    )],
-                })
+                    )])))
                 .message(Message::tool_result(rig_core::message::CallId::from_wire("call_REDACTED_1"), rig_core::message::ToolName::new(AlphaSignal::NAME).expect("tool name"), ALPHA_SIGNAL_OUTPUT))
                 .message(Message::assistant("The harbor label is crimson-harbor."))
                 .tool(rig::tool::tool_definition(&AlphaSignal))
@@ -735,7 +732,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                     content,
                     AssistantContent::ToolCall(tool_call)
                         if tool_call.function.name == AlphaSignal::NAME
-                            && tool_call.function.arguments == json!({})
+                            && tool_call.function.arguments_value() == json!({})
                 )),
                 "required tool choice should force lookup_harbor_label"
             );

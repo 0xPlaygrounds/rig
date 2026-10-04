@@ -6,7 +6,8 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 
-use crate::providers::ollama::wire::{Chat, Embeddings, OllamaConfig};
+use crate::providers::ollama::{Embeddings, OllamaConfig};
+use crate::providers::openai::wire::Chat;
 
 http_client!(
     /// An Ollama daemon: its [`OllamaConfig`] on a transport. Every model it
@@ -36,7 +37,7 @@ impl Ollama {
         Ok(OllamaConfig::from_env()?.client())
     }
 
-    /// The chat model for `model`.
+    /// The chat model for `model`, on the daemon's OpenAI-compatible API.
     pub fn completion(&self, model: impl Into<String>) -> Model<Chat> {
         self.model(self.config.completion(model))
     }

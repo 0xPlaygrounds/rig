@@ -111,7 +111,24 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "53cae32d5b586795"
+              }
             }
           ],
           "usage": {
@@ -122,32 +139,96 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-          "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o",
+            "response_model": "gpt-4o-2024-08-06",
+            "response_id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e"
+          },
           "provider_request_id": "req_72f1ca77a7c54f3f90f70e4c0bdebd2d",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-4o-2024-08-06",
           "raw": {
-            "id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
-            "object": "response",
+            "access_programs": null,
+            "background": false,
+            "completed_at": 0,
             "created_at": 0,
-            "status": "completed",
             "error": null,
+            "frequency_penalty": 0.0,
+            "id": "resp_0bf33752a712306f006ab39691bc6887d0b3bca972b7c6760e",
             "incomplete_details": null,
             "instructions": "You are a concise assistant. Answer directly.",
             "max_output_tokens": null,
+            "max_tool_calls": null,
+            "metadata": {},
             "model": "gpt-4o-2024-08-06",
+            "moderation": null,
+            "object": "response",
+            "output": [
+              {
+                "content": [
+                  {
+                    "annotations": [],
+                    "logprobs": [],
+                    "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+                    "type": "output_text"
+                  }
+                ],
+                "id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+                "role": "assistant",
+                "status": "completed",
+                "type": "message"
+              }
+            ],
+            "parallel_tool_calls": true,
+            "presence_penalty": 0.0,
+            "previous_response_id": null,
+            "prompt_cache_key": null,
+            "prompt_cache_retention": "in_memory",
             "reasoning": {
               "context": null,
               "effort": null,
               "summary": null
             },
+            "safety_identifier": null,
+            "service_tier": "default",
+            "status": "completed",
+            "store": true,
+            "temperature": 0.0,
+            "text": {
+              "format": {
+                "type": "text"
+              },
+              "verbosity": "medium"
+            },
+            "tool_choice": "auto",
+            "tool_usage": {
+              "image_gen": {
+                "input_tokens": 0,
+                "input_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "output_tokens": 0,
+                "output_tokens_details": {
+                  "image_tokens": 0,
+                  "text_tokens": 0
+                },
+                "total_tokens": 0
+              },
+              "web_search": {
+                "num_requests": 0
+              }
+            },
+            "tools": [],
+            "top_logprobs": 0,
+            "top_p": 1.0,
+            "truncation": "disabled",
             "usage": {
               "input_tokens": 74,
               "input_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
+                "cache_write_tokens": 0,
+                "cached_tokens": 0
               },
               "output_tokens": 24,
               "output_tokens_details": {
@@ -155,35 +236,7 @@
               },
               "total_tokens": 98
             },
-            "output": [
-              {
-                "id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
-                "role": "assistant",
-                "status": "completed",
-                "content": [
-                  {
-                    "type": "output_text",
-                    "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
-                    "annotations": [],
-                    "logprobs": []
-                  }
-                ],
-                "type": "message"
-              }
-            ],
-            "tools": [],
-            "background": false,
-            "text": {
-              "format": {
-                "type": "text"
-              }
-            },
-            "top_p": 1.0,
-            "truncation": "disabled",
-            "prompt_cache_retention": "in_memory",
-            "parallel_tool_calls": true,
-            "service_tier": "default",
-            "store": true
+            "user": null
           }
         }
       },
@@ -387,11 +440,33 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro."
+              "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+              "native": {
+                "item": {
+                  "content": [
+                    {
+                      "annotations": [],
+                      "logprobs": [],
+                      "text": "A glarb-glarb is an ancient farming tool used by the ancestors of the inhabitants of planet Jiro.",
+                      "type": "output_text"
+                    }
+                  ],
+                  "id": "msg_0bf33752a712306f006ab3969230f887d0a15aa2f4cc507474",
+                  "role": "assistant",
+                  "status": "completed",
+                  "type": "message"
+                },
+                "fingerprint": "53cae32d5b586795"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.responses",
+        "provider": "openai",
+        "model": "gpt-4o"
+      }
     }
   ]
 }

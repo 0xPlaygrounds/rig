@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Call lookup with q set to a 40 word sentence about harbors.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4000,"thinkingConfig":{"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":null,"toolConfig":{"functionCallingConfig":{"mode":"ANY","streamFunctionCallArguments":true}},"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Looks a sentence up.","name":"lookup","parametersJsonSchema":{"properties":{"q":{"type":"string"}},"required":["q"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"q\":\"The bustling harbor remained a vital sanctuary where weathered fishing boats bobbed gently alongside massive cargo ships, while the salty breeze carried the rhythmic sounds of clanging metal and distant gulls soaring over the deep, shimmering blue waters near shore.\"},\"id\":\"call_922115\",\"name\":\"lookup\"},\"thoughtSignature\":\"EmUKYwFpFH0TonYw34UPopJOs1WHkY9n1k3SfukDdyJEQjQFG/dNu/CNV5fuCaInLwy680SROxWBObxkdqXNyXBtqW9+SeKH2ziBWK130lFKzUJogmqQFhBW1A1CR01Dnlxw6iVumQ==\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"TyDBavi0BeW6qtsP_tn1gAY\",\"usageMetadata\":{\"candidatesTokenCount\":59,\"promptTokenCount\":56,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":56}],\"serviceTier\":\"standard\",\"totalTokenCount\":115}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"TyDBavi0BeW6qtsP_tn1gAY\",\"usageMetadata\":{\"candidatesTokenCount\":59,\"promptTokenCount\":56,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":56}],\"serviceTier\":\"standard\",\"totalTokenCount\":115}}\r\n\r\n"

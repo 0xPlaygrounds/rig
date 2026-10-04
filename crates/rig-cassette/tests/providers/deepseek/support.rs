@@ -32,7 +32,7 @@ where
     let (cassette, bound) = deepseek_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -57,7 +57,7 @@ where
     let (cassette, bound) = deepseek_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -99,7 +99,7 @@ where
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -322,12 +322,7 @@ pub(super) async fn collect_raw_stream_outcome(
                 content: AssistantContent::Reasoning(reasoning),
                 ..
             })) => {
-                outcome.reasoning.push_str(
-                    &reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .display_text(),
-                );
+                outcome.reasoning.push_str(&reasoning.text);
                 note(&mut outcome.order, "reasoning");
             }
             Ok(Item::Event(StreamEvent::Reasoning {
@@ -370,7 +365,7 @@ pub(super) async fn with_deepseek_prompt_caching_cassette<F, Fut>(
     let (cassette, bound) = deepseek_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

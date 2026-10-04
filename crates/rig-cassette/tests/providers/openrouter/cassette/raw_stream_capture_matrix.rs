@@ -2,25 +2,25 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the record the chat decoder
-//! reassembled from the reply's frames — the shared chat terminal
-//! (`openai::wire::StreamingCompletionResponse`), serialized. Unlike a unary
-//! reply's `raw`, this one is a serialization of that record rather than the
-//! socket's bytes, so reading it back through the same type is exact. Capture is always on: there is no flag to request it,
-//! nothing about it reaches the wire, and a `Value::Null` only ever means a
-//! terminal built by hand with no provider record behind it. It is the terminal
-//! record only, never the stream's frames.
+//! [`rig::completion::CompletionResponse::raw`] carries the record the chat
+//! decoder reassembled from the reply's frames: a JSON object with the keys
+//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
+//! `additional_params`. Unlike a unary reply's `raw`, this one is that record
+//! rather than the socket's bytes. Capture is always on: there is no flag to
+//! request it, nothing about it reaches the wire, and a `Value::Null` only
+//! ever means a terminal built by hand with no provider record behind it. It
+//! is the terminal record only, never the stream's frames.
 //!
 //! **Why it matters here.** A gateway reports things the normalized terminal
 //! has no slot for: OpenRouter's terminal usage carries the turn's `cost`, and
 //! the terminal's accumulated `additional_params` carries the routed
-//! `provider` the frames repeat. `ChatUsage` flattens a dialect's extra usage
-//! fields, so both reach a caller through `raw` — which is the capability
-//! these two cells pin.
+//! `provider` the frames repeat. The record's `usage` is the provider's usage
+//! object, extra fields included, so both reach a caller through `raw`. That
+//! is the capability these two cells pin.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_reads_back_as_terminal_type` | typed round trip | terminal `raw` deserializes into the shared chat terminal and re-serializes equal, its `usage` maps to the normalized usage, and the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_reads_back_as_terminal_type` | record shape | terminal `raw` is the shared chat terminal record, its `usage` maps to the normalized usage, and the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cost_and_provider` | terminal-only fields | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
 //!
 //! The scenario literals — and therefore the fixture filenames — keep the
@@ -53,7 +53,7 @@ fn request() -> CompletionRequest {
 }
 
 // ================================================================
-// 1. raw reads back as the terminal type
+// 1. raw is the terminal record
 // ================================================================
 
 #[tokio::test]
@@ -71,11 +71,9 @@ async fn stream_raw_reads_back_as_terminal_type() {
     let (text, terminal) = sink.take();
     assert!(!text.is_empty());
 
-    // The streamed terminal's `raw` is the decoder's own record serialized
-    // (`emit_terminal` builds it with `serde_json::to_value`), not socket
-    // bytes — so the round trip back through the same type is exact, and the
-    // accounting that comes back with it is what the normalized usage was
-    // mapped from: `ChatUsage` flattens the dialect's extra usage fields.
+    // The streamed terminal's `raw` is the decoder's own terminal record, not
+    // socket bytes. Its `usage` is what the normalized usage was mapped from:
+    // the provider's usage object, the dialect's extra fields included.
     chat::assert_terminal_round_trips(&terminal);
 
     let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
@@ -125,7 +123,7 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     );
     // The normalized terminal has no slot for either: its `provider` is rig's
     // descriptor name, not the routed upstream.
-    assert_eq!(terminal.provider, PROVIDER);
+    assert_eq!(terminal.provider(), PROVIDER);
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("cost").is_none(),

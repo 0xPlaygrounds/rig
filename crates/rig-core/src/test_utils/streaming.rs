@@ -1,15 +1,12 @@
 //! Streaming helpers for [`MockCompletionModel`](super::MockCompletionModel):
 //! the script a mock reply is written from, and the decoder that writes it
-//! through the completion writer's part handles, as a wire's decoder does.
+//! through the completion writer, as a wire's decoder does.
 
 use std::collections::HashMap;
 
 use crate::completion::{CompletionResponse, Usage};
 use crate::error::ProviderError;
-use crate::message::ReasoningContent;
-use crate::operation::{
-    CallFragment, Completion, Finish, IfMalformed, ReasoningPart, Seal, TextPart,
-};
+use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::wire::{Decoder, Flow, Out, WireEvent};
 
 /// Provider descriptor name reported by the test doubles.
@@ -23,17 +20,18 @@ pub fn mock_final(usage: Usage) -> Finish {
     }
 }
 
-/// Convert a fixture JSON value into canonical params: `null`/`{}` mean
-/// "none", any other non-object is a scripting mistake surfaced as a stream
-/// error.
-fn fixture_additional_params(
-    value: serde_json::Value,
-) -> Result<Option<crate::message::AdditionalParams>, ProviderError> {
-    crate::message::AdditionalParams::try_from_value(value).map_err(|other| {
-        ProviderError::Provider(format!(
-            "mock stream fixture `additional_params` must be a JSON object, got: {other}"
-        ))
-    })
+/// A fixture's provider item: a non-empty JSON object, or `None` for
+/// `null` and `{}`. Any other value is a scripting mistake surfaced as a
+/// stream error.
+fn fixture_item(value: serde_json::Value) -> Result<Option<serde_json::Value>, ProviderError> {
+    match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::Object(map) if map.is_empty() => Ok(None),
+        serde_json::Value::Object(map) => Ok(Some(serde_json::Value::Object(map))),
+        other => Err(ProviderError::Provider(format!(
+            "mock stream fixture provider item must be a JSON object, got: {other}"
+        ))),
+    }
 }
 
 /// The end of a reply whose usage has only `total_tokens` set.
@@ -49,12 +47,12 @@ pub fn mock_final_with_total_tokens(total_tokens: u64) -> Finish {
 pub enum MockStreamEvent {
     /// Text chunk.
     Text(String),
-    /// Start a new text part with optional provider metadata.
+    /// Start a new text part, with the provider item it is decoded from.
     TextStart {
         id: String,
         additional_params: Option<serde_json::Value>,
     },
-    /// Provider-specific metadata for the current text part.
+    /// Fields merged into the current text part's provider item.
     TextAdditionalParams(serde_json::Value),
     /// Complete tool call event.
     ToolCall {
@@ -71,14 +69,9 @@ pub enum MockStreamEvent {
     /// what they carried, as a wire's step-stop does.
     ToolCallEnd { id: String },
     /// Complete reasoning event.
-    Reasoning {
-        id: String,
-        content: ReasoningContent,
-    },
+    Reasoning { id: String, text: String },
     /// Reasoning delta event.
     ReasoningDelta { id: String, reasoning: String },
-    /// Provider-assigned message ID.
-    MessageId(String),
     /// Provider-native output item that Rig does not model.
     Unknown(serde_json::Value),
     /// The transport request id of this turn. The mock transport reports
@@ -176,10 +169,7 @@ impl MockStreamEvent {
     pub fn reasoning(reasoning: impl Into<String>) -> Self {
         Self::Reasoning {
             id: "reasoning-0".to_string(),
-            content: ReasoningContent::Text {
-                text: reasoning.into(),
-                signature: None,
-            },
+            text: reasoning.into(),
         }
     }
 
@@ -204,11 +194,6 @@ impl MockStreamEvent {
             id: id.into(),
             reasoning: reasoning.into(),
         }
-    }
-
-    /// Create a provider-assigned message ID event.
-    pub fn message_id(id: impl Into<String>) -> Self {
-        Self::MessageId(id.into())
     }
 
     /// Create an unmodeled provider output item.
@@ -247,25 +232,30 @@ pub enum MockFrame {
 }
 
 /// The decoder of [`MockScript`](super::MockScript): each scripted step is
-/// written through the completion writer's part handles.
+/// written through the completion writer.
 #[derive(Default)]
 pub struct MockDecoder<'id> {
-    /// The text part bare text extends.
-    text: Option<TextPart<'id>>,
-    /// The reasoning part each scripted id streams into, in start order.
-    reasoning: Vec<(String, ReasoningPart<'id>)>,
-    /// The buffer index each scripted call id streams under.
+    /// The reasoning item each scripted id streams into, in start order.
+    reasoning: Vec<(String, usize)>,
+    /// The item index each scripted call id streams under.
     calls: HashMap<String, usize>,
-    next_call: usize,
+    brand: std::marker::PhantomData<fn(&'id ()) -> &'id ()>,
+}
+
+/// The provider item a scripted id names, when it names one.
+fn id_item(id: &str) -> serde_json::Value {
+    fixture_provider_id(id).map_or(
+        serde_json::Value::Null,
+        |id| serde_json::json!({ "id": id }),
+    )
 }
 
 impl<'id> MockDecoder<'id> {
-    fn call_index(&mut self, id: &str) -> usize {
+    fn call_index(&mut self, out: &mut Out<'id, Completion>, id: &str) -> usize {
         if let Some(index) = self.calls.get(id) {
             return *index;
         }
-        let index = self.next_call;
-        self.next_call += 1;
+        let index = out.fresh_index();
         if !id.is_empty() {
             self.calls.insert(id.to_owned(), index);
         }
@@ -279,35 +269,37 @@ impl<'id> MockDecoder<'id> {
     ) -> Result<Flow, ProviderError> {
         match event {
             MockStreamEvent::Text(text) => {
-                out.extend_text(&mut self.text, &text);
+                out.run(Block::Text, &text)?;
             }
             MockStreamEvent::TextStart {
                 id: _,
                 additional_params,
             } => {
-                out.close_open_text(&mut self.text);
-                let part = out.text();
-                if let Some(params) = additional_params
-                    .map(fixture_additional_params)
-                    .transpose()?
-                    .flatten()
-                {
-                    out.text_params(&part, params);
+                out.end_run()?;
+                let index = out.run(Block::Text, "")?;
+                if let Some(item) = additional_params.map(fixture_item).transpose()?.flatten() {
+                    out.edit(index, |slot| *slot = item)?;
                 }
-                self.text = Some(part);
             }
             MockStreamEvent::TextAdditionalParams(additional_params) => {
-                // The real metadata is non-empty by construction; an empty
-                // fixture object is a scripting mistake, not a no-op.
-                let Some(params) = fixture_additional_params(additional_params)? else {
+                // An empty fixture object is a scripting mistake, not a no-op.
+                let Some(serde_json::Value::Object(fields)) = fixture_item(additional_params)?
+                else {
                     return Err(ProviderError::Provider(
                         "mock stream fixture `TextAdditionalParams` carries no data — \
                          drop the event instead"
                             .to_string(),
                     ));
                 };
-                let part = self.text.get_or_insert_with(|| out.text());
-                out.text_params(part, params);
+                let index = out.run(Block::Text, "")?;
+                out.edit(index, |item| {
+                    if !item.is_object() {
+                        *item = serde_json::Value::Object(serde_json::Map::new());
+                    }
+                    if let Some(item) = item.as_object_mut() {
+                        item.extend(fields);
+                    }
+                })?;
             }
             MockStreamEvent::ToolCall {
                 id,
@@ -315,33 +307,30 @@ impl<'id> MockDecoder<'id> {
                 arguments,
                 call_id,
             } => {
-                out.close_open_text(&mut self.text);
+                out.end_run()?;
                 // An id-less call is a wire that sends none: rig issues the
-                // id. A call id beside the wire id makes the pair a
-                // dual-identifier call. A call scripted as fragments under
-                // this id is the one this restatement closes.
+                // id. A call scripted as fragments under this id is the one
+                // this restatement closes.
                 let index = match self.calls.remove(&id) {
                     Some(index) => index,
-                    None => self.call_index(""),
+                    None => out.fresh_index(),
                 };
-                let wire_id = fixture_provider_id(&id);
-                out.call_fragment(
-                    index,
+                out.fragment(
+                    Some(index),
                     CallFragment {
-                        id: call_id.as_deref().or(wire_id),
-                        item_id: call_id.as_ref().and(wire_id),
+                        id: call_id.as_deref().or(fixture_provider_id(&id)),
                         name: Some(name.as_str()),
                         ..CallFragment::default()
                     },
                 )?;
-                out.announce_pending(index, arguments);
-                out.close_pending(index, IfMalformed::Fail)?;
+                out.announce(index, arguments)?;
+                out.finish(index)?;
             }
             MockStreamEvent::ToolCallNameDelta { id, name } => {
-                out.close_open_text(&mut self.text);
-                let index = self.call_index(&id);
-                out.call_fragment(
-                    index,
+                out.end_run()?;
+                let index = self.call_index(&mut out, &id);
+                out.fragment(
+                    Some(index),
                     CallFragment {
                         id: fixture_provider_id(&id),
                         name: Some(name.as_str()),
@@ -350,10 +339,10 @@ impl<'id> MockDecoder<'id> {
                 )?;
             }
             MockStreamEvent::ToolCallArgumentsDelta { id, arguments } => {
-                out.close_open_text(&mut self.text);
-                let index = self.call_index(&id);
-                out.call_fragment(
-                    index,
+                out.end_run()?;
+                let index = self.call_index(&mut out, &id);
+                out.fragment(
+                    Some(index),
                     CallFragment {
                         id: fixture_provider_id(&id),
                         arguments: Some(arguments.as_str()),
@@ -362,59 +351,48 @@ impl<'id> MockDecoder<'id> {
                 )?;
             }
             MockStreamEvent::ToolCallEnd { id } => {
-                let index = self.call_index(&id);
+                let index = self.call_index(&mut out, &id);
                 self.calls.remove(&id);
-                out.close_pending(index, IfMalformed::Fail)?;
+                out.finish(index)?;
             }
-            MockStreamEvent::Reasoning { id, content } => {
-                out.close_open_text(&mut self.text);
-                let reasoning = crate::message::Reasoning {
-                    id: fixture_provider_id(&id).map(str::to_owned),
-                    content: vec![content],
-                };
-                // A whole reasoning restates the part streamed under its id,
-                // and closes it.
+            MockStreamEvent::Reasoning { id, text } => {
+                out.end_run()?;
+                // A whole reasoning closes the part streamed under its id.
                 match self.reasoning.iter().position(|(open, _)| *open == id) {
                     Some(at) => {
-                        let (_, part) = self.reasoning.remove(at);
-                        out.close_reasoning(
-                            part,
-                            Seal {
-                                id: reasoning.id.clone(),
-                                restated: Some(reasoning),
-                                ..Seal::default()
-                            },
-                        );
+                        let (_, index) = self.reasoning.remove(at);
+                        out.finish(index)?;
                     }
-                    None => out.reasoning_block(reasoning),
+                    None => {
+                        let index = out.fresh_index();
+                        out.whole(
+                            index,
+                            Block::Reasoning { redacted: false },
+                            id_item(&id),
+                            &text,
+                        )?;
+                    }
                 }
             }
             MockStreamEvent::ReasoningDelta { id, reasoning } => {
-                out.close_open_text(&mut self.text);
-                let at = match self.reasoning.iter().position(|(open, _)| *open == id) {
-                    Some(at) => at,
+                out.end_run()?;
+                let index = match self.reasoning.iter().find(|(open, _)| *open == id) {
+                    Some((_, index)) => *index,
                     None => {
-                        self.reasoning.push((id, out.reasoning()));
-                        self.reasoning.len() - 1
+                        let index = out.fresh_index();
+                        out.open(index, Block::Reasoning { redacted: false }, id_item(&id))?;
+                        self.reasoning.push((id, index));
+                        index
                     }
                 };
-                if let Some((_, part)) = self.reasoning.get(at) {
-                    out.push_reasoning(part, &reasoning);
-                }
+                out.push(index, &reasoning)?;
             }
-            MockStreamEvent::MessageId(id) => out.message_id(id),
             MockStreamEvent::Unknown(value) => out.unknown(value.into()),
             MockStreamEvent::RequestId(_) => {}
             MockStreamEvent::FinalResponse(finish) => {
-                out.close_open_text(&mut self.text);
-                for (id, part) in std::mem::take(&mut self.reasoning) {
-                    out.close_reasoning(
-                        part,
-                        Seal {
-                            id: fixture_provider_id(&id).map(str::to_owned),
-                            ..Seal::default()
-                        },
-                    );
+                out.end_run()?;
+                for (_, index) in std::mem::take(&mut self.reasoning) {
+                    out.finish(index)?;
                 }
                 // The mock's document is its scripted end, serialized.
                 out.raw(serde_json::to_value(&finish)?);
@@ -433,16 +411,13 @@ impl<'id> MockDecoder<'id> {
         for content in response.choice.iter().cloned() {
             out.content(content)?;
         }
-        if let Some(message_id) = response.message_id.clone() {
-            out.message_id(message_id);
-        }
         out.raw(response.raw.clone());
         Ok(out.end(Finish {
             usage: response.usage,
             reason: response.finish_reason(),
-            message_id: None,
-            response_id: response.response_id.clone(),
-            model: response.model.clone(),
+            response_id: response.response_id().map(str::to_owned),
+            model: response.model().map(str::to_owned),
+            error: response.error.clone(),
         }))
     }
 }

@@ -177,12 +177,12 @@ async fn nested_arguments_roundtrip_nonstreaming() {
             let arguments = history
                 .iter()
                 .find_map(|message| match message {
-                    Message::Assistant { content, .. } => {
+                    Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                         content.iter().find_map(|item| match item {
                             AssistantContent::ToolCall(tool_call)
                                 if tool_call.function.name == PlanTrip::NAME =>
                             {
-                                Some(tool_call.function.arguments.clone())
+                                Some(tool_call.function.arguments_value())
                             }
                             _ => None,
                         })
@@ -224,7 +224,7 @@ async fn nested_arguments_streaming() {
                 .iter()
                 .find(|tool_call| tool_call.function.name == PlanTrip::NAME)
                 .expect("stream should emit the plan_trip tool call");
-            assert_expected_plan_trip_arguments(&tool_call.function.arguments);
+            assert_expected_plan_trip_arguments(&tool_call.function.arguments_value());
         },
     )
     .await;

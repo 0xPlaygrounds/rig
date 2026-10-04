@@ -235,9 +235,7 @@
               {
                 "type": "toolcall",
                 "id": {
-                  "provider": {
-                    "call_id": "call_REDACTED_1"
-                  }
+                  "provider": "call_REDACTED_1"
                 },
                 "function": {
                   "name": "submit",
@@ -247,11 +245,29 @@
                     "profession": "developer"
                   }
                 },
-                "signature": null,
-                "additional_params": null
+                "native": {
+                  "item": {
+                    "function": {
+                      "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                      "name": "submit"
+                    },
+                    "id": "call_REDACTED_1",
+                    "type": "function"
+                  },
+                  "fingerprint": "728c3beb92d5624d"
+                }
               }
             ],
-            "message_id": null,
+            "head": {
+              "origin": {
+                "api": "openai.chat",
+                "provider": "copilot",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "chatcmpl-REDACTED_1"
+              },
+              "stop": "tool_use"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -273,9 +289,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_REDACTED_1"
-                    }
+                    "provider": "call_REDACTED_1"
                   },
                   "function": {
                     "name": "submit",
@@ -285,8 +299,17 @@
                       "profession": "developer"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                        "name": "submit"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
+                    },
+                    "fingerprint": "728c3beb92d5624d"
+                  }
                 }
               ],
               "usage": {
@@ -296,11 +319,14 @@
                 "cached_input_tokens": 0,
                 "reasoning_tokens": 0
               },
-              "message_id": null,
-              "response_id": "chatcmpl-REDACTED_1",
+              "origin": {
+                "api": "openai.chat",
+                "provider": "copilot",
+                "model": "gpt-4o-mini",
+                "response_model": "gpt-4o-mini-2024-07-18",
+                "response_id": "chatcmpl-REDACTED_1"
+              },
               "finish_reason": "tool_calls",
-              "provider": "copilot",
-              "model": "gpt-4o-mini-2024-07-18",
               "raw": {
                 "choices": [
                   {
@@ -379,14 +405,23 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 2,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": null
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "openai.chat",
+              "provider": "copilot",
+              "model": "gpt-4o-mini",
+              "response_model": "gpt-4o-mini-2024-07-18",
+              "response_id": "chatcmpl-REDACTED_1"
+            },
+            "stop": "tool_use"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 7,

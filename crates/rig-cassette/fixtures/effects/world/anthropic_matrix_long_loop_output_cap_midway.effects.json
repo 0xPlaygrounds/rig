@@ -210,7 +210,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository."
+              "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
+              "native": {
+                "item": {
+                  "text": "I'll follow the protocol you've specified. Let me start by listing the files in the repository.",
+                  "type": "text"
+                },
+                "fingerprint": "330544d311850026"
+              }
             }
           ],
           "usage": {
@@ -220,12 +227,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcaTj37A4CH5sH3Q4Gi",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-haiku-4-5-20251001",
+            "response_model": "claude-haiku-4-5-20251001",
+            "response_id": "msg_011CfLcaTj37A4CH5sH3Q4Gi"
+          },
           "provider_request_id": "req_011CfLcaSvAJbpKZaErJdvJ1",
           "finish_reason": "length",
-          "provider": "anthropic",
-          "model": "claude-haiku-4-5-20251001",
           "raw": {
             "container": null,
             "content": [

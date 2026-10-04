@@ -33,6 +33,7 @@ tokenizers = { workspace = true, features = ["onig"] }
 tokenizers = { workspace = true, default-features = false, features = ["unstable_wasm"] }
 
 [dev-dependencies]
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
 image = { workspace = true, features = ["jpeg"] }
 rig-agent = { workspace = true, features = ["test-utils"] }
 rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = ["test-utils"] }

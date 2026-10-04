@@ -7,16 +7,32 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"max_tokens":12,"messages":[{"content":"You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user''s entire request, word for word, at least 120 words long.","role":"system"},{"content":"Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.","role":"user"}],"model":"deepseek-v4-flash","stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"tools":[{"function":{"description":"File an incident report.","name":"file_report","parameters":{"properties":{"summary":{"description":"A long verbatim summary of the incident.","type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":12,"messages":[{"content":[{"text":"You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user''s entire request, word for word, at least 120 words long.","type":"text"}],"role":"system"},{"content":"Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.","role":"user"}],"model":"deepseek-v4-flash","stream":true,"stream_options":{"include_usage":true},"thinking":{"type":"disabled"},"tools":[{"function":{"description":"File an incident report.","name":"file_report","parameters":{"properties":{"summary":{"description":"A long verbatim summary of the incident.","type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
   body: |+
-    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"7af260b4-40fb-4799-84e2-09e5fbe8b4ba","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
 
-    data: {"choices":[{"delta":{"content":""},"finish_reason":"length","index":0,"logprobs":null}],"created":0,"id":"7af260b4-40fb-4799-84e2-09e5fbe8b4ba","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":12,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":235,"prompt_tokens":363,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":375}}
+    data: {"choices":[{"delta":{"content":"I"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":"'ll"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":" file"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":" this"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":" incident"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":" report"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":" now"},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":"."},"finish_reason":null,"index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":null}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"length","index":0,"logprobs":null}],"created":0,"id":"a79a4654-b5bb-4dba-97bd-046478089209","model":"deepseek-flash","object":"chat.completion.chunk","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":12,"prompt_cache_hit_tokens":128,"prompt_cache_miss_tokens":235,"prompt_tokens":363,"prompt_tokens_details":{"cached_tokens":128},"total_tokens":375}}
 
     data: [DONE]
 

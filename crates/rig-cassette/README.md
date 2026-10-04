@@ -34,8 +34,7 @@ rig-cassette = { version = "0.42.0", default-features = false }
 
 Effect logs alone acquire neither runtime, Bevy, HTTP clients/servers, Tokio
 nor AWS dependencies. Agent and ECS integration are independently selectable:
-neither enables HTTP or `serde_json/preserve_order` / `float_roundtrip`, and
-neither acquires the other runtime. These guarantees concern the selected
+neither enables HTTP, and neither acquires the other runtime. These guarantees concern the selected
 normal dependency graph; Cargo can still unify features requested by other
 dependencies in the same build.
 
@@ -274,9 +273,8 @@ The unpublished `rig-cassette-minimal` package in `tests/minimal/Cargo.toml`
 points at these same three entrypoints and reuses the effect-log and classic
 replay unit-test sources through its `effect_log` target. It depends on
 `rig-cassette` with only `agent,ecs`, without the native HTTP engine, facade or
-provider helpers. Its standalone graph lacks `serde_json/preserve_order` and
-`serde_json/float_roundtrip`. Testing the main cassette package does not prove
-this isolation: its dev-dependencies enable the native engine.
+provider helpers. Testing the main cassette package does not prove this
+isolation: its dev-dependencies enable the native engine.
 
 CI runs the minimal targets separately with zero retries, and the shared
 verification targets through the default-member graph with two. The all-features

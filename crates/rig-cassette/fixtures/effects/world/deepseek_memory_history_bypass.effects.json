@@ -67,7 +67,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
@@ -110,11 +109,14 @@
             "total_tokens": 40,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "9936a267-b93c-45cd-9da7-451e2ae4f0ab",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "c6a52eb7-5f71-4e9f-884f-427ad68cacb4"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -128,7 +130,7 @@
               }
             ],
             "created": 0,
-            "id": "9936a267-b93c-45cd-9da7-451e2ae4f0ab",
+            "id": "c6a52eb7-5f71-4e9f-884f-427ad68cacb4",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

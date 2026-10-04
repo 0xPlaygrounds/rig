@@ -61,7 +61,7 @@ async fn other_model() {
         sessions::run(first, other, CELL).await;
     })
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The continuation is checkpointed, restored into a fresh world, and sent
@@ -77,7 +77,7 @@ async fn checkpoint_other_model() {
         },
     )
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    sessions::assert_ported(CELL, SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second

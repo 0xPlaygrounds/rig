@@ -424,6 +424,7 @@ impl rig_core::serve::Recorder for Begun {
         _item: &rig_core::streaming::Item<rig_core::streaming::StreamEvent>,
     ) {
     }
+    fn origin(&self, _id: EffectId, _origin: &rig_core::message::Origin) {}
     fn resolve(
         &self,
         _id: EffectId,

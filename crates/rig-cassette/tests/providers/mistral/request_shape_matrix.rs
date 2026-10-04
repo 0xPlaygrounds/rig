@@ -157,7 +157,7 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
                 .filter_map(|content| match content {
                     AssistantContent::ToolCall(call) => Some((
                         call.function.name.to_string(),
-                        call.function.arguments.clone(),
+                        call.function.arguments_value(),
                     )),
                     _ => None,
                 })
@@ -177,9 +177,10 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
                     Item::Event(StreamEvent::End {
                         content: AssistantContent::ToolCall(tool_call),
                         ..
-                    }) => observation
-                        .calls
-                        .push((tool_call.function.name.into(), tool_call.function.arguments)),
+                    }) => observation.calls.push((
+                        tool_call.function.name.clone().into(),
+                        tool_call.function.arguments_value(),
+                    )),
                     _ => {}
                 }
             }

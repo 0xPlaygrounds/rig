@@ -28,6 +28,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         ),
     );
     let tool_result = ToolResult {
+        is_error: false,
         call: tool_call.id.clone(),
         name: tool_call.function.name.clone(),
         content: vec![ToolResultContent::text("72F and sunny")],

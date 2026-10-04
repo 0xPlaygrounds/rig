@@ -20,7 +20,8 @@ async fn streaming() {
             .max_tokens(4096)
             .tool(WeatherTool::new(call_count.clone()))
             .additional_params(serde_json::json!({
-                "reasoning": { "effort": "high" }
+                "reasoning": { "effort": "high" },
+                "store": false
             }))
             .build();
 
@@ -55,7 +56,8 @@ async fn nonstreaming() {
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
                 .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "high" }
+                    "reasoning": { "effort": "high" },
+                    "store": false
                 }))
                 .default_max_turns(2)
                 .build();

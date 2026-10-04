@@ -67,7 +67,8 @@
         },
         {
           "rig_ecs::agent::AdditionalParams": {
-            "prompt_cache_key": "rig-native-long-tasks"
+            "prompt_cache_key": "rig-native-long-tasks",
+            "store": false
           },
           "rig_ecs::agent::DefaultMaxTurns": null,
           "rig_ecs::agent::InvalidCalls": {

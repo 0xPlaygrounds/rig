@@ -327,8 +327,18 @@
                   "path": "tests/basic.rs"
                 }
               },
-              "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "path": "tests/basic.rs"
+                    },
+                    "name": "read_file"
+                  },
+                  "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                },
+                "fingerprint": "423804bdd227678b"
+              }
             },
             {
               "type": "toolcall",
@@ -341,8 +351,17 @@
                   "path": "src/lib.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "path": "src/lib.rs"
+                    },
+                    "name": "read_file"
+                  }
+                },
+                "fingerprint": "7f3e9f11f1651d79"
+              }
             },
             {
               "type": "toolcall",
@@ -355,8 +374,17 @@
                   "path": "src/calendar.rs"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "read_file"
+                  }
+                },
+                "fingerprint": "4f2239cfdd4eef6a"
+              }
             },
             {
               "type": "toolcall",
@@ -369,21 +397,33 @@
                   "path": "docs/DESIGN.md"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "path": "docs/DESIGN.md"
+                    },
+                    "name": "read_file"
+                  }
+                },
+                "fingerprint": "922d058b69329de7"
+              }
             }
           ],
           "usage": {
             "input_tokens": 473,
-            "output_tokens": 216,
-            "total_tokens": 689,
-            "reasoning_tokens": 140
+            "output_tokens": 214,
+            "total_tokens": 687,
+            "reasoning_tokens": 138
           },
-          "message_id": null,
-          "response_id": "Ha-yatnwHdW0qtsPg8SUqQU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -396,7 +436,7 @@
                         },
                         "name": "read_file"
                       },
-                      "thoughtSignature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a"
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
                     },
                     {
                       "functionCall": {
@@ -431,7 +471,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Ha-yatnwHdW0qtsPg8SUqQU",
+            "responseId": "ewzBau-fNuDRz7IP4NG96Qc",
             "usageMetadata": {
               "candidatesTokenCount": 76,
               "promptTokenCount": 473,
@@ -442,8 +482,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 140,
-              "totalTokenCount": 689
+              "thoughtsTokenCount": 138,
+              "totalTokenCount": 687
             }
           }
         }
@@ -582,7 +622,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -595,8 +634,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -609,8 +658,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -623,8 +681,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -637,10 +704,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -695,7 +779,8 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -781,21 +866,32 @@
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "run_tests"
+                  },
+                  "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                },
+                "fingerprint": "9954320f73b33c09"
+              }
             }
           ],
           "usage": {
             "input_tokens": 787,
-            "output_tokens": 46,
-            "total_tokens": 833,
-            "reasoning_tokens": 36
+            "output_tokens": 44,
+            "total_tokens": 831,
+            "reasoning_tokens": 34
           },
-          "message_id": null,
-          "response_id": "Hq-yavbHN--3qtsPjtmsmAw",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -806,7 +902,7 @@
                         "args": {},
                         "name": "run_tests"
                       },
-                      "thoughtSignature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00="
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
                     }
                   ],
                   "role": "model"
@@ -817,7 +913,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Hq-yavbHN--3qtsPjtmsmAw",
+            "responseId": "fQzBasKUD-PVz7IP-KvU0Q8",
             "usageMetadata": {
               "candidatesTokenCount": 10,
               "promptTokenCount": 787,
@@ -828,8 +924,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 36,
-              "totalTokenCount": 833
+              "thoughtsTokenCount": 34,
+              "totalTokenCount": 831
             }
           }
         }
@@ -885,7 +981,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -898,8 +993,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -912,8 +1017,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -926,8 +1040,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -940,10 +1063,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -998,13 +1138,13 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1015,10 +1155,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1123,8 +1279,19 @@
                   "path": "src/lib.rs"
                 }
               },
-              "signature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                      "path": "src/lib.rs"
+                    },
+                    "name": "write_file"
+                  },
+                  "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
+                },
+                "fingerprint": "f0fa932322952813"
+              }
             }
           ],
           "usage": {
@@ -1133,11 +1300,14 @@
             "total_tokens": 1182,
             "reasoning_tokens": 124
           },
-          "message_id": null,
-          "response_id": "H6-yauX8IZedqtsPw4Cy6Ag",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "fQzBapLrNPyez7IP1P-KIA"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -1151,7 +1321,7 @@
                         },
                         "name": "write_file"
                       },
-                      "thoughtSignature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN"
+                      "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
                     }
                   ],
                   "role": "model"
@@ -1162,7 +1332,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "H6-yauX8IZedqtsPw4Cy6Ag",
+            "responseId": "fQzBapLrNPyez7IP1P-KIA",
             "usageMetadata": {
               "candidatesTokenCount": 68,
               "promptTokenCount": 990,
@@ -1230,7 +1400,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1243,8 +1412,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1257,8 +1436,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1271,8 +1459,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1285,10 +1482,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1343,13 +1557,13 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1360,10 +1574,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1385,7 +1615,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1399,10 +1628,29 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                          "path": "src/lib.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
+                    },
+                    "fingerprint": "f0fa932322952813"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBapLrNPyez7IP1P-KIA"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1504,21 +1752,32 @@
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": "CoUBAWkUfRM7MiTCnP7YmvjI8YxGl4HebnYLKND4+sit1W/kpKdnQFSM9abUasw2gMin4P0L912NsxUMWgV0SFNRqDC7RfN2XOt4upueWItJ59REz2AbyEvQChWGVsq+oTN9RxAta00Wdub7NrIsBogV8ZApzNiQuXNXSUAmpbPPd5U2nG9BDQ==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "run_tests"
+                  },
+                  "thoughtSignature": "CmIBaRR9Ey47WQJYR+7L+233yYhfq+wunUvb1Lwpo2uKl6mY1WvyOSBmV74UtYU10jSXViL/mmYKZsNV+lvB+YquVcjK1FthHeOfzMm7TzAlWiaZ29zwh89Uw5Zbpzin0lkxJg=="
+                },
+                "fingerprint": "9954320f73b33c09"
+              }
             }
           ],
           "usage": {
             "input_tokens": 1084,
-            "output_tokens": 45,
-            "total_tokens": 1129,
-            "reasoning_tokens": 35
+            "output_tokens": 29,
+            "total_tokens": 1113,
+            "reasoning_tokens": 19
           },
-          "message_id": null,
-          "response_id": "IK-yavmKJ92iqtsP2ojWwAI",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "fwzBauiLBYnUz7IPv734iAQ"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -1529,7 +1788,7 @@
                         "args": {},
                         "name": "run_tests"
                       },
-                      "thoughtSignature": "CoUBAWkUfRM7MiTCnP7YmvjI8YxGl4HebnYLKND4+sit1W/kpKdnQFSM9abUasw2gMin4P0L912NsxUMWgV0SFNRqDC7RfN2XOt4upueWItJ59REz2AbyEvQChWGVsq+oTN9RxAta00Wdub7NrIsBogV8ZApzNiQuXNXSUAmpbPPd5U2nG9BDQ=="
+                      "thoughtSignature": "CmIBaRR9Ey47WQJYR+7L+233yYhfq+wunUvb1Lwpo2uKl6mY1WvyOSBmV74UtYU10jSXViL/mmYKZsNV+lvB+YquVcjK1FthHeOfzMm7TzAlWiaZ29zwh89Uw5Zbpzin0lkxJg=="
                     }
                   ],
                   "role": "model"
@@ -1540,7 +1799,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "IK-yavmKJ92iqtsP2ojWwAI",
+            "responseId": "fwzBauiLBYnUz7IPv734iAQ",
             "usageMetadata": {
               "candidatesTokenCount": 10,
               "promptTokenCount": 1084,
@@ -1551,8 +1810,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 35,
-              "totalTokenCount": 1129
+              "thoughtsTokenCount": 19,
+              "totalTokenCount": 1113
             }
           }
         }
@@ -1608,7 +1867,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1621,8 +1879,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1635,8 +1903,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1649,8 +1926,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -1663,10 +1949,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1721,13 +2024,13 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1738,10 +2041,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1763,7 +2082,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1777,10 +2095,29 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                          "path": "src/lib.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
+                    },
+                    "fingerprint": "f0fa932322952813"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBapLrNPyez7IP1P-KIA"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1802,7 +2139,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -1813,10 +2149,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CoUBAWkUfRM7MiTCnP7YmvjI8YxGl4HebnYLKND4+sit1W/kpKdnQFSM9abUasw2gMin4P0L912NsxUMWgV0SFNRqDC7RfN2XOt4upueWItJ59REz2AbyEvQChWGVsq+oTN9RxAta00Wdub7NrIsBogV8ZApzNiQuXNXSUAmpbPPd5U2nG9BDQ==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CmIBaRR9Ey47WQJYR+7L+233yYhfq+wunUvb1Lwpo2uKl6mY1WvyOSBmV74UtYU10jSXViL/mmYKZsNV+lvB+YquVcjK1FthHeOfzMm7TzAlWiaZ29zwh89Uw5Zbpzin0lkxJg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fwzBauiLBYnUz7IPv734iAQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -1921,8 +2273,19 @@
                   "path": "src/calendar.rs"
                 }
               },
-              "signature": "CrkDAWkUfRP5e8wF2F0bUsaTAWpUVMEZyQdox3Ab8et1bvwsBDVIIZgKsxYEFe3qMt5NQ+CEYFCIFx5GoQHaj5uZpnjDhfUPGezbqaOEGCgsBiOcICiSeqHlWCkQ4ohQ18A0zaJqjLAxQHkTEwUSPSYxL+2Ps2CKOMIO4uL1UWk1Yb5IHoO1I33mc3lLiAls7E9q87u0nt9pUNCgPUX7ydOytfKAKPf0tGcD86VGK+9Qx7Zq+jHUxdly3pN17YJ/w7r4Wj+oMKW5Wdqxs2m/IKvpc5CzJHhZ/2gC0yAqA0klvCBXYhef1IdIkffSa5QGbvBy7DTU+xvGstBD9gzwlmGCuMcM6n1BzdcpO23bRmjJMnQe6JuEXce/4IHFGRsKFDGASBat8F3x6mtLSCvKB1ynl2Zj+Fm2ZzOFe1a8LETD166kw3j0Cdwvzmo6XSQSEOQJrOjWxCpkXglAbeVnxSv58BZmu9BV+uek1gxlGWjeZFy/9pp/WTOHPzJX8x3naGP21um4jg5mhHDw4spfTOQbIcnle9cH/KSRXptX6IodpjZborYPqtZhb+N3mXlXYeAjj2aWtPExpH9M",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                      "path": "src/calendar.rs"
+                    },
+                    "name": "write_file"
+                  },
+                  "thoughtSignature": "CrsDAWkUfRMQVdR3YcBXgUEA1jw/iOUtKZkSa4uVCzQZNahzZvmexBcFMdnpoNXu3a4cTySLZ6zBReSQU0im3sJuJX+DqpY3HH/qvAgc3tOK5dSi8MIlk85DgTAVwHhvfLDlYN2NlMRfq7N/ADwzDfbrJyw7MIjAp0Ef5jMW2GpE9AX9XysjDXrDxp5oZT5npiFcvCnvSneKYl905yPBO38ft4kyIL5NxvruyQ9BMUZW3mmJtbgGSXyhO640N/JBEcDGo+3ITxPBu1cQgIkeaJhU/PtcdwcGlb993VROYMtrpxfXuersUMIcTspLJvtKGOZJXT7RSnjOV4/VBuT2D7TND25aHScUXYINsUmCyceCpjqPHOe0ZwjnCT/l0HOV6XYiFlMdCXX8HiYZcarq28ZuK6Zq+QnslqLCfwtL8FfXYeM43ig9dwM4xfvte/D3jOMn/2anqrpoXAPwJko0ZxTp6kUbCTqy8kjV/RDTPHhQGTnrs52jgqQV17+Ng61LlZ2vkcGuzBOCwaRC8tWJzrpNC3wKx4q6TXKkZrs9Hv8LZIRbpnUy+vMC+PSUfL1FxSCyEaoQe19h37z+i4o="
+                },
+                "fingerprint": "6285128b25690635"
+              }
             }
           ],
           "usage": {
@@ -1931,11 +2294,14 @@
             "total_tokens": 1490,
             "reasoning_tokens": 147
           },
-          "message_id": null,
-          "response_id": "Ia-yaoCGDv78qtsPttrCyQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "fwzBavGBKKCfz7IPz5y3IQ"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -1949,7 +2315,7 @@
                         },
                         "name": "write_file"
                       },
-                      "thoughtSignature": "CrkDAWkUfRP5e8wF2F0bUsaTAWpUVMEZyQdox3Ab8et1bvwsBDVIIZgKsxYEFe3qMt5NQ+CEYFCIFx5GoQHaj5uZpnjDhfUPGezbqaOEGCgsBiOcICiSeqHlWCkQ4ohQ18A0zaJqjLAxQHkTEwUSPSYxL+2Ps2CKOMIO4uL1UWk1Yb5IHoO1I33mc3lLiAls7E9q87u0nt9pUNCgPUX7ydOytfKAKPf0tGcD86VGK+9Qx7Zq+jHUxdly3pN17YJ/w7r4Wj+oMKW5Wdqxs2m/IKvpc5CzJHhZ/2gC0yAqA0klvCBXYhef1IdIkffSa5QGbvBy7DTU+xvGstBD9gzwlmGCuMcM6n1BzdcpO23bRmjJMnQe6JuEXce/4IHFGRsKFDGASBat8F3x6mtLSCvKB1ynl2Zj+Fm2ZzOFe1a8LETD166kw3j0Cdwvzmo6XSQSEOQJrOjWxCpkXglAbeVnxSv58BZmu9BV+uek1gxlGWjeZFy/9pp/WTOHPzJX8x3naGP21um4jg5mhHDw4spfTOQbIcnle9cH/KSRXptX6IodpjZborYPqtZhb+N3mXlXYeAjj2aWtPExpH9M"
+                      "thoughtSignature": "CrsDAWkUfRMQVdR3YcBXgUEA1jw/iOUtKZkSa4uVCzQZNahzZvmexBcFMdnpoNXu3a4cTySLZ6zBReSQU0im3sJuJX+DqpY3HH/qvAgc3tOK5dSi8MIlk85DgTAVwHhvfLDlYN2NlMRfq7N/ADwzDfbrJyw7MIjAp0Ef5jMW2GpE9AX9XysjDXrDxp5oZT5npiFcvCnvSneKYl905yPBO38ft4kyIL5NxvruyQ9BMUZW3mmJtbgGSXyhO640N/JBEcDGo+3ITxPBu1cQgIkeaJhU/PtcdwcGlb993VROYMtrpxfXuersUMIcTspLJvtKGOZJXT7RSnjOV4/VBuT2D7TND25aHScUXYINsUmCyceCpjqPHOe0ZwjnCT/l0HOV6XYiFlMdCXX8HiYZcarq28ZuK6Zq+QnslqLCfwtL8FfXYeM43ig9dwM4xfvte/D3jOMn/2anqrpoXAPwJko0ZxTp6kUbCTqy8kjV/RDTPHhQGTnrs52jgqQV17+Ng61LlZ2vkcGuzBOCwaRC8tWJzrpNC3wKx4q6TXKkZrs9Hv8LZIRbpnUy+vMC+PSUfL1FxSCyEaoQe19h37z+i4o="
                     }
                   ],
                   "role": "model"
@@ -1960,7 +2326,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Ia-yaoCGDv78qtsPttrCyQQ",
+            "responseId": "fwzBavGBKKCfz7IPz5y3IQ",
             "usageMetadata": {
               "candidatesTokenCount": 53,
               "promptTokenCount": 1290,
@@ -2028,7 +2394,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2041,8 +2406,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2055,8 +2430,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2069,8 +2453,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2083,10 +2476,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2141,13 +2551,13 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2158,10 +2568,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2183,7 +2609,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2197,10 +2622,29 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                          "path": "src/lib.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
+                    },
+                    "fingerprint": "f0fa932322952813"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBapLrNPyez7IP1P-KIA"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2222,7 +2666,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2233,10 +2676,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CoUBAWkUfRM7MiTCnP7YmvjI8YxGl4HebnYLKND4+sit1W/kpKdnQFSM9abUasw2gMin4P0L912NsxUMWgV0SFNRqDC7RfN2XOt4upueWItJ59REz2AbyEvQChWGVsq+oTN9RxAta00Wdub7NrIsBogV8ZApzNiQuXNXSUAmpbPPd5U2nG9BDQ==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CmIBaRR9Ey47WQJYR+7L+233yYhfq+wunUvb1Lwpo2uKl6mY1WvyOSBmV74UtYU10jSXViL/mmYKZsNV+lvB+YquVcjK1FthHeOfzMm7TzAlWiaZ29zwh89Uw5Zbpzin0lkxJg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fwzBauiLBYnUz7IPv734iAQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2258,7 +2717,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2272,10 +2730,29 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": "CrkDAWkUfRP5e8wF2F0bUsaTAWpUVMEZyQdox3Ab8et1bvwsBDVIIZgKsxYEFe3qMt5NQ+CEYFCIFx5GoQHaj5uZpnjDhfUPGezbqaOEGCgsBiOcICiSeqHlWCkQ4ohQ18A0zaJqjLAxQHkTEwUSPSYxL+2Ps2CKOMIO4uL1UWk1Yb5IHoO1I33mc3lLiAls7E9q87u0nt9pUNCgPUX7ydOytfKAKPf0tGcD86VGK+9Qx7Zq+jHUxdly3pN17YJ/w7r4Wj+oMKW5Wdqxs2m/IKvpc5CzJHhZ/2gC0yAqA0klvCBXYhef1IdIkffSa5QGbvBy7DTU+xvGstBD9gzwlmGCuMcM6n1BzdcpO23bRmjJMnQe6JuEXce/4IHFGRsKFDGASBat8F3x6mtLSCvKB1ynl2Zj+Fm2ZzOFe1a8LETD166kw3j0Cdwvzmo6XSQSEOQJrOjWxCpkXglAbeVnxSv58BZmu9BV+uek1gxlGWjeZFy/9pp/WTOHPzJX8x3naGP21um4jg5mhHDw4spfTOQbIcnle9cH/KSRXptX6IodpjZborYPqtZhb+N3mXlXYeAjj2aWtPExpH9M",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "CrsDAWkUfRMQVdR3YcBXgUEA1jw/iOUtKZkSa4uVCzQZNahzZvmexBcFMdnpoNXu3a4cTySLZ6zBReSQU0im3sJuJX+DqpY3HH/qvAgc3tOK5dSi8MIlk85DgTAVwHhvfLDlYN2NlMRfq7N/ADwzDfbrJyw7MIjAp0Ef5jMW2GpE9AX9XysjDXrDxp5oZT5npiFcvCnvSneKYl905yPBO38ft4kyIL5NxvruyQ9BMUZW3mmJtbgGSXyhO640N/JBEcDGo+3ITxPBu1cQgIkeaJhU/PtcdwcGlb993VROYMtrpxfXuersUMIcTspLJvtKGOZJXT7RSnjOV4/VBuT2D7TND25aHScUXYINsUmCyceCpjqPHOe0ZwjnCT/l0HOV6XYiFlMdCXX8HiYZcarq28ZuK6Zq+QnslqLCfwtL8FfXYeM43ig9dwM4xfvte/D3jOMn/2anqrpoXAPwJko0ZxTp6kUbCTqy8kjV/RDTPHhQGTnrs52jgqQV17+Ng61LlZ2vkcGuzBOCwaRC8tWJzrpNC3wKx4q6TXKkZrs9Hv8LZIRbpnUy+vMC+PSUfL1FxSCyEaoQe19h37z+i4o="
+                    },
+                    "fingerprint": "6285128b25690635"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fwzBavGBKKCfz7IPz5y3IQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2377,21 +2854,32 @@
                 "name": "run_tests",
                 "arguments": {}
               },
-              "signature": "CogBAWkUfRPL6WX6PqfonsZ7Q1c1LH2I/PIR/9fjDI/mOCJWBEUyN4UesMMBdogILdkj9XF0odLqnhq47oXrIaxQukgckJQfzrMmLXXImOu4h5r4/Ifkh3jCh7pv7CHkRhBi6gxI+xfkhhmuoD2QdlFv0dzw6zLEnDHLDrbE+LGlzXOxfJuRJFypMQ==",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {},
+                    "name": "run_tests"
+                  },
+                  "thoughtSignature": "CmcBaRR9E6hcx4wa1I44RA3P0CJxoTa6b7O/aB/s4E+9DyRA1dgdQfdCTQkmMFGZEZPN62pD8DCN73MU1irT77HD+HZ07LXNmcINZUJ5sQtin66nIphQSSh+NGM/UvWFMeZAtBLoqJuI"
+                },
+                "fingerprint": "9954320f73b33c09"
+              }
             }
           ],
           "usage": {
             "input_tokens": 1368,
-            "output_tokens": 43,
-            "total_tokens": 1411,
-            "reasoning_tokens": 33
+            "output_tokens": 29,
+            "total_tokens": 1397,
+            "reasoning_tokens": 19
           },
-          "message_id": null,
-          "response_id": "Iq-yaon8Frf9qtsP-_i36AQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "gQzBavaGAaisz7IPlZS6iAg"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -2402,7 +2890,7 @@
                         "args": {},
                         "name": "run_tests"
                       },
-                      "thoughtSignature": "CogBAWkUfRPL6WX6PqfonsZ7Q1c1LH2I/PIR/9fjDI/mOCJWBEUyN4UesMMBdogILdkj9XF0odLqnhq47oXrIaxQukgckJQfzrMmLXXImOu4h5r4/Ifkh3jCh7pv7CHkRhBi6gxI+xfkhhmuoD2QdlFv0dzw6zLEnDHLDrbE+LGlzXOxfJuRJFypMQ=="
+                      "thoughtSignature": "CmcBaRR9E6hcx4wa1I44RA3P0CJxoTa6b7O/aB/s4E+9DyRA1dgdQfdCTQkmMFGZEZPN62pD8DCN73MU1irT77HD+HZ07LXNmcINZUJ5sQtin66nIphQSSh+NGM/UvWFMeZAtBLoqJuI"
                     }
                   ],
                   "role": "model"
@@ -2413,7 +2901,7 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Iq-yaon8Frf9qtsP-_i36AQ",
+            "responseId": "gQzBavaGAaisz7IPlZS6iAg",
             "usageMetadata": {
               "candidatesTokenCount": 10,
               "promptTokenCount": 1368,
@@ -2424,8 +2912,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 33,
-              "totalTokenCount": 1411
+              "thoughtsTokenCount": 19,
+              "totalTokenCount": 1397
             }
           }
         }
@@ -2481,7 +2969,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2494,8 +2981,18 @@
                       "path": "tests/basic.rs"
                     }
                   },
-                  "signature": "CooEAWkUfROOR+Q+XRFvzzKX0LXFf0PP7S6BrI6+yKg64pekSQC8Kh+0nPdCwBVS/lhDPA4KbV+ssQfas/wExrJ+ghHZGtQehxsGPO/x2AOTBU96krc1MZtkJv4rjMNq9Cl+Khipy5MUhht+cYKc/fhxsZjXCZd7rwpjnmhhvYDLNI9b6jgjBD3MAbmxDkoBjMzbHqF1g+lmCDym1nwWtVZD71iqLrPyNmD0cXXC5pTcpbJxUDxqe9MhogKwXAKmBrdzOfXVXQPoVxw74rJt/jAjxHO9N8qLIx2jJWneuXRdYBJV9a47QBBesTm6qtMhvN8mcA08nNfRlIVtvIXITLi0yYImPmduvOx5zHivbfZFrw17gyJ9pXvmFdz6II9oEW8tu7mQw4vlAN26pblt0q1mTnO0vKLu3AH3auL1FC58/P+7Wk3CY/dD/2jPj7QpIZm/CVXT1qoEJCFNXtxwGI7ptX/55fQuaPHgdgrnkg+QboG8Mt7F/qOE5B6y8qkl/X7fQ1QzESKQb+78jjlyNW9odOWUeiQdOxmlHPcYJLntBjY2/4cv/o7F9r5ZLsbgthOJVBdG4Scwtps9ERBUeHtpPoDp7mrI4NfufZJxtv2mwblFJdC0uWwu6twFau3GjPQj6pVdZYCRJVGBbq+ZKHetow4rS03kF8CUmM5bbgX1vl5aR6WZ6FWmUq8a",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "tests/basic.rs"
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "CoMEAWkUfRPsV2KGOXR8yyeYh9AlJytO54KH7oheBV76coW7LGzXyREBon1O3GpGmpXjoBO0OpUIOozkaCXi4sWgoGjtS+GJQ5Pyz94w5Hjy8OpCwtFEae5jmk9lLljQxq9uAKq8b9+laZVTXpCaP/NsRN5RGX/z4Uwo+mID+nS7FYETQspfsNvikexf3gNnuISQRGUU8UkfgFOWQdb3Cy3xj9z3CqyDgQ1G7rqNZswrLy/7PO42nx6V53fkbFPmBtFgrlYdujveiyHHF3LWumIiVlvWFWlccHINmUYvbubZbh9vuQu+lHBkf0xkdbP7F50d82Y9DV49+GLn9fzojLB9J6wva+B8E7aHI989ZxB21+pEvzKmjPjRCbjhVLGHdJR/kXqsSDdmEsBYmemfJK1V8/Zdz8hykGfWH5D2x+ZbWQ69x9qs4uaKKLo9d5Pbuw61D6fzFxLnqsdCiPZpajDy9i/krJuERUz5lj4cHP9iyZ4yM/VJfmcrgg8psnbIx8xFJW1KQVV2j+RFMM11YJW2E4OW4MAFcqH7WQTlnJVTHuUUVJEUZWsMvH9/ibRzuR9iHbA45mGaiUsatjULPvAZG4a3jYVxyYaNq5NxyoEpY0PMIEsVtdIJgMZKVD4V4dkcfcfeLOVhRPgKsJXbRJuBrKIh3nFIvgF7/NstWDYsMghksqU="
+                    },
+                    "fingerprint": "423804bdd227678b"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2508,8 +3005,17 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/lib.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "7f3e9f11f1651d79"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2522,8 +3028,17 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "4f2239cfdd4eef6a"
+                  }
                 },
                 {
                   "type": "toolcall",
@@ -2536,10 +3051,27 @@
                       "path": "docs/DESIGN.md"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "path": "docs/DESIGN.md"
+                        },
+                        "name": "read_file"
+                      }
+                    },
+                    "fingerprint": "922d058b69329de7"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "ewzBau-fNuDRz7IP4NG96Qc"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2594,13 +3126,13 @@
                       "type": "text",
                       "text": "no such file: docs/DESIGN.md"
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2611,10 +3143,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CqQBAWkUfRNc15K5/C5GyZ0Squxj4k+BLHL4dnYdg1T+yTXeuCWZdY0VGgKWkPbNMIqJQ7HuBe5fMejJyucbGA9tzEiViLBxG6FZkSuF2b6yU0qWy7dQt33huksuCd5bj5N2L4E4bcBOaPpsyR5u/QFzVZfY93CKaWEoZTs07qHNEdahwKm+chqZHGHbRSZ4LgFSjZLkReqUWQZX98jB9+wUxIdNE00=",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CpcBAWkUfRM52ICtI6yRtApTQ1oGdeVZGx+rC3TBAm1j+n4KRnUgpEozx74M74zyCjvWRZuB+kPRBJPKo9l8tQrdcSXK4/hW9uWWzGw7qa4YfIGcr5GTLYYN9JaAaN0oIfwBq3cjHNi9tuN3W0tac42TfH4CaVF3DYZ5WMg/4tTQ06DaxAozyEGeDWYaLVxmegzY3IYoplddtg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBasKUD-PVz7IP-KvU0Q8"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2636,7 +3184,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2650,10 +3197,29 @@
                       "path": "src/lib.rs"
                     }
                   },
-                  "signature": "CusCAWkUfROejdjSECStmceVKswgAm0YYQCyhMt1F0Kq1eB4cm/0ZuVuoW6ymBjP1QolDIHqmpYr63LHzcnO7Be/pGj2XHQX9/vabiUfD4BBaROjY3gj1m96ijZwkfXKQB2rA2H/ePslgUXopAGPgrORDfVH+kqd5ZR8oWuA5/DrxI7RJ8XQe2r/t/XU91Nc8Xtjc1lnQ7D32rvZDQ4KZXWPLXiq8KihZKCHmUb4WxM5ERjJ9a/P5E0C7tZSn+xR0uCce1+Zl/IGAtjsfAoHm0pL8sOVkNjKH1UF+gwNyl0VX7j+d+YW2/Qe+ihwpC5pFb7166FNT9b4hKK8TCSykjyh6Ao689qNbK+26fBrHZICMG3yfXDk/rTShvqM6jIPKzN6nDLrQLK3GM5EI4NVjh8r8xjV7YiKB7gvImHL2vJM+1usaRoy+rd/6ZxxP+dv56p8rJO4ZkSIc7PtM8qtHpy2a1e/jjIT+5sHv2xN",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
+                          "path": "src/lib.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "Cu0CAWkUfRPvUt+ZqevZ8Q1cNOS344IrWccH/Whb5W1htqGcTBn2bJGLkiww2lzbYB1MEemq+8s34PJIrlwXx4Ibasnkh3VYfQVY3N/+v73EM0x54TlD8qMmeUjFkpXcFxvvPuEqBBmZKnul2nMbv7VnYwvYzt3sgJ/WjI74ykXJ0qOPqQ3dXHaRMORf2YpCcqj8lMn0yb3gG52S6Ac1TXTKIvb5QPQK+MNtDDTFQ3H3MVb+Mm4M88c+MsVO/Z1DOJiciTT8IItuJidVYX0r7ViLkOROqQacLcajpEaxlMYbI3/RLdXCaGsFzhOLw8Sj+62UJ4jhx8HlRLu6yzg6+xH4N7xuUVAna2vDZvOMqmwc7MYiJfYQgW5nnl6n1qcn5Z1hcb+ogFY/SNAi+CUms5NNDZpHCdK9rIp9BhOXgi4F4oOsHgDn3pkMLzG3dCZxD7aUK9I4qzrXlFb2O7Fqu9xpguLj1/6nX/R4vzWipng="
+                    },
+                    "fingerprint": "f0fa932322952813"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fQzBapLrNPyez7IP1P-KIA"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2675,7 +3241,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2686,10 +3251,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CoUBAWkUfRM7MiTCnP7YmvjI8YxGl4HebnYLKND4+sit1W/kpKdnQFSM9abUasw2gMin4P0L912NsxUMWgV0SFNRqDC7RfN2XOt4upueWItJ59REz2AbyEvQChWGVsq+oTN9RxAta00Wdub7NrIsBogV8ZApzNiQuXNXSUAmpbPPd5U2nG9BDQ==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CmIBaRR9Ey47WQJYR+7L+233yYhfq+wunUvb1Lwpo2uKl6mY1WvyOSBmV74UtYU10jSXViL/mmYKZsNV+lvB+YquVcjK1FthHeOfzMm7TzAlWiaZ29zwh89Uw5Zbpzin0lkxJg=="
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fwzBauiLBYnUz7IPv734iAQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2711,7 +3292,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2725,10 +3305,29 @@
                       "path": "src/calendar.rs"
                     }
                   },
-                  "signature": "CrkDAWkUfRP5e8wF2F0bUsaTAWpUVMEZyQdox3Ab8et1bvwsBDVIIZgKsxYEFe3qMt5NQ+CEYFCIFx5GoQHaj5uZpnjDhfUPGezbqaOEGCgsBiOcICiSeqHlWCkQ4ohQ18A0zaJqjLAxQHkTEwUSPSYxL+2Ps2CKOMIO4uL1UWk1Yb5IHoO1I33mc3lLiAls7E9q87u0nt9pUNCgPUX7ydOytfKAKPf0tGcD86VGK+9Qx7Zq+jHUxdly3pN17YJ/w7r4Wj+oMKW5Wdqxs2m/IKvpc5CzJHhZ/2gC0yAqA0klvCBXYhef1IdIkffSa5QGbvBy7DTU+xvGstBD9gzwlmGCuMcM6n1BzdcpO23bRmjJMnQe6JuEXce/4IHFGRsKFDGASBat8F3x6mtLSCvKB1ynl2Zj+Fm2ZzOFe1a8LETD166kw3j0Cdwvzmo6XSQSEOQJrOjWxCpkXglAbeVnxSv58BZmu9BV+uek1gxlGWjeZFy/9pp/WTOHPzJX8x3naGP21um4jg5mhHDw4spfTOQbIcnle9cH/KSRXptX6IodpjZborYPqtZhb+N3mXlXYeAjj2aWtPExpH9M",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {
+                          "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
+                          "path": "src/calendar.rs"
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "CrsDAWkUfRMQVdR3YcBXgUEA1jw/iOUtKZkSa4uVCzQZNahzZvmexBcFMdnpoNXu3a4cTySLZ6zBReSQU0im3sJuJX+DqpY3HH/qvAgc3tOK5dSi8MIlk85DgTAVwHhvfLDlYN2NlMRfq7N/ADwzDfbrJyw7MIjAp0Ef5jMW2GpE9AX9XysjDXrDxp5oZT5npiFcvCnvSneKYl905yPBO38ft4kyIL5NxvruyQ9BMUZW3mmJtbgGSXyhO640N/JBEcDGo+3ITxPBu1cQgIkeaJhU/PtcdwcGlb993VROYMtrpxfXuersUMIcTspLJvtKGOZJXT7RSnjOV4/VBuT2D7TND25aHScUXYINsUmCyceCpjqPHOe0ZwjnCT/l0HOV6XYiFlMdCXX8HiYZcarq28ZuK6Zq+QnslqLCfwtL8FfXYeM43ig9dwM4xfvte/D3jOMn/2anqrpoXAPwJko0ZxTp6kUbCTqy8kjV/RDTPHhQGTnrs52jgqQV17+Ng61LlZ2vkcGuzBOCwaRC8tWJzrpNC3wKx4q6TXKkZrs9Hv8LZIRbpnUy+vMC+PSUfL1FxSCyEaoQe19h37z+i4o="
+                    },
+                    "fingerprint": "6285128b25690635"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "fwzBavGBKKCfz7IPz5y3IQ"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2750,7 +3349,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -2761,10 +3359,26 @@
                     "name": "run_tests",
                     "arguments": {}
                   },
-                  "signature": "CogBAWkUfRPL6WX6PqfonsZ7Q1c1LH2I/PIR/9fjDI/mOCJWBEUyN4UesMMBdogILdkj9XF0odLqnhq47oXrIaxQukgckJQfzrMmLXXImOu4h5r4/Ifkh3jCh7pv7CHkRhBi6gxI+xfkhhmuoD2QdlFv0dzw6zLEnDHLDrbE+LGlzXOxfJuRJFypMQ==",
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "functionCall": {
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "CmcBaRR9E6hcx4wa1I44RA3P0CJxoTa6b7O/aB/s4E+9DyRA1dgdQfdCTQkmMFGZEZPN62pD8DCN73MU1irT77HD+HZ07LXNmcINZUJ5sQtin66nIphQSSh+NGM/UvWFMeZAtBLoqJuI"
+                    },
+                    "fingerprint": "9954320f73b33c09"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash",
+                "response_model": "gemini-2.5-flash",
+                "response_id": "gQzBavaGAaisz7IPlZS6iAg"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -2860,24 +3474,30 @@
             {
               "type": "text",
               "text": "done",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CoIBAWkUfRMpZmhnfEo7uD/XJ8GLGf6nOTcPC0siil5DViZjN9oikJc5yEvmg7XXepp1OgxiQfPbgUKh/YM+NgxAhMmO461FyjLRrOAU8dnxjBAM4B2jKxiUjLY6ZMX+V4Av2/TNMd03QKssaboqCiVqXmSmPVNQgqxWP7YHEDIx41M8uA=="
-                }
+              "native": {
+                "item": {
+                  "text": "done",
+                  "thoughtSignature": "ClEBaRR9E8nBM/0Xv9a334vvfzhPtQ0Pp4+Q1N4Fge6KY7BYqZZsEIr6O5BxzkQctpRc9IMNbzjgUqWTW/dotIscqGZs3A4il5OcXlphRhEFaxQ="
+                },
+                "fingerprint": "cc2b10c84926d34d"
               }
             }
           ],
           "usage": {
             "input_tokens": 1457,
-            "output_tokens": 23,
-            "total_tokens": 1480,
-            "reasoning_tokens": 22
+            "output_tokens": 13,
+            "total_tokens": 1470,
+            "cached_input_tokens": 1215,
+            "reasoning_tokens": 12
           },
-          "message_id": null,
-          "response_id": "Iq-yarytOqel6dkP2buIuAQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "gQzBarfyIpjVz7IPgc7LiQg"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -2885,7 +3505,7 @@
                   "parts": [
                     {
                       "text": "done",
-                      "thoughtSignature": "CoIBAWkUfRMpZmhnfEo7uD/XJ8GLGf6nOTcPC0siil5DViZjN9oikJc5yEvmg7XXepp1OgxiQfPbgUKh/YM+NgxAhMmO461FyjLRrOAU8dnxjBAM4B2jKxiUjLY6ZMX+V4Av2/TNMd03QKssaboqCiVqXmSmPVNQgqxWP7YHEDIx41M8uA=="
+                      "thoughtSignature": "ClEBaRR9E8nBM/0Xv9a334vvfzhPtQ0Pp4+Q1N4Fge6KY7BYqZZsEIr6O5BxzkQctpRc9IMNbzjgUqWTW/dotIscqGZs3A4il5OcXlphRhEFaxQ="
                     }
                   ],
                   "role": "model"
@@ -2895,8 +3515,15 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "Iq-yarytOqel6dkP2buIuAQ",
+            "responseId": "gQzBarfyIpjVz7IPgc7LiQg",
             "usageMetadata": {
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 1215
+                }
+              ],
+              "cachedContentTokenCount": 1215,
               "candidatesTokenCount": 1,
               "promptTokenCount": 1457,
               "promptTokensDetails": [
@@ -2906,8 +3533,8 @@
                 }
               ],
               "serviceTier": "standard",
-              "thoughtsTokenCount": 22,
-              "totalTokenCount": 1480
+              "thoughtsTokenCount": 12,
+              "totalTokenCount": 1470
             }
           }
         }

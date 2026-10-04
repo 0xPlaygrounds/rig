@@ -60,10 +60,57 @@ use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 /// records that someone silenced the check, not why it is correct.
 const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     (
+        "anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "deepseek/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "doubleword/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "venice/corpus_matrix/shaping_tool_choice_none_on_committed_output.yaml",
+        "a request sends the conversation without tools, so the core turns its calls into text and the prefix moves (rule R4)",
+    ),
+    (
+        "anthropic/context_binding/between_tools_after_tool_change.yaml",
+        "the cell pins how a turn made under the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_system_with_drop_block.yaml",
+        "the cell pins that thinking bound to the old system prompt replays after it changes; the changed system prompt is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_system_without_drop_block.yaml",
+        "the cell pins that thinking bound to the old system prompt is refused without the binding; the changed system prompt is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_tools_without_drop_block.yaml",
+        "the cell pins that thinking bound to the old tools is refused without the binding; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "anthropic/context_binding/changed_tools_with_drop_block.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/amazon_bedrock.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/anthropic.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
+        "openrouter/context_binding/google_vertex.yaml",
+        "the cell pins that thinking bound to the old tools replays after the tool list changes; the changed tool list is the behavior being recorded",
+    ),
+    (
         "anthropic/long_run_caching/dynamic_tools_30.yaml",
-        "the long run's request patch changes the active tools on turn 11; the \
-         changed tool list is the behavior being recorded (Claude Opus 5.5 \
-         refuses it with the thinking-block binding 400)",
+        "the long run's request patch changes the active tools on turns 11 \
+         and 21; the changed tool list is the behavior being recorded",
     ),
     (
         "anthropic/corpus_shaping/active_tools_none_second_turn.yaml",
@@ -1052,9 +1099,8 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
     ),
     (
         "ollama",
-        "Ollama's /api/chat usage payload carries no cached-token field of any kind, and rig's \
-         Ollama provider therefore has no cache mapping to test — there is nothing for a cache \
-         suite to assert",
+        "Ollama's usage payload carries no cached-token field of any kind, so there is no \
+         cache mapping to test and nothing for a cache suite to assert",
     ),
     (
         "voyageai",

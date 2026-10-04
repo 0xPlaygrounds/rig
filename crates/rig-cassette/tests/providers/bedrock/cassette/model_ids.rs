@@ -109,6 +109,10 @@ async fn cross_region_profile_id_completes() {
                 .call(request)
                 .await
                 .expect("cross-region profile completion should succeed");
+            super::super::history::assert_recorded_history(
+                bedrock::completion::DEEPSEEK_R1,
+                &response,
+            );
 
             let text = response
                 .choice

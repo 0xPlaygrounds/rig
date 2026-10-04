@@ -178,9 +178,8 @@ unit tests under its all-features graph. Provider parity excludes the
 two verification binaries from the `corpus_`/`ecs_` pattern, whose module names
 would otherwise match. The standalone parity filter also explicitly includes
 the extracted `rig-test-support` regressions. Minimal verification executions
-select `package(rig-cassette-minimal)`; their `serde_json` graph has neither
-`preserve_order` nor `float_roundtrip`, unlike the unified executions through
-`rig-cassette`. The dependency-graph guard checks the resolved features of the
+select `package(rig-cassette-minimal)`, whose graph has no native HTTP engine,
+facade or provider helpers. The dependency-graph guard checks the resolved features of the
 packages selected by the CI commands, not just their names. Default-member
 executions and standalone parity retain two retries; minimal verification
 retains zero. The minimal runner is outside default-members and excluded from

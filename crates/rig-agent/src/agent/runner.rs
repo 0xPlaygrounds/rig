@@ -493,6 +493,21 @@ impl AgentRunner {
     /// (no load AND no save). Otherwise, if a memory backend and conversation
     /// id are both configured, prior history is loaded. Each surface adapts a
     /// load failure to its own error channel.
+    /// The memory a resumed run appends to: the run carries its history, so
+    /// nothing is loaded, but the messages it adds are appended once, at its
+    /// end, to the conversation the runner names.
+    pub(crate) fn resumed_memory(&self) -> Result<HistoryAndMemory, rig_core::memory::MemoryError> {
+        match (self.config.memory_handle(), &self.config.conversation_id) {
+            (Some(memory), Some(id)) => {
+                let memory = memory.map_err(|report| {
+                    rig_core::memory::MemoryError::Internal(report.to_string())
+                })?;
+                Ok((None, Some((memory, id.clone()))))
+            }
+            _ => Ok((None, None)),
+        }
+    }
+
     pub(crate) async fn resolve_history_and_memory(
         &self,
         hook_ctx: &HookContext,
@@ -561,9 +576,13 @@ impl AgentRunner {
         let (agent_span, created_agent_span) = self.open_agent_span(ambient);
         let bus = self.config.bus.clone();
         let hook_ctx = self.hook_context(false);
-        // Resumed history is authoritative; the host that saved it owns memory append.
+        // Resumed history is authoritative and loads nothing; the messages
+        // the run adds are appended at its end, once.
         let (history_override, memory_handle) = match &self.origin {
-            RunOrigin::Resume(_) => (None, None),
+            RunOrigin::Resume(_) => match self.resumed_memory() {
+                Ok(resolved) => resolved,
+                Err(err) => return Err(err.into()),
+            },
             RunOrigin::Prompt(_) => {
                 // A memory load is a dispatch too: drive the bus while resolving.
                 let resolve = self.resolve_history_and_memory(&hook_ctx);

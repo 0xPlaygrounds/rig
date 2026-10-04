@@ -109,9 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
-                }
+                "provider": "call_00_v9ZrZMfNphqgoFfu1rme2037"
               },
               "function": {
                 "name": "lookup",
@@ -119,21 +117,33 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\": \"What is the capital of France?\"}",
+                    "name": "lookup"
+                  },
+                  "id": "call_00_v9ZrZMfNphqgoFfu1rme2037",
+                  "type": "function"
+                },
+                "fingerprint": "2c5ce6850031fed3"
+              }
             }
           ],
           "usage": {
             "input_tokens": 329,
             "output_tokens": 42,
             "total_tokens": 371,
-            "cached_input_tokens": 0
+            "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "23aeaed7-f4d6-42b4-90fd-a19798a8c67e",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "93f37a75-c89a-4fbf-b5d8-582f80434cd0"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -149,7 +159,7 @@
                         "arguments": "{\"q\": \"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_00_oQqcbNIZKYPiEHGJDEzF9385",
+                      "id": "call_00_v9ZrZMfNphqgoFfu1rme2037",
                       "index": 0,
                       "type": "function"
                     }
@@ -158,17 +168,17 @@
               }
             ],
             "created": 0,
-            "id": "23aeaed7-f4d6-42b4-90fd-a19798a8c67e",
+            "id": "93f37a75-c89a-4fbf-b5d8-582f80434cd0",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
               "completion_tokens": 42,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 329,
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 201,
               "prompt_tokens": 329,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 128
               },
               "total_tokens": 371
             }
@@ -248,11 +258,14 @@
             "total_tokens": 18,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "b96efa3f-ae7b-46b9-93cc-decfd1bcc92c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "240b3c59-e486-4086-b717-bad08685e877"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -266,7 +279,7 @@
               }
             ],
             "created": 0,
-            "id": "b96efa3f-ae7b-46b9-93cc-decfd1bcc92c",
+            "id": "240b3c59-e486-4086-b717-bad08685e877",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -309,14 +322,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
-                    }
+                    "provider": "call_00_v9ZrZMfNphqgoFfu1rme2037"
                   },
                   "function": {
                     "name": "lookup",
@@ -324,10 +334,27 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"q\": \"What is the capital of France?\"}",
+                        "name": "lookup"
+                      },
+                      "id": "call_00_v9ZrZMfNphqgoFfu1rme2037",
+                      "type": "function"
+                    },
+                    "fingerprint": "2c5ce6850031fed3"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+                "response_model": "deepseek-flash",
+                "response_id": "93f37a75-c89a-4fbf-b5d8-582f80434cd0"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -335,9 +362,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_oQqcbNIZKYPiEHGJDEzF9385"
-                    }
+                    "provider": "call_00_v9ZrZMfNphqgoFfu1rme2037"
                   },
                   "name": "lookup",
                   "content": [
@@ -396,11 +421,14 @@
             "total_tokens": 385,
             "cached_input_tokens": 128
           },
-          "message_id": null,
-          "response_id": "81d3ea8c-314d-410f-a25a-3f75bd788292",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "f312af2b-f357-49df-8086-0be1beb7b8fb"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -414,7 +442,7 @@
               }
             ],
             "created": 0,
-            "id": "81d3ea8c-314d-410f-a25a-3f75bd788292",
+            "id": "f312af2b-f357-49df-8086-0be1beb7b8fb",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",

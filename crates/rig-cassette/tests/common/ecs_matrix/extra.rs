@@ -335,7 +335,7 @@ where
     // prompt, the call turn, the results, the answer
     assert_eq!(utterances.len(), 4, "{utterances:?}");
     let calls: Vec<_> = match &utterances[1].1 {
-        MessageParts::Assistant { content, .. } => content
+        MessageParts::Assistant(rig_core::message::AssistantMessage { content, .. }) => content
             .iter()
             .filter_map(|part| match part {
                 AssistantContent::ToolCall(call) => Some(call.id.clone()),

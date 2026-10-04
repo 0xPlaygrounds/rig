@@ -48,12 +48,34 @@ where
     let (cassette, bound) = openrouter_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
     crate::cassettes::checkpoint_attempt(&cassette, "openrouter", spec.scenario()).await;
     cassette.finish_after_test(result).await;
+}
+
+/// [`with_openrouter_cassette`], with `check` run on what the session
+/// recorded before the recording is written (`cassettes::finish_checked`).
+pub(super) async fn with_openrouter_checked_cassette<F, Fut>(
+    spec: impl Into<CassetteSpec>,
+    test_body: F,
+    check: impl FnOnce(&std::path::Path, &str),
+) where
+    F: FnOnce(OpenAiModels) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let spec = spec.into();
+    let (cassette, bound) = openrouter_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
+        bound,
+        rig_test_support::cassettes::local_http(),
+    )))
+    .catch_unwind()
+    .await;
+    crate::cassettes::checkpoint_attempt(&cassette, "openrouter", spec.scenario()).await;
+    crate::cassettes::finish_checked(cassette, "openrouter", spec.scenario(), result, check).await;
 }
 
 pub(super) async fn with_openrouter_cassette_result<F, Fut, E>(
@@ -67,7 +89,7 @@ where
     let (cassette, bound) = openrouter_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -84,7 +106,7 @@ pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     let (cassette, bound) = openrouter_openai_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;
@@ -115,7 +137,7 @@ where
         .with_base_url(cassette.base_url());
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         bound,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

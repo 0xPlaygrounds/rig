@@ -1,16 +1,10 @@
 //! Assertions on Responses citations: the `output_text` extras a recorded
 //! message item states, and the text blocks a route delivered for it.
-//!
-//! The message item's `phase` is left out of every comparison: the unary
-//! route stamps it on the text block, the streamed route does not.
 
 use futures::StreamExt;
 use rig_core::message::{AssistantContent, Text};
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 use serde_json::{Map, Value};
-
-/// The key the Responses wire files its own text extras under.
-const EXTRAS_KEY: &str = "openai_responses";
 
 /// What a drained stream delivered.
 pub struct Drained {
@@ -65,15 +59,10 @@ pub fn choice_texts(choice: &[AssistantContent]) -> Vec<Text> {
         .collect()
 }
 
-/// The Responses-owned extras on a text block, without `phase`.
+/// The extras a Responses text block carries: those of the message item it
+/// holds.
 pub fn content_extras(text: &Text) -> Option<Map<String, Value>> {
-    let mut extras = text
-        .additional_params
-        .as_ref()
-        .and_then(|params| params.wire_extras(EXTRAS_KEY))
-        .cloned()?;
-    extras.remove("phase");
-    (!extras.is_empty()).then_some(extras)
+    recorded_extras(&text.native.as_ref()?.item)
 }
 
 /// The extras a recorded message item's content parts state, in part

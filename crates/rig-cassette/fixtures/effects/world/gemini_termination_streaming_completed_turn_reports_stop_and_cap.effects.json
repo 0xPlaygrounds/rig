@@ -89,7 +89,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "text": "cedar"
+                },
+                "fingerprint": "39a8eae90b6905be"
+              }
             }
           ],
           "usage": {
@@ -97,22 +103,26 @@
             "output_tokens": 2,
             "total_tokens": 24
           },
-          "message_id": null,
-          "response_id": "qHizaqv4Ldv_qtsPvqG5mA0",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "qHizaqv4Ldv_qtsPvqG5mA0"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 22,
               "candidatesTokenCount": 2,
-              "totalTokenCount": 24,
+              "promptTokenCount": 22,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 22
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 24
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
@@ -144,11 +154,22 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "cedar"
+              "text": "cedar",
+              "native": {
+                "item": {
+                  "text": "cedar"
+                },
+                "fingerprint": "39a8eae90b6905be"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -72,6 +72,37 @@ fn qwen_renderer_preserves_schemas_and_tool_history() {
     assert!(prompt.ends_with("<|im_start|>assistant\n<think>\n\n</think>\n\n"));
 }
 
+/// The adapter merges a result and the user text after it into one user
+/// message; Qwen3 reads them as a tool-response turn and then a user turn.
+#[test]
+fn qwen_renders_a_merged_result_and_text_as_two_turns() {
+    let call = ToolCall::new(
+        CallId::from_wire("call-1"),
+        ToolFunction::new(
+            rig_core::message::ToolName::new("calculate").expect("tool name"),
+            serde_json::json!({"value": 2}),
+        ),
+    );
+    let merged = Message::User {
+        content: vec![
+            UserContent::ToolResult(call.result(vec![ToolResultContent::text("2")])),
+            UserContent::text("next"),
+        ],
+    };
+    let request = request(vec![
+        Message::user("calculate"),
+        Message::from(call),
+        merged,
+    ]);
+    let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("render Qwen3");
+    assert!(
+        prompt.contains(
+            "<|im_start|>user\n<tool_response>\n2\n</tool_response><|im_end|>\n<|im_start|>user\nnext<|im_end|>\n"
+        ),
+        "{prompt}"
+    );
+}
+
 #[test]
 fn qwen_documents_follow_system_tools_and_precede_conversation() {
     let mut request = request(vec![
@@ -83,6 +114,16 @@ fn qwen_documents_follow_system_tools_and_precede_conversation() {
         text: "document-marker".to_string(),
         additional_props: HashMap::new(),
     });
+    // Preparing folds the documents into the history, as the driver does.
+    let wire = crate::Generation {
+        model: "qwen3-test".to_owned(),
+        protocol: ConversationProtocol::Qwen3,
+    };
+    let request = <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
+        request,
+        &rig_core::wire::Wire::describe(&wire),
+    )
+    .expect("the request prepares");
     let prompt = render_prompt(&request, ConversationProtocol::Qwen3).expect("render documents");
     let system = prompt.find("system-marker").expect("system marker");
     let tools = prompt.find("# Tools").expect("tools marker");
@@ -306,7 +347,7 @@ fn qwen_parser_preserves_zero_arg_unicode_and_escaped_payloads() {
         })
         .collect::<Vec<_>>();
     assert_eq!(calls.len(), 2);
-    assert_eq!(calls[0].function.arguments, serde_json::json!({}));
+    assert_eq!(calls[0].function.arguments_value(), serde_json::json!({}));
     assert_eq!(
         calls[1].function.arguments["text"],
         serde_json::json!("Grüße 東京 \"quoted\" C:\\tmp")
@@ -397,10 +438,7 @@ fn qwen_missing_ids_are_distinct_and_not_provider_issued() {
     );
     assert!(calls[0].id.provider().is_none());
     assert_eq!(
-        calls[1]
-            .id
-            .provider()
-            .map(|provider| provider.call_id.as_str()),
+        calls[1].id.provider().map(|provider| provider.as_str()),
         Some("tool-0")
     );
     assert_eq!(
@@ -409,7 +447,7 @@ fn qwen_missing_ids_are_distinct_and_not_provider_issued() {
             .provider()
             .as_ref()
             .expect("valid tool-call envelope")
-            .call_id,
+            .as_str(),
         "tool-0"
     );
     assert!(calls[2].id.provider().is_none());
@@ -433,13 +471,10 @@ fn renderer_correlates_generated_and_explicit_equal_spellings() {
         ),
     );
     let history = vec![
-        Message::Assistant {
-            id: None,
-            content: vec![
-                AssistantContent::ToolCall(generated.clone()),
-                AssistantContent::ToolCall(explicit.clone()),
-            ],
-        },
+        Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+            AssistantContent::ToolCall(generated.clone()),
+            AssistantContent::ToolCall(explicit.clone()),
+        ])),
         Message::User {
             content: vec![
                 UserContent::tool_result(
@@ -521,4 +556,64 @@ fn id_less_tool_call_envelopes_mint_distinct_handles_by_position() {
     assert!(ids[0].is_local() && ids[2].is_local());
     assert_ne!(ids[0], ids[2], "two id-less calls stay distinct");
     assert_eq!(ids[1], CallId::from_wire("explicit-1"));
+}
+
+#[test]
+fn every_renderer_takes_any_media_the_adapter_hands_over() {
+    use rig_core::message::{
+        Audio, AudioMediaType, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
+        UserContent, Video, VideoMediaType,
+    };
+    let document = |data, media_type| {
+        UserContent::Document(rig_core::message::Document {
+            data,
+            media_type: Some(media_type),
+            additional_params: None,
+        })
+    };
+    let history = vec![Message::User {
+        content: vec![
+            UserContent::text("look"),
+            UserContent::Image(Image {
+                data: DocumentSourceKind::url("https://example.com/a.png"),
+                media_type: Some(ImageMediaType::PNG),
+                ..Image::default()
+            }),
+            UserContent::Audio(Audio {
+                data: DocumentSourceKind::url("https://example.com/a.mp3"),
+                media_type: Some(AudioMediaType::MP3),
+            }),
+            UserContent::Video(Video {
+                data: DocumentSourceKind::url("https://example.com/a.mp4"),
+                media_type: Some(VideoMediaType::MP4),
+                additional_params: None,
+            }),
+            document(
+                DocumentSourceKind::string("the plain document"),
+                DocumentMediaType::TXT,
+            ),
+            document(
+                DocumentSourceKind::base64("JVBERi0xLjQ="),
+                DocumentMediaType::PDF,
+            ),
+        ],
+    }];
+    let generation = crate::Generation {
+        model: "qwen3-test".to_owned(),
+        protocol: ConversationProtocol::Qwen3,
+    };
+    let adapted = rig_core::completion::adapt(&history, &generation);
+    for protocol in [
+        ConversationProtocol::Llama3,
+        ConversationProtocol::SmolLm2,
+        ConversationProtocol::Qwen3,
+    ] {
+        let request = CompletionRequest {
+            tools: Vec::new(),
+            ..request(adapted.clone())
+        };
+        let prompt = render_prompt(&request, protocol)
+            .unwrap_or_else(|error| panic!("{protocol:?} renders the adapted history: {error}"));
+        assert!(prompt.contains("the plain document"), "{prompt}");
+    }
 }

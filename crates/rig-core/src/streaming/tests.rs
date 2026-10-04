@@ -1,7 +1,7 @@
 use super::*;
 use crate::completion::{FinishReason, Usage};
 use crate::error::ErrorKind;
-use crate::message::{AssistantContent, ReasoningContent};
+use crate::message::AssistantContent;
 use crate::operation::Finish;
 use crate::test_utils::{MockCompletionModel, MockStreamEvent};
 use futures::StreamExt;
@@ -95,6 +95,91 @@ async fn partial_keeps_the_parts_that_ended_before_an_error() {
     assert_eq!(partial.text(), "answer");
 }
 
+/// A reply the provider did not end is a failed turn by construction: its
+/// message is never replayed, whatever it holds.
+#[tokio::test]
+async fn a_partial_turn_after_an_error_is_marked_failed() {
+    use crate::message::{Message, StopReason};
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("answer"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({"q": 1})),
+        MockStreamEvent::error("mid-stream failure"),
+    ]);
+    let _ = items_of(&mut stream).await;
+    let Some(Message::Assistant(turn)) = stream.partial().message() else {
+        panic!("the partial turn has content");
+    };
+    assert!(
+        matches!(&turn.stop, Some(StopReason::Error(error)) if error.contains("mid-stream failure")),
+        "{:?}",
+        turn.stop
+    );
+}
+
+#[tokio::test]
+async fn a_partial_turn_the_caller_stopped_reading_is_aborted() {
+    use crate::message::{Message, StopReason};
+    let mut stream = stream_of(vec![
+        MockStreamEvent::text("answer"),
+        MockStreamEvent::tool_call("call_1", "lookup", serde_json::json!({"q": 1})),
+        MockStreamEvent::final_response(usage(3)),
+    ]);
+    // The caller takes the first part and stops.
+    let _ = stream.next().await;
+    let _ = stream.next().await;
+    let _ = stream.next().await;
+    let Some(Message::Assistant(turn)) = stream.partial().message() else {
+        panic!("the partial turn has content");
+    };
+    assert!(
+        matches!(turn.stop, Some(StopReason::Aborted(_))),
+        "{:?}",
+        turn.stop
+    );
+}
+
+/// Only a natural stop, the token limit and a stop to call tools succeed:
+/// any other finish reason fails the turn.
+#[test]
+fn an_unknown_finish_reason_fails_the_turn() {
+    use crate::completion::CompletionResponse;
+    use crate::message::{Origin, StopReason};
+    let response = |reason: FinishReason| {
+        CompletionResponse::new(
+            vec![AssistantContent::text("hi")],
+            Usage::default(),
+            Origin::new("test.api", "test", "model"),
+            serde_json::Value::Null,
+        )
+        .with_finish_reason(reason)
+        .stop()
+    };
+    assert_eq!(response(FinishReason::Stop), StopReason::Stop);
+    assert_eq!(response(FinishReason::Length), StopReason::Length);
+    assert_eq!(response(FinishReason::ToolCalls), StopReason::ToolUse);
+    for reason in [
+        FinishReason::ContentFilter,
+        FinishReason::Other("recitation".to_owned()),
+        FinishReason::Other("error".to_owned()),
+    ] {
+        assert!(response(reason.clone()).is_failure(), "{reason:?}");
+    }
+}
+
+/// A relayed stream knows its origin before its first item, so a relay cut
+/// short still names the model that produced it.
+#[tokio::test]
+async fn a_relay_names_its_origin_before_its_first_item() {
+    let origin = stream_of(vec![MockStreamEvent::text("cut")]);
+    let expected = origin.partial().origin;
+    let events = origin
+        .into_relay()
+        .filter(|item| futures::future::ready(!matches!(item, Ok(Relayed::Done(_)))));
+    let mut relayed = Streamed::relay("mock", Box::pin(events));
+    let _ = items_of(&mut relayed).await;
+    assert_eq!(relayed.partial().origin, expected);
+}
+
 #[tokio::test]
 async fn usage_the_provider_did_not_report_stays_unreported() {
     let mut stream = stream_of(vec![
@@ -145,6 +230,7 @@ async fn the_choice_is_in_the_order_its_parts_started() {
             AssistantContent::ToolCall(_) => "call",
             AssistantContent::Reasoning(_) => "reasoning",
             AssistantContent::Image(_) => "image",
+            AssistantContent::Opaque(_) => "opaque",
         })
         .collect();
     assert_eq!(kinds, ["text", "call", "reasoning", "text"]);
@@ -152,17 +238,11 @@ async fn the_choice_is_in_the_order_its_parts_started() {
         .choice
         .iter()
         .find_map(|part| match part {
-            AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).cloned(),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
             _ => None,
         })
-        .expect("the reasoning opens for its issuer");
-    assert_eq!(
-        reasoning.content,
-        vec![ReasoningContent::Text {
-            text: "thinking".to_owned(),
-            signature: None,
-        }]
-    );
+        .expect("the reasoning");
+    assert_eq!(reasoning.text, "thinking");
 }
 
 #[tokio::test]
@@ -237,7 +317,6 @@ async fn an_empty_id_is_no_id() {
         MockStreamEvent::text("Hello"),
         MockStreamEvent::RequestId(String::new()),
         MockStreamEvent::FinalResponse(Finish {
-            message_id: Some(String::new()),
             response_id: Some(String::new()),
             model: Some(String::new()),
             ..Finish::default()
@@ -247,7 +326,74 @@ async fn an_empty_id_is_no_id() {
     assert!(items.iter().all(Result::is_ok), "{items:?}");
     let response = stream.finish().await.expect("the reply ended");
     assert_eq!(response.provider_request_id, None);
-    assert_eq!(response.message_id, None);
-    assert_eq!(response.response_id, None);
-    assert_eq!(response.model, None);
+    assert_eq!(response.response_id(), None);
+    assert_eq!(response.model(), None);
+}
+
+/// Text the model was still writing is part of what a stream delivered,
+/// although its part has not ended; a call that has not ended is not.
+#[test]
+fn delivered_content_keeps_a_text_part_still_open() {
+    let items = Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 0, "text": "before call"}},
+        {"item": "event", "value": {"event": "start", "part": 1, "kind": "tool_call"}},
+        {"item": "event", "value": {"event": "arguments", "part": 1, "json": "{}"}},
+    ]))
+    .expect("a stream prefix in order")
+    .into_items();
+    assert_eq!(
+        delivered(&items),
+        vec![AssistantContent::text("before call")]
+    );
+}
+
+/// Reasoning the model was still writing is delivered too, so a reply cut
+/// while a Chat message's one reasoning block is open keeps its reasoning.
+#[test]
+fn delivered_content_keeps_a_reasoning_part_still_open() {
+    let items = Transcript::parse_prefix(serde_json::json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}},
+        {"item": "event", "value": {"event": "reasoning", "part": 0, "text": "plan"}},
+        {"item": "event", "value": {"event": "start", "part": 1, "kind": "text"}},
+        {"item": "event", "value": {"event": "text", "part": 1, "text": "answer"}},
+    ]))
+    .expect("a stream prefix in order")
+    .into_items();
+    assert_eq!(
+        delivered(&items),
+        vec![
+            AssistantContent::reasoning("plan"),
+            AssistantContent::text("answer")
+        ]
+    );
+}
+
+/// What a stream delivered keeps no provider item, with or without a part
+/// still open: the stream has not ended, so a call never replays without
+/// the reasoning it follows.
+#[test]
+fn delivered_blocks_keep_no_provider_item() {
+    let text = AssistantContent::text("hi").with_native(serde_json::json!({"id": "msg_1"}));
+    let stream = |reasoning: bool| {
+        let mut events = Vec::new();
+        if reasoning {
+            events.push(serde_json::json!(
+                {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}}
+            ));
+        }
+        let part = events.len();
+        events.push(serde_json::json!(
+            {"item": "event", "value": {"event": "start", "part": part, "kind": "text"}}
+        ));
+        events.push(serde_json::json!(
+            {"item": "event", "value": {"event": "end", "part": part, "content": text}}
+        ));
+        Transcript::parse_prefix(serde_json::Value::Array(events))
+            .expect("a stream prefix in order")
+            .into_items()
+    };
+    for open in [false, true] {
+        assert_eq!(delivered(&stream(open)), vec![AssistantContent::text("hi")]);
+    }
 }

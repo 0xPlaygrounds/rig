@@ -101,7 +101,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The dominant non-background color is **bright red**."
+              "text": "The dominant non-background color is **bright red**.",
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color is **bright red**.",
+                  "type": "text"
+                },
+                "fingerprint": "74399dee01316488"
+              }
             }
           ],
           "usage": {
@@ -111,12 +118,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+          },
           "provider_request_id": "req_011CfLcZQ4V2tug7PHG73GAn",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -177,13 +187,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZQYGizyS5wVLcCVAo",
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is **bright red**."
+                  "text": "The dominant non-background color is **bright red**.",
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is **bright red**.",
+                      "type": "text"
+                    },
+                    "fingerprint": "74399dee01316488"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -230,13 +254,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZQYGizyS5wVLcCVAo",
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is **bright red**."
+                  "text": "The dominant non-background color is **bright red**.",
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is **bright red**.",
+                      "type": "text"
+                    },
+                    "fingerprint": "74399dee01316488"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+              },
+              "stop": "stop"
             }
           ]
         }
@@ -274,13 +312,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZQYGizyS5wVLcCVAo",
               "content": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is **bright red**."
+                  "text": "The dominant non-background color is **bright red**.",
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is **bright red**.",
+                      "type": "text"
+                    },
+                    "fingerprint": "74399dee01316488"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+              },
+              "stop": "stop"
             },
             {
               "role": "user",
@@ -308,7 +360,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "The image contained a **square** shape."
+              "text": "The image contained a **square** shape.",
+              "native": {
+                "item": {
+                  "text": "The image contained a **square** shape.",
+                  "type": "text"
+                },
+                "fingerprint": "26e4bdff4a78b8dd"
+              }
             }
           ],
           "usage": {
@@ -318,12 +377,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcZWMkmjKL9x7gWNRB5",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcZWMkmjKL9x7gWNRB5"
+          },
           "provider_request_id": "req_011CfLcZVsjL9TiuPfDMScsh",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [
@@ -376,13 +438,27 @@
             },
             {
               "role": "assistant",
-              "id": "msg_011CfLcZWMkmjKL9x7gWNRB5",
               "content": [
                 {
                   "type": "text",
-                  "text": "The image contained a **square** shape."
+                  "text": "The image contained a **square** shape.",
+                  "native": {
+                    "item": {
+                      "text": "The image contained a **square** shape.",
+                      "type": "text"
+                    },
+                    "fingerprint": "26e4bdff4a78b8dd"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZWMkmjKL9x7gWNRB5"
+              },
+              "stop": "stop"
             }
           ]
         }

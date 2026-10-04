@@ -1,4 +1,4 @@
-//! Response identity, and the typed route's parity with the normalized one.
+//! Response identity, and the reply document's parity with the normalized one.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10964-b29c606e2.
@@ -42,8 +42,6 @@
 //! different lifetimes: one is a transport correlator a proxy can add, the
 //! other is the provider's own handle for the turn.
 
-use rig::providers::llamacpp;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{
@@ -151,7 +149,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
                 .expect("completion should succeed");
 
             let id = response
-                .response_id
+                .response_id()
                 .expect("llama.cpp mints a response id and rig surfaces it");
             assert!(
                 id.starts_with("chatcmpl-"),
@@ -171,11 +169,9 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
             while let Some(item) = stream.next().await {
                 item.expect("stream item should be ok");
             }
-            let id = stream
-                .finish()
-                .await
-                .expect("the stream must terminate")
-                .response_id
+            let terminal = stream.finish().await.expect("the stream must terminate");
+            let id = terminal
+                .response_id()
                 .expect("the streamed terminal must carry the same handle");
             assert!(id.starts_with("chatcmpl-"), "{id:?}");
         },
@@ -223,9 +219,9 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
 ///
 /// 1. **`encode` is deterministic.** The same built request produces the same
 ///    request bytes every time, so a caller can replay it.
-/// 2. **`raw` is a faithful second view of the reply it rode on.** Read back
-///    through `llamacpp::CompletionResponse`, its provider-native fields
-///    reproduce the normalized response's.
+/// 2. **`raw` is a faithful second view of the reply it rode on.** Read as
+///    the reply document, its provider-native fields reproduce the
+///    normalized response's.
 ///
 /// llama.cpp sends no transport request id, so — unlike Groq or xAI, where a
 /// captured body necessarily drops one the normalized path reports — `raw` is
@@ -256,8 +252,8 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                 .expect("the same request should succeed again");
 
             // Across the two turns: everything the wire makes equal.
-            assert_eq!(first.provider, second.provider);
-            assert_eq!(first.model, second.model);
+            assert_eq!(first.provider(), second.provider());
+            assert_eq!(first.model(), second.model());
             assert_eq!(first.finish_reason(), second.finish_reason());
             assert_eq!(
                 first.provider_request_id, second.provider_request_id,
@@ -269,32 +265,24 @@ async fn the_typed_route_reproduces_the_normalized_one() {
                  reports None by design"
             );
             assert!(
-                first.response_id.is_some() && second.response_id.is_some(),
+                first.response_id().is_some() && second.response_id().is_some(),
                 "both turns must carry the provider's own id: {:?} vs {:?}",
-                first.response_id,
-                second.response_id
+                first.response_id(),
+                second.response_id()
             );
             assert_eq!(
                 first.usage.input_tokens, second.usage.input_tokens,
                 "the same prompt bills the same either way"
             );
 
-            // Same reply, two views: the captured document read back through
-            // llama.cpp's own type reproduces the normalized fields.
-            let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
-                .expect("raw is llama.cpp's own response type");
-            assert_eq!(
-                second.response_id.as_deref(),
-                Some(typed.openai.id.as_str())
-            );
-            assert_eq!(second.model.as_deref(), Some(typed.openai.model.as_str()));
+            // Same reply, two views: the captured document reproduces the
+            // normalized fields.
+            let typed = &second.raw;
+            assert_eq!(second.response_id(), typed["id"].as_str());
+            assert_eq!(second.model(), typed["model"].as_str());
             assert_eq!(
                 second.usage.input_tokens,
-                typed
-                    .openai
-                    .usage
-                    .as_ref()
-                    .map(|usage| usage.prompt_tokens as u64),
+                typed["usage"]["prompt_tokens"].as_u64(),
             );
         },
     )

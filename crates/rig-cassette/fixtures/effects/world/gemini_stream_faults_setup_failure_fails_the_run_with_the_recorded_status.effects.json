@@ -111,6 +111,11 @@
         }
       },
       "events": [],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-nonexistent-rig-test"
+      },
       "scope": "parity/run#0"
     }
   ]

@@ -10,9 +10,6 @@ use crate::{
     },
 };
 use rig::providers::gemini;
-use rig::providers::gemini::completion::gemini_api_types::{
-    AdditionalParameters, GenerationConfig,
-};
 use rig_ecs::agent::AdditionalParams;
 
 #[tokio::test]
@@ -31,11 +28,7 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
                         .world_mut()
                         .entity_mut(ecs.agent)
                         .insert(AdditionalParams(Some(
-                            serde_json::to_value(
-                                AdditionalParameters::default()
-                                    .with_config(GenerationConfig::default()),
-                            )
-                            .expect("tool configuration"),
+                            serde_json::json!({ "generationConfig": {} }),
                         )));
                     ecs.tool(AlphaSignal);
                     install_observers(&mut ecs);
@@ -80,10 +73,7 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
                 .world_mut()
                 .entity_mut(ecs.agent)
                 .insert(AdditionalParams(Some(
-                    serde_json::to_value(
-                        AdditionalParameters::default().with_config(GenerationConfig::default()),
-                    )
-                    .expect("tool configuration"),
+                    serde_json::json!({ "generationConfig": {} }),
                 )));
             ecs.tool(AlphaSignal);
             ecs.tool(BetaSignal);

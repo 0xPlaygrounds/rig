@@ -84,11 +84,14 @@
             "total_tokens": 86,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-SlTjgsdaIFYIROAGBbVh0Nd0azL2SyXa",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "llamacpp",
+            "model": "Qwen3-1.7B-Q4_K_M",
+            "response_model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
+            "response_id": "chatcmpl-SlTjgsdaIFYIROAGBbVh0Nd0azL2SyXa"
+          },
           "finish_reason": "stop",
-          "provider": "llamacpp",
-          "model": "/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf",
           "raw": {
             "choices": [
               {

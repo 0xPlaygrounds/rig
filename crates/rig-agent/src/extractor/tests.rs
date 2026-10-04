@@ -34,6 +34,7 @@ fn extractor(model: MockCompletionModel, retries: usize) -> Extractor<Person> {
 
 fn submit_turn(name: &str) -> MockTurn {
     MockTurn::tool_call("id1", SUBMIT_TOOL_NAME, json!({ "name": name }))
+        .with_response_id("extractor-message")
 }
 
 fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantContent {
@@ -122,7 +123,7 @@ impl AgentHook for ExtractorResponseCapture {
             prompt,
             response.choice.clone(),
             response.usage,
-            response.message_id.clone(),
+            response.response_id().map(str::to_owned),
         ));
         OutcomeAction::proceed()
     }
@@ -278,9 +279,9 @@ async fn extractor_hook_receives_canonical_response_fields() {
     let capture = ExtractorResponseCapture::default();
     let expected_usage = usage(23);
     let response =
-        ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([submit_turn("John")
-            .with_usage(expected_usage)
-            .with_message_id("extractor-message")]))
+        ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([
+            submit_turn("John").with_usage(expected_usage)
+        ]))
         .add_hook(capture.clone())
         .build()
         .extract("John")
@@ -301,7 +302,7 @@ async fn extractor_hook_receives_canonical_response_fields() {
         content.as_slice(),
         [AssistantContent::ToolCall(tool_call)]
             if tool_call.function.name == SUBMIT_TOOL_NAME
-                && tool_call.function.arguments == json!({"name": "John"})
+                && tool_call.function.arguments_value() == json!({"name": "John"})
     ));
 }
 
@@ -330,11 +331,10 @@ async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
     let requests = probe.requests();
     let request = requests.first().expect("one extractor request");
     assert!(
-        request
-            .documents
+        rig_core::test_utils::sent_documents(request)
             .iter()
-            .any(|document| document.id == "extractor-context"
-                && document.text == "{\n  \"question\": \"retrieved\"\n}")
+            .any(|(id, text)| id == "extractor-context"
+                && text == "{\n  \"question\": \"retrieved\"\n}")
     );
 }
 

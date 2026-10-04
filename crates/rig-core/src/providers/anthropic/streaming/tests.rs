@@ -1,28 +1,27 @@
-use super::super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl,
-    Message, SystemContent, apply_prompt_cache_control, build_tool_definitions,
-    resolve_top_level_cache_control,
-};
+use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_SONNET_4_6};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
 use crate::completion::request::Document as RigDocument;
 use crate::driver::{Decoded, decode_events};
-use crate::message::{AssistantContent, Reasoning, ReasoningContent};
-use crate::streaming::{PartKind, StreamEvent};
+use crate::message::{AssistantContent, Opaque, Reasoning, StopReason};
+use crate::providers::anthropic::wire::AnthropicConfig;
+use crate::streaming::StreamEvent;
+use crate::wire::Mode;
+use serde_json::json;
 
 /// A fresh decoder, for its classifier.
-fn adapter() -> MessagesDecoder<'static> {
-    MessagesDecoder::new()
+fn adapter() -> MessagesDecoder {
+    MessagesDecoder::new(false)
 }
 
 /// Decode `events` through one decoder as one reply, then EOF.
-fn decode(events: impl IntoIterator<Item = StreamingEvent>) -> Decoded<Completion> {
-    decode_events!(MessagesDecoder::new(), "anthropic", events)
+fn decode(events: impl IntoIterator<Item = MessagesEvent>) -> Decoded<Completion> {
+    decode_events!(MessagesDecoder::new(false), "anthropic", events)
 }
 
 /// The event one wire frame classifies to.
-fn classified(frame: &str) -> StreamingEvent {
+fn classified(frame: &str) -> MessagesEvent {
     let crate::wire::WireEvent::Known(event) = adapter().classify(WireFrame::Text(frame.into()))
     else {
         panic!("{frame} must classify Known");
@@ -30,78 +29,82 @@ fn classified(frame: &str) -> StreamingEvent {
     event
 }
 
-/// The reasoning that ended, opened for its issuer.
-fn reasoning_of(decoded: &Decoded<Completion>) -> Vec<Reasoning> {
-    decoded
-        .ended()
-        .into_iter()
-        .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => reasoning.open(reasoning.issuer()).cloned(),
-            _ => None,
-        })
+/// The response the stream of `frames` folds into on the Anthropic wire.
+fn streamed(frames: &[Value]) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        Mode::Streaming,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+        Value::Null,
+    )
+}
+
+/// The frames of one content block: its start, its deltas and its stop.
+fn block(index: usize, start: Value, deltas: &[Value]) -> Vec<Value> {
+    std::iter::once(json!({"type": "content_block_start", "index": index, "content_block": start}))
+        .chain(
+            deltas.iter().map(
+                |delta| json!({"type": "content_block_delta", "index": index, "delta": delta}),
+            ),
+        )
+        .chain([json!({"type": "content_block_stop", "index": index})])
         .collect()
 }
 
-fn thinking_start(index: usize, thinking: &str, signature: Option<&str>) -> StreamingEvent {
-    StreamingEvent::ContentBlockStart {
-        index,
-        content_block: Content::Thinking {
-            thinking: thinking.to_string(),
-            signature: signature.map(str::to_owned),
-        },
+/// A stream of `blocks` ending with `stop_reason`.
+fn reply(blocks: Vec<Vec<Value>>, stop_reason: &str) -> Vec<Value> {
+    std::iter::once(json!({"type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": CLAUDE_SONNET_4_6,
+        "content": [], "stop_reason": null, "stop_sequence": null,
+        "usage": {"input_tokens": 3, "output_tokens": 1}
+    }}))
+    .chain(blocks.into_iter().flatten())
+    .chain([json!({"type": "message_delta",
+        "delta": {"stop_reason": stop_reason, "stop_sequence": null},
+        "usage": {"output_tokens": 5}})])
+    .collect()
+}
+
+/// The provider item a decoded block holds.
+fn item(content: &AssistantContent) -> Option<&Value> {
+    match content {
+        AssistantContent::Opaque(Opaque { item, .. }) => Some(item),
+        content => content.native_item(),
     }
 }
 
-fn signature_delta(index: usize, signature: &str) -> StreamingEvent {
-    StreamingEvent::ContentBlockDelta {
-        index,
-        delta: ContentDelta::SignatureDelta {
-            signature: signature.to_string(),
-        },
-    }
+/// The message delta that ends a reply with `stop_reason`.
+fn message_delta(stop_reason: &str, usage: Value) -> MessagesEvent {
+    classified(
+        &json!({"type": "message_delta",
+            "delta": {"stop_reason": stop_reason, "stop_sequence": null},
+            "usage": usage})
+        .to_string(),
+    )
 }
 
-fn stop(index: usize) -> StreamingEvent {
-    StreamingEvent::ContentBlockStop { index }
+fn tool_use(index: usize, id: &str, name: &str) -> MessagesEvent {
+    classified(
+        &json!({"type": "content_block_start", "index": index,
+            "content_block": {"type": "tool_use", "id": id, "name": name, "input": {}}})
+        .to_string(),
+    )
 }
 
-fn tool_use(index: usize, id: &str, name: &str) -> StreamingEvent {
-    StreamingEvent::ContentBlockStart {
-        index,
-        content_block: Content::ToolUse {
-            id: id.to_string(),
-            name: name.to_string(),
-            input: json!({}),
-        },
-    }
+fn input_json(index: usize, partial_json: &str) -> MessagesEvent {
+    classified(
+        &json!({"type": "content_block_delta", "index": index,
+            "delta": {"type": "input_json_delta", "partial_json": partial_json}})
+        .to_string(),
+    )
 }
 
-fn input_json(index: usize, partial_json: &str) -> StreamingEvent {
-    StreamingEvent::ContentBlockDelta {
-        index,
-        delta: ContentDelta::InputJsonDelta {
-            partial_json: partial_json.to_string(),
-        },
-    }
-}
-
-/// The signed text a reasoning part closed with.
-fn signed(text: &str, signature: &str) -> Vec<ReasoningContent> {
-    vec![ReasoningContent::Text {
-        text: text.to_string(),
-        signature: Some(signature.to_string()),
-    }]
-}
-
-/// The one terminal frame: a `message_delta` carrying `stop_reason`.
-fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
-    StreamingEvent::MessageDelta {
-        delta: MessageDelta {
-            stop_reason: Some(stop_reason.to_string()),
-            stop_sequence: None,
-        },
-        usage,
-    }
+fn stop(index: usize) -> MessagesEvent {
+    classified(&json!({"type": "content_block_stop", "index": index}).to_string())
 }
 
 /// The streaming request body the [`Messages`](super::super::wire::Messages)
@@ -124,6 +127,7 @@ fn built_streaming_body(
     } else {
         wire
     };
+    let request = <Completion as crate::wire::Operation>::prepare(request, &wire.describe())?;
     let encoded = wire.encode(request, Mode::Streaming)?;
     match encoded.request.body() {
         Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
@@ -133,32 +137,43 @@ fn built_streaming_body(
 
 #[test]
 fn test_streaming_tool_build_marks_final_combined_tool() {
-    let mut additional_params = json!({
-        "tools": [{
-            "name": "provider_tool",
-            "description": "Provider tool",
-            "input_schema": {"type": "object"}
-        }]
-    });
-
-    let mut tools = build_tool_definitions(
-        vec![crate::completion::ToolDefinition {
+    let request = CompletionRequest::new(RigMessage::user("Hi"))
+        .max_tokens(64)
+        .tools(vec![crate::completion::ToolDefinition {
             name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
-        }],
-        &mut additional_params,
-        None,
-    )
-    .unwrap();
-    let mut system: Vec<SystemContent> = Vec::new();
-    let mut messages: Vec<Message> = Vec::new();
-    apply_prompt_cache_control(&mut system, &mut messages, &mut tools, true, None, None).unwrap();
-
+        }])
+        .additional_params(json!({
+            "tools": [{
+                "name": "provider_tool",
+                "description": "Provider tool",
+                "input_schema": {"type": "object"}
+            }]
+        }));
+    let wire = AnthropicConfig::new("test-key")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_prompt_caching();
+    let body = streamed_body(&wire, request);
+    let tools = body["tools"].as_array().expect("tools");
     assert_eq!(tools.len(), 2);
     assert!(tools[0].get("cache_control").is_none());
     assert_eq!(tools[1]["name"], "provider_tool");
     assert_eq!(tools[1]["cache_control"]["type"], "ephemeral");
+}
+
+/// The streaming body `wire` encodes for `request`.
+fn streamed_body(
+    wire: &crate::providers::anthropic::Messages,
+    request: CompletionRequest,
+) -> Value {
+    use crate::wire::Wire;
+    crate::test_utils::json_body(
+        &wire
+            .encode(request, Mode::Streaming)
+            .expect("the request encodes")
+            .request,
+    )
 }
 
 #[test]
@@ -242,17 +257,13 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
     // Unification invariant: the streaming body is exactly the blocking body
     // (built via the same typed request) plus `stream: true`. Pins the two
     // wire formats together so a future edit can't reintroduce drift.
-    let blocking = AnthropicCompletionRequest::try_from(AnthropicRequestParams {
-        issuers: &[crate::message::Issuer::from_static("anthropic")],
-        model: CLAUDE_OPUS_4_8,
-        request,
-        prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
-        static_prefix_cache_ttl: None,
-    })
-    .expect("blocking request body should build");
-    let mut expected = serde_json::to_value(&blocking).expect("serialize blocking body");
+    let wire = crate::providers::anthropic::wire::AnthropicConfig::new("test-key")
+        .completion(CLAUDE_OPUS_4_8);
+    let mut expected = crate::test_utils::json_body(
+        &crate::wire::Wire::encode(&wire, request, Mode::Unary)
+            .expect("blocking request body should build")
+            .request,
+    );
     expected
         .as_object_mut()
         .expect("body is an object")
@@ -334,233 +345,99 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
 
 #[test]
 fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
-    let mut additional_params = json!({
-        "cache_control": {"type": "ephemeral", "ttl": "1h"}
-    });
-    let top_level_cache_control =
-        resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-    let mut tools = build_tool_definitions(
-        vec![crate::completion::ToolDefinition {
-            name: crate::message::ToolName::new("rig_tool").expect("tool name"),
-            description: "Rig tool".to_string(),
-            parameters: json!({"type": "object", "properties": {}}),
-        }],
-        &mut additional_params,
-        None,
-    )
-    .unwrap();
-    let mut system = vec![SystemContent::Text {
-        text: "System prompt".to_string(),
-        cache_control: None,
-    }];
-    let mut messages: Vec<Message> = Vec::new();
-
-    apply_prompt_cache_control(
-        &mut system,
-        &mut messages,
-        &mut tools,
-        true,
-        None,
-        top_level_cache_control.as_ref(),
-    )
-    .unwrap();
-
-    assert_eq!(tools[0]["cache_control"]["type"], "ephemeral");
-    assert_eq!(tools[0]["cache_control"]["ttl"], "1h");
-    match &system[0] {
-        SystemContent::Text {
-            cache_control: Some(CacheControl::Ephemeral { ttl }),
-            ..
-        } => assert_eq!(ttl.as_ref(), Some(&CacheTtl::OneHour)),
-        other => panic!("expected system cache_control, got {other:?}"),
-    }
-    assert!(additional_params.get("cache_control").is_none());
-}
-
-#[test]
-fn test_thinking_delta_deserialization() {
-    let json = r#"{"type": "thinking_delta", "thinking": "Let me think about this..."}"#;
-    let delta: ContentDelta = serde_json::from_str(json).unwrap();
-
-    match delta {
-        ContentDelta::ThinkingDelta { thinking } => {
-            assert_eq!(thinking, "Let me think about this...");
-        }
-        _ => panic!("Expected ThinkingDelta variant"),
-    }
-}
-
-#[test]
-fn test_signature_delta_deserialization() {
-    let json = r#"{"type": "signature_delta", "signature": "abc123def456"}"#;
-    let delta: ContentDelta = serde_json::from_str(json).unwrap();
-
-    match delta {
-        ContentDelta::SignatureDelta { signature } => {
-            assert_eq!(signature, "abc123def456");
-        }
-        _ => panic!("Expected SignatureDelta variant"),
-    }
-}
-
-#[test]
-fn test_thinking_delta_streaming_event_deserialization() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "thinking_delta",
-                "thinking": "First, I need to understand the problem."
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-
-    match event {
-        StreamingEvent::ContentBlockDelta { index, delta } => {
-            assert_eq!(index, 0);
-            match delta {
-                ContentDelta::ThinkingDelta { thinking } => {
-                    assert_eq!(thinking, "First, I need to understand the problem.");
-                }
-                _ => panic!("Expected ThinkingDelta"),
-            }
-        }
-        _ => panic!("Expected ContentBlockDelta event"),
-    }
-}
-
-#[test]
-fn test_signature_delta_streaming_event_deserialization() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "signature_delta",
-                "signature": "ErUBCkYICBgCIkCaGbqC85F4"
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-
-    match event {
-        StreamingEvent::ContentBlockDelta { index, delta } => {
-            assert_eq!(index, 0);
-            match delta {
-                ContentDelta::SignatureDelta { signature } => {
-                    assert_eq!(signature, "ErUBCkYICBgCIkCaGbqC85F4");
-                }
-                _ => panic!("Expected SignatureDelta"),
-            }
-        }
-        _ => panic!("Expected ContentBlockDelta event"),
-    }
-}
-
-#[test]
-fn test_handle_thinking_delta_event() {
-    let decoded = decode([StreamingEvent::ContentBlockDelta {
-        index: 0,
-        delta: ContentDelta::ThinkingDelta {
-            thinking: "Analyzing the request...".to_string(),
-        },
-    }]);
-    // An unseen thinking block opens its part before the first fragment.
-    assert!(
-        matches!(
-            decoded.events().as_slice(),
-            [
-                StreamEvent::Start { kind: PartKind::Reasoning, .. },
-                StreamEvent::Reasoning { text, .. },
-            ] if text == "Analyzing the request..."
-        ),
-        "{:?}",
-        decoded.events()
-    );
-}
-
-#[test]
-fn test_handle_signature_delta_event() {
-    let decoded = decode([signature_delta(0, "test_signature"), stop(0)]);
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(reasoning.len(), 1);
-    assert_eq!(reasoning[0].content, signed("", "test_signature"));
-}
-
-#[test]
-fn test_handle_redacted_thinking_content_block_start_event() {
-    let decoded = decode([StreamingEvent::ContentBlockStart {
-        index: 0,
-        content_block: Content::RedactedThinking {
-            data: "redacted_blob".to_string(),
-        },
-    }]);
-    // A whole reasoning block is its start and its end.
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(reasoning.len(), 1);
+    let request = CompletionRequest::from(vec![
+        RigMessage::system("System prompt"),
+        RigMessage::user("Hi"),
+    ])
+    .max_tokens(64)
+    .tools(vec![crate::completion::ToolDefinition {
+        name: crate::message::ToolName::new("rig_tool").expect("tool name"),
+        description: "Rig tool".to_string(),
+        parameters: json!({"type": "object", "properties": {}}),
+    }])
+    .additional_params(json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}));
+    let wire = AnthropicConfig::new("test-key")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_prompt_caching();
+    let body = streamed_body(&wire, request);
     assert_eq!(
-        reasoning[0].content,
-        vec![ReasoningContent::Redacted {
-            data: "redacted_blob".to_string()
-        }]
+        body["tools"][0]["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
+    assert_eq!(
+        body["system"][0]["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
+    );
+    assert_eq!(
+        body["cache_control"],
+        json!({"type": "ephemeral", "ttl": "1h"})
     );
 }
 
-/// The adaptive-thinking wire shape, exactly as recorded in
-/// `crates/rig-cassette/fixtures/cassettes/anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`:
-/// `content_block_start` opens the block with an EMPTY `thinking` and an
-/// EMPTY `signature`, a `signature_delta` carries the whole signature, and
-/// no `thinking_delta` ever arrives. The block's only content is its
-/// signature, and it must survive `content_block_stop`.
+/// Signature fragments concatenate onto the opening signature, as pi
+/// assembles them, and the thinking item holds the whole block.
 #[test]
-fn signature_only_thinking_block_survives_content_block_stop() {
-    let decoded = decode([
-        thinking_start(0, "", Some("")),
-        signature_delta(0, "the_whole_signature"),
-        stop(0),
-    ]);
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(reasoning.len(), 1, "the signature-only block is kept");
-    assert_eq!(reasoning[0].content, signed("", "the_whole_signature"));
+fn thinking_assembles_its_text_and_signature_into_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "thinking", "thinking": "", "signature": "open-"}),
+            &[
+                json!({"type": "thinking_delta", "thinking": "Let me "}),
+                json!({"type": "thinking_delta", "thinking": "think."}),
+                json!({"type": "signature_delta", "signature": "sig_"}),
+                json!({"type": "signature_delta", "signature": "end"}),
+            ],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    let [AssistantContent::Reasoning(reasoning)] = response.choice.as_slice() else {
+        panic!("one reasoning block: {:?}", response.choice);
+    };
+    assert_eq!(reasoning.text, "Let me think.");
+    assert!(!reasoning.redacted);
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(
+            &json!({"type": "thinking", "thinking": "Let me think.", "signature": "open-sig_end"})
+        )
+    );
 }
 
-/// Forward compat: a block that delivers its whole signature on
-/// `content_block_start` and sends no `signature_delta` keeps it.
+/// The adaptive-thinking shape recorded in
+/// `anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`: an
+/// empty thinking block whose only content is the signature its deltas
+/// carry. The block and its signature survive `content_block_stop`.
 #[test]
-fn signature_delivered_only_on_content_block_start_is_kept() {
-    let decoded = decode([thinking_start(0, "", Some("up_front_signature")), stop(0)]);
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(reasoning.len(), 1, "an up-front signature is kept");
-    assert_eq!(reasoning[0].content, signed("", "up_front_signature"));
+fn signature_only_thinking_block_keeps_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "thinking", "thinking": "", "signature": ""}),
+            &[json!({"type": "signature_delta", "signature": "the_whole_signature"})],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    assert_eq!(response.choice.len(), 1);
+    assert_eq!(
+        item(&response.choice[0]).and_then(|item| item.get("signature")),
+        Some(&json!("the_whole_signature"))
+    );
 }
 
-/// The opening `signature` is a fallback, never a prefix the deltas
-/// extend: a delta-bearing block must publish exactly what the deltas
-/// assembled, or the value replayed to Anthropic is corrupt.
+/// `content_block_start` can carry the block's opening text; it streams as
+/// the first fragment.
 #[test]
-fn signature_deltas_supersede_the_opening_signature() {
+fn thinking_block_start_text_streams_as_the_first_fragment() {
     let decoded = decode([
-        thinking_start(0, "", Some("opening")),
-        signature_delta(0, "delta_"),
-        signature_delta(0, "assembled"),
-        stop(0),
-    ]);
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(reasoning[0].content, signed("", "delta_assembled"));
-}
-
-/// `content_block_start` can carry the block's opening text; discarding it
-/// would truncate the block.
-#[test]
-fn thinking_block_start_text_streams_as_the_first_delta() {
-    let decoded = decode([
-        thinking_start(2, "opening ", None),
-        StreamingEvent::ContentBlockDelta {
-            index: 2,
-            delta: ContentDelta::ThinkingDelta {
-                thinking: "rest".to_string(),
-            },
-        },
+        classified(
+            r#"{"type":"content_block_start","index":2,"content_block":{"type":"thinking","thinking":"opening "}}"#,
+        ),
+        classified(
+            r#"{"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"rest"}}"#,
+        ),
         stop(2),
     ]);
     let fragments: Vec<&str> = decoded
@@ -572,566 +449,439 @@ fn thinking_block_start_text_streams_as_the_first_delta() {
         })
         .collect();
     assert_eq!(fragments, ["opening ", "rest"]);
-    let reasoning = reasoning_of(&decoded);
+}
+
+#[test]
+fn redacted_thinking_is_a_redacted_block_holding_its_payload() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "redacted_thinking", "data": "redacted_blob"}),
+            &[],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    let [AssistantContent::Reasoning(Reasoning { text, redacted, .. })] =
+        response.choice.as_slice()
+    else {
+        panic!("one reasoning block: {:?}", response.choice);
+    };
+    assert!(text.is_empty() && *redacted);
     assert_eq!(
-        reasoning[0].content,
-        vec![ReasoningContent::Text {
-            text: "opening rest".to_string(),
-            signature: None,
-        }]
-    );
-}
-
-/// A block with neither text nor signature carries nothing to replay.
-#[test]
-fn wholly_empty_thinking_block_is_dropped() {
-    let decoded = decode([thinking_start(0, "", None), stop(0)]);
-    assert!(decoded.ended().is_empty(), "{:?}", decoded.events());
-}
-
-#[test]
-fn test_handle_text_delta_event() {
-    let decoded = decode([StreamingEvent::ContentBlockDelta {
-        index: 0,
-        delta: ContentDelta::TextDelta {
-            text: "Hello, world!".to_string(),
-        },
-    }]);
-    // A bare text delta with no open text block opens one first.
-    assert!(
-        matches!(
-            decoded.events().as_slice(),
-            [
-                StreamEvent::Start { kind: PartKind::Text, .. },
-                StreamEvent::Text { text, .. },
-            ] if text == "Hello, world!"
-        ),
-        "{:?}",
-        decoded.events()
+        item(&response.choice[0]),
+        Some(&json!({"type": "redacted_thinking", "data": "redacted_blob"}))
     );
 }
 
 #[test]
-fn test_handle_text_block_start_event() {
-    let decoded = decode([StreamingEvent::ContentBlockStart {
-        index: 0,
-        content_block: Content::Text {
-            text: String::new(),
-            citations: Vec::new(),
-            cache_control: None,
-        },
-    }]);
-    // A part streams nothing until its first fragment.
+fn text_streams_its_fragments_and_holds_the_whole_block() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "text_delta", "text": "Hello, "}),
+                json!({"type": "text_delta", "text": "world!"}),
+            ],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    assert_eq!(response.text(), "Hello, world!");
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(&json!({"type": "text", "text": "Hello, world!"}))
+    );
+}
+
+/// A part streams nothing until its first fragment.
+#[test]
+fn a_text_block_start_streams_nothing() {
+    let decoded = decode([classified(
+        r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+    )]);
     assert!(decoded.events().is_empty(), "{:?}", decoded.events());
 }
 
 #[test]
-fn test_thinking_delta_does_not_interfere_with_tool_calls() {
-    // Thinking still streams while a tool call is in progress.
-    let decoded = decode([
-        tool_use(0, "tool_123", "lookup"),
-        StreamingEvent::ContentBlockDelta {
-            index: 1,
-            delta: ContentDelta::ThinkingDelta {
-                thinking: "Thinking while tool is active...".to_string(),
-            },
-        },
-        input_json(0, "{}"),
-        stop(0),
-        stop(1),
-    ]);
-    let ended = decoded.ended();
-    assert!(
-        ended
-            .iter()
-            .any(|content| matches!(content, AssistantContent::ToolCall(call) if call.id.to_string() == "tool_123"))
-    );
-    let reasoning = reasoning_of(&decoded);
-    assert_eq!(
-        reasoning[0].content,
-        vec![ReasoningContent::Text {
-            text: "Thinking while tool is active...".to_string(),
-            signature: None,
-        }]
-    );
-}
-
-#[test]
-fn test_handle_input_json_delta_event() {
+fn a_call_streams_nothing_until_it_closes() {
     let decoded = decode([
         tool_use(0, "tool_123", "lookup"),
         input_json(0, "{\"arg\":\"value"),
     ]);
-    // A call streams nothing until it closes.
     assert!(decoded.events().is_empty(), "{:?}", decoded.events());
 }
 
+/// A call's item holds the input its fragments assembled, and keeps every
+/// field the provider sent, `caller` included.
 #[test]
-fn test_tool_call_accumulation_with_multiple_deltas() {
-    let decoded = decode([
-        tool_use(0, "tool_123", "lookup"),
-        input_json(0, "{\"location\":"),
-        input_json(0, "\"Paris\","),
-        input_json(0, "\"temp\":\"20C\"}"),
-        stop(0),
-    ]);
-    let ended = decoded.ended();
-    let [AssistantContent::ToolCall(call)] = ended.as_slice() else {
-        panic!("one call ended: {:?}", decoded.events());
-    };
-    assert_eq!(call.id.to_string(), "tool_123");
-    assert_eq!(
-        call.function.arguments,
-        json!({"location": "Paris", "temp": "20C"})
+fn a_call_assembles_its_input_into_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {},
+                "caller": {"type": "direct"}}),
+            &[
+                json!({"type": "input_json_delta", "partial_json": "{\"location\":"}),
+                json!({"type": "input_json_delta", "partial_json": "\"Paris\"}"}),
+            ],
+        )],
+        "tool_use",
     );
-    assert!(decoded.events().into_iter().any(|event| matches!(
-        event,
-        StreamEvent::Arguments { json, .. } if json == "{\"location\":\"Paris\",\"temp\":\"20C\"}"
+    let response = streamed(&frames).expect("the reply folds");
+    let [AssistantContent::ToolCall(call)] = response.choice.as_slice() else {
+        panic!("one call: {:?}", response.choice);
+    };
+    assert_eq!(call.id.to_string(), "toolu_1");
+    assert_eq!(
+        call.function.arguments_value(),
+        json!({"location": "Paris"})
+    );
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(
+            &json!({"type": "tool_use", "id": "toolu_1", "name": "lookup",
+            "input": {"location": "Paris"}, "caller": {"type": "direct"}})
+        )
+    );
+    assert_eq!(response.stop(), StopReason::ToolUse);
+}
+
+/// A `tool_use` cut by `max_tokens` (#2359): the turn keeps its text and
+/// the call, whose arguments are what the cut input states, and stops with
+/// `Length`. The call's item holds input that is not JSON, so it has no
+/// native and replays from its canonical fields; its text sibling keeps its
+/// own.
+#[test]
+fn a_call_cut_by_max_tokens_keeps_the_turn() {
+    let frames = reply(
+        vec![
+            block(
+                0,
+                json!({"type": "text", "text": ""}),
+                &[json!({"type": "text_delta", "text": "Looking."})],
+            ),
+            block(
+                1,
+                json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
+                &[json!({"type": "input_json_delta", "partial_json": "{\"x\": \"ab"})],
+            ),
+        ],
+        "max_tokens",
+    );
+    let response = streamed(&frames).expect("a cut-off call does not fail the reply");
+    assert_eq!(response.text(), "Looking.");
+    assert!(response.choice[0].native_item().is_some());
+    let call = response.tool_calls().next().expect("the call is kept");
+    assert_eq!(call.function.arguments_value(), json!({"x": "ab"}));
+    assert_eq!(
+        call.function.invalid_arguments.as_deref(),
+        Some("{\"x\": \"ab")
+    );
+    assert!(response.choice[1].native_item().is_none());
+    assert_eq!(response.stop(), StopReason::Length);
+}
+
+/// A stream that never states its stop reason is truncated, whatever else
+/// it ended with: a `message_delta` without one, or `message_stop` alone.
+#[test]
+fn a_stream_without_its_stop_reason_never_ends_successfully() {
+    let mut frames = reply(
+        vec![block(0, json!({"type": "text", "text": "partial"}), &[])],
+        "end_turn",
+    );
+    if let Some(delta) = frames.last_mut() {
+        delta["delta"]["stop_reason"] = Value::Null;
+    }
+    frames.push(json!({"type": "message_stop"}));
+    assert!(matches!(streamed(&frames), Err(ProviderError::Truncated)));
+}
+
+#[test]
+fn input_to_a_text_block_fails_the_reply() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[json!({"type": "input_json_delta", "partial_json": "{}"})],
+        )],
+        "end_turn",
+    );
+    assert!(streamed(&frames).is_err());
+}
+
+/// Citations arrive as deltas onto a text block that opened with `null` or
+/// an empty list, and land on its item in order.
+#[test]
+fn citation_deltas_land_on_the_text_item() {
+    let citation = json!({"type": "char_location", "cited_text": "The grass is green.",
+        "document_index": 0, "document_title": "Example", "start_char_index": 0,
+        "end_char_index": 20});
+    for opening in [json!(null), json!([])] {
+        let frames = reply(
+            vec![block(
+                0,
+                json!({"type": "text", "text": "", "citations": opening}),
+                &[
+                    json!({"type": "citations_delta", "citation": citation}),
+                    json!({"type": "text_delta", "text": "the grass is green"}),
+                ],
+            )],
+            "end_turn",
+        );
+        let response = streamed(&frames).expect("the reply folds");
+        let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+            panic!("one text block: {:?}", response.choice);
+        };
+        assert_eq!(text.text, "the grass is green");
+        assert_eq!(
+            response.choice[0]
+                .native_item()
+                .and_then(|item| item.get("citations")),
+            Some(&json!([citation]))
+        );
+    }
+}
+
+/// A citation of a known kind with a defective payload never fails the
+/// reply: it lands on the item as sent.
+#[test]
+fn a_defective_citation_lands_on_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "citations_delta",
+                    "citation": {"type": "char_location", "cited_text": 1}}),
+                json!({"type": "text_delta", "text": "cited"}),
+            ],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    let [block @ AssistantContent::Text(_)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    assert_eq!(
+        block
+            .native_item()
+            .and_then(|item| item.pointer("/citations/0/cited_text")),
+        Some(&json!(1))
+    );
+}
+
+/// Server tools and their results are provider items with no canonical
+/// meaning: each is one opaque block that replays, its streamed input
+/// assembled onto it. None becomes a client tool call.
+#[test]
+fn server_tool_blocks_are_opaque_items_that_replay() {
+    let result = json!({"type": "web_search_tool_result", "tool_use_id": "srvtoolu_01",
+        "content": [{"type": "web_search_result", "url": "https://example.com/shannon",
+            "title": "Claude Shannon", "encrypted_content": "encrypted-content"}]});
+    let frames = reply(
+        vec![
+            block(
+                0,
+                json!({"type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search", "input": {}}),
+                &[json!({"type": "input_json_delta", "partial_json": "{\"query\":\"shannon\"}"})],
+            ),
+            block(1, result.clone(), &[]),
+            block(
+                2,
+                json!({"type": "code_execution_tool_result", "tool_use_id": "srvtoolu_02",
+                    "content": {"type": "code_execution_result", "return_code": 0,
+                        "stdout": "42\n", "stderr": "", "content": []}}),
+                &[],
+            ),
+            block(
+                3,
+                json!({"type": "mcp_tool_use", "id": "mcptoolu_1", "name": "fetch",
+                "server_name": "docs", "input": {}}),
+                &[],
+            ),
+            block(
+                4,
+                json!({"type": "container_upload", "file_id": "file_1"}),
+                &[],
+            ),
+        ],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    assert_eq!(response.choice.len(), 5);
+    assert!(response.choice.iter().all(|content| matches!(
+        content,
+        AssistantContent::Opaque(Opaque { replay: true, .. })
     )));
-}
-
-#[test]
-fn test_citations_delta_streaming_event_deserialization() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "citations_delta",
-                "citation": {
-                    "type": "char_location",
-                    "cited_text": "The grass is green.",
-                    "document_index": 0,
-                    "document_title": "Example",
-                    "start_char_index": 0,
-                    "end_char_index": 20
-                }
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-    let StreamingEvent::ContentBlockDelta { index, delta } = event else {
-        panic!("expected ContentBlockDelta");
-    };
-    assert_eq!(index, 0);
-    let ContentDelta::CitationsDelta { citation } = delta else {
-        panic!("expected CitationsDelta");
-    };
-    let crate::providers::anthropic::completion::Citation::CharLocation(citation) = citation else {
-        panic!("expected CharLocation");
-    };
-    assert_eq!(citation.start_char_index, 0);
-    assert_eq!(citation.end_char_index, 20);
-}
-
-#[test]
-fn test_search_result_citations_delta_streaming_event_deserialization() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "citations_delta",
-                "citation": {
-                    "type": "search_result_location",
-                    "cited_text": "API requests require a key.",
-                    "source": "https://docs.example.com/api-reference",
-                    "title": "API Reference",
-                    "search_result_index": 0,
-                    "start_block_index": 0,
-                    "end_block_index": 1
-                }
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-    let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
-        panic!("expected ContentBlockDelta");
-    };
-    let ContentDelta::CitationsDelta { citation } = delta else {
-        panic!("expected CitationsDelta");
-    };
-    assert!(matches!(
-        citation,
-        crate::providers::anthropic::completion::Citation::SearchResultLocation(
-            crate::providers::anthropic::completion::SearchResultLocationCitation {
-                search_result_index: 0,
-                start_block_index: 0,
-                end_block_index: 1,
-                ..
-            }
-        )
-    ));
-}
-
-#[test]
-fn test_web_search_result_citations_delta_streaming_event_deserialization() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "citations_delta",
-                "citation": {
-                    "type": "web_search_result_location",
-                    "cited_text": "Claude Shannon was a mathematician.",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_index": "encrypted-reference"
-                }
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-    let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
-        panic!("expected ContentBlockDelta");
-    };
-    let ContentDelta::CitationsDelta { citation } = delta else {
-        panic!("expected CitationsDelta");
-    };
-    assert!(matches!(
-        citation,
-        crate::providers::anthropic::completion::Citation::WebSearchResultLocation(ref citation)
-            if citation.url == "https://example.com/shannon"
-                && citation.encrypted_index == "encrypted-reference"
-    ));
-}
-
-#[test]
-fn test_web_search_result_citations_delta_allows_null_title() {
-    let json = r#"{
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {
-                "type": "citations_delta",
-                "citation": {
-                    "type": "web_search_result_location",
-                    "cited_text": "Claude Shannon was a mathematician.",
-                    "url": "https://example.com/shannon",
-                    "title": null,
-                    "encrypted_index": "encrypted-reference"
-                }
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-    let StreamingEvent::ContentBlockDelta { delta, .. } = event else {
-        panic!("expected ContentBlockDelta");
-    };
-    let ContentDelta::CitationsDelta { citation } = delta else {
-        panic!("expected CitationsDelta");
-    };
-    assert!(matches!(
-        citation,
-        crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
-            crate::providers::anthropic::completion::WebSearchResultLocationCitation {
-                title: None,
-                ..
-            }
-        )
-    ));
-}
-
-#[test]
-fn test_text_content_block_start_allows_null_citations() {
-    // The Anthropic Messages API emits an explicit `"citations": null` on the
-    // first text `content_block_start` event. `#[serde(default)]` alone covers
-    // a missing field but not an explicit null, so this must deserialize to an
-    // empty citation list rather than failing the whole stream (see #1971).
-    let json = r#"{
-            "type": "content_block_start",
-            "index": 0,
-            "content_block": {
-                "type": "text",
-                "text": "",
-                "citations": null
-            }
-        }"#;
-
-    let event: StreamingEvent = serde_json::from_str(json).unwrap();
-    let StreamingEvent::ContentBlockStart { content_block, .. } = event else {
-        panic!("expected ContentBlockStart");
-    };
-    let Content::Text {
-        text, citations, ..
-    } = content_block
-    else {
-        panic!("expected text content block");
-    };
-    assert_eq!(text, "");
-    assert!(citations.is_empty());
-}
-
-#[test]
-fn test_web_search_content_block_start_events_deserialize() {
-    let server_tool_use = r#"{
-            "type": "content_block_start",
-            "index": 1,
-            "content_block": {
-                "type": "server_tool_use",
-                "id": "srvtoolu_01",
-                "name": "web_search",
-                "input": {
-                    "query": "claude shannon birth date"
-                }
-            }
-        }"#;
-    let event: StreamingEvent = serde_json::from_str(server_tool_use).unwrap();
-    assert!(matches!(
-        event,
-        StreamingEvent::ContentBlockStart {
-            content_block: Content::ServerToolUse {
-                ref id,
-                ref name,
-                ref input
-            },
-            ..
-        } if id == "srvtoolu_01"
-            && name == "web_search"
-            && input["query"] == "claude shannon birth date"
-    ));
-
-    let web_search_tool_result = r#"{
-            "type": "content_block_start",
-            "index": 2,
-            "content_block": {
-                "type": "web_search_tool_result",
-                "tool_use_id": "srvtoolu_01",
-                "content": [{
-                    "type": "web_search_result",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_content": "encrypted-content"
-                }]
-            }
-        }"#;
-    let event: StreamingEvent = serde_json::from_str(web_search_tool_result).unwrap();
-    assert!(matches!(
-        event,
-        StreamingEvent::ContentBlockStart {
-            content_block: Content::WebSearchToolResult {
-                ref tool_use_id,
-                ref content
-            },
-            ..
-        } if tool_use_id == "srvtoolu_01"
-            && content[0]["encrypted_content"] == "encrypted-content"
-    ));
-}
-
-#[test]
-fn test_code_execution_tool_result_block_is_preserved() {
-    let event: StreamingEvent = serde_json::from_value(serde_json::json!({
-        "type": "content_block_start",
-        "index": 1,
-        "content_block": {
-            "type": "code_execution_tool_result",
-            "tool_use_id": "srvtoolu_01",
-            "content": {
-                "type": "code_execution_result",
-                "return_code": 0,
-                "stdout": "42\n",
-                "stderr": "",
-                "content": []
-            }
-        }
-    }))
-    .unwrap();
-    let decoded = decode([event, stop(1)]);
-    let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the result block is a text part: {:?}", decoded.events());
-    };
-    let additional_params = text.additional_params.as_ref().expect("its raw content");
     assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "code_execution_tool_result"
+        item(&response.choice[0]),
+        Some(
+            &json!({"type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search",
+            "input": {"query": "shannon"}})
+        )
     );
+    assert_eq!(item(&response.choice[1]), Some(&result));
+}
+
+/// A compaction block streams its summary as `compaction_delta`s, which
+/// merge into its item.
+#[test]
+fn compaction_deltas_assemble_the_compaction_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "compaction", "content": ""}),
+            &[
+                json!({"type": "compaction_delta", "content": "Summary "}),
+                json!({"type": "compaction_delta", "content": "so far."}),
+            ],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
     assert_eq!(
-        additional_params[crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"]
-            ["stdout"],
-        "42\n"
+        item(&response.choice[0]),
+        Some(&json!({"type": "compaction", "content": "Summary so far."}))
     );
 }
 
+/// A delta kind rig has never seen lands in the item it targets, and the
+/// stream goes on.
 #[test]
-fn test_streaming_web_search_blocks_are_preserved_on_final_choice() {
-    let decoded = decode([
-        StreamingEvent::ContentBlockStart {
-            index: 0,
-            content_block: Content::ServerToolUse {
-                id: "srvtoolu_01".to_string(),
-                name: "web_search".to_string(),
-                input: serde_json::Value::Null,
-            },
-        },
-        input_json(0, r#"{"query":"claude shannon birth date"}"#),
-        stop(0),
-        StreamingEvent::ContentBlockStart {
-            index: 1,
-            content_block: Content::WebSearchToolResult {
-                tool_use_id: "srvtoolu_01".to_string(),
-                content: serde_json::json!([{
-                    "type": "web_search_result",
-                    "url": "https://example.com/shannon",
-                    "title": "Claude Shannon",
-                    "encrypted_content": "encrypted-content"
-                }]),
-            },
-        },
-        StreamingEvent::ContentBlockStart {
-            index: 2,
-            content_block: Content::Text {
-                text: String::new(),
-                citations: Vec::new(),
-                cache_control: None,
-            },
-        },
-        StreamingEvent::ContentBlockDelta {
-            index: 2,
-            delta: ContentDelta::TextDelta {
-                text: "Claude Shannon was born on April 30, 1916.".to_string(),
-            },
-        },
-        StreamingEvent::ContentBlockDelta {
-            index: 2,
-            delta: ContentDelta::CitationsDelta {
-                citation:
-                    crate::providers::anthropic::completion::Citation::WebSearchResultLocation(
-                        crate::providers::anthropic::completion::WebSearchResultLocationCitation {
-                            cited_text: "Claude Shannon was born on April 30, 1916.".to_string(),
-                            url: "https://example.com/shannon".to_string(),
-                            title: Some("Claude Shannon".to_string()),
-                            encrypted_index: "encrypted-index".to_string(),
-                        },
-                    ),
-            },
-        },
-        message_delta("end_turn", PartialUsage::default()),
-    ]);
-    let choice_items = decoded.outcome.expect("the reply ended").choice;
-    assert_eq!(choice_items.len(), 3);
+fn a_novel_delta_merges_into_its_item() {
+    let frames = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "text_delta", "text": "hi"}),
+                json!({"type": "banana_delta", "banana": "ripe"}),
+            ],
+        )],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply folds");
+    assert_eq!(response.text(), "hi");
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(&json!({"type": "text", "text": "hi", "banana": "ripe"}))
+    );
+}
+
+/// pi's fallback rule: a leading `fallback` block marks the model that
+/// took over and never replays; one after output began fails the reply.
+#[test]
+fn a_fallback_block_is_kept_first_and_an_error_after_output() {
+    let fallback = json!({"type": "fallback", "model": "claude-opus-4-8"});
+    let text = json!({"type": "text", "text": ""});
+    let leading = streamed(&reply(
+        vec![
+            block(0, fallback.clone(), &[]),
+            block(
+                1,
+                text.clone(),
+                &[json!({"type": "text_delta", "text": "hi"})],
+            ),
+        ],
+        "end_turn",
+    ))
+    .expect("a leading fallback is legal");
+    assert!(matches!(
+        leading.choice.first(),
+        Some(AssistantContent::Opaque(Opaque { replay: false, .. }))
+    ));
+    let late = streamed(&reply(
+        vec![
+            block(0, text, &[json!({"type": "text_delta", "text": "hi"})]),
+            block(1, fallback, &[]),
+        ],
+        "end_turn",
+    ));
+    assert!(late.is_err(), "{late:?}");
+}
+
+/// pi's refusal rule: a refused turn ends in an error carrying Anthropic's
+/// explanation, or a default one, and is never replayed.
+#[test]
+fn a_refusal_ends_the_turn_in_an_error_with_its_explanation() {
+    let mut frames = reply(vec![], "refusal");
+    if let Some(delta) = frames.last_mut() {
+        delta["delta"]["stop_details"] =
+            json!({"type": "refusal", "category": "cyber", "explanation": "Not this."});
+    }
+    let response = streamed(&frames).expect("the reply folds");
+    assert_eq!(response.stop(), StopReason::Error("Not this.".to_owned()));
+
+    let response = streamed(&reply(vec![], "refusal")).expect("the reply folds");
+    assert_eq!(
+        response.stop(),
+        StopReason::Error("The model refused to complete the request".to_owned())
+    );
+}
+
+/// The reply-level `container` is the turn's message-level provider item.
+#[test]
+fn the_reply_container_is_an_opaque_block() {
+    let container = json!({"id": "container_1", "expires_at": "2026-10-01T00:00:00Z"});
+    let mut frames = reply(
+        vec![block(0, json!({"type": "text", "text": "done"}), &[])],
+        "end_turn",
+    );
+    if let Some(delta) = frames.last_mut() {
+        delta["delta"]["container"] = container.clone();
+    }
+    let response = streamed(&frames).expect("the reply folds");
+    let Some(RigMessage::Assistant(turn)) = response.message() else {
+        panic!("an assistant turn");
+    };
     assert!(
-        choice_items
-            .iter()
-            .all(|item| !matches!(item, crate::message::AssistantContent::ToolCall(_))),
-        "provider-owned web-search blocks must not become Rig client tool calls"
+        matches!(
+            turn.content.last(),
+            Some(crate::message::AssistantContent::Opaque(opaque))
+                if opaque.item == json!({ "type": "container", "container": container })
+                    && opaque.replay
+        ),
+        "{:?}",
+        turn.content
     );
-
-    let Some(crate::message::AssistantContent::Text(server_tool_use)) = choice_items.first() else {
-        panic!("expected raw server_tool_use metadata");
-    };
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["type"],
-        "server_tool_use"
-    );
-    assert_eq!(
-        server_tool_use.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["input"]["query"],
-        "claude shannon birth date"
-    );
-
-    let Some(crate::message::AssistantContent::Text(web_search_result)) = choice_items.get(1)
-    else {
-        panic!("expected raw web_search_tool_result metadata");
-    };
-    assert_eq!(
-        web_search_result.additional_params.as_ref().unwrap()
-            [crate::providers::anthropic::completion::ANTHROPIC_RAW_CONTENT_KEY]["content"][0]["encrypted_content"],
-        "encrypted-content"
-    );
-
-    let Some(crate::message::AssistantContent::Text(answer)) = choice_items.get(2) else {
-        panic!("expected answer text");
-    };
-    assert_eq!(answer.text, "Claude Shannon was born on April 30, 1916.");
-    let citations = crate::providers::anthropic::completion::anthropic_citations(answer)
-        .expect("expected preserved citations");
-    assert!(matches!(
-        citations.first(),
-        Some(crate::providers::anthropic::completion::Citation::WebSearchResultLocation(citation))
-            if citation.encrypted_index == "encrypted-index"
-    ));
 }
 
+/// A `tool_use` without an id is a call rig issues an id for, and one
+/// without a name is dropped, since nothing can answer it. Neither fails
+/// the reply.
 #[test]
-fn test_handle_citations_delta_event_preserves_metadata() {
-    let decoded = decode([
-        StreamingEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentDelta::CitationsDelta {
-                citation: crate::providers::anthropic::completion::Citation::CharLocation(
-                    crate::providers::anthropic::completion::CharLocationCitation {
-                        cited_text: "The grass is green.".to_string(),
-                        document_index: 0,
-                        document_title: Some("Example".to_string()),
-                        start_char_index: 0,
-                        end_char_index: 20,
-                    },
-                ),
-            },
-        },
-        stop(0),
-    ]);
-    let ended = decoded.ended();
-    let [AssistantContent::Text(text)] = ended.as_slice() else {
-        panic!("the citation rides a text part: {:?}", decoded.events());
-    };
-    let additional_params = text.additional_params.as_ref().expect("its citations");
-    assert_eq!(additional_params["citations"][0]["type"], "char_location");
-}
-
-#[test]
-fn test_streaming_citation_deltas_are_preserved_on_final_text() {
-    let citation = crate::providers::anthropic::completion::Citation::CharLocation(
-        crate::providers::anthropic::completion::CharLocationCitation {
-            cited_text: "The grass is green.".to_string(),
-            document_index: 0,
-            document_title: Some("Example".to_string()),
-            start_char_index: 0,
-            end_char_index: 20,
-        },
+fn a_tool_use_without_its_id_or_name_never_fails_the_reply() {
+    let frames = reply(
+        vec![
+            block(
+                0,
+                json!({"type": "tool_use", "name": "add", "input": {}}),
+                &[],
+            ),
+            block(
+                1,
+                json!({"type": "tool_use", "id": "toolu_2", "input": {}}),
+                &[],
+            ),
+        ],
+        "tool_use",
     );
-
-    let decoded = decode([
-        StreamingEvent::ContentBlockStart {
-            index: 0,
-            content_block: Content::Text {
-                text: String::new(),
-                citations: Vec::new(),
-                cache_control: None,
-            },
-        },
-        StreamingEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentDelta::TextDelta {
-                text: "the grass is green".to_string(),
-            },
-        },
-        StreamingEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentDelta::CitationsDelta {
-                citation: citation.clone(),
-            },
-        },
-        message_delta("end_turn", PartialUsage::default()),
-    ]);
-    let choice_items = decoded.outcome.expect("the reply ended").choice;
-    let Some(crate::message::AssistantContent::Text(text)) = choice_items.first() else {
-        panic!("expected accumulated text item");
+    let response = streamed(&frames).expect("the reply folds");
+    let calls: Vec<_> = response.tool_calls().collect();
+    let [call] = calls.as_slice() else {
+        panic!("only the named call is kept: {:?}", response.choice);
     };
-
-    assert_eq!(text.text, "the grass is green");
-    let citations = crate::providers::anthropic::completion::anthropic_citations(text).unwrap();
-    assert_eq!(citations, vec![citation]);
+    assert_eq!(call.function.name.as_str(), "add");
+    assert!(call.id.provider().is_none());
 }
 
-/// The `#[serde(other)]` policy fallbacks are gone: classification is the
-/// only policy site. An unmodeled *top-level* event type is `Unknown`
-/// (driver: warn + skip); a `ping` is Known; and a known tag whose payload
-/// this client cannot decode is `Corrupt`, never silently demoted to an
-/// ignorable unknown. An unmodeled *nested* delta type is the one carved
-/// exception (Anthropic's versioning policy reserves the right to add
-/// them): it decodes to [`ContentDelta::Unknown`] and stays a Known
-/// no-op — see the dedicated tests below.
+/// Classification is the only policy site. An unmodeled *top-level* event
+/// type is `Unknown` (driver: warn + skip); a `ping` is Known; and a known
+/// tag whose payload this client cannot decode is `Corrupt`, never silently
+/// demoted to an ignorable unknown. An unmodeled *nested* delta type is
+/// Known and lands in its item.
 #[test]
 fn classify_dispatches_on_the_known_event_list() {
     let adapter = adapter();
@@ -1146,7 +896,7 @@ fn classify_dispatches_on_the_known_event_list() {
     let frame = WireFrame::Text(r#"{"type":"ping"}"#.into());
     assert!(matches!(
         adapter.classify(frame),
-        crate::wire::WireEvent::Known(StreamingEvent::Ping)
+        crate::wire::WireEvent::Known(event) if event.kind() == "ping"
     ));
 
     let frame = WireFrame::Text("{not json".into());
@@ -1154,22 +904,6 @@ fn classify_dispatches_on_the_known_event_list() {
         adapter.classify(frame),
         crate::wire::WireEvent::Corrupt(_)
     ));
-}
-
-/// Forward compat: a novel nested delta type Anthropic ships tomorrow
-/// must not corrupt the whole `content_block_delta` frame — it decodes
-/// to [`ContentDelta::Unknown`] and is a warned no-op, so the stream
-/// continues.
-#[test]
-fn novel_nested_delta_type_is_a_known_noop() {
-    let event = classified(
-        r#"{"type":"content_block_delta","index":0,"delta":{"type":"banana_delta","x":1}}"#,
-    );
-    let decoded = decode([event]);
-    assert!(
-        decoded.events().is_empty(),
-        "an unmodeled nested delta is a no-op"
-    );
 }
 
 /// Anthropic reports the per-TTL `cache_creation` split on
@@ -1191,15 +925,12 @@ fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
     let response = decoded.outcome.expect("the message_delta ends the reply");
     // The native record rides on `raw`; the split is Anthropic-specific, so
     // it is readable only there.
-    let native: StreamingCompletionResponse =
-        serde_json::from_value(response.raw).expect("raw must be the native terminal");
-    let split = native
-        .usage
-        .cache_creation
-        .expect("terminal usage must carry the message_start cache_creation split");
-    assert_eq!(split.ephemeral_1h_input_tokens, 9366);
-    assert_eq!(split.ephemeral_5m_input_tokens, 336);
-    assert_eq!(native.usage.cache_creation_input_tokens, Some(9702));
+    let usage = &response.raw["usage"];
+    assert_eq!(
+        usage["cache_creation"],
+        json!({"ephemeral_1h_input_tokens": 9366, "ephemeral_5m_input_tokens": 336})
+    );
+    assert_eq!(usage["cache_creation_input_tokens"], 9702);
 }
 
 /// A terminal `message_delta` carrying only the output count (Anthropic's
@@ -1222,17 +953,10 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
     assert_eq!(response.usage.cached_input_tokens, Some(6));
     assert_eq!(response.usage.output_tokens, Some(3));
     assert_eq!(response.usage.total_tokens, Some(23));
-    let native: StreamingCompletionResponse =
-        serde_json::from_value(response.raw).expect("raw must be the native terminal");
-    assert_eq!(native.usage.cache_creation_input_tokens, Some(4));
-    assert_eq!(native.usage.cache_read_input_tokens, Some(6));
-    assert_eq!(
-        native
-            .usage
-            .cache_creation
-            .map(|cache| cache.ephemeral_1h_input_tokens),
-        Some(3)
-    );
+    let usage = &response.raw["usage"];
+    assert_eq!(usage["cache_creation_input_tokens"], 4);
+    assert_eq!(usage["cache_read_input_tokens"], 6);
+    assert_eq!(usage["cache_creation"]["ephemeral_1h_input_tokens"], 3);
 }
 
 /// An explicit terminal zero is authoritative over `message_start`'s counts.
@@ -1255,35 +979,25 @@ fn terminal_cache_usage_zero_overrides_message_start() {
 
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
-/// text delta into a successful *empty* completion. It classifies
-/// `Corrupt`, surfacing in-band while the stream keeps consuming
-/// (#2258 B5).
+/// text delta into a successful *empty* completion, so it fails the reply
+/// (#2258 B5). So does a known delta whose text is not text, since the
+/// block is built from it.
 #[test]
-fn delta_missing_its_type_is_corrupt_not_skipped() {
-    let adapter = adapter();
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_delta","index":0,"delta":{"text":"hello"}}"#.into(),
-    );
-    assert!(matches!(
-        adapter.classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
-}
-
-/// Policy preserved: a *known* nested delta tag with a defective payload
-/// is a data-level defect, not an unmodeled delta — the frame classifies
-/// `Corrupt` instead of degrading to an `Unknown` no-op.
-#[test]
-fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
-    let adapter = adapter();
-    let frame = WireFrame::Text(
-        r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":42}}"#
-            .into(),
-    );
-    assert!(matches!(
-        adapter.classify(frame),
-        crate::wire::WireEvent::Corrupt(_)
-    ));
+fn a_delta_without_its_type_or_text_fails_the_reply() {
+    for delta in [
+        json!({"text": "hello"}),
+        json!({"type": "text_delta", "text": 42}),
+    ] {
+        let frames = reply(
+            vec![block(
+                0,
+                json!({"type": "text", "text": ""}),
+                std::slice::from_ref(&delta),
+            )],
+            "end_turn",
+        );
+        assert!(streamed(&frames).is_err(), "{delta}");
+    }
 }
 
 /// Anthropic's top-level `{"type":"error"}` envelope (e.g.
@@ -1319,28 +1033,21 @@ fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
         classified(&format!(
             r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"{CLAUDE_OPUS_4_8}","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":3,"output_tokens":0}}}}}}"#
         )),
-        StreamingEvent::ContentBlockDelta {
-            index: 0,
-            delta: ContentDelta::TextDelta {
-                text: "hi".to_string(),
-            },
-        },
+        classified(
+            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+        ),
+        classified(
+            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#,
+        ),
         message_delta(
             "max_tokens",
-            PartialUsage {
-                output_tokens: 5,
-                input_tokens: Some(3),
-                cache_creation_input_tokens: None,
-                cache_creation: None,
-                cache_read_input_tokens: Some(2),
-                output_tokens_details: None,
-            },
+            json!({"output_tokens": 5, "input_tokens": 3, "cache_read_input_tokens": 2}),
         ),
     ]);
     let response = decoded.outcome.expect("the reply ended");
-    assert_eq!(response.provider, "anthropic");
-    assert_eq!(response.message_id.as_deref(), Some("msg_1"));
-    assert_eq!(response.model.as_deref(), Some(CLAUDE_OPUS_4_8));
+    assert_eq!(response.provider(), "anthropic");
+    assert_eq!(response.response_id(), Some("msg_1"));
+    assert_eq!(response.model(), Some(CLAUDE_OPUS_4_8));
     assert_eq!(
         response.finish_reason(),
         Some(crate::completion::FinishReason::Length)
@@ -1360,7 +1067,7 @@ fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() 
         tool_use(0, "toolu_1", "add"),
         input_json(0, r#"{"x":1}"#),
         stop(0),
-        message_delta("end_turn", PartialUsage::default()),
+        message_delta("end_turn", json!({"output_tokens": 0})),
     ]);
     assert_eq!(
         decoded.outcome.expect("the reply ended").finish_reason(),
@@ -1368,15 +1075,63 @@ fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() 
     );
 }
 
+/// A stop reason Anthropic does not document survives verbatim, and fails
+/// the turn.
 #[test]
 fn unknown_stop_reason_survives_onto_the_terminal_record() {
-    let decoded = decode([message_delta("pause_turn", PartialUsage::default())]);
+    let decoded = decode([message_delta("x_rig_reason", json!({"output_tokens": 0}))]);
+    let response = decoded.outcome.expect("the reply ended");
     assert_eq!(
-        decoded.outcome.expect("the reply ended").finish_reason(),
+        response.finish_reason(),
         Some(crate::completion::FinishReason::Other(
-            "pause_turn".to_owned()
+            "x_rig_reason".to_owned()
         ))
     );
+    assert!(response.stop().is_failure());
+}
+
+/// Every `stop_reason` Anthropic documents, and the gateway `sensitive`
+/// stop pi handles, ends the turn as listed.
+#[test]
+fn every_documented_stop_reason_ends_the_turn_as_documented() {
+    for (reason, finish, failed) in [
+        ("end_turn", crate::completion::FinishReason::Stop, false),
+        (
+            "stop_sequence",
+            crate::completion::FinishReason::Stop,
+            false,
+        ),
+        ("pause_turn", crate::completion::FinishReason::Stop, false),
+        ("max_tokens", crate::completion::FinishReason::Length, false),
+        (
+            "model_context_window_exceeded",
+            crate::completion::FinishReason::Length,
+            false,
+        ),
+        (
+            "tool_use",
+            crate::completion::FinishReason::ToolCalls,
+            false,
+        ),
+        (
+            "refusal",
+            crate::completion::FinishReason::ContentFilter,
+            true,
+        ),
+        (
+            "sensitive",
+            crate::completion::FinishReason::Other("sensitive".to_owned()),
+            true,
+        ),
+    ] {
+        let response = streamed(&reply(
+            vec![block(0, json!({"type": "text", "text": "done"}), &[])],
+            reason,
+        ))
+        .expect("the reply folds");
+        assert_eq!(response.finish_reason(), Some(finish), "{reason}");
+        assert_eq!(response.stop().is_failure(), failed, "{reason}");
+    }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -1634,12 +1389,12 @@ mod terminal_emission {
 
     /// Raw capture on a streamed reply, through the real `Model::stream`
     /// seam over the mock transport: the response's `raw` is Anthropic's own
-    /// `StreamingCompletionResponse`. A `message_delta` with `stop_sequence`
+    /// terminal record. A `message_delta` with `stop_sequence`
     /// set is used because the normalized finish folds it into
     /// `FinishReason::Stop` and keeps neither Anthropic's spelling nor which
     /// sequence fired — both are readable only off the capture.
     #[tokio::test]
-    async fn terminal_raw_round_trips_into_the_terminal_type() {
+    async fn terminal_raw_is_anthropics_terminal_record() {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
         let (_, saw_error, finished) = collect(sse(&[
@@ -1653,22 +1408,13 @@ mod terminal_emission {
         let response = finished.expect("the reply ended");
 
         let raw = &response.raw;
-        let typed: super::super::StreamingCompletionResponse =
-            serde_json::from_value(raw.clone()).expect("raw must deserialize");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the terminal type serializes to"
-        );
-        assert_eq!(typed.stop_reason.as_deref(), Some("stop_sequence"));
-        assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
-        assert_eq!(typed.message_id.as_deref(), Some("msg_1"));
+        assert_eq!(raw["stop_reason"], "stop_sequence");
+        assert_eq!(raw["stop_sequence"], "alpha");
+        assert_eq!(raw["message_id"], "msg_1");
 
         // The capture maps to the same end the reply finished with.
-        let end = super::super::finish_of(&typed);
-        assert_eq!(end.message_id, response.message_id);
-        assert_eq!(end.model, response.model);
-        assert_eq!(end.usage, response.usage);
+        assert_eq!(raw["message_id"].as_str(), response.response_id());
+        assert_eq!(raw["model"].as_str(), response.model());
         assert_eq!(
             response.finish_reason(),
             Some(crate::completion::FinishReason::Stop)
@@ -1686,7 +1432,7 @@ fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
         stop(0),
         tool_use(1, "", "add"),
         stop(1),
-        message_delta("tool_use", PartialUsage::default()),
+        message_delta("tool_use", json!({"output_tokens": 0})),
     ]);
     let ids: Vec<_> = decoded
         .outcome
@@ -1839,4 +1585,191 @@ mod projection {
             })
         );
     }
+}
+/// One sample per known Messages event: a new event fails here until it
+/// has a sample.
+#[test]
+fn every_messages_event_has_a_sample() {
+    let samples: Vec<MessagesEvent> = [
+        r#"{"type":"message_start","message":null}"#,
+        r#"{"type":"message","id":"msg_1","role":"assistant","model":"m","content":[],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}"#,
+        r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+        r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"x"}}"#,
+        r#"{"type":"content_block_stop","index":0}"#,
+        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":1}}"#,
+        r#"{"type":"message_stop"}"#,
+        r#"{"type":"ping"}"#,
+        r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+    ]
+    .into_iter()
+    .map(classified)
+    .collect();
+    let index = |event: &MessagesEvent| {
+        KNOWN_EVENT_TYPES
+            .iter()
+            .position(|kind| *kind == event.kind())
+            .unwrap_or(usize::MAX)
+    };
+    crate::test_utils::history::assert_every_variant(&samples, index, KNOWN_EVENT_TYPES.len());
+}
+
+/// An item type rig has never seen, and a field it has never seen on a
+/// known item, survive decoding whole and streamed, and go back verbatim
+/// to the model that produced them.
+#[test]
+fn an_invented_item_and_field_survive_decode_and_same_model_replay() {
+    use crate::wire::{Operation, Wire};
+
+    let invented = json!({"type": "frobnicate", "payload": {"x": 1}});
+    let text = json!({"type": "text", "text": "hi", "sparkle": true});
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let whole = json!({
+        "type": "message", "id": "msg_1", "role": "assistant", "model": CLAUDE_SONNET_4_6,
+        "content": [invented, text], "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 3, "output_tokens": 1}
+    });
+    let unary = crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        Mode::Unary,
+        [WireFrame::Text(whole.to_string())],
+        whole.clone(),
+    )
+    .expect("the whole reply folds");
+    let stream = streamed(&reply(
+        vec![
+            block(0, invented.clone(), &[]),
+            block(
+                1,
+                json!({"type": "text", "text": "", "sparkle": true}),
+                &[json!({"type": "text_delta", "text": "hi"})],
+            ),
+        ],
+        "end_turn",
+    ))
+    .expect("the stream folds");
+    assert_eq!(unary.message(), stream.message());
+
+    for response in [unary, stream] {
+        let turn = response.message().expect("an assistant turn");
+        let request = CompletionRequest::from(vec![
+            RigMessage::user("hello"),
+            turn,
+            RigMessage::user("again"),
+        ]);
+        let request = Completion::prepare(request, &wire.describe()).expect("the history adapts");
+        let encoded = wire
+            .encode(request, Mode::Unary)
+            .expect("the request encodes");
+        let body = crate::test_utils::json_body(&encoded.request);
+        assert_eq!(body["messages"][1]["content"], json!([invented, text]));
+    }
+}
+
+/// The response the whole message `message` folds into on the Anthropic
+/// wire.
+fn whole(message: Value) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        Mode::Unary,
+        [WireFrame::Text(message.to_string())],
+        Value::Null,
+    )
+}
+
+/// A reply with no content folds the same whole or streamed, whatever its
+/// stop reason: pi accepts empty content, and the stop reason decides how
+/// the turn ends.
+#[test]
+fn an_empty_reply_folds_the_same_whole_or_streamed() {
+    for reason in [
+        "end_turn",
+        "stop_sequence",
+        "max_tokens",
+        "model_context_window_exceeded",
+        "tool_use",
+        "pause_turn",
+        "refusal",
+        "sensitive",
+    ] {
+        let streamed = streamed(&reply(vec![], reason)).map(|response| response.stop());
+        let whole = whole(json!({
+            "type": "message", "id": "msg_1", "role": "assistant", "model": CLAUDE_SONNET_4_6,
+            "content": [], "stop_reason": reason, "stop_sequence": null,
+            "usage": {"input_tokens": 3, "output_tokens": 5}
+        }))
+        .map(|response| response.stop());
+        assert!(streamed.is_ok(), "{reason}: {streamed:?}");
+        assert_eq!(
+            whole.as_ref().ok(),
+            streamed.as_ref().ok(),
+            "{reason}: {whole:?}"
+        );
+    }
+}
+
+/// Anthropic A6: a stop reason states every block still open complete, as
+/// pi keeps a signature whatever `content_block_stop` did: thinking whose
+/// stop never came keeps its signed item, and so does a call whose input is
+/// whole. A call whose input is still cut stays open, and the end of the
+/// reply closes it unfinished.
+#[test]
+fn a_stop_reason_states_every_open_block_complete() {
+    let without_stops = |reason: &str, input: &str| {
+        let mut frames = reply(Vec::new(), reason);
+        let end = frames.pop().expect("the message_delta");
+        frames.extend([
+            json!({"type": "content_block_start", "index": 0,
+                "content_block": {"type": "thinking", "thinking": "", "signature": ""}}),
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "plan"}}),
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "signature_delta", "signature": "sig"}}),
+            json!({"type": "content_block_start", "index": 1,
+                "content_block": {"type": "tool_use", "id": "toolu_a", "name": "f", "input": {}}}),
+            json!({"type": "content_block_delta", "index": 1,
+                "delta": {"type": "input_json_delta", "partial_json": input}}),
+            end,
+        ]);
+        frames
+    };
+    let response = streamed(&without_stops("tool_use", "{\"x\":1}")).expect("the reply folds");
+    assert_eq!(response.stop(), StopReason::ToolUse);
+    assert_eq!(
+        item(&response.choice[0]),
+        Some(&json!({"type": "thinking", "thinking": "plan", "signature": "sig"}))
+    );
+    assert_eq!(
+        item(&response.choice[1]),
+        Some(&json!({"type": "tool_use", "id": "toolu_a", "name": "f", "input": {"x": 1}}))
+    );
+
+    let cut = streamed(&without_stops("max_tokens", "{\"x\":")).expect("the reply folds");
+    assert_eq!(cut.stop(), StopReason::Length);
+    assert!(item(&cut.choice[0]).is_some(), "{:?}", cut.choice);
+    assert!(item(&cut.choice[1]).is_none(), "{:?}", cut.choice);
+    let unfinished = streamed(&without_stops("tool_use", "{\"x\":")).expect("the reply folds");
+    assert!(unfinished.stop().is_failure(), "{:?}", unfinished.stop());
+}
+
+/// A gateway that skips `content_block_start` (seen on Anthropic-format
+/// dialects) still streams the block: its first delta opens it.
+#[test]
+fn a_delta_for_a_block_that_never_started_opens_it() {
+    let frames = reply(
+        vec![vec![
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "text_delta", "text": "hi"}}),
+            json!({"type": "content_block_stop", "index": 0}),
+        ]],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply decodes");
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hi"),
+        "{:?}",
+        response.choice
+    );
 }

@@ -81,7 +81,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+              "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon.",
+              "native": {
+                "item": {
+                  "text": "Thomas, keeper of the Blackrock Light, watched the storm gather. Rain lashed the lantern room, blurring the horizon."
+                },
+                "fingerprint": "864e8eeb8e7710a2"
+              }
             }
           ],
           "usage": {
@@ -89,11 +95,14 @@
             "output_tokens": 24,
             "total_tokens": 52
           },
-          "message_id": null,
-          "response_id": "p3izapCdNe3Uz7IP-NrwwQw",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "p3izapCdNe3Uz7IP-NrwwQw"
+          },
           "finish_reason": "length",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

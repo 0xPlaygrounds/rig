@@ -2,20 +2,15 @@
 //! unchanged (rig#2269).
 //!
 //! **Bug.** Things a client that manages its own conversation state could
-//! not do: (a) send a `compaction` item back — `InputItem` rejected the tag;
+//! not do: (a) send a `compaction` item back, which the input side rejected;
 //! (b) re-send an output message's `phase` — `OutputMessage` dropped it, a
 //! streamed turn never stamped it, and a turn with several message items
 //! replayed as one item under one id and one `phase`. OpenAI documents a
 //! dropped `phase` as a quality regression on follow-ups.
 //!
-//! **Fix.** `InputContent::Compaction` / `Output::Compaction` round-trip
-//! the item verbatim; `OutputMessage.phase` is captured on unary and
-//! streamed text alike, rides rig history on the text block's own-wire
-//! extras (with the item's id when a reply has several message items), and
-//! is lifted back onto each assistant input item at replay. Exposing the
-//! terminal `output[]` on the streamed record was tried and reverted:
-//! `CompletionResponse::raw` is replay identity for every streamed effect
-//! log, and the field changed 66 goldens.
+//! **Fix.** Every output item is one block of history holding the item
+//! verbatim: a compaction item is an opaque block that replays, and each
+//! message item, `phase` and id included, goes back as it came.
 //!
 //! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which
 //! returns `phase: "final_answer"` on every message. Its second recorded
@@ -33,7 +28,7 @@
 //!
 //! **How these cells fail on `origin/main`.** Cell 1 misses the mock on
 //! turn 2 (rig sent no `phase`, so the recorded body differs) and its
-//! post-replay assertion fails; cell 2 decodes the item only as `Output::Unknown` and the input side
+//! post-replay assertion fails; cell 2 decodes the item only as an unknown output item and the input side
 //! rejects it with `unknown variant \`compaction\``. Cells 3 to 5 miss the
 //! mock on their follow-up: streamed text carried no `phase`, and cell 4's
 //! two messages were merged into one item.
@@ -53,11 +48,7 @@ use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    CompletionResponse as ProviderResponse, InputItem, Output,
-};
 use rig_test_support::cassette_models::OpenAiModels;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
@@ -99,25 +90,35 @@ fn assistant_items(request: &Value) -> Vec<&Value> {
 }
 
 /// The Responses API's own reply, read back out of
-/// [`rig::completion::CompletionResponse::raw`] — the same value the
+/// [`rig::completion::CompletionResponse::raw`], the same document the
 /// normalized response beside it was derived from.
-fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderResponse {
-    ProviderResponse::deserialize(&response.raw)
-        .expect("`raw` is the serialized responses_api::CompletionResponse")
+fn provider_reply(response: &rig::completion::CompletionResponse) -> Value {
+    response.raw.clone()
+}
+
+/// The `output` items of a Responses reply.
+fn output_items(reply: &Value) -> &[Value] {
+    reply["output"].as_array().map_or(&[], Vec::as_slice)
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: OpenAiModels) -> (ProviderResponse, ProviderResponse) {
+async fn two_turn_conversation(client: OpenAiModels) -> (Value, Value) {
     let model = client.completion(openai::GPT_5_6_SOL);
+    let request = |history: Vec<Message>| {
+        CompletionRequest::from(history).additional_params(serde_json::json!({ "store": false }))
+    };
     let mut history = vec![Message::user(TURN_ONE)];
     let first = model
-        .call(history.clone())
+        .call(request(history.clone()))
         .await
         .expect("turn 1 should succeed");
     let first_reply = provider_reply(&first);
     history.extend(first.message());
     history.push(Message::user(TURN_TWO));
-    let second = model.call(history).await.expect("turn 2 should succeed");
+    let second = model
+        .call(request(history))
+        .await
+        .expect("turn 2 should succeed");
     (first_reply, provider_reply(&second))
 }
 
@@ -127,13 +128,10 @@ async fn phase_round_trips_on_follow_up() {
         "stateless_replay_matrix/phase_round_trips_on_follow_up",
         |client| async move {
             let (first, _second) = two_turn_conversation(client.openai).await;
-            let phases: Vec<&str> = first
-                .output
+            let phases: Vec<&str> = output_items(&first)
                 .iter()
-                .filter_map(|item| match item {
-                    Output::Message(message) => message.phase.as_deref(),
-                    _ => None,
-                })
+                .filter(|item| item["type"] == "message")
+                .filter_map(|message| message["phase"].as_str())
                 .collect();
             assert_eq!(phases, [PHASE], "turn 1 must decode the wire's phase");
         },
@@ -178,30 +176,20 @@ async fn compaction_item_decodes_on_the_response() {
                 .await
                 .expect("a response carrying a compaction item must decode");
             let first = provider_reply(&response);
-            let compaction = first
-                .output
+            let compaction = output_items(&first)
                 .iter()
-                .find_map(|item| match item {
-                    Output::Compaction(fields) => Some(fields.clone()),
-                    _ => None,
-                })
-                .expect("turn 1's output must decode the compaction item as Output::Compaction");
+                .find(|item| item["type"] == "compaction")
+                .cloned()
+                .expect("turn 1's output must keep the compaction item");
             assert_eq!(compaction.get("id"), Some(&Value::from("cmp_REDACTED_1")));
-            assert!(compaction.get("type").is_none());
 
-            // The regular items beside it still decode and normalize.
-            assert!(!response.choice.is_empty());
-
-            // The same item, re-serialized, is accepted on the input side
-            // byte-for-byte — this is what a stateless client sends back.
-            let wire = serde_json::to_value(Output::Compaction(compaction)).expect("serializes");
-            let input: InputItem =
-                serde_json::from_value(wire.clone()).expect("the input side accepts the item");
-            assert_eq!(
-                serde_json::to_value(&input).expect("re-serializes"),
-                wire,
-                "the input item must re-emit the compaction item verbatim"
-            );
+            // It reaches history as a block that replays, beside the
+            // regular items.
+            assert!(response.choice.iter().any(|block| matches!(
+                block,
+                AssistantContent::Opaque(opaque)
+                    if opaque.replay && opaque.item == compaction
+            )));
         },
     )
     .await;
@@ -300,28 +288,19 @@ fn recorded_messages(body: &str) -> Vec<(String, String)> {
 }
 
 /// `(id, phase)` of the message item each text block of a reply's choice
-/// came from: the block's own id when the reply had several message items,
-/// else the reply's message id.
+/// holds.
 fn text_block_items(response: &rig::completion::CompletionResponse) -> Vec<(String, String)> {
     texts(&response.choice)
         .into_iter()
         .map(|text| {
-            let extras = text
-                .additional_params
-                .as_ref()
-                .and_then(|params| params.wire_extras("openai_responses"));
             let field = |key: &str| {
-                extras
-                    .and_then(|extras| extras.get(key))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
+                text.native
+                    .as_ref()
+                    .and_then(|native| native.item[key].as_str())
+                    .unwrap_or_default()
+                    .to_owned()
             };
-            (
-                field("message_id")
-                    .or_else(|| response.message_id.clone())
-                    .unwrap_or_default(),
-                field("phase").unwrap_or_default(),
-            )
+            (field("id"), field("phase"))
         })
         .collect()
 }

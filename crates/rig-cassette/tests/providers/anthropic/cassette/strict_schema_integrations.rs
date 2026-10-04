@@ -29,14 +29,14 @@ fn empty_tool(name: impl Into<String>) -> ToolDefinition {
     }
 }
 
-fn tool_calls(response: &rig::completion::CompletionResponse) -> Vec<(&str, &Value)> {
+fn tool_calls(response: &rig::completion::CompletionResponse) -> Vec<(&str, Value)> {
     response
         .choice
         .iter()
         .filter_map(|content| match content {
             AssistantContent::ToolCall(tool_call) => Some((
                 tool_call.function.name.as_str(),
-                &tool_call.function.arguments,
+                tool_call.function.arguments_value(),
             )),
             _ => None,
         })
@@ -51,7 +51,7 @@ fn assert_one_call(
     let calls = tool_calls(response);
     assert_eq!(calls.len(), 1, "exactly one tool call is expected");
     assert_eq!(calls[0].0, expected_name);
-    assert_eq!(calls[0].1, expected_arguments);
+    assert_eq!(&calls[0].1, expected_arguments);
 }
 
 #[tokio::test]
@@ -422,8 +422,8 @@ async fn parallel_strict_tool_calls_preserve_each_schema() {
             assert_eq!(
                 calls,
                 vec![
-                    ("strict_alpha", &json!({ "value": "A" })),
-                    ("strict_beta", &json!({ "value": "B" }))
+                    ("strict_alpha", json!({ "value": "A" })),
+                    ("strict_beta", json!({ "value": "B" }))
                 ]
             );
         },

@@ -5,12 +5,11 @@
 //!
 //! Capture is always on. Every response `completion` returns carries `raw`:
 //! Anthropic's reply document, verbatim — `driver::call` deserializes the
-//! response body onto it, so `raw` keeps every field the provider sent,
-//! including the ones `anthropic::completion::CompletionResponse` does not
-//! model (`type`, `stop_details`, the usage tier). `raw` is `Value::Null`
+//! response body onto it, so `raw` keeps every field the provider sent
+//! (`type`, `stop_details`, the usage tier among them). `raw` is `Value::Null`
 //! only on a `CompletionResponse` built by hand, with no provider response
 //! behind it; `Value::Null` never means "not requested". This matrix pins
-//! three properties against live recordings: presence and typed access, a
+//! three properties against live recordings: presence as the document, a
 //! provider-specific field the normalized response provably lacks
 //! (`stop_sequence`), and that `raw` and the normalized fields tell one story
 //! (the provider-native fields are what the decoder mapped) — then repeats
@@ -22,9 +21,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_into_provider_type` | plain text request | `raw` populated; deserializes into the Anthropic type; is the recorded document, keeping fields that type does not model | recorded |
+//! | 1 | `raw_round_trips_into_provider_type` | plain text request | `raw` populated; is the recorded document, envelope included | recorded |
 //! | 2 | `raw_exposes_stop_sequence` | `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`; normalized response has no such field | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | plain text request | `CompletionResponse::deserialize(raw)`'s provider-native `id`, `stop_reason`, `model`, `usage` and text are the normalized response's `identity()`, `finish_reason()`, `model`, `usage`, `choice` | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | plain text request | `raw`'s provider-native `id`, `stop_reason`, `model`, `usage` and text are the normalized response's `identity()`, `finish_reason()`, `model`, `usage`, `choice` | recorded |
 //! | 4 | `raw_exposes_thinking_block_and_signature` | extended thinking (`thinking.enabled`, budget 1024) | `raw` round-trips; `raw["content"]` carries a `type: "thinking"` block with `thinking` + `signature` and `usage.output_tokens_details.thinking_tokens`, verbatim; the normalized response re-spells both (`type: "reasoning"`, `reasoning_tokens`) and has no `"thinking"` key at all | recorded |
 //! | 5 | `raw_exposes_tool_use_block` | forced tool call (`tool_choice: required`, one tool) | `raw` round-trips; `raw["content"]` carries a `type: "tool_use"` block with an `input` *object*, `raw["stop_reason"] == "tool_use"` verbatim; normalized `finish_reason() == ToolCalls`, `type: "toolcall"`, `function.arguments` — no `"tool_use"` spelling anywhere | recorded |
 //!
@@ -49,10 +48,8 @@
 //! `tool_use` block.
 
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
-use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
+use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{CompletionResponse, Content};
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -60,8 +57,9 @@ use super::super::support::{
     with_anthropic_cassette,
 };
 
+use super::super::support::canonical_without_raw;
 use crate::raw_capture::capture_completion;
-use crate::support::{Observed, assistant_text, normalized_without_raw};
+use crate::support::{Observed, assistant_text};
 use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with exactly: raw capture probe";
@@ -161,7 +159,7 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
     let identity = response.identity();
     let body = recorded_response_body(scenario);
     assert_ids_match_recording(
-        std::slice::from_ref(&identity.message_id),
+        std::slice::from_ref(&identity.response_id),
         &[body["id"].as_str().map(str::to_string)],
         scenario,
     );
@@ -176,8 +174,7 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
         &request_ids,
         scenario,
     );
-    assert_eq!(identity.response_id, None);
-    assert_eq!(response.model.as_deref(), body["model"].as_str());
+    assert_eq!(response.model(), body["model"].as_str());
     assert_eq!(
         response.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
@@ -189,35 +186,31 @@ fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionRespo
     body
 }
 
-/// Cells 4 and 5 share this: `raw` is populated and reads back into the
-/// provider type.
-///
-/// `raw` is the reply *document*, so it is a superset of that type — the
-/// envelope field `type: "message"` is on `raw` and not on the parse, which
-/// is why the two are not compared for equality.
-fn assert_raw_round_trips(raw: &Value) -> CompletionResponse {
+/// Cells 4 and 5 share this: `raw` is populated, and it is the reply
+/// *document*, its envelope field `type: "message"` included.
+fn assert_raw_round_trips(raw: &Value) -> &Value {
     assert!(
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
     );
-    let typed = CompletionResponse::deserialize(raw)
-        .expect("`raw` is Anthropic's reply document, which the provider type reads");
     assert_eq!(
         raw["type"], "message",
         "`raw` keeps the document's envelope field"
     );
-    assert!(
-        serde_json::to_value(&typed)
-            .expect("re-serialize")
-            .get("type")
-            .is_none(),
-        "the provider type does not model the envelope — `raw` is the document, not the parse"
-    );
-    typed
+    raw
+}
+
+/// The blocks of `raw`'s content of `kind`.
+fn blocks<'a>(raw: &'a Value, kind: &'a str) -> impl Iterator<Item = &'a Value> {
+    raw["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(move |block| block["type"] == kind)
 }
 
 // ---------------------------------------------------------------------------
-// 1: typed round trip
+// 1: raw is the document
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -240,16 +233,12 @@ async fn raw_round_trips_into_provider_type() {
     let raw = &response.raw;
     let typed = assert_raw_round_trips(raw);
     assert!(
-        typed.content.iter().any(|block| matches!(
-            block,
-            Content::Text { text, .. } if !text.is_empty()
-        )),
-        "typed access reads the reply's text block"
+        blocks(typed, "text").any(|block| block["text"].as_str().is_some_and(|t| !t.is_empty())),
+        "`raw` holds the reply's text block"
     );
 
     // `raw` is Anthropic's reply document, verbatim: every field the recorded
-    // body carries is on it, including the ones the provider type does not
-    // model.
+    // body carries is on it.
     let body = recorded_response_body(ROUND_TRIP_SCENARIO);
     assert_ids_match_recording(
         &[raw["id"].as_str().map(str::to_string)],
@@ -324,7 +313,7 @@ async fn raw_exposes_stop_sequence() {
         "every response `completion` returns carries `raw`"
     );
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    let normalized_keys: Vec<String> = normalized_without_raw(response.clone())
+    let normalized_keys: Vec<String> = canonical_without_raw(response.clone())
         .as_object()
         .expect("the normalized response serializes as an object")
         .keys()
@@ -339,16 +328,14 @@ async fn raw_exposes_stop_sequence() {
     // …and `raw` carries it, verbatim from the wire.
     assert_eq!(raw["stop_sequence"], "alpha");
     assert_eq!(raw["stop_reason"], "stop_sequence");
-    let typed = CompletionResponse::deserialize(raw).expect("typed access");
-    assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
 }
 
 // ---------------------------------------------------------------------------
 // 3: raw and the normalized fields tell one story
 // ---------------------------------------------------------------------------
 
-/// The normalized response and `raw` describe the same exchange: read `raw`
-/// back into the provider type and its provider-native fields are exactly
+/// The normalized response and `raw` describe the same exchange: `raw`'s
+/// provider-native fields are exactly
 /// what the decoder delivered beside them — message id, stop reason, model,
 /// usage, and the text of its content blocks — and each of those is what the
 /// fixture recorded.
@@ -379,16 +366,14 @@ async fn normalized_fields_match_raw_renormalized() {
         "every response `completion` returns carries `raw`"
     );
 
-    let typed = CompletionResponse::deserialize(raw)
-        .expect("`raw` is Anthropic's reply document, which the provider type reads");
+    let typed = raw;
     assert_eq!(
-        Some(typed.id.as_str()),
-        identity.message_id.as_deref(),
+        typed["id"].as_str(),
+        identity.response_id.as_deref(),
         "the message id the normalized response reports is the document's"
     );
     assert_eq!(
-        typed.stop_reason.as_deref(),
-        Some("end_turn"),
+        typed["stop_reason"], "end_turn",
         "premise: the recorded turn ended naturally"
     );
     assert_eq!(
@@ -396,19 +381,17 @@ async fn normalized_fields_match_raw_renormalized() {
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(Some(typed.usage.input_tokens), response.usage.input_tokens);
+    assert_eq!(typed["model"].as_str(), response.model());
     assert_eq!(
-        Some(typed.usage.output_tokens),
+        typed["usage"]["input_tokens"].as_u64(),
+        response.usage.input_tokens
+    );
+    assert_eq!(
+        typed["usage"]["output_tokens"].as_u64(),
         response.usage.output_tokens
     );
-    let provider_text: String = typed
-        .content
-        .iter()
-        .filter_map(|block| match block {
-            Content::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
+    let provider_text: String = blocks(typed, "text")
+        .filter_map(|block| block["text"].as_str())
         .collect();
     assert_eq!(
         assistant_text(&response.choice),
@@ -424,8 +407,7 @@ async fn normalized_fields_match_raw_renormalized() {
 // 4: an extended-thinking turn — the wire shape with a signature
 // ---------------------------------------------------------------------------
 
-/// `raw` on a thinking turn is still lossless against the provider type, and
-/// carries the wire's own spelling of the reasoning: a `content[]` block of
+/// `raw` on a thinking turn is still the document, and carries the wire's own spelling of the reasoning: a `content[]` block of
 /// `type: "thinking"` with `thinking` text and a `signature`, plus
 /// `usage.output_tokens_details.thinking_tokens`. The normalized response
 /// re-spells the block as `type: "reasoning"` / `content[].type: "text"` and
@@ -505,18 +487,16 @@ async fn raw_exposes_thinking_block_and_signature() {
         json!(recorded_thinking_tokens),
         "`raw` carries the provider's usage breakdown, verbatim"
     );
-    // …and typed access reads it as the provider's own variant.
-    let typed_thinking = typed
-        .content
-        .iter()
-        .find_map(|block| match block {
-            Content::Thinking {
-                thinking,
-                signature,
-            } => Some((thinking.as_str(), signature.as_deref())),
-            _ => None,
+    // …and its thinking block is the provider's own.
+    let typed_thinking = blocks(typed, "thinking")
+        .next()
+        .map(|block| {
+            (
+                block["thinking"].as_str().unwrap_or_default(),
+                block.get("signature").and_then(Value::as_str),
+            )
         })
-        .expect("typed `raw` carries `Content::Thinking`");
+        .expect("`raw` carries a thinking block");
     assert_eq!(typed_thinking.0, recorded_thinking_text);
     assert!(typed_thinking.1.is_some_and(|sig| !sig.is_empty()));
 
@@ -534,21 +514,21 @@ async fn raw_exposes_thinking_block_and_signature() {
         })
         .expect("the normalized choice carries the reasoning");
     assert_eq!(
-        normalized_reasoning
-            .open(normalized_reasoning.issuer())
-            .expect("sealed reasoning")
-            .content,
-        vec![ReasoningContent::Text {
-            text: recorded_thinking_text.to_string(),
-            signature: raw_thinking["signature"].as_str().map(str::to_string),
-        }],
-        "the normalized reasoning is the wire's text and signature, re-spelled"
+        normalized_reasoning.text, recorded_thinking_text,
+        "the normalized reasoning is the wire's text, re-spelled"
+    );
+    assert_eq!(
+        AssistantContent::Reasoning(normalized_reasoning.clone())
+            .native_item()
+            .map(|item| &item["signature"]),
+        Some(&raw_thinking["signature"]),
+        "the reasoning's provider item keeps the wire's signature"
     );
     assert_eq!(
         response.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let normalized = normalized_without_raw(response.clone());
+    let normalized = canonical_without_raw(response.clone());
     assert!(
         !contains_string(&normalized, "thinking"),
         "the normalized response never spells `thinking` — `raw` is the only way to read \
@@ -568,8 +548,7 @@ async fn raw_exposes_thinking_block_and_signature() {
 // 5: a forced tool call — the wire's tool-call representation
 // ---------------------------------------------------------------------------
 
-/// `raw` on a `tool_use` turn is still lossless against the provider type, and
-/// carries the wire's own tool-call representation: a `content[]` block of
+/// `raw` on a `tool_use` turn is still the document, and carries the wire's own tool-call representation: a `content[]` block of
 /// `type: "tool_use"` with `id`, `name` and an `input` *object*, under
 /// `stop_reason: "tool_use"`. The normalized response reports
 /// `FinishReason::ToolCalls` and a `type: "toolcall"` block with
@@ -627,7 +606,6 @@ async fn raw_exposes_tool_use_block() {
     // spelling `tool_use` is only on `raw`.
     assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(raw["stop_reason"], "tool_use");
-    assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
 
     // `raw` carries the wire's tool-call block, verbatim: `input` is an
     // object (Anthropic sends structured JSON, not an arguments string).
@@ -648,14 +626,16 @@ async fn raw_exposes_tool_use_block() {
         std::slice::from_ref(&recorded_tool_id),
         TOOL_USE_SCENARIO,
     );
-    let (typed_id, typed_name, typed_input) = typed
-        .content
-        .iter()
-        .find_map(|block| match block {
-            Content::ToolUse { id, name, input } => Some((id.as_str(), name.as_str(), input)),
-            _ => None,
+    let (typed_id, typed_name, typed_input) = blocks(typed, "tool_use")
+        .next()
+        .map(|block| {
+            (
+                block["id"].as_str().unwrap_or_default(),
+                block["name"].as_str().unwrap_or_default(),
+                &block["input"],
+            )
         })
-        .expect("typed `raw` carries `Content::ToolUse`");
+        .expect("`raw` carries a tool_use block");
     assert_eq!(typed_name, "get_weather");
     assert_eq!(*typed_input, recorded_tool_use["input"]);
 
@@ -672,7 +652,7 @@ async fn raw_exposes_tool_use_block() {
         .expect("the normalized choice carries the tool call");
     assert_eq!(normalized_call.function.name, "get_weather");
     assert_eq!(
-        normalized_call.function.arguments,
+        normalized_call.function.arguments_value(),
         recorded_tool_use["input"]
     );
     assert_eq!(
@@ -680,11 +660,11 @@ async fn raw_exposes_tool_use_block() {
             .id
             .provider()
             .as_ref()
-            .map(|provider| provider.call_id.as_str()),
+            .map(|provider| provider.as_str()),
         Some(typed_id),
         "the normalized call's provider id is the wire's `tool_use.id`"
     );
-    let normalized = normalized_without_raw(response.clone());
+    let normalized = canonical_without_raw(response.clone());
     assert!(
         !contains_string(&normalized, "tool_use"),
         "the normalized response never spells `tool_use` — `raw` is the only way to read \

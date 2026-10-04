@@ -398,10 +398,10 @@ pub async fn run_cache_probe(
     let first = send(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
     let second = send(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
-    let assistant = Message::Assistant {
-        id: second.message_id.clone(),
+    let assistant = Message::Assistant(rig_core::message::AssistantMessage {
         content: second.choice.clone(),
-    };
+        ..second.head()
+    });
     let follow_up = Message::User {
         content: vec![UserContent::text(probe.follow_up)],
     };
@@ -451,7 +451,7 @@ pub async fn run_cache_probe_streaming(
 
     let (first_usage, _, _) =
         stream_turn(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
-    let (second_usage, text, message_id) =
+    let (second_usage, text, _response_id) =
         stream_turn(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
     // A model can legitimately produce no *text* within the probe's small
@@ -465,10 +465,9 @@ pub async fn run_cache_probe_streaming(
     } else {
         text
     };
-    let assistant = Message::Assistant {
-        id: message_id,
-        content: vec![rig_core::message::AssistantContent::text(&assistant_text)],
-    };
+    let assistant = Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        rig_core::message::AssistantContent::text(&assistant_text),
+    ]));
     let follow_up = Message::User {
         content: vec![UserContent::text(probe.follow_up)],
     };
@@ -514,7 +513,11 @@ async fn stream_turn(
         .finish()
         .await
         .unwrap_or_else(|error| panic!("streamed cache probe {label} should finish: {error}"));
-    (response.usage, text, response.message_id)
+    (
+        response.usage,
+        text,
+        response.response_id().map(str::to_owned),
+    )
 }
 
 /// Turn 1 must create a cache entry, or read one that was already warm.

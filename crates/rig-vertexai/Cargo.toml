@@ -24,7 +24,8 @@ tokio = { workspace = true, features = ["full"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-history-conformance = { path = "../../test-support/rig-history-conformance" }
+rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest", "test-utils"] }
 anyhow = { workspace = true }
 http = { workspace = true }
 rig-agent.workspace = true

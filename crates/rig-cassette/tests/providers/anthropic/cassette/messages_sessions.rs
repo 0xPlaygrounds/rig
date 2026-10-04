@@ -43,7 +43,7 @@ struct ToolEvent {
 fn history_tool_calls(history: &[Message]) -> Vec<ToolEvent> {
     let mut calls = Vec::new();
     for (message_index, message) in history.iter().enumerate() {
-        if let Message::Assistant { content, .. } = message {
+        if let Message::Assistant(rig::message::AssistantMessage { content, .. }) = message {
             for item in content.iter() {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     calls.push(ToolEvent {
@@ -306,13 +306,12 @@ async fn long_history_replay_nonstreaming() {
             ))
             .message(Message::assistant("Noted - your favorite color is teal."))
             .message(Message::user("Now look up the harbor label with the tool."))
-            .message(Message::Assistant {
-                id: None,
-                content: vec![
+            .message(Message::Assistant(rig::message::AssistantMessage::new(
+                vec![
                     AssistantContent::text("Checking the harbor label now."),
                     AssistantContent::ToolCall(tool_call.clone()),
                 ],
-            })
+            )))
             .message(Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
                 tool_call.function.name.clone(),
@@ -349,14 +348,8 @@ async fn long_history_replay_nonstreaming() {
                 "a plain answer should preserve the end_turn stop reason"
             );
             assert!(
-                response
-                    .model
-                    .as_deref()
-                    .is_some_and(|model| !model.is_empty())
-                    && response
-                        .message_id
-                        .as_deref()
-                        .is_some_and(|id| !id.is_empty()),
+                response.model().is_some_and(|model| !model.is_empty())
+                    && response.response_id().is_some_and(|id| !id.is_empty()),
                 "provider response should preserve model and message id"
             );
             assert!(

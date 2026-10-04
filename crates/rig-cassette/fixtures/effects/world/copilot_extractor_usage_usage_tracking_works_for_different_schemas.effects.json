@@ -122,9 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_REDACTED_1"
-                }
+                "provider": "call_REDACTED_1"
               },
               "function": {
                 "name": "submit",
@@ -134,8 +132,17 @@
                   "profession": "developer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"age\":25,\"name\":\"Alice\",\"profession\":\"developer\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_1",
+                  "type": "function"
+                },
+                "fingerprint": "728c3beb92d5624d"
+              }
             }
           ],
           "usage": {
@@ -145,11 +152,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_1",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-REDACTED_1"
+          },
           "finish_reason": "tool_calls",
-          "provider": "copilot",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {
@@ -305,9 +315,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_REDACTED_2"
-                }
+                "provider": "call_REDACTED_2"
               },
               "function": {
                 "name": "submit",
@@ -318,8 +326,17 @@
                   "zip_code": "02139"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"city\":\"Cambridge\",\"state\":\"MA\",\"street\":\"456 Oak Avenue\",\"zip_code\":\"02139\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_REDACTED_2",
+                  "type": "function"
+                },
+                "fingerprint": "7c80b43bd986330e"
+              }
             }
           ],
           "usage": {
@@ -329,11 +346,14 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-REDACTED_2",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "copilot",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "chatcmpl-REDACTED_2"
+          },
           "finish_reason": "tool_calls",
-          "provider": "copilot",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "choices": [
               {

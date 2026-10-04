@@ -117,3 +117,7 @@ pub(crate) fn config_dir() -> Option<std::path::PathBuf> {
             .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
     }
 }
+
+/// Device-flow helpers for the native ChatGPT and Copilot authenticators.
+#[cfg(not(target_family = "wasm"))]
+pub(crate) mod device;

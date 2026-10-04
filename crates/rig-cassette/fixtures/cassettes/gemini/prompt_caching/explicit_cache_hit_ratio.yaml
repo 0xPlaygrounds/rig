@@ -15,7 +15,7 @@ then:
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"createTime":"2026-09-23T06:58:58.082270Z","displayName":"rig-hit-ratio","expireTime":"2026-09-23T07:08:57.628212406Z","model":"models/gemini-2.5-flash","name":"cachedContents/i08t395hrwcr6xmsfav3cvc5avgjzfleorbyi2j0","updateTime":"2026-09-23T06:58:58.082270Z","usageMetadata":{"totalTokenCount":5770}}'
+  body: '{"createTime":"2026-10-02T04:16:58.553057Z","displayName":"rig-hit-ratio","expireTime":"2026-10-02T04:26:58.386588747Z","model":"models/gemini-2.5-flash","name":"cachedContents/6xk5zei8mmhkda095hhqwmb50ig4ctye4acx6b69","updateTime":"2026-10-02T04:16:58.553057Z","usageMetadata":{"totalTokenCount":5770}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -28,13 +28,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"cachedContent":"cachedContents/i08t395hrwcr6xmsfav3cvc5avgjzfleorbyi2j0","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"cachedContent":"cachedContents/6xk5zei8mmhkda095hhqwmb50ig4ctye4acx6b69","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"cache probe ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"snizapKuCoKnmtkPkL67uA0","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5787,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5787}],"serviceTier":"standard","totalTokenCount":5790}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"cache probe ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"OjC_auPNKOCxqtsPtaqTkQg","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5787,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5787}],"serviceTier":"standard","totalTokenCount":5790}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -47,13 +47,13 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"cachedContent":"cachedContents/i08t395hrwcr6xmsfav3cvc5avgjzfleorbyi2j0","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"cachedContent":"cachedContents/6xk5zei8mmhkda095hhqwmb50ig4ctye4acx6b69","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"cache probe ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"snizateaJKzpqtsP5OHg0A0","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5787,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5787}],"serviceTier":"standard","totalTokenCount":5790}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"cache probe ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"OzC_asyHBfaMmtkPt_6mkQM","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5787,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5787}],"serviceTier":"standard","totalTokenCount":5790}}'
 ---
 when:
   path: /v1beta/models/gemini-2.5-flash:generateContent
@@ -66,16 +66,16 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"cachedContent":"cachedContents/i08t395hrwcr6xmsfav3cvc5avgjzfleorbyi2j0","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"},{"parts":[{"text":"cache probe ready","thought":false}],"role":"model"},{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: probe still ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+  body: '{"cachedContent":"cachedContents/6xk5zei8mmhkda095hhqwmb50ig4ctye4acx6b69","contents":[{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: cache probe ready","thought":false}],"role":"user"},{"parts":[{"text":"cache probe ready"}],"role":"model"},{"parts":[{"text":"Do not call any tools. Reply with exactly these three words: probe still ready","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json; charset=UTF-8
-  body: '{"candidates":[{"content":{"parts":[{"text":"probe still ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"s3izaqq9AbC0qtsP5bHOkQc","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5808,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5808}],"serviceTier":"standard","totalTokenCount":5811}}'
+  body: '{"candidates":[{"content":{"parts":[{"text":"probe still ready"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"OzC_atmdGe6nqtsP27_PmAY","usageMetadata":{"cacheTokensDetails":[{"modality":"TEXT","tokenCount":5770}],"cachedContentTokenCount":5770,"candidatesTokenCount":3,"promptTokenCount":5808,"promptTokensDetails":[{"modality":"TEXT","tokenCount":5808}],"serviceTier":"standard","totalTokenCount":5811}}'
 ---
 when:
-  path: /v1beta/cachedContents/i08t395hrwcr6xmsfav3cvc5avgjzfleorbyi2j0
+  path: /v1beta/cachedContents/6xk5zei8mmhkda095hhqwmb50ig4ctye4acx6b69
   method: DELETE
   query_param:
   - name: key

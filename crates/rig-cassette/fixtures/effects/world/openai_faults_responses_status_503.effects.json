@@ -31,7 +31,7 @@
         "required": {
           "golden/model:default": "completion"
         },
-        "policy": 8865354214090437296
+        "policy": 2485055624168811615
       }
     }
   },
@@ -60,7 +60,9 @@
           "temperature": null,
           "max_tokens": 16,
           "tool_choice": null,
-          "additional_params": null,
+          "additional_params": {
+            "store": false
+          },
           "output_schema": null
         },
         "stream": false

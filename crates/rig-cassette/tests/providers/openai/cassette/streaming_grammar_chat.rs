@@ -1,6 +1,6 @@
 //! Canonical streaming-grammar coverage for the OpenAI **chat-completions**
 //! wire (the compat family's canonical wire), asserted through the
-//! *normalized* path: the aggregated [`StreamingCompletionResponse::choice`],
+//! *normalized* path: the aggregated `choice` from `CompletionStream::finish`,
 //! the terminal `CompletionResponse` record, usage, IDs, and finish reason — real
 //! recorded wire traffic, not synthetic chunks.
 //!
@@ -145,7 +145,7 @@ async fn parallel_tool_calls_stay_distinct() {
                     "{name} should carry the wire-issued call id"
                 );
                 assert!(
-                    streamed.function.arguments.is_object(),
+                    streamed.function.invalid_arguments.is_none(),
                     "{name} arguments must assemble into an object, got {:?}",
                     streamed.function.arguments
                 );

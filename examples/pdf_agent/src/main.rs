@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
     // because Ollama is local and does not require an api key, we leave the
     // credential unset
     let client = OllamaConfig::new()
-        .with_base_url("http://localhost:11434/v1")
+        .with_base_url("http://localhost:11434")
         .client();
 
     // Load PDFs using Rig's built-in PDF loader

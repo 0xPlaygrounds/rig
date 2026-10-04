@@ -32,8 +32,6 @@ use rig_core::message::AssistantContent;
 
 use rig_core::message::Message;
 
-use rig_core::message::ReasoningContent;
-
 use rig_core::message::ToolResultContent;
 
 use rig_core::message::UserContent;
@@ -243,19 +241,6 @@ impl ReasoningRoundtripAgent {
     }
 }
 
-/// The issuer the reply's reasoning was sealed to, or its provider when it
-/// sent none.
-fn stream_issuer(response: &completion::CompletionResponse) -> rig_core::message::Issuer {
-    response
-        .choice
-        .iter()
-        .find_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(reasoning.issuer().clone()),
-            _ => None,
-        })
-        .unwrap_or_else(|| rig_core::message::Issuer::from(response.provider.clone()))
-}
-
 /// Run and assert the two-turn streaming reasoning-history roundtrip.
 pub async fn run_reasoning_roundtrip_streaming(agent: ReasoningRoundtripAgent) {
     run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
@@ -304,9 +289,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
     if agent.expects_signed_reasoning_block {
         let signed = response.choice.iter().any(|content| match content {
-            AssistantContent::Reasoning(reasoning) => reasoning
-                .open(reasoning.issuer())
-                .is_some_and(|reasoning| reasoning.content.iter().any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some()))),
+            AssistantContent::Reasoning(reasoning) => reasoning.native.is_some(),
             _ => false,
         });
         assert!(
@@ -319,49 +302,8 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
 
     assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
 
-    // The history this suite recorded replays the reasoning the provider
-    // announced (an id, a signature, or content other than plain text) and
-    // the answer's text. A stream that only sent reasoning fragments
-    // replays them as one part.
-    let reasoning: Vec<_> = response
-        .choice
-        .iter()
-        .filter(|content| match content {
-            AssistantContent::Reasoning(reasoning) => {
-                reasoning.open(reasoning.issuer()).is_some_and(|reasoning| {
-                    reasoning.id.is_some()
-                        || reasoning.content.iter().any(|block| {
-                            !matches!(
-                                block,
-                                ReasoningContent::Text {
-                                    signature: None,
-                                    ..
-                                }
-                            )
-                        })
-                })
-            }
-            _ => false,
-        })
-        .cloned()
-        .collect();
-    let mut assistant_content = if reasoning.is_empty() {
-        let fragments = response.reasoning();
-        if fragments.is_empty() {
-            Vec::new()
-        } else {
-            vec![AssistantContent::Reasoning(
-                rig_core::message::Reasoning::new(&fragments).sealed(stream_issuer(&response)),
-            )]
-        }
-    } else {
-        reasoning
-    };
-    assistant_content.push(AssistantContent::text(&streamed_text));
-    let turn1_assistant = Message::Assistant {
-        id: response.message_id.clone(),
-        content: assistant_content,
-    };
+    // The history replays the turn exactly as it arrived.
+    let turn1_assistant = response.message().expect("Turn 1 produced content");
 
     let turn2_prompt = Message::User {
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
@@ -453,10 +395,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         "Turn 1 non-streaming response has no text output."
     );
 
-    let turn1_assistant = Message::Assistant {
-        id: response.message_id,
-        content: response.choice,
-    };
+    let turn1_assistant = response.message().expect("Turn 1 produced content");
 
     let turn2_prompt = Message::User {
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
@@ -617,27 +556,23 @@ fn record_reasoning(
 ) {
     stats.reasoning_block_count += 1;
 
-    for content in &reasoning.content {
-        let type_name = match content {
-            ReasoningContent::Text { signature, .. } => {
-                if signature.is_some() {
-                    stats.reasoning_has_signature = true;
-                }
-                "Text"
-            }
-            ReasoningContent::Encrypted(_) => {
-                stats.reasoning_has_encrypted = true;
-                "Encrypted"
-            }
-            ReasoningContent::Summary(_) => "Summary",
-            ReasoningContent::Redacted { .. } => "Redacted",
-        };
-        stats.reasoning_content_types.push(type_name);
-    }
+    let item = reasoning.native.as_ref().map(|native| &native.item);
+    let has = |key: &str| {
+        item.and_then(|item| item.get(key))
+            .is_some_and(|value| value.as_str().is_none_or(|value| !value.is_empty()))
+    };
+    stats.reasoning_has_signature |= has("signature") || has("thoughtSignature");
+    stats.reasoning_has_encrypted |= has("encrypted_content");
+    stats.reasoning_content_types.push(if reasoning.redacted {
+        "Redacted"
+    } else {
+        "Text"
+    });
 
     eprintln!(
-        "[{provider}] Reasoning block: id={:?}, types={:?}",
-        reasoning.id, stats.reasoning_content_types
+        "[{provider}] Reasoning block: item={:?}, types={:?}",
+        item.and_then(|item| item.get("type")),
+        stats.reasoning_content_types
     );
 }
 
@@ -662,9 +597,7 @@ pub async fn collect_stream_stats(
                     content: AssistantContent::Reasoning(ref reasoning),
                     ..
                 }) => {
-                    if let Some(reasoning) = reasoning.open(reasoning.issuer()) {
-                        record_reasoning(&mut stats, reasoning, provider);
-                    }
+                    record_reasoning(&mut stats, reasoning, provider);
                 }
                 Item::Event(StreamEvent::Text { ref text, .. }) => {
                     stats.text_chunks += 1;
@@ -846,7 +779,7 @@ pub fn assert_chat_history_preserves_reasoning_tool_roundtrip(
                     }
                 }
             }
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 let mut assistant_text = String::new();
 
                 for item in content.iter() {

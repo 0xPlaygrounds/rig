@@ -1,9 +1,6 @@
 //! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI
 //! Responses wire: the `OPENROUTER` dialect routed to `/responses` once.
 
-use rig::providers::openai::responses_api::CompletionResponse;
-use serde::Deserialize as _;
-
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 use super::super::support::with_openrouter_openai_cassette;
@@ -30,16 +27,12 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
-            let document = CompletionResponse::deserialize(&response.raw)
-                .expect("raw is the Responses API's own response");
-            let service_tier = document
-                .additional_parameters
-                .service_tier
-                .as_ref()
+            let service_tier = response.raw["service_tier"]
+                .as_str()
                 .expect("OpenRouter response should include service_tier");
 
             assert!(
-                !format!("{service_tier:?}").is_empty(),
+                !service_tier.is_empty(),
                 "expected OpenRouter model {DEFAULT_OPENAI_COMPAT_MODEL} to return service_tier metadata"
             );
         },

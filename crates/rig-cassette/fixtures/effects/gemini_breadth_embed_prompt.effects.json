@@ -6258,7 +6258,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready"
+              "text": "ready",
+              "native": {
+                "item": {
+                  "text": "ready"
+                },
+                "fingerprint": "0cd5e8fd3135ad2a"
+              }
             }
           ],
           "usage": {
@@ -6267,11 +6273,14 @@
             "total_tokens": 35,
             "reasoning_tokens": 15
           },
-          "message_id": null,
-          "response_id": "m3izatD1NOqb6dkP9J27sQk",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "m3izatD1NOqb6dkP9J27sQk"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

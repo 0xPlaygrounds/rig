@@ -114,6 +114,7 @@ members = [
     "xtask",
     "test-support/service-tests",
     "test-support/rig-test-support",
+    "test-support/rig-history-conformance",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -148,6 +149,7 @@ default-members = [
     "crates/rig-gemini-grpc",
     "test-support/service-tests",
     "test-support/rig-test-support",
+    "test-support/rig-history-conformance",
     # The design record's Frozen API programs: clippy and the full test
     # lane compile them.
     "examples/frozen_api",
@@ -289,6 +291,7 @@ google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, featur
     "prediction-service",
 ] }
 http = "1"
+http-body = "1"
 httpdate = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
@@ -356,6 +359,8 @@ tonic-build = "0.14"
 tonic-prost = "0.14"
 tonic-prost-build = "0.14"
 prost = "0.14"
+prost-reflect = { version = "0.16", features = ["serde"] }
+prost-types = "0.14"
 tracing = "0.1"
 # 0.2.5: `Instrumented<S>: Stream` under `futures-03` for futures 0.3 stable.
 tracing-futures = "0.2.5"
@@ -421,6 +426,7 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.43.0", optiona
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }
+rig-history-conformance = { path = "test-support/rig-history-conformance" }
 # The facade's tests use the recorder directly, whatever `cassette` is set to.
 rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
 bevy_app = { workspace = true }

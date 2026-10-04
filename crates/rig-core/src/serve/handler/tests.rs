@@ -27,6 +27,7 @@ struct Seen {
 struct Observer(Arc<Mutex<Seen>>);
 
 impl Observe for Observer {
+    fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
         self.0.lock().expect("seen").outcomes.push(outcome.clone());
     }
@@ -61,13 +62,12 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
                 }),
             ],
             Default::default(),
-            "test",
+            crate::message::Origin::new("test.api", "test", ""),
             serde_json::json!({}),
         );
-        response.message_id = Some("message".into());
-        response.response_id = Some("response".into());
+        response.origin.response_id = Some("response".into());
         response.provider_request_id = Some("request".into());
-        response.model = Some("image-model".into());
+        response.origin.response_model = Some("image-model".into());
         let expected = serde_json::to_value(&response).expect("response JSON");
         let reply = Reply::Outcome(Ok(Outcome::Completion(response))).observed(
             true,
@@ -99,10 +99,10 @@ fn resolved_stream_preserves_original_response_for_outcome_only_replay() {
             delivered,
             "outcome-only replay must reconstruct the same image-bearing stream"
         );
-        // Every delivered item but the response is an event.
+        // Every delivered item but the origin and the response is an event.
         assert_eq!(
             seen.events,
-            if keep_events { delivered.len() - 1 } else { 0 }
+            if keep_events { delivered.len() - 2 } else { 0 }
         );
     }
 }
@@ -165,14 +165,17 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
     let seen = Arc::new(Mutex::new(Seen::default()));
     let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished_in_writer = finished.clone();
-    let reply = Reply::written(move |mut writer| async move {
-        writer.text("prefix").await.expect("consumer present");
-        writer
-            .finish("test", Finish::default())
-            .await
-            .expect("consumer present");
-        finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
-    })
+    let reply = Reply::written(
+        crate::message::Origin::new("test", "test", "test"),
+        move |mut writer| async move {
+            writer.text("prefix").await.expect("consumer present");
+            writer
+                .finish(Finish::default())
+                .await
+                .expect("consumer present");
+            finished_in_writer.store(true, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
     .observed(
         true,
         Some(Observed {
@@ -182,12 +185,14 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
         None,
     );
     let mut stream = reply.into_stream();
-    assert!(matches!(
-        stream
-            .as_mut()
-            .poll_next(&mut Context::from_waker(noop_waker_ref())),
-        Poll::Ready(Some(Ok(_)))
-    ));
+    for _ in 0..2 {
+        assert!(matches!(
+            stream
+                .as_mut()
+                .poll_next(&mut Context::from_waker(noop_waker_ref())),
+            Poll::Ready(Some(Ok(_)))
+        ));
+    }
     assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
     assert!(seen.lock().expect("seen").outcomes.is_empty());
     drop(stream);
@@ -201,10 +206,28 @@ fn dropping_a_backpressured_writer_does_not_record_its_unpulled_final() {
 }
 
 #[test]
-fn dropping_the_writer_without_finishing_is_truncation() {
-    let reply = Reply::written(|mut writer| async move {
+fn a_written_reply_names_its_origin_before_its_first_item() {
+    let origin = crate::message::Origin::new("example.api", "example", "example-1");
+    let Reply::Stream(stream) = Reply::written(origin.clone(), |mut writer| async move {
         writer.text("prefix").await.expect("open");
-    });
+    }) else {
+        panic!("a written reply is a stream");
+    };
+    let first: Vec<_> = block_on(stream.take(2).collect());
+    assert!(
+        matches!(first.as_slice(), [Ok(Relayed::Origin(sent)), Ok(Relayed::Item(_))] if *sent == origin),
+        "{first:?}"
+    );
+}
+
+#[test]
+fn dropping_the_writer_without_finishing_is_truncation() {
+    let reply = Reply::written(
+        crate::message::Origin::new("test", "test", "test"),
+        |mut writer| async move {
+            writer.text("prefix").await.expect("open");
+        },
+    );
     assert_eq!(
         block_on(reply.into_outcome()).expect_err("truncated"),
         stream_truncated()
@@ -226,20 +249,21 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
             ))
         })
         .collect::<Vec<_>>();
-    let mut provider_call = ToolCall::new(
-        CallId::from_dual_wire("wire-item", "wire-call"),
+    let provider_call = ToolCall::new(
+        CallId::from_wire("wire-call"),
         ToolFunction::new(
             ToolName::new("provider").expect("tool name"),
             serde_json::json!({"x": 1}),
         ),
     );
-    provider_call.signature = Some("signature".into());
-    provider_call.additional_params = Some(serde_json::json!({"metadata": true}));
-    calls.push(AssistantContent::ToolCall(provider_call));
+    calls.push(
+        AssistantContent::ToolCall(provider_call)
+            .with_native(serde_json::json!({"id": "wire-item", "metadata": true})),
+    );
     let response = CompletionResponse::new(
         calls.clone(),
         Default::default(),
-        "local",
+        crate::message::Origin::new("test.api", "local", ""),
         serde_json::json!({}),
     );
     let items = re_emitted_events(&response);
@@ -271,14 +295,14 @@ fn response_reemission_preserves_local_tool_ids_without_provider_provenance() {
 fn a_writer_reports_the_request_id_and_document_of_the_reply_it_relays() {
     let finished = |request_id: &'static str| {
         let items: Vec<_> = block_on(
-            Reply::written(move |mut writer| async move {
-                writer.request_id(request_id);
-                writer.raw(serde_json::json!({"id": "body"}));
-                writer
-                    .finish("relay", Finish::default())
-                    .await
-                    .expect("open");
-            })
+            Reply::written(
+                crate::message::Origin::new("relay", "relay", "relay"),
+                move |mut writer| async move {
+                    writer.request_id(request_id);
+                    writer.raw(serde_json::json!({"id": "body"}));
+                    writer.finish(Finish::default()).await.expect("open");
+                },
+            )
             .into_stream()
             .collect(),
         );
@@ -288,7 +312,7 @@ fn a_writer_reports_the_request_id_and_document_of_the_reply_it_relays() {
         done
     };
     let response = finished("req-1");
-    assert_eq!(response.provider, "relay");
+    assert_eq!(response.provider(), "relay");
     assert_eq!(response.provider_request_id.as_deref(), Some("req-1"));
     assert_eq!(response.raw, serde_json::json!({"id": "body"}));
     assert_eq!(finished("").provider_request_id, None);
@@ -299,16 +323,20 @@ fn writer_execution_outlives_its_final_until_the_owned_future_finishes() {
     let (release, wait) = futures::channel::oneshot::channel::<()>();
     let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished = completed.clone();
-    let mut stream = Reply::written(move |writer| async move {
-        writer
-            .finish("writer", Finish::default())
-            .await
-            .expect("open");
-        wait.await.expect("released");
-        finished.store(true, std::sync::atomic::Ordering::SeqCst);
-    })
+    let mut stream = Reply::written(
+        crate::message::Origin::new("writer", "writer", "writer"),
+        move |writer| async move {
+            writer.finish(Finish::default()).await.expect("open");
+            wait.await.expect("released");
+            finished.store(true, std::sync::atomic::Ordering::SeqCst);
+        },
+    )
     .into_stream();
     let mut cx = Context::from_waker(noop_waker_ref());
+    assert!(matches!(
+        stream.as_mut().poll_next(&mut cx),
+        std::task::Poll::Ready(Some(Ok(Relayed::Origin(_))))
+    ));
     assert!(matches!(
         stream.as_mut().poll_next(&mut cx),
         std::task::Poll::Ready(Some(Ok(Relayed::Done(_))))
@@ -335,6 +363,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
     );
     struct AtomicObserver(Arc<Mutex<Vec<Observation>>>);
     impl Observe for AtomicObserver {
+        fn origin(&mut self, _origin: &crate::message::Origin) {}
         fn outcome(&mut self, _: &Result<Outcome, ErrorReport>) {
             panic!("a terminal item must carry its answer in stream_item");
         }
@@ -366,7 +395,7 @@ fn terminal_items_carry_the_original_answer_in_one_observer_call() {
             ..Image::default()
         })],
         Default::default(),
-        "image-provider",
+        crate::message::Origin::new("test.api", "image-provider", ""),
         serde_json::json!({}),
     );
     let original = Ok(Outcome::Completion(response.clone()));
@@ -487,6 +516,7 @@ fn replacing_observer_replaces_only_observer_derived_provider_context() {
 }
 
 impl Observe for ProviderObserver {
+    fn origin(&mut self, _origin: &crate::message::Origin) {}
     fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
         Some(self.0.clone())
     }
@@ -595,7 +625,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
         Ok(Relayed::Done(Box::new(CompletionResponse::new(
             vec![AssistantContent::text("body")],
             Default::default(),
-            "test",
+            crate::message::Origin::new("test.api", "test", ""),
             serde_json::json!({}),
         ))))
     }
@@ -616,7 +646,7 @@ fn an_observer_never_changes_what_the_consumer_receives() {
                     }),
                 ],
                 Default::default(),
-                "test",
+                crate::message::Origin::new("test.api", "test", ""),
                 serde_json::json!({}),
             ))))
         }),
@@ -704,7 +734,7 @@ fn done(text: &str) -> Result<Relayed, ErrorReport> {
     Ok(Relayed::Done(Box::new(CompletionResponse::new(
         vec![crate::message::AssistantContent::text(text)],
         Default::default(),
-        "local",
+        crate::message::Origin::new("test.api", "local", ""),
         serde_json::Value::Null,
     ))))
 }

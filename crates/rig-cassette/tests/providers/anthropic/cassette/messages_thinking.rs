@@ -10,7 +10,7 @@
 
 use futures::StreamExt;
 use rig::completion::Message;
-use rig::message::{AssistantContent, ReasoningContent};
+use rig::message::AssistantContent;
 use rig::providers::anthropic;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
@@ -36,11 +36,7 @@ fn thinking_params() -> serde_json::Value {
 fn has_redacted_reasoning(content: &AssistantContent) -> bool {
     matches!(
         content,
-        AssistantContent::Reasoning(reasoning)
-            if reasoning
-                .open(reasoning.issuer()).expect("sealed reasoning").content
-                .iter()
-                .any(|item| matches!(item, ReasoningContent::Redacted { .. }))
+        AssistantContent::Reasoning(reasoning) if reasoning.redacted
     )
 }
 
@@ -72,10 +68,10 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .max_tokens(4096)
                     .additional_params(thinking_params())
                     .message(Message::user(redacted_thinking_prompt()))
-                    .message(Message::Assistant {
-                        id: first_response.message_id.clone(),
+                    .message(Message::Assistant(rig::message::AssistantMessage {
                         content: first_response.choice.clone(),
-                    });
+                        ..first_response.head()
+                    }));
 
             let second_response = model
                 .call(second_request)
@@ -165,13 +161,7 @@ async fn redacted_thinking_streaming() {
                     Item::Event(StreamEvent::End {
                         content: AssistantContent::Reasoning(reasoning),
                         ..
-                    }) if reasoning
-                        .open(reasoning.issuer())
-                        .expect("sealed reasoning")
-                        .content
-                        .iter()
-                        .any(|item| matches!(item, ReasoningContent::Redacted { .. })) =>
-                    {
+                    }) if reasoning.redacted => {
                         saw_redacted_reasoning = true;
                     }
                     Item::Event(StreamEvent::Text { text, .. }) => streamed_text.push_str(&text),

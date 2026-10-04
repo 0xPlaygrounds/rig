@@ -1,6 +1,10 @@
 //! The Bedrock Converse completion wire and model identifiers.
 //! Model availability and inference-profile support depend on the AWS region.
 //!
+//! A request is built as Converse JSON and a reply is read as the JSON
+//! Bedrock sent. The AWS SDK signs and transports both; its typed request
+//! and response shapes play no part.
+//!
 //! ```no_run
 //! use rig_bedrock::{client::BedrockRuntime, completion::{AMAZON_NOVA_LITE, Converse}};
 //! use rig_core::Model;
@@ -9,23 +13,30 @@
 //! # let _ = model;
 //! ```
 
-use crate::{
-    client::BedrockRuntime,
-    streaming::StreamState,
-    types::{
-        assistant_content::{PROVIDER_NAME, reasoning_issuer},
-        completion_request::AwsCompletionRequest,
-        converse_output::InternalConverseOutput,
-        errors::{sdk_error, stream_error},
-    },
-};
-
-use aws_sdk_bedrockruntime::types as aws_bedrock;
-use rig_core::completion::CompletionRequest;
+use aws_sdk_bedrockruntime::config::http::HttpResponse;
+use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
+use aws_sdk_bedrockruntime::operation::RequestId;
+use aws_sdk_bedrockruntime::types::GuardrailTrace;
+use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
+use rig_core::json_utils::Lenient;
+use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
 use rig_core::wire::{Descriptor, Mode, Wire};
+use serde_json::{Value, json};
+
+use crate::capture::{self, Capture, Events};
+use crate::client::BedrockRuntime;
+use crate::request;
+use crate::streaming::StreamState;
+use crate::types::errors::sdk_error;
+
+/// Stable descriptor name reported on normalized Bedrock responses.
+pub const PROVIDER_NAME: &str = "aws_bedrock";
+
+// Profile identifiers with a us. prefix route inference within the US region
+// family; callers elsewhere must select a supported regional profile.
 
 // Profile identifiers with a us. prefix route inference within the US region
 // family; callers elsewhere must select a supported regional profile.
@@ -36,22 +47,6 @@ pub const AMAZON_NOVA_LITE: &str = "amazon.nova-lite-v1:0";
 pub const AMAZON_NOVA_MICRO: &str = "amazon.nova-micro-v1:0";
 /// `amazon.nova-pro-v1:0`
 pub const AMAZON_NOVA_PRO: &str = "amazon.nova-pro-v1:0";
-/// `amazon.nova-canvas-v1:0` image generation model
-pub const AMAZON_NOVA_CANVAS: &str = "amazon.nova-canvas-v1:0";
-/// `amazon.nova-reel-v1:0` video generation model
-pub const AMAZON_NOVA_REEL_V1_0: &str = "amazon.nova-reel-v1:0";
-/// `amazon.nova-reel-v1:1` video generation model
-pub const AMAZON_NOVA_REEL_V1_1: &str = "amazon.nova-reel-v1:1";
-/// `amazon.nova-sonic-v1:0` speech model
-pub const AMAZON_NOVA_SONIC: &str = "amazon.nova-sonic-v1:0";
-/// `amazon.rerank-v1:0` rerank model
-pub const AMAZON_RERANK_1_0: &str = "amazon.rerank-v1:0";
-/// `amazon.titan-embed-text-v1` embedding model
-pub const AMAZON_TITAN_EMBEDDINGS_G1_TEXT: &str = "amazon.titan-embed-text-v1";
-/// `amazon.titan-embed-image-v1` multimodal embedding model
-pub const AMAZON_TITAN_MULTIMODAL_EMBEDDINGS_G1: &str = "amazon.titan-embed-image-v1";
-/// `amazon.titan-embed-text-v2:0` embedding model
-pub const AMAZON_TITAN_TEXT_EMBEDDINGS_V2: &str = "amazon.titan-embed-text-v2:0";
 
 /// `us.anthropic.claude-haiku-4-5-20251001-v1:0` (cross-region profile)
 pub const ANTHROPIC_CLAUDE_HAIKU_4_5: &str = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -66,18 +61,8 @@ pub const ANTHROPIC_CLAUDE_SONNET_5: &str = "us.anthropic.claude-sonnet-5";
 /// `us.anthropic.claude-opus-5` (cross-region profile)
 pub const ANTHROPIC_CLAUDE_OPUS_5: &str = "us.anthropic.claude-opus-5";
 
-/// `cohere.embed-english-v3` embedding model
-pub const COHERE_EMBED_ENGLISH: &str = "cohere.embed-english-v3";
-/// `cohere.embed-multilingual-v3` embedding model
-pub const COHERE_EMBED_MULTILINGUAL: &str = "cohere.embed-multilingual-v3";
-/// `cohere.rerank-v3-5:0` rerank model
-pub const COHERE_RERANK_V3_5: &str = "cohere.rerank-v3-5:0";
-
 /// `us.deepseek.r1-v1:0` (cross-region profile)
 pub const DEEPSEEK_R1: &str = "us.deepseek.r1-v1:0";
-
-/// `luma.ray-v2:0` video generation model
-pub const LUMA_RAY_V2_0: &str = "luma.ray-v2:0";
 
 /// `meta.llama3-8b-instruct-v1:0`
 pub const LLAMA_3_8B_INSTRUCT: &str = "meta.llama3-8b-instruct-v1:0";
@@ -105,48 +90,112 @@ pub const MISTRAL_MIXTRAL_8X7B_INSTRUCT_V0: &str = "mistral.mixtral-8x7b-instruc
 /// `us.mistral.pixtral-large-2502-v1:0` (cross-region profile)
 pub const MISTRAL_PIXTRAL_LARGE_2502: &str = "us.mistral.pixtral-large-2502-v1:0";
 
-/// `stability.sd3-5-large-v1:0` image generation model
-pub const STABILITY_SD3_5_LARGE: &str = "stability.sd3-5-large-v1:0";
-/// `stability.stable-image-core-v1:1` image generation model
-pub const STABILITY_STABLE_IMAGE_CORE_1_0: &str = "stability.stable-image-core-v1:1";
-/// `stability.stable-image-ultra-v1:1` image generation model
-pub const STABILITY_STABLE_IMAGE_ULTRA_1_0: &str = "stability.stable-image-ultra-v1:1";
-
-/// `twelvelabs.pegasus-1-2-v1:0` video-understanding model
-pub const TWELVELABS_PEGASUS_V1_2: &str = "twelvelabs.pegasus-1-2-v1:0";
-
 /// `us.writer.palmyra-x4-v1:0` (cross-region profile)
 pub const WRITER_PALMYRA_X4: &str = "us.writer.palmyra-x4-v1:0";
 /// `us.writer.palmyra-x5-v1:0` (cross-region profile)
 pub const WRITER_PALMYRA_X5: &str = "us.writer.palmyra-x5-v1:0";
+
+/// The model family behind a Converse model id. It decides what history a
+/// model reads back: Claude reads reasoning signatures, rejects unsigned
+/// reasoning, and reads images; Nova reads S3 objects and video; both read
+/// a tool result's status.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+    /// Anthropic Claude.
+    Claude,
+    /// Amazon Nova.
+    Nova,
+    /// Any other model.
+    Other,
+}
+
+impl Family {
+    /// The family of the provider a Bedrock model id names. A base model id
+    /// or a system inference profile is `[geography.]provider.model`, also
+    /// the last part of a foundation-model or inference-profile ARN. An
+    /// application inference profile or provisioned model ARN names no
+    /// provider, so it is [`Family::Other`] unless the caller states its
+    /// family with [`Converse::with_family`].
+    ///
+    /// ```
+    /// use rig_bedrock::completion::{AMAZON_NOVA_PRO, ANTHROPIC_CLAUDE_SONNET_4_5, Family};
+    ///
+    /// assert_eq!(Family::of(ANTHROPIC_CLAUDE_SONNET_4_5), Family::Claude);
+    /// assert_eq!(Family::of(AMAZON_NOVA_PRO), Family::Nova);
+    /// assert_eq!(
+    ///     Family::of("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3"),
+    ///     Family::Other
+    /// );
+    /// ```
+    pub fn of(model: &str) -> Self {
+        let id = model.rsplit('/').next().unwrap_or(model);
+        let mut parts = id.rsplit('.');
+        match (parts.next(), parts.next()) {
+            (_, Some("anthropic")) => Self::Claude,
+            (Some(name), Some("amazon")) if name.starts_with("nova") => Self::Nova,
+            _ => Self::Other,
+        }
+    }
+}
 
 /// The Converse endpoint for one model: `Converse` for a unary call,
 /// `ConverseStream` for a streamed one.
 #[derive(Clone, Debug)]
 pub struct Converse {
     pub model: String,
+    /// The family of `model` when the caller states it, which an
+    /// application inference profile ARN needs: its id names no provider.
+    /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
+    /// the model id decides.
+    pub family: Option<Family>,
     /// When enabled, cache checkpoints are inserted into Converse API requests
     /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
-    /// Marks system content and, when history contains no reasoning, the final
-    /// message. Disabled by default.
+    /// Marks system content and, when the request sends no reasoning, the
+    /// final message. Disabled by default.
     pub prompt_caching: bool,
-    /// Guardrail applied to unary Converse requests, if any.
+    /// The `guardrailConfig` of unary Converse requests, if any.
     /// Set through [`Converse::with_guardrail`].
-    pub guardrail: Option<aws_bedrock::GuardrailConfiguration>,
+    pub guardrail: Option<Value>,
 }
 
 impl Converse {
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
+            family: None,
             prompt_caching: false,
             guardrail: None,
         }
     }
 
+    /// State the family of this wire's model, for a model id that names no
+    /// provider, such as an application inference profile ARN.
+    ///
+    /// ```
+    /// use rig_bedrock::completion::{Converse, Family};
+    ///
+    /// let profile = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3";
+    /// let wire = Converse::new(profile).with_family(Family::Claude);
+    /// assert_eq!(wire.family(profile), Family::Claude);
+    /// ```
+    pub fn with_family(mut self, family: Family) -> Self {
+        self.family = Some(family);
+        self
+    }
+
+    /// The family of `model`: the stated one for this wire's own model,
+    /// otherwise [`Family::of`] its id.
+    pub fn family(&self, model: &str) -> Family {
+        match self.family {
+            Some(family) if model == self.model => family,
+            _ => Family::of(model),
+        }
+    }
+
     /// Enables checkpoints after system content and the final message.
-    /// History containing reasoning suppresses the message checkpoint. Tool
-    /// definitions are not marked; model-specific caching limits apply.
+    /// A request that sends reasoning gets no message checkpoint: Bedrock
+    /// rejects one anywhere after a reasoning turn. Tool definitions are
+    /// not marked; model-specific caching limits apply.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -162,71 +211,53 @@ impl Converse {
         mut self,
         identifier: impl Into<String>,
         version: impl Into<String>,
-        trace: aws_bedrock::GuardrailTrace,
+        trace: GuardrailTrace,
     ) -> Self {
-        self.guardrail = Some(
-            aws_bedrock::GuardrailConfiguration::builder()
-                .guardrail_identifier(identifier)
-                .guardrail_version(version)
-                .trace(trace)
-                .build(),
-        );
+        self.guardrail = Some(json!({
+            "guardrailIdentifier": identifier.into(),
+            "guardrailVersion": version.into(),
+            "trace": trace.as_str(),
+        }));
         self
     }
-
-    fn request_model<'a>(&'a self, model: Option<&'a str>) -> &'a str {
-        model.unwrap_or(&self.model)
-    }
 }
 
-/// One Converse request: the model it addresses and the request prepared
-/// for it.
+/// One Converse request: the model it addresses and its JSON body.
+#[derive(Clone, Debug)]
 pub struct ConverseRequest {
     pub model: String,
-    pub request: AwsCompletionRequest,
-    pub guardrail: Option<aws_bedrock::GuardrailConfiguration>,
+    pub body: Value,
 }
 
-/// One unit of a Converse reply.
+/// One unit of a Converse reply, as the JSON Bedrock sent.
+#[derive(Clone, Debug)]
 pub enum ConverseFrame {
-    /// The reply opened: the model it answers for, and the AWS request id
-    /// from the SDK's response metadata.
-    Opened {
-        model: String,
-        request_id: Option<String>,
-    },
-    /// The whole unary reply.
-    Whole(Box<InternalConverseOutput>),
-    /// One streamed event.
-    Event(aws_bedrock::ConverseStreamOutput),
+    /// A whole unary reply. It is also the response's `raw`.
+    Whole(Value),
+    /// One stream event or in-band exception, as `{"<type>": <payload>}`.
+    Event(Value),
 }
 
 impl Wire for Converse {
     type Op = Completion;
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
-    type Decoder<'id> = StreamState<'id>;
+    type Decoder<'id> = StreamState;
 
     fn describe(&self) -> Descriptor<'_> {
-        Descriptor::new(PROVIDER_NAME).model(self.model.as_str())
+        Descriptor::new(PROVIDER_NAME)
+            .model(self.model.as_str())
+            .replay(self)
     }
 
-    /// Claude reasoning on Bedrock is Anthropic's; other models' is
-    /// Bedrock's, so a request replays only the reasoning its model's issuer
-    /// signed.
     fn encode(
         &self,
         request: CompletionRequest,
-        _mode: Mode,
+        mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
-        let model = self.request_model(request.model.as_deref()).to_owned();
-        let issuer = rig_core::message::Issuer::from(reasoning_issuer(&model));
-        let request = request.replayable_to(std::slice::from_ref(&issuer))?;
-        Ok(ConverseRequest {
-            request: AwsCompletionRequest::new(request, issuer, self.prompt_caching),
-            model,
-            guardrail: self.guardrail.clone(),
-        })
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let body = request::body(self, request, &model, mode == Mode::Unary)?;
+        Ok(ConverseRequest { model, body })
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -234,110 +265,200 @@ impl Wire for Converse {
     }
 }
 
+/// Model families pi's catalog lists as text-only on Bedrock, separated by
+/// spaces.
+const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-70b \
+    meta.llama3-1- meta.llama3-3- minimax. mistral.devstral mistral.mistral-7b \
+    mistral.mistral-large-2402 mistral.mistral-small-2402 mistral.mixtral mistral.voxtral \
+    moonshot.kimi-k2-thinking nvidia.nemotron-nano-3 nvidia.nemotron-nano-9b \
+    nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
+    qwen.qwen3-next writer.palmyra zai.glm";
+
+impl ReplayTarget for Converse {
+    fn api(&self) -> Api {
+        Api::from_static("bedrock.converse")
+    }
+
+    fn provider(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Converse reads images in user turns and tool results, never in
+    /// assistant turns. Claude reads them; so does every other model but
+    /// the text-only families.
+    fn accepts(&self, model: &str) -> Accepts {
+        let images = self.family(model) == Family::Claude
+            || !TEXT_ONLY
+                .split_whitespace()
+                .any(|family| model.contains(family));
+        Accepts {
+            user_images: images,
+            assistant_images: false,
+            tool_result_images: images,
+            tools: true,
+        }
+    }
+
+    /// Claude binds its thinking to the request's tools and system prompt
+    /// on Converse as on Anthropic's own API.
+    fn binds_context(&self, model: &str) -> bool {
+        self.family(model) == Family::Claude
+            && rig_core::providers::anthropic::completion::binds_context(model)
+    }
+
+    /// Converse rejects a conversation that does not start with a user
+    /// message.
+    fn starts_with_user(&self) -> bool {
+        true
+    }
+
+    /// A later system message goes as user text where it stands, so adding
+    /// one never changes the cached prefix before it.
+    fn later_system(&self, _model: &str) -> rig_core::completion::LaterSystem {
+        rig_core::completion::LaterSystem::UserText
+    }
+
+    /// Converse takes user and assistant messages only in alternation.
+    fn alternates_roles(&self) -> bool {
+        true
+    }
+
+    /// Converse takes a hosted tool's use and result only beside a
+    /// `toolConfig`, which only the request's own tools make.
+    fn hosted_needs_tools(&self) -> bool {
+        true
+    }
+
+    /// Only the request's tools reach Converse's `toolConfig`;
+    /// `additional_params` go to `additionalModelRequestFields`. Converse
+    /// has no `none` tool choice, so `ToolChoice::None` sends no
+    /// `toolConfig`, and Converse rejects tool blocks without one.
+    fn declares_tools(&self, request: &CompletionRequest) -> bool {
+        !request.tools.is_empty() && !matches!(request.tool_choice, Some(ToolChoice::None))
+    }
+
+    fn sends_alone(&self, block: &rig_core::message::AssistantContent) -> bool {
+        crate::request::sends(block, self)
+    }
+
+    /// Converse carries images in its four formats, documents in a format it
+    /// lists, and inline data, which must be valid base64. Only Nova reads S3
+    /// objects and video. Converse rejects a document's text source and
+    /// takes no audio, so a string document goes as its text.
+    fn encodes(&self, model: &str, media: Media<'_>) -> bool {
+        let nova = self.family(model) == Family::Nova;
+        let stored = |data: &DocumentSourceKind| {
+            nova || !matches!(data, DocumentSourceKind::Url(url) if url.starts_with("s3://"))
+        };
+        match media {
+            Media::Image(image, _) => stored(&image.data) && request::image(image).is_ok(),
+            Media::Document(document) => {
+                stored(&document.data) && request::document(document).is_ok()
+            }
+            Media::Video(video) => {
+                nova && self.accepts(model).user_images && request::video(video).is_ok()
+            }
+            Media::Audio(_) => false,
+        }
+    }
+
+    /// Converse tool-use ids match `[a-zA-Z0-9_-]{1,64}`.
+    fn normalize_tool_call_id(&self, id: &str, _model: &str, _source: Option<&Origin>) -> String {
+        rig_core::providers::internal::wire_ids::legal_call_id(id, 64)
+    }
+
+    fn call_id_slot(&self) -> Option<&'static str> {
+        Some("/toolUse/toolUseId")
+    }
+
+    /// A hosted tool's use is a typed `toolUse`; its result is the
+    /// `toolResult` in the same turn. Converse rejects one without the other.
+    fn hosted_pair(&self, item: &Value) -> Option<(Pairing, String)> {
+        let (side, body) = match item.get("toolUse") {
+            Some(body) => (Pairing::Use, body),
+            None => (Pairing::Result, item.get("toolResult")?),
+        };
+        Some((side, body.str("toolUseId")?.to_owned()))
+    }
+}
+
+/// The request id of a sent Converse call, and its failure, if the SDK
+/// read one.
+fn sent<O: RequestId, E: ProvideErrorMetadata>(
+    sent: Result<O, SdkError<E, HttpResponse>>,
+) -> (Option<String>, Option<ProviderError>) {
+    match sent {
+        Ok(output) => (output.request_id().map(str::to_owned), None),
+        Err(error) => (
+            error.request_id().map(str::to_owned),
+            Some(sdk_error(error)),
+        ),
+    }
+}
+
 impl Transport<Converse> for BedrockRuntime {
     fn send(&self, payload: ConverseRequest, exchange: Exchange) -> Opening<ConverseFrame> {
-        let mode = exchange.mode;
-        let ConverseRequest {
-            model,
-            request,
-            guardrail,
-        } = payload;
-        let additional_params = request.additional_params();
-        let inference_config = request.inference_config();
-        let prepared = (|| {
-            Ok::<_, ProviderError>((
-                request.tools_config()?,
-                request.output_config()?,
-                request.system_prompt()?,
-                request.messages()?,
-            ))
-        })();
-        let (tool_config, output_config, system_prompt, messages) = match prepared {
-            Ok(prepared) => prepared,
-            Err(error) => return Opening::failed(error),
+        let ConverseRequest { model, body } = payload;
+        let capture = match serde_json::to_vec(&body) {
+            Ok(body) => Capture::new(body),
+            Err(error) => return Opening::failed(ProviderError::request(error)),
         };
         let runtime = self.clone();
         Opening::new(async move {
             let client = runtime.inner().await;
-            match mode {
-                Mode::Unary => {
-                    let sent = client
-                        .converse()
-                        .model_id(model.clone())
-                        .set_additional_model_request_fields(additional_params)
-                        .set_inference_config(Some(inference_config))
-                        .set_tool_config(tool_config)
-                        .set_system(system_prompt)
-                        .set_messages(Some(messages))
-                        .set_output_config(output_config)
-                        .set_guardrail_config(guardrail)
-                        .send()
-                        .await
-                        .map_err(sdk_error)
-                        .and_then(|response| {
-                            InternalConverseOutput::try_from(response).map_err(|error| {
-                                ProviderError::Provider(format!("Type conversion error: {error}"))
-                            })
-                        });
-                    Ok(match sent {
-                        Ok(output) => {
-                            let request_id = output.request_id().map(str::to_owned);
-                            Opened::new(futures::stream::iter([
-                                Ok(ConverseFrame::Opened {
-                                    model,
-                                    request_id: request_id.clone(),
-                                }),
-                                Ok(ConverseFrame::Whole(Box::new(output))),
-                            ]))
-                            .with_request_id(request_id)
-                        }
-                        Err(error) => Opened::failed(error),
-                    })
+            let unary = exchange.mode == Mode::Unary;
+            let interceptor = capture.clone();
+            let (request_id, failure) = if unary {
+                let call = client.converse().model_id(model).customize();
+                sent(call.interceptor(interceptor).send().await)
+            } else {
+                let call = client.converse_stream().model_id(model).customize();
+                sent(call.interceptor(interceptor).send().await)
+            };
+            // A success's body is never the SDK's to read, so the SDK fails a
+            // unary call it could not deserialize; the reply is decoded here.
+            let Some(mut body) = capture.reply() else {
+                let failure = failure.unwrap_or_else(|| {
+                    ProviderError::Response("Converse sent no reply".to_owned())
+                });
+                return Ok(Opened::failed(failure));
+            };
+            if unary {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = capture::chunk(&mut body).await {
+                    bytes.extend(chunk?);
                 }
-                Mode::Streaming => {
-                    let sent = client
-                        .converse_stream()
-                        .model_id(model.clone())
-                        .set_additional_model_request_fields(additional_params)
-                        .set_inference_config(Some(inference_config))
-                        .set_tool_config(tool_config)
-                        .set_system(system_prompt)
-                        .set_messages(Some(messages))
-                        .set_output_config(output_config)
-                        .send()
-                        .await;
-                    let response = match sent {
-                        Ok(response) => response,
-                        Err(error) => {
-                            return Ok(Opened::failed(sdk_error(error)));
-                        }
-                    };
-                    // Events do not carry the request id the terminal record
-                    // reports: it is the operation's metadata.
-                    let request_id =
-                        aws_sdk_bedrockruntime::operation::RequestId::request_id(&response)
-                            .map(str::to_owned);
-                    let opened = ConverseFrame::Opened {
-                        model,
-                        request_id: request_id.clone(),
-                    };
-                    let frames = async_stream::stream! {
-                        yield Ok(opened);
-                        let mut stream = response.stream;
-                        loop {
-                            match stream.recv().await {
-                                Ok(Some(output)) => yield Ok(ConverseFrame::Event(output)),
-                                Ok(None) => break,
-                                Err(error) => {
-                                    yield Err(stream_error(error.into_service_error()));
-                                    break;
-                                }
+                let document: Value = serde_json::from_slice(&bytes)
+                    .map_err(|error| ProviderError::Json(error.into()))?;
+                let frames = futures::stream::iter([Ok(ConverseFrame::Whole(document.clone()))]);
+                return Ok(Opened::new(frames)
+                    .with_request_id(request_id)
+                    .with_document(document));
+            }
+            let frames = async_stream::stream! {
+                let mut events = Events::default();
+                while let Some(chunk) = capture::chunk(&mut body).await {
+                    match chunk {
+                        Ok(chunk) => {
+                            for event in events.read(&chunk) {
+                                yield Ok(ConverseFrame::Event(event));
                             }
                         }
-                    };
-                    Ok(Opened::new(frames).with_request_id(request_id))
+                        Err(error) => {
+                            yield Err(error);
+                            break;
+                        }
+                    }
                 }
-            }
+            };
+            Ok(Opened::new(frames).with_request_id(request_id))
         })
     }
 }
+
+#[cfg(test)]
+mod tests;

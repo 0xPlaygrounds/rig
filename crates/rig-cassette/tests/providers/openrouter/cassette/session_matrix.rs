@@ -42,6 +42,32 @@ async fn same_model() {
     sessions::assert_recorded(CELL, SCENARIO);
 }
 
+/// Another model gets the first model's reasoning as text and none of its
+/// signatures: a turn's provider items replay only to the model that
+/// produced it, another Claude model included.
+fn assert_recorded_on_another_model(scenario: &str) {
+    use crate::history_survival::{Dialect, response_tokens};
+
+    let paths = crate::cassettes::recorded_request_paths(CELL.provider, scenario);
+    let bodies = crate::cassettes::recorded_interaction_bodies(CELL.provider, scenario);
+    assert_eq!(bodies.len(), 2, "one turn and one continuation");
+    let delivered = response_tokens(Dialect::from_path(&paths[0]), &bodies[0].1);
+    let signatures: Vec<_> = delivered
+        .iter()
+        .filter(|token| token.kind == "signature" && !token.value.contains("REDACTED"))
+        .collect();
+    assert!(
+        !signatures.is_empty(),
+        "the first model delivered a signature"
+    );
+    for token in signatures {
+        assert!(
+            !bodies[1].0.contains(&token.value),
+            "a signature reached another model: {token:?}"
+        );
+    }
+}
+
 /// The loaded history continues on another model of the same provider.
 #[tokio::test]
 async fn other_model() {
@@ -51,7 +77,7 @@ async fn other_model() {
         sessions::run(first, other, CELL).await;
     })
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    assert_recorded_on_another_model(SCENARIO);
 }
 
 /// The continuation is checkpointed, restored into a fresh world, and sent
@@ -67,7 +93,7 @@ async fn checkpoint_other_model() {
         },
     )
     .await;
-    sessions::assert_recorded(CELL, SCENARIO);
+    assert_recorded_on_another_model(SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second

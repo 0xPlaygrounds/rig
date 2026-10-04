@@ -109,9 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_wI1akQxIqqcuEFnCfDQ0OjV4"
-                }
+                "provider": "call_hYvcHqnvg367Ywz9ip3JLrJW"
               },
               "function": {
                 "name": "lookup",
@@ -119,23 +117,35 @@
                   "q": "What is the capital of France?"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"q\":\"What is the capital of France?\"}",
+                    "name": "lookup"
+                  },
+                  "id": "call_hYvcHqnvg367Ywz9ip3JLrJW",
+                  "type": "function"
+                },
+                "fingerprint": "6b843a8cce4bb089"
+              }
             }
           ],
           "usage": {
             "input_tokens": 181,
-            "output_tokens": 156,
-            "total_tokens": 337,
+            "output_tokens": 92,
+            "total_tokens": 273,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 128
+            "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBMw4CpUdfvo57JOkcicx6HD6U0",
-          "provider_request_id": "req_dafc629354774277a7c8649f95bc5e8b",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUe0Xv4QY538a259OpJDRTrqcurBf"
+          },
+          "provider_request_id": "req_7d495abe2c5045a6a27ba40052dad954",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -152,7 +162,7 @@
                         "arguments": "{\"q\":\"What is the capital of France?\"}",
                         "name": "lookup"
                       },
-                      "id": "call_wI1akQxIqqcuEFnCfDQ0OjV4",
+                      "id": "call_hYvcHqnvg367Ywz9ip3JLrJW",
                       "type": "function"
                     }
                   ]
@@ -160,17 +170,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDBMw4CpUdfvo57JOkcicx6HD6U0",
+            "id": "chatcmpl-EUe0Xv4QY538a259OpJDRTrqcurBf",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 156,
+              "completion_tokens": 92,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 128,
+                "reasoning_tokens": 64,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 181,
@@ -178,7 +188,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 337
+              "total_tokens": 273
             }
           }
         }
@@ -252,17 +262,20 @@
           ],
           "usage": {
             "input_tokens": 22,
-            "output_tokens": 10,
-            "total_tokens": 32,
+            "output_tokens": 74,
+            "total_tokens": 96,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 64
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBOIUSqjsdQTqDH9GHdEjGPW03u",
-          "provider_request_id": "req_4b3da74c60074b64867863c158e6cfc6",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUe0YoVKLHh4Vnv8SsiTe0GezTal1"
+          },
+          "provider_request_id": "req_d20cc2bf49e94b91af15beff1e2d1646",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -277,17 +290,17 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDBOIUSqjsdQTqDH9GHdEjGPW03u",
+            "id": "chatcmpl-EUe0YoVKLHh4Vnv8SsiTe0GezTal1",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",
             "system_fingerprint": null,
             "usage": {
-              "completion_tokens": 10,
+              "completion_tokens": 74,
               "completion_tokens_details": {
                 "accepted_prediction_tokens": 0,
                 "audio_tokens": 0,
-                "reasoning_tokens": 0,
+                "reasoning_tokens": 64,
                 "rejected_prediction_tokens": 0
               },
               "prompt_tokens": 22,
@@ -295,7 +308,7 @@
                 "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "total_tokens": 32
+              "total_tokens": 96
             }
           }
         }
@@ -326,14 +339,11 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_wI1akQxIqqcuEFnCfDQ0OjV4"
-                    }
+                    "provider": "call_hYvcHqnvg367Ywz9ip3JLrJW"
                   },
                   "function": {
                     "name": "lookup",
@@ -341,10 +351,27 @@
                       "q": "What is the capital of France?"
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"q\":\"What is the capital of France?\"}",
+                        "name": "lookup"
+                      },
+                      "id": "call_hYvcHqnvg367Ywz9ip3JLrJW",
+                      "type": "function"
+                    },
+                    "fingerprint": "6b843a8cce4bb089"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "response_model": "gpt-5-mini-2025-08-07",
+                "response_id": "chatcmpl-EUe0Xv4QY538a259OpJDRTrqcurBf"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -352,9 +379,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_wI1akQxIqqcuEFnCfDQ0OjV4"
-                    }
+                    "provider": "call_hYvcHqnvg367Ywz9ip3JLrJW"
                   },
                   "name": "lookup",
                   "content": [
@@ -414,12 +439,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBPvN6pQo8spa7stmakU2i5Z8lX",
-          "provider_request_id": "req_aa5f58d170e64710980f8935f2bf7656",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-EUe0ZiYSPDNiTSQtiVSCIGq6RKbjh"
+          },
+          "provider_request_id": "req_2274a4e7ceb8438eac8a12e01af73563",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {
@@ -434,7 +462,7 @@
               }
             ],
             "created": 0,
-            "id": "chatcmpl-ERDBPvN6pQo8spa7stmakU2i5Z8lX",
+            "id": "chatcmpl-EUe0ZiYSPDNiTSQtiVSCIGq6RKbjh",
             "model": "gpt-5-mini-2025-08-07",
             "object": "chat.completion",
             "service_tier": "default",

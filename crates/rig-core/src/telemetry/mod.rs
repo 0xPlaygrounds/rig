@@ -7,8 +7,7 @@
 //! ```
 use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
-    DocumentSourceKind, Image, MimeType, Reasoning, ReasoningContent, ToolResult,
-    ToolResultContent, UserContent,
+    DocumentSourceKind, Image, MimeType, Opaque, ToolResult, ToolResultContent, UserContent,
 };
 use base64::Engine;
 use serde::Serialize;
@@ -482,6 +481,9 @@ enum TelemetryPart {
     Reasoning {
         content: String,
     },
+    Opaque {
+        kind: String,
+    },
     Uri {
         #[serde(skip_serializing_if = "Option::is_none")]
         mime_type: Option<String>,
@@ -543,21 +545,12 @@ fn image_part(image: &Image) -> Option<TelemetryPart> {
     media_part(&image.data, image.media_type.as_ref(), "image")
 }
 
-fn reasoning_parts(reasoning: &Reasoning) -> Vec<TelemetryPart> {
-    reasoning
-        .content
-        .iter()
-        .map(|content| {
-            let content = match content {
-                ReasoningContent::Text { text, .. } | ReasoningContent::Summary(text) => text,
-                ReasoningContent::Encrypted(content) => content,
-                ReasoningContent::Redacted { data } => data,
-            };
-            TelemetryPart::Reasoning {
-                content: content.clone(),
-            }
-        })
-        .collect()
+/// A provider-only item, named by its `type` and nothing else: its payload
+/// is the provider's, not content.
+fn opaque_part(opaque: &Opaque) -> TelemetryPart {
+    TelemetryPart::Opaque {
+        kind: opaque.kind().unwrap_or("unknown").to_owned(),
+    }
 }
 
 fn tool_result_response(result: &ToolResult) -> serde_json::Value {
@@ -615,10 +608,13 @@ fn assistant_parts(content: &[AssistantContent]) -> Vec<TelemetryPart> {
             AssistantContent::ToolCall(tool_call) => vec![TelemetryPart::ToolCall {
                 id: Some(tool_call.id.to_string()),
                 name: tool_call.function.name.clone().into(),
-                arguments: tool_call.function.arguments.clone(),
+                arguments: tool_call.function.arguments_value(),
             }],
-            AssistantContent::Reasoning(reasoning) => reasoning_parts(reasoning.value()),
+            AssistantContent::Reasoning(reasoning) => vec![TelemetryPart::Reasoning {
+                content: reasoning.text.clone(),
+            }],
             AssistantContent::Image(image) => image_part(image).into_iter().collect(),
+            AssistantContent::Opaque(opaque) => vec![opaque_part(opaque)],
         })
         .collect()
 }
@@ -637,9 +633,9 @@ fn input_messages(messages: &[Message]) -> Vec<TelemetryChatMessage> {
                 role: "user",
                 parts: user_parts(content),
             },
-            Message::Assistant { content, .. } => TelemetryChatMessage {
+            Message::Assistant(turn) => TelemetryChatMessage {
                 role: "assistant",
-                parts: assistant_parts(content),
+                parts: assistant_parts(&turn.content),
             },
         })
         .collect()

@@ -145,30 +145,44 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_5da55878294a4a1d995b2bbc"
-                }
+                "provider": "call_f55a544f61964944b0d8b90a"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_f55a544f61964944b0d8b90a",
+                  "type": "function"
+                },
+                "fingerprint": "6b0256eb9e5e7345"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_56f6ae1067714e16b7defcfb"
-                }
+                "provider": "call_f84a3fbe491c4427af5799d3"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_f84a3fbe491c4427af5799d3",
+                  "type": "function"
+                },
+                "fingerprint": "a468145f8708f5c8"
+              }
             }
           ],
           "usage": {
@@ -178,37 +192,45 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146040-6JwwO0vohBWS5sd3KKpI",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790976317-HLhaKy9O6OJcHWH7jziU"
+          },
           "finish_reason": "tool_calls",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 410,
-              "completion_tokens": 36,
-              "total_tokens": 446,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 36,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 410,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 446
             },
             "finish_reason": "tool_calls",
-            "response_id": "gen-1790146040-6JwwO0vohBWS5sd3KKpI",
+            "response_id": "gen-1790976317-HLhaKy9O6OJcHWH7jziU",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }
@@ -238,16 +260,23 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_5da55878294a4a1d995b2bbc"
-                }
+                "provider": "call_f55a544f61964944b0d8b90a"
               },
               "function": {
                 "name": "lookup_harbor_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_harbor_label"
+                  },
+                  "id": "call_f55a544f61964944b0d8b90a",
+                  "type": "function"
+                },
+                "fingerprint": "6b0256eb9e5e7345"
+              }
             }
           }
         },
@@ -275,20 +304,32 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_56f6ae1067714e16b7defcfb"
-                }
+                "provider": "call_f84a3fbe491c4427af5799d3"
               },
               "function": {
                 "name": "lookup_orchard_label",
                 "arguments": {}
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{}",
+                    "name": "lookup_orchard_label"
+                  },
+                  "id": "call_f84a3fbe491c4427af5799d3",
+                  "type": "function"
+                },
+                "fingerprint": "a468145f8708f5c8"
+              }
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     },
     {
       "tool_output": {},
@@ -362,37 +403,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_f55a544f61964944b0d8b90a"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_f55a544f61964944b0d8b90a",
+                      "type": "function"
+                    },
+                    "fingerprint": "6b0256eb9e5e7345"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_f84a3fbe491c4427af5799d3"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_f84a3fbe491c4427af5799d3",
+                      "type": "function"
+                    },
+                    "fingerprint": "a468145f8708f5c8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790976317-HLhaKy9O6OJcHWH7jziU"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -400,9 +462,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_f55a544f61964944b0d8b90a"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -415,9 +475,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_f84a3fbe491c4427af5799d3"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -477,37 +535,45 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "gen-1790146041-aVXcvXhEXfOpIGMcq0X8",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "doubleword",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "response_id": "gen-1790976318-onvra09rJpNrVn2N7m6q"
+          },
           "finish_reason": "stop",
-          "provider": "doubleword",
-          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
             "usage": {
-              "prompt_tokens": 477,
-              "completion_tokens": 14,
-              "total_tokens": 491,
-              "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 0
-              },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              },
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_24h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
               },
               "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 14,
+              "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
+                "reasoning_tokens": 0
+              },
+              "prompt_tokens": 477,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 491
             },
             "finish_reason": "stop",
-            "response_id": "gen-1790146041-aVXcvXhEXfOpIGMcq0X8",
+            "response_id": "gen-1790976318-onvra09rJpNrVn2N7m6q",
             "model": "Qwen/Qwen3.5-397B-A17B-FP8",
             "additional_params": {
               "created": 0,
-              "object": "chat.completion.chunk"
+              "object": "chat.completion.chunk",
+              "service_tier": "default"
             }
           }
         }
@@ -636,7 +702,12 @@
             }
           }
         }
-      ]
+      ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      }
     },
     {
       "tool_output": null,
@@ -659,37 +730,58 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_f55a544f61964944b0d8b90a"
                   },
                   "function": {
                     "name": "lookup_harbor_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_harbor_label"
+                      },
+                      "id": "call_f55a544f61964944b0d8b90a",
+                      "type": "function"
+                    },
+                    "fingerprint": "6b0256eb9e5e7345"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_f84a3fbe491c4427af5799d3"
                   },
                   "function": {
                     "name": "lookup_orchard_label",
                     "arguments": {}
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "lookup_orchard_label"
+                      },
+                      "id": "call_f84a3fbe491c4427af5799d3",
+                      "type": "function"
+                    },
+                    "fingerprint": "a468145f8708f5c8"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790976317-HLhaKy9O6OJcHWH7jziU"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -697,9 +789,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_5da55878294a4a1d995b2bbc"
-                    }
+                    "provider": "call_f55a544f61964944b0d8b90a"
                   },
                   "name": "lookup_harbor_label",
                   "content": [
@@ -712,9 +802,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_56f6ae1067714e16b7defcfb"
-                    }
+                    "provider": "call_f84a3fbe491c4427af5799d3"
                   },
                   "name": "lookup_orchard_label",
                   "content": [
@@ -728,13 +816,20 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "text",
                   "text": "The labels are crimson-harbor and silver-orchard."
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "doubleword",
+                "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_model": "Qwen/Qwen3.5-397B-A17B-FP8",
+                "response_id": "gen-1790976318-onvra09rJpNrVn2N7m6q"
+              },
+              "stop": "stop"
             }
           ]
         }

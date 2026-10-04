@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 
 use rig_agent::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig_core::message::{
-    AssistantContent, ImageMediaType, Message, ReasoningContent, ToolResultContent, UserContent,
+    AssistantContent, ImageMediaType, Message, Native, Reasoning, ToolResultContent, UserContent,
 };
 use rig_core::tool::{Tool, ToolOutput};
 
@@ -361,24 +361,35 @@ pub async fn run(
     }
 }
 
-fn reasoning_blocks(history: &[Message]) -> Vec<&ReasoningContent> {
+/// Whether a provider item carries a non-empty `key`.
+pub(crate) fn item_has(native: Option<&Native>, key: &str) -> bool {
+    let present = |item: &Value| {
+        item.get(key)
+            .is_some_and(|value| value.as_str().is_none_or(|value| !value.is_empty()))
+    };
+    // A Chat Completions reasoning block holds its details in an array.
+    native.is_some_and(|native| {
+        present(&native.item)
+            || native.item["reasoning_details"]
+                .as_array()
+                .is_some_and(|details| details.iter().any(present))
+    })
+}
+
+fn reasoning_blocks(history: &[Message]) -> Vec<&Reasoning> {
     history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .flatten()
         .filter_map(|content| match content {
-            AssistantContent::Reasoning(reasoning) => Some(
-                &reasoning
-                    .open(reasoning.issuer())
-                    .expect("sealed reasoning")
-                    .content,
-            ),
+            AssistantContent::Reasoning(reasoning) => Some(reasoning),
             _ => None,
         })
-        .flatten()
         .collect()
 }
 
@@ -388,15 +399,15 @@ fn tool_call_signatures(history: &[Message]) -> usize {
     history
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { content, .. } => Some(content),
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
+                Some(content)
+            }
             _ => None,
         })
         .flatten()
         .filter(|content| match content {
-            AssistantContent::ToolCall(call) => call.signature.is_some(),
-            AssistantContent::Text(text) => {
-                rig_core::providers::gemini::text_thought_signature(text).is_some()
-            }
+            AssistantContent::ToolCall(call) => item_has(call.native.as_ref(), "thoughtSignature"),
+            AssistantContent::Text(text) => item_has(text.native.as_ref(), "thoughtSignature"),
             _ => false,
         })
         .count()
@@ -451,7 +462,7 @@ pub fn assert_run(cell: Cell, observation: &Observation) {
     let mut prompts = 0usize;
     for message in &observation.history {
         match message {
-            Message::Assistant { content, .. } => {
+            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 assert!(
                     open.is_empty(),
                     "[{provider}] assistant turn follows unanswered calls {open:?}"
@@ -493,17 +504,12 @@ pub fn assert_run(cell: Cell, observation: &Observation) {
 
     let blocks = reasoning_blocks(&observation.history);
     let signed = blocks.iter().any(|block| {
-        matches!(
-            block,
-            ReasoningContent::Text {
-                signature: Some(_),
-                ..
-            }
-        )
+        item_has(block.native.as_ref(), "signature")
+            || item_has(block.native.as_ref(), "thoughtSignature")
     }) || tool_call_signatures(&observation.history) > 0;
     let encrypted = blocks
         .iter()
-        .any(|block| matches!(block, ReasoningContent::Encrypted(_)));
+        .any(|block| item_has(block.native.as_ref(), "encrypted_content"));
     let expectations = [
         ("reasoning", cell.expect.reasoning, !blocks.is_empty()),
         ("signed", cell.expect.signed, signed),

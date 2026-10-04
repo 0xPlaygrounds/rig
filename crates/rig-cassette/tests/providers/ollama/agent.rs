@@ -8,7 +8,10 @@ use crate::support::assert_nonempty_response;
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn completion_smoke() {
-    let ollama = OllamaModels::new(OllamaConfig::new(), rig::rig_reqwest::shared());
+    let ollama = OllamaModels::new(
+        OllamaConfig::new(),
+        rig_test_support::cassettes::local_http(),
+    );
     let agent = rig::AgentBuilder::new(ollama.completion("qwen3:4b"))
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

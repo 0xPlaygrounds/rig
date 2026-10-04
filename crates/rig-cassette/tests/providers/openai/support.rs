@@ -62,7 +62,7 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Op
     let openai = OpenAiCassette::new(
         cassette.api_key("OPENAI_API_KEY"),
         cassette.base_url(),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     );
 
     (cassette, openai)
@@ -469,7 +469,7 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     let openai = OpenAiCassette::new(
         "sk-invalid-websocket-edge-matrix-key",
         cassette.base_url(),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
@@ -496,7 +496,7 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
     let openai = OpenAiCassette::new(
         "sk-invalid-edge-matrix-key",
         cassette.base_url(),
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     );
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;

@@ -83,11 +83,14 @@
             "output_tokens": 32,
             "total_tokens": 1019
           },
-          "message_id": null,
-          "response_id": "chatcmpl-RF3qVUP0rHULoAF19njUKfJJ",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "venice",
+            "model": "mistral-small-3-2-24b-instruct",
+            "response_model": "mistral-small-3-2-24b-instruct",
+            "response_id": "chatcmpl-RF3qVUP0rHULoAF19njUKfJJ"
+          },
           "finish_reason": "stop",
-          "provider": "venice",
-          "model": "mistral-small-3-2-24b-instruct",
           "raw": {
             "choices": [
               {

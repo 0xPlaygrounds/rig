@@ -101,23 +101,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace."
-                  }
-                }
-              ]
+              "text": "The user provided their name and job. I need to extract: first_name, last_name, job.",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user provided their name and job. I need to extract: first_name, last_name, job."
+                },
+                "fingerprint": "718339557d2dc0e1"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381"
-                }
+                "provider": "call_00_ToHW0y26bw56tw1ofkKC2884"
               },
               "function": {
                 "name": "submit",
@@ -127,22 +122,34 @@
                   "job": "mathematician"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                    "name": "submit"
+                  },
+                  "id": "call_00_ToHW0y26bw56tw1ofkKC2884",
+                  "type": "function"
+                },
+                "fingerprint": "4fa297faeef8cbd5"
+              }
             }
           ],
           "usage": {
             "input_tokens": 441,
-            "output_tokens": 105,
-            "total_tokens": 546,
-            "cached_input_tokens": 0,
-            "reasoning_tokens": 30
+            "output_tokens": 96,
+            "total_tokens": 537,
+            "cached_input_tokens": 256,
+            "reasoning_tokens": 21
           },
-          "message_id": null,
-          "response_id": "c555e587-01bd-4b21-b545-020000c68065",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "response_model": "deepseek-flash",
+            "response_id": "b6ff80e3-c308-434a-b90a-78100be739c3"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -151,7 +158,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "The user wants me to extract structured data. Name: Ada Lovelace, job: mathematician. First name Ada, last name Lovelace.",
+                  "reasoning_content": "The user provided their name and job. I need to extract: first_name, last_name, job.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -159,7 +166,7 @@
                         "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
                         "name": "submit"
                       },
-                      "id": "call_00_b8tQ0HkeE0vMo0tZ9wa26381",
+                      "id": "call_00_ToHW0y26bw56tw1ofkKC2884",
                       "index": 0,
                       "type": "function"
                     }
@@ -168,22 +175,22 @@
               }
             ],
             "created": 0,
-            "id": "c555e587-01bd-4b21-b545-020000c68065",
+            "id": "b6ff80e3-c308-434a-b90a-78100be739c3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 105,
+              "completion_tokens": 96,
               "completion_tokens_details": {
-                "reasoning_tokens": 30
+                "reasoning_tokens": 21
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 441,
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 185,
               "prompt_tokens": 441,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 256
               },
-              "total_tokens": 546
+              "total_tokens": 537
             }
           }
         }

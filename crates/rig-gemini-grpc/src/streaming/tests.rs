@@ -1,9 +1,11 @@
 use super::*;
 use crate::completion::tests::{complete, stream_from_events};
+use base64::Engine as _;
 use futures::StreamExt;
 use rig_core::completion::CompletionResponse;
-use rig_core::message::{AssistantContent, Reasoning, ReasoningContent};
+use rig_core::message::{AssistantContent, Reasoning};
 use rig_core::streaming::{Item, StreamEvent};
+use serde_json::json;
 
 fn thought_part(text: &str, signature: &[u8]) -> proto::Part {
     proto::Part {
@@ -39,16 +41,24 @@ async fn reasoning_blocks(events: Vec<proto::GenerateContentResponse>) -> Vec<Re
             ..
         }) = item.expect("stream item should be ok")
         {
-            blocks.push(reasoning.open(reasoning.issuer()).cloned().expect("opens"));
+            blocks.push(reasoning);
         }
     }
     blocks
 }
 
-// Streaming parity with the unary conversion (completion.rs
-// `Reasoning::new_with_signature` + base64): a signed thought part must
-// reach the normalized stream as a completed signed Reasoning block that
-// restates the accumulated thought text.
+/// The REST part a signed thought block holds: the joined text and the
+/// signature as standard base64 over the wire's bytes.
+fn signed_thought(text: &str, signature: &[u8]) -> serde_json::Value {
+    json!({
+        "text": text,
+        "thought": true,
+        "thoughtSignature": base64::engine::general_purpose::STANDARD.encode(signature),
+    })
+}
+
+// Consecutive thought parts continue one block, which holds the merged
+// part with the signature.
 #[tokio::test]
 async fn signed_thought_part_restates_accumulated_text_with_signature() {
     let signature_bytes = b"opaque-signature".as_slice();
@@ -64,14 +74,10 @@ async fn signed_thought_part_restates_accumulated_text_with_signature() {
     let signed = blocks
         .last()
         .expect("the signed part must yield a Reasoning block");
+    assert_eq!(signed.text, "think1 think2");
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: "think1 think2".to_string(),
-            // The expected encoding is the unary path's: standard base64
-            // over the wire's signature bytes.
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("think1 think2", signature_bytes))
     );
 }
 
@@ -94,11 +100,8 @@ async fn signature_on_empty_trailer_part_still_carries_the_signature() {
         .last()
         .expect("the signed trailer must yield a Reasoning block");
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: "thinking...".to_string(),
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("thinking...", signature_bytes))
     );
 }
 
@@ -116,12 +119,10 @@ async fn signature_without_any_thought_text_still_surfaces() {
     let signed = blocks
         .last()
         .expect("a lone signature must yield a Reasoning block");
+    assert!(signed.text.is_empty());
     assert_eq!(
-        signed.content,
-        vec![ReasoningContent::Text {
-            text: String::new(),
-            signature: Some(base64::engine::general_purpose::STANDARD.encode(signature_bytes)),
-        }]
+        signed.native.as_ref().map(|native| &native.item),
+        Some(&signed_thought("", signature_bytes))
     );
 }
 
@@ -200,6 +201,7 @@ fn failed_response(
 struct Drained {
     errors: Vec<String>,
     reached_terminal: bool,
+    failed: bool,
     text: String,
 }
 
@@ -208,6 +210,7 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
     let mut drained = Drained {
         errors: Vec::new(),
         reached_terminal: false,
+        failed: false,
         text: String::new(),
     };
 
@@ -218,54 +221,39 @@ async fn drain(events: Vec<proto::GenerateContentResponse>) -> Drained {
             Err(error) => drained.errors.push(error.to_string()),
         }
     }
-    drained.reached_terminal = stream.finish().await.is_ok();
+    if let Ok(response) = stream.finish().await {
+        drained.reached_terminal = true;
+        drained.failed = response.stop().is_failure();
+    }
 
     drained
 }
 
-// The gRPC surface only set `is_final` on a nonzero finish reason, so an
-// aborted tool protocol read as a completed turn. It must now fail, as
-// the REST surface always has.
+// A tool-protocol finish ends the turn as a failure, which is never
+// replayed, rather than failing the reply.
 #[tokio::test]
-async fn malformed_function_call_fails_the_stream_with_no_terminal() {
-    let drained = drain(vec![failed_response(
-        proto::candidate::FinishReason::MalformedFunctionCall,
-        Some("could not parse the function call"),
-    )])
-    .await;
-
-    assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
-    let error = drained.errors.first().expect("one error");
-    assert!(
-        error.contains("MALFORMED_FUNCTION_CALL")
-            && error.contains("could not parse the function call"),
-        "error should name the reason and carry finish_message: {error}"
-    );
-    assert!(
-        !drained.reached_terminal,
-        "a failed turn must not synthesize a terminal record"
-    );
-}
-
-#[tokio::test]
-async fn unexpected_and_too_many_tool_calls_also_fail_the_stream() {
+async fn tool_protocol_finishes_end_the_turn_as_a_failure() {
     for reason in [
+        proto::candidate::FinishReason::MalformedFunctionCall,
         proto::candidate::FinishReason::UnexpectedToolCall,
         proto::candidate::FinishReason::TooManyToolCalls,
     ] {
-        let drained = drain(vec![failed_response(reason, None)]).await;
-        assert_eq!(
-            drained.errors.len(),
-            1,
-            "{} should fail the stream",
+        let drained = drain(vec![failed_response(
+            reason,
+            Some("the call was malformed"),
+        )])
+        .await;
+        assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
+        assert!(
+            drained.reached_terminal && drained.failed,
+            "{}",
             reason.as_str_name()
         );
-        assert!(!drained.reached_terminal);
     }
 }
 
-// Everything after the in-band failure is dead: an error ends the reply,
-// so a later genuine terminal cannot dress the aborted turn up as complete.
+// Everything after a failure finish is dead, so a later genuine terminal
+// cannot dress the failed turn up as complete.
 #[tokio::test]
 async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
     let drained = drain(vec![
@@ -280,9 +268,9 @@ async fn frames_after_a_tool_protocol_failure_are_not_interpreted() {
     ])
     .await;
 
-    assert_eq!(drained.errors.len(), 1, "errors: {:?}", drained.errors);
+    assert!(drained.errors.is_empty(), "errors: {:?}", drained.errors);
     assert!(drained.text.is_empty(), "text: {:?}", drained.text);
-    assert!(!drained.reached_terminal);
+    assert!(drained.reached_terminal && drained.failed);
 }
 
 // Ordinary terminals are untouched by the new gate.
@@ -302,26 +290,19 @@ async fn non_tool_protocol_finish_reasons_still_complete_the_turn() {
     assert!(drained.reached_terminal);
 }
 
-// The unary path routes through the same helper, so the two surfaces
-// report an aborted tool protocol with the same message.
-#[test]
-fn unary_and_streaming_report_the_same_tool_protocol_error() {
+// The unary path decodes through the same decoder, so the two surfaces
+// end a tool-protocol failure alike.
+#[tokio::test]
+async fn unary_and_streaming_report_the_same_tool_protocol_failure() {
     let response = failed_response(
         proto::candidate::FinishReason::TooManyToolCalls,
         Some("budget exhausted"),
     );
 
-    let expected = super::super::completion::tool_protocol_finish_reason_error(
-        proto::candidate::FinishReason::TooManyToolCalls as i32,
-        Some("budget exhausted"),
-    )
-    .expect("the helper must produce an error")
-    .to_string();
-
-    match complete(response) {
-        Err(err) => assert_eq!(err.to_string(), expected),
-        Ok(_) => panic!("the unary path must fail on a tool-protocol finish reason"),
-    }
+    let streamed = drain(vec![response.clone()]).await;
+    let unary = complete(response).expect("a failed turn is a reply");
+    assert!(streamed.failed);
+    assert!(unary.stop().is_failure());
 }
 
 // The streaming path maps both the initial `stream_generate_content` RPC
@@ -368,6 +349,7 @@ fn terminal_frame() -> proto::GenerateContentResponse {
             cached_content_token_count: 0,
             tool_use_prompt_token_count: 0,
             thoughts_token_count: 0,
+            ..Default::default()
         }),
         model_version: "gemini-2.5-flash".to_string(),
         response_id: "resp-grpc-stream".to_string(),
@@ -404,7 +386,7 @@ async fn stream_from_events_terminal_carries_raw() {
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        crate::rest::from_rest(raw.clone()).expect("raw must read back");
     assert_eq!(typed, terminal_frame());
     assert_eq!(terminal.usage.total_tokens, Some(5));
 }
@@ -423,18 +405,16 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
-        serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        crate::rest::from_rest(raw.clone()).expect("raw must read back");
     assert_eq!(
-        serde_json::to_value(&typed).expect("re-serialize"),
+        crate::rest::to_rest(&typed).expect("transcodes"),
         *raw,
-        "the capture must be exactly what the terminal type serializes to"
+        "the capture is exactly the terminal message's REST JSON"
     );
     assert_eq!(typed, terminal_frame());
     assert_eq!(
-        raw.pointer("/candidates/0/finish_reason"),
-        Some(&serde_json::json!(
-            proto::candidate::FinishReason::Stop as i32
-        ))
+        raw.pointer("/candidates/0/finishReason"),
+        Some(&serde_json::json!("STOP"))
     );
 
     // Feeding the capture back through the same pipeline tells the same
@@ -442,41 +422,41 @@ async fn terminal_raw_round_trips_into_the_terminal_type() {
     let renormalized = normalized_terminal(vec![typed]).await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason(), renormalized.finish_reason());
-    assert_eq!(terminal.model, renormalized.model);
+    assert_eq!(terminal.model(), renormalized.model());
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(
         terminal.finish_reason(),
         Some(rig_core::completion::FinishReason::Stop)
     );
-    assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash"));
+    assert_eq!(terminal.model(), Some("gemini-2.5-flash"));
     assert_eq!(
         terminal.identity().response_id.as_deref(),
         Some("resp-grpc-stream")
     );
 }
 
-/// Streamed reasoning names the Gemini service, as unary reasoning does.
+/// A streamed turn names this wire as its origin: the Gemini API, as the
+/// REST wire does, and this provider, so it replays only here.
 #[tokio::test]
-async fn the_stream_names_the_gemini_service_as_reasoning_issuer() {
+async fn the_stream_names_this_wire_as_its_origin() {
     let terminal = normalized_terminal(vec![
         response(vec![thought_part("hmm", b"sig")], 0),
         terminal_frame(),
     ])
     .await;
-    assert_eq!(terminal.provider, super::super::completion::PROVIDER_NAME);
-    let Some(AssistantContent::Reasoning(reasoning)) = terminal.choice.first() else {
-        panic!("reasoning first: {:?}", terminal.choice);
-    };
-    assert_eq!(
-        reasoning.issuer().as_str(),
-        super::super::completion::REASONING_ISSUER
-    );
+    assert_eq!(terminal.provider(), super::super::completion::PROVIDER_NAME);
+    assert_eq!(terminal.origin.api.as_str(), "gemini.generate_content");
+    assert!(matches!(
+        terminal.choice.first(),
+        Some(AssistantContent::Reasoning(_))
+    ));
 }
 
 /// The streamed twin of a signed answer: the text, then an empty part
-/// carrying the signature. The signature stays on its own empty part.
+/// carrying the signature, then more text. The parts continue one text
+/// block, which holds the merged part with the signature.
 #[tokio::test]
-async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
+async fn a_trailing_signed_part_continues_the_text_it_follows() {
     let mut signed = text_part("");
     signed.thought_signature = b"sig".to_vec();
     let mut stream = stream_from_events(
@@ -493,23 +473,142 @@ async fn a_trailing_signed_part_keeps_its_signature_on_its_own_text() {
         item.expect("stream item");
     }
     let choice = stream.finish().await.expect("terminal").choice;
-    let texts: Vec<(String, bool)> = choice
-        .iter()
-        .map(|part| match part {
-            rig_core::message::AssistantContent::Text(text) => (
-                text.text.clone(),
-                rig_core::providers::gemini::text_thought_signature(text).is_some(),
-            ),
-            other => panic!("answer text only: {other:?}"),
-        })
-        .collect();
-    // The terminal frame's own text starts after the signed part.
     assert_eq!(
-        texts,
-        [
-            ("289".to_owned(), false),
-            (String::new(), true),
-            ("!".to_owned(), false)
+        choice,
+        vec![
+            AssistantContent::text("289!")
+                .with_native(json!({ "text": "289!", "thoughtSignature": "c2ln" }))
         ]
+    );
+}
+
+/// Safety ratings and citations reach the response's `raw`, since a turn
+/// keeps provider data on its blocks only.
+#[tokio::test]
+async fn safety_ratings_and_citations_reach_raw() {
+    let mut frame = terminal_frame();
+    if let Some(candidate) = frame.candidates.first_mut() {
+        candidate.safety_ratings = vec![proto::SafetyRating {
+            category: proto::HarmCategory::Harassment as i32,
+            probability: proto::safety_rating::HarmProbability::Negligible as i32,
+            blocked: false,
+        }];
+        candidate.citation_metadata = Some(proto::CitationMetadata {
+            citation_sources: vec![proto::CitationSource {
+                start_index: Some(0),
+                end_index: Some(4),
+                uri: Some("https://example.com".to_owned()),
+                license: None,
+            }],
+        });
+    }
+    let terminal = normalized_terminal(vec![frame]).await;
+    let native = terminal
+        .raw
+        .pointer("/candidates/0")
+        .cloned()
+        .expect("the terminal candidate");
+    assert_eq!(
+        native.get("safetyRatings"),
+        Some(&json!([{ "category": "HARM_CATEGORY_HARASSMENT", "probability": "NEGLIGIBLE" }]))
+    );
+    assert_eq!(
+        native.pointer("/citationMetadata/citationSources/0/uri"),
+        Some(&json!("https://example.com"))
+    );
+}
+
+/// Code execution's language and outcome are proto enums; the REST JSON
+/// spells them by name.
+#[test]
+fn code_execution_parts_restate_with_rest_enum_names() {
+    let content = proto::Content {
+        parts: vec![
+            proto::Part {
+                data: Some(proto::part::Data::ExecutableCode(proto::ExecutableCode {
+                    language: proto::executable_code::Language::Python as i32,
+                    code: "print(1)".to_owned(),
+                })),
+                ..Default::default()
+            },
+            proto::Part {
+                data: Some(proto::part::Data::CodeExecutionResult(
+                    proto::CodeExecutionResult {
+                        outcome: proto::code_execution_result::Outcome::Ok as i32,
+                        output: "1\n".to_owned(),
+                    },
+                )),
+                ..Default::default()
+            },
+        ],
+        role: "model".to_owned(),
+    };
+    assert_eq!(
+        crate::rest::to_rest(&content).expect("transcodes"),
+        json!({"role": "model", "parts": [
+            {"executableCode": {"language": "PYTHON", "code": "print(1)"}},
+            {"codeExecutionResult": {"outcome": "OUTCOME_OK", "output": "1\n"}},
+        ]})
+    );
+}
+
+/// #2475: a blocked prompt's only reply carries `promptFeedback` and no
+/// candidate. It is the provider's refusal, naming the reason and ratings,
+/// as on REST, never a truncated reply.
+#[test]
+fn a_blocked_prompt_is_a_refusal_on_grpc() {
+    let blocked = proto::GenerateContentResponse {
+        prompt_feedback: Some(proto::PromptFeedback {
+            block_reason: proto::prompt_feedback::BlockReason::Safety as i32,
+            safety_ratings: vec![proto::SafetyRating {
+                category: proto::HarmCategory::HateSpeech as i32,
+                probability: proto::safety_rating::HarmProbability::High as i32,
+                blocked: true,
+            }],
+        }),
+        ..Default::default()
+    };
+    let error = complete(blocked).expect_err("a blocked prompt is no answer");
+    assert!(error.report().refusal, "{error:?}");
+    let message = error.to_string();
+    assert!(
+        message.contains("block_reason=SAFETY")
+            && message.contains("HARM_CATEGORY_HATE_SPEECH=HIGH"),
+        "{message}"
+    );
+}
+
+/// A part of a kind the proto does not declare arrives with no data, its
+/// signature alone. The turn replays to the same model without it, never
+/// as a part with no data.
+#[test]
+fn a_part_of_an_undeclared_kind_never_replays_without_data() {
+    use rig_core::message::Message;
+    let signed = proto::Part {
+        data: None,
+        thought_signature: b"sig".to_vec(),
+        ..Default::default()
+    };
+    let response = complete(response(
+        vec![signed, text_part("answer")],
+        proto::candidate::FinishReason::Stop as i32,
+    ))
+    .expect("the reply decodes");
+    let history = vec![
+        Message::user("q"),
+        Message::Assistant(response.continued(response.choice.clone())),
+    ];
+    let wire = crate::completion::GenerateContent::new(crate::completion::GEMINI_2_5_FLASH);
+    let mut request = rig_core::completion::CompletionRequest::new("next");
+    request.chat_history = rig_core::completion::adapt(&history, &wire);
+    let request = rig_core::wire::Wire::encode(&wire, request, rig_core::wire::Mode::Unary)
+        .expect("the history encodes");
+    let parts: Vec<_> = request.contents.iter().flat_map(|c| &c.parts).collect();
+    assert!(parts.iter().all(|part| part.data.is_some()), "{parts:?}");
+    assert!(
+        parts
+            .iter()
+            .any(|part| part.data == Some(proto::part::Data::Text("answer".to_owned()))),
+        "{parts:?}"
     );
 }

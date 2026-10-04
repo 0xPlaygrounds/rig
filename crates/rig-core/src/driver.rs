@@ -285,8 +285,8 @@ where
         mode: Mode,
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        <W::Op as Operation>::validate(&request)?;
         let describe = self.wire.describe();
+        let request = <W::Op as Operation>::prepare(request, &describe)?;
         let provider = describe.name.to_owned();
         let mut call = Call::new(&describe, mode);
         let fold = <W::Op as Operation>::fold(&request, &mut call);
@@ -507,7 +507,7 @@ where
 /// Feed frames already in hand through `decoder` into `reply`, as [`read`]
 /// does: the reply ends at the provider's end, or the decoder decides at EOF.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
-fn feed<'id, Op, F, D>(
+pub(crate) fn feed<'id, Op, F, D>(
     decoder: &mut D,
     reply: &'id Mutex<Shared<Op>>,
     frames: impl IntoIterator<Item = F>,
@@ -566,34 +566,6 @@ pub(crate) fn settle<Op: Operation>(
     }
 }
 
-/// Decode a reply whose frames are already in hand through `wire`'s
-/// decoder and `fold`, without a transport: what a caller that reads a
-/// provider's frames itself (a websocket session, a whole body) finishes a
-/// reply with.
-#[cfg(any(test, feature = "websocket"))]
-pub(crate) fn decode_frames<W: Wire>(
-    wire: &W,
-    fold: <W::Op as Operation>::Fold,
-    frames: impl IntoIterator<Item = W::Frame>,
-    reply: crate::wire::Reply,
-) -> Result<Response<W>, ProviderError> {
-    let shared = Mutex::new(Shared::new(fold));
-    let fed = feed(&mut wire.decoder(), &shared, frames);
-    settle(shared, fed, reply).outcome
-}
-
-/// A whole reply body of an HTTP wire, decoded as its one frame: what a
-/// caller holding the body finishes a reply with.
-#[cfg(any(test, feature = "websocket"))]
-pub(crate) fn decode_body<W: Wire<Frame = crate::wire::WireFrame>>(
-    wire: &W,
-    fold: <W::Op as Operation>::Fold,
-    body: String,
-    reply: crate::wire::Reply,
-) -> Result<Response<W>, ProviderError> {
-    decode_frames(wire, fold, [crate::wire::WireFrame::Text(body)], reply)
-}
-
 /// A completion reply decoded from frames already in hand, as the bus
 /// relays it: its items, then the response, or the error that ended it.
 #[cfg(any(test, feature = "test-utils"))]
@@ -608,7 +580,9 @@ where
     use crate::streaming::Relayed;
 
     let provider = wire.describe().name.to_owned();
-    let shared = Mutex::new(Shared::new(crate::operation::Turn::new(provider.clone())));
+    let shared = Mutex::new(Shared::new(crate::operation::Turn::relayed(
+        provider.clone(),
+    )));
     let fed = feed(&mut wire.decoder(), &shared, frames);
     let decoded = settle(
         shared,
@@ -619,13 +593,18 @@ where
             provider_request_id: None,
         },
     );
-    let relayed: Vec<Result<Relayed, ErrorReport>> = decoded
-        .items
+    let origin = decoded
+        .outcome
+        .as_ref()
+        .map(|response| response.origin.clone())
+        .ok();
+    let relayed: Vec<Result<Relayed, ErrorReport>> = origin
+        .map(|origin| Ok(Relayed::Origin(origin)))
         .into_iter()
-        .map(|item| match item {
+        .chain(decoded.items.into_iter().map(|item| match item {
             Ok(item) => Ok(Relayed::Item(item)),
             Err(error) => Err(ErrorReport::from(&error)),
-        })
+        }))
         // An error that ended the reply is already its last item.
         .chain(
             decoded
@@ -668,7 +647,7 @@ impl Decoded<crate::operation::Completion> {
 macro_rules! decode_events {
     ($decoder:expr, $provider:expr, $events:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::new($provider),
+            $crate::operation::Turn::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;
@@ -697,7 +676,7 @@ pub(crate) use decode_events;
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
         $crate::driver::decode_with(
-            $crate::operation::Turn::new($provider),
+            $crate::operation::Turn::relayed($provider),
             $provider,
             |reply| {
                 let mut decoder = $decoder;

@@ -90,7 +90,14 @@
           "choice": [
             {
               "type": "text",
-              "text": "ready."
+              "text": "ready.",
+              "native": {
+                "item": {
+                  "text": "ready.",
+                  "type": "text"
+                },
+                "fingerprint": "6e6a093ada329f96"
+              }
             }
           ],
           "usage": {
@@ -100,12 +107,15 @@
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
-          "message_id": "msg_011CfLcYpTf9vpMWpGnJxMDq",
-          "response_id": null,
+          "origin": {
+            "api": "anthropic.messages",
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "response_model": "claude-sonnet-4-6",
+            "response_id": "msg_011CfLcYpTf9vpMWpGnJxMDq"
+          },
           "provider_request_id": "req_011CfLcYp3MVAu8dRnCWASmi",
           "finish_reason": "stop",
-          "provider": "anthropic",
-          "model": "claude-sonnet-4-6",
           "raw": {
             "container": null,
             "content": [

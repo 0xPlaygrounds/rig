@@ -68,14 +68,13 @@ const NO_THINK: &str = "/no_think ";
 
 /// The assistant turn a tool result answers.
 fn lookup_call_turn(id: &str) -> Message {
-    Message::Assistant {
-        id: None,
-        content: vec![AssistantContent::tool_call(
+    Message::Assistant(rig_core::message::AssistantMessage::new(vec![
+        AssistantContent::tool_call(
             id,
             rig_core::message::ToolName::new("lookup").expect("tool name"),
             json!({}),
-        )],
-    }
+        ),
+    ]))
 }
 
 /// The tool calls a recorded assistant message asked for.
@@ -155,7 +154,7 @@ async fn a_zero_argument_tool_is_called_with_an_empty_object() {
             .expect("tool_choice: required must produce a call");
         assert_eq!(call.function.name, "ping");
         assert_eq!(
-            call.function.arguments,
+            call.function.arguments_value(),
             json!({}),
             "a zero-argument call must normalize to an empty object"
         );
@@ -335,7 +334,7 @@ async fn two_independent_calls_arrive_in_one_turn() {
         );
         for call in &calls {
             assert!(
-                call.function.arguments.is_object(),
+                call.function.invalid_arguments.is_none(),
                 "each call's arguments must parse: {call:?}"
             );
         }
@@ -601,7 +600,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
     let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .connect(rig::http_client::ReqwestClient::default())
+        .connect(rig_test_support::cassettes::local_reqwest())
         .completion(CASSETTE_MODEL);
 
     let error = model
@@ -653,7 +652,7 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
     let model = OpenAIConfig::with_key(&LLAMACPP, "")
         .with_base_url("http://127.0.0.1:1/v1")
-        .connect(rig::http_client::ReqwestClient::default())
+        .connect(rig_test_support::cassettes::local_reqwest())
         .completion(CASSETTE_MODEL);
 
     let error = model
@@ -692,6 +691,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
             .call(
                 CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
+                        is_error: false,
                         call: CallId::from_wire("call_text"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),
@@ -713,6 +713,9 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
                     },
                     lookup_call_turn("call_text"),
                 ])
+                // The request continues a tool loop, so it declares the tool;
+                // without one, its call and result reach the model as text.
+                .tool(zero_arg_tool_definition("lookup"))
                 .max_tokens(512),
             )
             .await
@@ -752,6 +755,7 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
             .call(
                 CompletionRequest::new(Message::User {
                     content: vec![UserContent::ToolResult(ToolResult {
+                        is_error: false,
                         call: CallId::from_wire("call_json"),
                         name: rig_core::message::ToolName::new("lookup".to_string())
                             .expect("tool name"),
@@ -771,6 +775,9 @@ async fn a_tool_result_carrying_json_reaches_the_model() {
                     },
                     lookup_call_turn("call_json"),
                 ])
+                // The request continues a tool loop, so it declares the tool;
+                // without one, its call and result reach the model as text.
+                .tool(zero_arg_tool_definition("lookup"))
                 .max_tokens(512),
             )
             .await

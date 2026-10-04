@@ -665,7 +665,10 @@ impl Serve for EffectLogReplayer {
                                 };
                                 let items = events.into_items();
                                 let events = items.len();
-                                let mut replayed = Vec::with_capacity(events + errors.len() + 1);
+                                let mut replayed = Vec::with_capacity(events + errors.len() + 2);
+                                replayed.extend(record.stream_origin.map(|origin| {
+                                    Ok(rig_core::streaming::Relayed::Origin(origin))
+                                }));
                                 let mut errors = errors.into_iter().peekable();
                                 let mut items = items.into_iter();
                                 for position in 0..events + errors.len() {

@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Calculate 9 - 4. Answer directly without calling a tool.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","tool_choice":"NONE","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+  body: '{"max_tokens":32,"messages":[{"content":"Calculate 9 - 4. Answer directly without calling a tool.","role":"user"}],"model":"command-a-03-2025","tool_choice":"none","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"b4eb82ee-4d13-42a3-a32a-1c6a52685771","message":{"content":[{"text":"5","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":70,"output_tokens":1},"cached_tokens":112,"tokens":{"input_tokens":1478,"output_tokens":3}}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"5","role":"assistant"}}],"created":0,"id":"996a001e-2542-4f7d-92c5-54a13b8f49d5","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":1,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":70,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":71}}'

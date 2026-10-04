@@ -130,7 +130,7 @@
                 }
               },
               "media_type": "png",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }
@@ -300,7 +300,7 @@
                 }
               },
               "media_type": "png",
-              "additional_params": null,
+              "native": null,
               "detail": null
             }
           }
@@ -323,8 +323,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 0,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 0
+          "rig_ecs::bus::effect::Seq": 0,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
@@ -332,10 +332,26 @@
             "content": [
               {
                 "type": "text",
-                "text": "The dominant non-background color is **bright red**."
+                "text": "The dominant non-background color is **bright red**.",
+                "native": {
+                  "item": {
+                    "text": "The dominant non-background color is **bright red**.",
+                    "type": "text"
+                  },
+                  "fingerprint": "74399dee01316488"
+                }
               }
             ],
-            "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
+            "head": {
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+              },
+              "stop": "stop"
+            },
             "done": true,
             "usage_recorded": true,
             "stream_validated": 0
@@ -356,7 +372,14 @@
               "choice": [
                 {
                   "type": "text",
-                  "text": "The dominant non-background color is **bright red**."
+                  "text": "The dominant non-background color is **bright red**.",
+                  "native": {
+                    "item": {
+                      "text": "The dominant non-background color is **bright red**.",
+                      "type": "text"
+                    },
+                    "fingerprint": "74399dee01316488"
+                  }
                 }
               ],
               "usage": {
@@ -366,12 +389,15 @@
                 "cached_input_tokens": 0,
                 "cache_creation_input_tokens": 0
               },
-              "message_id": "msg_011CfLcZQYGizyS5wVLcCVAo",
-              "response_id": null,
+              "origin": {
+                "api": "anthropic.messages",
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-6",
+                "response_model": "claude-sonnet-4-6",
+                "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+              },
               "provider_request_id": "req_011CfLcZQ4V2tug7PHG73GAn",
               "finish_reason": "stop",
-              "provider": "anthropic",
-              "model": "claude-sonnet-4-6",
               "raw": {
                 "container": null,
                 "content": [
@@ -403,20 +429,36 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 1,
-          "rig_ecs::bus::handlers::ServedBy": 1,
-          "rig_ecs::bus::effect::Seq": 1
+          "rig_ecs::bus::effect::Seq": 1,
+          "rig_ecs::bus::handlers::ServedBy": 1
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 3,
           "rig_ecs::agent::Role": "Assistant",
           "rig_ecs::agent::Utterance": {},
-          "rig_ecs::agent::content::parts::MessageId": "msg_011CfLcZQYGizyS5wVLcCVAo"
+          "rig_ecs::agent::content::parts::AssistantHead": {
+            "origin": {
+              "api": "anthropic.messages",
+              "provider": "anthropic",
+              "model": "claude-sonnet-4-6",
+              "response_model": "claude-sonnet-4-6",
+              "response_id": "msg_011CfLcZQYGizyS5wVLcCVAo"
+            },
+            "stop": "stop"
+          }
         },
         {
           "bevy_ecs::hierarchy::ChildOf": 10,
           "rig_ecs::agent::content::parts::ContentPart": {
             "Text": {
-              "text": "The dominant non-background color is **bright red**."
+              "text": "The dominant non-background color is **bright red**.",
+              "native": {
+                "item": {
+                  "text": "The dominant non-background color is **bright red**.",
+                  "type": "text"
+                },
+                "fingerprint": "74399dee01316488"
+              }
             }
           }
         },
@@ -429,8 +471,8 @@
             }
           },
           "rig_ecs::bus::effect::Issued": 2,
-          "rig_ecs::bus::handlers::ServedBy": 0,
-          "rig_ecs::bus::effect::Seq": 2
+          "rig_ecs::bus::effect::Seq": 2,
+          "rig_ecs::bus::handlers::ServedBy": 0
         },
         {
           "rig_ecs::agent::Conversation": "golden-conversation",

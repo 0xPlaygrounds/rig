@@ -1,13 +1,10 @@
-//! OpenRouter's refusal of provider file IDs, and its `file_data` pass,
+//! OpenRouter's handling of provider file IDs, and its `file_data` pass,
 //! asserted on the bytes the `OPENROUTER` dialect actually sends.
 //!
-//! The refusal used to be raised by OpenRouter's own message conversion; the
-//! conversion is now the shared OpenAI chat wire's `encode`, and the refusal a
-//! quirk of the `OPENROUTER` dialect. The contract is unchanged and is what
-//! these cells pin: a document addressed by provider file id is refused
-//! locally, with a message naming OpenRouter, instead of being forwarded to
-//! the gateway — while a document carrying inline `file_data` goes out as
-//! OpenRouter's `file` content part with no `file_id` beside it.
+//! OpenRouter takes no provider file id, so the adapter leaves a placeholder
+//! for a document addressed by one instead of forwarding it to the gateway,
+//! while a document carrying inline `file_data` goes out as OpenRouter's
+//! `file` content part with no `file_id` beside it.
 
 use rig::completion::CompletionRequest;
 use rig::error::ProviderError;
@@ -16,26 +13,27 @@ use rig::message::{
 };
 use rig::providers::openai::wire::Chat;
 use rig::providers::openai::wire::{OPENROUTER, OpenAIConfig};
-use rig::wire::{Body, Encoded, Mode, Wire};
+use rig::wire::{Body, Encoded, Mode, Operation, Wire};
+use rig_core::operation::Completion;
 use serde_json::Value;
 
 const MODEL: &str = "openai/gpt-4o-mini";
 
-/// The chat body the `OPENROUTER` dialect encodes for one user message, or the
-/// error it refuses with.
+/// The chat body the `OPENROUTER` dialect encodes for one user message,
+/// prepared as the driver prepares it.
 ///
 /// The key is a real credential-free config: `encode` never touches a socket,
 /// so the bytes are reachable with no cassette and no network.
 fn encoded_body(message: Message) -> Result<Value, ProviderError> {
-    let encoded = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), MODEL)
-        .encode(CompletionRequest::new(message), Mode::Unary)?;
+    let wire = Chat::new(OpenAIConfig::with_key(&OPENROUTER, "k"), MODEL);
+    let request = Completion::prepare(CompletionRequest::new(message), &wire.describe())?;
+    let encoded = wire.encode(request, Mode::Unary)?;
     Ok(sole_body(encoded))
 }
 
 /// The one serialized chat body `encoded` carries, as JSON. Separate from
 /// [`encoded_body`] because this is a test invariant rather than an encode
-/// failure: a multipart body is a bug in the wire, not an error the refusal
-/// cells may accept as their expected `Err`.
+/// failure: a multipart body is a bug in the wire.
 fn sole_body(encoded: Encoded) -> Value {
     let Body::Bytes(bytes) = encoded.request.body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
@@ -44,7 +42,7 @@ fn sole_body(encoded: Encoded) -> Value {
 }
 
 #[test]
-fn generic_document_file_id_fails_openrouter_message_conversion() {
+fn generic_document_file_id_reaches_openrouter_as_a_placeholder() {
     let message = Message::User {
         content: vec![RigUserContent::Document(Document {
             data: DocumentSourceKind::file_id("file_abc"),
@@ -53,19 +51,17 @@ fn generic_document_file_id_fails_openrouter_message_conversion() {
         })],
     };
 
-    let result = encoded_body(message);
+    let body = encoded_body(message).expect("the adapter leaves nothing the encoder refuses");
 
-    assert!(result.is_err());
-    let error = result.unwrap_err().to_string();
-    assert!(
-        error.contains("Provider file IDs are not supported for OpenRouter document inputs"),
-        "unexpected error: {error}"
+    assert_eq!(
+        body["messages"][0]["content"],
+        rig_core::completion::history::DOCUMENT_UNSENDABLE
     );
+    assert!(!body.to_string().contains("file_abc"), "{body}");
 }
 
-/// A base64 PDF is the one document shape OpenRouter accepts: it goes out as
-/// the `file` content part, with no `file_id` beside it for the dialect to
-/// refuse.
+/// A base64 PDF goes out as OpenRouter's `file` content part, with no
+/// `file_id` beside it.
 #[test]
 fn file_data_document_encodes_as_an_openrouter_file_part() {
     let message = Message::User {

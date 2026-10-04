@@ -17,7 +17,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "stream",
@@ -25,7 +25,7 @@
         }
       },
       {
-        "batch": 10,
+        "batch": 9,
         "id": 1,
         "kind": {
           "delivery": "outcome"
@@ -137,24 +137,27 @@
             "total_tokens": 23,
             "cached_input_tokens": 0
           },
-          "message_id": null,
-          "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-chat",
+            "response_model": "deepseek-flash",
+            "response_id": "935900cb-aa60-4baa-a7f1-b31ccbd038b9"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "prompt_tokens": 22,
               "completion_tokens": 1,
-              "total_tokens": 23,
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 22,
+              "prompt_tokens": 22,
               "prompt_tokens_details": {
                 "cached_tokens": 0
               },
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 22
+              "total_tokens": 23
             },
             "finish_reason": "stop",
-            "response_id": "6360de96-3a43-448b-ac1f-bcf718774a0a",
+            "response_id": "935900cb-aa60-4baa-a7f1-b31ccbd038b9",
             "model": "deepseek-flash",
             "additional_params": {
               "created": 0,
@@ -193,6 +196,11 @@
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "deepseek",
+        "model": "deepseek-chat"
+      },
       "scope": "golden/run#0"
     }
   ]

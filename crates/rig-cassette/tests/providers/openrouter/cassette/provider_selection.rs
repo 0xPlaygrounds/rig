@@ -1,6 +1,6 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use rig::providers::openrouter::{MaxPrice, ProviderPreferences, ProviderSortStrategy};
+use serde_json::json;
 
 use crate::support::assert_nonempty_response;
 
@@ -16,34 +16,20 @@ async fn provider_selection_scenarios() {
             let scenarios = [
                 (
                     "hello",
-                    ProviderPreferences::new()
-                        .order(["DeepInfra", "DeepSeek", "Chutes"])
-                        .allow_fallbacks(true)
-                        .to_json(),
+                    json!({"provider": {
+                        "order": ["DeepInfra", "DeepSeek", "Chutes"],
+                        "allow_fallbacks": true,
+                    }}),
                 ),
-                (
-                    "planet",
-                    ProviderPreferences::new()
-                        .ignore(["Google Vertex"])
-                        .to_json(),
-                ),
-                (
-                    "french hello",
-                    ProviderPreferences::new()
-                        .sort(ProviderSortStrategy::Latency)
-                        .to_json(),
-                ),
+                ("planet", json!({"provider": {"ignore": ["Google Vertex"]}})),
+                ("french hello", json!({"provider": {"sort": "latency"}})),
                 (
                     "sky color",
-                    ProviderPreferences::new()
-                        .require_parameters(true)
-                        .to_json(),
+                    json!({"provider": {"require_parameters": true}}),
                 ),
                 (
                     "country",
-                    ProviderPreferences::new()
-                        .max_price(MaxPrice::new().prompt(0.30).completion(0.50))
-                        .to_json(),
+                    json!({"provider": {"max_price": {"prompt": 0.30, "completion": 0.50}}}),
                 ),
             ];
 

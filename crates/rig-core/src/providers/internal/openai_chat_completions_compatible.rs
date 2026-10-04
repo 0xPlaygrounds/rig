@@ -1,27 +1,21 @@
-//! Shared Chat Completions error detection, finish-reason normalization, and
-//! truncated tool-call handling for decoders and typed response views.
-
-use serde::{Deserialize, Deserializer};
+//! Chat Completions error detection and finish vocabularies, shared by the
+//! Chat decoder and its dialects.
 
 use crate::completion::FinishReason;
 use crate::error::ProviderError;
+use crate::providers::openai::wire::Quirks;
 
 /// The wire's in-band provider error envelope, when this frame is one.
 ///
 /// Delivered with a 200 status, so it is not an HTTP failure: the frame is
 /// this wire's own terminal failure and the decoder models it as an event.
+/// A `null` or empty `error` can accompany valid terminal usage, and only a
+/// populated `choices` array establishes content that outranks the error.
 pub(crate) fn provider_error_envelope(data: &str) -> Option<ProviderError> {
-    provider_response_from_compatible_sse_data(data)
-}
-
-fn provider_response_from_compatible_sse_data(data: &str) -> Option<ProviderError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
-    // Null or empty-string error fields can accompany valid terminal usage.
     let error = value
         .get("error")
         .filter(|error| error.is_object() || error.as_str().is_some_and(|s| !s.is_empty()))?;
-    // Only populated choices establish content; empty choices must not mask
-    // an error and let a later terminator commit a failed turn as successful.
     if value
         .get("choices")
         .and_then(serde_json::Value::as_array)
@@ -29,155 +23,75 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<ProviderErro
     {
         return None;
     }
-
     if let Some(message) = error.get("message").and_then(serde_json::Value::as_str) {
         tracing::warn!(message, "provider returned a streaming error event");
     }
-
-    Some(crate::error::ProviderError::from_provider_body(data))
+    Some(ProviderError::from_provider_body(data))
 }
 
-/// Map an OpenAI Chat Completions-style `finish_reason` string onto the
-/// normalized vocabulary, preserving anything unrecognized verbatim.
-///
-/// Shared by the unary and streaming paths so both agree, and so a gateway
-/// inventing a new reason surfaces it rather than reading as a natural stop.
-pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
-    match reason {
-        "stop" => FinishReason::Stop,
-        // Context-window exhaustion and output-budget exhaustion both truncate.
-        "length" | "max_tokens" | "model_length" => FinishReason::Length,
-        "tool_calls" | "function_call" => FinishReason::ToolCalls,
-        "content_filter" => FinishReason::ContentFilter,
-        other => FinishReason::Other(other.to_owned()),
-    }
+/// The finish reasons every Chat dialect shares: OpenAI's, the legacy
+/// `function_call`, and the spellings compatible servers use for the same
+/// endings (`end`, `max_tokens`, Mistral's `model_length`).
+pub(crate) const CHAT_FINISHES: &[(&str, FinishReason)] = &[
+    ("stop", FinishReason::Stop),
+    ("end", FinishReason::Stop),
+    ("length", FinishReason::Length),
+    ("max_tokens", FinishReason::Length),
+    ("model_length", FinishReason::Length),
+    ("tool_calls", FinishReason::ToolCalls),
+    ("function_call", FinishReason::ToolCalls),
+    ("content_filter", FinishReason::ContentFilter),
+];
+
+/// `reason` in the dialect's documented vocabulary
+/// ([`Quirks::finishes`]) and the shared one; anything else is
+/// [`FinishReason::Other`], which fails the turn.
+pub(crate) fn finish_reason(reason: &str, quirks: &Quirks) -> FinishReason {
+    quirks
+        .finishes
+        .iter()
+        .chain(CHAT_FINISHES)
+        .find(|(name, _)| *name == reason)
+        .map_or_else(
+            || FinishReason::Other(reason.to_owned()),
+            |(_, finish)| finish.clone(),
+        )
 }
 
-/// Normalize a gateway's upstream-native finish reason case-insensitively.
-/// Unknown values are returned lowercased as [`FinishReason::Other`].
-pub(crate) fn map_native_finish_reason(reason: &str) -> FinishReason {
-    match reason.to_ascii_lowercase().as_str() {
-        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => FinishReason::Stop,
-        "length" | "max_tokens" | "max_output_tokens" | "model_length" => FinishReason::Length,
-        "tool_calls" | "function_call" | "tool_use" => FinishReason::ToolCalls,
-        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
-            FinishReason::ContentFilter
-        }
-        other => FinishReason::Other(other.to_owned()),
-    }
-}
+/// The upstream providers' own reasons a gateway forwards beside its
+/// normalized one, compared case-insensitively.
+const NATIVE_FINISHES: &[(&str, FinishReason)] = &[
+    ("stop", FinishReason::Stop),
+    ("end_turn", FinishReason::Stop),
+    ("stop_sequence", FinishReason::Stop),
+    ("complete", FinishReason::Stop),
+    ("completed", FinishReason::Stop),
+    ("length", FinishReason::Length),
+    ("max_tokens", FinishReason::Length),
+    ("max_output_tokens", FinishReason::Length),
+    ("model_length", FinishReason::Length),
+    ("tool_calls", FinishReason::ToolCalls),
+    ("function_call", FinishReason::ToolCalls),
+    ("tool_use", FinishReason::ToolCalls),
+    ("content_filter", FinishReason::ContentFilter),
+    ("safety", FinishReason::ContentFilter),
+    ("blocklist", FinishReason::ContentFilter),
+    ("prohibited_content", FinishReason::ContentFilter),
+    ("spii", FinishReason::ContentFilter),
+];
 
-/// Deserialize choices, dropping incomplete tool calls only for length finishes.
-/// A choice without a `finish_reason` falls back to a gateway's
-/// `native_finish_reason`. Dropping requires a copy with arguments repaired to
-/// `{}` to deserialize as `T`. Other defects remain deserialization errors.
-pub(crate) fn deserialize_choices_dropping_incomplete_tool_calls<'de, D, T>(
-    deserializer: D,
-) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: serde::de::DeserializeOwned,
-{
-    Vec::<serde_json::Value>::deserialize(deserializer)?
-        .into_iter()
-        .map(|mut choice| {
-            if reports_output_length(&choice) {
-                let dropped = drop_tool_calls_cut_by_budget::<T>(&mut choice);
-                if dropped > 0 {
-                    tracing::debug!(
-                        dropped,
-                        "dropping tool calls incomplete under an output-length finish reason"
-                    );
-                }
-            }
-
-            serde_json::from_value(choice).map_err(serde::de::Error::custom)
-        })
-        .collect()
-}
-
-/// Whether a raw choice blames the output-token budget. A nonempty
-/// `finish_reason` decides; otherwise `native_finish_reason` does.
-fn reports_output_length(choice: &serde_json::Value) -> bool {
-    let reason = |key: &str| {
-        choice
-            .get(key)
-            .and_then(serde_json::Value::as_str)
-            .filter(|reason| !reason.is_empty())
-    };
-    match reason("finish_reason") {
-        Some(reason) => matches!(map_openai_finish_reason(reason), FinishReason::Length),
-        None => reason("native_finish_reason")
-            .is_some_and(|native| matches!(map_native_finish_reason(native), FinishReason::Length)),
-    }
-}
-
-/// Drop incomplete argument strings from a choice and return the number removed.
-/// The caller must establish an output-length finish. Returns zero unchanged if
-/// repairing the arguments to `{}` does not make the choice deserialize as `T`.
-pub(crate) fn drop_tool_calls_cut_by_budget<T>(choice: &mut serde_json::Value) -> usize
-where
-    T: serde::de::DeserializeOwned,
-{
-    let mut probe = choice.clone();
-    if !repair_incomplete_arguments(&mut probe) || serde_json::from_value::<T>(probe).is_err() {
-        return 0;
-    }
-    drop_incomplete_arguments(choice)
-}
-
-/// Whether arguments are an empty or unparseable string; nonstrings return false.
-/// Empty strings count as incomplete because truncation can precede the first token.
-fn incomplete_arguments(call: &serde_json::Value) -> bool {
-    call.get("function")
-        .and_then(|function| function.get("arguments"))
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|raw| {
-            raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
-        })
-}
-
-fn message_tool_calls_mut(choice: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
-    choice
-        .get_mut("message")
-        .and_then(|message| message.get_mut("tool_calls"))
-        .and_then(serde_json::Value::as_array_mut)
-}
-
-fn repair_incomplete_arguments(choice: &mut serde_json::Value) -> bool {
-    let Some(tool_calls) = message_tool_calls_mut(choice) else {
-        return false;
-    };
-
-    let mut repaired = false;
-    for call in tool_calls {
-        if !incomplete_arguments(call) {
-            continue;
-        }
-        let Some(arguments) = call
-            .get_mut("function")
-            .and_then(|function| function.get_mut("arguments"))
-        else {
-            continue;
-        };
-        *arguments = serde_json::Value::String("{}".to_owned());
-        repaired = true;
-    }
-    repaired
-}
-
-fn drop_incomplete_arguments(choice: &mut serde_json::Value) -> usize {
-    let Some(tool_calls) = message_tool_calls_mut(choice) else {
-        return 0;
-    };
-
-    let before = tool_calls.len();
-    tool_calls.retain(|call| !incomplete_arguments(call));
-    before - tool_calls.len()
+/// A gateway's upstream-native finish reason, lowercased; an unknown one
+/// is [`FinishReason::Other`].
+pub(crate) fn native_finish_reason(reason: &str) -> FinishReason {
+    let reason = reason.to_ascii_lowercase();
+    NATIVE_FINISHES
+        .iter()
+        .find(|(name, _)| *name == reason)
+        .map_or_else(
+            || FinishReason::Other(reason.clone()),
+            |(_, finish)| finish.clone(),
+        )
 }
 
 #[cfg(test)]
-pub(crate) mod test_support;
-
-#[cfg(test)]
-mod tests;
+pub(crate) mod tests;

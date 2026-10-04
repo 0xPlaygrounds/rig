@@ -1,0 +1,4 @@
+disallowed-methods = [
+    { path = "serde_json::Map::remove", reason = "with preserve_order it moves the last key into the gap; use shift_remove to keep a provider item's key order" },
+    { path = "serde_json::Map::remove_entry", reason = "with preserve_order it moves the last key into the gap; use shift_remove_entry" },
+]

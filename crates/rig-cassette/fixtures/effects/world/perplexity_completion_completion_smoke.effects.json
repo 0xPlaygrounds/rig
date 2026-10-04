@@ -83,11 +83,14 @@
             "output_tokens": 74,
             "total_tokens": 101
           },
-          "message_id": null,
-          "response_id": "b287424a-8143-42d6-9c38-2390a8c956f7",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "perplexity",
+            "model": "sonar",
+            "response_model": "sonar",
+            "response_id": "b287424a-8143-42d6-9c38-2390a8c956f7"
+          },
           "finish_reason": "stop",
-          "provider": "perplexity",
-          "model": "sonar",
           "raw": {
             "choices": [
               {

@@ -61,7 +61,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
             rig_core::completion::CompletionResponse::new(
                 Vec::new(),
                 rig_core::completion::Usage::default(),
-                "test",
+                rig_core::message::Origin::new("test.api", "test", ""),
                 serde_json::json!({}),
             ),
         )));
@@ -129,7 +129,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
                 rig_core::completion::CompletionResponse::new(
                     vec![AssistantContent::text("ok")],
                     rig_core::completion::Usage::default(),
-                    "composing",
+                    rig_core::message::Origin::new("test.api", "composing", ""),
                     serde_json::json!({ "composing": "ok" }),
                 ),
             )))
@@ -414,10 +414,13 @@ impl Serve for CutShort {
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        Reply::written(|mut out| async move {
-            let _ = out.text("partial").await;
-            // Dropped here, before any `Final`.
-        })
+        Reply::written(
+            rig_core::message::Origin::new("writer", "writer", "writer"),
+            |mut out| async move {
+                let _ = out.text("partial").await;
+                // Dropped here, before any `Final`.
+            },
+        )
     }
 }
 
@@ -791,9 +794,13 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
     let (seen, kept) = record(EffectLogRecorder::keeping_stream_events()).await;
     let recorded = kept[0].events.as_ref().expect("events kept");
     assert_eq!(
-        recorded.len() + 1,
+        recorded.len() + 2,
         seen,
-        "every item the consumer received, then the response"
+        "the origin, every item the consumer received, then the response"
+    );
+    assert!(
+        kept[0].stream_origin.is_some(),
+        "the stream's origin is kept"
     );
     assert!(
         matches!(kept[0].outcome, Ok(Outcome::Completion(_))),
@@ -819,7 +826,7 @@ async fn a_stream_recorded_verbatim_replays_its_own_events() {
             .into_iter()
             .filter_map(|relayed| match relayed {
                 Relayed::Item(item) => Some(item),
-                Relayed::Done(_) => None,
+                Relayed::Origin(_) | Relayed::Done(_) => None,
             })
             .collect()
     };
@@ -948,6 +955,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            stream_origin: None,
             tool_output: None,
             parent: None,
             scope: None,
@@ -1027,6 +1035,8 @@ async fn a_streamed_error_record_replays_its_events_and_then_its_error() {
     super::register_all(&log, &mut driver).expect("fresh keys");
     let _task = spawn(driver);
     let mut stream = dispatcher.dispatch_stream(&HandlerKey::from("model"), completion_kind(true));
+    let origin = within(stream.next()).await.expect("the stream's origin");
+    assert!(matches!(origin, Ok(Relayed::Origin(_))), "{origin:?}");
     let replayed = within(stream.next()).await.expect("the recorded event");
     assert_eq!(replayed.expect("the event"), Relayed::Item(first));
     let then = within(stream.next()).await.expect("then the error");

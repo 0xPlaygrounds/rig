@@ -129,20 +129,29 @@
           "choice": [
             {
               "type": "text",
-              "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+              "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.",
+              "native": {
+                "item": {
+                  "text": "A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."
+                },
+                "fingerprint": "e562f4b78afe6f1a"
+              }
             }
           ],
           "usage": {
-            "input_tokens": 130,
+            "input_tokens": 129,
             "output_tokens": 123,
-            "total_tokens": 253,
+            "total_tokens": 252,
             "reasoning_tokens": 96
           },
-          "message_id": null,
-          "response_id": "oXizauyCK5msz7IPvfaUgQQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "sA_Aav69FJesz7IPxYLikQQ"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {
@@ -159,19 +168,19 @@
               }
             ],
             "modelVersion": "gemini-2.5-flash",
-            "responseId": "oXizauyCK5msz7IPvfaUgQQ",
+            "responseId": "sA_Aav69FJesz7IPxYLikQQ",
             "usageMetadata": {
               "candidatesTokenCount": 27,
-              "promptTokenCount": 130,
+              "promptTokenCount": 129,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 130
+                  "tokenCount": 129
                 }
               ],
               "serviceTier": "standard",
               "thoughtsTokenCount": 96,
-              "totalTokenCount": 253
+              "totalTokenCount": 252
             }
           }
         }

@@ -2,6 +2,8 @@
 
 mod completion;
 mod embeddings;
+pub mod history;
+pub mod history_conformance;
 mod memory;
 pub mod observations;
 mod relay;
@@ -13,7 +15,9 @@ mod streaming_conformance_suite;
 mod trace_capture;
 mod tracing_isolation;
 
-pub use completion::{MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn};
+pub use completion::{
+    MOCK_API, MOCK_MODEL, MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn,
+};
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
 pub use relay::MockRelay;
@@ -54,16 +58,18 @@ pub(crate) fn decode_reply<W: crate::wire::Wire>(
     frames: impl IntoIterator<Item = W::Frame>,
     raw: serde_json::Value,
 ) -> Result<crate::wire::Response<W>, crate::error::ProviderError> {
-    crate::driver::decode_frames(
-        wire,
-        fold_for(request, wire, mode),
-        frames,
+    let shared = std::sync::Mutex::new(crate::wire::Shared::new(fold_for(request, wire, mode)));
+    let fed = crate::driver::feed(&mut wire.decoder(), &shared, frames);
+    crate::driver::settle(
+        shared,
+        fed,
         crate::wire::Reply {
             provider: wire.describe().name.to_owned(),
             raw,
             provider_request_id: None,
         },
     )
+    .outcome
 }
 
 /// The fold a call to `wire` in `mode` opens for `request`, for tests that
@@ -78,4 +84,32 @@ pub(crate) fn fold_for<W: crate::wire::Wire>(
         request,
         &mut crate::wire::Call::new(&wire.describe(), mode),
     )
+}
+
+/// The documents a prepared request sent, as `(id, text)`: `prepare` folds
+/// a request's documents into its first user message as `<file id: ...>`
+/// text documents.
+pub fn sent_documents(request: &crate::completion::CompletionRequest) -> Vec<(String, String)> {
+    request
+        .chat_history
+        .iter()
+        .flat_map(|message| match message {
+            crate::message::Message::User { content } => content.iter().collect::<Vec<_>>(),
+            crate::message::Message::System { .. } | crate::message::Message::Assistant(_) => {
+                Vec::new()
+            }
+        })
+        .filter_map(|part| match part {
+            crate::message::UserContent::Document(document) => match &document.data {
+                crate::message::DocumentSourceKind::String(text) => {
+                    let body = text.strip_prefix("<file id: ")?;
+                    let (id, rest) = body.split_once(">\n")?;
+                    let text = rest.strip_suffix("\n</file>\n")?;
+                    Some((id.to_owned(), text.to_owned()))
+                }
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
 }

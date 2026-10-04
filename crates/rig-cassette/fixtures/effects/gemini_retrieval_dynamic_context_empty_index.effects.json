@@ -100,7 +100,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "A \"glarb-glarb\" is not a recognized term or concept."
+              "text": "A \"glarb-glarb\" is not a recognized term or concept.",
+              "native": {
+                "item": {
+                  "text": "A \"glarb-glarb\" is not a recognized term or concept."
+                },
+                "fingerprint": "252baf8ff55310fa"
+              }
             }
           ],
           "usage": {
@@ -109,11 +115,14 @@
             "total_tokens": 121,
             "reasoning_tokens": 77
           },
-          "message_id": null,
-          "response_id": "oXizaum2Ad-JmtkPlbOD2A8",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "oXizaum2Ad-JmtkPlbOD2A8"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "candidates": [
               {

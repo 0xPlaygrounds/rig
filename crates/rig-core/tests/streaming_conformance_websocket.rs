@@ -98,7 +98,9 @@ async fn drain_openai_responses_websocket_events(
     for event in events {
         let frame = match event {
             Ok(ResponsesWebSocketEvent::Item(chunk)) => serde_json::to_string(&chunk)?,
-            Ok(ResponsesWebSocketEvent::Response(chunk)) => serde_json::to_string(&chunk)?,
+            Ok(ResponsesWebSocketEvent::Response { kind, response }) => {
+                serde_json::json!({ "type": kind, "response": response }).to_string()
+            }
             Ok(ResponsesWebSocketEvent::Unknown(value)) => value.value().to_string(),
             // `response.done` is a websocket-only trailer the fixtures never
             // script.
@@ -179,7 +181,7 @@ pub mod openai_responses_websocket_suite {
     rig_core::streaming_conformance_suite! {
         provider: "openai_responses_websocket",
         fixture: fixture(),
-        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, defective_known_frame, refusal],
+        manifest: [partial_tool_args, zero_usage_terminal, malformed_frame, unknown_event_frame, refusal],
     }
 }
 

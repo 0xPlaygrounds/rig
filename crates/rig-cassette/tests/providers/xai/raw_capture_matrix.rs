@@ -17,7 +17,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` reads back as the Responses `CompletionResponse`, whose fields are the document's | recorded |
+//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` is the Responses response object the reply carried | recorded |
 //! | 2 | `raw_exposes_status_and_service_tier` | provider-only field | `raw.status`, `raw.service_tier` and `raw.metadata.system_fingerprint` equal the fixture body | recorded |
 //! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `x-request-id` header) and its fields are the mapping of the provider-native fields in its own `raw` | recorded |
 //!
@@ -33,9 +33,7 @@
 //! reply — is [`crate::raw_capture::responses`].
 
 use rig::completion::CompletionRequest;
-use rig::providers::openai::responses_api;
 use rig::providers::xai;
-use serde::Deserialize;
 use serde_json::json;
 
 use super::support::with_xai_cassette_result;
@@ -76,15 +74,10 @@ async fn raw_round_trips_responses_type() {
     let response = sink.take();
 
     let raw = &response.raw;
-    let typed = responses_api::CompletionResponse::deserialize(raw)
-        .expect("raw is the Responses CompletionResponse xAI parses into");
-    // `raw` is the reply document, so the typed view's fields are the
-    // document's fields.
-    assert_eq!(Some(typed.id.as_str()), raw["id"].as_str());
-    assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
-    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+    // `raw` is the reply document itself.
+    assert!(raw.is_object(), "raw is the Responses response object");
     assert_eq!(raw["status"], json!("completed"));
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(raw["id"].as_str(), response.response_id());
     // The transport id is not part of the reply document, so the capture
     // never carries it — it lives on the normalized response only.
     assert!(raw.get("provider_request_id").is_none());
@@ -165,7 +158,5 @@ async fn normalized_fields_match_raw_renormalized() {
     // The normalized fields are the mapping of the provider-native fields in
     // the response's own `raw`: one decoder reads that document once, and
     // this pins what it read rather than a second copy of the mapping.
-    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is the Responses type");
-    responses::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
+    responses::assert_native_matches_normalized(&response, &response.raw, "the native view of raw");
 }

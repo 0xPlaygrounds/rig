@@ -163,7 +163,6 @@ struct CanonicalResponseSnapshot {
     prompt: Message,
     content: Vec<AssistantContent>,
     usage: Usage,
-    message_id: Option<String>,
 }
 
 /// Records every completion outcome (both drivers) and every committed
@@ -204,7 +203,6 @@ impl AgentHook for CanonicalResponseHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
             });
         OutcomeAction::proceed()
     }
@@ -266,7 +264,6 @@ impl AgentHook for FinishLifecycleHook {
                 prompt,
                 content: response.choice.clone(),
                 usage: response.usage,
-                message_id: response.message_id.clone(),
             });
         if self.stop.load(SeqCst) {
             OutcomeAction::stop("stop at stream EOF")
@@ -307,7 +304,7 @@ fn canonical_usage() -> Usage {
 /// cassette-tested per provider).
 #[tokio::test]
 async fn completion_response_hook_and_calls_carry_identity_metadata() {
-    type IdentityTriple = (Option<String>, Option<String>, Option<String>);
+    type IdentityTriple = (Option<String>, Option<String>);
 
     #[derive(Clone, Default)]
     struct IdentityHook {
@@ -318,8 +315,7 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
         async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
             if let Some(response) = event.completion() {
                 self.seen.lock().expect("identity snapshots").push((
-                    response.message_id.clone(),
-                    response.response_id.clone(),
+                    response.response_id().map(str::to_owned),
                     response.provider_request_id.clone(),
                 ));
             }
@@ -329,7 +325,6 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 
     let hook = IdentityHook::default();
     let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")
-        .with_message_id("msg_1")
         .with_response_id("resp_1")
         .with_provider_request_id("req_1")]))
     .add_hook(hook.clone())
@@ -341,14 +336,9 @@ async fn completion_response_hook_and_calls_carry_identity_metadata() {
 
     assert_eq!(
         *hook.seen.lock().expect("identity snapshots"),
-        [(
-            Some("msg_1".to_string()),
-            Some("resp_1".to_string()),
-            Some("req_1".to_string()),
-        )]
+        [(Some("resp_1".to_string()), Some("req_1".to_string()),)]
     );
     let call = &response.completion_calls[0];
-    assert_eq!(call.message_id.as_deref(), Some("msg_1"));
     assert_eq!(call.response_id.as_deref(), Some("resp_1"));
     assert_eq!(call.provider_request_id.as_deref(), Some("req_1"));
 }
@@ -365,7 +355,6 @@ async fn absent_identity_metadata_stays_none() {
         .expect("blocking response");
 
     let call = &response.completion_calls[0];
-    assert_eq!(call.message_id, None);
     assert_eq!(call.response_id, None);
     assert_eq!(call.provider_request_id, None);
 }
@@ -1017,34 +1006,32 @@ async fn response_scoped_id_is_not_promoted_into_history() {
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { id, .. } => Some(id.clone()),
+            Message::Assistant(turn) => Some(turn.origin.is_some()),
             _ => None,
         })
         .collect();
-    assert_eq!(assistant_ids, [None]);
+    assert_eq!(assistant_ids, [true]);
 }
 
 #[tokio::test]
 async fn message_id_is_promoted_into_history() {
     let prompt = Message::user("prompt");
-    let response = AgentBuilder::new(MockCompletionModel::from_turns([
-        MockTurn::text("reply").with_message_id("msg_abc")
-    ]))
-    .build()
-    .prompt(prompt)
-    .run()
-    .await
-    .expect("blocking response");
+    let response = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("reply")]))
+        .build()
+        .prompt(prompt)
+        .run()
+        .await
+        .expect("blocking response");
 
     let messages = response.messages;
     let assistant_ids: Vec<_> = messages
         .iter()
         .filter_map(|message| match message {
-            Message::Assistant { id, .. } => Some(id.clone()),
+            Message::Assistant(turn) => Some(turn.origin.is_some()),
             _ => None,
         })
         .collect();
-    assert_eq!(assistant_ids, [Some("msg_abc".to_string())]);
+    assert_eq!(assistant_ids, [true]);
 }
 
 /// The streamed `CompletionResponse` carries the same canonical fields the
@@ -1077,7 +1064,6 @@ async fn streaming_completion_response_receives_canonical_fields() {
     let prompt = Message::user("canonical prompt");
     let hook = CanonicalResponseHook::default();
     let mut stream = relayed([[
-        MockStreamEvent::message_id("msg-canonical"),
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
     ]])
@@ -1095,7 +1081,6 @@ async fn streaming_completion_response_receives_canonical_fields() {
             prompt,
             content: vec![AssistantContent::text("canonical response")],
             usage: canonical_usage(),
-            message_id: Some("msg-canonical".to_string()),
         }]
     );
 }
@@ -1117,14 +1102,12 @@ async fn streaming_completion_response_without_provider_message_id_reports_none(
 
     let snapshots = hook.snapshots.lock().expect("finish snapshots");
     assert_eq!(snapshots.len(), 1);
-    assert_eq!(snapshots[0].message_id, None);
 }
 
 #[tokio::test]
 async fn streaming_completion_response_runs_once_for_the_ended_reply() {
     let hook = FinishLifecycleHook::default();
     let mut stream = relayed([[
-        MockStreamEvent::message_id("msg-canonical"),
         MockStreamEvent::text("canonical response"),
         MockStreamEvent::final_response(canonical_usage()),
     ]])
@@ -1143,12 +1126,6 @@ async fn streaming_completion_response_runs_once_for_the_ended_reply() {
     }
 
     assert_eq!(completion_calls, 1);
-    assert_eq!(
-        hook.snapshots.lock().expect("finish snapshots")[0]
-            .message_id
-            .as_deref(),
-        Some("msg-canonical")
-    );
     assert_eq!(hook.snapshots.lock().expect("finish snapshots").len(), 1);
     assert_eq!(hook.model_turns.load(SeqCst), 1);
 }
@@ -1610,8 +1587,10 @@ async fn run_and_stream_behave_identically_for_a_tool_call() {
     assert_eq!(blocking_hook.tool_results(), vec!["5".to_string()]);
 
     // Same final message history (compared via serialized form to normalize).
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
+    // A streamed turn cut short at its invalid call replays canonically;
+    // the parity is in the content.
+    let blocking_messages = canonical_history(&blocking.messages);
+    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -2383,7 +2362,7 @@ mod structured_tool_results {
                             result
                                 .call
                                 .provider()
-                                .map(|provider| provider.call_id.as_str())
+                                .map(|provider| provider.as_str())
                                 .expect("explicit provider ID")
                                 .to_owned(),
                         ),
@@ -3237,7 +3216,7 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3279,7 +3258,7 @@ fn tool_result_ids(messages: &[Message]) -> Vec<String> {
                         result
                             .call
                             .provider()
-                            .map(|provider| provider.call_id.as_str())
+                            .map(|provider| provider.as_str())
                             .expect("explicit provider ID")
                             .to_owned(),
                     ),
@@ -3424,7 +3403,7 @@ async fn stream_emits_tool_results_in_call_order_after_batch_settles_under_concu
                     tool_result
                         .call
                         .provider()
-                        .map(|provider| provider.call_id.as_str())
+                        .map(|provider| provider.as_str())
                         .expect("explicit provider ID")
                         .to_owned(),
                 ),
@@ -4178,10 +4157,10 @@ async fn stream_tool_execution_committed_carries_effective_rewritten_args() {
     while let Some(item) = stream.next().await {
         match item.unwrap_or_else(|err| panic!("stream item errored: {err}")) {
             MultiTurnStreamItem::ToolCall { tool_call, .. } => {
-                model_args = Some(tool_call.function.arguments)
+                model_args = Some(tool_call.function.arguments_value())
             }
             MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. } => {
-                exec_args = Some(tool_call.function.arguments);
+                exec_args = Some(tool_call.function.arguments_value());
             }
             _ => {}
         }
@@ -4721,26 +4700,6 @@ impl AgentHook for RepairInvalidToHook {
     }
 }
 
-#[derive(Clone)]
-struct CaptureAndRepairInvalidHook {
-    replacement: &'static str,
-    args: Arc<Mutex<Vec<Option<String>>>>,
-}
-
-impl AgentHook for CaptureAndRepairInvalidHook {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        event: &InvalidToolCallContext,
-    ) -> Option<InvalidToolCallAction> {
-        self.args
-            .lock()
-            .expect("invalid args")
-            .push(event.args.clone());
-        Some(InvalidToolCallAction::repair(self.replacement))
-    }
-}
-
 /// An invalid tool call repaired by a hook recovers identically under run()
 /// and stream(): the renamed tool executes and both drivers reach the same
 /// output, tool-result content, and final message history.
@@ -4821,72 +4780,6 @@ async fn invalid_tool_call_repair_parity_across_run_and_stream() {
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
-    );
-}
-
-#[tokio::test]
-async fn invalid_tool_call_scalar_args_are_canonical_across_run_and_complete_stream() {
-    let blocking_args = Arc::new(Mutex::new(Vec::new()));
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc1", "unknown_echo", json!("payload")),
-        MockTurn::text("done"),
-    ]))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .add_hook(CaptureAndRepairInvalidHook {
-        replacement: EchoStringArgs::NAME,
-        args: blocking_args.clone(),
-    })
-    .run()
-    .await
-    .expect("blocking scalar repair should succeed");
-
-    let streaming_args = Arc::new(Mutex::new(Vec::new()));
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::tool_call("tc1", "unknown_echo", json!("payload")),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-        vec![
-            MockStreamEvent::text("done"),
-            MockStreamEvent::final_response_with_total_tokens(0),
-        ],
-    ]))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .add_hook(CaptureAndRepairInvalidHook {
-        replacement: EchoStringArgs::NAME,
-        args: streaming_args.clone(),
-    })
-    .stream();
-    let mut final_response = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming scalar repair should succeed")
-        {
-            final_response = Some(response);
-        }
-    }
-    let final_response = final_response.expect("stream should yield a final response");
-
-    let canonical_args = vec![Some(serde_json::to_string("payload").unwrap())];
-    assert_eq!(*blocking_args.lock().unwrap(), canonical_args);
-    assert_eq!(*streaming_args.lock().unwrap(), canonical_args);
-    assert_eq!(blocking_hook.tool_results(), vec!["payload"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["payload"]);
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_response.output(), "done");
-    assert_eq!(
-        serde_json::to_value(blocking.messages).unwrap(),
-        serde_json::to_value(final_response.messages()).unwrap()
     );
 }
 
@@ -5222,8 +5115,10 @@ async fn invalid_tool_call_skip_parity_across_run_and_stream() {
         "the hook must observe the invalid tool call"
     );
 
-    let blocking_messages = blocking.messages;
-    let streaming_messages = final_response.messages().to_vec();
+    // A streamed turn cut short at its invalid call replays canonically;
+    // the parity is in the content.
+    let blocking_messages = canonical_history(&blocking.messages);
+    let streaming_messages = canonical_history(final_response.messages());
     assert_eq!(
         serde_json::to_value(&blocking_messages).expect("serialize blocking"),
         serde_json::to_value(&streaming_messages).expect("serialize streaming"),
@@ -5618,31 +5513,6 @@ async fn tool_target_patch_is_refused_on_stream() {
     check_tool_target_patch_is_refused(true).await;
 }
 
-struct EchoStringArgs;
-
-impl Tool for EchoStringArgs {
-    const NAME: &'static str = "echo_string_args";
-    type Error = rig::tool::ToolExecutionError;
-    type Args = String;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Echo a JSON string argument".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({"type": "string"})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        Ok(args)
-    }
-}
-
 #[derive(serde::Deserialize)]
 struct FirstGenerationArgs {
     old: String,
@@ -5854,111 +5724,6 @@ async fn valid_tool_call_rewrite_args_parity_across_run_and_stream() {
         streaming_hook.shared_events()
     );
     assert_eq!(blocking_hook.tool_results(), streaming_hook.tool_results());
-}
-
-#[tokio::test]
-async fn string_tool_call_without_rewrite_is_canonical_across_run_and_stream() {
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
-            id: "tc-string",
-            name: EchoStringArgs::NAME,
-            args: json!("original"),
-        }]),
-        ScriptedTurn::Text("done"),
-    ];
-
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
-        turns.iter().map(ScriptedTurn::as_blocking_turn),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .run()
-    .await
-    .expect("blocking string call should execute");
-
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .stream();
-    let mut final_output = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming string call should execute")
-        {
-            final_output = Some(response.output().to_string());
-        }
-    }
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_output.as_deref(), Some("done"));
-    assert_eq!(blocking_hook.tool_results(), vec!["original"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["original"]);
-}
-
-#[tokio::test]
-async fn string_tool_call_rewrite_is_canonical_json_across_run_and_stream() {
-    let turns = [
-        ScriptedTurn::ToolCalls(vec![ScriptedToolCall {
-            id: "tc-string",
-            name: EchoStringArgs::NAME,
-            args: json!("original"),
-        }]),
-        ScriptedTurn::Text("done"),
-    ];
-    let replacement = json!("sanitized");
-
-    let blocking_hook = RecordingHook::default();
-    let blocking = AgentBuilder::new(MockCompletionModel::from_turns(
-        turns.iter().map(ScriptedTurn::as_blocking_turn),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(blocking_hook.clone())
-    .add_hook(RewriteToolArgsHook(replacement.clone()))
-    .run()
-    .await
-    .expect("blocking string rewrite should execute");
-
-    let streaming_hook = RecordingHook::default();
-    let mut stream = AgentBuilder::new(MockCompletionModel::from_stream_turns(
-        turns
-            .iter()
-            .map(|turn| turn.as_stream_events(StreamShape::Complete)),
-    ))
-    .tool(EchoStringArgs)
-    .build()
-    .prompt("echo a string")
-    .max_turns(3)
-    .add_hook(streaming_hook.clone())
-    .add_hook(RewriteToolArgsHook(replacement))
-    .stream();
-    let mut final_output = None;
-    while let Some(item) = stream.next().await {
-        if let MultiTurnStreamItem::FinalResponse(response) =
-            item.expect("streaming string rewrite should execute")
-        {
-            final_output = Some(response.output().to_string());
-        }
-    }
-
-    assert_eq!(blocking.output(), "done");
-    assert_eq!(final_output.as_deref(), Some("done"));
-    assert_eq!(blocking_hook.tool_results(), vec!["sanitized"]);
-    assert_eq!(streaming_hook.tool_results(), vec!["sanitized"]);
 }
 
 #[tokio::test]
@@ -6447,12 +6212,15 @@ fn one_text_stream_turn(text: &'static str) -> Vec<MockStreamEvent> {
     ]
 }
 
+use rig_core::test_utils::sent_documents;
+
 /// A single hook's `extra_context` document appears in the completion request,
 /// after the agent's static context, on both `run()` and `stream()`.
 #[tokio::test]
 async fn extra_context_appears_after_static_context_on_both_surfaces() {
     fn assert_docs(req: &crate::completion::CompletionRequest) {
-        let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+        let documents = sent_documents(req);
+        let ids: Vec<&str> = documents.iter().map(|(id, _)| id.as_str()).collect();
         let static_pos = ids
             .iter()
             .position(|id| id.starts_with("static_doc"))
@@ -6466,7 +6234,7 @@ async fn extra_context_appears_after_static_context_on_both_surfaces() {
             "static context precedes hook extras: {ids:?}"
         );
         assert!(
-            req.documents.iter().any(|d| d.text == "injected"),
+            documents.iter().any(|(_, text)| text == "injected"),
             "the hook document's text is present"
         );
     }
@@ -6524,7 +6292,8 @@ async fn multiple_hooks_extra_context_append_in_registration_order() {
         .expect("run should succeed");
     let requests = probe.requests();
     let req = requests.first().expect("one request");
-    let ids: Vec<&str> = req.documents.iter().map(|d| d.id.as_str()).collect();
+    let documents = sent_documents(req);
+    let ids: Vec<&str> = documents.iter().map(|(id, _)| id.as_str()).collect();
     assert_eq!(
         ids,
         vec!["first", "second"],
@@ -6535,10 +6304,10 @@ async fn multiple_hooks_extra_context_append_in_registration_order() {
 #[tokio::test]
 async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_surfaces() {
     fn assert_documents(request: &crate::completion::CompletionRequest) {
-        let documents = request
-            .documents
+        let sent = sent_documents(request);
+        let documents = sent
             .iter()
-            .map(|document| (document.id.as_str(), document.text.as_str()))
+            .map(|(id, text)| (id.as_str(), text.as_str()))
             .collect::<Vec<_>>();
         assert_eq!(
             documents,
@@ -6606,11 +6375,12 @@ async fn dynamic_context_preserves_query_selection_formatting_and_order_on_both_
     );
     let streaming_requests = streaming_probe.requests();
     let request = streaming_requests.first().expect("one request");
-    assert_eq!(request.documents.len(), 1);
-    assert_eq!(request.documents[0].id, "streaming");
     assert_eq!(
-        request.documents[0].text,
-        "{\n  \"source\": \"streaming\"\n}"
+        sent_documents(request),
+        [(
+            "streaming".to_owned(),
+            "{\n  \"source\": \"streaming\"\n}".to_owned()
+        )]
     );
 }
 
@@ -6654,10 +6424,9 @@ async fn dynamic_context_and_application_hooks_follow_registration_order() {
         .expect("run should succeed");
 
     assert_eq!(
-        probe.requests()[0]
-            .documents
-            .iter()
-            .map(|document| document.id.as_str())
+        sent_documents(&probe.requests()[0])
+            .into_iter()
+            .map(|(id, _)| id)
             .collect::<Vec<_>>(),
         vec![
             "static_doc_0",
@@ -6836,11 +6605,11 @@ async fn extra_context_is_per_turn_non_sticky() {
         let turn1 = requests.first().expect("turn 1");
         let turn2 = requests.get(1).expect("turn 2");
         assert!(
-            turn1.documents.iter().any(|d| d.id == "turn-one"),
+            sent_documents(turn1).iter().any(|(id, _)| id == "turn-one"),
             "turn 1 carries the injected document"
         );
         assert!(
-            turn2.documents.iter().all(|d| d.id != "turn-one"),
+            sent_documents(turn2).iter().all(|(id, _)| id != "turn-one"),
             "turn 2 does not inherit turn 1's per-turn document"
         );
     }
@@ -7366,7 +7135,7 @@ async fn initial_output_tool_collision_uses_a_unique_synthetic_name() {
                 if content.iter().any(|item| matches!(
                     item,
                     UserContent::ToolResult(result)
-                        if result.call.provider().map(|provider| provider.call_id.as_str()) == Some("real")
+                        if result.call.provider().map(|provider| provider.as_str()) == Some("real")
                             && result.content.iter().any(|content| matches!(
                                 content,
                                 rig_core::message::ToolResultContent::Text(text)
@@ -8707,7 +8476,7 @@ async fn blocking_model_turn_repeat_preserves_prompt_history_with_fresh_preparat
     let messages = response.messages;
     assert_eq!(
         messages,
-        vec![Message::user("question"), Message::assistant("accepted")]
+        vec![Message::user("question"), mock_reply("accepted")]
     );
 
     let requests = model.requests();
@@ -8746,9 +8515,9 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         response.messages,
         vec![
             Message::user("question"),
-            Message::assistant("rejected"),
+            mock_reply("rejected"),
             Message::user("try another approach"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     let second_request = &model.requests()[1];
@@ -8756,7 +8525,7 @@ async fn blocking_model_turn_feedback_preserves_rejected_response() {
         second_request.chat_history.clone(),
         vec![
             Message::user("question"),
-            Message::assistant("rejected"),
+            mock_reply("rejected"),
             Message::user("try another approach")
         ]
     );
@@ -8791,16 +8560,18 @@ async fn blocking_empty_feedback_retry_omits_empty_assistant_history() {
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
-            Message::user("question"),
-            Message::user("provide an answer")
-        ],
-        "the retry request must not contain an empty assistant message"
+        vec![Message::User {
+            content: vec![
+                UserContent::text("question"),
+                UserContent::text("provide an answer")
+            ],
+        }],
+        "the retry request holds no empty assistant message, and the user messages it separated become one"
     );
 }
 
@@ -8849,7 +8620,7 @@ async fn streaming_model_turn_retry_marks_rollback_and_matches_blocking_accounti
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(
         response.messages,
-        vec![Message::user("question"), Message::assistant("accepted")]
+        vec![Message::user("question"), mock_reply("accepted")]
     );
     assert_eq!(model.requests().len(), 2);
 }
@@ -8978,16 +8749,18 @@ async fn streaming_empty_feedback_retry_omits_empty_assistant_history() {
         vec![
             Message::user("question"),
             Message::user("provide an answer"),
-            Message::assistant("accepted"),
+            mock_reply("accepted"),
         ]
     );
     assert_eq!(
         model.requests()[1].chat_history.clone(),
-        vec![
-            Message::user("question"),
-            Message::user("provide an answer")
-        ],
-        "the retry request must not contain an empty assistant message"
+        vec![Message::User {
+            content: vec![
+                UserContent::text("question"),
+                UserContent::text("provide an answer")
+            ],
+        }],
+        "the retry request holds no empty assistant message, and the user messages it separated become one"
     );
 }
 
@@ -9827,4 +9600,36 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
             assert_eq!(later.load(SeqCst), 0, "later hooks must not undo stop");
         }
     }
+}
+
+/// The assistant message a scripted mock reply of `text` folds into.
+fn mock_reply(text: &str) -> Message {
+    Message::Assistant(rig_core::message::AssistantMessage {
+        content: vec![AssistantContent::text(text)],
+        origin: Some(rig_core::message::Origin::new(
+            rig_core::test_utils::MOCK_API,
+            rig_core::test_utils::MOCK_PROVIDER,
+            rig_core::test_utils::MOCK_MODEL,
+        )),
+        stop: Some(rig_core::message::StopReason::Stop),
+    })
+}
+
+/// `messages` with every assistant turn's origin, stop and provider items
+/// left out.
+fn canonical_history(messages: &[Message]) -> Vec<Message> {
+    messages
+        .iter()
+        .map(|message| match message {
+            Message::Assistant(turn) => {
+                Message::Assistant(rig_core::message::AssistantMessage::new(
+                    turn.content
+                        .iter()
+                        .map(AssistantContent::canonical)
+                        .collect(),
+                ))
+            }
+            other => other.clone(),
+        })
+        .collect()
 }

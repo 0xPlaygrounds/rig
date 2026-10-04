@@ -2,15 +2,15 @@
   "header": {
     "deliveries": [
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 19
+          "items": 7
         }
       },
       {
-        "batch": 2,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
@@ -20,7 +20,7 @@
     "stream_errors": {
       "0": [
         {
-          "item": 18,
+          "item": 6,
           "error": {
             "kind": "provider_response",
             "retryable": false,
@@ -138,7 +138,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " gl"
+            "text": " glarb-glar"
           }
         },
         {
@@ -146,7 +146,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "arb"
+            "text": "b is an ancient"
           }
         },
         {
@@ -154,7 +154,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "-g"
+            "text": " farming tool from the"
           }
         },
         {
@@ -162,106 +162,15 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "lar"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "b"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " is"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " an"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " ancient"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " farming"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " tool"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " from"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " the"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " planet"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": " J"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "iro"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "text",
-            "part": 0,
-            "text": "."
+            "text": " planet Jiro."
           }
         }
       ],
+      "stream_origin": {
+        "api": "openai.chat",
+        "provider": "doubleword",
+        "model": "Qwen/Qwen3.5-397B-A17B-FP8"
+      },
       "scope": "golden/run#0"
     }
   ]

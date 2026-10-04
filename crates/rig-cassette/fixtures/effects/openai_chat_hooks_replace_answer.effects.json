@@ -78,12 +78,15 @@
             "cached_input_tokens": 0,
             "reasoning_tokens": 128
           },
-          "message_id": null,
-          "response_id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "openai",
+            "model": "gpt-5-mini",
+            "response_model": "gpt-5-mini-2025-08-07",
+            "response_id": "chatcmpl-ERDBkEiEWtQLrAJNlFiqofQtdBa89"
+          },
           "provider_request_id": "req_028a1446f8c342cfb209d2f62217dccf",
           "finish_reason": "stop",
-          "provider": "openai",
-          "model": "gpt-5-mini-2025-08-07",
           "raw": {
             "choices": [
               {

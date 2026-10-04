@@ -122,10 +122,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
-                  "item_id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660"
-                }
+                "provider": "call_3ymAR8TCfsol4GJniEYlL0OV"
               },
               "function": {
                 "name": "submit",
@@ -135,8 +132,17 @@
                   "profession": "developer"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}",
+                  "call_id": "call_3ymAR8TCfsol4GJniEYlL0OV",
+                  "id": "fc_0b7fd47ba2f409b2006ab3969d151087d08d857ffbce26f660",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "8032d5b783d88253"
+              }
             }
           ],
           "usage": {
@@ -147,12 +153,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_0b7fd47ba2f409b2006ab3969b6b0887d0b2205749f2b1d2e5"
+          },
           "provider_request_id": "req_0cd2d5104915470eab5bdbfa009d0e30",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,
@@ -356,10 +365,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_oP8CyoQgYoIEhjLJzYHlY2QN",
-                  "item_id": "fc_00f283ba31e27a1c006ab3969e424487d0bc4b46ea0688cc61"
-                }
+                "provider": "call_oP8CyoQgYoIEhjLJzYHlY2QN"
               },
               "function": {
                 "name": "submit",
@@ -370,8 +376,17 @@
                   "zip_code": "02139"
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "arguments": "{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}",
+                  "call_id": "call_oP8CyoQgYoIEhjLJzYHlY2QN",
+                  "id": "fc_00f283ba31e27a1c006ab3969e424487d0bc4b46ea0688cc61",
+                  "name": "submit",
+                  "status": "completed",
+                  "type": "function_call"
+                },
+                "fingerprint": "ac14167c1f2480a6"
+              }
             }
           ],
           "usage": {
@@ -382,12 +397,15 @@
             "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "resp_00f283ba31e27a1c006ab3969dc10887d098e85bc0643a5ef4",
+          "origin": {
+            "api": "openai.responses",
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "response_model": "gpt-4o-mini-2024-07-18",
+            "response_id": "resp_00f283ba31e27a1c006ab3969dc10887d098e85bc0643a5ef4"
+          },
           "provider_request_id": "req_345ea420c71a4b00a48aeb9dd904614b",
           "finish_reason": "tool_calls",
-          "provider": "openai",
-          "model": "gpt-4o-mini-2024-07-18",
           "raw": {
             "access_programs": null,
             "background": false,

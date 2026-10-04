@@ -127,23 +127,18 @@
           "choice": [
             {
               "type": "reasoning",
-              "issuer": "deepseek",
-              "id": null,
-              "content": [
-                {
-                  "type": "text",
-                  "content": {
-                    "text": "We need answer. Need use add tool. Then reply with just number. Let's call add with x 17 y 25. Then output 42 only."
-                  }
-                }
-              ]
+              "text": "The user wants me to add 17 and 25 using the add tool.",
+              "native": {
+                "item": {
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool."
+                },
+                "fingerprint": "e49a7d20e8e980c0"
+              }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": {
-                  "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-                }
+                "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
               },
               "function": {
                 "name": "add",
@@ -152,22 +147,34 @@
                   "y": 25
                 }
               },
-              "signature": null,
-              "additional_params": null
+              "native": {
+                "item": {
+                  "function": {
+                    "arguments": "{\"x\": 17, \"y\": 25}",
+                    "name": "add"
+                  },
+                  "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
+                  "type": "function"
+                },
+                "fingerprint": "19d6968ca152f683"
+              }
             }
           ],
           "usage": {
             "input_tokens": 361,
-            "output_tokens": 86,
-            "total_tokens": 447,
+            "output_tokens": 69,
+            "total_tokens": 430,
             "cached_input_tokens": 128,
-            "reasoning_tokens": 33
+            "reasoning_tokens": 16
           },
-          "message_id": null,
-          "response_id": "5e6889d0-e753-4f0a-a1aa-209ab4815eee",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-reasoner",
+            "response_model": "deepseek-flash",
+            "response_id": "5cc38f4f-7804-46f1-a7af-9abe881cede2"
+          },
           "finish_reason": "tool_calls",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -176,7 +183,7 @@
                 "logprobs": null,
                 "message": {
                   "content": "",
-                  "reasoning_content": "We need answer. Need use add tool. Then reply with just number. Let's call add with x 17 y 25. Then output 42 only.",
+                  "reasoning_content": "The user wants me to add 17 and 25 using the add tool.",
                   "role": "assistant",
                   "tool_calls": [
                     {
@@ -184,7 +191,7 @@
                         "arguments": "{\"x\": 17, \"y\": 25}",
                         "name": "add"
                       },
-                      "id": "call_00_r2q2IHQ0F6QhIcQff61v9795",
+                      "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
                       "index": 0,
                       "type": "function"
                     }
@@ -193,14 +200,14 @@
               }
             ],
             "created": 0,
-            "id": "5e6889d0-e753-4f0a-a1aa-209ab4815eee",
+            "id": "5cc38f4f-7804-46f1-a7af-9abe881cede2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
             "usage": {
-              "completion_tokens": 86,
+              "completion_tokens": 69,
               "completion_tokens_details": {
-                "reasoning_tokens": 33
+                "reasoning_tokens": 16
               },
               "prompt_cache_hit_tokens": 128,
               "prompt_cache_miss_tokens": 233,
@@ -208,7 +215,7 @@
               "prompt_tokens_details": {
                 "cached_tokens": 128
               },
-              "total_tokens": 447
+              "total_tokens": 430
             }
           }
         }
@@ -262,27 +269,21 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "reasoning",
-                  "issuer": "deepseek",
-                  "id": null,
-                  "content": [
-                    {
-                      "type": "text",
-                      "content": {
-                        "text": "We need answer. Need use add tool. Then reply with just number. Let's call add with x 17 y 25. Then output 42 only."
-                      }
-                    }
-                  ]
+                  "text": "The user wants me to add 17 and 25 using the add tool.",
+                  "native": {
+                    "item": {
+                      "reasoning_content": "The user wants me to add 17 and 25 using the add tool."
+                    },
+                    "fingerprint": "e49a7d20e8e980c0"
+                  }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": {
-                      "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-                    }
+                    "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
                   },
                   "function": {
                     "name": "add",
@@ -291,10 +292,27 @@
                       "y": 25
                     }
                   },
-                  "signature": null,
-                  "additional_params": null
+                  "native": {
+                    "item": {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_00_hYkBxLXTBJO7kMlNEpdD7034",
+                      "type": "function"
+                    },
+                    "fingerprint": "19d6968ca152f683"
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "openai.chat",
+                "provider": "deepseek",
+                "model": "deepseek-reasoner",
+                "response_model": "deepseek-flash",
+                "response_id": "5cc38f4f-7804-46f1-a7af-9abe881cede2"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -302,9 +320,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": {
-                      "call_id": "call_00_r2q2IHQ0F6QhIcQff61v9795"
-                    }
+                    "provider": "call_00_hYkBxLXTBJO7kMlNEpdD7034"
                   },
                   "name": "add",
                   "content": [
@@ -359,17 +375,20 @@
             }
           ],
           "usage": {
-            "input_tokens": 460,
+            "input_tokens": 443,
             "output_tokens": 2,
-            "total_tokens": 462,
+            "total_tokens": 445,
             "cached_input_tokens": 256,
             "reasoning_tokens": 0
           },
-          "message_id": null,
-          "response_id": "3042d787-c7b8-43cb-889d-e1b4e90c576c",
+          "origin": {
+            "api": "openai.chat",
+            "provider": "deepseek",
+            "model": "deepseek-reasoner",
+            "response_model": "deepseek-flash",
+            "response_id": "9ef1f210-573c-4fc7-8a59-4b0a0c7243ff"
+          },
           "finish_reason": "stop",
-          "provider": "deepseek",
-          "model": "deepseek-flash",
           "raw": {
             "choices": [
               {
@@ -384,7 +403,7 @@
               }
             ],
             "created": 0,
-            "id": "3042d787-c7b8-43cb-889d-e1b4e90c576c",
+            "id": "9ef1f210-573c-4fc7-8a59-4b0a0c7243ff",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
@@ -394,12 +413,12 @@
                 "reasoning_tokens": 0
               },
               "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 204,
-              "prompt_tokens": 460,
+              "prompt_cache_miss_tokens": 187,
+              "prompt_tokens": 443,
               "prompt_tokens_details": {
                 "cached_tokens": 256
               },
-              "total_tokens": 462
+              "total_tokens": 445
             }
           }
         }

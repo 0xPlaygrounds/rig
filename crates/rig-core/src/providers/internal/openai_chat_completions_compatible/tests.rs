@@ -1,5 +1,7 @@
-use super::map_openai_finish_reason;
+use super::finish_reason;
 use crate::completion::FinishReason;
+use crate::providers::openai::wire::{OPENAI, TOGETHER};
+use bytes::Bytes;
 
 #[test]
 fn truncated_output_covers_only_the_cut_short_reasons() {
@@ -12,7 +14,7 @@ fn truncated_output_covers_only_the_cut_short_reasons() {
 
 #[test]
 fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
-    use super::provider_response_from_compatible_sse_data as detect;
+    use super::provider_error_envelope as detect;
 
     // An empty `error` (`null` or `""`) with no choices must NOT terminate the
     // stream — some providers send one with the terminal usage event. Each of
@@ -71,7 +73,7 @@ fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
 #[test]
 fn model_length_is_truncation_not_a_natural_stop() {
     assert_eq!(
-        map_openai_finish_reason("model_length"),
+        finish_reason("model_length", &OPENAI.quirks),
         FinishReason::Length,
         "a turn cut off by the context window must be distinguishable from one that \
              simply had nothing more to say"
@@ -79,11 +81,54 @@ fn model_length_is_truncation_not_a_natural_stop() {
 
     // The vocabulary it joins, and the fallback that still preserves an
     // unrecognized spelling verbatim.
-    assert_eq!(map_openai_finish_reason("length"), FinishReason::Length);
-    assert_eq!(map_openai_finish_reason("max_tokens"), FinishReason::Length);
-    assert_eq!(map_openai_finish_reason("stop"), FinishReason::Stop);
     assert_eq!(
-        map_openai_finish_reason("some_new_reason"),
+        finish_reason("length", &OPENAI.quirks),
+        FinishReason::Length
+    );
+    assert_eq!(
+        finish_reason("max_tokens", &OPENAI.quirks),
+        FinishReason::Length
+    );
+    assert_eq!(finish_reason("stop", &OPENAI.quirks), FinishReason::Stop);
+    assert_eq!(
+        finish_reason("some_new_reason", &OPENAI.quirks),
         FinishReason::Other("some_new_reason".to_owned())
     );
+}
+
+/// NEW-4 (chat): Together ends a successful turn with `eos`, in its
+/// documented vocabulary; another dialect never named it, so it fails there.
+#[test]
+fn a_dialect_states_its_own_finish_vocabulary() {
+    assert_eq!(finish_reason("eos", &TOGETHER.quirks), FinishReason::Stop);
+    assert_eq!(
+        finish_reason("eos", &OPENAI.quirks),
+        FinishReason::Other("eos".to_owned())
+    );
+}
+
+pub(crate) fn sse_bytes_from_data_lines<T>(events: impl IntoIterator<Item = T>) -> Bytes
+where
+    T: AsRef<str>,
+{
+    Bytes::from(
+        events
+            .into_iter()
+            .map(|event| format!("data: {}\n\n", event.as_ref()))
+            .collect::<String>(),
+    )
+}
+
+pub(crate) fn sse_bytes_from_json_events(events: &[serde_json::Value]) -> Bytes {
+    Bytes::from(
+        events
+            .iter()
+            .map(|event| {
+                format!(
+                    "data: {}\n\n",
+                    serde_json::to_string(event).expect("event should serialize")
+                )
+            })
+            .collect::<String>(),
+    )
 }

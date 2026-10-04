@@ -28,7 +28,7 @@ where
     let (cassette, client) = perplexity_cassette(spec).await;
     let result = AssertUnwindSafe(test_body(OpenAiModels::new(
         client,
-        rig::rig_reqwest::shared(),
+        rig_test_support::cassettes::local_http(),
     )))
     .catch_unwind()
     .await;

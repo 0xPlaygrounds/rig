@@ -17,7 +17,7 @@ use crate::operation::{
     Embedding, ModelListing, ModelPage, Rerank as RerankOp, Transcription, Verify as VerifyOp,
 };
 use crate::providers::internal::wire::classify_untyped_line;
-use crate::providers::openai::completion::Usage;
+use crate::providers::openai::embedding::Usage;
 use crate::providers::openai::embedding::{
     CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
 };
@@ -27,11 +27,329 @@ use crate::wire::{
     WireFrame,
 };
 
-#[cfg(feature = "image")]
-use super::ImageBody;
-#[cfg(feature = "audio")]
-use super::SpeechBody;
-use super::{AcceptedWidths, ModelWidth, OpenAIConfig, TranscriptionBody};
+use super::OpenAIConfig;
+
+/// Paired request and response formats for image generation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageBody {
+    /// `{model, prompt, size}`, answered with `data[].b64_json`.
+    #[default]
+    OpenAi,
+    /// xAI: `{model, prompt, response_format, aspect_ratio}` and no `size`,
+    /// answered with `data[].b64_json` and no `created`.
+    Xai,
+    /// `{model_name, prompt, height, width}`, answered with `images[].image`.
+    Hyperbolic,
+    /// `{model, prompt, width, height}`, answered with base64 strings in `images`.
+    Venice,
+    /// `{inputs, parameters: {width, height}}`, answered with raw image bytes.
+    /// The model is addressed through the URL path.
+    HuggingFace,
+}
+
+/// Which body a speech endpoint takes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SpeechBody {
+    /// OpenAI: `{model, input, voice, speed}`.
+    #[default]
+    OpenAi,
+    /// xAI: `{text, voice_id, language}`, with `eve` as the default voice.
+    Xai,
+    /// Hyperbolic: `{language, speaker, text, speed}`, answered with
+    /// `{"audio": "<base64>"}` rather than the audio bytes themselves.
+    ///
+    /// It addresses this endpoint by *language*, so the identifier a caller
+    /// passes as the model is the language tag (`"EN"`).
+    Hyperbolic,
+}
+
+/// Which body a transcription endpoint takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TranscriptionBody {
+    /// OpenAI: a `multipart/form-data` upload with the audio as a file part
+    /// beside `model`, `language`, `prompt` and `temperature`.
+    Multipart,
+    /// OpenRouter: a JSON body whose audio rides base64-encoded under
+    /// `input_audio`, with its container format beside it
+    /// (`{"input_audio": {"data": "…", "format": "mp3"}, "model": …}`).
+    /// The gateway's speech-to-text route serves only this shape, and has no
+    /// top-level `prompt` field at all.
+    InputAudioJson,
+}
+
+/// Which field a dialect takes an embedding width in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DimensionsField {
+    /// The OpenAI-compatible `dimensions` field.
+    Dimensions,
+    /// Mistral's `output_dimension`.
+    OutputDimension,
+    /// The server ignores any width field, so none is sent (`llama-server`
+    /// reads no such field and would answer 200 with the native width).
+    Ignored,
+}
+
+impl DimensionsField {
+    /// The body field a requested width goes in, or `None` when the dialect
+    /// reads no width field at all.
+    ///
+    /// The encoder puts a width in this field and a refusal names it, so
+    /// both spell it from here rather than from two matching literals.
+    pub const fn name(self) -> Option<&'static str> {
+        match self {
+            Self::Dimensions => Some("dimensions"),
+            Self::OutputDimension => Some("output_dimension"),
+            Self::Ignored => None,
+        }
+    }
+}
+
+/// Which widths a request may name for one embedding model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AcceptedWidths {
+    /// The model emits one width and reads no width field, so any value but
+    /// its own native width is a request for a parameter the provider does
+    /// not accept there, and is refused as a request error.
+    Fixed,
+    /// The model truncates to any width in `min..=max`, and anything else is
+    /// refused with [`requirement`](Self::Range::requirement).
+    Range {
+        /// Narrowest width the provider honours.
+        min: usize,
+        /// Widest width the provider honours.
+        max: usize,
+        /// Static error clause describing the accepted bounds.
+        /// Must agree with `min` and `max`.
+        requirement: &'static str,
+    },
+}
+
+/// One embedding model's width contract: the width it returns unasked, and
+/// the widths it will honour when asked.
+///
+/// Stated per model rather than per dialect because a dialect serves models
+/// of different widths, and a model's default is not always its maximum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModelWidth {
+    /// The model identifier, as the `model` field spells it.
+    pub model: &'static str,
+    /// Default width reported when no width is requested, or `None` if unknown.
+    /// Unknown widths report zero as the embedding model's `ndims`.
+    pub default: Option<usize>,
+    /// The widths a request may name.
+    pub accepted: AcceptedWidths,
+}
+
+/// Reranking endpoint policy. An empty [`Self::path`] disables reranking.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RerankQuirks {
+    /// The rerank path, or empty when the dialect offers none.
+    pub path: &'static str,
+    /// Most documents the provider accepts in one request.
+    pub max_documents: usize,
+    /// Whether the model is a body field.
+    pub sends_model_field: bool,
+}
+
+impl RerankQuirks {
+    /// The signal for a dialect with no reranking endpoint.
+    pub const fn unsupported() -> Self {
+        Self {
+            path: "",
+            max_documents: 0,
+            sends_model_field: true,
+        }
+    }
+}
+
+/// What a dialect's embeddings endpoint accepts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct EmbeddingQuirks {
+    /// Most inputs the provider embeds in one request.
+    pub max_documents: usize,
+    /// Whether a successful reply must carry usage.
+    pub requires_usage: bool,
+    /// Whether the provider accepts `encoding_format`.
+    pub supports_encoding_format: bool,
+    /// Whether the provider accepts `user`.
+    pub supports_user: bool,
+    /// Whether the model is a body field (false for Azure, which addresses a
+    /// deployment through the URL).
+    pub sends_model_field: bool,
+    /// Which field a requested width goes in.
+    pub dimensions: DimensionsField,
+    /// Model width contracts used for capability reporting and request validation.
+    /// Consulted before the shared OpenAI model-width table.
+    pub widths: &'static [ModelWidth],
+    /// The `requirement` clause refusing a declared width of zero, or
+    /// `None` for a dialect that lets zero through as rig's own "unknown"
+    /// sentinel rather than a claim.
+    pub refuse_zero_width: Option<&'static str>,
+}
+
+impl EmbeddingQuirks {
+    /// OpenAI's own embeddings contract, which most dialects inherit.
+    pub const fn openai() -> Self {
+        Self {
+            max_documents: 1024,
+            requires_usage: true,
+            supports_encoding_format: true,
+            supports_user: true,
+            sends_model_field: true,
+            dimensions: DimensionsField::Dimensions,
+            // Shared OpenAI model widths are resolved separately.
+            widths: &[],
+            // Zero represents an unknown width, not a requested dimension.
+            refuse_zero_width: None,
+        }
+    }
+}
+
+impl super::SubRoute {
+    /// Whether this sub-provider serves the endpoints that address the model
+    /// through the URL (transcription, image generation).
+    pub fn serves_model_routed_endpoints(&self) -> bool {
+        matches!(self, Self::HFInference)
+    }
+}
+
+impl OpenAIConfig {
+    /// Set the `api-version` Azure's speech endpoint is versioned by.
+    pub fn with_audio_api_version(mut self, api_version: impl Into<String>) -> Self {
+        self.audio_api_version = Some(api_version.into());
+        self
+    }
+
+    /// The embeddings wire for `model`.
+    pub(crate) fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
+        Embeddings::new(self.clone(), model, ndims)
+    }
+
+    /// The rerank wire for `model`.
+    pub(crate) fn rerank(&self, model: impl Into<String>) -> Rerank {
+        Rerank::new(self.clone(), model)
+    }
+
+    /// The transcription wire for `model`.
+    pub(crate) fn transcription(&self, model: impl Into<String>) -> Transcriptions {
+        Transcriptions::new(self.clone(), model)
+    }
+
+    /// The model-listing wire.
+    pub(crate) fn models(&self) -> Models {
+        Models::new(self.clone())
+    }
+
+    /// The credential-check wire.
+    pub(crate) fn verify(&self) -> Verify {
+        Verify::new(self.clone())
+    }
+
+    /// The image-generation wire for `model`.
+    #[cfg(feature = "image")]
+    pub(crate) fn image_generation(&self, model: impl Into<String>) -> Images {
+        Images::new(self.clone(), model)
+    }
+
+    /// The speech wire for `model`.
+    #[cfg(feature = "audio")]
+    pub(crate) fn audio_generation(&self, model: impl Into<String>) -> Speech {
+        Speech::new(self.clone(), model)
+    }
+
+    /// The `api-version` a speech request carries.
+    #[cfg(feature = "audio")]
+    pub(crate) fn speech_api_version(&self) -> Option<&str> {
+        self.audio_api_version
+            .as_deref()
+            .or(self.api_version.as_deref())
+    }
+
+    /// Resolve a fixed or model-addressed modality URL.
+    /// Return an error if the selected sub-route does not serve model-routed endpoints.
+    pub(crate) fn modality_uri(
+        &self,
+        endpoint: &str,
+        fixed: &'static str,
+        model: &str,
+    ) -> Result<String, String> {
+        if !self.dialect.quirks.model_is_modality_path {
+            return Ok(self.uri(fixed, self.deployment(model)));
+        }
+        let route = self.route();
+        if !route.serves_model_routed_endpoints() {
+            return Err(format!(
+                "{endpoint} endpoint is not supported yet for {route}"
+            ));
+        }
+        Ok(format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            model.trim_start_matches('/')
+        ))
+    }
+}
+
+/// The width contract of Mistral's embedding models.
+///
+/// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
+/// answers any other value with an error rather than truncating, so a
+/// request naming one is refused before it is built. Codestral Embed is
+/// configurable up to 3072 and takes its width as `output_dimension`.
+///
+/// The dated aliases are listed beside their rolling names because a caller
+/// pinning `mistral-embed-2312` gets the same model, and a model absent from
+/// this table reports `ndims() == 0`.
+pub(super) const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
+    ModelWidth {
+        model: crate::providers::mistral::embedding::MISTRAL_EMBED,
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: "mistral-embed-2312",
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
+        // Configurable with no documented native width, so a handle that
+        // names none reports 0 rather than inventing one.
+        default: None,
+        accepted: AcceptedWidths::Range {
+            // Mistral documents only a ceiling. The floor is rig's own
+            // "unknown" sentinel, which never reaches the wire.
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+    ModelWidth {
+        model: "codestral-embed-2505",
+        default: None,
+        accepted: AcceptedWidths::Range {
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+];
+
+/// Doubleword embedding widths: 32 through 4096, defaulting to 4096.
+/// Validate both bounds locally because out-of-range requests can be clamped or
+/// inconsistently rejected by the service.
+pub(super) const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
+    model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
+    default: Some(4_096),
+    accepted: AcceptedWidths::Range {
+        min: 32,
+        max: 4_096,
+        requirement: "to be between 32 and 4096",
+    },
+}];
 
 /// Encode an authenticated JSON POST with whole-response framing.
 fn json_post(

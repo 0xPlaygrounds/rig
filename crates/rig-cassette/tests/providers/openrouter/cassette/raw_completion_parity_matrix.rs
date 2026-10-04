@@ -9,9 +9,9 @@
 //! 1. **`encode` is deterministic.** The same built request produces the same
 //!    request bytes every time, so a caller can replay it — and both recorded
 //!    turns of each scenario must therefore carry byte-identical bodies.
-//! 2. **`raw` is a faithful second view, not a summary.** Read back as
-//!    OpenRouter's own [`openrouter::CompletionResponse`], its provider-native
-//!    fields are the fields the normalized response reports.
+//! 2. **`raw` is a faithful second view, not a summary.** Read as JSON under
+//!    OpenRouter's own field names, its provider-native fields are the fields
+//!    the normalized response reports.
 //!
 //! **Why there is no third thing to compare.** `OPENROUTER.request_id_header`
 //! is `None`, so [`rig::completion::CompletionResponse::provider_request_id`]
@@ -36,10 +36,7 @@
 //! what the cells now assert.
 
 use rig::completion::{CompletionRequest, CompletionResponse};
-use rig::providers::openai;
 use rig::providers::openai::wire::OPENROUTER;
-use rig::providers::openrouter;
-use serde::Deserialize as _;
 use serde_json::Value;
 
 use super::super::DEFAULT_MODEL;
@@ -62,10 +59,6 @@ fn request() -> CompletionRequest {
 fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, context: &str) {
     chat::assert_reproduces_body(response, PROVIDER, body, context);
     let identity = response.identity();
-    assert_eq!(
-        identity.message_id, None,
-        "{context}: chat has no message id"
-    );
     assert_no_request_id(identity.provider_request_id.as_deref(), "OpenRouter");
 }
 
@@ -103,30 +96,26 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     // Same response, two views: the document `raw` carries, read back as the
     // chat-completions reply the decoder mapped from, reports the fields the
     // decoder reported.
-    let native = openai::CompletionResponse::deserialize(&second.raw)
-        .expect("raw is the chat-completions reply OpenRouter serves");
+    let native = second.raw.clone();
     chat::assert_native_matches_normalized(&second, &native, "the typed view of raw");
 
-    // OpenRouter's own type is the gateway-aware escape hatch over the same
-    // document, and it is where the upstream's native finish-reason spelling
-    // survives; the normalized response maps it away.
-    let typed = openrouter::CompletionResponse::deserialize(&second.raw)
-        .expect("raw is OpenRouter's own completion response");
+    // The same document is where the upstream's native finish-reason
+    // spelling survives; the normalized response maps it away.
+    let typed = second.raw.clone();
     assert_eq!(
-        typed.openai.choices[0].native_finish_reason.as_deref(),
+        typed["choices"][0]["native_finish_reason"].as_str(),
         interactions[1].1["choices"][0]["native_finish_reason"].as_str(),
         "the document keeps the upstream's own finish-reason spelling"
     );
 
     // Where the wire makes the two turns equal, the two turns agree.
-    assert_eq!(second.provider, first.provider);
-    assert_eq!(second.model, first.model);
+    assert_eq!(second.provider(), first.provider());
+    assert_eq!(second.model(), first.model());
     assert_eq!(second.finish_reason(), first.finish_reason());
     assert_eq!(
         second.identity().provider_request_id,
         first.identity().provider_request_id
     );
-    assert_eq!(second.identity().message_id, first.identity().message_id);
 }
 
 // ================================================================
@@ -156,5 +145,5 @@ async fn no_request_id_contract_holds_on_both_turns() {
     assert_no_request_id(first.provider_request_id.as_deref(), "OpenRouter");
     assert_no_request_id(second.provider_request_id.as_deref(), "OpenRouter");
     assert_eq!(first.finish_reason(), second.finish_reason());
-    assert_eq!(first.model, second.model);
+    assert_eq!(first.model(), second.model());
 }

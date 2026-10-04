@@ -10,7 +10,7 @@ description = "Minimal-dependency execution of the shared cassette verification 
 workspace = true
 
 # Only the cassette effect log and independent runtime adapters: no native HTTP
-# engine, facade or helpers that enable preserve_order/float_roundtrip.
+# engine, facade or provider helpers.
 [dev-dependencies]
 rig-core = { path = "../../../rig-core", features = ["test-utils"] }
 rig-agent = { path = "../../../rig-agent" }

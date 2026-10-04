@@ -1,204 +1,45 @@
-//! Matrix for raw terminal-record capture on Ollama's streaming `/api/chat`
-//! path ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
+//! Raw response capture on Ollama's streamed Chat Completions route.
 //!
-//! # The feature
-//!
-//! Capture is always on. The terminal record of every stream the provider seam
-//! yields carries `raw`: Ollama's terminal NDJSON record as
-//! [`ollama::StreamingCompletionResponse`] carries it — serialized with
-//! `serde_json::to_value` by the provider adapter. It is the terminal record
-//! only, never the stream's frames, and nothing about it is sent to the daemon.
-//! `raw == Value::Null` means only that a `CompletionResponse` was built by hand
-//! without a provider terminal behind it, which no cell here can produce.
-//!
-//! Ollama's stream is newline-delimited JSON, not SSE: every line is a chat
-//! record and exactly one — the last — carries `done: true` together with the
-//! token counts and the nanosecond timings. Those timings (`total_duration`,
-//! `eval_duration`, …) are what cell 2 reads back: the normalized
-//! [`CompletionResponse`](rig::completion::CompletionResponse) has no field for them.
-//!
-//! Because the wire is Ollama's own — NDJSON lines, `done`/`done_reason`,
-//! `prompt_eval_count`/`eval_count`, no response id — the shared
-//! chat-completions terminal contract does not describe it, and neither do
-//! the shared SSE premise readers. What is shared here is the execution layer
-//! ([`capture_terminal`](crate::raw_capture::capture_terminal),
-//! which is the one-terminal-record rule this wire has) and the
-//! format-agnostic normalized-surface assertions
-//! ([`normalized_without_raw`](crate::support::normalized_without_raw)
-//! with [`assert_normalized_lacks`](crate::raw_capture::assert_normalized_lacks)).
-//! [`recorded_terminal_line`] stays local: it is the NDJSON rule, not the
-//! frame rules the SSE dialects share.
-//!
-//! # Matrix
-//!
-//! Recorded cells re-derive their premise from their own fixture bytes after
-//! the cassette wrapper returns: the recorded stream must end with a
-//! `done: true` record that reports usage, or the cell fails loudly.
+//! A streamed reply's `raw` is the terminal record the decoder assembled
+//! from the stream; its usage is the one usage chunk the stream carried.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `ollama::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
-//! | 2 | `stream_raw_exposes_terminal_durations` | terminal-only fields | `eval_duration`/`total_duration`/`eval_count` in `raw` equal the fixture's `done: true` line | recorded |
-//!
-//! Every cell is recorded: Ollama runs locally with no credential.
-//!
-//! Re-record with a local Ollama daemon serving `qwen3:4b`:
-//! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
+//! | 1 | `stream_terminal_reproduces_the_usage_chunk` | terminal record | the terminal reproduces the recorded usage chunk's id, model and usage | recorded |
 
-use rig::providers::ollama;
-use serde::Deserialize;
-use serde_json::{Value, json};
-
-use super::super::support::with_ollama_cassette;
-use crate::cassettes::recorded_interaction_bodies;
-use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
-use crate::support::Observed;
-use crate::support::normalized_without_raw;
 use rig::completion::CompletionRequest;
 
-const OLLAMA_PROVIDER: &str = "ollama";
-const MODEL: &str = "qwen3:4b";
-const PROMPT: &str = "Reply with exactly the single word: pong";
+use super::super::{CASSETTE_MODEL, support::with_ollama_cassette};
+use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
+use crate::support::Observed;
 
-fn request() -> rig::completion::CompletionRequest {
-    CompletionRequest::new(PROMPT)
-        .max_tokens(64)
-        .additional_params(json!({ "think": false }))
-}
-
-/// The premise every streaming cell rests on: the scenario recorded exactly
-/// one interaction whose NDJSON body ends with a `done: true` record carrying
-/// token counts and timings. Returns that terminal line parsed.
-fn recorded_terminal_line(scenario: &str) -> Value {
-    let bodies = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (_, response) = &bodies[0];
-    let last = response
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .unwrap_or_else(|| panic!("{scenario}: recorded stream body should not be empty"));
-    let terminal: Value = serde_json::from_str(last)
-        .unwrap_or_else(|err| panic!("{scenario}: terminal NDJSON line should be JSON: {err}"));
-    assert_eq!(
-        terminal.get("done"),
-        Some(&Value::Bool(true)),
-        "{scenario}: the recorded stream must end with a `done: true` record"
-    );
-    for field in [
-        "eval_count",
-        "prompt_eval_count",
-        "total_duration",
-        "eval_duration",
-    ] {
-        assert!(
-            terminal.get(field).and_then(Value::as_u64).is_some(),
-            "{scenario}: the terminal record must report `{field}` — without it \
-             the terminal carries no usage and this cell proves nothing"
-        );
-    }
-    terminal
-}
-
-// ---------------------------------------------------------------------------
-// 1: raw is the provider terminal record, serialized
-// ---------------------------------------------------------------------------
+const PROVIDER: &str = "ollama";
 
 #[tokio::test]
-async fn stream_raw_terminal_round_trips_provider_type() {
-    let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = Observed::default();
-    let sink = captured.clone();
+async fn stream_terminal_reproduces_the_usage_chunk() {
+    let scenario = "raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk";
+    let sink = Observed::default();
+    let parked = sink.clone();
     with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
+        "raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk",
         |client| async move {
-            capture_terminal(client.completion(MODEL), request(), sink)
-                .await
-                .expect("stream should start");
+            capture_text_and_terminal(
+                client.completion(CASSETTE_MODEL),
+                CompletionRequest::new(
+                    "Reply with exactly this one word and nothing else: streamed",
+                )
+                .temperature(0.0)
+                .max_tokens(1024),
+                parked,
+            )
+            .await
+            .expect("the recorded stream replays");
         },
     )
     .await;
-    let terminal = captured.take();
-
-    let raw = &terminal.raw;
-    let typed = ollama::StreamingCompletionResponse::deserialize(raw)
-        .expect("raw must deserialize into ollama::StreamingCompletionResponse");
-    assert_eq!(
-        serde_json::to_value(&typed).expect("terminal type should serialize"),
-        *raw,
-        "ollama::StreamingCompletionResponse must round-trip through its own serde"
-    );
-
-    // The typed terminal agrees with the normalized one: raw is the
-    // record the adapter mapped, not a divergent copy.
-    assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
-    assert_eq!(
-        typed.eval_count, terminal.usage.output_tokens,
-        "normalized output tokens come from the raw eval_count"
-    );
-    assert_eq!(
-        typed.prompt_eval_count, terminal.usage.input_tokens,
-        "normalized input tokens come from the raw prompt_eval_count"
-    );
-
-    // Premise: the wire's terminal line is what raw carries.
-    let terminal_line = recorded_terminal_line(scenario);
-    assert_eq!(raw["eval_count"], terminal_line["eval_count"]);
-    assert_eq!(raw["prompt_eval_count"], terminal_line["prompt_eval_count"]);
-    assert_eq!(raw["done_reason"], terminal_line["done_reason"]);
-}
-
-// ---------------------------------------------------------------------------
-// 2: terminal-only fields
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn stream_raw_exposes_terminal_durations() {
-    let scenario = "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations";
-    let captured = Observed::default();
-    let sink = captured.clone();
-    with_ollama_cassette(
-        "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
-        |client| async move {
-            capture_terminal(client.completion(MODEL), request(), sink)
-                .await
-                .expect("stream should start");
-        },
-    )
-    .await;
-    let terminal = captured.take();
-
-    // The normalized terminal record provably lacks the timings.
-    assert_normalized_lacks(
-        &normalized_without_raw(terminal.clone()),
-        &["total_duration", "eval_duration", "load_duration"],
-    );
-
-    let raw = terminal.raw;
-    let terminal_line = recorded_terminal_line(scenario);
-    for field in [
-        "total_duration",
-        "load_duration",
-        "prompt_eval_duration",
-        "eval_duration",
-        "eval_count",
-        "prompt_eval_count",
-    ] {
-        assert_eq!(
-            raw.get(field),
-            terminal_line.get(field),
-            "raw.{field} must equal the recorded terminal record's value"
-        );
-    }
-    let typed = ollama::StreamingCompletionResponse::deserialize(&raw)
-        .expect("raw must deserialize into ollama::StreamingCompletionResponse");
-    assert_eq!(typed.eval_duration, terminal_line["eval_duration"].as_u64());
-    assert_eq!(
-        typed.total_duration,
-        terminal_line["total_duration"].as_u64()
-    );
+    let (text, terminal) = sink.take();
+    assert!(!text.trim().is_empty(), "the stream carried text");
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, scenario);
+    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, scenario);
+    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
 }

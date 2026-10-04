@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Return only valid JSON. No markdown.","role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"deepseek-v4-flash","response_format":{"type":"json_object"},"thinking":{"type":"disabled"}}'
+  body: '{"messages":[{"content":[{"text":"Return only valid JSON. No markdown.","type":"text"}],"role":"system"},{"content":"Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.","role":"user"}],"model":"deepseek-v4-flash","response_format":{"type":"json_object"},"thinking":{"type":"disabled"}}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\"release_lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}","role":"assistant"}}],"created":0,"id":"0a64d8e1-c9f8-418e-bd57-85d4d3cdcb76","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":23,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":57,"prompt_tokens":57,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":80}}'
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"{\"release_lane\":\"canary\",\"risk\":\"low\",\"checks\":{\"compile\":true,\"replay\":true}}","role":"assistant"}}],"created":0,"id":"9da63c75-5248-4bf9-bf3b-7fac2777f25e","model":"deepseek-flash","object":"chat.completion","system_fingerprint":"aeb56401ca74e127821c4f9126dcb669","usage":{"completion_tokens":23,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":57,"prompt_tokens":57,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":80}}'

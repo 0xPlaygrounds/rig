@@ -538,11 +538,8 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 /// drift, not security boundaries: an aliased import could evade them, and
 /// that aliasing would itself be reviewable. AST-grade enforcement is
 /// deliberately not attempted.
-const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
-    "providers/ollama.rs",
-    "providers/copilot/mod.rs",
-    "providers/chatgpt/mod.rs",
-];
+const SINGLE_FILE_STREAMING_MODULES: &[&str] =
+    &["providers/copilot/mod.rs", "providers/chatgpt/mod.rs"];
 
 /// Identifiers a file cannot mention without participating in wire handling.
 const WIRE_MACHINERY_MARKERS: &[&str] = &["WireEvent", "WireFrame", "triage("];
@@ -1016,7 +1013,6 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
     // basename pattern, broken content scoping) is a vacuous pass.
     for suffix in [
         "rig-core/src/providers/anthropic/streaming.rs",
-        "rig-core/src/providers/ollama.rs",
         "rig-core/src/providers/openai/responses_api/streaming.rs",
         "rig-bedrock/src/streaming.rs",
         // A provider's classify layer: guard 1's policy home is guard 2's
@@ -1358,4 +1354,94 @@ fn last() { let _ = triage_frame(); }
     // A brace-less gated item ends at its semicolon, not at end of file.
     let brace_less = "#[cfg(test)]\nuse std::fmt;\nfn after() { let _ = WireEvent::Unknown; }\n";
     assert!(shipped_portion(brace_less).contains("WireEvent::Unknown"));
+}
+
+/// Runtimes never build an assistant turn by hand: a turn that enters
+/// history comes from a fold (`CompletionResponse::message`, `head`,
+/// `continued`), so it keeps its origin and provider items. A hand-built
+/// turn has no origin and would replay a same-model turn as another model's.
+#[test]
+fn runtime_turns_come_from_folds() {
+    let mut walked = Vec::new();
+    let mut offenders = Vec::new();
+    for_each_shipped_source(|path, shipped| {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        walked.push(normalized.clone());
+        let runtime = ["/rig-agent/src/", "/rig-ecs/src/"]
+            .iter()
+            .any(|root| normalized.contains(root));
+        if runtime && mask_literals_and_comments(shipped).contains("AssistantMessage::new(") {
+            offenders.push(normalized);
+        }
+    });
+    assert!(
+        walked
+            .iter()
+            .any(|path| path.ends_with("rig-agent/src/run/streamed.rs"))
+            && walked
+                .iter()
+                .any(|path| path.ends_with("rig-ecs/src/systems/mod.rs")),
+        "the walk covers the runtimes"
+    );
+    assert!(
+        offenders.is_empty(),
+        "runtime code builds assistant turns by hand: {offenders:?}"
+    );
+}
+
+/// Provider files that still read provider items directly. Each family
+/// moves its encoder onto `AssistantContent::replay` and deletes its entry;
+/// the list only shrinks.
+const PENDING_REPLAY_ADOPTION: &[&str] = &[];
+
+/// Encoders read provider items only through `AssistantContent::replay`, so
+/// the core alone decides what a current, edited or foreign item becomes.
+#[test]
+fn encoders_read_provider_items_only_through_replay() {
+    let roots = [
+        "/rig-core/src/providers/",
+        "/rig-bedrock/src/",
+        "/rig-vertexai/src/",
+        "/rig-gemini-grpc/src/",
+        "/rig-candle/src/",
+    ];
+    let mut offenders = Vec::new();
+    for_each_shipped_source(|path, shipped| {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        if !roots.iter().any(|root| normalized.contains(root)) {
+            return;
+        }
+        let masked = mask_literals_and_comments(shipped);
+        let reads = masked.contains("native_item(")
+            || masked.contains("stale_item(")
+            || masked.match_indices(".native").any(|(at, _)| {
+                let rest = &masked[at + ".native".len()..];
+                !rest.starts_with('_')
+                    && !rest.trim_start().starts_with('=')
+                    && !rest.starts_with("::")
+            });
+        if reads {
+            offenders.push(normalized);
+        }
+    });
+    let unlisted: Vec<&String> = offenders
+        .iter()
+        .filter(|path| {
+            !PENDING_REPLAY_ADOPTION
+                .iter()
+                .any(|entry| path.ends_with(entry))
+        })
+        .collect();
+    assert!(
+        unlisted.is_empty(),
+        "encoders read provider items directly instead of through `replay`: {unlisted:?}"
+    );
+    let stale: Vec<&&str> = PENDING_REPLAY_ADOPTION
+        .iter()
+        .filter(|entry| !offenders.iter().any(|path| path.ends_with(*entry)))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "these files no longer read provider items; delete their entries: {stale:?}"
+    );
 }

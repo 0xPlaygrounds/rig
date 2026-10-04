@@ -1,8 +1,7 @@
-//! Mistral's model identifiers and its own view of a reply.
+//! Mistral's model identifiers.
 //!
 //! [`from_env`] and [`new`] build a client on the [`MISTRAL`](crate::providers::openai::wire::MISTRAL) dialect.
-//! [`CompletionResponse`] reads provider fields from a normalized chat response's
-//! `raw` value; transcription metadata remains in its response's `raw` value.
+//! Provider fields of a reply stay in the response's `raw` value.
 //!
 //! ```no_run
 //! use rig_core::providers::mistral;

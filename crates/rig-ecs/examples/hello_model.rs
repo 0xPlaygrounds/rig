@@ -98,7 +98,7 @@ impl Serve for Mock {
         let response = CompletionResponse::new(
             vec![AssistantContent::text("hello from the world")],
             Usage::default(),
-            "mock",
+            rig_core::message::Origin::new("example.api", "mock", ""),
             serde_json::json!({}),
         );
         rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -114,7 +114,8 @@ fn text(outcome: &Result<Outcome, rig_core::error::ErrorReport>) -> String {
                 AssistantContent::Text(text) => Some(text.text.clone()),
                 AssistantContent::Reasoning(_)
                 | AssistantContent::Image(_)
-                | AssistantContent::ToolCall(_) => None,
+                | AssistantContent::ToolCall(_)
+                | AssistantContent::Opaque(_) => None,
             })
             .collect(),
         Ok(other) => format!("a {} answer", other.family()),

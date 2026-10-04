@@ -1,9 +1,23 @@
-use super::gemini_api_types::GenerateContentRequest;
+use serde_json::{Map, Value};
+
+use super::{GenerateContent, request_body, with_cached_content};
 use crate::completion::CompletionRequest;
 use crate::error::EncodeError;
 use crate::message::{Message, UserContent};
+use crate::providers::gemini::GeminiConfig;
 
-fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
+const MODEL: &str = "gemini-2.5-flash";
+
+/// The body `request` sends to [`MODEL`] on the REST wire.
+fn body_of(request: CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
+    request_body(
+        request,
+        &GenerateContent::new(GeminiConfig::new("k"), MODEL),
+        MODEL,
+    )
+}
+
+fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {
     let mut tool_defs = Vec::new();
     if tools {
         tool_defs.push(crate::completion::ToolDefinition {
@@ -12,7 +26,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
             parameters: serde_json::json!({"type": "object", "properties": {}}),
         });
     }
-    super::create_request_body(
+    body_of(
         CompletionRequest::from(
             preamble
                 .map(Message::system)
@@ -30,9 +44,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> GenerateContentRequest {
 #[test]
 fn a_bare_id_is_rejected_before_the_request_goes_out() {
     let mut request = request_with(None, false);
-    let error = request
-        .with_cached_content("abc123")
-        .expect_err("a bare id is not a handle");
+    let error = with_cached_content(&mut request, "abc123").expect_err("a bare id is not a handle");
     assert!(error.to_string().contains("cachedContents/<id>"), "{error}");
 }
 
@@ -41,8 +53,7 @@ fn a_bare_id_is_rejected_before_the_request_goes_out() {
 #[test]
 fn a_preamble_alongside_a_cache_handle_is_rejected_locally() {
     let mut request = request_with(Some("you are a helpful assistant"), false);
-    let error = request
-        .with_cached_content("cachedContents/abc123")
+    let error = with_cached_content(&mut request, "cachedContents/abc123")
         .expect_err("a system instruction conflicts with cached content");
     let message = error.to_string();
     assert!(message.contains("system instruction"), "{message}");
@@ -52,15 +63,14 @@ fn a_preamble_alongside_a_cache_handle_is_rejected_locally() {
 #[test]
 fn tools_alongside_a_cache_handle_are_rejected_locally() {
     let mut request = request_with(None, true);
-    let error = request
-        .with_cached_content("cachedContents/abc123")
+    let error = with_cached_content(&mut request, "cachedContents/abc123")
         .expect_err("tools conflict with cached content");
     assert!(error.to_string().contains("tools"), "{error}");
 }
 
 /// The remedy differs per conflict, and only the tools arm may say so.
 ///
-/// "Move them into the cache" is exactly right for a system instruction —
+/// "Move them into the cache" is exactly right for a system instruction:
 /// that is what explicit caching is for. It is wrong for tools: a cache's
 /// tool set is declarations, and rig's `Agent` derives the declarations it
 /// sends from the same registry it dispatches through, so it can neither
@@ -71,8 +81,7 @@ fn tools_alongside_a_cache_handle_are_rejected_locally() {
 #[test]
 fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
     let mut with_tools = request_with(None, true);
-    let tools_error = with_tools
-        .with_cached_content("cachedContents/abc123")
+    let tools_error = with_cached_content(&mut with_tools, "cachedContents/abc123")
         .expect_err("tools conflict with cached content");
     let tools_message = tools_error.to_string();
     assert!(
@@ -87,8 +96,7 @@ fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
     );
 
     let mut with_preamble = request_with(Some("you are terse"), false);
-    let preamble_message = with_preamble
-        .with_cached_content("cachedContents/abc123")
+    let preamble_message = with_cached_content(&mut with_preamble, "cachedContents/abc123")
         .expect_err("a system instruction conflicts with cached content")
         .to_string();
     assert!(
@@ -103,11 +111,8 @@ fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
 /// declarations.
 ///
 /// A provider-hosted tool runs on Gemini's side and needs no loop, so
-/// "you must run the tool loop yourself" is nonsense advice for it — the
-/// code comment says as much. Without this cell the gate is free to
-/// collapse to `self.tools.is_some()`: that mutation leaves every other
-/// test in the workspace green, and hands a `codeExecution` caller a
-/// paragraph about dispatching declarations they never wrote.
+/// "you must run the tool loop yourself" is wrong advice for it. Without
+/// this cell the gate could collapse to "any tools are present".
 #[test]
 fn a_provider_hosted_tool_conflicts_without_the_function_declaration_caveat() {
     for (label, tools) in [
@@ -120,8 +125,7 @@ fn a_provider_hosted_tool_conflicts_without_the_function_declaration_caveat() {
     ] {
         let mut request = build_with(None, Some(serde_json::json!({ "tools": tools })))
             .expect("request should build");
-        let message = request
-            .with_cached_content("cachedContents/abc123")
+        let message = with_cached_content(&mut request, "cachedContents/abc123")
             .expect_err("tools conflict with a cache handle however they are declared")
             .to_string();
 
@@ -148,8 +152,7 @@ fn a_smuggled_function_declaration_still_earns_the_caveat() {
         })),
     )
     .expect("request should build");
-    let message = request
-        .with_cached_content("cachedContents/abc123")
+    let message = with_cached_content(&mut request, "cachedContents/abc123")
         .expect_err("tools conflict with a cache handle")
         .to_string();
     assert!(message.contains("declarations only"), "{message}");
@@ -158,31 +161,22 @@ fn a_smuggled_function_declaration_still_earns_the_caveat() {
 #[test]
 fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
     let mut request = request_with(None, false);
-    request
-        .with_cached_content("cachedContents/abc123")
+    with_cached_content(&mut request, "cachedContents/abc123")
         .expect("a request with no system instruction or tools should accept a handle");
 
-    let body = serde_json::to_value(&request).expect("serialize");
     assert_eq!(
-        body.get("cachedContent").and_then(|v| v.as_str()),
+        request.get("cachedContent").and_then(|v| v.as_str()),
         Some("cachedContents/abc123")
     );
 }
 
-/// `additional_params` is `#[serde(flatten)]`, so a caller can smuggle
-/// `cachedContent` onto the wire that way. The typed field must win rather
-/// than the two colliding into a duplicate key.
-/// `additional_params` is flattened *after* the named fields, so a
-/// `cachedContent` smuggled through it silently overwrote the typed one and
-/// bypassed the conflict validation entirely. An earlier version of this
-/// test asserted the opposite invariant while passing an unrelated key
-/// (`topK`), so it never exercised the collision and stayed green over a
-/// real wire bug.
+/// The body of a request with an optional preamble and `additional`
+/// merged in, through the route a caller reaches without the typed API.
 fn build_with(
     preamble: Option<&str>,
     additional: Option<serde_json::Value>,
-) -> Result<GenerateContentRequest, EncodeError> {
-    super::create_request_body(
+) -> Result<Map<String, Value>, EncodeError> {
+    body_of(
         CompletionRequest::from(
             preamble
                 .map(Message::system)
@@ -198,11 +192,8 @@ fn build_with(
 
 /// The route a caller reaches without ever touching the typed API.
 ///
-/// `additional_params` is `#[serde(flatten)]`, and flattened fields
-/// serialize *after* the named ones — so a handle set this way used to
-/// overwrite the typed field and, worse, skip the conflict validation
-/// entirely, because that only inspects the typed fields. Validation now
-/// happens where the request is built, so every route reaches it.
+/// A handle set through `additional_params` is checked where the request
+/// is built, so every route reaches the conflict validation.
 #[test]
 fn a_handle_set_only_through_additional_params_is_still_validated() {
     let error = build_with(
@@ -215,21 +206,15 @@ fn a_handle_set_only_through_additional_params_is_still_validated() {
     assert!(message.contains("cachedContents/smuggled"), "{message}");
 }
 
-/// The same route with nothing to conflict with lands in the *typed* field,
-/// so it can no longer be overwritten by the flattened copy.
+/// The same route with nothing to conflict with puts the handle on the wire.
 #[test]
-fn a_clean_handle_from_additional_params_is_lifted_into_the_typed_field() {
-    let request = build_with(
+fn a_clean_handle_from_additional_params_reaches_the_wire() {
+    let body = build_with(
         None,
         Some(serde_json::json!({"cachedContent": "cachedContents/lifted", "topK": 5})),
     )
     .expect("a clean request should build");
 
-    assert_eq!(
-        request.cached_content.as_deref(),
-        Some("cachedContents/lifted")
-    );
-    let body = serde_json::to_value(&request).expect("serialize");
     assert_eq!(
         body.get("cachedContent").and_then(|value| value.as_str()),
         Some("cachedContents/lifted")
@@ -247,8 +232,7 @@ fn setting_the_handle_twice_with_different_values_is_refused() {
     )
     .expect("a clean request should build");
 
-    let error = request
-        .with_cached_content("cachedContents/from_builder")
+    let error = with_cached_content(&mut request, "cachedContents/from_builder")
         .expect_err("two different handles cannot both win");
     let message = error.to_string();
     assert!(message.contains("from_params"), "{message}");
@@ -263,8 +247,7 @@ fn setting_the_same_handle_twice_is_accepted() {
         Some(serde_json::json!({"cachedContent": "cachedContents/same"})),
     )
     .expect("a clean request should build");
-    request
-        .with_cached_content("cachedContents/same")
+    with_cached_content(&mut request, "cachedContents/same")
         .expect("the same handle twice is not ambiguous");
 }
 
@@ -280,33 +263,27 @@ fn a_non_string_handle_in_additional_params_is_refused() {
 /// typed field.
 #[test]
 fn unrelated_additional_params_coexist_with_the_typed_field() {
-    let mut request = super::create_request_body(
+    let mut request = body_of(
         CompletionRequest::new(Message::User {
             content: vec![UserContent::text("hi")],
         })
         .additional_params(serde_json::json!({"topK": 5})),
     )
     .expect("request should build");
-    request
-        .with_cached_content("cachedContents/typed")
-        .expect("handle should be accepted");
+    with_cached_content(&mut request, "cachedContents/typed").expect("handle should be accepted");
 
-    let body = serde_json::to_value(&request).expect("serialize");
     assert_eq!(
-        body.get("cachedContent").and_then(|v| v.as_str()),
+        request.get("cachedContent").and_then(|v| v.as_str()),
         Some("cachedContents/typed")
     );
-    assert_eq!(body.get("topK").and_then(|v| v.as_u64()), Some(5));
+    assert_eq!(request.get("topK").and_then(|v| v.as_u64()), Some(5));
 }
 
 /// The other two fields a cached content owns, smuggled the same way the
 /// handle was.
 ///
-/// Lifting `cachedContent` alone left this open: the conflict check reads
-/// the typed fields, and a `systemInstruction` or `toolConfig` sitting in
-/// the flattened blob is not one. The handle was accepted, the request went
-/// out, and Gemini answered the 400 the check exists to pre-empt — while
-/// the docs promised it would not.
+/// The conflict check reads the body, so a `systemInstruction` or
+/// `toolConfig` from `additional_params` conflicts as the typed field does.
 #[test]
 fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() {
     for (label, smuggled) in [
@@ -324,8 +301,7 @@ fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() 
         ),
     ] {
         let mut request = build_with(None, Some(smuggled)).expect("request should build");
-        let message = request
-            .with_cached_content("cachedContents/abc123")
+        let message = with_cached_content(&mut request, "cachedContents/abc123")
             .expect_err(&format!("a smuggled {label} conflicts with a cache handle"))
             .to_string();
         let expected = if label == "systemInstruction" {
@@ -341,8 +317,7 @@ fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() 
 }
 
 /// Whether or not a cache is involved, one field reached two ways is
-/// ambiguous — and used to be resolved silently, in favour of whichever
-/// serde emitted last.
+/// ambiguous, so it is refused.
 #[test]
 fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order() {
     let message = build_with(
@@ -358,7 +333,7 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
         "{message}"
     );
 
-    let message = super::create_request_body(
+    let message = body_of(
         CompletionRequest::new(Message::User {
             content: vec![UserContent::text("hi")],
         })
@@ -373,19 +348,12 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
 }
 
 /// Whatever the caller put in `additional_params` reaches the wire byte for
-/// byte — including everything rig has no type for.
-///
-/// This is the cell that forbids the obvious implementation. Detecting
-/// these fields by deserializing them into rig's own `ToolConfig` was tried,
-/// and it silently dropped `allowedFunctionNames`: a request restricted to
-/// one function became a request free to call any, with no error anywhere.
-/// `additional_params` exists precisely for shapes rig does not model, so
-/// the one thing this path must never do is narrow it.
+/// byte, including shapes rig does not model. Narrowing them would drop
+/// fields such as `allowedFunctionNames` without an error.
 #[test]
 fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
     for smuggled in [
-        // The lossy case: `allowedFunctionNames` is not a field of rig's
-        // `FunctionCallingMode` (which spells it `allowed_function_names`).
+        // Rig spells its own allow-list `allowed_function_names`.
         serde_json::json!({
             "toolConfig": {
                 "functionCallingConfig": {
@@ -394,21 +362,13 @@ fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
                 }
             }
         }),
-        // Modes rig does not enumerate. `MODE_UNSPECIFIED` is the proto
-        // default and `VALIDATED` was added after rig's enum was written;
-        // the next one Google adds must not need a rig release either.
+        // Modes rig does not enumerate.
         serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "MODE_UNSPECIFIED"}}}),
         serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "VALIDATED"}}}),
         // The proto-original spelling, which proto3 JSON accepts alongside
         // the lowerCamelCase alias.
         serde_json::json!({"tool_config": {"function_calling_config": {"mode": "ANY"}}}),
-        // A system instruction carrying a part kind rig genuinely has no
-        // variant for. `videoMetadata` is a real Gemini `Part` field and
-        // `PartKind` does not model it, so a round-trip through `Content`
-        // would drop it. (An earlier version of this cell used `inlineData`,
-        // which rig *does* model — it failed under the reverted
-        // implementation only because `Content::role` re-serialized as an
-        // added `null`, i.e. for the wrong reason.)
+        // A system instruction carrying a part kind rig does not decode.
         serde_json::json!({
             "systemInstruction": {
                 "parts": [{"videoMetadata": {"startOffset": "0s", "endOffset": "5s"}}]
@@ -417,9 +377,7 @@ fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
     ] {
         let request = build_with(None, Some(smuggled.clone()))
             .unwrap_or_else(|error| panic!("{smuggled} should build, got {error}"));
-        // `to_string`, not `to_value`: a `Value` is a map, so round-tripping
-        // through one silently deduplicates repeated members and shows only
-        // the last. The claim here is about the bytes.
+        // The claim is about the bytes, so it reads the serialized body.
         let body = serde_json::to_string(&request).expect("serialize");
 
         for (key, expected) in smuggled.as_object().expect("object") {
@@ -449,8 +407,7 @@ fn the_proto_original_spelling_conflicts_too() {
             Some(serde_json::json!({ spelling: {"parts": [{"text": "x"}]} })),
         )
         .expect("request should build");
-        let message = request
-            .with_cached_content("cachedContents/abc123")
+        let message = with_cached_content(&mut request, "cachedContents/abc123")
             .expect_err("the proto spelling is the same field")
             .to_string();
         assert!(
@@ -460,29 +417,11 @@ fn the_proto_original_spelling_conflicts_too() {
     }
 }
 
-/// A field reached through the blob is emitted *twice* — once as the typed
-/// `null`, once from the blob — and Gemini accepts that.
-///
-/// Pinned rather than fixed, because "fixed" means `skip_serializing_if` on
-/// `system_instruction` and `tool_config`, which would drop
-/// `"systemInstruction":null` from every recorded Gemini request body and
-/// invalidate the whole cassette corpus. It is worth pinning because it
-/// looks like a bug and is not: measured against the live API,
-/// `{"toolConfig":null,"toolConfig":{...allowedFunctionNames:["get_weather"]}}`
-/// returns 200 *and honours the allow-list*, and the `systemInstruction`
-/// equivalent returns 200 with the instruction applied. A `null` does not
-/// set the proto field, so no `oneof` is claimed and nothing is overwritten.
-///
-/// Two *non-null* copies are a different matter, and that is exactly what
-/// the set-twice refusals above prevent: Gemini answers a doubled
-/// `systemInstruction` with `oneof field '_system_instruction' is already
-/// set`, and merges a doubled `toolConfig` into the union of both
-/// allowed-function lists.
-///
-/// So: if this cell ever fails, the fix is not to make it pass — it is to
-/// re-record the corpus deliberately.
+/// A field reached through the blob replaces the request's own `null` in
+/// place: the body names it once, with the caller's value, where the request
+/// names the field.
 #[test]
-fn a_blob_field_is_emitted_beside_its_typed_null_and_that_is_accepted() {
+fn a_blob_field_replaces_its_typed_null_in_place() {
     let request = build_with(
         None,
         Some(serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "ANY"}}})),
@@ -492,25 +431,31 @@ fn a_blob_field_is_emitted_beside_its_typed_null_and_that_is_accepted() {
 
     assert_eq!(
         body.matches("\"toolConfig\"").count(),
-        2,
-        "the typed null and the blob copy are both emitted, and the provider accepts it: \
-             {body}"
+        1,
+        "the blob value replaces the null rather than sitting beside it: {body}"
     );
-    assert!(
-        body.find("\"toolConfig\":null") < body.find("\"toolConfig\":{"),
-        "the null must come first — serde flattens the blob after the named fields, which is \
-             what makes the caller's value the one that survives: {body}"
+    assert_eq!(
+        request.get("toolConfig"),
+        Some(&serde_json::json!({"functionCallingConfig": {"mode": "ANY"}}))
+    );
+    let keys: Vec<&str> = request.keys().map(String::as_str).collect();
+    assert_eq!(
+        keys,
+        [
+            "contents",
+            "generationConfig",
+            "safetySettings",
+            "toolConfig",
+            "systemInstruction"
+        ],
+        "the field keeps the place the request gives it"
     );
 }
 
-/// The handle's own proto-original spelling, which used to skip everything.
+/// The handle's own proto-original spelling gets every check.
 ///
-/// `cached_content` is a working wire spelling — measured against the live
-/// API, it reaches the cache lookup and answers `CachedContent not found`
-/// for a bogus handle. Matching only `cachedContent` therefore meant a
-/// handle written the other way was never lifted, `with_cached_content` was
-/// never called, and every check it owns was skipped while the handle sailed
-/// through the flattened blob onto the wire.
+/// `cached_content` is a working wire spelling: the live API reaches the
+/// cache lookup through it.
 #[test]
 fn the_protos_own_spelling_of_the_handle_is_validated_too() {
     // The conflict check.
@@ -555,12 +500,14 @@ fn the_protos_own_spelling_of_the_handle_is_validated_too() {
         Some(serde_json::json!({"cached_content": "cachedContents/ok"})),
     )
     .expect("a well-formed handle is accepted under the proto spelling");
-    assert_eq!(request.cached_content.as_deref(), Some("cachedContents/ok"));
+    assert_eq!(
+        request.get("cachedContent").and_then(Value::as_str),
+        Some("cachedContents/ok")
+    );
 }
 
-/// `with_cached_content` is `pub`, and on a hand-built request nothing has
-/// run `extract_tools_from_additional_params` — so the blob is the only
-/// place its tools live, and the check has to look there.
+/// `with_cached_content` is `pub`, so it also checks a hand-built body
+/// whose tools the request builder never saw.
 #[test]
 fn a_hand_built_request_conflicts_on_tools_left_in_additional_params() {
     for (label, tools, wants_caveat) in [
@@ -580,18 +527,11 @@ fn a_hand_built_request_conflicts_on_tools_left_in_additional_params() {
             false,
         ),
     ] {
-        let mut request = GenerateContentRequest {
-            contents: vec![],
-            generation_config: None,
-            safety_settings: None,
-            tools: None,
-            tool_config: None,
-            system_instruction: None,
-            cached_content: None,
-            additional_params: Some(serde_json::json!({ "tools": tools })),
-        };
-        let message = request
-            .with_cached_content("cachedContents/abc123")
+        let mut request = Map::from_iter([
+            ("contents".to_owned(), serde_json::json!([])),
+            ("tools".to_owned(), tools),
+        ]);
+        let message = with_cached_content(&mut request, "cachedContents/abc123")
             .expect_err("tools in the blob conflict with a handle just as typed ones do")
             .to_string();
         assert!(message.contains("also set tools"), "{label}: {message}");
@@ -612,7 +552,6 @@ fn an_explicit_null_is_not_a_conflict() {
         Some(serde_json::json!({"systemInstruction": null, "toolConfig": null})),
     )
     .expect("request should build");
-    request
-        .with_cached_content("cachedContents/abc123")
+    with_cached_content(&mut request, "cachedContents/abc123")
         .expect("a null is not a value the caller set");
 }

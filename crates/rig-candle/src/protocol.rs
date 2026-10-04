@@ -97,9 +97,6 @@ fn validate_protocol_inputs(
     request: &CompletionRequest,
     protocol: ConversationProtocol,
 ) -> Result<(), CandleError> {
-    for document in &request.documents {
-        validate_protocol_text(&document.to_string(), "document", protocol)?;
-    }
     for tool in &request.tools {
         validate_protocol_text(&tool.description, "tool description", protocol)?;
         validate_protocol_text(
@@ -118,17 +115,14 @@ fn validate_protocol_inputs(
             Message::System { content } => {
                 validate_protocol_text(content, "system message", protocol)?;
             }
-            Message::Assistant { content, .. } => {
-                for item in content.iter() {
+            Message::Assistant(turn) => {
+                for item in turn.content.iter() {
                     match item {
                         AssistantContent::Text(text) => {
                             validate_protocol_text(&text.text, "assistant text", protocol)?;
                         }
                         AssistantContent::Reasoning(reasoning) => validate_protocol_text(
-                            &reasoning
-                                .open(reasoning.issuer())
-                                .map(Reasoning::display_text)
-                                .unwrap_or_default(),
+                            &reasoning.text,
                             "assistant reasoning",
                             protocol,
                         )?,
@@ -150,7 +144,7 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) => {}
+                        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
                     }
                 }
             }
@@ -210,11 +204,6 @@ pub(crate) fn parse_assistant(
 }
 
 fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleError> {
-    if let Some(model) = &request.model {
-        return Err(CandleError::UnsupportedFeature(format!(
-            "model override `{model}`; byte-loaded models do not support request-time model selection"
-        )));
-    }
     if request.output_schema.is_some() {
         return Err(CandleError::UnsupportedFeature(
             "direct output_schema requires constrained decoding; use Rig's tool output mode"
@@ -323,24 +312,6 @@ fn validate_tool_definition(tool: &ToolDefinition) -> Result<(), CandleError> {
     Ok(())
 }
 
-fn messages_with_documents(request: &CompletionRequest) -> Vec<Message> {
-    let mut messages = request.chat_history.clone();
-    if !request.documents.is_empty() {
-        let context = request
-            .documents
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        let insertion = messages
-            .iter()
-            .position(|message| !matches!(message, Message::System { .. }))
-            .unwrap_or(messages.len());
-        messages.insert(insertion, Message::user(context));
-    }
-    messages
-}
-
 fn render_plain_chat(
     request: &CompletionRequest,
     family: ConversationProtocol,
@@ -355,7 +326,7 @@ fn render_plain_chat(
             "tool_choice requires the Qwen3 conversation protocol".to_string(),
         ));
     }
-    let messages = messages_with_documents(request);
+    let messages = &request.chat_history;
     type Pieces = &'static [&'static str];
     let (turn_start, role_suffix, turn_end, mut rendered): (&str, Pieces, Pieces, String) =
         match family {
@@ -382,7 +353,7 @@ fn render_plain_chat(
             }
         };
     for message in messages {
-        let (role, content) = render_plain_message(&message)?;
+        let (role, content) = render_plain_message(message)?;
         for piece in [&[turn_start, role][..], role_suffix, &[&content], turn_end].concat() {
             rendered.push_str(piece);
         }
@@ -415,9 +386,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
             }
             Ok(("user", parts.join("\n")))
         }
-        Message::Assistant { content, .. } => {
+        Message::Assistant(turn) => {
             let mut parts = Vec::new();
-            for item in content.iter() {
+            for item in turn.content.iter() {
                 match item {
                     AssistantContent::Text(text) => parts.push(text.text.clone()),
                     AssistantContent::ToolCall(_) => {
@@ -431,6 +402,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     AssistantContent::Image(_) => {
                         return Err(CandleError::UnsupportedPromptContent("image content"));
                     }
+                    AssistantContent::Opaque(_) => {
+                        return Err(CandleError::UnsupportedPromptContent("provider items"));
+                    }
                 }
             }
             Ok(("assistant", parts.join("\n")))
@@ -440,7 +414,7 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
 
 fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
     let (tools, require_call) = selected_tools(request)?;
-    let messages = messages_with_documents(request);
+    let messages = &request.chat_history;
     let mut rendered = String::new();
     let mut first_message = 0;
 
@@ -490,7 +464,7 @@ fn render_qwen3(request: &CompletionRequest) -> Result<String, CandleError> {
     let mut answered = HashSet::<CallId>::new();
     let mut rendered_messages = Vec::new();
     for message in messages.iter().skip(first_message) {
-        rendered_messages.push(render_qwen_message(
+        rendered_messages.extend(render_qwen_message(
             message,
             &mut aliases,
             &mut unresolved,
@@ -551,16 +525,16 @@ fn render_qwen_message(
     aliases: &mut HashMap<String, CallId>,
     unresolved: &mut HashSet<CallId>,
     answered: &mut HashSet<CallId>,
-) -> Result<RenderedMessage, CandleError> {
+) -> Result<Vec<RenderedMessage>, CandleError> {
     match message {
-        Message::System { content } => Ok(RenderedMessage::Normal {
+        Message::System { content } => Ok(vec![RenderedMessage::Normal {
             role: "system",
             content: content.clone(),
-        }),
-        Message::Assistant { content, .. } => {
+        }]),
+        Message::Assistant(turn) => {
             let mut rendered = String::new();
             let mut call_count = 0usize;
-            for item in content.iter() {
+            for item in turn.content.iter() {
                 match item {
                     AssistantContent::Text(text) => rendered.push_str(&text.text),
                     AssistantContent::Reasoning(_) => {
@@ -576,7 +550,7 @@ fn render_qwen_message(
                             )));
                         }
                         if let Some(provider) = call.id.provider() {
-                            let call_id = &provider.call_id;
+                            let call_id = provider.as_str();
                             if aliases
                                 .get(call_id)
                                 .is_some_and(|existing| existing != &call_key)
@@ -585,7 +559,7 @@ fn render_qwen_message(
                                     "duplicate historical tool call correlation ID `{call_id}`"
                                 )));
                             }
-                            aliases.insert(call_id.clone(), call_key.clone());
+                            aliases.insert(call_id.to_owned(), call_key.clone());
                         }
                         if call_count > 0 || !rendered.is_empty() {
                             rendered.push('\n');
@@ -610,19 +584,33 @@ fn render_qwen_message(
                             "assistant image content",
                         ));
                     }
+                    AssistantContent::Opaque(_) => {
+                        return Err(CandleError::UnsupportedPromptContent("provider items"));
+                    }
                 }
             }
-            Ok(RenderedMessage::Normal {
+            Ok(vec![RenderedMessage::Normal {
                 role: "assistant",
                 content: rendered,
-            })
+            }])
         }
         Message::User { content } => {
-            let mut text = Vec::new();
-            let mut results = Vec::new();
+            // A user message the adapter merged holds results and then text:
+            // the results render as one tool-response turn and the text as
+            // the user turn after it, in their order.
+            let mut segments: Vec<RenderedMessage> = Vec::new();
             for item in content.iter() {
                 match item {
-                    UserContent::Text(value) => text.push(value.text.clone()),
+                    UserContent::Text(value) => match segments.last_mut() {
+                        Some(RenderedMessage::Normal { content, .. }) => {
+                            content.push('\n');
+                            content.push_str(&value.text);
+                        }
+                        _ => segments.push(RenderedMessage::Normal {
+                            role: "user",
+                            content: value.text.clone(),
+                        }),
+                    },
                     UserContent::ToolResult(result) => {
                         let canonical_by_id = unresolved.get(&result.call);
                         // A recycled provider handle must not redirect a stale
@@ -636,7 +624,7 @@ fn render_qwen_message(
                         let canonical_by_call_id = result
                             .call
                             .provider()
-                            .and_then(|provider| aliases.get(&provider.call_id));
+                            .and_then(|provider| aliases.get(provider.as_str()));
                         if let (Some(by_id), Some(by_call_id)) =
                             (canonical_by_id, canonical_by_call_id)
                             && by_id != by_call_id
@@ -681,24 +669,22 @@ fn render_qwen_message(
                                 }
                             }
                         }
-                        results.push(items.join("\n"));
+                        let result = items.join("\n");
+                        match segments.last_mut() {
+                            Some(RenderedMessage::ToolResults(results)) => results.push(result),
+                            _ => segments.push(RenderedMessage::ToolResults(vec![result])),
+                        }
                     }
                     unsupported => return Err(unsupported_user_content(unsupported)),
                 }
             }
-            if !text.is_empty() && !results.is_empty() {
-                return Err(CandleError::UnsupportedPromptContent(
-                    "mixed text and tool-result user message",
-                ));
-            }
-            if results.is_empty() {
-                Ok(RenderedMessage::Normal {
+            if segments.is_empty() {
+                segments.push(RenderedMessage::Normal {
                     role: "user",
-                    content: text.join("\n"),
-                })
-            } else {
-                Ok(RenderedMessage::ToolResults(results))
+                    content: String::new(),
+                });
             }
+            Ok(segments)
         }
     }
 }
@@ -717,9 +703,7 @@ fn parse_qwen3_assistant(
         })?;
         let reasoning = remaining[THINK_START.len()..end].trim();
         if !reasoning.is_empty() {
-            items.push(AssistantContent::Reasoning(
-                Reasoning::new(reasoning).sealed(crate::types::PROVIDER_NAME),
-            ));
+            items.push(AssistantContent::Reasoning(Reasoning::new(reasoning)));
         }
         remaining = remaining[end + THINK_END.len()..].trim_start();
     } else if remaining.contains(THINK_END) {

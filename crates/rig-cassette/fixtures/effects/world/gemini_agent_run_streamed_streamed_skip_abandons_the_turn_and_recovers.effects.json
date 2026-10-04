@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 8,
+        "batch": 9,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -156,38 +156,53 @@
                   "y": 21
                 }
               },
-              "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 21,
+                      "y": 21
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "CiQBaRR9E+jm+o4SKEq3fZDvTVDkV4K5E0aLIVHtPL3kzMDW0NwKWgFpFH0TkFBx0uxtZT2V5ERQe/ciQmoPXkMY6P7+M/GKYYiKv5zBJCauYP78HNNjy397G9/wSYjMuekraVsYbJdAg1+uEYUCYRQBhG+XmxsFUTZGnv73fruViApXAWkUfRPd+L3V1y+tNDG8c9SVWtYJiTij3fTj8/GIVSKfvmbOpnUsKRJ3SIdrcEfXQB1UxIOU1yabpjRmgbOYisfmD5gCM2SbX5FNi6+ymt17s+K84ZAD"
+                },
+                "fingerprint": "8aeaaea51d945ee2"
+              }
             }
           ],
           "usage": {
             "input_tokens": 109,
-            "output_tokens": 67,
-            "total_tokens": 176,
-            "reasoning_tokens": 47
+            "output_tokens": 62,
+            "total_tokens": 171,
+            "reasoning_tokens": 42
           },
-          "message_id": null,
-          "response_id": "AKyyatr5MIHAz7IPp-fGkQU",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "aGHBaqjpE5CP6dkPjqS2mQU"
+          },
           "finish_reason": "tool_calls",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 109,
               "candidatesTokenCount": 20,
-              "totalTokenCount": 176,
-              "thoughtsTokenCount": 47,
+              "promptTokenCount": 109,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 109
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 42,
+              "totalTokenCount": 171
             },
             "finish_reason": "STOP",
             "finish_message": "Model generated function call(s).",
             "model_version": "gemini-2.5-flash",
-            "response_id": "AKyyatr5MIHAz7IPp-fGkQU"
+            "response_id": "aGHBaqjpE5CP6dkPjqS2mQU"
           }
         }
       },
@@ -225,12 +240,28 @@
                   "y": 21
                 }
               },
-              "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
-              "additional_params": null
+              "native": {
+                "item": {
+                  "functionCall": {
+                    "args": {
+                      "x": 21,
+                      "y": 21
+                    },
+                    "name": "add"
+                  },
+                  "thoughtSignature": "CiQBaRR9E+jm+o4SKEq3fZDvTVDkV4K5E0aLIVHtPL3kzMDW0NwKWgFpFH0TkFBx0uxtZT2V5ERQe/ciQmoPXkMY6P7+M/GKYYiKv5zBJCauYP78HNNjy397G9/wSYjMuekraVsYbJdAg1+uEYUCYRQBhG+XmxsFUTZGnv73fruViApXAWkUfRPd+L3V1y+tNDG8c9SVWtYJiTij3fTj8/GIVSKfvmbOpnUsKRJ3SIdrcEfXQB1UxIOU1yabpjRmgbOYisfmD5gCM2SbX5FNi6+ymt17s+K84ZAD"
+                },
+                "fingerprint": "8aeaaea51d945ee2"
+              }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     },
     {
@@ -257,7 +288,6 @@
             },
             {
               "role": "assistant",
-              "id": null,
               "content": [
                 {
                   "type": "toolcall",
@@ -270,11 +300,15 @@
                       "x": 21,
                       "y": 21
                     }
-                  },
-                  "signature": "CiQBaRR9E7r1cIX/IXzjpP2etatEbKopwrxaWSQHPXWTfHuOT10KSwFpFH0TBA9IrUDd7hRSSsrjqt6N6UxWVKXGrUqzGGupmV8cAL6PmTYrjYLDpt4eXWKjsJPYP6cHQbjFUlNY0UtHEpxu4079Ks/uQgp7AWkUfRN5uC/BzmukD8ZRNw5aWv7VmJJPnuA5lHBnslbsBIzgvAZLIq46Yyuf73jTAaIJJISWC3ECtEEX5OI23vTEV4i81/RQ8GP52zdYg59oe5xPwWezgMUVSBcESU9wmVbpoj0708JvqM9hA7Ya05+s5O19bJj8481s",
-                  "additional_params": null
+                  }
                 }
-              ]
+              ],
+              "origin": {
+                "api": "gemini.generate_content",
+                "provider": "gcp.gemini",
+                "model": "gemini-2.5-flash"
+              },
+              "stop": "tool_use"
             },
             {
               "role": "user",
@@ -290,7 +324,8 @@
                       "type": "text",
                       "text": "The add tool is disabled for this request."
                     }
-                  ]
+                  ],
+                  "is_error": true
                 }
               ]
             }
@@ -333,41 +368,47 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
-                }
+              "text": "The add tool is disabled for this request.",
+              "native": {
+                "item": {
+                  "text": "The add tool is disabled for this request.",
+                  "thoughtSignature": "CkoBaRR9ExQO/yUd7OwDSG4uu+ZP07m91F1RQLSQmZcom1BefRHWukQdexzH8q839G3DoRm4E41OvpTMOYvJkC3AUo+V53nIb+lrrgrZAQFpFH0T16skjaaO+IBpjd6Zs+HxrMAUfqY7w+AeBLAMLE33+yAWpIYTuYZlytehaqJXFoY2rqf1HsPepkdBpXT49ArnB1RgUDYHiy1IQ+lKpbaHlujFcBUzAeoqHXAQLcxJn7bAwAcem7LAdLx1jwUwCeeXXWvYbWL4KFv6QzAEUixO+5lb9cERPXRPeT5P9oVrdurz6EaDJpAcLxAJb2dziMHvb726zLCQzkoOI0Bavzm/J6W4oAkD/beMSK/+bgGaePNNdoxQD9ZcisRiYBLPsiW/SyXYCWY="
+                },
+                "fingerprint": "bbf3bba124d16395"
               }
             }
           ],
           "usage": {
-            "input_tokens": 197,
-            "output_tokens": 54,
-            "total_tokens": 251,
-            "reasoning_tokens": 31
+            "input_tokens": 150,
+            "output_tokens": 64,
+            "total_tokens": 214,
+            "reasoning_tokens": 55
           },
-          "message_id": null,
-          "response_id": "Aayyaq6yHMvVz7IPwYepGQ",
+          "origin": {
+            "api": "gemini.generate_content",
+            "provider": "gcp.gemini",
+            "model": "gemini-2.5-flash",
+            "response_model": "gemini-2.5-flash",
+            "response_id": "aWHBaofKAu2LmtkPz72BuAI"
+          },
           "finish_reason": "stop",
-          "provider": "gcp.gemini",
-          "model": "gemini-2.5-flash",
           "raw": {
             "usage_metadata": {
-              "promptTokenCount": 197,
-              "candidatesTokenCount": 23,
-              "totalTokenCount": 251,
-              "thoughtsTokenCount": 31,
+              "candidatesTokenCount": 9,
+              "promptTokenCount": 150,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
-                  "tokenCount": 197
+                  "tokenCount": 150
                 }
-              ]
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 55,
+              "totalTokenCount": 214
             },
             "finish_reason": "STOP",
             "model_version": "gemini-2.5-flash",
-            "response_id": "Aayyaq6yHMvVz7IPwYepGQ"
+            "response_id": "aWHBaofKAu2LmtkPz72BuAI"
           }
         }
       },
@@ -385,7 +426,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21."
+            "text": "The add tool is disabled for this request."
           }
         },
         {
@@ -395,16 +436,23 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm sorry, the add tool is currently disabled. I cannot calculate 21 + 21.",
-              "additional_params": {
-                "gemini": {
-                  "thoughtSignature": "CmYBaRR9E4F+3KJpL+cI9vVTGF7GSv+a8n8DokeeiyHmIjVf0viOtDCby2nWHb96qWHNqE8ermEVrXtujnGU+Hh79PsLudPt/lzSUSlZo5Pc+sYo6s196QG1xrPRZMMd3ipvRvjRrvwKdQFpFH0Thl7Fo7Dnr0PSTzzgxYg/V36JX9WVXukt34y9eAbHtG739CBPA4jf1Ua3sRPoETcgekRWzttXIIDmFELeDOAb/l7xDGwKCT7Mcx2S5WrKuUM69WVKzPw187N7e4y9/h2UWF5THB8IoNrxWPGkNogiwA=="
-                }
+              "text": "The add tool is disabled for this request.",
+              "native": {
+                "item": {
+                  "text": "The add tool is disabled for this request.",
+                  "thoughtSignature": "CkoBaRR9ExQO/yUd7OwDSG4uu+ZP07m91F1RQLSQmZcom1BefRHWukQdexzH8q839G3DoRm4E41OvpTMOYvJkC3AUo+V53nIb+lrrgrZAQFpFH0T16skjaaO+IBpjd6Zs+HxrMAUfqY7w+AeBLAMLE33+yAWpIYTuYZlytehaqJXFoY2rqf1HsPepkdBpXT49ArnB1RgUDYHiy1IQ+lKpbaHlujFcBUzAeoqHXAQLcxJn7bAwAcem7LAdLx1jwUwCeeXXWvYbWL4KFv6QzAEUixO+5lb9cERPXRPeT5P9oVrdurz6EaDJpAcLxAJb2dziMHvb726zLCQzkoOI0Bavzm/J6W4oAkD/beMSK/+bgGaePNNdoxQD9ZcisRiYBLPsiW/SyXYCWY="
+                },
+                "fingerprint": "bbf3bba124d16395"
               }
             }
           }
         }
       ],
+      "stream_origin": {
+        "api": "gemini.generate_content",
+        "provider": "gcp.gemini",
+        "model": "gemini-2.5-flash"
+      },
       "scope": "parity/run#0"
     }
   ]
