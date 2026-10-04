@@ -9,12 +9,12 @@ fn the_matching_mode_reads_exact_and_shape_and_refuses_anything_else() {
     assert_eq!(mode(Some("")).ok(), Some(BodyMatching::Exact));
     assert_eq!(mode(Some("Exact")).ok(), Some(BodyMatching::Exact));
     assert_eq!(mode(Some("SHAPE")).ok(), Some(BodyMatching::Shape));
-    let error = mode(Some("fuzzy")).expect_err("an unknown mode");
-    assert_eq!(error.path(), path);
+    let refused = mode(Some("fuzzy"));
     assert!(
-        matches!(&error, CassetteError::InvalidMatchingMode { value, .. } if value == "fuzzy"),
-        "{error}"
+        matches!(&refused, Err(CassetteError::InvalidMatchingMode { value, .. }) if value == "fuzzy"),
+        "{refused:?}"
     );
+    assert_eq!(refused.err().as_ref().map(CassetteError::path), Some(path));
 }
 
 #[test]
