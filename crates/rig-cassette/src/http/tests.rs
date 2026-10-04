@@ -313,7 +313,7 @@ fn replay_miss_diagnostics_scrub_actual_request_details() {
         consumed: false,
     }];
 
-    let message = replay_miss_message(policy, &request, &interactions);
+    let message = replay_miss_message(policy, &request, &interactions, None);
 
     assert!(!message.contains("AIzaSyExampleSecretToken123456"));
     assert!(!message.contains("raw-api-key"));
@@ -338,7 +338,7 @@ fn replay_miss_diagnostics_report_missing_required_headers_without_values() {
         consumed: false,
     }];
 
-    let message = replay_miss_message(policy, &request, &interactions);
+    let message = replay_miss_message(policy, &request, &interactions, None);
 
     assert!(message.contains("x-api-key"));
     assert!(message.contains("missing_required_headers"));
@@ -376,6 +376,7 @@ async fn replay_request_records_unexpected_misses() {
         }],
         misses: Vec::new(),
         policy: CassettePolicy::default(),
+        snapshots: None,
     }));
 
     let response = replay_request(

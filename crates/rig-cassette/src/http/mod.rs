@@ -59,10 +59,13 @@ use tokio::task::JoinHandle;
 mod account;
 mod clock;
 pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
+pub use snapshot::request_snapshot;
+use snapshot::{RequestSnapshots, SnapshotMode};
 mod error;
 pub use error::CassetteError;
 pub mod ledger;
 mod relay;
+mod snapshot;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
@@ -573,6 +576,40 @@ impl ProviderCassette {
         cassette_path: PathBuf,
         attempt_root: PathBuf,
     ) -> Result<Self, CassetteError> {
+        let snapshots = if mode.records() {
+            SnapshotMode::Off
+        } else {
+            SnapshotMode::current(&cassette_path)?
+        };
+        Self::try_start_session(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            mode,
+            cassette_path,
+            attempt_root,
+            snapshots,
+        )
+        .await
+    }
+
+    /// [`Self::try_start_with_attempts`] with an explicit request snapshot
+    /// mode instead of the ambient `RIG_CASSETTE_SNAPSHOTS`.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the session inputs, each from a distinct public entry point"
+    )]
+    async fn try_start_session(
+        transport: RecordVia,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+        attempt_root: PathBuf,
+        snapshots: SnapshotMode,
+    ) -> Result<Self, CassetteError> {
         let scenario = spec.scenario;
         let ledger_path = attempt_root.join(ledger::LEDGER_FILE);
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
@@ -587,11 +624,19 @@ impl ProviderCassette {
                     path: cassette_path,
                 });
             }
-            Some(load_replay_interactions(&cassette_path).await?)
+            let interactions = load_replay_interactions(&cassette_path).await?;
+            let recorded = interactions
+                .iter()
+                .map(|interaction| recorded_body_view(policy, &interaction.when))
+                .collect();
+            let snapshots = RequestSnapshots::load(snapshots, &cassette_path, recorded)?;
+            Some((interactions, snapshots))
         };
         let clock = CassetteClock::start(mode, &cassette_path)?;
-        let server = if let Some(interactions) = replay {
-            CassetteServer::Replay(ReplayServer::start(&cassette_path, interactions, policy).await?)
+        let server = if let Some((interactions, snapshots)) = replay {
+            CassetteServer::Replay(
+                ReplayServer::start(&cassette_path, interactions, policy, snapshots).await?,
+            )
         } else {
             match transport {
                 RecordVia::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
@@ -915,6 +960,7 @@ impl ReplayServer {
         cassette_path: &Path,
         interactions: Vec<ReplayInteraction>,
         policy: CassettePolicy,
+        snapshots: Option<RequestSnapshots>,
     ) -> Result<Self, CassetteError> {
         let bind_error = |source| CassetteError::Bind {
             path: cassette_path.to_path_buf(),
@@ -927,6 +973,7 @@ impl ReplayServer {
             interactions,
             misses: Vec::new(),
             policy,
+            snapshots,
         }));
         let app = Router::new()
             .fallback(any(replay_request))
@@ -959,15 +1006,19 @@ impl ReplayServer {
         format!("http://{}", self.addr)
     }
 
-    /// Check that replay played every interaction and refused nothing. This
-    /// disarms the drop guard whatever the outcome.
+    /// Check that replay played every interaction and refused nothing, then
+    /// check or write the request snapshot. This disarms the drop guard
+    /// whatever the outcome.
     async fn check_consumed(&mut self, cassette_path: &Path) -> Result<(), CassetteError> {
         self.checked = true;
         let state = self.state.lock().await;
-        match replay_mismatch(cassette_path, &state.interactions, &state.misses) {
-            Some(error) => Err(error),
-            None => Ok(()),
+        if let Some(error) = replay_mismatch(cassette_path, &state.interactions, &state.misses) {
+            return Err(error);
         }
+        state
+            .snapshots
+            .as_ref()
+            .map_or(Ok(()), RequestSnapshots::finish)
     }
 
     async fn shutdown(&mut self) {
@@ -994,11 +1045,19 @@ impl Drop for ReplayServer {
         let Ok(state) = self.state.try_lock() else {
             return;
         };
-        if let Some(message) = replay_completion_failure_message(
+        let failure = replay_completion_failure_message(
             &state.cassette_path,
             &state.interactions,
             &state.misses,
-        ) {
+        )
+        .or_else(|| {
+            state
+                .snapshots
+                .as_ref()
+                .and_then(|snapshots| snapshots.finish().err())
+                .map(|error| error.to_string())
+        });
+        if let Some(message) = failure {
             panic!("{message}\n(the replay session was dropped without `finish`)");
         }
     }
@@ -1009,6 +1068,7 @@ struct ReplayState {
     interactions: Vec<ReplayInteraction>,
     misses: Vec<ReplayMiss>,
     policy: CassettePolicy,
+    snapshots: Option<RequestSnapshots>,
 }
 
 #[derive(Clone, Debug)]
@@ -1223,12 +1283,40 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
+    let sent = state
+        .snapshots
+        .is_some()
+        .then(|| incoming_body_view(policy, &request));
 
     let Some(index) = matching_interaction_index(policy, &state.interactions, &request) else {
-        let message = replay_miss_message(policy, &request, &state.interactions);
-        state.misses.push(ReplayMiss {
-            diagnostic: message.clone(),
-        });
+        // The interaction the request was most likely meant for, compared
+        // with what its snapshot expects.
+        let snapshot_diff =
+            state
+                .snapshots
+                .as_ref()
+                .zip(sent.as_ref())
+                .and_then(|(snapshots, sent)| {
+                    let candidate = miss_candidate_index(policy, &state.interactions, &request)?;
+                    snapshots.difference(candidate, sent)
+                });
+        if let Some(difference) = &snapshot_diff {
+            eprintln!(
+                "replay of {} refused a request that differs from its snapshot at {difference}",
+                state.cassette_path.display()
+            );
+        }
+        let message = replay_miss_message(
+            policy,
+            &request,
+            &state.interactions,
+            snapshot_diff.as_deref(),
+        );
+        let diagnostic = match &snapshot_diff {
+            Some(difference) => format!("{message}\nsnapshot difference at {difference}"),
+            None => message.clone(),
+        };
+        state.misses.push(ReplayMiss { diagnostic });
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
@@ -1236,10 +1324,64 @@ async fn replay_request(
             .expect("replay miss response should build");
     };
 
+    if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
+        snapshots.observe(index, sent);
+    }
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
     cassette_response(&interaction.then, &cassette_path)
+}
+
+/// The unplayed interaction a refused request was most likely meant for:
+/// the next one in order, or for unordered replay the first unplayed one on
+/// the request's method and path.
+fn miss_candidate_index(
+    policy: CassettePolicy,
+    interactions: &[ReplayInteraction],
+    request: &IncomingRequest,
+) -> Option<usize> {
+    let mut unplayed = interactions
+        .iter()
+        .enumerate()
+        .filter(|(_, interaction)| !interaction.consumed);
+    match policy.replay_matching {
+        ReplayMatching::Ordered => unplayed.next().map(|(index, _)| index),
+        ReplayMatching::Unordered => unplayed
+            .find(|(_, interaction)| {
+                request
+                    .method
+                    .as_str()
+                    .eq_ignore_ascii_case(&interaction.when.method)
+                    && request.uri.path() == interaction.when.path
+            })
+            .map(|(index, _)| index),
+    }
+}
+
+/// A recorded request's body as request snapshots compare it.
+fn recorded_body_view(policy: CassettePolicy, request: &CassetteRequest) -> Value {
+    let content_type = request
+        .header
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case("content-type"))
+        .map(|header| header.value.as_str());
+    // `load_replay_interactions` refuses a body that does not decode.
+    let body = request
+        .body
+        .as_deref()
+        .and_then(|body| decode_body(body, request.body_encoding).ok())
+        .unwrap_or_default();
+    snapshot::body_view(policy, content_type, &body)
+}
+
+/// An incoming request's body as request snapshots compare it.
+fn incoming_body_view(policy: CassettePolicy, request: &IncomingRequest) -> Value {
+    let content_type = request
+        .headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+    snapshot::body_view(policy, content_type, &request.body)
 }
 
 fn matching_interaction_index(
@@ -1264,6 +1406,7 @@ fn replay_miss_message(
     policy: CassettePolicy,
     request: &IncomingRequest,
     interactions: &[ReplayInteraction],
+    snapshot_diff: Option<&str>,
 ) -> String {
     let candidates = interactions
         .iter()
@@ -1303,7 +1446,7 @@ fn replay_miss_message(
         })
         .collect::<Vec<_>>();
 
-    json!({
+    let mut message = json!({
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
@@ -1313,8 +1456,11 @@ fn replay_miss_message(
         "missing_required_headers": missing_required_headers(policy, &request.headers),
         "actual_body_preview": body_preview_bytes_for_diagnostics(policy, &request.body),
         "candidates": candidates,
-    })
-    .to_string()
+    });
+    if let (Some(difference), Value::Object(fields)) = (snapshot_diff, &mut message) {
+        fields.insert("snapshot_diff".to_owned(), Value::from(difference));
+    }
+    message.to_string()
 }
 
 struct IncomingRequest {
