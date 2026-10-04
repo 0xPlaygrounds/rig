@@ -217,7 +217,7 @@ fn format_branch((line, block, branch): Branch) -> String {
     format!("{line}.{block}.{branch}")
 }
 
-fn parse_branch(text: &str) -> Option<Branch> {
+pub(crate) fn parse_branch(text: &str) -> Option<Branch> {
     let mut parts = text.split('.').map(str::parse);
     match (parts.next(), parts.next(), parts.next(), parts.next()) {
         (Some(Ok(line)), Some(Ok(block)), Some(Ok(branch)), None) => Some((line, block, branch)),

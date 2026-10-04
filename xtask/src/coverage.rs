@@ -18,7 +18,7 @@
 //! cargo xtask coverage --per-test          # per-test coverage under target/
 //! ```
 
-mod lines;
+pub(crate) mod lines;
 mod mutants;
 pub(crate) mod shapes;
 #[cfg(test)]

@@ -45,7 +45,8 @@ pub(crate) enum Change {
     Rebatched,
     /// A count that follows the number of stream items, in a migrated golden.
     CountShift,
-    /// A deleted golden no test names any more.
+    /// A deleted golden no test names any more, or one the cassette prune
+    /// lists.
     Retired,
 }
 
@@ -768,13 +769,31 @@ impl<'a> File<'a> {
 /// Whether no test or source names a deleted golden any more, so its
 /// producer went with it.
 fn retired(root: &Path, path: &str) -> Result<bool, String> {
-    let Some(name) = Path::new(path)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .and_then(|name| name.strip_suffix(".effects.json"))
-    else {
+    let file = Path::new(path).file_name().and_then(|name| name.to_str());
+    let Some(name) = file.and_then(|name| {
+        name.strip_suffix(".effects.json")
+            .or_else(|| name.strip_suffix(".programs.json"))
+    }) else {
         return Ok(false);
     };
+    let world = Path::new(path)
+        .parent()
+        .and_then(|dir| dir.file_name())
+        .is_some_and(|dir| dir == "world");
+    let label = if world {
+        format!("world/{name}")
+    } else {
+        name.to_owned()
+    };
+    // The cassette prune lists every golden it deleted, with its producer.
+    let manifest = std::fs::read_to_string(root.join(super::prune::MANIFEST)).unwrap_or_default();
+    if manifest.lines().any(|line| {
+        line.strip_prefix("golden\t")
+            .and_then(|rest| rest.split('\t').next())
+            == Some(&label)
+    }) {
+        return Ok(true);
+    }
     let named = output(
         root,
         "git",

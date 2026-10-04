@@ -44,7 +44,7 @@ const UNRECORDED: &str = "\
 ";
 
 /// Where a fact is sent or recorded: a provider, an encoder and the fact.
-type Cell = (String, String, Fact);
+pub(crate) type Cell = (String, String, Fact);
 
 /// One index entry: a fact and the interaction that recorded it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,12 +156,58 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
 
 /// Every interaction under `cassettes`, with its snapshot applied.
 pub(crate) fn observe(cassettes: &Path) -> Result<Vec<Observed>, String> {
+    let fixtures = shapes::corpus(cassettes).map_err(|error| error.to_string())?;
+    observe_fixtures(cassettes, &fixtures)
+}
+
+/// Every interaction of `fixtures`, read from `cassettes`, with its
+/// snapshot applied.
+pub(crate) fn observe_fixtures(
+    cassettes: &Path,
+    fixtures: &[Fixture],
+) -> Result<Vec<Observed>, String> {
     let mut observed = Vec::new();
-    for fixture in shapes::corpus(cassettes).map_err(|error| error.to_string())? {
+    for fixture in fixtures {
         let snapshot = read_snapshot(&snapshot_path(&cassettes.join(&fixture.relative)))?;
-        observed.extend(observe_fixture(&fixture, &snapshot)?);
+        observed.extend(observe_fixture(fixture, &snapshot)?);
     }
     Ok(observed)
+}
+
+/// Per fixture, every cell its recordings hold live: each recorded
+/// request's facts, or for a recording whose body was not recorded the facts
+/// `committed` pins for it while the fixture is unchanged, else the facts
+/// Rig sends.
+pub(crate) fn recorded_cells(
+    observed: &[Observed],
+    committed: &Index,
+) -> BTreeMap<String, BTreeSet<Cell>> {
+    let mut pins: BTreeMap<&str, (&str, Facts)> = BTreeMap::new();
+    for pin in &committed.unrecorded {
+        pins.entry(pin.recording.as_str())
+            .or_insert_with(|| (pin.fixture.as_str(), Facts::new()))
+            .1
+            .insert(pin.fact.clone());
+    }
+    let mut cells: BTreeMap<String, BTreeSet<Cell>> = BTreeMap::new();
+    for item in observed {
+        let facts = match &item.recorded {
+            Some(recorded) => recorded.clone(),
+            None => match pins.get(item.recording.as_str()) {
+                Some((fixture, facts)) if *fixture == item.fixture => facts.clone(),
+                _ => item.sent.clone(),
+            },
+        };
+        let fixture = item
+            .recording
+            .rsplit_once('#')
+            .map_or(item.recording.as_str(), |(fixture, _)| fixture);
+        let entry = cells.entry(fixture.to_owned()).or_default();
+        for fact in facts {
+            entry.insert((item.provider.clone(), item.encoder.clone(), fact));
+        }
+    }
+    cells
 }
 
 /// The snapshot beside a fixture, as rig-cassette names it.

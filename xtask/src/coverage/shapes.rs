@@ -207,37 +207,41 @@ pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>> {
 pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
     let mut shapes = Shapes::new();
     for fixture in corpus(cassettes)? {
-        let Fixture {
-            relative,
-            provider,
-            interactions,
-            ..
-        } = fixture;
-        for (index, interaction) in interactions.into_iter().enumerate() {
-            let encoder = interaction.when.encoder();
-            let example = format!("{relative}#{index}");
-            let requests = request_facts(&interaction.when)
-                .into_iter()
-                .map(|fact| (Kind::Request, fact.to_string()));
-            let reply = (Kind::Reply, hash(&reply_shape(&interaction.then)));
-            for (kind, shape) in requests.chain([reply]) {
-                let key = ShapeKey {
-                    provider: provider.clone(),
-                    encoder: encoder.clone(),
-                    kind,
-                    shape,
-                };
-                shapes
-                    .entry(key)
-                    .and_modify(|seen| seen.recordings += 1)
-                    .or_insert_with(|| Recorded {
-                        recordings: 1,
-                        example: example.clone(),
-                    });
-            }
+        for (key, example) in fixture_shapes(&fixture) {
+            shapes
+                .entry(key)
+                .and_modify(|seen| seen.recordings += 1)
+                .or_insert_with(|| Recorded {
+                    recordings: 1,
+                    example,
+                });
         }
     }
     Ok(shapes)
+}
+
+/// Every shape one fixture records, once per interaction that records it,
+/// with that interaction (`<fixture>#<n>`).
+pub(crate) fn fixture_shapes(fixture: &Fixture) -> Vec<(ShapeKey, String)> {
+    let mut found = Vec::new();
+    for (index, interaction) in fixture.interactions.iter().enumerate() {
+        let encoder = interaction.when.encoder();
+        let example = format!("{}#{index}", fixture.relative);
+        let requests = request_facts(&interaction.when)
+            .into_iter()
+            .map(|fact| (Kind::Request, fact.to_string()));
+        let reply = (Kind::Reply, hash(&reply_shape(&interaction.then)));
+        for (kind, shape) in requests.chain([reply]) {
+            let key = ShapeKey {
+                provider: fixture.provider.clone(),
+                encoder: encoder.clone(),
+                kind,
+                shape,
+            };
+            found.push((key, example.clone()));
+        }
+    }
+    found
 }
 
 fn interactions(text: &str) -> std::result::Result<Vec<Interaction>, serde_yaml::Error> {

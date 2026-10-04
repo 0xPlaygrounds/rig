@@ -12,6 +12,7 @@ mod audit;
 mod bank;
 mod goldens;
 mod owner;
+mod prune;
 mod record;
 mod scan;
 mod snapshots;
@@ -47,6 +48,10 @@ pub(crate) const USAGE: &str = "\
   cassette bank [--check]    write the reply bank, one real recorded reply per
                               provider, completion encoder, reply shape and
                               called tools, or with --check fail when it is stale
+  cassette prune [--check]    delete the cassette tests, fixtures and goldens the
+                              kept tests cover, by a fixed rule, into
+                              crates/rig-cassette/coverage/pruned.tsv, or with
+                              --check fail when the tree or the list disagrees
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -76,6 +81,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "snapshots" => snapshots::run(root, rest),
         "acceptance" => acceptance::run(root, rest),
         "bank" => bank::run(root, rest),
+        "prune" => prune::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }

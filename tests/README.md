@@ -181,7 +181,10 @@ The other commands:
   its block. It then classifies each change from `REF` (default `HEAD`) as
   an inserted close or reasoning start, a block added to an end, or a count
   shift that follows the inserted events, and fails on any other change or
-  any mismatch.
+  any mismatch. A deleted golden that no test names, or that the cassette
+  prune lists, is retired.
+- `cassette prune [--check]` deletes the cassette tests, fixtures and
+  goldens the kept tests already cover (see "Cassette prune" below).
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.
 
 The recorder refuses to write a fixture, and panics, in two cases:
@@ -506,6 +509,64 @@ change. The lines part needs `cargo-llvm-cov`, the `llvm-tools` component,
 nextest and protoc, and builds the instrumented crates alone with
 `RUSTC_BOOTSTRAP`, since branch coverage is unstable in rustc. Mutation needs
 `cargo-mutants` and takes hours, so CI never runs it.
+
+### Cassette prune
+
+`cargo xtask cassette prune` deletes the cassette tests whose coverage the
+kept tests already give, by a fixed rule, and lists every deletion in
+`crates/rig-cassette/coverage/pruned.tsv` with the kept tests that cover what
+it covered. Review the rule at the head of that file and the list, not the
+deleted files.
+
+- The candidates are the tests of the provider targets that record, replay
+  or read a cassette, or name an effect golden. Every other test stays: the
+  crates' unit tests, the conformance targets, the `runtime` target over the
+  reply bank, `verify` and `world_replay`. So does every fixture or golden
+  something outside the candidates names, and every recording test of a
+  fixture that stays.
+- The elements are every line and branch of `lines.tsv` (from each test's own
+  coverage, `cargo xtask coverage --per-test`), every request fact and reply
+  shape of `shapes.tsv`, and every fact of the acceptance index. The tests
+  that sweep a corpus directory stay but are not credited, since what they
+  cover depends on the files that exist.
+- Greedy set cover over the elements the always-kept tests do not hold: the
+  candidate covering the most is taken, then the one with smaller fixtures,
+  then the alphabetically first; then every taken test the others make
+  redundant goes, latest first.
+- A fixture goes when every test naming it goes, with its `.requests.json`
+  and `.clock.json`; the reply bank keeps its replies. A golden goes with its
+  producer. A kept producer's golden stays only when something else reads
+  it, or it is the one format pin of an effect kind; otherwise the producer
+  checks its log in the test: the log replays record by record through a
+  world, and a world log's programs restore and replay by id. Such a golden
+  is never written, `RIG_REGENERATE_GOLDEN` included.
+- The mutation baseline is measured against the fast suites only, so no
+  deletion of a cassette test or golden can lose a kill.
+
+```bash
+cargo xtask coverage --per-test      # each test's coverage, the prune's input
+cargo xtask cassette prune           # delete, write pruned.tsv, edit the tests out
+cargo xtask cassette prune --check   # fail when it would delete more or the list disagrees
+```
+
+A rewrite deletes the files, takes the tests out of their sources (with the
+doc table rows that name only them) and keeps the rows of earlier deletions.
+Delete the helpers and emptied modules the compiler then reports unused, and
+rerun until `--check` passes: a helper that named a fixture held it until it
+went. `--check` reads the same `per-test.tsv`; rows of tests no longer in the
+source are not read.
+
+A provider file another target compiles (the `runtime` target's lifecycle and
+session rows) is kept whole. A region that only a corpus sweep reaches,
+through one recording, is kept by listing that fixture or golden in
+`crates/rig-cassette/coverage/prune-keep.txt` with its reason; the gate's
+`--check` names such a region when it is lost.
+
+The parity snapshots (`fixtures/parity/<provider>.json`) follow the golden
+rule: each pins one reply per reply shape and mode, the smallest, then the
+first in path order, and every other reply is checked in the test by its
+`call` and `stream().finish()` agreeing. `RIG_REGENERATE_PARITY=1` rewrites
+the pinned entries.
 
 ## Prompt Cache Testing
 
