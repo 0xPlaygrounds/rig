@@ -233,7 +233,9 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
 
     /// The hosted-tool pair this opaque item belongs to: whether it is the
     /// use or the result, and the id they share. A use and its result
-    /// replay only together.
+    /// replay only together, in one turn or across the model's turns. A use
+    /// still running when the last turn ended (a paused turn, or one whose
+    /// client call the hosted tool made) replays alone.
     fn hosted_pair(&self, item: &serde_json::Value) -> Option<(Pairing, String)> {
         let _ = item;
         None
@@ -390,10 +392,11 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Every call left unanswered when the next user or assistant message
-///   arrives, or when the history ends, gets a [`NO_RESULT_PROVIDED`] error
-///   result; a result no preceding call asked for is dropped. A system
-///   message that arrives while calls wait is held until they are answered.
+/// - Every call left unanswered when a user message with more than results
+///   or the next assistant message arrives, or when the history ends, gets a
+///   [`NO_RESULT_PROVIDED`] error result; a result no preceding call asked
+///   for is dropped. A system message that arrives while calls wait is held
+///   until they are answered.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -495,9 +498,13 @@ pub(crate) fn adapt_for(
     };
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
+    let hosted = hosted_sides(history, target, &same);
+    let last_turn = history
+        .iter()
+        .rposition(|message| matches!(message, Message::Assistant(_)));
     let mut ids = Renamed::default();
     let mut shaped = Vec::with_capacity(history.len());
-    for message in history {
+    for (at, message) in history.iter().enumerate() {
         match message {
             Message::System { content } => {
                 if !content.trim().is_empty() {
@@ -513,7 +520,8 @@ pub(crate) fn adapt_for(
                 shaped.extend(user(content, &mut ids, &form).into_iter().map(Some));
             }
             Message::Assistant(turn) => {
-                let adapted = assistant(turn, target, &same, accepts, &mut ids);
+                let last = Some(at) == last_turn;
+                let adapted = assistant(turn, target, &same, accepts, &mut ids, &hosted, last);
                 let adapted = AssistantMessage {
                     content: adapted
                         .content
@@ -815,6 +823,8 @@ fn assistant(
     same_model: &Same<'_>,
     accepts: Accepts,
     ids: &mut Renamed,
+    hosted: &HashSet<(Pairing, String)>,
+    last: bool,
 ) -> AssistantMessage {
     let model = same_model.model;
     let same = turn
@@ -894,7 +904,7 @@ fn assistant(
         })
         .collect();
     let content = if same {
-        paired(content, target, accepts.tools)
+        paired(content, target, accepts.tools, hosted, last)
     } else {
         content.into_iter().flatten().collect()
     };
@@ -905,30 +915,77 @@ fn assistant(
     }
 }
 
+/// The hosted uses and results the model's own replayed turns hold, which
+/// pair across turns: a programmatic tool call's code execution returns its
+/// result in the turn after the client call it made.
+fn hosted_sides(
+    history: &[Message],
+    target: &dyn ReplayTarget,
+    same: &Same<'_>,
+) -> HashSet<(Pairing, String)> {
+    history
+        .iter()
+        .filter_map(|message| match message {
+            Message::Assistant(turn)
+                if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure())
+                    && turn.origin.as_ref().is_some_and(|origin| same.is(origin)) =>
+            {
+                Some(turn)
+            }
+            _ => None,
+        })
+        .flat_map(|turn| &turn.content)
+        .filter_map(|block| match block {
+            AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
 /// every block whose partner is gone dropped too: an item that needs the one
 /// after it ([`ReplayTarget::needs_next`]), edited or not, when that one is
-/// dropped or only rebuilt, and a hosted use or result whose other half is missing
-/// ([`ReplayTarget::hosted_pair`]).
+/// dropped or only rebuilt, and a hosted use or result whose other half no
+/// turn in `hosted` holds ([`ReplayTarget::hosted_pair`]). In the `last`
+/// turn, a use followed only by calls and opaque items is still running and
+/// stays.
 fn paired(
     mut content: Vec<Option<AssistantContent>>,
     target: &dyn ReplayTarget,
     tools: bool,
+    hosted: &HashSet<(Pairing, String)>,
+    last: bool,
 ) -> Vec<AssistantContent> {
     let pair = |block: &AssistantContent| match block {
         AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
         _ => None,
     };
-    let sides: HashSet<(Pairing, String)> = content.iter().flatten().filter_map(pair).collect();
-    for slot in content.iter_mut() {
-        if let Some((side, id)) = slot.as_ref().and_then(pair) {
-            let other = match side {
-                Pairing::Use => Pairing::Result,
-                Pairing::Result => Pairing::Use,
-            };
-            if !sides.contains(&(other, id)) {
-                *slot = None;
-            }
+    for at in 0..content.len() {
+        let Some((side, id)) = content.get(at).and_then(Option::as_ref).and_then(pair) else {
+            continue;
+        };
+        let other = match side {
+            Pairing::Use => Pairing::Result,
+            Pairing::Result => Pairing::Use,
+        };
+        let running = last
+            && side == Pairing::Use
+            && content
+                .get(at + 1..)
+                .into_iter()
+                .flatten()
+                .flatten()
+                .all(|block| {
+                    matches!(
+                        block,
+                        AssistantContent::ToolCall(_) | AssistantContent::Opaque(_)
+                    )
+                });
+        if !hosted.contains(&(other, id))
+            && !running
+            && let Some(slot) = content.get_mut(at)
+        {
+            *slot = None;
         }
     }
     for at in (0..content.len()).rev() {
@@ -1282,6 +1339,10 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
     let mut waiting: Vec<ToolCall> = Vec::new();
     let mut held = Vec::new();
     let mut gap = false;
+    // Results that answer some waiting calls while others still wait: a
+    // system message between them must not end the turn's results.
+    let mut pending: Vec<UserContent> = Vec::new();
+    let mut pending_gap = false;
     for message in adjacent_users_merged(history) {
         let Some(message) = message else {
             close(
@@ -1289,8 +1350,8 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
                 &mut waiting,
                 &mut held,
                 answers,
-                Vec::new(),
-                false,
+                std::mem::take(&mut pending),
+                std::mem::take(&mut pending_gap),
             );
             stored = false;
             gap = true;
@@ -1303,8 +1364,8 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
                     &mut waiting,
                     &mut held,
                     answers,
-                    Vec::new(),
-                    false,
+                    std::mem::take(&mut pending),
+                    std::mem::take(&mut pending_gap),
                 );
                 stored = false;
                 if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
@@ -1322,15 +1383,21 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
                         &mut waiting,
                         &mut held,
                         answers,
-                        Vec::new(),
-                        false,
+                        std::mem::take(&mut pending),
+                        std::mem::take(&mut pending_gap),
                     );
                     shaped.push(Message::User { content });
                     gap = false;
                     continue;
                 }
                 // A result answers a call of the turn just before it, once.
-                let mut answered = HashSet::new();
+                let mut answered: HashSet<CallId> = pending
+                    .iter()
+                    .filter_map(|part| match part {
+                        UserContent::ToolResult(result) => Some(result.call.clone()),
+                        _ => None,
+                    })
+                    .collect();
                 content.retain(|part| match part {
                     UserContent::ToolResult(result) => {
                         (stored || waiting.iter().any(|call| call.id == result.call))
@@ -1346,8 +1413,28 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
                     // Only results nothing waits for: the gap stays open.
                     continue;
                 }
-                close(&mut shaped, &mut waiting, &mut held, answers, content, gap);
+                let only_results = !content.is_empty()
+                    && content
+                        .iter()
+                        .all(|part| matches!(part, UserContent::ToolResult(_)));
+                if pending.is_empty() {
+                    pending_gap = gap;
+                }
+                pending.extend(content);
                 gap = false;
+                // pi holds a system message while calls wait, so results
+                // split around one still answer the turn.
+                if only_results && waiting.iter().any(|call| !answered.contains(&call.id)) {
+                    continue;
+                }
+                close(
+                    &mut shaped,
+                    &mut waiting,
+                    &mut held,
+                    answers,
+                    std::mem::take(&mut pending),
+                    std::mem::take(&mut pending_gap),
+                );
             }
             Message::System { .. } if !waiting.is_empty() => held.push(message),
             system => {
@@ -1361,8 +1448,8 @@ fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> V
         &mut waiting,
         &mut held,
         answers,
-        Vec::new(),
-        false,
+        pending,
+        pending_gap,
     );
     shaped
 }

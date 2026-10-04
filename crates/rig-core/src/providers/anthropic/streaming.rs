@@ -10,7 +10,7 @@
 //! # let _ = decoder;
 //! ```
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
@@ -188,6 +188,8 @@ enum Kind {
 pub struct MessagesDecoder {
     /// Each open block's kind and the input JSON streamed to it.
     open: BTreeMap<usize, (Kind, String)>,
+    /// Every index a block opened at, closed or not.
+    started: BTreeSet<usize>,
     /// Whether a block other than a leading `fallback` marker opened.
     opened: bool,
     /// Whether the dialect takes thinking back without a signature.
@@ -217,6 +219,7 @@ impl MessagesDecoder {
         block: Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        self.started.insert(index);
         let block = Value::Object(block);
         let kind = block.str("type").unwrap_or_default();
         // A leading `fallback` names the model that took over; one after
@@ -288,6 +291,18 @@ impl MessagesDecoder {
                 ProviderError::Response(format!("Anthropic `{kind}` carries no string `{key}`"))
             })
         };
+        // A gateway that skips `content_block_start` still streams the
+        // block's text, so the first delta opens it.
+        if !self.started.contains(&index) {
+            let opened = match kind {
+                "text_delta" => Some(json!({"type": "text", "text": ""})),
+                "thinking_delta" => Some(json!({"type": "thinking", "thinking": ""})),
+                _ => None,
+            };
+            if let Some(Value::Object(block)) = opened {
+                self.start(index, block, out)?;
+            }
+        }
         match kind {
             "text_delta" => out.push(index, fragment("text")?)?,
             "thinking_delta" => out.push(index, fragment("thinking")?)?,

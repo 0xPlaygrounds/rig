@@ -1080,6 +1080,56 @@ fn a_held_system_message_goes_between_the_results_and_the_users_text() {
     );
 }
 
+#[test]
+fn results_split_by_a_system_message_answer_their_calls() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1"), call("c2")]),
+        Message::User {
+            content: vec![result("c1", "one")],
+        },
+        Message::system("steer"),
+        Message::User {
+            content: vec![result("c2", "two")],
+        },
+        Message::user("and then"),
+    ];
+    let adapted = adapt(&history, &TARGET);
+    assert_eq!(
+        adapted[2..],
+        [
+            Message::User {
+                content: vec![result("c1", "one"), result("c2", "two")],
+            },
+            Message::system("steer"),
+            Message::user("and then"),
+        ]
+    );
+}
+
+#[test]
+fn a_call_still_waiting_when_the_next_turn_starts_is_answered() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![call("c1"), call("c2")]),
+        Message::User {
+            content: vec![result("c1", "one")],
+        },
+        Message::system("steer"),
+        turn(Some(same()), vec![AssistantContent::text("done")]),
+    ];
+    let adapted = adapt(&history, &TARGET);
+    assert_eq!(
+        adapted[2..4],
+        [
+            Message::User {
+                content: vec![result("c1", "one"), no_result("c2")],
+            },
+            Message::system("steer"),
+        ]
+    );
+}
+
 /// A target whose reasoning items need the item after them, and whose
 /// hosted uses and results pair by id.
 #[derive(Debug)]
@@ -1154,6 +1204,82 @@ fn a_same_model_item_whose_partner_is_gone_goes_with_it() {
             answer,
             AssistantContent::text("rebuilt"),
         ]
+    );
+}
+
+fn hosted(kind: &str, id: &str) -> AssistantContent {
+    AssistantContent::Opaque(Opaque {
+        item: json!({"type": kind, "id": id}),
+        replay: true,
+    })
+}
+
+#[test]
+fn a_hosted_use_pairs_with_its_result_in_a_later_turn() {
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![hosted("server_use", "s1"), call("c1")]),
+        Message::User {
+            content: vec![result("c1", "done")],
+        },
+        turn(
+            Some(same()),
+            vec![hosted("server_result", "s1"), AssistantContent::text("a")],
+        ),
+        Message::user("next"),
+    ];
+    let adapted = adapt(&history, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        vec![hosted("server_use", "s1"), call("c1")]
+    );
+    assert_eq!(
+        assistant(&adapted[3]).content,
+        vec![hosted("server_result", "s1"), AssistantContent::text("a")]
+    );
+}
+
+#[test]
+fn a_hosted_use_still_running_when_the_last_turn_ended_replays() {
+    let paused = vec![
+        Message::user("q"),
+        turn(
+            Some(same()),
+            vec![
+                AssistantContent::text("Searching."),
+                hosted("server_use", "s1"),
+            ],
+        ),
+    ];
+    let adapted = adapt(&paused, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        assistant(&paused[1]).content
+    );
+
+    let calling = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![hosted("server_use", "s1"), call("c1")]),
+        Message::User {
+            content: vec![result("c1", "done")],
+        },
+    ];
+    let adapted = adapt(&calling, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        vec![hosted("server_use", "s1"), call("c1")]
+    );
+
+    // An earlier turn's use never gets its result.
+    let mut later = paused.clone();
+    later.extend([
+        Message::user("again"),
+        turn(Some(same()), vec![AssistantContent::text("b")]),
+    ]);
+    let adapted = adapt(&later, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        vec![AssistantContent::text("Searching.")]
     );
 }
 

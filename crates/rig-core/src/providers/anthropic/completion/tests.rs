@@ -545,6 +545,59 @@ fn opus_4_8_preserves_system_message_after_assistant_server_tool_result() {
     assert_eq!(messages[2]["role"], "assistant");
 }
 
+/// A code-execution turn ends in its `container` block, which goes to the
+/// request's top level: a system message after the turn's last result
+/// stays in place rather than joining `system`.
+#[test]
+fn opus_4_8_preserves_system_message_after_a_code_execution_result_in_a_container() {
+    let reply = json!({
+        "type": "message", "id": "msg_1", "model": CLAUDE_OPUS_4_8, "role": "assistant",
+        "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "container": {"id": "container_1", "expires_at": "2026-10-03T00:00:00Z"},
+        "content": [
+            {"type": "server_tool_use", "id": "srvtoolu_1", "name": "code_execution",
+                "input": {"code": "print(1)"}},
+            {"type": "code_execution_tool_result", "tool_use_id": "srvtoolu_1",
+                "content": {"type": "code_execution_result", "stdout": "1\n", "stderr": "",
+                    "return_code": 0, "content": []}}
+        ]
+    });
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_4_8);
+    let turn = crate::test_utils::decode_reply(
+        &wire,
+        &hello_request(),
+        crate::wire::Mode::Unary,
+        [WireFrame::Text(reply.to_string())],
+        reply.clone(),
+    )
+    .expect("the reply folds")
+    .message()
+    .expect("a turn");
+    let request = completion_request_with_history(
+        vec![
+            message::Message::user("run it"),
+            turn,
+            message::Message::System {
+                content: "Answer in Spanish.".to_string(),
+            },
+        ],
+        None,
+    );
+    let value = request_body(Params {
+        model: CLAUDE_OPUS_4_8,
+        request,
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    assert!(value.get("system").is_none(), "{value:#}");
+    assert_eq!(value["messages"][2]["role"], "system", "{value:#}");
+    assert_eq!(value["container"], json!("container_1"));
+}
+
 /// Encode a history for a model that keeps mid-conversation system messages
 /// and return the wire's `system` and `messages` as JSON.
 fn encode_mid_conversation_history(
@@ -2764,6 +2817,102 @@ fn an_edited_call_keeps_its_caller() {
         body["messages"][1]["content"][0],
         json!({"type": "tool_use", "id": "toolu_1", "name": "add", "input": {"x": 5},
             "caller": {"type": "code_execution_20250825", "tool_id": "srvtoolu_1"}})
+    );
+}
+
+/// A programmatic tool call: the code execution that made the client call
+/// is still running when the turn ends, and its result comes in the next
+/// turn. Anthropic rejects the continuation without that `server_tool_use`
+/// ("source tool ... not found"), and the next request without the result.
+#[test]
+fn a_programmatic_call_replays_with_the_code_execution_that_made_it() {
+    let reply = json!({
+        "id": "msg_1", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+        "stop_reason": "tool_use", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "container": {"id": "container_1", "expires_at": "2026-10-03T00:00:00Z"},
+        "content": [
+            {"type": "server_tool_use", "id": "srvtoolu_1", "name": "code_execution",
+                "input": {"code": "print(await add({'x': 1}))"}},
+            {"type": "tool_use", "id": "toolu_1", "name": "add", "input": {"x": 1},
+                "caller": {"type": "code_execution_20250825", "tool_id": "srvtoolu_1"}}
+        ]
+    });
+    let Some(message::Message::Assistant(turn)) =
+        fold_reply(&reply).expect("the reply folds").message()
+    else {
+        panic!("an assistant turn");
+    };
+    let history = answered(turn);
+    let body = prepared_body(history.clone());
+    let kinds = |message: &Value| {
+        message["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|block| block["type"].clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        kinds(&body["messages"][1]),
+        [json!("server_tool_use"), json!("tool_use")],
+        "{body:#}"
+    );
+
+    let result = json!({
+        "id": "msg_2", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+        "stop_reason": "end_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "content": [
+            {"type": "code_execution_tool_result", "tool_use_id": "srvtoolu_1",
+                "content": {"type": "code_execution_result", "stdout": "2\n", "stderr": "",
+                    "return_code": 0, "content": []}},
+            {"type": "text", "text": "2"}
+        ]
+    });
+    let next = fold_reply(&result)
+        .expect("the reply folds")
+        .message()
+        .expect("a turn");
+    let mut history = history;
+    history.extend([next, message::Message::user("thanks")]);
+    let body = prepared_body(history);
+    assert_eq!(
+        kinds(&body["messages"][1]),
+        [json!("server_tool_use"), json!("tool_use")],
+        "{body:#}"
+    );
+    assert_eq!(
+        kinds(&body["messages"][3]),
+        [json!("code_execution_tool_result"), json!("text")],
+        "{body:#}"
+    );
+}
+
+/// A paused turn goes back as it is to resume it, its running
+/// `server_tool_use` included (Anthropic's `pause_turn` contract).
+#[test]
+fn a_paused_turn_resumes_with_its_running_server_tool_use() {
+    let reply = json!({
+        "id": "msg_1", "model": CLAUDE_SONNET_4_6, "role": "assistant",
+        "stop_reason": "pause_turn", "stop_sequence": null,
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+        "content": [
+            {"type": "text", "text": "Searching."},
+            {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search",
+                "input": {"query": "rig"}}
+        ]
+    });
+    let turn = fold_reply(&reply)
+        .expect("the reply folds")
+        .message()
+        .expect("a turn");
+    let body = prepared_body(vec![message::Message::user("search"), turn]);
+    assert_eq!(
+        body["messages"][1]["content"][1],
+        json!({"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search",
+            "input": {"query": "rig"}}),
+        "{body:#}"
     );
 }
 

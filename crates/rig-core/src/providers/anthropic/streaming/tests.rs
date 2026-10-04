@@ -1753,3 +1753,23 @@ fn a_stop_reason_states_every_open_block_complete() {
     let unfinished = streamed(&without_stops("tool_use", "{\"x\":")).expect("the reply folds");
     assert!(unfinished.stop().is_failure(), "{:?}", unfinished.stop());
 }
+
+/// A gateway that skips `content_block_start` (seen on Anthropic-format
+/// dialects) still streams the block: its first delta opens it.
+#[test]
+fn a_delta_for_a_block_that_never_started_opens_it() {
+    let frames = reply(
+        vec![vec![
+            json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "text_delta", "text": "hi"}}),
+            json!({"type": "content_block_stop", "index": 0}),
+        ]],
+        "end_turn",
+    );
+    let response = streamed(&frames).expect("the reply decodes");
+    assert!(
+        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "hi"),
+        "{:?}",
+        response.choice
+    );
+}

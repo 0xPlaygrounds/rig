@@ -590,8 +590,12 @@ fn valid_system_message(history: &[Message], index: usize) -> bool {
         .find(not_system);
     let follows = match after {
         Some(Message::User { .. }) => true,
+        // The `container` block goes to the request's top level, not the turn.
         Some(Message::Assistant(turn)) => matches!(
-            turn.content.last(),
+            turn.content.iter().rev().find(|block| !matches!(
+                block,
+                AssistantContent::Opaque(opaque) if opaque.kind() == Some("container")
+            )),
             Some(AssistantContent::Opaque(opaque))
                 if opaque.kind().is_some_and(|kind| kind.ends_with("_tool_result"))
         ),
