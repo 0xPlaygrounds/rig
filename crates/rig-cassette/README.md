@@ -170,7 +170,8 @@ values of `model`, `role`, `name` and `stream`, with every other value, the
 types of content, tool schemas and tool arguments erased. A change to how a
 request is written then replays without a new recording, and with snapshots
 on in `check` mode the session fails until the snapshot holds the change.
-Unordered shape matching prefers an interaction the request equals. This
+Unordered shape matching serves, among the interactions with the request's
+key, the one whose body is closest to the request's. This
 repository sets `shape` for its own cassette tests.
 
 A recording only becomes the fixture when the test passed and the recording is

@@ -308,7 +308,9 @@ and reduces a content value (`content`, `parts`, `system`, `instructions`,
 string and a one-part text array agree. Tool schemas and tool arguments
 (`parameters`, `input_schema`, `arguments`, `args`, ...) are erased, an array
 of scalars collapses, and a multipart body is keyed by its field names.
-Unordered replay prefers the interaction whose snapshot the request equals.
+Unordered replay serves, among the unplayed interactions with the key, the
+one whose expected body (the recording with its snapshot applied) the
+request is closest to, counted in snapshot changes.
 
 So a change to how Rig writes a request that keeps its coarse shape needs no
 re-record: the request still replays, the snapshot check fails until

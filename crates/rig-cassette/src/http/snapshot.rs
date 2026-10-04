@@ -230,6 +230,14 @@ impl RequestSnapshots {
         (!lines.is_empty()).then(|| format!("interaction {index}:\n{}", lines.join("\n")))
     }
 
+    /// How many changes turn interaction `index`'s expected body into
+    /// `sent`: 0 when they are equal, `usize::MAX` for no such interaction.
+    pub(super) fn distance(&self, index: usize, sent: &Value) -> usize {
+        self.expected
+            .get(index)
+            .map_or(usize::MAX, |expected| diff(expected, sent).len())
+    }
+
     /// End the session: in `Check` mode fail when a request differed; in
     /// `Write` mode write the changes replay saw, or remove the snapshot when
     /// every request equalled its recording.

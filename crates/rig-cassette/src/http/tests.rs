@@ -145,7 +145,7 @@ fn replay_matching_is_ordered_by_default() {
     ];
 
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request, None, |_| false),
+        matching_interaction_index(policy, &interactions, &request, None, |_| 0),
         None
     );
 }
@@ -171,13 +171,13 @@ fn replay_matching_can_be_explicitly_unordered() {
     ];
 
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request, None, |_| false),
+        matching_interaction_index(policy, &interactions, &request, None, |_| 0),
         Some(1)
     );
 }
 
 #[test]
-fn unordered_shape_matching_prefers_the_interaction_the_request_equals() {
+fn unordered_shape_matching_serves_the_closest_interaction() {
     let policy = CassettePolicy {
         replay_matching: ReplayMatching::Unordered,
         body_matching: BodyMatching::Shape,
@@ -209,17 +209,20 @@ fn unordered_shape_matching_prefers_the_interaction_the_request_equals() {
         recorded: &keys,
         sent: &sent,
     });
-    let equals = |index: usize| request_matches(policy, &request, &interactions[index].when);
+    let distance = |index: usize| {
+        let recorded = recorded_body_view(policy, &interactions[index].when);
+        snapshot::diff(&recorded, &incoming_body_view(policy, &request)).len()
+    };
 
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request, shapes, equals),
+        matching_interaction_index(policy, &interactions, &request, shapes, distance),
         Some(1),
-        "the equal interaction wins"
+        "the interaction the request equals wins"
     );
     assert_eq!(
-        matching_interaction_index(policy, &interactions, &request, shapes, |_| false),
+        matching_interaction_index(policy, &interactions, &request, shapes, |_| 3),
         Some(0),
-        "without an equal one, the first of the same shape serves"
+        "on a tie the first of the same shape serves"
     );
 }
 
@@ -242,9 +245,7 @@ fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
         );
 
         assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_without_auth, None, |_| {
-                false
-            }),
+            matching_interaction_index(policy, &interactions, &request_without_auth, None, |_| 0),
             None,
             "{provider} replay should require bearer authentication"
         );
@@ -253,7 +254,7 @@ fn replay_matching_requires_bearer_provider_auth_without_recording_its_value() {
             vec!["authorization"]
         );
         assert_eq!(
-            matching_interaction_index(policy, &interactions, &request_with_auth, None, |_| false),
+            matching_interaction_index(policy, &interactions, &request_with_auth, None, |_| 0),
             Some(0)
         );
     }

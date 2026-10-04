@@ -123,9 +123,9 @@ impl CassetteSpec {
     /// The key keeps the body's field structure, the order of its arrays of
     /// objects, and the values of `model`, `role`, `name` and `stream`; it
     /// erases other values, the types of content, tool schemas and tool
-    /// arguments. Unordered replay still prefers an interaction the request
-    /// equals. Pair it with `RIG_CASSETTE_SNAPSHOTS=check`, which pins the
-    /// bytes.
+    /// arguments. Unordered replay serves, among the interactions with the
+    /// request's key, the one its body is closest to. Pair it with
+    /// `RIG_CASSETTE_SNAPSHOTS=check`, which pins the bytes.
     pub const fn shape_matched(mut self) -> Self {
         self.body_matching = Some(BodyMatching::Shape);
         self
@@ -669,8 +669,10 @@ impl ProviderCassette {
                 .iter()
                 .map(|interaction| recorded_body_view(policy, &interaction.when))
                 .collect();
-            let shapes = (policy.body_matching == BodyMatching::Shape)
-                .then(|| recorded.iter().map(shape::shape_key).collect());
+            let shapes = (policy.body_matching == BodyMatching::Shape).then(|| ReplayShapes {
+                keys: recorded.iter().map(shape::shape_key).collect(),
+                views: recorded.clone(),
+            });
             let snapshots = RequestSnapshots::load(snapshots, &cassette_path, recorded)?;
             Some((interactions, snapshots, shapes))
         };
@@ -1004,7 +1006,7 @@ impl ReplayServer {
         interactions: Vec<ReplayInteraction>,
         policy: CassettePolicy,
         snapshots: Option<RequestSnapshots>,
-        shapes: Option<Vec<Value>>,
+        shapes: Option<ReplayShapes>,
     ) -> Result<Self, CassetteError> {
         let bind_error = |source| CassetteError::Bind {
             path: cassette_path.to_path_buf(),
@@ -1114,8 +1116,16 @@ struct ReplayState {
     misses: Vec<ReplayMiss>,
     policy: CassettePolicy,
     snapshots: Option<RequestSnapshots>,
-    /// Each interaction's coarse shape key, under shape matching.
-    shapes: Option<Vec<Value>>,
+    /// Each interaction's coarse shape key and body, under shape matching.
+    shapes: Option<ReplayShapes>,
+}
+
+/// What shape matching keeps of each recorded interaction.
+struct ReplayShapes {
+    /// The coarse shape key of each recorded body.
+    keys: Vec<Value>,
+    /// Each recorded body as [`snapshot::body_view`] reads it.
+    views: Vec<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -1339,21 +1349,26 @@ async fn replay_request(
         .map(|(_, sent)| shape::shape_key(sent));
     let shapes = state
         .shapes
-        .as_deref()
+        .as_ref()
         .zip(sent_shape.as_ref())
-        .map(|(recorded, sent)| ShapeKeys { recorded, sent });
-    // Unordered shape matching prefers the interaction the request equals:
-    // its snapshot's expected body when snapshots are on, else the recording.
-    let equals = |index: usize| match (&state.snapshots, &sent) {
-        (Some(snapshots), Some(sent)) => snapshots.difference(index, sent).is_none(),
-        _ => state
-            .interactions
+        .map(|(shapes, sent)| ShapeKeys {
+            recorded: &shapes.keys,
+            sent,
+        });
+    // Unordered shape matching serves the interaction the request is
+    // closest to: its snapshot's expected body when snapshots check, else
+    // the recording.
+    let distance = |index: usize| match (&state.snapshots, &state.shapes, &sent) {
+        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent),
+        (None, Some(shapes), Some(sent)) => shapes
+            .views
             .get(index)
-            .is_some_and(|interaction| request_matches(policy, &request, &interaction.when)),
+            .map_or(usize::MAX, |view| snapshot::diff(view, sent).len()),
+        _ => usize::MAX,
     };
 
     let Some(index) =
-        matching_interaction_index(policy, &state.interactions, &request, shapes, equals)
+        matching_interaction_index(policy, &state.interactions, &request, shapes, distance)
     else {
         // The interaction the request was most likely meant for, compared
         // with what its snapshot expects.
@@ -1461,14 +1476,15 @@ struct ShapeKeys<'a> {
 
 /// The interaction replay serves `request` from. Ordered replay serves the
 /// next unplayed interaction when it matches; unordered replay the first
-/// unplayed one that matches, and under shape matching the first of those
-/// that `equals` accepts when there is one.
+/// unplayed one that matches, and under shape matching the one of those at
+/// the least `distance` from the request (the first on a tie), so requests
+/// that share a shape still find their own recordings.
 fn matching_interaction_index(
     policy: CassettePolicy,
     interactions: &[ReplayInteraction],
     request: &IncomingRequest,
     shapes: Option<ShapeKeys<'_>>,
-    equals: impl Fn(usize) -> bool,
+    distance: impl Fn(usize) -> usize,
 ) -> Option<usize> {
     let matches = |index: usize, interaction: &ReplayInteraction| match shapes {
         Some(keys) => shape_request_matches(policy, request, &interaction.when, keys, index),
@@ -1489,11 +1505,7 @@ fn matching_interaction_index(
                 .map(|(index, _)| index)
                 .collect();
             match shapes {
-                Some(_) => candidates
-                    .iter()
-                    .copied()
-                    .find(|index| equals(*index))
-                    .or_else(|| candidates.first().copied()),
+                Some(_) => candidates.into_iter().min_by_key(|index| distance(*index)),
                 None => candidates.first().copied(),
             }
         }
