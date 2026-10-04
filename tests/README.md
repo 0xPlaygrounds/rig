@@ -255,6 +255,56 @@ sleeps only while recording, returns at once on replay, and refuses anything
 over `MAX_PAUSE` (60 s): no cassette test waits longer, and no replayed test
 sleeps at all.
 
+#### Request snapshots
+
+Every replay in this workspace also checks each request body against the
+request snapshot beside its fixture, `<fixture>.requests.json`, and fails
+with the differing JSON pointers when they disagree. `.cargo/config.toml`
+sets `RIG_CASSETTE_SNAPSHOTS=check` and `cargo xtask verify` forces it; the
+published engine leaves snapshots off.
+
+A snapshot holds only how the body Rig sends differs from the recorded one,
+one entry per differing interaction:
+
+```json
+{
+  "interactions": [
+    {
+      "index": 0,
+      "changes": [
+        { "path": "/messages/0/content", "recorded": [{ "text": "hi", "type": "text" }], "sent": "hi" },
+        { "path": "/messages", "splice": 2, "recorded": [], "sent": [{ "role": "user" }] }
+      ]
+    }
+  ]
+}
+```
+
+`path` is a JSON pointer into the scrubbed, key-sorted recorded body.
+`recorded` alone removes a key, `sent` alone adds one, and both replace a
+value. With `splice`, `recorded` and `sent` are the array items removed and
+inserted at that index. A multipart body is compared as its parts: headers,
+and the body as text up to 4 KiB, else its length and FNV-1a hash. A fixture
+whose requests all equal their recordings has no snapshot. Full copies of
+every request body would add about 156 MB beside 222 MB of cassettes; the
+recording already pins those bytes, so only the difference is stored.
+
+While replay matches request bodies exactly, a JSON request that differs from
+its recording is refused, and the refusal names the snapshot difference. The
+snapshots then only pin what a recording cannot hold, such as a multipart body
+the proxy recorder dropped.
+
+```bash
+cargo xtask cassette snapshots                  # rewrite every snapshot from replay
+cargo xtask cassette snapshots --test openai    # rewrite only what one target replays
+cargo xtask cassette snapshots --check          # replay and fail on any difference
+```
+
+A rewrite deletes every snapshot first, then replays with
+`RIG_CASSETTE_SNAPSHOTS=write`; with `--test` it deletes nothing. Run it after
+a change to what Rig sends or after re-recording a fixture, and review the
+snapshot diff with the change.
+
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS
@@ -267,9 +317,8 @@ Venice's text-to-speech scenario records through the direct recorder rather than
 the httpmock proxy: the proxy exports bodies as strings, so a binary response
 (raw audio) is exported with no body at all and replays as zero bytes. Its
 transcription scenario stays on the proxy path, where the same limitation drops
-the *request's* multipart body — a cassette that recorded no body still matches
-a multipart request, and the multipart shape itself is pinned by unit tests
-beside the provider.
+the *request's* multipart body. A cassette that recorded no body still matches
+a multipart request; its request snapshot pins the parts Rig sends.
 
 Run one cassette test by passing a test-name substring after the test target;
 the filter is a substring match, so use the full module path only when the

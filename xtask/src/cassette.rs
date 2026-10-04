@@ -12,6 +12,7 @@ mod goldens;
 mod owner;
 mod record;
 mod scan;
+mod snapshots;
 mod spend;
 
 use std::path::{Path, PathBuf};
@@ -34,6 +35,9 @@ pub(crate) const USAGE: &str = "\
                               regenerate effect goldens from replay, revert
                               delivery-only churn and keep the base's delivery
                               batches (REF defaults to HEAD)
+  cassette snapshots [--check] [--test TARGET]...
+                              rewrite the request snapshots from replay, or
+                              with --check fail when a request differs from one
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -60,6 +64,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "scan" => scan::run(root, rest),
         "goldens" => goldens::run(root, rest),
         "audit" => audit::run(root, rest),
+        "snapshots" => snapshots::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }

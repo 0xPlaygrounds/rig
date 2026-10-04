@@ -324,10 +324,11 @@ fn reporting_only_selection_skips_work_but_other_docs_keep_executable_checks() {
 }
 
 #[test]
-fn verification_commands_force_replay_and_preserve_retry_contracts() {
+fn verification_commands_force_replay_and_snapshot_checks_and_preserve_retry_contracts() {
     let step = Step::new("cargo", &["test"])
         .env("RIG_PROVIDER_TEST_MODE", "record")
         .env("RIG_REGENERATE_GOLDEN", "1")
+        .env("RIG_CASSETTE_SNAPSHOTS", "write")
         .env("NEXTEST_RETRIES", "5");
     let command = execute::command(Path::new("/repo"), &step, Path::new("/repo/target"));
     let env: BTreeMap<_, _> = command.get_envs().collect();
@@ -336,6 +337,10 @@ fn verification_commands_force_replay_and_preserve_retry_contracts() {
         Some(std::ffi::OsStr::new("replay"))
     );
     assert_eq!(env[std::ffi::OsStr::new("RIG_REGENERATE_GOLDEN")], None);
+    assert_eq!(
+        env[std::ffi::OsStr::new("RIG_CASSETTE_SNAPSHOTS")],
+        Some(std::ffi::OsStr::new("check"))
+    );
     assert_eq!(env[std::ffi::OsStr::new("NEXTEST_RETRIES")], None);
 }
 

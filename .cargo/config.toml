@@ -2,3 +2,10 @@
 # `cargo xtask <task>` — workspace maintenance tasks that are not part of the
 # build. See `crates/../xtask/src/main.rs` for the task list.
 xtask = "run --package xtask --quiet --"
+
+[env]
+# Cassette replays in this workspace check every request against the
+# snapshot beside its fixture (`cargo xtask cassette snapshots`). The engine
+# leaves snapshots off unless this is set, so published users never see them;
+# a value already in the environment (`write`, `off`) wins.
+RIG_CASSETTE_SNAPSHOTS = "check"
