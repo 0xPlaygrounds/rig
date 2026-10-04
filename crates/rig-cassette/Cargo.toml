@@ -19,8 +19,10 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # enforced server-side and so never surfaces in `cargo publish --dry-run`.
 # Cargo drops every `[[test]]` target below from the normalized manifest
 # because their sources are excluded; the engine's own unit tests live in
-# `src/` and stay published.
+# `src/` and stay published. `coverage/` is the repository's coverage-gate
+# baseline (`cargo xtask coverage`), read by no published code.
 exclude = [
+    "coverage/**",
     "fixtures/**",
     "tests/**",
 ]
