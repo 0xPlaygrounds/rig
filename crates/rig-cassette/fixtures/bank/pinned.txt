@@ -1,0 +1,49 @@
+# Fixtures whose replies the reply bank keeps verbatim (`pinned.yaml`), for
+# runtime scenarios whose assertions read what a reply says and not only its
+# shape. `cargo xtask cassette bank` reads this list; each line is a fixture
+# and the reason a reply of the same shape would not do.
+anthropic/checkpoint_matrix/multi_turn_unary.yaml                                        the checkpoint tool checks each step token the model passes and the answer ends in the completion marker
+anthropic/image_matrix/inline_text_unary.yaml                                            the answer must name the image colour (and the sum, on the tool cells)
+anthropic/image_matrix/inline_tool_streamed.yaml                                         the answer must name the image colour (and the sum, on the tool cells)
+anthropic/lifecycle_matrix/entry_log_order.yaml                                          the rewrite and tool cells read the answer the rewritten prompt or the tool's result asked for
+anthropic/lifecycle_matrix/middleware_streaming.yaml                                     the rewrite and tool cells read the answer the rewritten prompt or the tool's result asked for
+anthropic/lifecycle_matrix/middleware_unary.yaml                                         the rewrite and tool cells read the answer the rewritten prompt or the tool's result asked for
+anthropic/lifecycle_matrix/run_settled_tool_run.yaml                                     the rewrite and tool cells read the answer the rewritten prompt or the tool's result asked for
+anthropic/lifecycle_matrix/run_start_rewrite.yaml                                        the rewrite and tool cells read the answer the rewritten prompt or the tool's result asked for
+anthropic/long_loop_matrix/big_result.yaml                                               the long loop checks every tool call against the repository it edits, and the usage it accounts
+deepseek/checkpoint_matrix/large_result.yaml                                             the checkpoint tool checks each step token the model passes and the answer ends in the completion marker
+deepseek/corpus_matrix/endings_tool_outcome_cancelled.yaml                               the world's stopped tool must hold the answer its recorded call computes
+deepseek/long_loop_matrix/long_unary.yaml                                                the long loop checks every tool call against the repository it edits, and the usage it accounts
+deepseek/long_loop_matrix/max_turns_midway.yaml                                          the long loop checks every tool call against the repository it edits, and the usage it accounts
+deepseek/long_task_matrix/repair.yaml                                                    the task checks the state its tool calls leave behind
+deepseek/reasoning_matrix/text_unary.yaml                                                the turn must carry non-empty reasoning_content, which a reply of its shape can leave empty
+gemini/checkpoint_matrix/parallel_batch.yaml                                             the checkpoint tool checks each step token the model passes and the answer ends in the completion marker
+gemini/image_matrix/inline_followup.yaml                                                 the answer must name the image colour (and the sum, on the tool cells)
+gemini/image_matrix/inline_text_streamed.yaml                                            the answer must name the image colour (and the sum, on the tool cells)
+gemini/long_loop_matrix/parallel_calls.yaml                                              the long loop checks every tool call against the repository it edits, and the usage it accounts
+gemini/long_task_matrix/reconcile.yaml                                                   the task checks the state its tool calls leave behind
+gemini/reasoning_matrix/capped_streamed.yaml                                             the capped turn must spend its cap on reasoning and carry no answer text
+gemini/reasoning_matrix/text_streamed.yaml                                               the turn must carry visible reasoning, which a reply of its shape can leave empty
+groq/agent_tool_sessions/json_object_response_format_roundtrip.yaml                      the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/json_schema_structured_output_roundtrip.yaml                    the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/long_history_replay_with_tool_result_continuation.yaml          the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage.yaml            the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml               the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml                  the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml  the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml                 the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml                    the session checks exact tool arguments, their pairing in history and the answer's tokens
+groq/agent_tool_sessions/tool_choice_auto_required_specific_and_none.yaml                the session checks exact tool arguments, their pairing in history and the answer's tokens
+openai/checkpoint_matrix_responses/multi_turn_streamed.yaml                              the checkpoint tool checks each step token the model passes and the answer ends in the completion marker
+openai/corpus_matrix_chat/output_tool_thinking.yaml                                      Chat reports reasoning only as usage, and the cell needs reasoning tokens above zero
+openai/image_matrix_chat/inline_mixed_order.yaml                                         the answer must name the image colour (and the sum, on the tool cells)
+openai/image_matrix_chat/url_text_unary.yaml                                             the answer must name the image colour (and the sum, on the tool cells)
+openai/image_matrix_responses/inline_tool_unary.yaml                                     the answer must name the image colour (and the sum, on the tool cells)
+openai/image_matrix_responses/url_tool_unary.yaml                                        the answer must name the image colour (and the sum, on the tool cells)
+openai/long_loop_matrix_chat/long_streamed.yaml                                          the long loop checks every tool call against the repository it edits, and the usage it accounts
+openai/long_loop_matrix_chat/output_cap_midway.yaml                                      the long loop checks every tool call against the repository it edits, and the usage it accounts
+openai/long_loop_matrix_responses/tool_error_midway.yaml                                 the long loop checks every tool call against the repository it edits, and the usage it accounts
+openai/long_task_matrix/chat_repair_streamed.yaml                                        the task checks the state its tool calls leave behind
+openai/long_task_matrix/responses_inventory.yaml                                         the task checks the state its tool calls leave behind
+openai/reasoning_matrix_chat/text_streamed.yaml                                          Chat reports reasoning only as usage, and the cell needs reasoning tokens above zero
+venice/corpus_matrix/hooks_demand_done.yaml                                              the hook retries until the answer contains DONE, which only the retried reply says
