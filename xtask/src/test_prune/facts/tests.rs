@@ -138,6 +138,12 @@ fn contract_reasons_follow_the_name_and_the_tokens() {
             Some(Reason::ErrorMessage),
         ),
         (
+            "recorded cassette",
+            "rig x",
+            "#[test] fn t() { let body = recorded_json(\"when\", \"embedding_matrix/dimensions_request.yaml\"); assert!(body.ok()); }",
+            Some(Reason::StoredFormat),
+        ),
+        (
             "compile only",
             "rig x",
             "#[test] fn t() { let _ = AgentRun::new(\"x\"); }",

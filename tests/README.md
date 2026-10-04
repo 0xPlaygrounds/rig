@@ -592,15 +592,15 @@ each `--check` owns its file whole.
   and the test-support crates test code `lines.tsv` does not measure, so
   their tests stay too.
 - A test goes only when every line and branch it covers is covered by a kept
-  test, no killed mutant of `mutants.tsv` loses its last named killer, and it
-  is not a contract test: wasm, compile-fail, public API shape (including a
-  test with nothing that can fail at run time, which checks that its paths
+  test, no killed mutant of `mutants.tsv` loses its last named killer, and
+  it is not a contract test: wasm, compile-fail, public API shape (including
+  a test with nothing that can fail at run time, which checks that its paths
   resolve), security or scrub, a serde round trip of a stored format or a
-  golden or fixture pin, or an error-message or rendered-text assertion,
-  each read from the test's name and tokens, or a test another tracked
-  `.rs` or `.md` file cites by name. Only an uncited error-message or
-  rendered-text test may still go, when an earlier kept contract test holds
-  the same assertions token for token.
+  golden, fixture or recorded-cassette pin, or an error-message or
+  rendered-text assertion, each read from the test's name and tokens, or a
+  test another tracked `.rs` or `.md` file cites by name. Only an uncited
+  error-message or rendered-text test may still go, when an earlier kept
+  contract test holds the same assertions token for token.
 - Only tests that stay whatever either prune selects are credited, so neither
   the cassette prune's candidates nor the corpus sweeps count. Deleting a
   unit test then never changes what the cassette prune keeps.

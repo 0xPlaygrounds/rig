@@ -103,7 +103,8 @@ const PREAMBLE: &str = "\
 #     password, api_key, leak, security, authoriz or authenticat, or its body
 #     names scrub, redact or sanitiz), a serde round trip of a stored format
 #     (its name holds round_trip, serde, serializ, persist, stored or golden,
-#     its body names a golden or a path into fixtures/ or an effect log, or
+#     its body names a golden, a path into fixtures/, an effect log or a
+#     recorded .yaml cassette, which the cassette prune then keeps for it, or
 #     it calls serde_json or serde_yaml both ways), an error message (an
 #     asserted argument holds a string literal and the body names an error
 #     and renders text), or rendered text (an asserted argument renders with
