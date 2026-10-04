@@ -32,15 +32,6 @@ impl EventTap {
     pub(super) fn breadcrumbs(&self) -> Vec<Breadcrumb> {
         self.breadcrumbs.lock().expect("crumbs").clone()
     }
-    pub fn distinct_run_ids(&self) -> usize {
-        self.run_ids.lock().expect("run ids").len()
-    }
-    pub fn is_streaming(&self) -> Option<bool> {
-        *self.streaming.lock().expect("streaming")
-    }
-    pub fn agent_name(&self) -> Option<String> {
-        self.agent_name.lock().expect("name").clone()
-    }
     pub fn count(&self, tag: &str) -> usize {
         self.breadcrumbs
             .lock()
@@ -48,22 +39,6 @@ impl EventTap {
             .iter()
             .filter(|c| c.tag == tag)
             .count()
-    }
-    pub fn distinct_turns(&self) -> Vec<usize> {
-        self.breadcrumbs
-            .lock()
-            .expect("crumbs")
-            .iter()
-            .map(|c| c.turn)
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect()
-    }
-    pub fn call_ids(&self) -> Vec<String> {
-        self.call_ids.lock().expect("calls").clone()
-    }
-    pub fn result_ids(&self) -> Vec<String> {
-        self.result_ids.lock().expect("results").clone()
     }
     fn record(
         &self,
@@ -87,11 +62,7 @@ impl EventTap {
 }
 #[derive(Clone, Default)]
 pub(super) struct ScratchpadReader(Arc<Mutex<Vec<usize>>>);
-impl ScratchpadReader {
-    pub fn tallies(&self) -> Vec<usize> {
-        self.0.lock().expect("tallies").clone()
-    }
-}
+impl ScratchpadReader {}
 #[derive(Component, Default)]
 struct AgentTaps(Vec<EventTap>);
 #[derive(Component, Default)]
@@ -145,14 +116,6 @@ pub(super) fn agent<
         ),
     );
     ecs
-}
-pub(super) fn agent_tap(ecs: &mut EcsAgent, tap: EventTap) {
-    ecs.app
-        .world_mut()
-        .get_mut::<AgentTaps>(ecs.agent)
-        .expect("agent taps")
-        .0
-        .push(tap);
 }
 pub(super) async fn prompt(
     ecs: &mut EcsAgent,

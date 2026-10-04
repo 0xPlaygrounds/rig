@@ -1,8 +1,7 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
 use rig::completion::{
-    AssistantContent, CompletionResponse as RigCompletionResponse, Document, Message,
-    ProviderToolDefinition,
+    AssistantContent, CompletionResponse as RigCompletionResponse, Message, ProviderToolDefinition,
 };
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use serde::Deserialize;
@@ -27,8 +26,6 @@ fn provider_text(response: &RigCompletionResponse) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
-const DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION: &str = "Answer in Spanish only. Use one short sentence.";
 const SERVER_TOOL_USE_SYSTEM_INSTRUCTION: &str =
     "For the rest of this conversation, answer in Spanish only.";
 
@@ -70,41 +67,6 @@ async fn web_search_with_dynamic_filtering_succeeds() {
         },
     )
     .await;
-}
-
-#[tokio::test]
-async fn messages_preserve_mid_conversation_system_role() {
-    super::super::support::with_anthropic_cassette(
-        "opus_4_8/messages_preserve_mid_conversation_system_role",
-        |client| async move {
-            let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequest::new(
-                "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
-            )
-            .messages([
-                Message::user("Start a short language compliance check."),
-                Message::system(SYSTEM_ROLE_INSTRUCTION),
-                Message::assistant("Entendido."),
-            ])
-            .max_tokens(64);
-            let response: RigCompletionResponse = model
-                .call(request)
-                .await
-                .expect("Opus 4.8 system-role request should succeed");
-            let raw_text = provider_text(&response);
-
-            let text = assistant_text_response(&response.choice)
-                .or(raw_text)
-                .expect("response should contain assistant text");
-            assert_contains_any_case_insensitive(&text, &["azul"]);
-        },
-    )
-    .await;
-
-    assert_cassette_preserves_system_role_message(
-        "opus_4_8/messages_preserve_mid_conversation_system_role",
-        SYSTEM_ROLE_INSTRUCTION,
-    );
 }
 
 #[tokio::test]
@@ -155,48 +117,6 @@ async fn messages_preserve_system_role_after_server_tool_result() {
     );
 }
 
-#[tokio::test]
-async fn documents_keep_leading_system_message_top_level() {
-    super::super::support::with_anthropic_cassette(
-        "opus_4_8/documents_keep_leading_system_message_top_level",
-        |client| async move {
-            let model = client.completion(CLAUDE_OPUS_4_8);
-            let request = CompletionRequest::new(
-                "According to the document, what color is the clear daytime sky?",
-            )
-            .messages([
-                Message::system(DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION),
-                Message::assistant("Entendido."),
-            ])
-            .document(Document {
-                id: "sky-note".to_string(),
-                text: "A clear daytime sky is blue.".to_string(),
-                additional_props: Default::default(),
-            })
-            .max_tokens(64);
-            let response: RigCompletionResponse = model.call(request).await.expect(
-                "Opus 4.8 request with documents and a leading system message should succeed",
-            );
-            let raw_text = provider_text(&response);
-
-            let text = assistant_text_response(&response.choice)
-                .or(raw_text)
-                .expect("response should contain assistant text");
-            assert_contains_any_case_insensitive(&text, &["azul"]);
-        },
-    )
-    .await;
-
-    assert_cassette_hoists_system_instruction(
-        "opus_4_8/documents_keep_leading_system_message_top_level",
-        DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION,
-    );
-    assert_cassette_document_request_order(
-        "opus_4_8/documents_keep_leading_system_message_top_level",
-        DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION,
-    );
-}
-
 /// The first reply's server-tool blocks as an assistant turn of the model
 /// that produced them, so they replay as they came.
 fn server_tool_assistant_message_from_response(response: &RigCompletionResponse) -> Message {
@@ -242,24 +162,6 @@ struct RecordedInteraction {
 #[derive(Deserialize)]
 struct RecordedRequest {
     body: Option<String>,
-}
-
-fn assert_cassette_preserves_system_role_message(scenario: &str, expected_system_text: &str) {
-    let preserves_system_role = recorded_request_bodies(scenario).iter().any(|body| {
-        body.get("messages")
-            .and_then(Value::as_array)
-            .is_some_and(|messages| {
-                messages.iter().any(|message| {
-                    message.get("role").and_then(Value::as_str) == Some("system")
-                        && message_contains_text(message, expected_system_text)
-                })
-            })
-    });
-
-    assert!(
-        preserves_system_role,
-        "expected cassette {scenario} to contain an Anthropic messages[] entry with role=system",
-    );
 }
 
 fn assert_cassette_preserves_system_role_after_server_tool_result(
@@ -326,85 +228,6 @@ fn assert_cassette_preserves_system_role_after_server_tool_result(
     assert!(
         message_contains_text(&messages[1], expected_system_text),
         "expected second continuation message to contain the system instruction",
-    );
-}
-
-fn assert_cassette_hoists_system_instruction(scenario: &str, expected_system_text: &str) {
-    let request_bodies = recorded_request_bodies(scenario);
-    let top_level_system_contains_instruction = request_bodies.iter().any(|body| {
-        body.get("system")
-            .and_then(Value::as_array)
-            .is_some_and(|system| {
-                system
-                    .iter()
-                    .any(|block| block_contains_text(block, expected_system_text))
-            })
-    });
-    let messages_contain_system_role_instruction = request_bodies.iter().any(|body| {
-        body.get("messages")
-            .and_then(Value::as_array)
-            .is_some_and(|messages| {
-                messages.iter().any(|message| {
-                    message.get("role").and_then(Value::as_str) == Some("system")
-                        && message_contains_text(message, expected_system_text)
-                })
-            })
-    });
-
-    assert!(
-        top_level_system_contains_instruction,
-        "expected cassette {scenario} to contain the leading system instruction in top-level system",
-    );
-    assert!(
-        !messages_contain_system_role_instruction,
-        "expected cassette {scenario} not to send the leading system instruction as messages[] role=system",
-    );
-}
-
-fn assert_cassette_document_request_order(scenario: &str, expected_system_text: &str) {
-    let request_bodies = recorded_request_bodies(scenario);
-    let body = request_bodies
-        .iter()
-        .find(|body| {
-            body.get("system")
-                .and_then(Value::as_array)
-                .is_some_and(|system| {
-                    system
-                        .iter()
-                        .any(|block| block_contains_text(block, expected_system_text))
-                })
-        })
-        .unwrap_or_else(|| {
-            panic!("expected cassette {scenario} to include document ordering request")
-        });
-
-    let messages = body
-        .get("messages")
-        .and_then(Value::as_array)
-        .unwrap_or_else(|| panic!("expected cassette {scenario} request to contain messages[]"));
-    let roles = messages
-        .iter()
-        .map(|message| message.get("role").and_then(Value::as_str))
-        .collect::<Vec<_>>();
-    assert_eq!(
-        roles,
-        [Some("user"), Some("assistant"), Some("user")],
-        "expected document request to preserve document -> assistant -> prompt order",
-    );
-    assert!(
-        message_content_has_type(&messages[0], "document"),
-        "expected first message to contain the normalized document block",
-    );
-    assert!(
-        message_contains_text(&messages[1], "Entendido."),
-        "expected second message to preserve prior assistant turn",
-    );
-    assert!(
-        message_contains_text(
-            &messages[2],
-            "According to the document, what color is the clear daytime sky?",
-        ),
-        "expected final message to remain the prompt",
     );
 }
 

@@ -53,7 +53,6 @@ enum Transport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
     MistralSmall,
-    Ministral3b,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,7 +63,6 @@ enum Format {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ToolPolicy {
-    Auto,
     Any,
     None,
 }
@@ -114,7 +112,6 @@ fn tool_definition() -> rig::completion::ToolDefinition {
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut params = json!({
         "tool_choice": match cell.tool_policy {
-            ToolPolicy::Auto => "auto",
             ToolPolicy::Any => "any",
             ToolPolicy::None => "none",
         }
@@ -142,7 +139,6 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::MistralSmall => "mistral-small-latest",
-        ModelVariant::Ministral3b => "ministral-3b-latest",
     }
 }
 
@@ -327,7 +323,6 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     let expected_tool_choice = match (cell.tool_policy, cell.format) {
         (ToolPolicy::Any, Format::Json) => "auto",
         (ToolPolicy::Any, Format::Plain) => "any",
-        (ToolPolicy::Auto, _) => "auto",
         (ToolPolicy::None, _) => "none",
     };
     assert_eq!(
@@ -433,106 +428,6 @@ fn cell(
 // mapping between tests and fixtures.
 
 #[tokio::test]
-async fn blocking_mistral_small_plain_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_auto";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_mistral_small_plain_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_plain_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_any";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_mistral_small_plain_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_plain_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_plain_none";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_mistral_small_plain_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_json_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_auto";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Format::Json,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_mistral_small_json_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_json_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_any";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Format::Json,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_mistral_small_json_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
 async fn blocking_mistral_small_json_none() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/blocking_mistral_small_json_none";
     let cell = cell(
@@ -553,206 +448,6 @@ async fn blocking_mistral_small_json_none() -> Result<()> {
 }
 
 #[tokio::test]
-async fn blocking_ministral_3b_plain_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_auto";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_plain_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_plain_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_any";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_plain_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_plain_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_plain_none";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_plain_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_json_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_auto";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_json_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_json_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_any";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_json_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_json_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/blocking_ministral_3b_json_none";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/blocking_ministral_3b_json_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_plain_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_auto";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_mistral_small_plain_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_plain_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_any";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_mistral_small_plain_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_plain_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_plain_none";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Format::Plain,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_mistral_small_plain_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_json_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_auto";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Format::Json,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_mistral_small_json_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
 async fn streaming_mistral_small_json_any() -> Result<()> {
     const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_any";
     let cell = cell(
@@ -765,146 +460,6 @@ async fn streaming_mistral_small_json_any() -> Result<()> {
     let capture = Arc::clone(&observed);
     with_mistral_request_shape_cassette_result(
         "request_shape_matrix/streaming_mistral_small_json_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_json_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_mistral_small_json_none";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Format::Json,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_mistral_small_json_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_plain_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_auto";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_plain_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_plain_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_any";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_plain_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_plain_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_plain_none";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Plain,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_plain_none",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_json_auto() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_auto";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::Auto,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_json_auto",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_json_any() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_any";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::Any,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_json_any",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_json_none() -> Result<()> {
-    const SCENARIO: &str = "request_shape_matrix/streaming_ministral_3b_json_none";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Format::Json,
-        ToolPolicy::None,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_request_shape_cassette_result(
-        "request_shape_matrix/streaming_ministral_3b_json_none",
         |client| async move { run_cell(client, cell, capture).await },
     )
     .await?;

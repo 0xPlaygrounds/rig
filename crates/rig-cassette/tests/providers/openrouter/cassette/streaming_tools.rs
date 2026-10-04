@@ -11,39 +11,12 @@ use std::sync::atomic::AtomicUsize;
 
 use crate::reasoning::WeatherTool;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
-    ORDERED_TOOL_STREAM_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
-    TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
-    assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
-    assert_raw_stream_tool_call_precedes_text, collect_raw_stream_observation,
-    collect_stream_final_response,
+    AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT,
+    assert_raw_stream_contains_distinct_tool_calls_before_text, collect_raw_stream_observation,
 };
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette};
 use rig::completion::CompletionRequest;
-
-#[tokio::test]
-async fn streaming_tools_smoke() {
-    with_openrouter_cassette(
-        "streaming_tools/streaming_tools_smoke",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .default_max_turns(2)
-                .build();
-
-            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming tool prompt should succeed");
-
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
-    .await;
-}
 
 /// Model whose OpenRouter turns carry encrypted `reasoning_details`
 /// (`{"type":"reasoning.encrypted"}` with `reasoning: null`). The
@@ -126,77 +99,6 @@ fn encrypted_blocks_in_choice(choice: &[AssistantContent]) -> Vec<(Option<String
         })
         .flatten()
         .collect()
-}
-
-/// OpenRouter delivers encrypted reasoning as a `reasoning_details` entry with
-/// `reasoning: null` and an `rs_*` id of its own, one chunk before the `call_*`
-/// tool call opens. It is the turn's own output, so it must reach the
-/// aggregated choice — routing it through tool-call decoration matched nothing
-/// (the two id namespaces never intersect) and dropped it on every streaming
-/// turn.
-#[tokio::test]
-async fn stream_encrypted_reasoning_reaches_the_choice() {
-    with_openrouter_cassette(
-        "streaming_tools/stream_encrypted_reasoning_reaches_the_choice",
-        |client| async move {
-            let model = client.completion(ENCRYPTED_REASONING_MODEL);
-            let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
-            let tool_definition = rig::tool::tool_definition(&weather_tool);
-            let request = CompletionRequest::new(crate::reasoning::TOOL_USER_PROMPT)
-                .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
-                .max_tokens(4096)
-                .tool(tool_definition)
-                .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "high" },
-                    "include_reasoning": true
-                }));
-
-            let mut stream = model.stream(request).expect("stream should start");
-            let observation = observe_stream(&mut stream).await;
-            assert!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
-
-            let tool_call = observation
-                .tool_calls
-                .iter()
-                .find(|tool_call| tool_call.function.name == "get_weather")
-                .expect("expected a streamed get_weather tool call");
-            // The encrypted blob is not tool-call metadata: a decoration keyed
-            // by the detail's own `rs_*` id could never match this `call_*` id.
-            let call_item = &tool_call
-                .native
-                .as_ref()
-                .expect("the call holds its provider item")
-                .item;
-            assert!(
-                call_item.get("reasoning_details").is_none(),
-                "encrypted reasoning must not ride on the tool call: {call_item}"
-            );
-
-            let streamed = observation.streamed_encrypted.clone();
-            assert!(
-                !streamed.is_empty(),
-                "the recorded turn carries encrypted reasoning_details; the stream must emit them as reasoning blocks"
-            );
-
-            let aggregated = encrypted_blocks_in_choice(&stream.partial().choice);
-            assert_eq!(
-                aggregated, streamed,
-                "every streamed encrypted reasoning block must reach the aggregated choice"
-            );
-            for (id, data) in &aggregated {
-                assert!(
-                    id.as_deref().is_some_and(|id| id.starts_with("rs_")),
-                    "the block must keep the wire's own reasoning id, got {id:?}"
-                );
-                assert!(!data.is_empty(), "the encrypted payload must be preserved");
-            }
-        },
-    )
-    .await;
 }
 
 /// The round trip: an encrypted reasoning block that reaches the choice is
@@ -300,67 +202,6 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
                 &observation,
                 &["lookup_harbor_label", "lookup_orchard_label"],
             );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn raw_followup_uses_tool_result_without_new_tool_calls() {
-    with_openrouter_cassette(
-        "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
-        |client| async move {
-            let model = client.completion(TOOL_MODEL);
-            let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal));
-
-            let first_turn = collect_raw_stream_observation(
-                model
-                    .stream(request)
-                    .expect("raw stream should start"),
-            )
-            .await;
-
-            assert_raw_stream_tool_call_precedes_text(&first_turn, "lookup_harbor_label");
-
-            let tool_call = first_turn
-                .tool_calls
-                .iter()
-                .find(|tool_call| tool_call.function.name == "lookup_harbor_label")
-                .cloned()
-                .expect("raw stream should yield lookup_harbor_label");
-            let assistant_message = Message::Assistant(rig::message::AssistantMessage::new(vec![AssistantContent::ToolCall(tool_call.clone())]));
-            let tool_result_message = Message::User {
-        content: vec![UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)])],
-    };
-            let followup_request = CompletionRequest::new(
-                    "Now reply in one short sentence using the provided tool result. Do not call any tools.",
-                )
-                .preamble("Use the provided tool result and answer directly.")
-                .message(assistant_message)
-                .message(tool_result_message);
-
-            let second_turn = collect_raw_stream_observation(
-                model
-                    .stream(followup_request)
-                    .expect("raw followup stream should start"),
-            )
-            .await;
-
-            assert!(
-                second_turn.tool_calls.is_empty(),
-                "follow-up raw stream should not emit fresh tool calls, saw {:?}",
-                second_turn
-                    .tool_calls
-                    .iter()
-                    .map(|tool_call| tool_call.function.name.as_str())
-                    .collect::<Vec<_>>()
-            );
-            let expected_words = ALPHA_SIGNAL_OUTPUT
-                .split('-')
-                .collect::<Vec<_>>();
-            assert_raw_stream_text_contains(&second_turn, &expected_words);
         },
     )
     .await;

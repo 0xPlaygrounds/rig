@@ -26,7 +26,6 @@
 //! | --- | --- | --- |
 //! | [`a_tool_call_cut_mid_arguments_does_not_destroy_the_turn`] | blocking | the response decodes; the cut call is kept with its text, so nothing runs it |
 //! | [`the_streaming_path_keeps_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
-//! | [`a_complete_call_under_the_same_cap_survives`] | blocking | the control: a cap large enough to finish yields a usable call |
 
 use rig::completion::FinishReason;
 use rig::message::AssistantContent;
@@ -43,8 +42,6 @@ const NOTE_PROMPT: &str = "/no_think Record this note: The quarterly incident re
 
 /// A budget measured to cut inside the argument object rather than before it.
 const CUTTING_CAP: u64 = 20;
-/// A budget measured to be enough for the whole call.
-const COMPLETE_CAP: u64 = 256;
 
 fn record_tool() -> rig::completion::ToolDefinition {
     rig::completion::ToolDefinition {
@@ -207,53 +204,4 @@ async fn the_streaming_path_keeps_the_same_cut_call() {
             .any(|frame| frame["choices"][0]["finish_reason"] == serde_json::json!("length")),
         "and it must end under `length`, which is what authorizes dropping the call"
     );
-}
-
-/// The control: the same request with room to finish yields a usable call.
-///
-/// Without it, the two cells above would pass against a provider that had
-/// simply stopped calling the tool.
-#[tokio::test]
-async fn a_complete_call_under_the_same_cap_survives() {
-    with_llamacpp_competent_cassette(
-        "truncation_matrix/complete_call_control",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let response = model
-                .call(
-                    CompletionRequest::new(NOTE_PROMPT)
-                        .tool(record_tool())
-                        .tool_choice(rig::message::ToolChoice::Required)
-                        .max_tokens(COMPLETE_CAP),
-                )
-                .await
-                .expect("a generous budget should succeed");
-
-            let call = response
-                .choice
-                .iter()
-                .find_map(|item| match item {
-                    AssistantContent::ToolCall(call) => Some(call.clone()),
-                    _ => None,
-                })
-                .expect("the same request with room to finish must produce a call");
-            assert_eq!(call.function.name, "record");
-            assert!(
-                call.function.arguments["note"]
-                    .as_str()
-                    .is_some_and(|note| !note.is_empty()),
-                "and its arguments must be complete: {:?}",
-                call.function.arguments
-            );
-        },
-    )
-    .await;
-
-    let (finish_reason, arguments) = recorded_call("truncation_matrix/complete_call_control");
-    assert_eq!(
-        finish_reason, "tool_calls",
-        "the control turn finished on its own"
-    );
-    serde_json::from_str::<Value>(&arguments.expect("a call"))
-        .expect("the control's arguments must parse");
 }

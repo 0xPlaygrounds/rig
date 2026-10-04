@@ -11,13 +11,6 @@
 use super::super::cassette_support::*;
 
 use crate::support::{EMBEDDING_INPUTS, assert_embeddings_nonempty_and_consistent};
-use rig::Embed;
-
-#[derive(Embed, Debug)]
-struct Greetings {
-    #[embed]
-    message: String,
-}
 
 #[tokio::test]
 async fn embeddings_smoke() {
@@ -37,45 +30,5 @@ async fn embeddings_smoke() {
 
         assert_embeddings_nonempty_and_consistent(&embeddings, EMBEDDING_INPUTS.len());
     })
-    .await;
-}
-
-#[tokio::test]
-async fn derive_document_embeddings() {
-    with_llamacpp_embeddings_cassette(
-        "embeddings/derive_document_embeddings",
-        |client| async move {
-            let embeddings = rig::embeddings::EmbeddingsBuilder::new(
-                client.embedding(CASSETTE_EMBEDDING_MODEL, None),
-            )
-            .document(Greetings {
-                message: "Hello, world!".to_string(),
-            })
-            .expect("first document should build")
-            .document(Greetings {
-                message: "Goodbye, world!".to_string(),
-            })
-            .expect("second document should build")
-            .build()
-            .await
-            .expect("embedding request should succeed");
-
-            assert_eq!(embeddings.len(), 2);
-            for (_document, embeddings_for_document) in embeddings {
-                let mut dims = None;
-                for embedding in embeddings_for_document {
-                    assert!(
-                        !embedding.vec.is_empty(),
-                        "expected each embedding vector to be non-empty"
-                    );
-
-                    match dims {
-                        Some(expected_dims) => assert_eq!(embedding.vec.len(), expected_dims),
-                        None => dims = Some(embedding.vec.len()),
-                    }
-                }
-            }
-        },
-    )
     .await;
 }

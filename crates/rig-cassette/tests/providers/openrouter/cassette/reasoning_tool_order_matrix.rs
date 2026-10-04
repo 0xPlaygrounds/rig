@@ -465,24 +465,6 @@ async fn blocking_single() -> Result<()> {
 }
 
 #[tokio::test]
-async fn blocking_parallel() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/blocking_parallel";
-    let cell = Cell {
-        transport: Transport::Blocking,
-        shape: Shape::Parallel,
-    };
-    let observed = SharedChoice::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/blocking_parallel",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
 async fn streaming_single() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_single";
     let cell = Cell {
@@ -497,42 +479,6 @@ async fn streaming_single() -> Result<()> {
     )
     .await?;
     finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_parallel() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/streaming_parallel";
-    let cell = Cell {
-        transport: Transport::Streaming,
-        shape: Shape::Parallel,
-    };
-    let observed = SharedChoice::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/streaming_parallel",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_signed_agent_roundtrip() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/blocking_signed_agent_roundtrip";
-    let invocations = Arc::new(AtomicUsize::new(0));
-    let capture = Arc::clone(&invocations);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/blocking_signed_agent_roundtrip",
-        |client| async move { run_signed_agent(client, Transport::Blocking, capture).await },
-    )
-    .await?;
-    ensure!(
-        invocations.load(Ordering::SeqCst) == 1,
-        "blocking signed-agent tool was not invoked exactly once"
-    );
-    assert_signed_agent_fixture(S, Transport::Blocking);
     Ok(())
 }
 

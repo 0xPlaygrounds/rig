@@ -90,17 +90,6 @@ impl Tool for Notify {
     }
 }
 
-fn assistant_message_has_notify_tool_call(message: &Message) -> bool {
-    matches!(
-        message,
-        Message::Assistant(rig_core::message::AssistantMessage { content, .. })
-            if content.iter().any(|item| matches!(
-                item,
-                AssistantContent::ToolCall(tool_call) if tool_call.function.name == Notify::NAME
-            ))
-    )
-}
-
 fn assistant_message_has_nonempty_text_and_notify_tool_call(message: &Message) -> bool {
     matches!(
         message,
@@ -190,52 +179,6 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
                 followup.choice.is_empty(),
                 "expected an empty follow-up choice, got {:?}",
                 followup.choice
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn prompt_loop_accepts_empty_terminal_turn_after_tool_result() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    super::super::support::with_anthropic_cassette(
-        "empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .preamble(TERMINAL_NOTIFY_PREAMBLE)
-                .max_tokens(1024)
-                .tool(Notify::new(call_count.clone()))
-                .build();
-
-            let response = agent
-                .prompt(TERMINAL_NOTIFY_PROMPT)
-                .max_turns(5)
-                .await
-                .expect("agent prompt should not fail on an empty terminal Anthropic turn");
-
-            assert!(
-                response.output().trim().is_empty(),
-                "expected empty final output for the terminal tool prompt, got {:?}",
-                response.output()
-            );
-            assert!(
-                call_count.load(Ordering::SeqCst) >= 1,
-                "notify should be called at least once"
-            );
-
-            let messages = response.messages;
-            assert!(
-                messages.iter().any(assistant_message_has_notify_tool_call),
-                "expected notify tool call in history, got {messages:?}"
-            );
-            assert!(
-                messages.iter().any(message_has_tool_result),
-                "expected tool result in history, got {messages:?}"
-            );
-            assert!(
-                !history_has_empty_assistant_text(&messages),
-                "history should not contain the normalized empty assistant sentinel: {messages:?}"
             );
         },
     )

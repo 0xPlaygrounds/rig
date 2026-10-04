@@ -36,8 +36,6 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the chat terminal record; its fields ≡ terminal | recorded |
-//! | 2 | `chat_stream_raw_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
-//! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
 //! | 5 | `responses_reasoning_stream_raw_round_trips_typed` | Responses, reasoning stream (`reasoning: { effort, summary }`) | terminal round trip; `raw["reasoning_metadata"]` = `response.completed`'s `reasoning`; premise: a `reasoning` output item with `encrypted_content` | recorded |
 //! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the terminal record; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
@@ -219,85 +217,9 @@ async fn chat_stream_raw_round_trips_typed() {
     );
 }
 
-#[tokio::test]
-async fn chat_stream_raw_exposes_service_tier() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_stream_capture_matrix/chat_stream_raw_exposes_service_tier",
-        |client| capture_terminal(client.openai.chat(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("chat_stream_raw_exposes_service_tier should replay from its cassette");
-    let terminal = observed.take();
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
-    let recorded_tier = last_chunk_field(&frames, "service_tier");
-    assert!(
-        recorded_tier.is_string(),
-        "{SCENARIO}: the recorded chunks must report a `service_tier`"
-    );
-
-    let raw = captured_raw(SCENARIO, &terminal);
-    assert_eq!(
-        raw["additional_params"]["service_tier"], recorded_tier,
-        "{SCENARIO}: `service_tier` is readable off the captured terminal and equals the \
-         last chunk's"
-    );
-    assert_matches_recorded_token(
-        raw["additional_params"]["system_fingerprint"].as_str(),
-        last_chunk_field(&frames, "system_fingerprint").as_str(),
-        &format!("{SCENARIO}: `system_fingerprint` off the captured terminal vs the fixture"),
-    );
-    let normalized = normalized_without_raw(terminal.clone());
-    assert_normalized_lacks(&normalized, &["additional_params", "service_tier"]);
-}
-
 // ---------------------------------------------------------------------------
 // Responses
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn responses_stream_raw_round_trips_typed() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_stream_capture_matrix/responses_stream_raw_round_trips_typed",
-        |client| capture_terminal(client.openai.completion(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("responses_stream_raw_round_trips_typed should replay from its cassette");
-    let terminal = observed.take();
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
-
-    // `raw` is there to read at all: it is the terminal record, serialized.
-    captured_raw(SCENARIO, &terminal);
-    // It is the Responses response object and agrees with the
-    // normalized response on identity, model and the accounting it
-    // normalized: two views of one document.
-    let typed = responses::assert_terminal_round_trips(&terminal);
-    assert_matches_recorded_token(
-        typed["id"].as_str(),
-        completed["id"].as_str(),
-        &format!("{SCENARIO}: terminal response id"),
-    );
-    assert_eq!(
-        typed["model"].as_str(),
-        completed["model"].as_str(),
-        "{SCENARIO}: terminal model"
-    );
-    assert_eq!(
-        typed["usage"]["input_tokens"].as_u64(),
-        completed["usage"]["input_tokens"].as_u64(),
-        "{SCENARIO}: terminal input tokens"
-    );
-    assert_eq!(
-        typed["usage"]["output_tokens"].as_u64(),
-        completed["usage"]["output_tokens"].as_u64(),
-        "{SCENARIO}: terminal output tokens"
-    );
-}
 
 #[tokio::test]
 async fn responses_stream_raw_exposes_status() {

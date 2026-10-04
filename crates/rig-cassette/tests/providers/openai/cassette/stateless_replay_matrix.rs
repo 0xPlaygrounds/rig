@@ -35,7 +35,6 @@
 //!
 //! | # | cell | transport | proves | fixture |
 //! |---|------|-----------|--------|---------|
-//! | 1 | `phase_round_trips_on_follow_up` | blocking, 2 turns | turn-2 request carries turn-1's `phase` | recorded |
 //! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived from 1 |
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
@@ -48,7 +47,6 @@ use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
@@ -57,14 +55,6 @@ use rig::completion::CompletionRequest;
 const TURN_ONE: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
 const TURN_TWO: &str = "Reply with exactly the remembered codeword.";
 const PHASE: &str = "final_answer";
-
-/// Every recorded request body of `scenario`, decoded, in wire order.
-fn recorded_requests(scenario: &str) -> Vec<Value> {
-    crate::cassettes::recorded_interaction_bodies("openai", scenario)
-        .into_iter()
-        .map(|(request, _)| serde_json::from_str(&request).expect("request body is JSON"))
-        .collect()
-}
 
 /// Every recorded non-streaming response body of `scenario`, decoded.
 fn recorded_responses(scenario: &str) -> Vec<Value> {
@@ -99,65 +89,6 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> Value {
 /// The `output` items of a Responses reply.
 fn output_items(reply: &Value) -> &[Value] {
     reply["output"].as_array().map_or(&[], Vec::as_slice)
-}
-
-/// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: OpenAiModels) -> (Value, Value) {
-    let model = client.completion(openai::GPT_5_6_SOL);
-    let request = |history: Vec<Message>| {
-        CompletionRequest::from(history).additional_params(serde_json::json!({ "store": false }))
-    };
-    let mut history = vec![Message::user(TURN_ONE)];
-    let first = model
-        .call(request(history.clone()))
-        .await
-        .expect("turn 1 should succeed");
-    let first_reply = provider_reply(&first);
-    history.extend(first.message());
-    history.push(Message::user(TURN_TWO));
-    let second = model
-        .call(request(history))
-        .await
-        .expect("turn 2 should succeed");
-    (first_reply, provider_reply(&second))
-}
-
-#[tokio::test]
-async fn phase_round_trips_on_follow_up() {
-    with_openai_cassette(
-        "stateless_replay_matrix/phase_round_trips_on_follow_up",
-        |client| async move {
-            let (first, _second) = two_turn_conversation(client.openai).await;
-            let phases: Vec<&str> = output_items(&first)
-                .iter()
-                .filter(|item| item["type"] == "message")
-                .filter_map(|message| message["phase"].as_str())
-                .collect();
-            assert_eq!(phases, [PHASE], "turn 1 must decode the wire's phase");
-        },
-    )
-    .await;
-
-    let requests = recorded_requests("stateless_replay_matrix/phase_round_trips_on_follow_up");
-    assert_eq!(requests.len(), 2, "two turns recorded");
-    let replayed = assistant_items(&requests[1]);
-    assert_eq!(
-        replayed.len(),
-        1,
-        "turn 2 replays exactly one assistant item"
-    );
-    assert_eq!(
-        replayed[0]["phase"], PHASE,
-        "turn 2's request must re-send the phase turn 1 returned: {}",
-        replayed[0]
-    );
-    // Never on the block: the flatten would put it beside `text`.
-    for block in replayed[0]["content"].as_array().expect("content array") {
-        assert!(
-            block.get("phase").is_none(),
-            "phase leaked onto a block: {block}"
-        );
-    }
 }
 
 #[tokio::test]

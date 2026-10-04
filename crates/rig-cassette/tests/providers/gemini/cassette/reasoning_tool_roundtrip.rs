@@ -11,36 +11,6 @@ use rig::completion::Message;
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
-async fn streaming() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    super::super::support::with_gemini_cassette(
-        "reasoning_tool_roundtrip/streaming",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion("gemini-2.5-flash"))
-                .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-                .max_tokens(4096)
-                .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
-                    }
-                }))
-                .build();
-
-            let stream = agent
-                .prompt(reasoning::TOOL_USER_PROMPT)
-                .history(Vec::<Message>::new())
-                .max_turns(3)
-                .stream();
-
-            let stats = reasoning::collect_stream_stats(stream, "gemini").await;
-            reasoning::assert_universal(&stats, &call_count, "gemini");
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn nonstreaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     super::super::support::with_gemini_cassette(

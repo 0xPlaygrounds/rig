@@ -21,7 +21,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record; its `usage` counters are the terminal usage; the normalized terminal reproduces the recorded last frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only fields | `raw.usage` equals the recorded last frame's counters *including* the unmodeled `cost` block; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -42,18 +41,13 @@ use rig::providers::perplexity;
 use serde_json::{Value, json};
 
 use super::super::support::with_perplexity_cassette;
-use crate::raw_capture::{
-    assert_no_request_id, assert_normalized_lacks, capture_terminal, capture_text_and_terminal,
-    chat,
-};
+use crate::raw_capture::{assert_normalized_lacks, capture_terminal};
 use crate::support::Observed;
 use crate::support::normalized_without_raw;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
 const PROMPT: &str = "Reply with the single word: pong";
-/// Names the dialect in the "no id header" outcome the cells pin.
-const DIALECT: &str = "Perplexity";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT).max_tokens(16)
@@ -82,35 +76,6 @@ fn recorded_terminal_frame(scenario: &str) -> Value {
 // ================================================================
 // 1. raw is the terminal record
 // ================================================================
-
-#[tokio::test]
-async fn stream_raw_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = Observed::default();
-    let sink = observed.clone();
-    with_perplexity_cassette(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| async move {
-            capture_text_and_terminal(client.completion(MODEL), request(), sink)
-                .await
-                .expect("the stream should open");
-        },
-    )
-    .await;
-
-    let (text, terminal) = observed.take();
-    assert!(!text.is_empty());
-    // Unlike a unary `CompletionResponse::raw`, a stream's terminal `raw` IS
-    // the terminal record the decoder built (`openai/wire/chat.rs`), and the
-    // terminal's usage is pinned against that record's own counters.
-    chat::assert_terminal_round_trips(&terminal);
-
-    let frame = recorded_terminal_frame(SCENARIO);
-    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded last frame");
-    assert_no_request_id(terminal.provider_request_id.as_deref(), DIALECT);
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-}
 
 // ================================================================
 // 2. Terminal-only fields the normalized record lacks

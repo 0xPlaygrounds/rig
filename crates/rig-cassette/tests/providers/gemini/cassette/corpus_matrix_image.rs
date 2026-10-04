@@ -30,17 +30,7 @@ fn wire(
 crate::matrix::golden_matrix! {
     wrapper: with_gemini_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    inline_text_unary: ("image_matrix/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "gemini_image_inline_text_unary");
-    #[tokio::test]
     inline_text_streamed: ("image_matrix/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "gemini_image_inline_text_streamed");
-    #[tokio::test]
-    inline_mixed_order: ("image_matrix/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "gemini_image_inline_mixed_order");
-    #[tokio::test]
-    inline_tool_unary: ("image_matrix/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "gemini_image_inline_tool_unary");
-    #[tokio::test]
-    inline_tool_streamed: ("image_matrix/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "gemini_image_inline_tool_streamed");
-    #[tokio::test]
-    inline_followup: ("image_matrix/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "gemini_image_inline_followup");
 }
 
 #[tokio::test]

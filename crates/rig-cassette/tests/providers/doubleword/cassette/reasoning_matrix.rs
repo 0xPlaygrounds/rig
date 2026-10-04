@@ -102,32 +102,6 @@ fn assert_recorded_reasoning(scenario: &str, model: &str, streaming: bool) {
 }
 
 #[tokio::test]
-async fn qwen_reasoning_blocking() {
-    const SCENARIO: &str = "reasoning_matrix/qwen_reasoning_blocking";
-    with_doubleword_cassette(
-        "reasoning_matrix/qwen_reasoning_blocking",
-        |client| async move {
-            exercise_blocking(client, doubleword::QWEN3_5_9B).await;
-        },
-    )
-    .await;
-    assert_recorded_reasoning(SCENARIO, doubleword::QWEN3_5_9B, false);
-}
-
-#[tokio::test]
-async fn qwen_reasoning_streaming() {
-    const SCENARIO: &str = "reasoning_matrix/qwen_reasoning_streaming";
-    with_doubleword_cassette(
-        "reasoning_matrix/qwen_reasoning_streaming",
-        |client| async move {
-            exercise_streaming(client, doubleword::QWEN3_5_9B).await;
-        },
-    )
-    .await;
-    assert_recorded_reasoning(SCENARIO, doubleword::QWEN3_5_9B, true);
-}
-
-#[tokio::test]
 async fn gpt_oss_reasoning_blocking() {
     const SCENARIO: &str = "reasoning_matrix/gpt_oss_reasoning_blocking";
     with_doubleword_cassette(
@@ -138,32 +112,6 @@ async fn gpt_oss_reasoning_blocking() {
     )
     .await;
     assert_recorded_reasoning(SCENARIO, doubleword::GPT_OSS_20B, false);
-}
-
-#[tokio::test]
-async fn gpt_oss_reasoning_streaming() {
-    const SCENARIO: &str = "reasoning_matrix/gpt_oss_reasoning_streaming";
-    with_doubleword_cassette(
-        "reasoning_matrix/gpt_oss_reasoning_streaming",
-        |client| async move {
-            exercise_streaming(client, doubleword::GPT_OSS_20B).await;
-        },
-    )
-    .await;
-    assert_recorded_reasoning(SCENARIO, doubleword::GPT_OSS_20B, true);
-}
-
-#[tokio::test]
-async fn deepseek_reasoning_blocking() {
-    const SCENARIO: &str = "reasoning_matrix/deepseek_reasoning_blocking";
-    with_doubleword_cassette(
-        "reasoning_matrix/deepseek_reasoning_blocking",
-        |client| async move {
-            exercise_blocking(client, doubleword::DEEPSEEK_V4_FLASH).await;
-        },
-    )
-    .await;
-    assert_recorded_reasoning(SCENARIO, doubleword::DEEPSEEK_V4_FLASH, false);
 }
 
 #[tokio::test]

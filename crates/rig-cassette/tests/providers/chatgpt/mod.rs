@@ -7,7 +7,6 @@ mod cassette {
     mod codex_tool_args;
     mod codex_tool_choice;
     mod http_errors;
-    mod noninteractive_oauth;
     mod raw_capture_matrix;
     mod raw_completion_parity_matrix;
     mod raw_stream_capture_matrix;

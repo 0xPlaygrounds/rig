@@ -52,34 +52,6 @@ async fn same_model() {
     sessions::assert_recorded(CELL, SCENARIO);
 }
 
-/// The loaded history continues on another model of the same provider.
-#[tokio::test]
-async fn other_model() {
-    const SCENARIO: &str = "session_matrix/other_model";
-    with_openai_cassette("session_matrix/other_model", |client| async move {
-        let (first, _, other) = models(client);
-        sessions::run(first, other, CELL).await;
-    })
-    .await;
-    sessions::assert_ported(CELL, SCENARIO);
-}
-
-/// The continuation is checkpointed, restored into a fresh world, and sent
-/// by the restored world's handler for another model of the same provider.
-#[tokio::test]
-async fn checkpoint_other_model() {
-    const SCENARIO: &str = "session_matrix/checkpoint_other_model";
-    with_openai_cassette(
-        "session_matrix/checkpoint_other_model",
-        |client| async move {
-            let (first, _, other) = models(client);
-            sessions::run_checkpoint(first, other, CELL).await;
-        },
-    )
-    .await;
-    sessions::assert_ported(CELL, SCENARIO);
-}
-
 /// The agent's conversation memory carries the reasoning into a second
 /// prompt.
 #[tokio::test]

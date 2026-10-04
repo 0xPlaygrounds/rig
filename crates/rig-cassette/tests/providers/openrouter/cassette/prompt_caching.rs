@@ -21,10 +21,8 @@
 //! ```
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_agent_growth_still_hits, assert_cache_conformance, assert_prefix_stable,
-    observation_from_completion_calls, report_and_assert_live, run_cache_probe,
-    run_cache_probe_streaming,
+    CacheProbe, CacheSupport, assert_cache_conformance, assert_prefix_stable,
+    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 use rig_test_support::cassette_models::OpenAiModels;
 
@@ -99,35 +97,4 @@ async fn live_cache_economics() {
         &OPENROUTER_CACHE_SUPPORT,
         "live_cache_economics",
     );
-}
-
-/// A real agent loop with a tool round-trip.
-///
-/// The cell the three-turn probe cannot replace. The probe builds its own
-/// history, so it proves the *provider* caches a growing prefix; only a real run
-/// proves rig's agent driver does not disturb that prefix between iterations —
-/// tool definitions re-advertised in a different order, a system prompt rebuilt
-/// differently on turn N, an assistant turn re-normalized on the way back in.
-/// Each busts the cache from that point on while every counter stays non-zero.
-#[tokio::test]
-async fn agent_loop_keeps_hitting_across_tool_turns() {
-    const SCENARIO: &str = "prompt_caching/agent_loop";
-
-    with_openrouter_prompt_caching_cassette("prompt_caching/agent_loop", |client| async move {
-        let response = rig::AgentBuilder::new(client.completion(CACHE_MODEL))
-            .preamble(&probe().preamble)
-            .tool(CacheProbeLookupTool)
-            .temperature(0.0)
-            .build()
-            .prompt(AGENT_CACHE_PROMPT)
-            .max_turns(6)
-            .await
-            .expect("openrouter agent cache probe should complete");
-
-        let observation = observation_from_completion_calls(response.completion_calls());
-        assert_agent_growth_still_hits(&observation, &OPENROUTER_CACHE_SUPPORT, "agent loop");
-    })
-    .await;
-
-    assert_prefix_stable("openrouter", SCENARIO);
 }

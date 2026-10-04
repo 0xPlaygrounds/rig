@@ -29,6 +29,4 @@ crate::matrix::case_matrix! {
     wrapper: with_xai_cassette, family: portability_case;
     #[tokio::test]
     from_anthropic: ("portability_matrix/from_anthropic", configured, cell(Source::Anthropic));
-    #[tokio::test]
-    from_gemini: ("portability_matrix/from_gemini", configured, cell(Source::Gemini));
 }

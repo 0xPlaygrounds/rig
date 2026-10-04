@@ -18,7 +18,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
-use crate::support::collect_stream_final_response;
 
 const LOOKUP_PROMPT: &str =
     "Look up user u-42 with the get_user_record tool and tell me their account status.";
@@ -157,38 +156,6 @@ async fn tool_result_redacted_by_hook_blocking() {
                 .await
                 .expect("blocking lookup should succeed")
                 .output();
-
-            assert_answer_hides_secret(&response, execution_probe.produced_secret());
-        },
-    )
-    .await;
-
-    assert!(
-        probe.produced_secret(),
-        "the tool itself should have produced the secret SSN that the hook redacted"
-    );
-}
-
-#[tokio::test]
-async fn tool_result_redacted_by_hook_streaming() {
-    let tool = GetUserRecord::default();
-    let probe = tool.clone();
-
-    with_anthropic_cassette(
-        "tool_result_rewrite/tool_result_redacted_by_hook_streaming",
-        move |client| async move {
-            let execution_probe = tool.clone();
-            let agent =
-                rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
-                    .preamble(PREAMBLE)
-                    .tool(tool)
-                    .add_hook(RedactSsnFromResult)
-                    .build();
-
-            let mut stream = agent.prompt(LOOKUP_PROMPT).max_turns(5).stream();
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming lookup should succeed");
 
             assert_answer_hides_secret(&response, execution_probe.produced_secret());
         },

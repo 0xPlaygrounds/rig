@@ -18,84 +18,12 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
     }
 }
 
-/// The wire over the model it refuses: the setup cells' request.
-fn missing(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
-    Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion("deepseek-v9-nonexistent"),
-        route: None,
-        temperature: Some(0.0),
-        additional_params: None,
-    }
-}
-
-#[tokio::test]
-async fn setup_unary() {
-    with_deepseek_cassette("corpus_faults/setup_unary", |client| async move {
-        run_agent(&missing(&client), &super::ecs_faults::SETUP_UNARY, |log| {
-            crate::goldens::golden_effects("deepseek_fault_setup_unary", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn setup_streamed() {
-    with_deepseek_cassette("corpus_matrix/error_facts_streamed", |client| async move {
-        run_agent(
-            &missing(&client),
-            &super::ecs_faults::SETUP_STREAMED,
-            |log| crate::goldens::golden_effects("deepseek_fault_setup_streamed", log),
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error() {
-    with_deepseek_cassette("corpus_faults/tool_error", |client| async move {
-        run_agent(&wire(&client), &faults::TOOL_ERROR, |log| {
-            crate::goldens::golden_effects("deepseek_fault_tool_error", log)
-        })
-        .await;
-    })
-    .await;
-}
-
 #[tokio::test]
 async fn tool_error_streamed() {
     with_deepseek_cassette("corpus_faults/tool_error_streamed", |client| async move {
         run_agent(&wire(&client), &faults::TOOL_ERROR_STREAMED, |log| {
             crate::goldens::golden_effects("deepseek_fault_tool_error_streamed", log)
         })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails() {
-    with_deepseek_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_agent(&wire(&client), &faults::BATCH_SECOND_FAILS, |log| {
-            crate::goldens::golden_effects("deepseek_fault_batch_second_fails", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails_concurrent() {
-    with_deepseek_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_agent(
-            &wire(&client),
-            &faults::BATCH_SECOND_FAILS_CONCURRENT,
-            |log| {
-                crate::goldens::golden_effects("deepseek_fault_batch_second_fails_concurrent", log)
-            },
-        )
         .await;
     })
     .await;

@@ -27,7 +27,6 @@
 //! | [`streaming_probe_survives_the_streaming_accumulator`] | streaming | the terminal frame's usage carries the read |
 //! | [`cache_prompt_false_turns_the_cache_off_for_that_turn_only`] | `cache_prompt` | a llama.cpp-only request field; off means 0 cached, and it does not poison the next turn |
 //! | [`agent_loop_does_not_move_its_own_prefix`] | agent loop | every outbound request extends its predecessor |
-//! | [`timings_cache_n_agrees_with_the_normalized_cached_tokens`] | two counters | the field rig normalizes and the field llama.cpp's own tooling reads must agree |
 //!
 //! # Recording
 //!
@@ -292,37 +291,4 @@ async fn agent_loop_does_not_move_its_own_prefix() {
     .await;
 
     assert_prefix_stable("llamacpp", "prompt_caching/agent_loop");
-}
-
-/// The two counters llama.cpp populates independently must agree.
-///
-/// `usage.prompt_tokens_details.cached_tokens` is what rig normalizes;
-/// `timings.cache_n` is what llama.cpp's own tooling reads and what reaches
-/// a caller in `raw`, the reply document. They are computed
-/// separately in the server, so a disagreement would mean one of them is
-/// describing something else — and rig's users would be reading whichever one
-/// their tool happened to pick.
-#[test]
-fn timings_cache_n_agrees_with_the_normalized_cached_tokens() {
-    let mut compared = 0usize;
-    for scenario in [
-        "prompt_caching/blocking_probe",
-        "prompt_caching/cache_prompt_disabled",
-        "prompt_caching/agent_loop",
-    ] {
-        for (index, (prompt_tokens, cached_tokens, cache_n)) in
-            recorded_cache_counters(scenario).into_iter().enumerate()
-        {
-            assert_eq!(
-                cached_tokens, cache_n,
-                "{scenario} turn {index}: usage.cached_tokens and timings.cache_n \
-                 describe the same thing and must agree ({prompt_tokens} prompt tokens)"
-            );
-            compared += 1;
-        }
-    }
-    assert!(
-        compared >= 6,
-        "only {compared} turns compared; the fixtures moved and this check went vacuous"
-    );
 }

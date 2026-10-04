@@ -8,17 +8,6 @@ use crate::history_survival::adversarial;
 use crate::history_survival::adversarial::Hop;
 
 #[tokio::test]
-async fn colliding_ids() {
-    const SCENARIO: &str = "adversarial/colliding_ids";
-    with_gemini_cassette("adversarial/colliding_ids", |client| async move {
-        adversarial::colliding_ids(client.completion(GEMINI_3_FLASH_PREVIEW), "call_dup", None)
-            .await;
-    })
-    .await;
-    adversarial::assert_colliding_recorded("gemini", SCENARIO);
-}
-
-#[tokio::test]
 async fn out_of_order_results() {
     const SCENARIO: &str = "adversarial/out_of_order_results";
     with_gemini_cassette("adversarial/out_of_order_results", |client| async move {

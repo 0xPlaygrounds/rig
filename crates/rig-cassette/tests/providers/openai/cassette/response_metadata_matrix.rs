@@ -31,8 +31,6 @@
 //!
 //! | # | cell | transport | `top_p` on the wire | fixture |
 //! |---|------|-----------|---------------------|---------|
-//! | 1 | `numeric_top_p_blocking_tool_call` | blocking | `1.0` | recorded |
-//! | 2 | `numeric_top_p_streaming_terminal_usage` | streaming | `1.0` | recorded |
 //! | 3 | `object_top_p_blocking_tool_call` | blocking | `{"value":1.0}` | derived from 1 |
 //! | 4 | `object_top_p_streaming_terminal_usage` | streaming | `{"value":1.0}` | derived from 2 |
 //!
@@ -84,18 +82,6 @@ fn assert_recorded_top_p_is_object(scenario: &str) {
     assert!(
         values.iter().all(Value::is_object),
         "{scenario}: this derived fixture must carry object-shaped top_p, got {values:?}"
-    );
-}
-
-fn assert_recorded_top_p_is_number(scenario: &str) {
-    let values = recorded_top_p_values(scenario);
-    assert!(
-        !values.is_empty(),
-        "{scenario}: fixture should echo top_p on at least one response body"
-    );
-    assert!(
-        values.iter().all(Value::is_number),
-        "{scenario}: the recorded fixture must carry numeric top_p, got {values:?}"
     );
 }
 
@@ -152,28 +138,6 @@ async fn assert_streaming_terminal_usage(client: OpenAiCassette) {
             .any(|call| call.function.name == TOOL),
         "the streamed tool call must complete, got {:?}",
         observation.tool_calls
-    );
-}
-
-#[tokio::test]
-async fn numeric_top_p_blocking_tool_call() {
-    with_openai_cassette(
-        "response_metadata_matrix/numeric_top_p_blocking_tool_call",
-        assert_blocking_tool_call,
-    )
-    .await;
-    assert_recorded_top_p_is_number("response_metadata_matrix/numeric_top_p_blocking_tool_call");
-}
-
-#[tokio::test]
-async fn numeric_top_p_streaming_terminal_usage() {
-    with_openai_cassette(
-        "response_metadata_matrix/numeric_top_p_streaming_terminal_usage",
-        assert_streaming_terminal_usage,
-    )
-    .await;
-    assert_recorded_top_p_is_number(
-        "response_metadata_matrix/numeric_top_p_streaming_terminal_usage",
     );
 }
 

@@ -19,7 +19,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record and agrees with the normalized terminal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -36,60 +35,19 @@ use serde_json::json;
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::with_groq_cassette_result;
-use crate::cassettes::recorded_response_header;
-use crate::raw_capture::{
-    assert_contracted_request_id, capture_terminal, capture_text_and_terminal, chat,
-};
+use crate::raw_capture::{capture_terminal, chat};
 use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
-const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT).max_tokens(16)
 }
 
-/// The `x-request-id` the recorded SSE response carried.
-fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
-}
-
 // ================================================================
 // 1. raw is the terminal record
 // ================================================================
-
-#[tokio::test]
-async fn stream_raw_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let sink = Observed::default();
-    with_groq_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| {
-            capture_text_and_terminal(
-                client.completion(RAW_CAPTURE_MATRIX_MODEL),
-                request(),
-                sink.clone(),
-            )
-        },
-    )
-    .await
-    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
-
-    let (text, terminal) = sink.take();
-    assert!(!text.is_empty());
-    chat::assert_terminal_round_trips(&terminal);
-
-    let frame = chat::recorded_agreeing_usage_frames(PROVIDER, SCENARIO);
-    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    assert_contracted_request_id(
-        terminal.provider_request_id.as_deref(),
-        recorded_request_id(SCENARIO).as_deref(),
-        REQUEST_ID_HEADER,
-    );
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-}
 
 // ================================================================
 // 2. Terminal-only fields the normalized record lacks

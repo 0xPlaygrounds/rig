@@ -1,6 +1,5 @@
 //! Focused Gemini cassette coverage for request document ordering.
 use rig::completion::{AssistantContent, Document, Message};
-use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -38,44 +37,6 @@ fn assistant_text(choice: &[AssistantContent]) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
-}
-
-#[tokio::test]
-async fn generate_content_keeps_documents_after_system_before_history() {
-    super::super::support::with_gemini_cassette(
-        "document_ordering/generate_content_keeps_documents_after_system_before_history",
-        |client| async move {
-            let response = client
-                .completion(gemini::completion::GEMINI_2_5_FLASH)
-                .call(
-                    CompletionRequest::new(PROMPT)
-                        .message(Message::system(SYSTEM_INSTRUCTION))
-                        .message(Message::assistant("Acknowledged."))
-                        .document(ordering_document())
-                        .temperature(0.0)
-                        // 32 was enough only while `max_tokens` was being dropped before
-                        // it reached `generationConfig` (see the gemini `create_request_body`
-                        // fix): the model had an unbounded budget regardless. Now that the
-                        // value is actually sent, gemini-2.5-flash spends part of it
-                        // thinking and cannot reach the token in 32. This test is about
-                        // document *ordering* in the request, not truncation, so the bound
-                        // just has to be loose enough for an answer.
-                        .max_tokens(512),
-                )
-                .await
-                .expect("Gemini document ordering request should succeed");
-
-            assert_contains_any_case_insensitive(
-                &assistant_text(&response.choice),
-                &[DOCUMENT_ANSWER],
-            );
-        },
-    )
-    .await;
-
-    assert_generate_content_request_order(
-        "document_ordering/generate_content_keeps_documents_after_system_before_history",
-    );
 }
 
 #[tokio::test]
@@ -128,40 +89,6 @@ fn recorded_request_body(scenario: &str) -> Value {
                 .and_then(|body| serde_json::from_str::<Value>(&body).ok())
         })
         .unwrap_or_else(|| panic!("expected cassette {scenario} to contain a JSON request body"))
-}
-
-fn assert_generate_content_request_order(scenario: &str) {
-    let body = recorded_request_body(scenario);
-    assert!(
-        body["systemInstruction"]
-            .to_string()
-            .contains(SYSTEM_INSTRUCTION),
-        "expected Gemini systemInstruction to contain leading system message: {body:#}",
-    );
-
-    let contents = body["contents"]
-        .as_array()
-        .expect("Gemini request should contain contents[]");
-    assert_eq!(
-        contents.len(),
-        3,
-        "expected document, assistant history, and prompt turns: {body:#}"
-    );
-    assert_eq!(contents[0]["role"], "user");
-    assert!(
-        contents[0].to_string().contains("<file id: ordering-note>"),
-        "expected first content turn to contain normalized document: {body:#}"
-    );
-    assert_eq!(contents[1]["role"], "model");
-    assert!(
-        contents[1].to_string().contains("Acknowledged."),
-        "expected second content turn to preserve assistant history: {body:#}"
-    );
-    assert_eq!(contents[2]["role"], "user");
-    assert!(
-        contents[2].to_string().contains(PROMPT),
-        "expected final content turn to remain prompt: {body:#}"
-    );
 }
 
 fn assert_interactions_request_order(scenario: &str) {

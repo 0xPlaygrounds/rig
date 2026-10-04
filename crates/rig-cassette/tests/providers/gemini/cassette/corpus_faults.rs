@@ -73,46 +73,11 @@ async fn setup_streamed() {
 }
 
 #[tokio::test]
-async fn tool_error() {
-    with_gemini_cassette("corpus_faults/tool_error", |client| async move {
-        run_agent(&wire(&client), &faults::TOOL_ERROR, |log| {
-            crate::goldens::golden_effects("gemini_fault_tool_error", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
 async fn tool_error_streamed() {
     with_gemini_cassette("corpus_faults/tool_error_streamed", |client| async move {
         run_agent(&wire(&client), &faults::TOOL_ERROR_STREAMED, |log| {
             crate::goldens::golden_effects("gemini_fault_tool_error_streamed", log)
         })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails() {
-    with_gemini_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_agent(&wire(&client), &faults::BATCH_SECOND_FAILS, |log| {
-            crate::goldens::golden_effects("gemini_fault_batch_second_fails", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails_concurrent() {
-    with_gemini_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_agent(
-            &wire(&client),
-            &faults::BATCH_SECOND_FAILS_CONCURRENT,
-            |log| crate::goldens::golden_effects("gemini_fault_batch_second_fails_concurrent", log),
-        )
         .await;
     })
     .await;

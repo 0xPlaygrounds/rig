@@ -144,19 +144,13 @@ mod cassette_support;
 
 mod cassette {
     mod agent;
-    mod bare_openai_client;
     mod content_matrix;
-    mod context;
-    mod ecs_completion;
-    mod ecs_extractor;
     mod ecs_extractor_usage;
     mod embedding_matrix;
     mod embeddings;
     mod error_matrix;
-    mod extractor;
     mod extractor_usage;
     mod image_tool_result;
-    mod loaders;
     mod matrix_index;
     mod model_family_matrix;
     mod models;
@@ -164,11 +158,7 @@ mod cassette {
     mod multimodal_matrix;
     mod permission_control;
     mod prompt_caching;
-    mod raw_capture_matrix;
-    mod raw_stream_capture_matrix;
-    mod request_hook;
     mod rerank_matrix;
-    mod response_identity_matrix;
     mod response_shape_matrix;
     mod sampling_matrix;
     mod streaming;
@@ -176,7 +166,6 @@ mod cassette {
     mod structured_output;
     mod structured_output_matrix;
     mod tool_matrix;
-    mod tools;
     mod truncation_matrix;
     mod turn_termination_matrix;
     mod typed_prompt_tools;

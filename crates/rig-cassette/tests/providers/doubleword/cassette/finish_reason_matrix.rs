@@ -63,15 +63,6 @@ async fn blocking_stop(client: OpenAiModels) {
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-async fn blocking_length(client: OpenAiModels) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
-    let response = model
-        .call(CompletionRequest::new(LENGTH_PROMPT).max_tokens(1))
-        .await
-        .expect("a contentless truncated turn is still a completion");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Length));
-}
-
 async fn blocking_tool_calls_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_397B_A17B);
     let response = model
@@ -132,13 +123,6 @@ async fn streaming_natural_stop() {
     )
     .await;
     assert_eq!(recorded_finish_reason(SCENARIO, true), "stop");
-}
-
-#[tokio::test]
-async fn blocking_token_limit() {
-    const SCENARIO: &str = "finish_reason_matrix/blocking_token_limit";
-    with_doubleword_cassette("finish_reason_matrix/blocking_token_limit", blocking_length).await;
-    assert_eq!(recorded_finish_reason(SCENARIO, false), "length");
 }
 
 #[tokio::test]

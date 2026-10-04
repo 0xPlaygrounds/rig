@@ -219,72 +219,6 @@ pub(super) fn assert_recorded_response_excludes(scenario: &str, needles: &[&str]
     }
 }
 
-/// The `usageMetadata.totalTokenCount` on the **last** recorded SSE frame of
-/// `scenario` that carries one.
-///
-/// Gemini's streaming usage is cumulative per chunk, so this is the turn's
-/// real total — and the number a terminal built at an *intermediate*
-/// `finishReason` gets wrong. Read from the fixture rather than hardcoded, so
-/// a re-record cannot leave the expectation behind.
-pub(super) fn last_frame_total_tokens(scenario: &str) -> u64 {
-    recorded_response_bodies(scenario)
-        .iter()
-        .flat_map(|body| {
-            body.lines()
-                .filter_map(|line| line.strip_prefix("data: "))
-                .filter_map(|frame| serde_json::from_str::<serde_json::Value>(frame).ok())
-                .filter_map(|frame| frame.get("usageMetadata")?.get("totalTokenCount")?.as_u64())
-                .collect::<Vec<_>>()
-        })
-        .next_back()
-        .unwrap_or_else(|| panic!("{scenario}: no recorded frame carries a totalTokenCount"))
-}
-
-/// Whether any recorded `streamGenerateContent` body in `scenario` carries a
-/// `finishReason` frame that is **not** its last frame.
-///
-/// That is the wire shape the stream-terminal matrix exists for: Gemini emits
-/// an intermediate `finishReason` when a built-in tool runs a round and then
-/// keeps streaming.
-fn recorded_stream_finishes_early(scenario: &str) -> bool {
-    recorded_response_bodies(scenario).iter().any(|body| {
-        let frames: Vec<serde_json::Value> = body
-            .lines()
-            .filter_map(|line| line.strip_prefix("data: "))
-            .filter_map(|frame| serde_json::from_str(frame).ok())
-            .collect();
-        let first_finish = frames.iter().position(|frame| {
-            frame
-                .get("candidates")
-                .and_then(serde_json::Value::as_array)
-                .is_some_and(|candidates| {
-                    candidates
-                        .iter()
-                        .any(|candidate| candidate.get("finishReason").is_some())
-                })
-        });
-
-        first_finish.is_some_and(|first| first + 1 < frames.len())
-    })
-}
-
-/// Assert whether `scenario`'s recorded stream carries the intermediate
-/// `finishReason` shape.
-///
-/// Asserted in both directions: the model only sometimes takes two tool
-/// rounds, so a repro cell whose fixture stopped carrying the shape would
-/// otherwise keep passing while covering nothing — and a control cell that
-/// started carrying it is no longer a control.
-pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bool) {
-    assert_eq!(
-        recorded_stream_finishes_early(scenario),
-        expected,
-        "{scenario}: recorded stream should {}carry a finishReason before its last frame; \
-         re-record the cell",
-        if expected { "" } else { "not " }
-    );
-}
-
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, GeminiConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -330,37 +264,6 @@ where
             unreachable!("finishing a failed session resumes its panic")
         }
     }
-}
-
-/// Cassette wrapper for the run-lifecycle matrix (PR #2407): the client sends
-/// through a [`rig::http_client::DynHttpClient`] carrying the supplied
-/// [`rig::http_client::HttpMiddleware`], so the same recorded exchange
-/// exercises the transport middleware seam and the run lifecycle hooks
-/// together (see `crates/rig-cassette/fixtures/cassettes/gemini/lifecycle_matrix/`).
-pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    middleware: M,
-    test_body: F,
-) where
-    M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "gemini",
-        spec,
-        "https://generativelanguage.googleapis.com",
-    )
-    .await;
-    let provider =
-        GeminiConfig::new(cassette.api_key("GEMINI_API_KEY")).with_base_url(cassette.base_url());
-    let http = rig::http_client::DynHttpClient::new(rig_test_support::cassettes::local_reqwest())
-        .with_middleware(middleware);
-    let result = AssertUnwindSafe(test_body(GeminiModels::new(provider, http)))
-        .catch_unwind()
-        .await;
-    cassette.finish_after_test(result).await;
 }
 
 /// The effect corpus's provider-breadth matrix (Matrix N):
@@ -473,17 +376,6 @@ pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
 /// unit: `cassette_files_match_registered_scenarios` pairs the fixtures under
 /// that directory with the calls made through this name and nothing else.
 pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(GeminiModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_gemini_cassette(spec, test_body).await;
-}
-
-/// Stream-terminal edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/stream_terminal_matrix/`).
-pub(super) async fn with_gemini_stream_terminal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where

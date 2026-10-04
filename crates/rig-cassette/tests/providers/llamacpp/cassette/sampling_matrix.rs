@@ -8,14 +8,7 @@
 //!
 //! | Cell | Parameter | Pinned |
 //! | --- | --- | --- |
-//! | [`temperature_zero_and_nonzero_both_reach_the_wire`] | `temperature` | 0 serializes as `0.0` rather than being dropped as falsy; a non-zero value round-trips |
 //! | [`a_one_token_cap_truncates_with_finish_reason_length`] | `max_tokens: 1` | exactly one completion token, `FinishReason::Length` |
-//! | [`a_normal_cap_lets_the_turn_stop_on_its_own`] | `max_tokens` | `FinishReason::Stop`, fewer tokens than the cap |
-//! | [`a_cap_past_the_context_is_clamped`] | `max_tokens` past `-c` | recorded in the error matrix; cross-referenced here |
-//! | [`a_single_stop_sequence_truncates_the_answer`] | `stop: ["…"]` | the stop text is absent from the answer, `finish_reason: stop` |
-//! | [`several_stop_sequences_fire_on_whichever_comes_first`] | `stop: [a, b]` | the earlier one wins |
-//! | [`a_stop_sequence_that_never_matches_changes_nothing`] | `stop: ["…"]` | the turn ends exactly as it would have without the sequence |
-//! | [`stop_matching_is_case_sensitive`] | `stop` | a case-mismatched sequence does not fire — a real footgun |
 //! | [`a_fixed_seed_and_an_absent_seed_are_both_accepted`] | `seed` | present round-trips; absent falls back to the server's `--seed` |
 //! | [`additional_params_wins_over_the_typed_field_it_collides_with`] | precedence | `additional_params` overrides a typed builder call, silently |
 //!
@@ -40,7 +33,6 @@ use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
-use crate::support::assistant_text_response;
 
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
@@ -49,19 +41,6 @@ use rig::completion::CompletionRequest;
 /// route has no switch for it, so prompts that need a short literal answer
 /// prefix `/no_think`, which the model's own template honours.
 const NO_THINK: &str = "/no_think ";
-
-fn recorded_completion_text(scenario: &str) -> String {
-    let recorded = recorded_statuses_and_bodies("llamacpp", scenario);
-    let (status, body) = recorded
-        .last()
-        .unwrap_or_else(|| panic!("{scenario} should have recorded an interaction"));
-    assert_eq!(*status, 200, "{scenario}: {body}");
-    let response: Value = serde_json::from_str(body).expect("response should be JSON");
-    response["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string()
-}
 
 fn recorded_finish_reason(scenario: &str) -> String {
     let recorded = recorded_statuses_and_bodies("llamacpp", scenario);
@@ -76,49 +55,6 @@ fn recorded_finish_reason(scenario: &str) -> String {
 // ---------------------------------------------------------------------------
 // temperature
 // ---------------------------------------------------------------------------
-
-/// `temperature: 0.0` must arrive as `0.0`, not vanish.
-///
-/// A client that skips falsy values silently turns every "deterministic
-/// please" request into a sampled one. The claim is about the bytes, so it is
-/// asserted against the recorded request rather than against the builder.
-#[tokio::test]
-async fn temperature_zero_and_nonzero_both_reach_the_wire() {
-    with_llamacpp_cassette("sampling_matrix/temperature_zero", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        model
-            .call(
-                CompletionRequest::new(format!("{NO_THINK}Say ok."))
-                    .temperature(0.0)
-                    .max_tokens(32),
-            )
-            .await
-            .expect("temperature 0 should be accepted");
-    })
-    .await;
-
-    with_llamacpp_cassette("sampling_matrix/temperature_nonzero", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        model
-            .call(
-                CompletionRequest::new(format!("{NO_THINK}Say ok."))
-                    .temperature(0.7)
-                    .max_tokens(32),
-            )
-            .await
-            .expect("a non-zero temperature should be accepted");
-    })
-    .await;
-
-    let zero = recorded_json_request("llamacpp", "sampling_matrix/temperature_zero");
-    assert_eq!(
-        zero["temperature"],
-        json!(0.0),
-        "temperature 0 must serialize as 0.0, not be dropped as falsy"
-    );
-    let nonzero = recorded_json_request("llamacpp", "sampling_matrix/temperature_nonzero");
-    assert_eq!(nonzero["temperature"], json!(0.7));
-}
 
 // ---------------------------------------------------------------------------
 // max_tokens
@@ -157,196 +93,9 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
     );
 }
 
-/// A cap the turn does not reach leaves `finish_reason: stop`.
-#[tokio::test]
-async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
-    with_llamacpp_cassette("sampling_matrix/max_tokens_normal", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(
-                CompletionRequest::new(format!("{NO_THINK}Reply with the single word: ok"))
-                    .max_tokens(512),
-            )
-            .await
-            .expect("a generous cap is a normal request");
-
-        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-        assert!(
-            response.usage.output_tokens.is_some_and(|n| n < 512),
-            "the turn stopped on its own, so it used fewer tokens than the cap"
-        );
-    })
-    .await;
-
-    assert_eq!(
-        recorded_finish_reason("sampling_matrix/max_tokens_normal"),
-        "stop"
-    );
-}
-
-/// A cap past the context window is clamped rather than refused.
-///
-/// The recorded evidence lives in the error matrix, which owns the `-c 512`
-/// server; this cell exists so the sampling table has a row for the third
-/// `max_tokens` arm rather than an unexplained gap. Cross-referencing a
-/// fixture instead of recording a second copy of it is the deliberate choice.
-#[test]
-fn a_cap_past_the_context_is_clamped() {
-    let request = recorded_json_request("llamacpp", "error_matrix/oversized_output_cap");
-    assert_eq!(request["max_tokens"], json!(100_000));
-    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/oversized_output_cap");
-    assert_eq!(recorded[0].0, 200, "clamped, not refused");
-}
-
 // ---------------------------------------------------------------------------
 // stop sequences
 // ---------------------------------------------------------------------------
-
-/// One stop sequence truncates the answer before the sequence itself.
-#[tokio::test]
-async fn a_single_stop_sequence_truncates_the_answer() {
-    with_llamacpp_cassette("sampling_matrix/stop_single", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(
-                CompletionRequest::new(format!(
-                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                ))
-                .max_tokens(64)
-                .additional_params(json!({ "stop": ["Charlie"] })),
-            )
-            .await
-            .expect("a stop sequence is a normal request");
-
-        let text = assistant_text_response(&response.choice).unwrap_or_default();
-        assert!(
-            !text.contains("Charlie"),
-            "the stop text must not appear in the answer: {text:?}"
-        );
-        assert_eq!(
-            response.finish_reason(),
-            Some(FinishReason::Stop),
-            "a stop sequence terminates the turn as a stop, not a length cut"
-        );
-    })
-    .await;
-
-    let request = recorded_json_request("llamacpp", "sampling_matrix/stop_single");
-    assert_eq!(
-        request["stop"],
-        json!(["Charlie"]),
-        "additional_params must merge the stop list into the body"
-    );
-    let text = recorded_completion_text("sampling_matrix/stop_single");
-    assert!(!text.contains("Charlie"), "{text:?}");
-    assert_eq!(
-        recorded_finish_reason("sampling_matrix/stop_single"),
-        "stop"
-    );
-}
-
-/// With several stop sequences, whichever the model reaches first wins.
-#[tokio::test]
-async fn several_stop_sequences_fire_on_whichever_comes_first() {
-    with_llamacpp_cassette("sampling_matrix/stop_multiple", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(
-                CompletionRequest::new(format!(
-                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                ))
-                .max_tokens(64)
-                // `Zulu` never appears; `Bravo` appears before `Charlie`.
-                .additional_params(json!({ "stop": ["Zulu", "Charlie", "Bravo"] })),
-            )
-            .await
-            .expect("several stop sequences are a normal request");
-
-        let text = assistant_text_response(&response.choice).unwrap_or_default();
-        for sequence in ["Bravo", "Charlie"] {
-            assert!(
-                !text.contains(sequence),
-                "the answer stopped at the first match, so neither later sequence \
-                 can appear: {text:?}"
-            );
-        }
-        assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    })
-    .await;
-
-    let request = recorded_json_request("llamacpp", "sampling_matrix/stop_multiple");
-    assert_eq!(request["stop"], json!(["Zulu", "Charlie", "Bravo"]));
-    let text = recorded_completion_text("sampling_matrix/stop_multiple");
-    assert!(text.contains("Alpha"), "the prefix survives: {text:?}");
-    assert!(!text.contains("Bravo"), "{text:?}");
-}
-
-/// A stop sequence the model never produces changes nothing.
-#[tokio::test]
-async fn a_stop_sequence_that_never_matches_changes_nothing() {
-    with_llamacpp_cassette("sampling_matrix/stop_never_fires", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(
-                CompletionRequest::new(format!(
-                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                ))
-                .max_tokens(64)
-                .additional_params(json!({ "stop": ["QQZZXX-never-emitted"] })),
-            )
-            .await
-            .expect("an unmatched stop sequence is a normal request");
-
-        let text = assistant_text_response(&response.choice).unwrap_or_default();
-        assert!(
-            text.contains("Delta"),
-            "nothing truncated the answer, so the last word survives: {text:?}"
-        );
-    })
-    .await;
-
-    let text = recorded_completion_text("sampling_matrix/stop_never_fires");
-    assert!(text.contains("Delta"), "{text:?}");
-}
-
-/// llama.cpp matches stop sequences **case-sensitively**.
-///
-/// A footgun with no client-side guard: the same sequence in the wrong case
-/// silently does nothing, and the only symptom is a longer answer than
-/// expected. The cell sends a lowercase sequence for text the model writes
-/// capitalized and pins that the answer runs past it.
-#[tokio::test]
-async fn stop_matching_is_case_sensitive() {
-    with_llamacpp_cassette("sampling_matrix/stop_case_sensitive", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(
-                CompletionRequest::new(format!(
-                    "{NO_THINK}Write exactly this and nothing else: Alpha Bravo Charlie Delta"
-                ))
-                .max_tokens(64)
-                .additional_params(json!({ "stop": ["charlie"] })),
-            )
-            .await
-            .expect("a case-mismatched stop sequence is still a valid request");
-
-        let text = assistant_text_response(&response.choice).unwrap_or_default();
-        assert!(
-            text.contains("Charlie"),
-            "a lowercase stop sequence must not fire on capitalized text — that is \
-             the behaviour this cell records: {text:?}"
-        );
-    })
-    .await;
-
-    let request = recorded_json_request("llamacpp", "sampling_matrix/stop_case_sensitive");
-    assert_eq!(request["stop"], json!(["charlie"]));
-    let text = recorded_completion_text("sampling_matrix/stop_case_sensitive");
-    assert!(
-        text.contains("Charlie"),
-        "the recorded answer must run past the mismatched sequence: {text:?}"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // seed

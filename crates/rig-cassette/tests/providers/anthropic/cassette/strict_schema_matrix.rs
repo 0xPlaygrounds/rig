@@ -54,24 +54,6 @@ async fn assert_strict_schema_rejected(
 }
 
 #[tokio::test]
-async fn empty_object_schema_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/empty_object_schema_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "ping_empty",
-                "Call ping_empty with an empty object.",
-                json!({ "type": "object", "properties": {} }),
-                json!({}),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn primitive_types_roundtrip() {
     with_anthropic_cassette(
         "strict_schema_matrix/primitive_types_roundtrip",
@@ -165,74 +147,6 @@ async fn explicit_any_of_roundtrip() {
 }
 
 #[tokio::test]
-async fn root_all_of_object_schema_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/root_all_of_object_schema_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_root_all_of",
-                "Record code = alpha and tenant = acme exactly.",
-                json!({
-                    "allOf": [
-                        {
-                            "type": "object",
-                            "properties": { "code": { "type": "string" } },
-                            "required": ["code"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": {
-                                "code": { "enum": ["alpha", "beta"] },
-                                "tenant": { "type": "string" }
-                            },
-                            "required": ["tenant"]
-                        }
-                    ]
-                }),
-                json!({ "code": "alpha", "tenant": "acme" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn root_all_of_local_defs_ref_branch_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/root_all_of_local_defs_ref_branch_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_root_all_of_ref",
-                "Record code = alpha and tenant = acme exactly.",
-                json!({
-                    "$defs": {
-                        "Base": {
-                            "type": "object",
-                            "properties": { "code": { "type": "string" } },
-                            "required": ["code"]
-                        }
-                    },
-                    "allOf": [
-                        { "$ref": "#/$defs/Base" },
-                        {
-                            "type": "object",
-                            "properties": { "tenant": { "type": "string" } },
-                            "required": ["tenant"]
-                        }
-                    ]
-                }),
-                json!({ "code": "alpha", "tenant": "acme" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn root_all_of_local_draft7_ref_branch_roundtrip() {
     with_anthropic_cassette(
         "strict_schema_matrix/root_all_of_local_draft7_ref_branch_roundtrip",
@@ -277,36 +191,6 @@ async fn top_level_any_of_is_rejected_for_tool_input() {
                 "Call record_root_any_of with value = alpha.",
                 json!({
                     "anyOf": [
-                        {
-                            "type": "object",
-                            "properties": { "value": { "type": "string" } },
-                            "required": ["value"]
-                        },
-                        {
-                            "type": "object",
-                            "properties": { "count": { "type": "integer" } },
-                            "required": ["count"]
-                        }
-                    ]
-                }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn top_level_one_of_is_rejected_for_tool_input() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/top_level_one_of_is_rejected_for_tool_input",
-        |client| async move {
-            assert_strict_schema_rejected(
-                client,
-                "record_root_one_of",
-                "Call record_root_one_of with value = alpha.",
-                json!({
-                    "oneOf": [
                         {
                             "type": "object",
                             "properties": { "value": { "type": "string" } },
@@ -383,36 +267,6 @@ async fn root_defs_ref_roundtrip() {
                     }
                 }),
                 json!({ "name": "Ada" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn root_draft7_definitions_ref_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/root_draft7_definitions_ref_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_legacy_root_ref",
-                "Record code = ZX and omit note.",
-                json!({
-                    "$ref": "#/definitions/Record",
-                    "definitions": {
-                        "Record": {
-                            "type": "object",
-                            "properties": {
-                                "code": { "type": "string" },
-                                "note": { "type": "string" }
-                            },
-                            "required": ["code"]
-                        }
-                    }
-                }),
-                json!({ "code": "ZX" }),
             )
             .await;
         },
@@ -630,61 +484,6 @@ async fn root_ref_keeps_document_definitions_authoritative_on_collision() {
                     }
                 }),
                 json!({ "value": "legacy-root-string" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn chained_root_refs_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/chained_root_refs_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_chained_ref",
-                "Record value as the exact JSON string \"resolved\".",
-                json!({
-                    "$ref": "#/$defs/Alias",
-                    "$defs": {
-                        "Alias": { "$ref": "#/$defs/Payload" },
-                        "Payload": {
-                            "type": "object",
-                            "properties": { "value": { "type": "string" } },
-                            "required": ["value"]
-                        }
-                    }
-                }),
-                json!({ "value": "resolved" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn escaped_json_pointer_root_ref_roundtrip() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/escaped_json_pointer_root_ref_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_escaped_ref",
-                "Record value as the exact JSON string \"escaped\".",
-                json!({
-                    "$ref": "#/$defs/Person~1Profile",
-                    "$defs": {
-                        "Person/Profile": {
-                            "type": "object",
-                            "properties": { "value": { "type": "string" } },
-                            "required": ["value"]
-                        }
-                    }
-                }),
-                json!({ "value": "escaped" }),
             )
             .await;
         },
@@ -1050,27 +849,6 @@ async fn properties_without_explicit_object_type_roundtrip() {
                     "required": ["value"]
                 }),
                 json!({ "value": "inferred" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn boolean_true_subschema_is_rejected_by_strict_compiler() {
-    with_anthropic_cassette(
-        "strict_schema_matrix/boolean_true_subschema_is_rejected_by_strict_compiler",
-        |client| async move {
-            assert_strict_schema_rejected(
-                client,
-                "record_unconstrained_value",
-                "Call record_unconstrained_value with value = free.",
-                json!({
-                        "type": "object",
-                        "properties": { "value": true },
-                        "required": ["value"]
-                }),
             )
             .await;
         },

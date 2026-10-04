@@ -64,7 +64,6 @@
 //!
 //! | # | cell | trigger | asserts | status |
 //! |---|------|---------|---------|--------|
-//! | 1 | `handshake_rejection_carries_status_body_and_request_id` | invalid key | 401 + body + `x-request-id` | recorded |
 //! | 2 | `handshake_rejection_matches_the_http_twin` | invalid key | same identity as the HTTP 401 | recorded |
 //!
 //! Cell 2 is the parity claim stated as a test: the same credential rejected
@@ -93,39 +92,6 @@ fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
             .is_some_and(|body| body.contains("invalid_api_key")),
         error.provider_request_id().is_some(),
     )
-}
-
-#[tokio::test]
-async fn handshake_rejection_carries_status_body_and_request_id() {
-    with_openai_websocket_cassette(
-        "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
-        |client| async move {
-            let error = client
-                .openai
-                .responses("gpt-4o-mini")
-                .responses_websocket()
-                .connect()
-                .await
-                .err()
-                .expect("an invalid key must fail the upgrade");
-
-            let (status, names_the_cause, has_request_id) = observable(&error);
-            assert_eq!(status, Some(401), "the rejection's status must survive");
-            assert!(
-                names_the_cause,
-                "the provider's own error body must survive: {error}"
-            );
-            assert!(
-                has_request_id,
-                "the transport request id must survive, as it does on every other transport"
-            );
-            assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
-                "a rejection carrying a provider response classifies as one: {error:?}"
-            );
-        },
-    )
-    .await;
 }
 
 /// The parity the bug broke, driven rather than described: **both transports

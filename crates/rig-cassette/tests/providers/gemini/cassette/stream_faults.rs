@@ -13,15 +13,7 @@ use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_gemini_cassette;
-use crate::stream_faults::{
-    assert_setup_failure, drain, recorded_stream_errors, scripted, sole_failed_completion,
-};
-
-/// The recorded stream-setup failure, `error_envelope/nonexistent_model_streaming_error_preserves_status_and_body`,
-/// carries this model, prompt and budget.
-pub(super) const MISSING_MODEL: &str = "gemini-nonexistent-rig-test";
-pub(super) const SETUP_PROMPT: &str = "Say hi.";
-pub(super) const SETUP_MAX_TOKENS: u64 = 16;
+use crate::stream_faults::{drain, recorded_stream_errors, scripted, sole_failed_completion};
 
 /// A real `streamGenerateContent` content frame without a finish reason,
 /// as `gemini-3.8-flash` streamed it on 2026-09-08 (captured in the
@@ -53,44 +45,6 @@ pub(super) fn gemini_sse(frames: &[&str]) -> Bytes {
 /// `chunks`, then EOF.
 pub(super) fn scripted_client(chunks: Vec<Bytes>) -> (GeminiConfig, SequencedStreamingHttpClient) {
     (GeminiConfig::new(SCRIPTED_KEY), scripted(chunks))
-}
-
-/// The model refuses the request before any frame: the run fails with the
-/// recorded 404 and its body, streams nothing, and records the one
-/// completion as that failure.
-#[tokio::test]
-async fn setup_failure_fails_the_run_with_the_recorded_status() {
-    // The fixture census wants the scenario as a literal at the wrapper call.
-    with_gemini_cassette(
-        "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-        |client| async move {
-            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-            let agent = rig::AgentBuilder::new(client.completion(MISSING_MODEL))
-                .max_tokens(SETUP_MAX_TOKENS)
-                .record_to(recorder.clone())
-                .build();
-            let mut stream = agent.prompt(SETUP_PROMPT).stream();
-            let drained = drain(&mut stream).await;
-            drop(stream);
-
-            assert_eq!(drained.finals, 0, "no final response: {drained:?}");
-            assert_eq!(drained.terminals, 0, "no terminal record: {drained:?}");
-            assert!(drained.text.is_empty(), "no text: {drained:?}");
-            assert_eq!(drained.errors.len(), 1, "one error item: {drained:?}");
-            assert_setup_failure(&drained.errors[0], ErrorKind::ProviderResponse, 404);
-
-            let log = agent.stamp(recorder.take());
-            assert_setup_failure(
-                sole_failed_completion(&log),
-                ErrorKind::ProviderResponse,
-                404,
-            );
-            let errors = recorded_stream_errors(&log);
-            assert_eq!(errors.len(), 1, "one recorded error item: {errors:?}");
-            assert_eq!(errors[0].0, 0, "the error is the stream's first item");
-        },
-    )
-    .await;
 }
 
 /// A refused prompt is the provider's verdict, not a transport truncation:

@@ -986,8 +986,8 @@ is in `crates/rig-cassette/coverage/runtime-families.md`.
 
 ### Stream-fault cells
 
-`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and their
-`ecs_stream_faults.rs` twins drive the runner and the native runtime through
+`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and OpenAI's
+`ecs_stream_faults.rs` twin drive the runner and the native runtime through
 the real adapter into a stream that ends badly: the committed error
 recordings for a setup failure, the committed text stream dropped by its
 consumer, and scripted faults served by `rig::test_utils`'s sequenced

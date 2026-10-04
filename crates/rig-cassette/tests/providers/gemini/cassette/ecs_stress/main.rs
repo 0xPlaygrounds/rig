@@ -1,16 +1,9 @@
 //! Main stress observers: execution commits come from actual committed history.
-use super::super::tools_support::ToolEventRecorder;
 use super::ecs_stress_runtime as context;
 pub(super) use super::ecs_stress_runtime::{EventTap as LifecycleRecorder, ScratchpadReader};
-pub(super) use super::ecs_stress_streaming_runtime::{patch, skip};
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
-use rig::{
-    effect::{EffectKind, Outcome},
-    message::UserContent,
-    streaming::StreamEvent,
-    tool::ToolOutput,
-};
+use rig::{effect::Outcome, message::UserContent, streaming::StreamEvent};
 use rig_ecs::{
     agent::{MessageParts, Run, RunResult, Settled, ToolCallSlot, Turn, Utterance},
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Streamed},
@@ -26,7 +19,6 @@ pub(super) struct RunTrace {
 struct Published(usize);
 pub(super) struct Observation {
     pub(super) output: String,
-    pub(super) trace: RunTrace,
 }
 pub(super) fn agent<
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
@@ -178,81 +170,6 @@ fn committed(world: &mut World) {
         }
     }
 }
-type NewTools<'w, 's> = Query<
-    'w,
-    's,
-    &'static mut PendingEffect,
-    (
-        With<ToolCallSlot>,
-        Added<PendingEffect>,
-        Without<Issued>,
-        Without<EffectOutcome>,
-    ),
->;
-type Results<'w, 's> = Query<
-    'w,
-    's,
-    (&'static PendingEffect, &'static mut EffectOutcome),
-    (With<ToolCallSlot>, Added<EffectOutcome>),
->;
-pub(super) fn force_observe_redact(
-    ecs: &mut EcsAgent,
-    tool: &'static str,
-    args: serde_json::Value,
-    recorder: ToolEventRecorder,
-    marker: &'static str,
-) {
-    let call_recorder = recorder.clone();
-    let force = move |mut tools: NewTools| {
-        for mut pending in &mut tools {
-            if let EffectKind::ToolCall {
-                name,
-                args: current,
-            } = &mut pending.kind
-                && name == tool
-            {
-                *current = args.to_string();
-            }
-        }
-    };
-    let observe = move |tools: NewTools| {
-        for pending in &tools {
-            if let EffectKind::ToolCall { name, args } = &pending.kind {
-                call_recorder
-                    .calls
-                    .lock()
-                    .expect("calls")
-                    .push((name.clone(), args.clone()));
-            }
-        }
-    };
-    ecs.app
-        .add_systems(RigSchedule, (force, observe).chain().in_set(BusSet::Gate));
-    let observe = move |tools: Results| {
-        for (pending, outcome) in &tools {
-            if let EffectKind::ToolCall { name, args } = &pending.kind
-                && let Ok(Outcome::ToolResult { result }) = &outcome.0
-            {
-                recorder.results.lock().expect("results").push((
-                    name.clone(),
-                    args.clone(),
-                    result.output().render(),
-                ));
-            }
-        }
-    };
-    let redact = move |mut tools: Results| {
-        for (pending, mut outcome) in &mut tools {
-            if matches!(&pending.kind,EffectKind::ToolCall{name,..} if name==tool)
-                && let Ok(Outcome::ToolResult { result }) = &mut outcome.0
-            {
-                *result = result.clone().with_output(ToolOutput::text(marker));
-            }
-        }
-    };
-    ecs.app
-        .add_systems(RigSchedule, (observe, redact).chain().in_set(BusSet::Judge));
-}
 pub(super) async fn prompt(
     ecs: &mut EcsAgent,
     prompt: &str,
@@ -270,8 +187,5 @@ pub(super) async fn prompt(
         .cloned()
         .collect();
     assert_eq!(traces.len(), 1, "one active run in this test App");
-    Observation {
-        output,
-        trace: traces[0].clone(),
-    }
+    Observation { output }
 }

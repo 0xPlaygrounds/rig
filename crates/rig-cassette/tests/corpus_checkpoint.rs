@@ -330,7 +330,7 @@ async fn hash_mode_accepts_every_golden() {
         })
         .collect();
     fixtures.sort();
-    assert!(fixtures.len() >= 207, "the corpus: {}", fixtures.len());
+    assert!(fixtures.len() >= 206, "the corpus: {}", fixtures.len());
     let mut replayed = 0usize;
     for fixture in &fixtures {
         let log = corpus::golden(fixture);

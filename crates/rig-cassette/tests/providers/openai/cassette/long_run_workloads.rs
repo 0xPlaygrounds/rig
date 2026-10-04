@@ -16,7 +16,7 @@
 use rig::AgentBuilder;
 use rig::agent::Agent;
 use rig::completion::CacheRates;
-use rig::providers::openai::{GPT_6_1_SOL, GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL};
+use rig::providers::openai::{GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL};
 use rig_test_support::cache_longrun::workloads::{
     self, DOCUMENT_PREAMBLE, OrderHistory, ShippingLog,
 };
@@ -40,15 +40,6 @@ const ASTRA: (CacheRates, f64) = (
         storage_per_hour: 0.0,
     },
     50.0,
-);
-const SOL_6_1: (CacheRates, f64) = (
-    CacheRates {
-        input: 2.0,
-        cached_read: 0.10,
-        cache_write: 2.5,
-        storage_per_hour: 0.0,
-    },
-    10.0,
 );
 const SOL: (CacheRates, f64) = (
     CacheRates {
@@ -109,30 +100,6 @@ pub(super) fn check(
         log,
         None,
     )
-}
-
-/// Unary and streamed turns alternating in one conversation.
-#[tokio::test]
-async fn mixed_delivery_100_responses() {
-    let log = with_openai_long_run_cassette(
-        "long_run_caching/mixed_delivery_100_responses",
-        |client, clock| async move {
-            let agent = support_agent(client.openai.completion(GPT_6_1_SOL).into());
-            workloads::mixed_delivery(&agent, &clock, 100, "MIXED DELIVERY", "A").await
-        },
-    )
-    .await;
-    check(
-        "long_run_caching/mixed_delivery_100_responses",
-        GPT_6_1_SOL,
-        SOL_6_1,
-        Some(Limits {
-            min_saving: Some(0.60),
-            min_call_share: Some(0.70),
-            max_writes_share: Some(0.25),
-        }),
-        &log,
-    );
 }
 
 /// The same on gpt-6-astra, kept to thirty turns for its price.

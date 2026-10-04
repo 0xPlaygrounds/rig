@@ -50,68 +50,11 @@ async fn one_request_over_mistrals_batch_cap_is_rejected() -> Result<()> {
     .await
 }
 
-#[tokio::test]
-async fn mistral_embed_reports_its_real_dimensions() -> Result<()> {
-    with_mistral_capability_cassette(
-        "capability_edges/mistral_embed_reports_its_real_dimensions",
-        |client| async move {
-            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
-            // The claim under test is the *declared* dimension; the live call
-            // is what proves the declaration matches the vectors Mistral
-            // actually returns.
-            let declared = model.capabilities().ndims;
-            let embedding = model.embed_text("dimension probe").await?;
-            assert_declared_matches_returned(declared, embedding.vec.len());
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn list_models_keeps_description_and_context_length() -> Result<()> {
-    with_mistral_capability_cassette(
-        "capability_edges/list_models_keeps_description_and_context_length",
-        |client| async move {
-            let models = client.list_models().await?;
-            assert_listing_carries_mistrals_fields(&models.data);
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await
-}
-
 fn assert_batch_cap_rejection(error: &rig::error::ProviderError) {
     let rendered = error.to_string();
     assert!(
         rendered.contains("Too many inputs"),
         "the rejection must be Mistral's batch-cap error, not some other failure: {rendered}"
-    );
-}
-
-fn assert_declared_matches_returned(declared: usize, returned: usize) {
-    assert_ne!(
-        declared, 0,
-        "a model that declares 0 dimensions cannot size a vector store; \
-         Mistral's models are absent from OpenAI's dimension table"
-    );
-    assert_eq!(
-        declared, returned,
-        "the declared dimension must match the vector Mistral actually returns"
-    );
-}
-
-fn assert_listing_carries_mistrals_fields(models: &[rig::model::ModelInfo]) {
-    assert!(!models.is_empty(), "the listing must not be empty");
-    assert!(
-        models.iter().any(|model| model.description.is_some()),
-        "Mistral's listing carries a `description` and `Model` has a slot for it"
-    );
-    assert!(
-        models
-            .iter()
-            .any(|model| model.context_length.is_some_and(|length| length > 0)),
-        "Mistral reports `max_context_length`, which is `Model::context_length`"
     );
 }
 

@@ -36,7 +36,7 @@ use rig_cassette::effect_log::EffectLog;
 /// The goldens the two agent interpreters replay: the same files, the whole
 /// corpus (the contract matrix on five more wires grew it past the original
 /// 207; the failure rows on those wires past 685).
-const EXPECTED_GOLDENS: usize = 836;
+const EXPECTED_GOLDENS: usize = 206;
 
 fn goldens() -> Vec<(String, EffectLog)> {
     let dir = fixtures::effects_dir();

@@ -47,7 +47,6 @@ enum Transport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
     MistralSmall,
-    Ministral3b,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,7 +124,6 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::MistralSmall => "mistral-small-latest",
-        ModelVariant::Ministral3b => "ministral-3b-latest",
     }
 }
 
@@ -299,17 +297,9 @@ crate::matrix::case_matrix! {
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     blocking_mistral_small_normalized_text: ("history_roundtrip_matrix/blocking_mistral_small_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
     # [tokio :: test]
-    blocking_ministral_3b_raw_text: ("history_roundtrip_matrix/blocking_ministral_3b_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_ministral_3b_normalized_text: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     streaming_mistral_small_raw_text: ("history_roundtrip_matrix/streaming_mistral_small_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     streaming_mistral_small_normalized_text: ("history_roundtrip_matrix/streaming_mistral_small_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_ministral_3b_raw_text: ("history_roundtrip_matrix/streaming_ministral_3b_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_ministral_3b_normalized_text: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
 }

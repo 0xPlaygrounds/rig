@@ -60,24 +60,3 @@ async fn nonstreaming() {
     )
     .await;
 }
-
-#[tokio::test]
-async fn streaming() {
-    let call_count = Arc::new(AtomicUsize::new(0));
-    with_ollama_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
-        let agent = rig::AgentBuilder::new(client.completion(MODEL))
-            .preamble(reasoning::TOOL_SYSTEM_PROMPT)
-            .tool(WeatherTool::new(call_count.clone()))
-            .build();
-
-        let stream = agent
-            .prompt(reasoning::TOOL_USER_PROMPT)
-            .history(Vec::<Message>::new())
-            .max_turns(3)
-            .stream();
-
-        let stats = reasoning::collect_stream_stats(stream, "ollama").await;
-        reasoning::assert_universal(&stats, &call_count, "ollama");
-    })
-    .await;
-}

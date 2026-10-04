@@ -30,7 +30,5 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
 crate::matrix::case_matrix! {
     wrapper: with_deepseek_cassette, family: history_survival_case;
     #[tokio::test]
-    unary: ("history_survival_matrix/unary", configured, cell(Transport::Unary, Expect::REASONING));
-    #[tokio::test]
     streaming: ("history_survival_matrix/streaming", configured, cell(Transport::Streaming, Expect::REASONING));
 }

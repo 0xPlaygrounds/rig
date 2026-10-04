@@ -14,18 +14,13 @@
 //! | --- | --- | --- | --- | --- |
 //! | [`context_overflow_preserves_the_token_counts`] | `-c 512` | 400 | `exceed_context_size_error` | carries `n_prompt_tokens` + `n_ctx` |
 //! | [`streaming_context_overflow_matches_the_blocking_envelope`] | `-c 512` | 400 | `exceed_context_size_error` | the 400 lands before the SSE stream opens |
-//! | [`an_unknown_model_is_ignored_rather_than_rejected`] | default | **200** | — | llama.cpp never reads `model` for routing |
 //! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
-//! | [`the_api_key_the_provider_sends_is_accepted`] | `--api-key` | 200 | — | the paired positive; impossible before this PR |
 //! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props` |
 //! | [`the_model_listing_requires_the_key_on_a_keyed_server`] | `--api-key` | 401 | `authentication_error` | `/v1/models` was public on b10499 |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
-//! | [`embeddings_on_a_causal_lm_return_pooled_numbers`] | causal LM + `--pooling mean` | 200 | — | the answer to "did the old embeddings cells mean anything" |
 //! | [`an_embeddings_input_past_the_batch_size_is_a_500`] | `--embeddings` | 500 | `server_error` | the *batch* size, not the context size — a different limit with a different message |
-//! | [`tools_without_jinja_are_a_500`] | `--no-jinja` | 500 | `server_error` | a *request* error reported as a server error |
 //! | [`a_malformed_body_keeps_its_parse_error`] | default | 400 | `invalid_request_error` | mistyped field, injected through `additional_params` |
-//! | [`an_oversized_output_cap_is_clamped_not_rejected`] | default | 200 | — | truncation, not an error |
 //! | [`rerank_without_a_reranker_is_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`rerank_with_an_empty_document_list_is_a_400`] | `--reranking` | 400 | `invalid_request_error` | |
 //!
@@ -238,46 +233,6 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
 // The model field
 // ---------------------------------------------------------------------------
 
-/// llama.cpp answers 200 to a model it has never heard of.
-///
-/// A single-model `llama-server` serves whatever GGUF it was started with and
-/// treats `model` as decorative — it echoes the loaded file's path back rather
-/// than the string it was asked for. There is no 404 to record, and the
-/// consequence is worth pinning: a typo'd model identifier is not an error
-/// here, it is a silent answer from the wrong model, which is exactly the
-/// failure a user would expect a 404 to protect them from.
-#[tokio::test]
-async fn an_unknown_model_is_ignored_rather_than_rejected() {
-    with_llamacpp_cassette(
-        "error_matrix/unknown_model_is_ignored",
-        |client| async move {
-            let model = client.completion("rig/definitely-not-a-llamacpp-model");
-            let response = model
-                .call(CompletionRequest::new("Reply with the single word: ok").max_tokens(256))
-                .await
-                .expect("llama.cpp ignores the model field rather than rejecting it");
-            assert!(!response.choice.is_empty());
-        },
-    )
-    .await;
-
-    let recorded =
-        recorded_statuses_and_bodies("llamacpp", "error_matrix/unknown_model_is_ignored");
-    let (status, body) = &recorded[0];
-    assert_eq!(*status, 200, "an unknown model is not a client error");
-    let response: Value = serde_json::from_str(body).expect("response should be JSON");
-    let request = recorded_json_request("llamacpp", "error_matrix/unknown_model_is_ignored");
-    assert_eq!(
-        request["model"],
-        json!("rig/definitely-not-a-llamacpp-model"),
-        "the request really did name a model the server has never loaded"
-    );
-    assert_ne!(
-        response["model"], request["model"],
-        "the response echoes the loaded GGUF, not the requested identifier"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------
@@ -321,23 +276,6 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
         401,
         "authentication_error",
     );
-}
-
-/// The same server, reached *with* the key — the capability this PR adds.
-#[tokio::test]
-async fn the_api_key_the_provider_sends_is_accepted() {
-    with_llamacpp_api_key_cassette("error_matrix/api_key_is_accepted", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .call(CompletionRequest::new("Reply with the single word: ok").max_tokens(256))
-            .await
-            .expect("the bearer token the provider sends must be accepted");
-        assert!(!response.choice.is_empty());
-    })
-    .await;
-
-    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/api_key_is_accepted");
-    assert_eq!(recorded[0].0, 200);
 }
 
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
@@ -511,88 +449,9 @@ async fn embeddings_with_pooling_none_are_a_400() {
     );
 }
 
-/// A **causal LM** served with `--embeddings --pooling mean` answers 200 with
-/// pooled hidden states.
-///
-/// This is the cell that decides whether the pre-merge embeddings coverage
-/// meant anything: it was recorded against a causal model, and the answer is
-/// that llama.cpp does not refuse — it returns numbers of the right shape that
-/// are not a trained embedding of anything. Nothing in rig can tell the
-/// difference, which is precisely why the real embeddings cells in this suite
-/// now run against `Qwen/Qwen3-Embedding-0.6B-GGUF` and say so.
-#[tokio::test]
-async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
-    with_llamacpp_causal_embeddings_cassette(
-        "error_matrix/embeddings_on_a_causal_lm",
-        |client| async move {
-            let embeddings = client
-                .embedding(CASSETTE_MODEL, None)
-                .call(vec!["hello".to_string()])
-                .await
-                .map(|response| response.embeddings)
-                .expect("llama.cpp pools a causal LM rather than refusing");
-
-            assert_eq!(embeddings.len(), 1);
-            assert!(
-                !embeddings[0].vec.is_empty(),
-                "a pooled causal LM still returns a vector of the right shape"
-            );
-        },
-    )
-    .await;
-
-    let recorded =
-        recorded_statuses_and_bodies("llamacpp", "error_matrix/embeddings_on_a_causal_lm");
-    assert_eq!(
-        recorded[0].0, 200,
-        "the server accepts it; the model is the caller's problem"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Request-shape failures llama.cpp reports as 5xx
 // ---------------------------------------------------------------------------
-
-/// `tools` on a `--no-jinja` server is a **500**, not a 400.
-///
-/// Without `--jinja` llama.cpp uses its own built-in ChatML template, which
-/// has no way to render a tool list, and it reports that as `server_error`.
-/// The classification matters: a client that treats 5xx as retriable and 4xx
-/// as fatal will retry a request that can never succeed until the server is
-/// restarted with a different flag.
-#[tokio::test]
-async fn tools_without_jinja_are_a_500() {
-    with_llamacpp_no_jinja_cassette("error_matrix/tools_without_jinja", |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let error = model
-            .call(
-                CompletionRequest::new("Add 2 and 3 using the tool.")
-                    .tool(rig::tool::tool_definition(&crate::support::Adder))
-                    .max_tokens(64),
-            )
-            .await
-            .expect_err("a --no-jinja server cannot render a tool list");
-
-        assert_eq!(
-            error
-                .provider_response_status()
-                .expect("the status must reach the caller")
-                .as_u16(),
-            500,
-            "{error}"
-        );
-        let body = error
-            .provider_response_body()
-            .expect("the body must be preserved");
-        assert!(
-            body.contains("--jinja"),
-            "the flag to restart the server with is the actionable half: {body}"
-        );
-    })
-    .await;
-
-    recorded_error("error_matrix/tools_without_jinja", 500, "server_error");
-}
 
 /// A body llama.cpp cannot parse is a **500** carrying the parser's own
 /// message.
@@ -644,45 +503,6 @@ async fn a_malformed_body_keeps_its_parse_error() {
             .as_str()
             .is_some_and(|message| message.contains("temperature")),
         "{json}"
-    );
-}
-
-/// An output cap far past the context window is **clamped**, not rejected.
-#[tokio::test]
-async fn an_oversized_output_cap_is_clamped_not_rejected() {
-    with_llamacpp_small_context_cassette(
-        "error_matrix/oversized_output_cap",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let response = model
-                .call(
-                    CompletionRequest::new("Say ok.")
-                        // Two orders of magnitude past the server's -c 512.
-                        .max_tokens(100_000),
-                )
-                .await
-                .expect("llama.cpp clamps an oversized cap rather than refusing");
-            assert!(!response.choice.is_empty());
-        },
-    )
-    .await;
-
-    let request = recorded_json_request("llamacpp", "error_matrix/oversized_output_cap");
-    assert_eq!(
-        request["max_tokens"],
-        json!(100_000),
-        "the request really did ask for more than the context holds"
-    );
-    let recorded = recorded_statuses_and_bodies("llamacpp", "error_matrix/oversized_output_cap");
-    assert_eq!(recorded[0].0, 200);
-    let response: Value = serde_json::from_str(&recorded[0].1).expect("response should be JSON");
-    let completion_tokens = response["usage"]["completion_tokens"]
-        .as_u64()
-        .expect("usage should report completion tokens");
-    assert!(
-        completion_tokens < 512,
-        "the server generated {completion_tokens} tokens, so the cap was clamped to what \
-         the context allows rather than honoured"
     );
 }
 

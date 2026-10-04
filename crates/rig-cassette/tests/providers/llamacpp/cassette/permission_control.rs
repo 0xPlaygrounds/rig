@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::support::{assert_nonempty_response, collect_stream_observation};
+use crate::support::assert_nonempty_response;
 
 use super::super::cassette_support::*;
 
@@ -209,84 +209,6 @@ async fn permission_control_prompt_example() -> Result<()> {
                 anyhow::ensure!(last == "hello world");
             }
             anyhow::ensure!(call_count.load(Ordering::SeqCst) >= 1);
-            Ok(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn permission_control_streaming_example() -> Result<()> {
-    with_llamacpp_cassette_result(
-        "permission_control/permission_control_streaming_example",
-        |client| async move {
-            let scratch = ScratchFile::new("streaming")?;
-
-            let agent = rig::AgentBuilder::new(client.clone().completion(CASSETTE_MODEL))
-                .preamble(
-                    "You are a helpful assistant that can read files using different methods.",
-                )
-                .tool(ReadFileHead {
-                    path: scratch.path.clone(),
-                })
-                .tool(ReadFileTail {
-                    path: scratch.path.clone(),
-                })
-                .build();
-
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let last_result = Arc::new(Mutex::new(None));
-            let hook = PermissionHook {
-                call_count: call_count.clone(),
-                last_result: last_result.clone(),
-            };
-
-            let mut stream = agent
-                .prompt(
-                    "Use the available tools to read test.txt now. \
-                 Do not ask any follow-up questions; just read the file and report its content.",
-                )
-                .max_turns(5)
-                .add_hook(hook)
-                .stream();
-
-            let observation = collect_stream_observation(&mut stream).await;
-            anyhow::ensure!(
-                observation.errors.is_empty(),
-                "streaming permission control produced errors: {:?}",
-                observation.errors
-            );
-            anyhow::ensure!(
-                observation.got_final_response,
-                "stream should yield a final response; events: {:?}",
-                observation.events
-            );
-            anyhow::ensure!(
-                observation.tool_results >= 1,
-                "expected at least one streamed tool-result event, got {}; events: {:?}",
-                observation.tool_results,
-                observation.events
-            );
-            anyhow::ensure!(
-                observation
-                    .tool_calls
-                    .iter()
-                    .any(|tool_name| tool_name == ReadFileHead::NAME),
-                "expected stream to include the skipped read_file_head tool call, got {:?}",
-                observation.tool_calls
-            );
-
-            let last = last_result.lock().expect("lock last_result").clone();
-            let final_response = observation
-                .final_response_text
-                .as_deref()
-                .unwrap_or_default();
-            assert_nonempty_response(final_response);
-            if let Some(last) = last {
-                anyhow::ensure!(last == "hello world");
-            }
-            anyhow::ensure!(call_count.load(Ordering::SeqCst) >= 1);
-
             Ok(())
         },
     )

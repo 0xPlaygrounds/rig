@@ -21,7 +21,6 @@ use serde_json::{Value, json};
 use super::super::support::with_openrouter_cassette;
 
 const CLAUDE: &str = "anthropic/claude-haiku-4.5";
-const CLAUDE_SONNET: &str = "anthropic/claude-sonnet-4.6";
 const GEMINI: &str = "google/gemini-3-flash-preview";
 const CODE: &str = "amber-5521";
 
@@ -155,15 +154,6 @@ async fn switch(client: OpenAiModels, route: Route, streamed: bool) {
     );
 }
 
-async fn same_family(client: OpenAiModels, route: Route, streamed: bool) {
-    let mut history = claude_tool_turn(&client, route, streamed).await;
-    history.push(Message::user(
-        "Now report the code, without calling any tool.",
-    ));
-    let other = turn(&client, route, CLAUDE_SONNET, history, streamed).await;
-    assert!(text(&other).contains(CODE), "{other:?}");
-}
-
 /// Every reasoning value in `value`: `opaque` collects signatures and
 /// ciphertext, which arrive whole; `all` adds reasoning text, which a stream
 /// delivers in fragments. Chat carries `reasoning_details` entries
@@ -285,20 +275,6 @@ fn assert_switch_recorded(scenario: &str) {
     );
 }
 
-fn assert_same_family_recorded(scenario: &str) {
-    let turns = exchanges(scenario);
-    assert_eq!(turns.len(), 2, "a Claude turn and its continuation");
-    assert!(
-        !turns[0].opaque.is_empty(),
-        "Claude delivered signed reasoning"
-    );
-    let next = carried(&turns[1].request);
-    assert!(
-        turns[0].opaque.iter().all(|value| !next.contains(value)),
-        "another Claude model is another model: no signature reaches it"
-    );
-}
-
 #[tokio::test]
 async fn switch_unary() {
     with_openrouter_cassette("upstream_switch_matrix/switch_unary", |client| {
@@ -318,24 +294,6 @@ async fn switch_streamed() {
 }
 
 #[tokio::test]
-async fn same_family_unary() {
-    with_openrouter_cassette("upstream_switch_matrix/same_family_unary", |client| {
-        same_family(client, Route::Chat, false)
-    })
-    .await;
-    assert_same_family_recorded("upstream_switch_matrix/same_family_unary");
-}
-
-#[tokio::test]
-async fn same_family_streamed() {
-    with_openrouter_cassette("upstream_switch_matrix/same_family_streamed", |client| {
-        same_family(client, Route::Chat, true)
-    })
-    .await;
-    assert_same_family_recorded("upstream_switch_matrix/same_family_streamed");
-}
-
-#[tokio::test]
 async fn responses_switch_unary() {
     with_openrouter_cassette("upstream_switch_matrix/responses_switch_unary", |client| {
         switch(client, Route::Responses, false)
@@ -352,24 +310,4 @@ async fn responses_switch_streamed() {
     )
     .await;
     assert_switch_recorded("upstream_switch_matrix/responses_switch_streamed");
-}
-
-#[tokio::test]
-async fn responses_same_family_unary() {
-    with_openrouter_cassette(
-        "upstream_switch_matrix/responses_same_family_unary",
-        |client| same_family(client, Route::Responses, false),
-    )
-    .await;
-    assert_same_family_recorded("upstream_switch_matrix/responses_same_family_unary");
-}
-
-#[tokio::test]
-async fn responses_same_family_streamed() {
-    with_openrouter_cassette(
-        "upstream_switch_matrix/responses_same_family_streamed",
-        |client| same_family(client, Route::Responses, true),
-    )
-    .await;
-    assert_same_family_recorded("upstream_switch_matrix/responses_same_family_streamed");
 }

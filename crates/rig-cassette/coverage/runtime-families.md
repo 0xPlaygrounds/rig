@@ -7,7 +7,10 @@ repeats over (fixtures per provider), what is provider-specific and what is
 runtime, and where it now runs once. The once-per-scenario copies live in the
 `runtime` target (`crates/rig-cassette/tests/runtime/`), over the reply bank
 (`crates/rig-cassette/fixtures/bank/`, `cargo xtask cassette bank`). The
-per-provider copies are kept; the prune step chooses which of them go.
+per-provider copies the runtime target makes redundant were deleted by the
+cassette prune (`cargo xtask cassette prune`, listed in `pruned.tsv`); the
+copies that remain hold a request fact, a reply shape or a region nothing
+else does.
 
 A reply is either bank-matched (`bank::script`: the bank's reply of each
 shape and called tools the scenario recorded) or pinned (`bank::recorded`:

@@ -84,58 +84,6 @@ async fn assert_model_streaming_tool_call(
 }
 
 #[tokio::test]
-async fn zero_argument_strict_tool_streams() {
-    with_anthropic_cassette(
-        "strict_schema_streaming/zero_argument_strict_tool_streams",
-        |client| async move {
-            assert_streaming_strict_tool_call(
-                client,
-                "stream_ping",
-                "Call stream_ping with an empty object.",
-                json!({ "type": "object", "properties": {} }),
-                ToolChoice::Required,
-                json!({}),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn nested_optional_object_streams_with_omission() {
-    with_anthropic_cassette(
-        "strict_schema_streaming/nested_optional_object_streams_with_omission",
-        |client| async move {
-            assert_streaming_strict_tool_call(
-                client,
-                "stream_profile",
-                "Record profile.name = Ada and omit profile.nickname and the optional trace_id.",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "profile": {
-                            "type": "object",
-                            "properties": {
-                                "name": { "type": "string" },
-                                "nickname": { "type": "string" }
-                            },
-                            "required": ["name"]
-                        },
-                        "trace_id": { "type": "string" }
-                    },
-                    "required": ["profile"]
-                }),
-                ToolChoice::Required,
-                json!({ "profile": { "name": "Ada" } }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn one_of_and_const_stream_with_specific_choice() {
     with_anthropic_cassette(
         "strict_schema_streaming/one_of_and_const_stream_with_specific_choice",
@@ -184,29 +132,6 @@ async fn one_of_and_const_stream_with_specific_choice() {
 }
 
 #[tokio::test]
-async fn automatic_choice_streams_strict_tool_call() {
-    with_anthropic_cassette(
-        "strict_schema_streaming/automatic_choice_streams_strict_tool_call",
-        |client| async move {
-            assert_streaming_strict_tool_call(
-                client,
-                "stream_auto",
-                "You must call stream_auto with value = selected.",
-                json!({
-                    "type": "object",
-                    "properties": { "value": { "type": "string" } },
-                    "required": ["value"]
-                }),
-                ToolChoice::Auto,
-                json!({ "value": "selected" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn structured_output_and_strict_tool_use_stream_together() {
     with_anthropic_cassette(
         "strict_schema_streaming/structured_output_and_strict_tool_use_stream_together",
@@ -232,33 +157,6 @@ async fn structured_output_and_strict_tool_use_stream_together() {
                 ToolChoice::Required,
                 json!({ "value": "combined-stream" }),
                 Some(output_schema),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn manual_prompt_caching_and_strict_tools_stream_together() {
-    with_anthropic_cassette(
-        "strict_schema_streaming/manual_prompt_caching_and_strict_tools_stream_together",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_prompt_caching().with_strict_tools());
-            assert_model_streaming_tool_call(
-                model,
-                "stream_cached",
-                "Call stream_cached with value = manual-stream.",
-                json!({
-                    "type": "object",
-                    "properties": { "value": { "type": "string" } },
-                    "required": ["value"]
-                }),
-                ToolChoice::Required,
-                json!({ "value": "manual-stream" }),
-                None,
             )
             .await;
         },

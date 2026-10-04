@@ -105,32 +105,6 @@ async fn support_chat_100_chat() {
     );
 }
 
-/// The same chat over Responses, stateless (`store: false`).
-#[tokio::test]
-async fn support_chat_100_responses() {
-    let log = with_openai_long_run_cassette(
-        "long_run_caching/support_chat_100_responses",
-        |client, clock| async move {
-            let agent = support_agent(
-                client.openai.completion(MODEL),
-                json!({
-                    "prompt_cache_key": CACHE_KEY,
-                    "reasoning": { "effort": "none" },
-                    "store": false,
-                }),
-            );
-            support_chat(&agent, &clock, 100).await
-        },
-    )
-    .await;
-    check(
-        CacheWire::OpenAiResponses,
-        "long_run_caching/support_chat_100_responses",
-        Some(LIMITS),
-        &log,
-    );
-}
-
 /// The same chat over Chat Completions with caching off (explicit-only
 /// mode with no breakpoints), reported only.
 #[tokio::test]

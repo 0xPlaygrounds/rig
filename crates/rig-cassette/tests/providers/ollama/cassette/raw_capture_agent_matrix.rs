@@ -16,10 +16,8 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `hooks_observe_raw_blocking` | `agent.prompt` | `CompletionResponse` and `ModelTurnFinished` see `raw`; its usage matches the fixture body | recorded |
 //! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; its usage matches the fixture's usage chunk | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different payloads whose fingerprints equal the interactions' in order; the first carries `tool_calls` | recorded |
-//! | 4 | `multi_turn_tool_run_records_distinct_raw_streamed` | tool run, `agent.prompt(..).stream()` | two `CompletionCall` items, two different terminal payloads whose fingerprints equal the interactions' in order; the final response's `raw` is the final turn's | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
 //! `CompletionResponse` — after the unary call returns on the blocking
@@ -302,51 +300,6 @@ fn assert_distinct_fingerprints(records: &[Value], context: &str) {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn hooks_observe_raw_blocking() {
-    let scenario = "raw_capture_agent_matrix/hooks_observe_raw_blocking";
-    let probe = RawProbe::default();
-    let hook = probe.clone();
-    with_ollama_cassette(
-        "raw_capture_agent_matrix/hooks_observe_raw_blocking",
-        move |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(MODEL))
-                .max_tokens(64)
-                .additional_params(json!({ "reasoning_effort": "none" }))
-                .add_hook(hook)
-                .build();
-            agent
-                .prompt(TEXT_PROMPT)
-                .await
-                .expect("prompt should succeed");
-        },
-    )
-    .await;
-
-    let responses = probe.completion_responses();
-    let turns = probe.model_turns();
-    assert_eq!(responses.len(), 1, "one CompletionResponse event");
-    assert_eq!(
-        probe.response_streaming_flags(),
-        [false],
-        "the blocking driver fires it with is_streaming() == false"
-    );
-    assert_eq!(turns.len(), 1, "one ModelTurnFinished event");
-    let raw = &responses[0];
-    assert!(!raw.is_null(), "CompletionResponse.raw is populated");
-    assert_eq!(&turns[0], raw, "both events observe the same payload");
-    // The payload is this attempt's own response: the blocking body as the
-    // provider type carries it.
-    let records = recorded_completed_records(scenario, false);
-    assert_eq!(records.len(), 1);
-    assert_eq!(fingerprints(&responses), fingerprints(&records));
-    assert_eq!(raw["model"], records[0]["model"]);
-    assert_eq!(
-        raw.pointer("/choices/0/message/content"),
-        records[0].pointer("/choices/0/message/content")
-    );
-}
-
-#[tokio::test]
 async fn hooks_observe_raw_streamed() {
     let scenario = "raw_capture_agent_matrix/hooks_observe_raw_streamed";
     let probe = RawProbe::default();
@@ -461,77 +414,4 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     assert_eq!(probe.completion_responses(), raws);
     assert_eq!(probe.response_tool_call_flags(), [true, false]);
     assert_eq!(probe.model_turns(), raws);
-}
-
-#[tokio::test]
-async fn multi_turn_tool_run_records_distinct_raw_streamed() {
-    let scenario = "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed";
-    let probe = RawProbe::default();
-    let hook = probe.clone();
-    let observed: Arc<Mutex<Vec<Value>>> = Default::default();
-    let sink = observed.clone();
-    let last_final: Arc<Mutex<Option<Value>>> = Default::default();
-    let final_sink = last_final.clone();
-    with_ollama_cassette(
-        "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed",
-        move |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(MODEL))
-                .preamble(TOOLS_PREAMBLE)
-                .additional_params(json!({ "reasoning_effort": "none" }))
-                .tool(Adder)
-                .add_hook(hook)
-                .build();
-            let run = drain(
-                agent
-                    .prompt(Message::user(TOOL_PROMPT))
-                    .max_turns(3)
-                    .stream(),
-            )
-            .await;
-            assert!(run.output.is_some(), "the run finished");
-            assert_eq!(
-                run.completion_calls.len(),
-                2,
-                "a tool turn then a text turn"
-            );
-            *final_sink.lock().expect("sink") = Some(run.completion_calls[1].raw.clone());
-            *sink.lock().expect("sink") = run
-                .completion_calls
-                .iter()
-                .map(|call| call.raw.clone())
-                .collect();
-        },
-    )
-    .await;
-
-    let raws = observed.lock().expect("sink").clone();
-    assert_all_populated(&raws, scenario);
-    assert_ne!(raws[0], raws[1], "two attempts, two different payloads");
-    let records = recorded_completed_records(scenario, true);
-    assert_eq!(records.len(), 2, "premise: two attempts were made");
-    assert_distinct_fingerprints(&records, scenario);
-    // Each terminal payload is its own attempt's, in the interactions' order,
-    // and the first interaction is the tool turn.
-    assert_eq!(fingerprints(&raws), fingerprints(&records));
-    assert_eq!(
-        recorded_add_call_turns(scenario),
-        [true, false],
-        "premise: an add call then a text turn"
-    );
-    // The forwarded Final is the *last* interaction's, not the first's.
-    let last = last_final
-        .lock()
-        .expect("sink")
-        .clone()
-        .expect("last Final");
-    assert_eq!(fingerprint(&last), fingerprint(&records[1]));
-    assert_ne!(fingerprint(&last), fingerprint(&records[0]));
-    // ModelTurnFinished fires for both attempts and sees each attempt's own.
-    assert_eq!(probe.model_turns(), raws);
-    // CompletionResponse fires for both attempts too — the tool-only turn
-    // included — and each firing carries its own attempt's payload: the
-    // first is the tool-call turn, the second the text turn.
-    assert_eq!(probe.completion_responses(), raws);
-    assert_eq!(probe.response_tool_call_flags(), [true, false]);
-    assert_eq!(probe.response_streaming_flags(), [true, true]);
 }

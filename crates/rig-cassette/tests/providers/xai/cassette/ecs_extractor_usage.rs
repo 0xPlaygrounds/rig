@@ -6,80 +6,6 @@ use anyhow::Result;
 use rig::message::Message;
 use rig::providers::xai;
 #[tokio::test]
-async fn extract_backward_compatibility() -> Result<()> {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_xai_cassette_result(
-                "extractor_usage/extract_backward_compatibility",
-                |client| async move {
-                    let mut extractor = EcsExtractor::<Person>::new(
-                        client.completion(xai::GROK_3_MINI),
-                        None,
-                        None,
-                    );
-                    let person = extractor
-                        .extract("John Doe is a 30 year old software engineer.", &[])
-                        .await?
-                        .output;
-                    anyhow::ensure!(person.name.as_deref() == Some("John Doe"));
-                    anyhow::ensure!(person.age == Some(30));
-                    assert_compatible_professions(
-                        person.profession.as_deref(),
-                        "software engineer",
-                    )?;
-                    Ok(())
-                },
-            )
-            .await
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "xai_extractor_usage_extract_backward_compatibility",
-                log,
-            )
-        },
-    )
-    .await
-}
-#[tokio::test]
-async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_xai_cassette_result(
-                "extractor_usage/extract_with_usage_returns_data_and_usage",
-                |client| async move {
-                    let mut extractor = EcsExtractor::<Person>::new(
-                        client.completion(xai::GROK_3_MINI),
-                        None,
-                        None,
-                    );
-                    let response: TypedPromptResponse<Person> = extractor
-                        .extract("Jane Smith is a 45 year old data scientist.", &[])
-                        .await?;
-                    anyhow::ensure!(response.output.name.as_deref() == Some("Jane Smith"));
-                    anyhow::ensure!(response.output.age == Some(45));
-                    assert_compatible_professions(
-                        response.output.profession.as_deref(),
-                        "data scientist",
-                    )?;
-                    anyhow::ensure!(response.usage.input_tokens.is_some_and(|n| n > 0));
-                    anyhow::ensure!(response.usage.output_tokens.is_some_and(|n| n > 0));
-                    anyhow::ensure!(response.usage.total_tokens.is_some_and(|n| n > 0));
-                    Ok(())
-                },
-            )
-            .await
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "xai_extractor_usage_extract_with_usage_returns_data_and_usage",
-                log,
-            )
-        },
-    )
-    .await
-}
-#[tokio::test]
 async fn extract_with_chat_history_with_usage_works() -> Result<()> {
     rig_test_support::goldens::world_golden_test(
         async {
@@ -156,41 +82,6 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         |log| {
             rig_test_support::goldens::world_golden_effects(
                 "xai_extractor_usage_extract_and_extract_with_usage_return_same_data",
-                log,
-            )
-        },
-    )
-    .await
-}
-#[tokio::test]
-async fn usage_tracking_works_for_different_schemas() -> Result<()> {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_xai_cassette_result(
-                "extractor_usage/usage_tracking_works_for_different_schemas",
-                |client| async move {
-                    let mut person_extractor = EcsExtractor::<Person>::new(
-                        client.completion(xai::GROK_3_MINI),
-                        None,
-                        None,
-                    );
-                    let person_response = person_extractor
-                        .extract("Alice is a 25 year old developer.", &[])
-                        .await?;
-                    anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
-                    let mut address_extractor = person_extractor.with_schema::<Address>();
-                    let address_response = address_extractor
-                        .extract("456 Oak Avenue, Cambridge, MA 02139", &[])
-                        .await?;
-                    anyhow::ensure!(address_response.usage.total_tokens.is_some_and(|n| n > 0));
-                    Ok(())
-                },
-            )
-            .await
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "xai_extractor_usage_usage_tracking_works_for_different_schemas",
                 log,
             )
         },

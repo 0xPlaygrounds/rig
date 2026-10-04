@@ -32,33 +32,11 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `blocking_budget_thinking` | `thinking.enabled`, minimum budget | `> 0` | recorded |
-//! | 2 | `blocking_adaptive_declines_to_think` | adaptive declines: bucket present, zero | `0` | recorded |
-//! | 3 | `blocking_larger_budget` | budget well above the minimum | `> 0` | recorded |
-//! | 4 | `blocking_with_tools` | tools advertised, thinking on | `> 0` | recorded |
 //! | 5 | `blocking_tool_use_terminal` | terminal is `tool_use` | `> 0` | recorded |
-//! | 6 | `blocking_with_preamble` | system prompt present | `> 0` | recorded |
-//! | 7 | `blocking_with_prompt_caching` | cache breakpoint + thinking | `> 0` | recorded |
-//! | 8 | `blocking_redacted_thinking` | `redacted_thinking` block | `> 0` | recorded |
 //! | 9 | `blocking_max_tokens_truncation` | `stop_reason: max_tokens` | `> 0` | recorded |
-//! | 10 | `blocking_opus_model` | opus 4.8, adaptive-only model | `> 0` | recorded |
-//! | 11 | `blocking_long_reasoning` | large breakdown, far above noise | `> 0` | recorded |
-//! | 12 | `blocking_thinking_disabled_control` | control: thinking off, bucket absent | `0` | recorded |
-//! | 13 | `blocking_haiku_no_thinking_control` | control: second model, bucket absent | `0` | recorded |
-//! | 14 | `streaming_budget_thinking` | streamed twin of #1 | `> 0` | recorded |
 //! | 15 | `streaming_adaptive_declines_to_think` | streamed twin of #2 | `0` | recorded |
-//! | 16 | `streaming_larger_budget` | streamed twin of #3 | `> 0` | recorded |
-//! | 17 | `streaming_with_tools` | streamed twin of #4 | `> 0` | recorded |
 //! | 18 | `streaming_tool_use_terminal` | streamed twin of #5 | `> 0` | recorded |
-//! | 19 | `streaming_with_preamble` | streamed twin of #6 | `> 0` | recorded |
-//! | 20 | `streaming_with_prompt_caching` | streamed twin of #7 | `> 0` | recorded |
-//! | 21 | `streaming_redacted_thinking` | streamed twin of #8 | `> 0` | recorded |
 //! | 22 | `streaming_max_tokens_truncation` | streamed twin of #9 | `> 0` | recorded |
-//! | 23 | `streaming_opus_model` | streamed twin of #10 | `> 0` | recorded |
-//! | 24 | `streaming_long_reasoning` | streamed twin of #11 | `> 0` | recorded |
-//! | 25 | `streaming_thinking_disabled_control` | streamed twin of #12 | `0` | recorded |
-//! | 26 | `normalized_stream_budget_thinking` | adjacent: normalized stream usage | `> 0` | recorded |
-//! | 27 | `agent_blocking_thinking` | adjacent: `Agent` request builder | `> 0` | recorded |
 //! | 28 | `unit_absent_details_reports_none` | decoder: no `output_tokens_details` | none | unit |
 //! | 29 | `unit_unknown_detail_bucket_is_ignored` | decoder: forward compatibility | `> 0` | unit |
 //! | 30 | `unit_thinking_tokens_stay_out_of_the_total` | totals arithmetic | n/a | unit |
@@ -96,7 +74,6 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig_test_support::cassette_models::MapWire;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
@@ -109,12 +86,6 @@ use serde_json::json;
 use super::super::support::{recorded_response_body, with_anthropic_reasoning_usage_cassette};
 
 type AnthropicModel = Model<Messages>;
-
-/// Anthropic's documented test string that forces `redacted_thinking` blocks.
-const REDACTED_THINKING_MAGIC_STRING: &str = "ANTHROPIC_MAGIC_STRING_TRIGGER_REDACTED_THINKING_46C9A13E193C177646C7398A98432ECCCE4C1253D5E2D82641AC0E52CC2876CB";
-
-/// A prompt that costs a few thinking tokens without a long answer.
-pub(super) const THINKING_PROMPT: &str = "What is 17 * 23? Reply with just the number.";
 
 /// A prompt whose *answer* is long enough to run into a `max_tokens` ceiling
 /// set just above the thinking budget, so the turn is cut off after thinking
@@ -208,29 +179,6 @@ impl Observed {
             usage.total_tokens,
             Some(input + output),
             "{scenario}: the total is input plus output, reasoning not added again",
-        );
-    }
-
-    /// Control: thinking was never requested, so the provider omits the
-    /// breakdown entirely and `reasoning_tokens` stays `None` — while the turn
-    /// still produced output, proving the cell drove a real completion.
-    ///
-    /// Asserting *absent* rather than "absent or zero" is deliberate: the two
-    /// shapes reach `reasoning_tokens` as `None` vs `Some(0)`, and this suite
-    /// covers both separately.
-    fn assert_breakdown_absent(&self, scenario: &str, recorded: Option<u64>) {
-        let usage = self.take(scenario);
-        assert_eq!(
-            recorded, None,
-            "{scenario}: a turn with thinking off reports no breakdown at all",
-        );
-        assert_eq!(
-            usage.reasoning_tokens, None,
-            "{scenario}: an absent breakdown reports no reasoning counter",
-        );
-        assert!(
-            usage.output_tokens.is_some_and(|n| n > 0),
-            "{scenario}: the control turn still produced output",
         );
     }
 
@@ -354,97 +302,6 @@ async fn streamed_usage(model: &AnthropicModel, request: CompletionRequest) -> U
 // ------------------------------------------------------------- blocking ---
 
 #[tokio::test]
-async fn blocking_budget_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_budget_thinking",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                blocking_usage(
-                    &model,
-                    request(THINKING_PROMPT, budget_thinking(1024), 2048),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_budget_thinking";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_adaptive_declines_to_think() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_adaptive_declines_to_think",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_7);
-            slot.record(
-                blocking_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_adaptive_declines_to_think";
-    observed
-        .assert_breakdown_present_and_zero(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_larger_budget() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_larger_budget",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                blocking_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_larger_budget";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_with_tools() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_with_tools",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new("Say the single word READY.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024))
-                .tool(multiply_tool());
-            slot.record(blocking_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_with_tools";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
 async fn blocking_tool_use_terminal() {
     let observed = Observed::new();
     let slot = observed.clone();
@@ -462,72 +319,6 @@ async fn blocking_tool_use_terminal() {
     .await;
 
     let scenario = "reasoning_usage_matrix/blocking_tool_use_terminal";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_with_preamble() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_with_preamble",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .preamble("You are a careful arithmetic assistant.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024));
-            slot.record(blocking_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_with_preamble";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_with_prompt_caching() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_with_prompt_caching",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .preamble("You are a careful arithmetic assistant. ".repeat(200))
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024));
-            slot.record(blocking_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_with_prompt_caching";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_redacted_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_redacted_thinking",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
-            slot.record(
-                blocking_usage(&model, request(&prompt, budget_thinking(1024), 2048)).await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_redacted_thinking";
     observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
 }
 
@@ -563,120 +354,7 @@ async fn blocking_max_tokens_truncation() {
     );
 }
 
-#[tokio::test]
-async fn blocking_opus_model() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_opus_model",
-        |client| async move {
-            // Opus 4.8 rejects `thinking.type.enabled` outright — it takes
-            // `adaptive` plus `output_config.effort` instead — so the second
-            // model family can only be covered on the adaptive path.
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_8);
-            slot.record(
-                blocking_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_opus_model";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_long_reasoning() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_long_reasoning",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                blocking_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_long_reasoning";
-    let recorded = recorded_blocking_thinking_tokens(scenario);
-    observed.assert_matches(scenario, recorded);
-    assert!(
-        recorded.is_some_and(|tokens| tokens > 100),
-        "this cell exists to cover a large breakdown, got {recorded:?}",
-    );
-}
-
-#[tokio::test]
-async fn blocking_thinking_disabled_control() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_thinking_disabled_control",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(THINKING_PROMPT).max_tokens(64);
-            slot.record(blocking_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_thinking_disabled_control";
-    observed.assert_breakdown_absent(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn blocking_haiku_no_thinking_control() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/blocking_haiku_no_thinking_control",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let request = CompletionRequest::new(THINKING_PROMPT).max_tokens(64);
-            slot.record(blocking_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/blocking_haiku_no_thinking_control";
-    observed.assert_breakdown_absent(scenario, recorded_blocking_thinking_tokens(scenario));
-}
-
 // ------------------------------------------------------------ streaming ---
-
-#[tokio::test]
-async fn streaming_budget_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_budget_thinking",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                streamed_usage(
-                    &model,
-                    request(THINKING_PROMPT, budget_thinking(1024), 2048),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_budget_thinking";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
 
 #[tokio::test]
 async fn streaming_adaptive_declines_to_think() {
@@ -703,50 +381,6 @@ async fn streaming_adaptive_declines_to_think() {
 }
 
 #[tokio::test]
-async fn streaming_larger_budget() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_larger_budget",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                streamed_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, budget_thinking(4096), 8192),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_larger_budget";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn streaming_with_tools() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_with_tools",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new("Say the single word READY.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024))
-                .tool(multiply_tool());
-            slot.record(streamed_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_with_tools";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
 async fn streaming_tool_use_terminal() {
     let observed = Observed::new();
     let slot = observed.clone();
@@ -764,72 +398,6 @@ async fn streaming_tool_use_terminal() {
     .await;
 
     let scenario = "reasoning_usage_matrix/streaming_tool_use_terminal";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn streaming_with_preamble() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_with_preamble",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .preamble("You are a careful arithmetic assistant.")
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024));
-            slot.record(streamed_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_with_preamble";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn streaming_with_prompt_caching() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_with_prompt_caching",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_static_prefix_cache_ttl(anthropic::completion::CacheTtl::OneHour)
-                });
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .preamble("You are a careful arithmetic assistant. ".repeat(200))
-                .max_tokens(2048)
-                .additional_params(budget_thinking(1024));
-            slot.record(streamed_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_with_prompt_caching";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn streaming_redacted_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_redacted_thinking",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let prompt = format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.");
-            slot.record(
-                streamed_usage(&model, request(&prompt, budget_thinking(1024), 2048)).await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_redacted_thinking";
     observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
 }
 
@@ -861,137 +429,7 @@ async fn streaming_max_tokens_truncation() {
     );
 }
 
-#[tokio::test]
-async fn streaming_opus_model() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_opus_model",
-        |client| async move {
-            // Opus 4.8 rejects `thinking.type.enabled`; see the blocking twin.
-            let model = client.completion(anthropic::completion::CLAUDE_OPUS_4_8);
-            slot.record(
-                streamed_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, adaptive_thinking(), 4096),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_opus_model";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-#[tokio::test]
-async fn streaming_long_reasoning() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_long_reasoning",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            slot.record(
-                streamed_usage(
-                    &model,
-                    request(LONG_REASONING_PROMPT, budget_thinking(8192), 12288),
-                )
-                .await,
-            );
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_long_reasoning";
-    let recorded = recorded_streamed_thinking_tokens(scenario);
-    observed.assert_matches(scenario, recorded);
-    assert!(
-        recorded.is_some_and(|tokens| tokens > 100),
-        "this cell exists to cover a large breakdown, got {recorded:?}",
-    );
-}
-
-#[tokio::test]
-async fn streaming_thinking_disabled_control() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/streaming_thinking_disabled_control",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new(THINKING_PROMPT).max_tokens(64);
-            slot.record(streamed_usage(&model, request).await);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/streaming_thinking_disabled_control";
-    observed.assert_breakdown_absent(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
 // ----------------------------------------------------- adjacent surfaces ---
-
-/// The normalized stream shares the terminal record the raw stream exposes, so
-/// `StreamingCompletionResponse::usage()` must report the same breakdown.
-#[tokio::test]
-async fn normalized_stream_budget_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/normalized_stream_budget_thinking",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let mut stream = model
-                .stream(request(THINKING_PROMPT, budget_thinking(1024), 2048))
-                .expect("stream should open");
-            while stream.next().await.is_some() {}
-            slot.record(stream.partial().usage);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/normalized_stream_budget_thinking";
-    observed.assert_matches(scenario, recorded_streamed_thinking_tokens(scenario));
-}
-
-/// The agent surface reaches the same mapping by a different route: usage
-/// arrives through the runner's per-call record
-/// (`completion_calls[].usage`) rather than off a `CompletionResponse`
-/// directly, so a regression in that plumbing would not show up in any raw
-/// model cell above. The preamble differs from `blocking_with_preamble` only
-/// so the two fixtures stay distinguishable — the wire shapes are equivalent
-/// by design, which is part of what this cell asserts.
-#[tokio::test]
-async fn agent_blocking_thinking() {
-    let observed = Observed::new();
-    let slot = observed.clone();
-    with_anthropic_reasoning_usage_cassette(
-        "reasoning_usage_matrix/agent_blocking_thinking",
-        |client| async move {
-            let agent =
-                rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
-                    .preamble("You are a meticulous arithmetic assistant.")
-                    .max_tokens(2048)
-                    .additional_params(budget_thinking(1024))
-                    .build();
-            let response = agent
-                .prompt(THINKING_PROMPT)
-                .await
-                .expect("agent run should succeed");
-            let call = response
-                .completion_calls
-                .first()
-                .expect("the run makes at least one completion call");
-            slot.record(call.usage);
-        },
-    )
-    .await;
-
-    let scenario = "reasoning_usage_matrix/agent_blocking_thinking";
-    observed.assert_matches(scenario, recorded_blocking_thinking_tokens(scenario));
-}
 
 // ----------------------------------------------------------------- unit ---
 

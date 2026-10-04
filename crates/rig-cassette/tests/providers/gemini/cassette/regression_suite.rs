@@ -13,66 +13,6 @@ use crate::support::{
     assert_smoke_structured_output, collect_stream_final_response_and_provider_final,
 };
 
-/// C15 — Regression: agent-level `max_tokens` reaches Gemini's
-/// `generationConfig.maxOutputTokens` when the caller supplies **no**
-/// `additional_params`.
-///
-/// Found by recording this suite. `create_request_body` applied `temperature`
-/// and `max_tokens` through `generation_config.map(...)`, and `Option::map` is a
-/// no-op on `None` — so a request that set either field without *also* passing an
-/// `additional_params.generationConfig` dropped both silently. `.max_tokens(8)`
-/// on a Gemini agent never reached the wire and the model ran to its own limit.
-///
-/// It survived because every other Gemini cassette in the tree passes an
-/// `additional_params` `GenerationConfig` (for `thinkingConfig`), which makes the
-/// Option `Some` and the `map` fire. The whole corpus shared one usage pattern
-/// that dodges the defect; nothing exercised the plain builder path.
-///
-/// **The recorded request body is the assertion.** Per `tests/README.md`'s
-/// "assert on the request boundary too": the cassette matches the outbound body,
-/// so if the plumbing regresses, `maxOutputTokens` disappears from the request,
-/// the mock misses, and this test fails — no in-test assertion needed for it.
-/// The `finish_reason` check below is secondary.
-#[tokio::test]
-async fn agent_max_tokens_reaches_generation_config_without_additional_params() {
-    super::super::support::with_gemini_cassette(
-        "regression/agent_max_tokens_without_additional_params",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(
-                client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
-            )
-            .preamble(STREAMING_PREAMBLE)
-            // Deliberately no `.additional_params(...)` — that is the path
-            // the bug lived on and the one no other cassette covers.
-            .max_tokens(512)
-            .build();
-
-            let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-            let (_response, call) = collect_stream_final_response_and_provider_final(&mut stream)
-                .await
-                .expect("streaming prompt should succeed");
-            assert!(
-                !call.raw.is_null(),
-                "the turn carries Gemini's terminal record"
-            );
-        },
-    )
-    .await;
-
-    // Read the recorded request back and assert the field is really there, so
-    // the guarantee is stated in the test and not only implied by mock matching
-    // (a future harness change that relaxed body matching would otherwise make
-    // this test silently stop covering the bug).
-    //
-    // The `temperature` half of this assertion is the rig#2322 direction: an
-    // unset field must stay off the wire, so setting one sampling field does not
-    // silently acquire the other.
-    assert_recorded_sampling_fields(
-        "regression/agent_max_tokens_without_additional_params",
-        &[("maxOutputTokens", serde_json::json!(512))],
-    );
-}
-
 /// rig#2322 — Regression: a native structured-output turn that sets **no**
 /// `max_tokens` must not acquire one.
 ///
@@ -159,39 +99,6 @@ async fn structured_output_with_max_tokens_sends_only_the_caller_value() {
     assert_recorded_sampling_fields(
         "regression/structured_output_with_max_tokens",
         &[("maxOutputTokens", serde_json::json!(16_384))],
-    );
-}
-
-/// rig#2322 — Regression: the mirror of C15. Setting `temperature` alone must
-/// not acquire a `maxOutputTokens`.
-///
-/// C15 pins `max_tokens` without `temperature`; this pins `temperature` without
-/// `max_tokens`. Together they cover both halves of the shared seed, so a
-/// reintroduced non-`None` default is caught whichever field it lands on — the
-/// `maxOutputTokens` half being the one that truncated real workloads.
-#[tokio::test]
-async fn temperature_without_max_tokens_sends_no_max_output_tokens() {
-    super::super::support::with_gemini_cassette(
-        "regression/temperature_without_max_tokens",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(
-                client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
-            )
-            .preamble(STREAMING_PREAMBLE)
-            .temperature(0.0)
-            .build();
-
-            agent
-                .prompt(STREAMING_PROMPT)
-                .await
-                .expect("prompt should succeed");
-        },
-    )
-    .await;
-
-    assert_recorded_sampling_fields(
-        "regression/temperature_without_max_tokens",
-        &[("temperature", serde_json::json!(0.0))],
     );
 }
 

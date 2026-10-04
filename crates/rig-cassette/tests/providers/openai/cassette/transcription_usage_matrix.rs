@@ -45,13 +45,9 @@
 //!
 //! | # | cell | model | usage shape | status |
 //! |---|------|-------|-------------|--------|
-//! | 1 | `whisper_reports_duration_usage` | whisper-1 | duration | recorded |
-//! | 2 | `gpt_4o_transcribe_reports_token_usage` | gpt-4o-transcribe | tokens | recorded |
-//! | 3 | `gpt_4o_mini_transcribe_reports_token_usage` | gpt-4o-mini-transcribe | tokens | recorded |
 //! | 4 | `completions_client_reports_duration_usage` | whisper-1 | duration | recorded |
 //! | 5 | `completions_client_reports_token_usage` | gpt-4o-transcribe | tokens | recorded |
 //! | 6 | `verbose_json_still_reports_duration_usage` | whisper-1 | duration (richer body) | recorded |
-//! | 7 | `transcript_still_reaches_the_normalized_response` | whisper-1 | duration | recorded |
 //! | 8 | `rejected_request_surfaces_the_provider_body` | whisper-1 | none (400) | recorded |
 //!
 //! Cells 4 and 5 were recorded while the two completion APIs were two client
@@ -97,97 +93,6 @@ fn assert_transcribed(text: &str) {
 // ---------------------------------------------------------------------------
 // Duration-billed and token-billed models, through both clients.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn whisper_reports_duration_usage() {
-    with_openai_transcription_cassette(
-        "transcription_usage_matrix/whisper_reports_duration_usage",
-        |client| async move {
-            let response = client
-                .openai
-                .transcription(openai::WHISPER_1)
-                .call(
-                    TranscriptionRequestBuilder::new(audio())
-                        .filename(Some("audio.mp3".to_owned()))
-                        .build(),
-                )
-                .await
-                .expect("transcription should succeed");
-
-            assert_transcribed(&response.text);
-            match raw(&response).usage {
-                Some(TranscriptionUsage::Duration { seconds, .. }) => assert!(seconds > 0.0),
-                other => panic!("whisper-1 bills by duration, got {other:?}"),
-            }
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn gpt_4o_transcribe_reports_token_usage() {
-    with_openai_transcription_cassette(
-        "transcription_usage_matrix/gpt_4o_transcribe_reports_token_usage",
-        |client| async move {
-            let response = client
-                .openai
-                .transcription("gpt-4o-transcribe")
-                .call(
-                    TranscriptionRequestBuilder::new(audio())
-                        .filename(Some("audio.mp3".to_owned()))
-                        .build(),
-                )
-                .await
-                .expect("transcription should succeed");
-
-            assert_transcribed(&response.text);
-            match raw(&response).usage {
-                Some(TranscriptionUsage::Tokens {
-                    input_tokens,
-                    input_token_details,
-                    output_tokens,
-                    total_tokens,
-                    ..
-                }) => {
-                    assert!(input_tokens > 0 && output_tokens > 0);
-                    assert_eq!(total_tokens, input_tokens + output_tokens);
-                    // Audio and text input tokens bill at different rates, so
-                    // the breakdown is part of what a turn cost.
-                    let details = input_token_details.expect("input token breakdown");
-                    assert_eq!(details.audio_tokens + details.text_tokens, input_tokens);
-                }
-                other => panic!("the gpt-4o-transcribe family bills by token, got {other:?}"),
-            }
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn gpt_4o_mini_transcribe_reports_token_usage() {
-    with_openai_transcription_cassette(
-        "transcription_usage_matrix/gpt_4o_mini_transcribe_reports_token_usage",
-        |client| async move {
-            let response = client
-                .openai
-                .transcription("gpt-4o-mini-transcribe")
-                .call(
-                    TranscriptionRequestBuilder::new(audio())
-                        .filename(Some("audio.mp3".to_owned()))
-                        .build(),
-                )
-                .await
-                .expect("transcription should succeed");
-
-            assert_transcribed(&response.text);
-            assert!(matches!(
-                raw(&response).usage,
-                Some(TranscriptionUsage::Tokens { .. })
-            ));
-        },
-    )
-    .await;
-}
 
 /// A second recording of the duration shape, taken through the Chat
 /// Completions credential: the same transcription wire must decode it.
@@ -276,32 +181,6 @@ async fn verbose_json_still_reports_duration_usage() {
                 "a richer response format must not cost or reshape the usage: {:?}",
                 raw(&response).usage
             );
-        },
-    )
-    .await;
-}
-
-/// Reading the usage must not come at the transcript's expense: the normalized
-/// response's `text` is still the transcript, not a stringified payload.
-#[tokio::test]
-async fn transcript_still_reaches_the_normalized_response() {
-    with_openai_transcription_cassette(
-        "transcription_usage_matrix/transcript_still_reaches_the_normalized_response",
-        |client| async move {
-            let response = client
-                .openai
-                .transcription(openai::WHISPER_1)
-                .call(
-                    TranscriptionRequestBuilder::new(audio())
-                        .filename(Some("audio.mp3".to_owned()))
-                        .build(),
-                )
-                .await
-                .expect("transcription should succeed");
-
-            assert_eq!(response.text, raw(&response).text);
-            assert_eq!(response.provider, "openai");
-            assert_transcribed(&response.text);
         },
     )
     .await;

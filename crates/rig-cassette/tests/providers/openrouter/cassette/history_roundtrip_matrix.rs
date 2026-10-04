@@ -55,13 +55,11 @@ enum Transport {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
-    Gpt4oMini,
     Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Surface {
-    Raw,
     Normalized,
 }
 
@@ -210,7 +208,6 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
 
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
-        ModelVariant::Gpt4oMini => "openai/gpt-4o-mini",
         ModelVariant::Gpt41Mini => "openai/gpt-4.1-mini",
     }
 }
@@ -218,47 +215,10 @@ fn model_name(model: ModelVariant) -> &'static str {
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
-        (Transport::Blocking, Surface::Raw) => {
-            // The provider-native surface: the gateway's own reply document,
-            // which the driver keeps verbatim on `raw`, read back with
-            // OpenRouter's own response type. `assert_cell` then holds it to
-            // the same recorded bytes as the normalized surface, so the axis
-            // is "provider document vs decoder's choice" rather than two
-            // normalizers that could drift.
-            let response = model.call(request(cell)).await?;
-            let wire = response.raw.clone();
-            Observation {
-                text: content_text(&response.raw["choices"][0]["message"]["content"]),
-                saw_terminal: wire["choices"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .all(|choice| {
-                        choice["finish_reason"]
-                            .as_str()
-                            .is_some_and(|reason| !reason.is_empty())
-                    }),
-            }
-        }
         (Transport::Blocking, Surface::Normalized) => {
             let response = model.call(request(cell)).await?;
             Observation {
                 text: normalized_text(&response.choice),
-                saw_terminal: true,
-            }
-        }
-        (Transport::Streaming, Surface::Raw) => {
-            let mut stream = model.stream(request(cell))?;
-            let mut text = String::new();
-            while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
-                    text.push_str(&delta);
-                }
-            }
-            // `finish` succeeds only once the provider ended the reply.
-            stream.finish().await?;
-            Observation {
-                text,
                 saw_terminal: true,
             }
         }
@@ -476,51 +436,7 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 crate::matrix::case_matrix! {
     wrapper: with_openrouter_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
-    blocking_gpt_4o_mini_raw_text: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_raw_single_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_raw_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_text: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_text: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_normalized_text: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
     blocking_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_text: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_single_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_normalized_text: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_normalized_single_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_text: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_single_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_normalized_text: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
     # [tokio :: test]
     streaming_gpt_4_1_mini_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
 }

@@ -83,38 +83,3 @@ async fn tool_error_streamed() {
     )
     .await;
 }
-
-#[tokio::test]
-async fn batch_second_fails() {
-    with_openai_cassette(
-        "corpus_faults_responses/batch_second_fails",
-        |client| async move {
-            run_agent(&wire(&client), &faults::BATCH_SECOND_FAILS, |log| {
-                crate::goldens::golden_effects("openai_responses_fault_batch_second_fails", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails_concurrent() {
-    with_openai_cassette(
-        "corpus_faults_responses/batch_second_fails",
-        |client| async move {
-            run_agent(
-                &wire(&client),
-                &faults::BATCH_SECOND_FAILS_CONCURRENT,
-                |log| {
-                    crate::goldens::golden_effects(
-                        "openai_responses_fault_batch_second_fails_concurrent",
-                        log,
-                    )
-                },
-            )
-            .await;
-        },
-    )
-    .await;
-}

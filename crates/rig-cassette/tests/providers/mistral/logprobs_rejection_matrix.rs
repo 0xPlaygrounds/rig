@@ -42,7 +42,6 @@ enum Transport {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Model {
-    MistralSmall,
     Ministral3b,
 }
 
@@ -56,7 +55,6 @@ type SharedError = Arc<Mutex<Option<String>>>;
 
 fn model_name(model: Model) -> &'static str {
     match model {
-        Model::MistralSmall => "mistral-small-latest",
         Model::Ministral3b => "ministral-3b-latest",
     }
 }
@@ -143,24 +141,6 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedError) {
 }
 
 #[tokio::test]
-async fn blocking_mistral_small() -> Result<()> {
-    const S: &str = "logprobs_rejection_matrix/blocking_mistral_small";
-    let cell = Cell {
-        transport: Transport::Blocking,
-        model: Model::MistralSmall,
-    };
-    let observed = SharedError::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
-        "logprobs_rejection_matrix/blocking_mistral_small",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    execute(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
 async fn blocking_ministral_3b() -> Result<()> {
     const S: &str = "logprobs_rejection_matrix/blocking_ministral_3b";
     let cell = Cell {
@@ -171,24 +151,6 @@ async fn blocking_ministral_3b() -> Result<()> {
     let capture = Arc::clone(&observed);
     with_mistral_logprobs_rejection_cassette_result(
         "logprobs_rejection_matrix/blocking_ministral_3b",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    execute(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small() -> Result<()> {
-    const S: &str = "logprobs_rejection_matrix/streaming_mistral_small";
-    let cell = Cell {
-        transport: Transport::Streaming,
-        model: Model::MistralSmall,
-    };
-    let observed = SharedError::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_logprobs_rejection_cassette_result(
-        "logprobs_rejection_matrix/streaming_mistral_small",
         |client| async move { run_cell(client, cell, capture).await },
     )
     .await?;

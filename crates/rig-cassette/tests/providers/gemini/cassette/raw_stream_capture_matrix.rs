@@ -21,8 +21,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | record access | `raw` holds only the terminal record's fields and agrees with the normalized terminal | recorded |
-//! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `finish_reason` spelled `"STOP"`, `usage_metadata.promptTokensDetails` == last frame, absent from the normalized terminal | recorded |
 //! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` is the record; raw `finish_reason` spelled `"STOP"` and `finish_message` == wire while the normalized terminal reports `ToolCalls`; the recorded frames carry `functionCall` | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
@@ -49,9 +47,7 @@ use rig::tool::Tool;
 use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
-use crate::raw_capture::capture_text_and_terminal;
-use crate::support::normalized_without_raw;
-use crate::support::{Adder, Observed, json_contains_key};
+use crate::support::{Adder, Observed};
 use rig::completion::CompletionRequest;
 
 const PROVIDER: &str = "gemini";
@@ -59,14 +55,8 @@ const PROVIDER: &str = "gemini";
 /// Cheap, non-thinking, so the recorded stream stays short.
 const MODEL: &str = "gemini-2.5-flash-lite";
 
-const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
-
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
-
-fn request() -> rig::completion::CompletionRequest {
-    CompletionRequest::new(PROMPT).temperature(0.0)
-}
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
@@ -121,35 +111,6 @@ async fn drain_stream<
         tool_calls,
         terminal,
     }
-}
-
-/// The last recorded frame carrying `usageMetadata` — Gemini's usage is
-/// cumulative, so this is the frame whose numbers the terminal must report.
-fn last_usage_frame(scenario: &str) -> Value {
-    let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);
-    let last = frames
-        .iter()
-        .rev()
-        .find(|frame| frame.get("usageMetadata").is_some())
-        .cloned()
-        .unwrap_or_else(|| panic!("{scenario}: no recorded frame carries usageMetadata"));
-    // The premise proper: the recorded stream finished naturally.
-    let finished = frames.iter().any(|frame| {
-        frame.pointer("/candidates/0/finishReason") == Some(&Value::String("STOP".to_string()))
-    });
-    assert!(
-        finished,
-        "{scenario}: the recorded stream should carry a finishReason of STOP; without a \
-         natural finish the terminal this cell asserts on is not the shape under test"
-    );
-    assert!(
-        last.pointer("/usageMetadata/promptTokensDetails")
-            .and_then(Value::as_array)
-            .is_some_and(|details| !details.is_empty()),
-        "{scenario}: the terminal usage frame should carry promptTokensDetails, the \
-         un-normalized field cell 2 reads through `raw`"
-    );
-    last
 }
 
 /// The premise of the forced-tool cell: the recorded stream carries a
@@ -238,99 +199,9 @@ fn terminal_record_total_tokens(raw: &Value) -> Option<u64> {
     )
 }
 
-#[tokio::test]
-async fn raw_roundtrips_streaming_completion_response() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
-    let sink = observed.clone();
-    with_gemini_cassette(
-        "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
-        |client| async move {
-            capture_text_and_terminal(client.completion(MODEL), request(), sink)
-                .await
-                .expect("stream should open");
-        },
-    )
-    .await;
-
-    let (text, terminal) = observed.take();
-    assert!(!text.is_empty(), "the stream should have carried text");
-    let raw = &terminal.raw;
-
-    // `raw` is the terminal record the decoder built, and nothing else.
-    let total_tokens = terminal_record_total_tokens(raw);
-
-    // And the record agrees with the normalized terminal next to it.
-    assert_eq!(
-        raw.get("model_version").and_then(Value::as_str),
-        terminal.model()
-    );
-    assert_eq!(
-        raw.get("response_id").and_then(Value::as_str),
-        terminal.response_id()
-    );
-    assert_eq!(total_tokens, terminal.usage.total_tokens);
-
-    let last = last_usage_frame(SCENARIO);
-    assert_eq!(
-        raw.pointer("/usage_metadata/totalTokenCount"),
-        last.pointer("/usageMetadata/totalTokenCount"),
-        "{SCENARIO}: the captured terminal usage must be the last frame's total"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // 2: terminal-only fields are readable and match the wire
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn raw_exposes_terminal_only_fields() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<(String, rig::completion::CompletionResponse)> = Observed::default();
-    let sink = observed.clone();
-    with_gemini_cassette(
-        "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
-        |client| async move {
-            capture_text_and_terminal(client.completion(MODEL), request(), sink)
-                .await
-                .expect("stream should open");
-        },
-    )
-    .await;
-
-    let (text, terminal) = observed.take();
-    assert!(!text.is_empty(), "the stream should have carried text");
-
-    // The normalized terminal provably lacks these: `finish_reason` is rig's
-    // vocabulary (`stop`), and the per-modality breakdown has no normalized
-    // home.
-    let normalized = normalized_without_raw(terminal.clone());
-    assert!(!json_contains_key(&normalized, "promptTokensDetails"));
-    assert_ne!(
-        normalized.get("finish_reason"),
-        Some(&Value::String("STOP".to_string())),
-        "the normalized finish reason is rig's spelling, not Gemini's"
-    );
-    assert_eq!(terminal.finish_reason(), Some(FinishReason::Stop));
-
-    let raw = &terminal.raw;
-    let last = last_usage_frame(SCENARIO);
-    assert_eq!(
-        raw.get("finish_reason"),
-        Some(&Value::String("STOP".to_string())),
-        "raw keeps Gemini's own finishReason spelling"
-    );
-    assert_eq!(
-        raw.pointer("/usage_metadata/promptTokensDetails"),
-        last.pointer("/usageMetadata/promptTokensDetails"),
-        "raw must carry the terminal frame's promptTokensDetails exactly as the wire sent it"
-    );
-    assert_eq!(
-        raw.pointer("/usage_metadata/candidatesTokenCount"),
-        last.pointer("/usageMetadata/candidatesTokenCount"),
-        "raw must carry the terminal frame's candidatesTokenCount untouched"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // 3: a forced tool call keeps the wire's STOP while the terminal says ToolCalls

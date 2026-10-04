@@ -85,63 +85,6 @@ fn collect_anthropic_citations(
 }
 
 #[tokio::test]
-async fn plaintext_document_prompt() {
-    super::super::support::with_anthropic_cassette(
-        "plaintext_document/plaintext_document_prompt",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .preamble("You are a helpful assistant that analyzes documents.")
-                .temperature(0.5)
-                .build();
-
-            let document = Document {
-                data: DocumentSourceKind::String(rust_document()),
-                media_type: Some(DocumentMediaType::TXT),
-                additional_params: None,
-            };
-            let response = agent
-                .prompt(document)
-                .await
-                .expect("document prompt should succeed")
-                .output();
-
-            assert_nonempty_response(&response);
-            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn plaintext_document_with_instruction() {
-    super::super::support::with_anthropic_cassette(
-        "plaintext_document/plaintext_document_with_instruction",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(CLAUDE_SONNET_4_6))
-                .preamble("You are a helpful assistant that analyzes documents.")
-                .temperature(0.5)
-                .build();
-
-            let response = agent
-                .prompt(Message::User {
-                    content: vec![
-                        UserContent::document_text(rust_document(), Some(DocumentMediaType::TXT)),
-                        UserContent::text(
-                            "List the three main goals of Rust mentioned in this document.",
-                        ),
-                    ],
-                })
-                .await
-                .expect("instruction prompt should succeed")
-                .output();
-
-            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn streaming_document_citations_accepts_null_citation_start() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/streaming_document_citations_accepts_null_citation_start",

@@ -121,34 +121,6 @@ async fn strict_tools_opt_in_roundtrip() {
 }
 
 #[tokio::test]
-async fn optional_scalar_can_be_omitted() {
-    with_anthropic_cassette(
-        "messages_strict_tools/optional_scalar_can_be_omitted",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_weather_query",
-                "Record city = seattle. Omit unit; do not invent any optional field.",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "city": { "type": "string" },
-                        "unit": {
-                            "type": "string",
-                            "enum": ["celsius", "fahrenheit"]
-                        }
-                    },
-                    "required": ["city"]
-                }),
-                json!({ "city": "seattle" }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn optional_scalar_can_be_included_after_constraint_transform() {
     with_anthropic_cassette(
         "messages_strict_tools/optional_scalar_can_be_included_after_constraint_transform",
@@ -328,36 +300,6 @@ async fn discriminated_any_of_preserves_const() {
                         "address": "ops@example.com"
                     }
                 }),
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn all_of_composition_roundtrip() {
-    with_anthropic_cassette(
-        "messages_strict_tools/all_of_composition_roundtrip",
-        |client| async move {
-            assert_strict_tool_call(
-                client,
-                "record_code",
-                "Record code = alpha. Omit the optional label.",
-                json!({
-                    "type": "object",
-                    "properties": {
-                        "code": {
-                            "allOf": [
-                                { "type": "string" },
-                                { "enum": ["alpha", "beta"] }
-                            ]
-                        },
-                        "label": { "type": "string" }
-                    },
-                    "required": ["code"]
-                }),
-                json!({ "code": "alpha" }),
             )
             .await;
         },

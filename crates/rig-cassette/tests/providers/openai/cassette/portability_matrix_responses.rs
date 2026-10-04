@@ -31,9 +31,5 @@ const fn cell(source: Source) -> Cell {
 crate::matrix::case_matrix! {
     wrapper: with_openai_cassette, family: portability_case;
     #[tokio::test]
-    responses_from_anthropic: ("portability_matrix/responses_from_anthropic", configured, cell(Source::Anthropic));
-    #[tokio::test]
-    responses_from_gemini: ("portability_matrix/responses_from_gemini", configured, cell(Source::Gemini));
-    #[tokio::test]
     responses_from_deepseek: ("portability_matrix/responses_from_deepseek", configured, cell(Source::DeepSeek));
 }

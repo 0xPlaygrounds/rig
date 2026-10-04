@@ -14,7 +14,6 @@ use rig::message::AssistantContent;
 use rig::providers::anthropic;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
-use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequest;
@@ -89,50 +88,6 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
             assert!(
                 !text.trim().is_empty(),
                 "follow-up turn should produce text after replaying redacted thinking"
-            );
-        },
-    )
-    .await;
-}
-
-/// Extended thinking and a 1h static prefix coexist: thinking params ride
-/// `additional_params` while the knob adds prefix `cache_control` markers.
-#[tokio::test]
-async fn static_prefix_ttl_coexists_with_extended_thinking() {
-    with_anthropic_cassette(
-        "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
-        |client| async move {
-            let model = client
-                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_automatic_caching().with_static_prefix_cache_ttl(
-                        rig::providers::anthropic::completion::CacheTtl::OneHour,
-                    )
-                });
-
-            // The preamble must clear the model's minimum cacheable prompt
-            // length or the API silently skips caching and the recorded
-            // counters prove nothing.
-            let padding = "This thinking cache fixture paragraph is stable provider test \
-                           padding about request routing, tool schemas, system instructions, \
-                           and deterministic replay behavior. "
-                .repeat(60);
-            let request = CompletionRequest::new(redacted_thinking_prompt())
-                .preamble(format!(
-                    "You are a deterministic cassette test assistant for the \
-                     static-prefix thinking scenario.\n{padding}"
-                ))
-                .max_tokens(4096)
-                .additional_params(thinking_params());
-            let response = model
-                .call(request)
-                .await
-                .expect("extended thinking with a 1h static prefix should succeed");
-
-            assert!(
-                response.choice.iter().any(has_redacted_reasoning),
-                "the magic string must surface a redacted reasoning block, got {:?}",
-                response.choice
             );
         },
     )

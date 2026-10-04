@@ -39,8 +39,6 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_raw_round_trips_typed` | chat, unary | `raw` is the chat reply document; its fields ≡ the normalized response's | recorded |
-//! | 2 | `chat_raw_exposes_service_tier` | chat, provider-only field | `raw["service_tier"]` = fixture | recorded |
-//! | 3 | `responses_raw_round_trips_typed` | Responses, unary | `raw` is the Responses response object; its fields ≡ the normalized response's | recorded |
 //! | 4 | `responses_raw_exposes_service_tier_and_store` | Responses, provider-only fields | `raw["service_tier"]`, `raw["store"]` = fixture | recorded |
 //! | 5 | `responses_reasoning_raw_round_trips_typed` | Responses, reasoning turn (`reasoning: { effort, summary }`) | reads back; `raw["output"][i].type == "reasoning"` with `encrypted_content` + `summary` = fixture; `raw["reasoning"]` = fixture | recorded |
 //! | 6 | `chat_tool_call_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the reply document; `tool_calls[0].function.arguments` is a JSON string = fixture; `finish_reason() == ToolCalls` while `raw` spells `"tool_calls"` | recorded |
@@ -287,91 +285,9 @@ async fn chat_raw_round_trips_typed() {
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
-#[tokio::test]
-async fn chat_raw_exposes_service_tier() {
-    const SCENARIO: &str = "raw_capture_matrix/chat_raw_exposes_service_tier";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_capture_matrix/chat_raw_exposes_service_tier",
-        |client| capture_completion(client.openai.chat(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("chat_raw_exposes_service_tier should replay from its cassette");
-    let response = observed.take();
-    let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
-    assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
-    // Premise: the recorded body reports a service tier at all.
-    let recorded_tier = body["service_tier"].as_str().unwrap_or_else(|| {
-        panic!("{SCENARIO}: the recorded chat body must carry a string `service_tier`")
-    });
-
-    let raw = captured_raw(SCENARIO, &response);
-    assert_eq!(
-        raw["service_tier"].as_str(),
-        Some(recorded_tier),
-        "{SCENARIO}: `service_tier` is readable off raw and equals the fixture"
-    );
-    assert_matches_recorded_token(
-        raw["system_fingerprint"].as_str(),
-        body["system_fingerprint"].as_str(),
-        &format!("{SCENARIO}: `system_fingerprint` off raw vs the fixture"),
-    );
-    assert_normalized_lacks(
-        &normalized_without_raw(response.clone()),
-        &["service_tier", "system_fingerprint"],
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Responses
 // ---------------------------------------------------------------------------
-
-/// The Responses body is the shape the route rewrites most on the way in:
-/// an `output[]` array of typed items. `raw` is that document as the
-/// provider sent it, and its fields agree with the normalized response.
-#[tokio::test]
-async fn responses_raw_round_trips_typed() {
-    const SCENARIO: &str = "raw_capture_matrix/responses_raw_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_capture_matrix/responses_raw_round_trips_typed",
-        |client| capture_completion(client.openai.completion(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("responses_raw_round_trips_typed should replay from its cassette");
-    let response = observed.take();
-    let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
-    assert_responses_fixture_premise(SCENARIO, &response, &body);
-
-    let raw = captured_raw(SCENARIO, &response);
-    let typed = raw;
-    assert_matches_recorded_token(
-        typed["id"].as_str(),
-        body["id"].as_str(),
-        &format!("{SCENARIO}: raw id"),
-    );
-    assert_eq!(typed["model"].as_str(), body["model"].as_str());
-    assert_eq!(raw["status"], body["status"]);
-    assert_eq!(raw["usage"]["input_tokens"], body["usage"]["input_tokens"]);
-    assert_eq!(
-        raw["usage"]["output_tokens"],
-        body["usage"]["output_tokens"]
-    );
-    // The transport id is not part of the wire body, so the captured value —
-    // which mirrors the wire body — must not carry it, while the normalized
-    // response does.
-    assert!(
-        raw.get("provider_request_id").is_none(),
-        "{SCENARIO}: the Responses raw value mirrors the wire body"
-    );
-    assert!(
-        response.provider_request_id.is_some(),
-        "{SCENARIO}: the normalized response still reports the transport id"
-    );
-    // Two views of one reply: the provider's field names, then rig's.
-    responses::assert_native_matches_normalized(&response, typed, SCENARIO);
-    assert_transport_id_is_header_only(SCENARIO, &response);
-}
 
 #[tokio::test]
 async fn responses_raw_exposes_service_tier_and_store() {

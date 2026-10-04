@@ -26,14 +26,6 @@
 //!
 //! | # | cell | surface | asserts |
 //! |---|------|---------|---------|
-//! | 1 | `blocking_truncated_turn_reports_length_and_cap` | blocking | `Length` + the cap this attempt ran under |
-//! | 2 | `streaming_truncated_turn_reports_length_and_cap` | streaming | the same, on the other surface |
-//! | 3 | `blocking_completed_turn_reports_stop_and_cap` | blocking | `Stop`, and that it fails `truncated_output()` |
-//! | 4 | `streaming_completed_turn_reports_stop_and_cap` | streaming | the same |
-//! | 5 | `blocking_tool_turn_reports_tool_calls` | blocking | `ToolCalls` |
-//! | 6 | `streaming_tool_turn_reports_tool_calls` | streaming | `ToolCalls` |
-//! | 7 | `blocking_escalating_retry_reports_each_attempts_own_cap` | blocking | two attempts, two caps, two reasons |
-//! | 8 | `streaming_escalating_retry_reports_each_attempts_own_cap` | streaming | the same |
 //!
 //! Cells 7 and 8 are #2184's acceptance criterion against a live provider: the
 //! first attempt truncates under a deliberately tiny cap, a provider-neutral
@@ -55,32 +47,20 @@
 //! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`), where
 //! the whole vocabulary can be enumerated without a live call.
 
-use rig::completion::FinishReason;
-use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::super::support::with_gemini_turn_metadata_cassette;
 use crate::cassettes;
-use crate::support::{
-    Adder, EscalateCapOnTruncation, TurnTerminationProbe, collect_stream_final_response,
-};
 
 /// Gemini counts hidden thinking tokens against `maxOutputTokens`, so every
 /// cell here pins `thinkingBudget: 0`. Without it the whole cap can go to
 /// thinking, the candidate comes back content-less, and the unary mapper
 /// errors before any hook runs.
 pub(super) const TINY_CAP: u64 = 24;
-/// Roomy enough for every prompt below to finish naturally.
-pub(super) const ROOMY_CAP: u64 = 512;
 /// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
 pub(super) const TRUNCATING_PROMPT: &str = "Write a 200-word story about a lighthouse keeper.";
-pub(super) const RETRY_PROMPT: &str = "Write two sentences about a lighthouse keeper.";
-pub(super) const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
-pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
 pub(super) const CONCISE_PREAMBLE: &str =
     "You are a concise assistant. Answer directly in plain text.";
-pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 /// Thinking off, so the output-token cap governs visible text alone.
 pub(super) fn no_thinking() -> serde_json::Value {
@@ -91,171 +71,9 @@ pub(super) fn no_thinking() -> serde_json::Value {
 // Length — the provider cut the turn short at the cap we set.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                {
-                    rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .additional_params(no_thinking())
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TRUNCATING_PROMPT)
-                        .run()
-                        .await
-                        .expect("a partially truncated turn still carries an answer");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the wire `MAX_TOKENS` must reach the hook as FinishReason::Length"
-        );
-        assert_eq!(
-            observed.first_max_tokens(),
-            Some(TINY_CAP),
-            "the hook must report the cap this attempt actually ran under"
-        );
-        assert!(
-            observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a truncated turn must satisfy the portable retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
-}
-
-#[tokio::test]
-async fn streaming_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                {
-                    let agent = rig::AgentBuilder::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    )
-                    .preamble(CONCISE_PREAMBLE)
-                    .temperature(0.0)
-                    .max_tokens(TINY_CAP)
-                    .additional_params(no_thinking())
-                    .build();
-
-                    let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the streaming surface must report the same reason as the blocking one"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(TINY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "MAX_TOKENS");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Stop — the control. A completed turn must not read as truncated.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                {
-                    rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .additional_params(no_thinking())
-                        .add_hook(probe)
-                        .build()
-                        .prompt(SHORT_PROMPT)
-                        .run()
-                        .await
-                        .expect("a short answer under a roomy cap");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a completed turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
-}
-
-#[tokio::test]
-async fn streaming_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                {
-                    let agent = rig::AgentBuilder::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    )
-                    .preamble(CONCISE_PREAMBLE)
-                    .temperature(0.0)
-                    .max_tokens(ROOMY_CAP)
-                    .additional_params(no_thinking())
-                    .build();
-
-                    let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ToolCalls — the reason a portable hook must never mistake for retryable.
@@ -266,204 +84,10 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
 // special-case Gemini.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/blocking_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
-            |client| async move {
-                {
-                    rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .additional_params(no_thinking())
-                        .tool(Adder)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TOOL_PROMPT)
-                        .max_turns(3)
-                        .run()
-                        .await
-                        .expect("the tool turn should complete the run");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "the turn that issued the tool call must read as ToolCalls"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a tool turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
-}
-
-#[tokio::test]
-async fn streaming_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/streaming_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
-            |client| async move {
-                {
-                    let agent = rig::AgentBuilder::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    )
-                    .preamble(TOOL_PREAMBLE)
-                    .temperature(0.0)
-                    .max_tokens(ROOMY_CAP)
-                    .additional_params(no_thinking())
-                    .tool(Adder)
-                    .build();
-
-                    let mut stream = agent
-                        .prompt(TOOL_PROMPT)
-                        .add_hook(probe)
-                        .max_turns(3)
-                        .stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "streaming must resolve the tool turn exactly as blocking does"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "STOP");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // The acceptance criterion: escalate the cap on truncation, against the real
 // provider, and report each attempt's own cap.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap";
-        let probe = TurnTerminationProbe::default();
-        let escalate = EscalateCapOnTruncation::new(TINY_CAP, ROOMY_CAP);
-        let observed = probe.clone();
-        let escalations = escalate.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
-            |client| async move {
-                {
-                    rig::AgentBuilder::new(client.completion(gemini::completion::GEMINI_2_5_FLASH))
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        .additional_params(no_thinking())
-                        // Observers first: a hook returning a non-continue action
-                        // short-circuits every hook registered behind it.
-                        .add_hook(probe)
-                        .add_hook(escalate)
-                        .build()
-                        .prompt(RETRY_PROMPT)
-                        .max_turns(2)
-                        .run()
-                        .await
-                        .expect("the retried attempt should answer");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.observations(),
-            vec![
-                (Some(FinishReason::Length), Some(TINY_CAP)),
-                (Some(FinishReason::Stop), Some(ROOMY_CAP)),
-            ],
-            "each attempt must report its own post-patch cap, never the agent's baseline of 64"
-        );
-        assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
-        assert_eq!(escalations.retries(), 1);
-
-        // ...and the recorded traffic corroborates it: two calls, the caps the
-        // hook chose, and the two reasons in order.
-        assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
-        assert_eq!(
-            recorded_wire_reasons(SCENARIO),
-            vec!["MAX_TOKENS".to_owned(), "STOP".to_owned()]
-        );
-    }
-}
-
-#[tokio::test]
-async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap";
-        let probe = TurnTerminationProbe::default();
-        let escalate = EscalateCapOnTruncation::new(TINY_CAP, ROOMY_CAP);
-        let observed = probe.clone();
-        let escalations = escalate.clone();
-
-        with_gemini_turn_metadata_cassette(
-            "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
-            |client| async move {
-                {
-                    let agent = rig::AgentBuilder::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    )
-                    .preamble(CONCISE_PREAMBLE)
-                    .temperature(0.0)
-                    // The agent baseline. Neither attempt should report it: the
-                    // hook's patch replaces it on every prepared request.
-                    .max_tokens(64)
-                    .additional_params(no_thinking())
-                    .build();
-
-                    let mut stream = agent
-                        .prompt(RETRY_PROMPT)
-                        .add_hook(probe)
-                        .add_hook(escalate)
-                        .max_turns(2)
-                        .stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.observations(),
-            vec![
-                (Some(FinishReason::Length), Some(TINY_CAP)),
-                (Some(FinishReason::Stop), Some(ROOMY_CAP)),
-            ],
-            "the streaming surface must escalate and report identically to blocking"
-        );
-        assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
-        assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell

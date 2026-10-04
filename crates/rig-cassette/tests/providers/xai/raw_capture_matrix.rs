@@ -17,9 +17,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` is the Responses response object the reply carried | recorded |
 //! | 2 | `raw_exposes_status_and_service_tier` | provider-only field | `raw.status`, `raw.service_tier` and `raw.metadata.system_fingerprint` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `x-request-id` header) and its fields are the mapping of the provider-native fields in its own `raw` | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the status and tier out of the
@@ -37,55 +35,21 @@ use rig::providers::xai;
 use serde_json::json;
 
 use super::support::with_xai_cassette_result;
-use crate::cassettes::{recorded_json_turn, recorded_response_header};
-use crate::raw_capture::{
-    assert_contracted_request_id, assert_normalized_lacks, capture_completion, responses,
-};
+use crate::cassettes::recorded_json_turn;
+use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
-const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
 }
 
-/// The `x-request-id` the single recorded interaction carried.
-fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
-}
-
 // ================================================================
 // 1. raw round-trips the Responses type
 // ================================================================
-
-#[tokio::test]
-async fn raw_round_trips_responses_type() {
-    const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_responses_type";
-    let sink = Observed::default();
-    with_xai_cassette_result(
-        "raw_capture_matrix/raw_round_trips_responses_type",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
-    )
-    .await
-    .expect("raw_round_trips_responses_type should replay from its cassette");
-    let response = sink.take();
-
-    let raw = &response.raw;
-    // `raw` is the reply document itself.
-    assert!(raw.is_object(), "raw is the Responses response object");
-    assert_eq!(raw["status"], json!("completed"));
-    assert_eq!(raw["id"].as_str(), response.response_id());
-    // The transport id is not part of the reply document, so the capture
-    // never carries it — it lives on the normalized response only.
-    assert!(raw.get("provider_request_id").is_none());
-    assert!(response.provider_request_id.is_some());
-
-    let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_eq!(response_body["object"], json!("response"));
-}
 
 // ================================================================
 // 2. Fields the normalized response provably lacks
@@ -133,30 +97,3 @@ async fn raw_exposes_status_and_service_tier() {
 // ================================================================
 // 3. The normalized view and raw tell one story
 // ================================================================
-
-#[tokio::test]
-async fn normalized_fields_match_raw_renormalized() {
-    const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let sink = Observed::default();
-    with_xai_cassette_result(
-        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| capture_completion(client.completion(MODEL), request(), sink.clone()),
-    )
-    .await
-    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
-    let response = sink.take();
-
-    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    responses::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
-    // xAI contracts `x-request-id`; the recorded header is the premise.
-    assert_contracted_request_id(
-        response.provider_request_id.as_deref(),
-        recorded_request_id(SCENARIO).as_deref(),
-        REQUEST_ID_HEADER,
-    );
-
-    // The normalized fields are the mapping of the provider-native fields in
-    // the response's own `raw`: one decoder reads that document once, and
-    // this pins what it read rather than a second copy of the mapping.
-    responses::assert_native_matches_normalized(&response, &response.raw, "the native view of raw");
-}

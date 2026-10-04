@@ -13,7 +13,7 @@ use rig::providers::anthropic;
 use rig::tool::Tool;
 
 use super::super::support::with_anthropic_cassette;
-use crate::support::{Adder, Subtract, TOOLS_PREAMBLE};
+use crate::support::{Adder, TOOLS_PREAMBLE};
 use rig::completion::CompletionRequest;
 
 fn tool_call_names(choice: &[AssistantContent]) -> Vec<String> {
@@ -59,113 +59,6 @@ async fn required_maps_to_any_and_forces_tool_use() {
                 response.finish_reason(),
                 Some(FinishReason::ToolCalls),
                 "a forced tool_use turn should preserve the tool_use stop reason"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn none_suppresses_tool_use() {
-    with_anthropic_cassette(
-        "messages_tool_choice/none_suppresses_tool_use",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            // The question must not match the forbidden tool: asking arithmetic
-            // with the add tool blocked makes Anthropic return an empty
-            // end_turn message instead of answering in text.
-            let request = CompletionRequest::new("Name the capital of France in one word.")
-                .preamble("You are a concise assistant. Answer directly.")
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool_choice(ToolChoice::None);
-
-            let response = model
-                .call(request)
-                .await
-                .expect("none tool choice completion should succeed");
-
-            let names = tool_call_names(&response.choice);
-            assert!(
-                names.is_empty(),
-                "tool_choice=none must suppress tool_use, saw {names:?}"
-            );
-            let text: String = response
-                .choice
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
-            assert!(
-                text.to_ascii_lowercase().contains("paris"),
-                "model should answer directly without tools, got {text:?}"
-            );
-            assert_eq!(
-                response.finish_reason(),
-                Some(FinishReason::Stop),
-                "a plain answer should preserve the end_turn stop reason"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn specific_tool_targets_named_tool() {
-    with_anthropic_cassette(
-        "messages_tool_choice/specific_tool_targets_named_tool",
-        |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
-            let request = CompletionRequest::new("Compute 9 minus 4 using a tool.")
-                .preamble(TOOLS_PREAMBLE.to_string())
-                .max_tokens(1024)
-                .tool(rig::tool::tool_definition(&Adder))
-                .tool(rig::tool::tool_definition(&Subtract))
-                .tool_choice(ToolChoice::Specific {
-                    function_names: vec![
-                        rig_core::message::ToolName::new(Subtract::NAME).expect("tool name"),
-                    ],
-                });
-
-            let response = model
-                .call(request)
-                .await
-                .expect("specific tool choice completion should succeed");
-
-            let tool_call = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(tool_call) => Some(tool_call.clone()),
-                    _ => None,
-                })
-                .expect("a specific tool choice must produce a tool_use");
-            assert_eq!(
-                tool_call.function.name,
-                Subtract::NAME,
-                "the named tool must be the one called"
-            );
-            assert_eq!(
-                tool_call
-                    .function
-                    .arguments
-                    .get("x")
-                    .and_then(serde_json::Value::as_f64),
-                Some(9.0),
-                "arguments should reflect the prompt: {:?}",
-                tool_call.function.arguments
-            );
-            assert_eq!(
-                tool_call
-                    .function
-                    .arguments
-                    .get("y")
-                    .and_then(serde_json::Value::as_f64),
-                Some(4.0),
-                "arguments should reflect the prompt: {:?}",
-                tool_call.function.arguments
             );
         },
     )

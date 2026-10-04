@@ -2,123 +2,10 @@
 //! fixtures. The original tests remain independent baseline executions.
 
 use rig::providers::gemini;
-use rig_ecs::{
-    agent::{AdditionalParams, MaxTokens, Temperature},
-    bus::Streamed,
-};
+use rig_ecs::agent::{AdditionalParams, Temperature};
 
 use super::super::support::with_gemini_cassette;
-use crate::{
-    ecs_agent::EcsAgent,
-    support::{
-        Adder, BASIC_PREAMBLE, BASIC_PROMPT, STREAMING_PREAMBLE, STREAMING_PROMPT,
-        STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
-        assert_mentions_expected_number, assert_nonempty_response,
-    },
-};
-
-#[tokio::test]
-async fn completion_smoke() {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_gemini_cassette("agent/completion_smoke", |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                    BASIC_PREAMBLE,
-                    1,
-                );
-                assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
-            })
-            .await;
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects("gemini_parity_completion_smoke", log)
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn streaming_smoke() {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_gemini_cassette("streaming/streaming_smoke", |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW),
-                    STREAMING_PREAMBLE,
-                    1,
-                );
-                ecs.app
-                    .world_mut()
-                    .entity_mut(ecs.agent)
-                    .insert(AdditionalParams(Some(serde_json::json!({
-                        "generationConfig": {
-                            "thinkingConfig": {
-                                "thinkingLevel": "medium",
-                                "includeThoughts": true
-                            }
-                        }
-                    }))));
-                assert_nonempty_response(&ecs.prompt(STREAMING_PROMPT, true).await);
-                let mut streams = ecs.app.world_mut().query::<&Streamed>();
-                let stream = streams
-                    .single(ecs.app.world())
-                    .expect("one completion stream");
-                let final_event = stream
-                    .outcome
-                    .as_ref()
-                    .and_then(|outcome| match outcome {
-                        Ok(rig::effect::Outcome::Completion(final_event)) => Some(final_event),
-                        _ => None,
-                    })
-                    .expect("provider terminal stream record");
-                assert!(final_event.usage.total_tokens.is_some_and(|n| n > 0));
-            })
-            .await;
-        },
-        |log| rig_test_support::goldens::world_golden_effects("gemini_parity_streaming_smoke", log),
-    )
-    .await
-}
-
-#[tokio::test]
-async fn streaming_tools_smoke() {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_gemini_cassette(
-                "streaming_tools/streaming_tools_smoke",
-                |client| async move {
-                    let mut ecs = EcsAgent::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                        STREAMING_TOOLS_PREAMBLE,
-                        1,
-                    );
-                    ecs.app
-                        .world_mut()
-                        .entity_mut(ecs.agent)
-                        .insert(AdditionalParams(Some(
-                            serde_json::json!({ "generationConfig": {} }),
-                        )));
-                    ecs.tool(Adder);
-                    ecs.tool(Subtract);
-                    assert_mentions_expected_number(
-                        &ecs.prompt_with_max_turns(STREAMING_TOOLS_PROMPT, true, Some(3))
-                            .await,
-                        -3,
-                    );
-                },
-            )
-            .await;
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "gemini_parity_streaming_tools_smoke",
-                log,
-            )
-        },
-    )
-    .await
-}
+use crate::{ecs_agent::EcsAgent, support::assert_nonempty_response};
 
 #[tokio::test]
 async fn example_streaming_prompt() {
@@ -154,44 +41,6 @@ async fn example_streaming_prompt() {
         |log| {
             rig_test_support::goldens::world_golden_effects(
                 "gemini_parity_example_streaming_prompt",
-                log,
-            )
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn example_streaming_with_tools() {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            with_gemini_cassette(
-                "streaming_tools/example_streaming_with_tools",
-                |client| async move {
-                    let mut ecs = EcsAgent::new(
-                        client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                        "You are a calculator here to help the user perform arithmetic operations. \
-             Use the tools provided to answer the user's question.",
-                        1,
-                    );
-                    ecs.app.world_mut().entity_mut(ecs.agent).insert((
-                        MaxTokens(Some(1024)),
-                        AdditionalParams(Some(serde_json::json!({ "generationConfig": {} }))),
-                    ));
-                    ecs.tool(Adder);
-                    ecs.tool(Subtract);
-                    assert_mentions_expected_number(
-                        &ecs.prompt_with_max_turns("Calculate 2 - 5", true, Some(3))
-                            .await,
-                        -3,
-                    );
-                },
-            )
-            .await;
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "gemini_parity_example_streaming_with_tools",
                 log,
             )
         },

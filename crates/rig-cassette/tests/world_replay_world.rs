@@ -16,7 +16,7 @@ use replay_check::{Programs, check_programs, replay_world_log as replay};
 use rig_cassette::effect_log::EffectLog;
 use rig_core::serve::ServingPolicy;
 
-const EXPECTED_GOLDENS: usize = 1210;
+const EXPECTED_GOLDENS: usize = 9;
 
 #[test]
 #[should_panic(expected = "live task tool")]

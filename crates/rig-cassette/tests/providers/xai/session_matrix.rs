@@ -31,17 +31,6 @@ fn models(
     )
 }
 
-#[tokio::test]
-async fn same_model() {
-    const SCENARIO: &str = "session_matrix/same_model";
-    with_xai_cassette("session_matrix/same_model", |client| async move {
-        let (first, second, _) = models(client);
-        sessions::run(first, second, CELL).await;
-    })
-    .await;
-    sessions::assert_recorded(CELL, SCENARIO);
-}
-
 /// The loaded history continues on another model of the same provider.
 #[tokio::test]
 async fn other_model() {
@@ -68,19 +57,6 @@ async fn checkpoint_other_model() {
     )
     .await;
     sessions::assert_ported(CELL, SCENARIO);
-}
-
-/// The agent's conversation memory carries the reasoning into a second
-/// prompt.
-#[tokio::test]
-async fn memory_unary() {
-    const SCENARIO: &str = "session_matrix/memory_unary";
-    with_xai_cassette("session_matrix/memory_unary", |client| async move {
-        let (first, _, _) = models(client);
-        sessions::run_memory(first, CELL, false).await;
-    })
-    .await;
-    sessions::assert_memory_recorded(CELL, SCENARIO);
 }
 
 /// The agent's conversation memory carries the reasoning into a second

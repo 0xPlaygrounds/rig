@@ -20,9 +20,11 @@ use rig_test_support::support;
 #[path = "providers/openrouter/mod.rs"]
 mod openrouter;
 
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_observation.rs"]
 mod ecs_observation;
 
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
 

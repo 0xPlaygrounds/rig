@@ -198,36 +198,6 @@ async fn reasoning_then_tool_call_closes_reasoning_before_the_call() {
 }
 
 #[tokio::test]
-async fn required_tool_choice_streams_tool_call() {
-    with_cohere_cassette(
-        "streaming_grammar/required_tool_choice_streams_tool_call",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let request = CompletionRequest::new("Use the subtract tool to calculate 8 - 3.")
-                .tool(rig::tool::tool_definition(&IntegerSubtract))
-                .tool_choice(ToolChoice::Required)
-                .max_tokens(128);
-            let run = drain_stream(model.stream(request).expect("stream should start")).await;
-
-            assert!(run.text.is_empty(), "tool-only turn should not emit text");
-            assert_eq!(run.tool_calls.len(), 1, "expected one streamed tool call");
-            assert_eq!(run.tool_calls[0].function.name, "subtract");
-            assert_eq!(
-                run.tool_calls[0].function.arguments_value(),
-                serde_json::json!({"x": 8, "y": 3})
-            );
-            assert_eq!(
-                run.response
-                    .as_ref()
-                    .and_then(|response| response.finish_reason()),
-                Some(FinishReason::ToolCalls)
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn none_tool_choice_streams_text() {
     with_cohere_cassette(
         "streaming_grammar/none_tool_choice_streams_text",

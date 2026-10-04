@@ -53,18 +53,15 @@ enum Transport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
     Gpt4oMini,
-    Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Limit {
-    Roomy,
     Tiny,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shape {
-    PlainOne,
     PlainTwo,
     Tool,
 }
@@ -86,7 +83,6 @@ type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
 fn params(cell: Cell) -> Value {
     match cell.shape {
-        Shape::PlainOne => json!({}),
         Shape::PlainTwo => json!({ "n": 2 }),
         Shape::Tool => json!({ "tool_choice": "required" }),
     }
@@ -97,7 +93,6 @@ fn prompt(cell: Cell) -> &'static str {
         (Shape::Tool, _) => {
             "Call the add tool exactly once with x=17 and y=25. Do not answer in prose."
         }
-        (_, Limit::Roomy) => "Reply with exactly: cobalt",
         (_, Limit::Tiny) => "Write the word cobalt exactly 100 times, separated by spaces.",
     }
 }
@@ -106,15 +101,12 @@ fn max_tokens(cell: Cell) -> u64 {
     match (cell.shape, cell.limit) {
         (Shape::Tool, Limit::Tiny) => 16,
         (_, Limit::Tiny) => 1,
-        (Shape::Tool, Limit::Roomy) => 64,
-        (_, Limit::Roomy) => 8,
     }
 }
 
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::Gpt4oMini => "gpt-4o-mini",
-        ModelVariant::Gpt41Mini => "gpt-4.1-mini",
     }
 }
 
@@ -244,10 +236,6 @@ fn assert_scrubbed_optional_string(scenario: &str, field: &str, actual: &Value, 
 fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     let request = recorded_request(scenario);
     match cell.shape {
-        Shape::PlainOne => {
-            assert!(request.get("n").is_none(), "{scenario}: n should be absent");
-            assert!(request.get("tools").is_none(), "{scenario}: no tools");
-        }
         Shape::PlainTwo => {
             assert_eq!(request["n"], 2, "{scenario}");
             assert!(request.get("tools").is_none(), "{scenario}: no tools");
@@ -269,8 +257,6 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
     }
 
     let expected_finish = match (cell.shape, cell.limit) {
-        (Shape::Tool, Limit::Roomy) => json!("tool_calls"),
-        (_, Limit::Roomy) => json!("stop"),
         (_, Limit::Tiny) => json!("length"),
     };
     assert_eq!(
@@ -402,51 +388,9 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 crate::matrix::case_matrix! {
     wrapper: with_openai_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
     # [tokio :: test]
-    blocking_gpt_4o_mini_roomy_plain_one: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_roomy_plain_two: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_roomy_tool: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_tiny_plain_one: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
     blocking_gpt_4o_mini_tiny_plain_two: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainTwo ,));
     # [tokio :: test]
     blocking_gpt_4o_mini_tiny_tool: ("chat_terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: Tool ,));
     # [tokio :: test]
-    blocking_gpt_4_1_mini_roomy_plain_one: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_roomy_plain_two: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_roomy_tool: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_tiny_plain_one: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_tiny_plain_two: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_tiny_tool: ("chat_terminal_metadata_matrix/blocking_gpt_4_1_mini_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_roomy_plain_one: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_roomy_plain_two: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_roomy_tool: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_tiny_plain_one: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
     streaming_gpt_4o_mini_tiny_plain_two: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_tiny_tool: ("chat_terminal_metadata_matrix/streaming_gpt_4o_mini_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Limit :: Tiny , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_roomy_plain_one: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_roomy_plain_two: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_roomy_tool: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_tiny_plain_one: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_tiny_plain_two: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_tiny_tool: ("chat_terminal_metadata_matrix/streaming_gpt_4_1_mini_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Limit :: Tiny , Shape :: Tool ,));
 }

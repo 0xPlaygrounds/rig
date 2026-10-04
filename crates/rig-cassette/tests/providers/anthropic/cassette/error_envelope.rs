@@ -7,105 +7,9 @@
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
-use futures::StreamExt;
 
 use super::super::support::with_anthropic_cassette;
 use rig::completion::CompletionRequest;
-
-#[tokio::test]
-async fn nonexistent_model_error_preserves_status_and_body() {
-    with_anthropic_cassette(
-        "error_envelope/nonexistent_model_error_preserves_status_and_body",
-        |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = CompletionRequest::new("Say hi.").max_tokens(16);
-
-            let error = model
-                .call(request)
-                .await
-                .expect_err("a nonexistent model should be a provider error");
-
-            let status = error
-                .provider_response_status()
-                .expect("provider status should be preserved");
-            assert_eq!(status.as_u16(), 404, "unexpected status: {status}");
-
-            let body = error
-                .provider_response_json()
-                .expect("provider error body should be JSON")
-                .expect("provider error body should be present");
-            assert_eq!(body["type"], "error");
-            assert_eq!(body["error"]["type"], "not_found_error");
-            // Anthropic puts its own correlation id at the top level of the
-            // envelope, beside `error` rather than inside it, and no typed
-            // envelope in the tree models that field. A non-success reply
-            // never reaches a decoder — `send` rejects it and the error
-            // carries the reply's bytes — so reading the id back is the
-            // cheapest proof this funnel hands over the body verbatim
-            // rather than anything's rendering of it.
-            let request_id = error
-                .provider_request_id()
-                .expect("the transport keeps the request id");
-            assert_eq!(
-                body["request_id"].as_str(),
-                Some(request_id),
-                "the preserved body must be the reply's own envelope, whose id is \
-                 the transport's request id: {body}"
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn nonexistent_model_streaming_error_preserves_status_and_body() {
-    with_anthropic_cassette(
-        "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-        |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = CompletionRequest::new("Say hi.").max_tokens(16);
-
-            // The SSE connection opens lazily, so the HTTP error may surface
-            // either from `stream()` itself or as the first stream item.
-            let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
-                Ok(mut stream) => match stream.next().await {
-                    Some(Err(error)) => rig::ErrorReport::from(&error),
-                    Some(Ok(item)) => {
-                        panic!("expected a provider error, got stream item: {item:?}")
-                    }
-                    None => panic!("stream ended without surfacing the provider error"),
-                },
-            };
-
-            let status = error
-                .provider_response_status()
-                .expect("provider status should be preserved");
-            assert_eq!(status.as_u16(), 404, "unexpected status: {status}");
-
-            let body = error
-                .provider_response_json()
-                .expect("provider error body should be JSON")
-                .expect("provider error body should be present");
-            assert_eq!(body["error"]["type"], "not_found_error");
-            // The 404 lands before the stream opens, so this is the same
-            // non-success funnel as the unary cell reached through
-            // `stream()` — not the SSE `error` event, which arrives on a
-            // 200 and is covered by
-            // `anthropic::streaming::tests::terminal_emission::streamed_error_envelope_preserves_the_verbatim_body`.
-            let request_id = error
-                .provider_request_id()
-                .expect("the transport keeps the request id");
-            assert_eq!(
-                body["request_id"].as_str(),
-                Some(request_id),
-                "the streamed path's preserved body must keep the envelope's \
-                 own correlation id too: {body}"
-            );
-        },
-    )
-    .await;
-}
 
 /// rig#2210: the failed response's headers must reach the caller, on both the
 /// unary and streaming paths.
@@ -138,40 +42,6 @@ async fn nonexistent_model_error_preserves_response_headers() {
             let headers = error
                 .provider_response_headers()
                 .expect("the failed response's headers should reach the caller");
-            assert_eq!(
-                headers
-                    .get("content-type")
-                    .and_then(|value| value.to_str().ok()),
-                Some("application/json"),
-                "recorded response headers should replay verbatim, got {headers:?}",
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn nonexistent_model_streaming_error_preserves_response_headers() {
-    with_anthropic_cassette(
-        "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-        |client| async move {
-            let model = client.completion("claude-nonexistent-rig-test");
-            let request = CompletionRequest::new("Say hi.").max_tokens(16);
-
-            let error = match model.stream(request) {
-                Err(error) => rig::ErrorReport::from(&error),
-                Ok(mut stream) => match stream.next().await {
-                    Some(Err(error)) => rig::ErrorReport::from(&error),
-                    Some(Ok(item)) => {
-                        panic!("expected a provider error, got stream item: {item:?}")
-                    }
-                    None => panic!("stream ended without surfacing the provider error"),
-                },
-            };
-
-            let headers = error
-                .provider_response_headers()
-                .expect("the failed handshake's headers should reach the caller");
             assert_eq!(
                 headers
                     .get("content-type")

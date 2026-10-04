@@ -1,85 +1,12 @@
 //! Cassette coverage for mistral.rs through Rig's OpenAI Responses wire.
 
 use rig::agent::AgentBuilder;
-use rig::message::AssistantContent;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig_test_support::cassette_models::MapWire;
 
-use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
+use crate::support::assert_contains_all_case_insensitive;
 
 use super::super::support::{SYSTEM_PROMPT, model_name, with_mistralrs_cassette};
-use rig::completion::CompletionRequest;
-
-#[tokio::test]
-async fn responses_api_no_think_returns_text() {
-    with_mistralrs_cassette(
-        "responses_api/responses_api_no_think_returns_text",
-        |client| async move {
-            // mistral.rs does not accept top-level `instructions`, so the
-            // placement is a wire option rather than a client setting.
-            let model = client
-                .responses(model_name())
-                .map_wire(Responses::with_system_instructions_as_messages);
-            let agent = AgentBuilder::new(model)
-                .preamble(SYSTEM_PROMPT)
-                .max_tokens(128)
-                .build();
-
-            let response = agent
-                .prompt("/no_think Explain token usage reporting in one sentence.")
-                .await
-                .expect("Responses API /no_think prompt should succeed")
-                .output();
-
-            assert_nonempty_response(&response);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn responses_api_reasoning_plus_answer_completes() {
-    with_mistralrs_cassette(
-        "responses_api/responses_api_reasoning_plus_answer_completes",
-        |client| async move {
-            let model = client.responses(model_name()).map_wire(Responses::with_system_instructions_as_messages);
-            let request = CompletionRequest::new(
-                    "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
-                )
-                .preamble(SYSTEM_PROMPT.to_owned())
-                .max_tokens(512);
-            // One cassette interaction, two views of it: the normalized
-            // response the decoder folded, and — through the typed escape
-            // hatch over its captured `raw` — the Responses reply document
-            // whose reasoning fields are provider-specific and not
-            // normalized.
-            let response = model
-                .call(request)
-                .await
-                .expect("Responses API reasoning plus answer prompt should succeed");
-            let raw = &response.raw;
-            let text = response
-                .choice
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect::<String>();
-
-            assert_nonempty_response(&text);
-            // The reasoning is string-shaped, so it is neither reasoning
-            // metadata nor a reasoning context.
-            assert!(
-                raw["reasoning"]
-                    .as_str()
-                    .is_some_and(|reasoning| !reasoning.trim().is_empty()),
-                "string-shaped provider reasoning should remain available"
-            );
-        },
-    )
-    .await;
-}
 
 #[tokio::test]
 async fn responses_api_multi_turn_replays_history() {

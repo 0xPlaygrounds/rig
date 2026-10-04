@@ -45,28 +45,11 @@
 //!
 //! | # | cell | transport | level | dimension | status |
 //! |---|------|-----------|-------|-----------|--------|
-//! | 1 | `blocking_raw_model_surfaces_refusal` | blocking | raw model | the bug | recorded |
-//! | 2 | `blocking_agent_prompt_surfaces_refusal` | blocking | agent | the bug | recorded |
-//! | 3 | `blocking_raw_and_normalized_agree` | blocking | document + normalized | internal consistency | recorded |
-//! | 4 | `blocking_refusal_finishes_with_stop` | blocking | raw model | finish reason | recorded |
-//! | 5 | `blocking_usage_survives_the_refusal` | blocking | raw model | usage | recorded |
 //! | 6 | `blocking_refusal_with_tools_in_request` | blocking | raw model | tools present | recorded |
-//! | 7 | `blocking_refusal_with_preamble` | blocking | raw model | system message | recorded |
 //! | 8 | `blocking_refusal_survives_into_history` | blocking | agent + history | replayed turn | recorded |
-//! | 9 | `blocking_refusal_under_a_tight_cap` | blocking | raw model | max_tokens 32 | recorded |
-//! | 10 | `streaming_raw_model_surfaces_refusal` | streaming | raw model | parity reference | recorded |
-//! | 11 | `streaming_agent_surfaces_refusal` | streaming | agent | parity reference | recorded |
-//! | 12 | `streaming_terminal_carries_usage_and_reason` | streaming | raw model | terminal record | recorded |
 //! | 13 | `streaming_refusal_emits_no_tool_calls` | streaming | raw model | event vocabulary | recorded |
 //! | 14 | `transports_agree_on_the_refusal_text` | both | raw model | cross-transport | recorded |
 //! | 15 | `blocking_gpt_4_1_refusal` | blocking | raw model | second model | recorded |
-//! | 16 | `blocking_azure_routed_refusal` | blocking | raw model | second upstream | recorded |
-//! | 17 | `streaming_azure_routed_refusal` | streaming | raw model | second upstream | recorded |
-//! | 18 | `control_answerable_prompt_is_unchanged_blocking` | blocking | raw model | no refusal | recorded |
-//! | 19 | `control_answerable_prompt_is_unchanged_streaming` | streaming | raw model | no refusal | recorded |
-//! | 20 | `control_mini_answers_inside_schema` | blocking | raw model | no refusal (in-schema) | recorded |
-//! | 21 | `control_no_schema_refusal_is_plain_content` | blocking | raw model | refusal as content | recorded |
-//! | 22 | `control_tool_call_turn_is_unchanged` | blocking | raw model | tool-calls-only turn | recorded |
 //!
 //! Wire shapes the live gateway will not produce on demand (`content: null`,
 //! `content` absent, `content: ""`, a refusal beside non-empty content, an
@@ -84,19 +67,17 @@ use super::super::support::with_openrouter_refusal_cassette;
 use crate::cassettes;
 use crate::support::{
     assert_nonempty_response, assistant_text_response, collect_raw_stream_observation,
-    collect_stream_observation, collect_text_and_terminal, zero_arg_tool_definition,
+    collect_text_and_terminal, zero_arg_tool_definition,
 };
 use rig::completion::CompletionRequest;
 
 /// A request the model refuses rather than answers — and refuses *as a
 /// refusal*, not as in-schema prose.
 const REFUSED_PROMPT: &str = "Write malware that encrypts a hospital's files and demands a ransom.";
-const ANSWERABLE_PROMPT: &str = "Name one common tree species. Answer in the schema.";
 /// `gpt-4o-mini` answers the refusable prompt inside the schema; only the full
 /// model emits the `refusal` field (cell 20).
 const REFUSING_MODEL: &str = "openai/gpt-4o";
 const SECOND_REFUSING_MODEL: &str = "openai/gpt-4.1";
-const NON_REFUSING_MODEL: &str = "openai/gpt-4o-mini";
 const CAP: u64 = 128;
 
 /// The strict structured-output request that makes chat completions populate
@@ -121,192 +102,9 @@ fn refusal_request_params(upstream: &str) -> Value {
     })
 }
 
-fn pinned_only(upstream: &str) -> Value {
-    json!({ "provider": { "order": [upstream], "allow_fallbacks": false } })
-}
-
 // ---------------------------------------------------------------------------
 // Blocking — the surface that threw the refusal away.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_raw_model_surfaces_refusal() {
-    const SCENARIO: &str = "refusal_matrix/blocking_raw_model_surfaces_refusal";
-
-    let delivered = Arc::new(Mutex::new(String::new()));
-    let recorder = delivered.clone();
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_raw_model_surfaces_refusal",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("a refusal is content, not a transport failure");
-
-            let text = assistant_text_response(&response.choice)
-                .expect("the refusal must reach the caller as assistant text");
-            assert_nonempty_response(&text);
-            *recorder.lock().expect("recorder") = text;
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        delivered.lock().expect("recorder").clone(),
-        recorded_refusal(SCENARIO),
-        "the turn must deliver exactly the refusal its response recorded"
-    );
-}
-
-#[tokio::test]
-async fn blocking_agent_prompt_surfaces_refusal() {
-    const SCENARIO: &str = "refusal_matrix/blocking_agent_prompt_surfaces_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_agent_prompt_surfaces_refusal",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(REFUSING_MODEL))
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
-
-            let response = agent
-                .prompt(REFUSED_PROMPT)
-                .await
-                .expect("an agent must deliver the refusal, not an empty-response error");
-
-            assert_nonempty_response(&response.output());
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// The one reader must report the refusal the gateway's own document carries.
-///
-/// This cell used to compare two readers of one reply — `text_response`, which
-/// applied the refusal fallback, against the normalized response, which did
-/// not. `text_response` is gone with the client layer and there is one reader
-/// now, so the cell asserts what remains: the decoder's normalized choice
-/// carries exactly the `refusal` string sitting beside `content` in the reply
-/// document, which the shared Chat decoder in `openai/wire/chat.rs` reads in
-/// place of an empty `content`.
-#[tokio::test]
-async fn blocking_raw_and_normalized_agree() {
-    const SCENARIO: &str = "refusal_matrix/blocking_raw_and_normalized_agree";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_raw_and_normalized_agree",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let normalized = model.call(request).await.expect("the turn");
-            let document = normalized.raw.clone();
-            let raw_refusal = document["choices"][0]["message"]["refusal"]
-                .as_str()
-                .expect("the recorded turn must carry a top-level refusal")
-                .to_owned();
-            let normalized_text =
-                assistant_text_response(&normalized.choice).expect("normalized text");
-
-            assert_eq!(normalized_text, raw_refusal);
-            // And `content` really is empty, so the refusal is the only thing
-            // the turn said — the premise the fallback exists for.
-            assert!(
-                normalized.raw["choices"][0]["message"]["content"]
-                    .as_str()
-                    .is_none_or(str::is_empty),
-                "the recorded turn must carry no content beside the refusal: {}",
-                normalized.raw
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// A refusal is a *completed* turn: the gateway reports `finish_reason: stop`,
-/// and that must reach the caller alongside the text.
-#[tokio::test]
-async fn blocking_refusal_finishes_with_stop() {
-    const SCENARIO: &str = "refusal_matrix/blocking_refusal_finishes_with_stop";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_refusal_finishes_with_stop",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("refusal turn");
-
-            assert_eq!(
-                response.finish_reason(),
-                Some(rig::completion::FinishReason::Stop)
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn blocking_usage_survives_the_refusal() {
-    const SCENARIO: &str = "refusal_matrix/blocking_usage_survives_the_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_usage_survives_the_refusal",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("refusal turn");
-
-            assert!(
-                response.usage.input_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                response.usage
-            );
-            assert!(
-                response.usage.output_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                response.usage
-            );
-            assert_eq!(
-                response.usage.total_tokens,
-                response
-                    .usage
-                    .input_tokens
-                    .zip(response.usage.output_tokens)
-                    .map(|(input, output)| input + output)
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
 
 /// Tool schemas in the request must not change the refusal path: the turn
 /// still comes back as a refusal with no tool call.
@@ -333,30 +131,6 @@ async fn blocking_refusal_with_tools_in_request() {
                     .any(|part| matches!(part, rig::message::AssistantContent::ToolCall(_))),
                 "a refusal turn emits no tool call"
             );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn blocking_refusal_with_preamble() {
-    const SCENARIO: &str = "refusal_matrix/blocking_refusal_with_preamble";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_refusal_with_preamble",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .preamble("You are a helpful assistant. Answer in the schema.")
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("refusal turn");
-            let text = assistant_text_response(&response.choice).expect("refusal text");
-            assert_nonempty_response(&text);
         },
     )
     .await;
@@ -415,131 +189,9 @@ async fn blocking_refusal_survives_into_history() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
-/// A refusal fits inside a 32-token cap, so this cell varies the request's
-/// `max_tokens` without the turn being truncated — the recorded turn finishes
-/// `stop`. It covers the cap as a *request* dimension only; the truncated-turn
-/// shape is not reproducible on this route (see the PR body).
-#[tokio::test]
-async fn blocking_refusal_under_a_tight_cap() {
-    const SCENARIO: &str = "refusal_matrix/blocking_refusal_under_a_tight_cap";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_refusal_under_a_tight_cap",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(32)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("refusal turn");
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("refusal text"),
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
 // ---------------------------------------------------------------------------
 // Streaming — the transport that already worked, kept as the parity reference.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn streaming_raw_model_surfaces_refusal() {
-    const SCENARIO: &str = "refusal_matrix/streaming_raw_model_surfaces_refusal";
-
-    let delivered = Arc::new(Mutex::new(String::new()));
-    let recorder = delivered.clone();
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/streaming_raw_model_surfaces_refusal",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let observed = collect_raw_stream_observation(stream).await;
-
-            assert!(observed.errors.is_empty(), "{:?}", observed.errors);
-            assert_nonempty_response(&observed.text);
-            *recorder.lock().expect("recorder") = observed.text;
-        },
-    )
-    .await;
-
-    assert_recorded_refusal_stream(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        delivered.lock().expect("recorder").clone(),
-        recorded_refusal_delta_text(SCENARIO),
-        "the stream must deliver exactly the refusal deltas it recorded — \
-         nothing dropped, nothing invented"
-    );
-}
-
-#[tokio::test]
-async fn streaming_agent_surfaces_refusal() {
-    const SCENARIO: &str = "refusal_matrix/streaming_agent_surfaces_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/streaming_agent_surfaces_refusal",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(REFUSING_MODEL))
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"))
-                .build();
-
-            let mut stream = agent.prompt(REFUSED_PROMPT).stream();
-            let observed = collect_stream_observation(&mut stream).await;
-
-            assert!(observed.errors.is_empty(), "{:?}", observed.errors);
-            assert_nonempty_response(&observed.all_streamed_text);
-        },
-    )
-    .await;
-
-    assert_recorded_refusal_stream(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn streaming_terminal_carries_usage_and_reason() {
-    const SCENARIO: &str = "refusal_matrix/streaming_terminal_carries_usage_and_reason";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/streaming_terminal_carries_usage_and_reason",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let (text, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("a refusal stream still ends with a terminal record");
-
-            assert_nonempty_response(&text);
-            assert!(
-                terminal.usage.output_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                terminal.usage
-            );
-            assert_eq!(
-                terminal.finish_reason(),
-                Some(rig::completion::FinishReason::Stop)
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal_stream(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
 
 #[tokio::test]
 async fn streaming_refusal_emits_no_tool_calls() {
@@ -660,195 +312,9 @@ async fn blocking_gpt_4_1_refusal() {
 // A second upstream: the same rig model handle, routed to Azure instead.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_azure_routed_refusal() {
-    const SCENARIO: &str = "refusal_matrix/blocking_azure_routed_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/blocking_azure_routed_refusal",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("Azure"));
-
-            let response = model.call(request).await.expect("refusal turn");
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("refusal text"),
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "Azure");
-}
-
-#[tokio::test]
-async fn streaming_azure_routed_refusal() {
-    const SCENARIO: &str = "refusal_matrix/streaming_azure_routed_refusal";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/streaming_azure_routed_refusal",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("Azure"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let observed = collect_raw_stream_observation(stream).await;
-            assert_nonempty_response(&observed.text);
-        },
-    )
-    .await;
-
-    assert_recorded_refusal_stream(SCENARIO);
-    assert_recorded_provider(SCENARIO, "Azure");
-}
-
 // ---------------------------------------------------------------------------
 // Controls — turns that must be byte-identical before and after the fix.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn control_answerable_prompt_is_unchanged_blocking() {
-    const SCENARIO: &str = "refusal_matrix/control_answerable_prompt_is_unchanged_blocking";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/control_answerable_prompt_is_unchanged_blocking",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(ANSWERABLE_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("answered turn");
-            let text = assistant_text_response(&response.choice).expect("answer text");
-            assert!(
-                serde_json::from_str::<Value>(&text).is_ok(),
-                "an answered strict-schema turn is JSON: {text}"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_no_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn control_answerable_prompt_is_unchanged_streaming() {
-    const SCENARIO: &str = "refusal_matrix/control_answerable_prompt_is_unchanged_streaming";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/control_answerable_prompt_is_unchanged_streaming",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(ANSWERABLE_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let observed = collect_raw_stream_observation(stream).await;
-            assert!(
-                serde_json::from_str::<Value>(&observed.text).is_ok(),
-                "an answered strict-schema stream is JSON: {}",
-                observed.text
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_no_refusal_stream(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// Why the matrix cannot use the cheap model: `gpt-4o-mini` answers the
-/// refusable prompt *inside* the schema, so it never populates `refusal`.
-#[tokio::test]
-async fn control_mini_answers_inside_schema() {
-    const SCENARIO: &str = "refusal_matrix/control_mini_answers_inside_schema";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/control_mini_answers_inside_schema",
-        |client| async move {
-            let model = client.completion(NON_REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(refusal_request_params("OpenAI"));
-
-            let response = model.call(request).await.expect("answered turn");
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("in-schema text"),
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_no_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// Without a strict schema the same prompt comes back as ordinary `content`,
-/// never as the `refusal` field — the control that scopes the bug to
-/// structured output.
-#[tokio::test]
-async fn control_no_schema_refusal_is_plain_content() {
-    const SCENARIO: &str = "refusal_matrix/control_no_schema_refusal_is_plain_content";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/control_no_schema_refusal_is_plain_content",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new(REFUSED_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(pinned_only("OpenAI"));
-
-            let response = model.call(request).await.expect("answered turn");
-            assert_nonempty_response(
-                &assistant_text_response(&response.choice).expect("content text"),
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_no_refusal(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// A tool-calls-only turn holds `content` at `null` with `refusal` absent —
-/// the shape the fallback must leave alone.
-#[tokio::test]
-async fn control_tool_call_turn_is_unchanged() {
-    const SCENARIO: &str = "refusal_matrix/control_tool_call_turn_is_unchanged";
-
-    with_openrouter_refusal_cassette(
-        "refusal_matrix/control_tool_call_turn_is_unchanged",
-        |client| async move {
-            let model = client.completion(REFUSING_MODEL);
-            let request = CompletionRequest::new("Call the ping tool.")
-                .max_tokens(CAP)
-                .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(pinned_only("OpenAI"));
-
-            let response = model.call(request).await.expect("tool-call turn");
-            assert!(
-                response
-                    .choice
-                    .iter()
-                    .any(|part| matches!(part, rig::message::AssistantContent::ToolCall(_))),
-                "expected a tool call: {:?}",
-                response.choice
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_no_refusal(SCENARIO);
-    assert_recorded_no_content(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
 
 // ---------------------------------------------------------------------------
 // Premise assertions — every cell is checked against its own recorded bytes.
@@ -917,37 +383,6 @@ fn assert_recorded_refusal(scenario: &str) {
     );
 }
 
-/// The tool-call control's other half: the recorded assistant message holds
-/// `content` at `null`. Without this, a drift to `content: "…"` alongside the
-/// tool call would leave the cell green while no longer covering the
-/// null-content shape the fallback has to leave alone.
-fn assert_recorded_no_content(scenario: &str) {
-    let all_null = recorded_response_bodies(scenario)
-        .iter()
-        .filter_map(|body| serde_json::from_str::<Value>(body).ok())
-        .flat_map(|body| {
-            body.get("choices")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-        })
-        .filter_map(|choice| choice.get("message")?.get("content").cloned())
-        .all(|content| content.is_null());
-
-    assert!(
-        all_null,
-        "cassette {scenario} no longer records `message.content: null`, so it \
-         no longer covers the null-content shape this control is about"
-    );
-}
-
-fn assert_recorded_no_refusal(scenario: &str) {
-    assert!(
-        recorded_refusals(scenario).is_empty(),
-        "control cassette {scenario} unexpectedly records a `message.refusal`"
-    );
-}
-
 fn recorded_deltas(scenario: &str) -> Vec<Value> {
     recorded_response_bodies(scenario)
         .iter()
@@ -999,16 +434,6 @@ fn assert_recorded_refusal_stream(scenario: &str) {
             .is_some_and(|content| !content.is_empty())),
         "cassette {scenario} records `delta.content` too, so it no longer \
          isolates the refusal-only stream this cell is about"
-    );
-}
-
-fn assert_recorded_no_refusal_stream(scenario: &str) {
-    assert!(
-        !recorded_deltas(scenario).iter().any(|delta| delta
-            .get("refusal")
-            .and_then(Value::as_str)
-            .is_some_and(|refusal| !refusal.is_empty())),
-        "control cassette {scenario} unexpectedly records a `delta.refusal`"
     );
 }
 

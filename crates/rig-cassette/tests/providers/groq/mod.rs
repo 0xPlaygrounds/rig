@@ -7,7 +7,6 @@ mod support;
 
 mod agent;
 mod agent_tool_sessions;
-mod constants_matrix;
 mod context;
 mod extractor;
 mod extractor_usage;
@@ -15,7 +14,6 @@ mod loaders;
 mod models;
 mod multi_extract;
 mod permission_control;
-mod raw_capture_matrix;
 mod raw_completion_parity_matrix;
 mod raw_stream_capture_matrix;
 mod request_hook;

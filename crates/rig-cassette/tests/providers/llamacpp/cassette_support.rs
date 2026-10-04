@@ -198,14 +198,6 @@ server_config_wrapper!(
 );
 
 server_config_wrapper!(
-    /// `--no-jinja`: the built-in ChatML template instead of the model's own,
-    /// which is what a tool request degrades against.
-    with_llamacpp_no_jinja_cassette,
-    "LLAMACPP_NO_JINJA_UPSTREAM",
-    8084
-);
-
-server_config_wrapper!(
     /// `--reranking` on a cross-encoder (`gpustack/bge-reranker-v2-m3-GGUF`).
     with_llamacpp_rerank_cassette,
     "LLAMACPP_RERANK_UPSTREAM",
@@ -221,15 +213,6 @@ server_config_wrapper!(
 );
 
 server_config_wrapper!(
-    /// `--embeddings --pooling mean` on a **causal LM** rather than an
-    /// embedding model, which is what the pre-merge embeddings cells were
-    /// recorded against.
-    with_llamacpp_causal_embeddings_cassette,
-    "LLAMACPP_CAUSAL_EMBEDDINGS_UPSTREAM",
-    8087
-);
-
-server_config_wrapper!(
     /// The competent tier (`unsloth/Qwen3-8B-GGUF` Q4_K_M) for cells whose
     /// claim needs a model that can actually hold a schema or orchestrate
     /// several tools.
@@ -239,24 +222,6 @@ server_config_wrapper!(
 );
 
 server_config_wrapper!(
-    /// The larger vision tier — `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` Q4_K_M
-    /// with its `mmproj`, `-c 8192`.
-    ///
-    /// For cells that need the model to be *right* rather than merely
-    /// responsive. Qwen3-VL-2B answers "which of these two images is the
-    /// photograph" with "FIRST" whichever order the images arrive in; this one
-    /// tracks the order. It has the opposite weakness — its chat template
-    /// declares `supports_tool_calls: false` — so image-plus-tools stays on
-    /// the smaller vision model, which does support them.
-    with_llamacpp_large_vision_cassette,
-    "LLAMACPP_LARGE_VISION_UPSTREAM",
-    8093
-);
-
-/// The larger vision model the multi-image cells were recorded against.
-pub(super) const CASSETTE_LARGE_VISION_MODEL: &str = "Qwen2.5-VL-7B-Instruct-Q4_K_M";
-
-server_config_wrapper!(
     /// The Llama family (`bartowski/Llama-3.2-3B-Instruct-GGUF` Q4_K_M) — a
     /// different chat template, and therefore a different tool-call wire.
     with_llamacpp_llama_family_cassette,
@@ -264,26 +229,8 @@ server_config_wrapper!(
     8090
 );
 
-server_config_wrapper!(
-    /// The Mistral family
-    /// (`bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF` Q4_K_M).
-    with_llamacpp_mistral_family_cassette,
-    "LLAMACPP_MISTRAL_FAMILY_UPSTREAM",
-    8091
-);
-
-server_config_wrapper!(
-    /// The Gemma family (`ggml-org/gemma-3-12b-it-GGUF` Q4_K_M), whose template
-    /// declares no tool support at all.
-    with_llamacpp_gemma_family_cassette,
-    "LLAMACPP_GEMMA_FAMILY_UPSTREAM",
-    8092
-);
-
 /// The chat model each family's cassettes were recorded against.
 pub(super) const CASSETTE_LLAMA_MODEL: &str = "Llama-3.2-3B-Instruct-Q4_K_M";
-pub(super) const CASSETTE_MISTRAL_MODEL: &str = "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M";
-pub(super) const CASSETTE_GEMMA_MODEL: &str = "gemma-3-12b-it-Q4_K_M";
 
 /// A server started with `--api-key`, driven by a configuration that
 /// presents the matching key.

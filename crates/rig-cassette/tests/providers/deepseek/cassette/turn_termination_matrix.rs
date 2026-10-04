@@ -57,15 +57,10 @@
 //! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`), where
 //! the whole vocabulary can be enumerated without a live call.
 
-use rig::completion::FinishReason;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes;
-use crate::deepseek::support::with_deepseek_cassette;
-use crate::support::{
-    Adder, EscalateCapOnTruncation, TurnTerminationProbe, collect_stream_final_response,
-};
 
 pub(super) const MODEL: &str = "deepseek-chat";
 pub(super) const TINY_CAP: u64 = 16;
@@ -73,8 +68,6 @@ pub(super) const TINY_CAP: u64 = 16;
 pub(super) const ROOMY_CAP: u64 = 512;
 /// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
 pub(super) const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
-pub(super) const RETRY_PROMPT: &str = "Write two sentences about maple trees.";
-pub(super) const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
 pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
 pub(super) const CONCISE_PREAMBLE: &str =
     "You are a concise assistant. Answer directly in plain text.";
@@ -83,26 +76,6 @@ pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmet
 // ---------------------------------------------------------------------------
 // Length — the provider cut the turn short at the cap we set.
 // ---------------------------------------------------------------------------
-
-crate::matrix::case_matrix! {
-    wrapper: with_deepseek_cassette, family: turn_termination_matrix_case;
-    # [tokio :: test]
-    blocking_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap", blocking_truncated_turn_reports_length_and_cap_15);
-    # [tokio :: test]
-    streaming_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap", streaming_truncated_turn_reports_length_and_cap_16);
-    # [tokio :: test]
-    blocking_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap", blocking_completed_turn_reports_stop_and_cap_17);
-    # [tokio :: test]
-    streaming_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap", streaming_completed_turn_reports_stop_and_cap_18);
-    # [tokio :: test]
-    blocking_tool_turn_reports_tool_calls: ("turn_termination_matrix/blocking_tool_turn_reports_tool_calls", blocking_tool_turn_reports_tool_calls_19);
-    # [tokio :: test]
-    streaming_tool_turn_reports_tool_calls: ("turn_termination_matrix/streaming_tool_turn_reports_tool_calls", streaming_tool_turn_reports_tool_calls_20);
-    # [tokio :: test]
-    blocking_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap", blocking_escalating_retry_reports_each_attempts_own_cap_21);
-    # [tokio :: test]
-    streaming_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap", streaming_escalating_retry_reports_each_attempts_own_cap_22);
-}
 
 // ---------------------------------------------------------------------------
 // Stop — the control. A completed turn must not read as truncated.

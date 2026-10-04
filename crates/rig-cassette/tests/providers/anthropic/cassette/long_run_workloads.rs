@@ -79,31 +79,6 @@ pub(super) fn check(
     )
 }
 
-/// Unary and streamed turns alternating in one conversation.
-#[tokio::test]
-async fn mixed_delivery_100() {
-    let log = with_anthropic_long_run_cassette(
-        "long_run_caching/mixed_delivery_100",
-        |models, clock| async move {
-            let agent = support_agent(cached(&models, CLAUDE_OPUS_5_5));
-            workloads::mixed_delivery(&agent, &clock, 100, "MIXED DELIVERY", "A").await
-        },
-    )
-    .await;
-    check(
-        "long_run_caching/mixed_delivery_100",
-        CLAUDE_OPUS_5_5,
-        OPUS_5_5_RATES,
-        OPUS_5_5_OUTPUT,
-        Some(Limits {
-            min_saving: Some(0.60),
-            min_call_share: Some(0.80),
-            max_writes_share: Some(0.25),
-        }),
-        &log,
-    );
-}
-
 /// Twenty account investigations: sixty calls, each turn two histories at
 /// once, then a carrier log, then the answer, with about a thousand tokens
 /// per tool result.

@@ -4,11 +4,9 @@ mod support;
 
 mod cassette {
     mod agent;
-    mod ecs_completion;
     mod embeddings;
     mod model_ids;
     mod raw_capture_matrix;
-    mod raw_completion;
     mod raw_provider_data;
     mod raw_stream_capture_matrix;
     mod raw_streaming;

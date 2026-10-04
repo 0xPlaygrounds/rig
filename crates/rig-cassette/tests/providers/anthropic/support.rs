@@ -10,12 +10,6 @@ use std::panic::{AssertUnwindSafe, resume_unwind};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-pub(super) struct AnthropicFilesCassette {
-    pub(super) bound: AnthropicModels,
-    pub(super) base_url: String,
-    pub(super) api_key: String,
-}
-
 async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, AnthropicConfig) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -131,18 +125,6 @@ where
     }
 }
 
-/// Per-bug wrapper for the model-turn termination-metadata matrix
-/// (`crates/rig-cassette/fixtures/cassettes/anthropic/turn_termination_matrix/`), rig#2184.
-pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicModels) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    with_anthropic_cassette(spec, test_body).await;
-}
-
 /// Drive rig's Anthropic client against an Anthropic-*compatible* gateway
 /// rather than `api.anthropic.com`.
 ///
@@ -204,36 +186,6 @@ where
     .catch_unwind()
     .await;
     cassette.finish_after_test_result(result).await
-}
-
-pub(super) async fn with_anthropic_files_cassette<F, Fut>(
-    spec: impl Into<CassetteSpec>,
-    beta_header: &'static str,
-    test_body: F,
-) where
-    F: FnOnce(AnthropicFilesCassette) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "anthropic",
-        spec,
-        "https://api.anthropic.com",
-    )
-    .await;
-    let base_url = normalize_anthropic_base_url(&cassette.base_url());
-    let api_key = cassette.api_key("ANTHROPIC_API_KEY");
-    let bound = AnthropicConfig::new(api_key.as_str())
-        .with_base_url(&base_url)
-        .with_beta(beta_header);
-
-    let parts = AnthropicFilesCassette {
-        bound: AnthropicModels::new(bound, rig_test_support::cassettes::local_http()),
-        base_url,
-        api_key,
-    };
-    let result = AssertUnwindSafe(test_body(parts)).catch_unwind().await;
-    cassette.finish_after_test(result).await;
 }
 
 /// One model's recorded session
@@ -629,24 +581,6 @@ pub(super) fn recorded_request_id_headers(scenario: &str) -> Vec<Option<String>>
         }
     }
     ids
-}
-
-/// JSON `data:` frames of one recorded SSE body, excluding `[DONE]`.
-///
-/// `crate::cassettes::recorded_sse_json_frames` reads only a scenario's first
-/// interaction; multi-interaction streamed cells (agent tool runs) need the
-/// frames of *each* interaction, which they get by pairing this with
-/// `crate::cassettes::recorded_interaction_bodies`.
-pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
-    body.lines()
-        .filter_map(|line| line.trim().strip_prefix("data:"))
-        .map(str::trim)
-        .filter(|payload| *payload != "[DONE]")
-        .map(|payload| {
-            serde_json::from_str(payload)
-                .unwrap_or_else(|err| panic!("recorded SSE frame should be JSON: {err}"))
-        })
-        .collect()
 }
 
 /// Assert that a sequence of ids the code under test observed is the sequence

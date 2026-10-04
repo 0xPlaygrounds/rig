@@ -12,13 +12,10 @@ use rig_agent::test_utils::validate_unknown_tool_failure;
 
 use super::super::agent_run_support::{
     FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, call_model,
-    execute_pending_calls, history_has_assistant_tool_call, tool_names,
-    user_content_tool_result_texts,
+    execute_pending_calls, tool_names,
 };
 use super::super::support::with_gemini_cassette;
-use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
-
-const SKIP_REASON: &str = "The add tool is disabled for this request.";
+use crate::support::assert_mentions_expected_number;
 
 /// Drive a fresh single-tool run to its first `NeedsResolution`, returning
 /// the run mid-resolution.
@@ -45,47 +42,6 @@ async fn run_until_invalid_add_call(
     };
     assert_eq!(context.tool_name, "add");
     run
-}
-
-#[tokio::test]
-async fn fail_resolution_returns_unknown_tool_call() {
-    with_gemini_cassette(
-        "agent_run_recovery/fail_resolution_returns_unknown_tool_call",
-        |client| async move {
-            let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                FORCE_TOOLS_PREAMBLE,
-                &["add"],
-                Some(ToolChoice::Required),
-            );
-
-            let mut run = run_until_invalid_add_call(&agent, &tool_names(&[]), 0).await;
-            let error = run
-                .resolve_invalid_tool_call(InvalidToolCallAction::fail())
-                .expect_err("fail resolution must error the run");
-
-            validate_unknown_tool_failure(&error, "add", &[])
-                .expect("portable unknown-tool diagnostics should hold");
-
-            let PromptError::UnknownToolCall {
-                tool_name,
-                available_tools,
-                allowed_tools,
-                chat_history,
-            } = error
-            else {
-                panic!("expected UnknownToolCall, got {error:?}");
-            };
-            assert_eq!(tool_name, "add");
-            assert_eq!(available_tools, vec!["add".to_string()]);
-            assert!(allowed_tools.is_empty());
-            assert!(
-                history_has_assistant_tool_call(&chat_history, "add"),
-                "the diagnostic history must include the rejected assistant turn: {chat_history:?}"
-            );
-        },
-    )
-    .await;
 }
 
 #[tokio::test]
@@ -170,128 +126,6 @@ async fn repair_renames_tool_call_and_executes_it() {
                 !recorded.iter().any(|name| name == "add"),
                 "the unrepaired name must not be recorded: {recorded:?}"
             );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn skip_suppresses_every_call_in_the_turn() {
-    with_gemini_cassette(
-        "agent_run_recovery/skip_suppresses_every_call_in_the_turn",
-        |client| async move {
-            let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                FORCE_TOOLS_PREAMBLE,
-                &["add", "subtract"],
-                None,
-            );
-            let executable = tool_names(&["add", "subtract"]);
-            // `add` is disallowed for the first turn.
-            let restricted = tool_names(&["subtract"]);
-
-            let mut run = AgentRun::new(
-                "Compute 3 + 5 and 10 - 4. You MUST call the add tool and the subtract tool together in your first response, as two parallel function calls, then report both results.",
-            )
-            .max_turns(3);
-            let mut skipped_turn_calls: Option<Vec<String>> = None;
-
-            let response = loop {
-                match run.next_step().expect("run should advance") {
-                    AgentRunStep::CallModel {
-                        prompt, history, ..
-                    } => {
-                        let (allowed, expect_invalid) = if skipped_turn_calls.is_none() {
-                            (&restricted, true)
-                        } else {
-                            (&executable, false)
-                        };
-                        let mut outcome = run
-                            .model_response(
-                                call_model(&agent, prompt, history, &executable, allowed).await,
-                            )
-                            .expect("model turn should be ingested");
-                        if let ModelTurnOutcome::NeedsResolution(context) = outcome {
-                            assert!(expect_invalid, "only the first turn restricts tools");
-                            assert_eq!(context.tool_name, "add");
-                            outcome = run
-                                .resolve_invalid_tool_call(InvalidToolCallAction::skip(
-                                    SKIP_REASON,
-                                ))
-                                .expect("skip should be accepted");
-                        }
-                        assert!(matches!(outcome, ModelTurnOutcome::Continue { .. }));
-                    }
-                    AgentRunStep::CallTools { calls } => {
-                        if skipped_turn_calls.is_none() {
-                            // Recovery skipped `add`, so no call in this turn
-                            // may execute: each one is preresolved.
-                            let mut names = Vec::new();
-                            for call in &calls {
-                                names.push(call.tool_call.function.name.to_string());
-                                let preresolved = call
-                                    .preresolved_result
-                                    .clone()
-                                    .expect("every call in a skipped turn is preresolved");
-                                let texts = user_content_tool_result_texts(&preresolved);
-                                if call.tool_call.function.name == "add" {
-                                    assert!(
-                                        texts.iter().any(|text| text.contains(SKIP_REASON)),
-                                        "the skipped call carries the hook reason: {texts:?}"
-                                    );
-                                } else {
-                                    assert!(
-                                        texts.iter().any(|text| text
-                                            .contains("another tool call in the same assistant turn was invalid")),
-                                        "peers carry the not-executed marker: {texts:?}"
-                                    );
-                                }
-                            }
-                            skipped_turn_calls = Some(names);
-                        }
-                        run.tool_results(execute_pending_calls(&calls))
-                            .expect("tool results should be accepted");
-                    }
-                    AgentRunStep::Done(response) => break response,
-                }
-            };
-
-            let first_turn = skipped_turn_calls.expect("the model should call tools");
-            assert!(
-                first_turn.iter().any(|name| name == "add"),
-                "the skipped add call still reaches the driver: {first_turn:?}"
-            );
-            assert_nonempty_response(&response.output());
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn retry_with_exhausted_budget_fails_with_unknown_tool_call() {
-    with_gemini_cassette(
-        "agent_run_recovery/retry_with_exhausted_budget_fails_with_unknown_tool_call",
-        |client| async move {
-            let agent = GeminiAgent::new(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-                FORCE_TOOLS_PREAMBLE,
-                &["add"],
-                Some(ToolChoice::Required),
-            );
-
-            // Zero retry budget: the first retry resolution must fail.
-            let mut run = run_until_invalid_add_call(&agent, &tool_names(&[]), 0).await;
-            let error = run
-                .resolve_invalid_tool_call(InvalidToolCallAction::retry("Try a different tool."))
-                .expect_err("retry without budget must error the run");
-
-            validate_unknown_tool_failure(&error, "add", &[])
-                .expect("portable retry-exhaustion diagnostics should hold");
-
-            let PromptError::UnknownToolCall { tool_name, .. } = error else {
-                panic!("expected UnknownToolCall, got {error:?}");
-            };
-            assert_eq!(tool_name, "add");
         },
     )
     .await;

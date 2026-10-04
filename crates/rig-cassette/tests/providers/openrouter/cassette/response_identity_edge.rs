@@ -33,29 +33,6 @@ async fn blocking_contract_and_gateway_both_report_none() {
     .await;
 }
 
-#[tokio::test]
-async fn streaming_contract_and_gateway_both_report_none() {
-    use futures::StreamExt;
-
-    with_openrouter_cassette(
-        "response_identity_edge/streaming_contract_and_gateway_both_report_none",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let mut stream = model
-                .stream(CompletionRequest::new(
-                    "Reply with exactly: stream identity probe",
-                ))
-                .expect("stream should open");
-            while let Some(item) = stream.next().await {
-                item.expect("stream item should succeed");
-            }
-            let terminal = stream.finish().await.expect("terminal record");
-            assert_eq!(terminal.provider_request_id, None);
-        },
-    )
-    .await;
-}
-
 /// 2xx-envelope / routed-failure hunt (rig#2314 error matrix): a model id
 /// that parses but routes nowhere — record what OpenRouter actually answers
 /// (assertion derived from the recording).

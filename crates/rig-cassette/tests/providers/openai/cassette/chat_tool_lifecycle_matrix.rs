@@ -59,7 +59,6 @@ pub(super) enum Transport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Model {
     Gpt4oMini,
-    Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,7 +106,6 @@ pub(super) fn cell(transport: Transport, model: Model, shape: Shape, surface: Su
 pub(super) fn model_name(model: Model) -> &'static str {
     match model {
         Model::Gpt4oMini => "gpt-4o-mini",
-        Model::Gpt41Mini => "gpt-4.1-mini",
     }
 }
 
@@ -623,51 +621,7 @@ pub(super) async fn execute(scenario: &'static str, cell: Cell, observed: Shared
 crate::matrix::case_matrix! {
     wrapper: with_openai_tool_lifecycle_cassette_result, family: tool_lifecycle_matrix_case;
     # [tokio :: test]
-    blocking_gpt4o_zero_model: ("chat_tool_lifecycle_matrix/blocking_gpt4o_zero_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
     blocking_gpt4o_zero_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
     # [tokio :: test]
-    blocking_gpt4o_nested_model: ("chat_tool_lifecycle_matrix/blocking_gpt4o_nested_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt4o_nested_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt4o_parallel_model: ("chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt4o_parallel_agent: ("chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt41_zero_model: ("chat_tool_lifecycle_matrix/blocking_gpt41_zero_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt41_zero_agent: ("chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt41_nested_model: ("chat_tool_lifecycle_matrix/blocking_gpt41_nested_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt41_nested_agent: ("chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt41_parallel_model: ("chat_tool_lifecycle_matrix/blocking_gpt41_parallel_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt41_parallel_agent: ("chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt4o_zero_model: ("chat_tool_lifecycle_matrix/streaming_gpt4o_zero_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt4o_zero_agent: ("chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
     streaming_gpt4o_nested_model: ("chat_tool_lifecycle_matrix/streaming_gpt4o_nested_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt4o_nested_agent: ("chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt4o_parallel_model: ("chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt4o_parallel_agent: ("chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_zero_model: ("chat_tool_lifecycle_matrix/streaming_gpt41_zero_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_zero_agent: ("chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_nested_model: ("chat_tool_lifecycle_matrix/streaming_gpt41_nested_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_nested_agent: ("chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_parallel_model: ("chat_tool_lifecycle_matrix/streaming_gpt41_parallel_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_parallel_agent: ("chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Agent ,));
 }

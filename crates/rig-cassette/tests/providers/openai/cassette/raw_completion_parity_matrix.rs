@@ -35,10 +35,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_text_turn_parity` | chat, text turn | raw+id ≡ completion (`Stop`) | recorded |
-//! | 2 | `chat_tool_turn_parity` | chat, forced tool call | raw+id ≡ completion (`ToolCalls`) | recorded |
-//! | 3 | `chat_plain_raw_completion_lacks_request_id` | chat, the body-derived view alone | `provider_request_id` `None` vs `Some` | recorded |
-//! | 4 | `responses_text_turn_parity` | Responses, text turn | raw ≡ completion (`Stop`) | recorded |
 //! | 5 | `responses_tool_turn_parity` | Responses, forced tool call | raw ≡ completion (`ToolCalls`) | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
@@ -54,12 +50,11 @@ use rig::providers::openai;
 use serde_json::{Value, json};
 
 use super::super::support::{recorded_request_id_headers, with_openai_cassette_result};
-use crate::raw_capture::{assert_contracted_request_id, capture_completion_pair, chat};
+use crate::raw_capture::{assert_contracted_request_id, capture_completion_pair};
 use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
-const TEXT_PROMPT: &str = "Reply with exactly the single word: pong";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 /// The response header OpenAI contracts as the transport request id, on both
 /// routes — the datum `recorded_request_ids` reads back out of the fixture.
@@ -71,14 +66,6 @@ fn ping_tool() -> ToolDefinition {
         description: "Matrix tool ping".to_owned(),
         parameters: json!({ "type": "object", "properties": {}, "additionalProperties": false }),
     }
-}
-
-/// The text-turn request, identical for both routes: `temperature: 0` keeps
-/// the two live turns of a cell as alike as the provider allows.
-fn text_request() -> CompletionRequest {
-    CompletionRequest::new(TEXT_PROMPT)
-        .temperature(0.0)
-        .max_tokens(16)
 }
 
 fn tool_request() -> CompletionRequest {
@@ -127,14 +114,12 @@ fn recorded_request_ids(scenario: &str, expected_interactions: usize) -> Vec<Str
 /// The two wire shapes: how each names its response and spells its usage.
 #[derive(Clone, Copy)]
 enum Wire {
-    Chat,
     Responses,
 }
 
 impl Wire {
     fn id_prefix(self) -> &'static str {
         match self {
-            Wire::Chat => "chatcmpl",
             Wire::Responses => "resp_",
         }
     }
@@ -142,7 +127,6 @@ impl Wire {
     /// `(input, output)` usage keys of the wire body.
     fn usage_keys(self) -> (&'static str, &'static str) {
         match self {
-            Wire::Chat => ("prompt_tokens", "completion_tokens"),
             Wire::Responses => ("input_tokens", "output_tokens"),
         }
     }
@@ -236,188 +220,6 @@ fn assert_parity(
 // ---------------------------------------------------------------------------
 // Chat Completions
 // ---------------------------------------------------------------------------
-
-/// The two views of one reply agree on the fields rig normalizes, read off
-/// the provider's own field names.
-///
-/// This replaces a comparison against `raw.normalize(..)`: there is one
-/// mapping now (the decoder's), so re-running it would compare it to a copy
-/// of itself. The transport id is deliberately absent here — it is an
-/// `x-request-id` header, not a body field, which is cell 3's whole subject.
-fn assert_chat_views_agree(scenario: &str, reply: &Value, response: &CompletionResponse) {
-    assert_eq!(
-        response.response_id(),
-        reply["id"].as_str(),
-        "{scenario}: the response id is the provider's `id`"
-    );
-    assert_eq!(
-        response.model(),
-        reply["model"].as_str(),
-        "{scenario}: model"
-    );
-    let usage = &reply["usage"];
-    assert_eq!(
-        response.usage.input_tokens,
-        usage["prompt_tokens"].as_u64(),
-        "{scenario}: input tokens are the provider's `prompt_tokens`"
-    );
-    assert!(
-        response.raw.get("provider_request_id").is_none(),
-        "{scenario}: the transport id is a header, so the reply document has none"
-    );
-}
-
-fn assert_chat_parity(
-    scenario: &str,
-    observed: &Observed<(CompletionResponse, CompletionResponse)>,
-    expected_finish: FinishReason,
-    expect_tool_call: bool,
-) {
-    let (typed, normalized) = observed.take();
-    let request_ids = recorded_request_ids(scenario, 2);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    let body = |index: usize| -> Value {
-        serde_json::from_str(&bodies[index].1).expect("recorded body should be JSON")
-    };
-    assert_eq!(
-        bodies[0].0, bodies[1].0,
-        "{scenario}: both routes send the identical request"
-    );
-    let first = body(0);
-    let second = body(1);
-    let expected_wire_finish = if expect_tool_call {
-        "tool_calls"
-    } else {
-        "stop"
-    };
-    for (index, body) in [&first, &second].into_iter().enumerate() {
-        assert_eq!(
-            body["choices"][0]["finish_reason"], expected_wire_finish,
-            "{scenario}: interaction {index} wire finish reason"
-        );
-    }
-    // The first reply, read both ways: the provider's own document in `raw`,
-    // then rig's normalized view of the same reply.
-    let reply = typed.raw.clone();
-    assert_chat_views_agree(scenario, &reply, &typed);
-    assert_side_matches_fixture(
-        scenario,
-        "raw view",
-        &typed,
-        &first,
-        &request_ids[0],
-        Wire::Chat,
-    );
-    assert_side_matches_fixture(
-        scenario,
-        "completion",
-        &normalized,
-        &second,
-        &request_ids[1],
-        Wire::Chat,
-    );
-    if expect_tool_call {
-        assert_eq!(
-            tool_call_names(&typed),
-            ["ping"],
-            "{scenario}: typed route tool call"
-        );
-        assert_eq!(
-            tool_call_names(&normalized),
-            ["ping"],
-            "{scenario}: completion() tool call"
-        );
-    } else {
-        assert_eq!(typed.choice, normalized.choice, "{scenario}: text choice");
-    }
-    assert_parity(scenario, &typed, &normalized, expected_finish);
-}
-
-#[tokio::test]
-async fn chat_text_turn_parity() {
-    const SCENARIO: &str = "raw_completion_parity_matrix/chat_text_turn_parity";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_completion_parity_matrix/chat_text_turn_parity",
-        |client| {
-            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
-        },
-    )
-    .await
-    .expect("chat_text_turn_parity should replay from its cassette");
-    assert_chat_parity(SCENARIO, &observed, FinishReason::Stop, false);
-}
-
-#[tokio::test]
-async fn chat_tool_turn_parity() {
-    const SCENARIO: &str = "raw_completion_parity_matrix/chat_tool_turn_parity";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_completion_parity_matrix/chat_tool_turn_parity",
-        |client| {
-            capture_completion_pair(client.openai.chat(MODEL), tool_request(), observed.clone())
-        },
-    )
-    .await
-    .expect("chat_tool_turn_parity should replay from its cassette");
-    assert_chat_parity(SCENARIO, &observed, FinishReason::ToolCalls, true);
-}
-
-/// The asymmetry between the two views of one reply: the provider's reply
-/// document carries no transport id even though the wire reported one in the
-/// `x-request-id` header, so a caller reading `raw` alone cannot obtain it,
-/// while the response `completion()` returns does.
-#[tokio::test]
-async fn chat_plain_raw_completion_lacks_request_id() {
-    const SCENARIO: &str =
-        "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
-        |client| {
-            capture_completion_pair(client.openai.chat(MODEL), text_request(), observed.clone())
-        },
-    )
-    .await
-    .expect("chat_plain_raw_completion_lacks_request_id should replay from its cassette");
-
-    let (plain, normalized) = observed.take();
-    // Premise: the wire reported a request id on *both* interactions — so the
-    // document's silence is a property of the body, not of the recording.
-    let request_ids = recorded_request_ids(SCENARIO, 2);
-    assert!(
-        plain.raw.get("provider_request_id").is_none(),
-        "{SCENARIO}: the reply document has no slot for the transport id"
-    );
-    assert_contracted_request_id(
-        plain.provider_request_id.as_deref(),
-        Some(&request_ids[0]),
-        REQUEST_ID_HEADER,
-    );
-    assert_contracted_request_id(
-        normalized.provider_request_id.as_deref(),
-        Some(&request_ids[1]),
-        REQUEST_ID_HEADER,
-    );
-    // Everything else rig reports still matches the reply document.
-    let reply = plain.raw.clone();
-    chat::assert_native_matches_normalized(&plain, &reply, SCENARIO);
-    let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
-    let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
-    assert_matches_recorded_token(
-        plain.response_id(),
-        first["id"].as_str(),
-        &format!("{SCENARIO}: plain route response_id"),
-    );
-    assert_eq!(plain.model(), first["model"].as_str());
-    assert_eq!(
-        plain.usage.input_tokens,
-        first["usage"]["prompt_tokens"].as_u64()
-    );
-    assert_eq!(plain.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(plain.model(), normalized.model());
-}
 
 // ---------------------------------------------------------------------------
 // Responses
@@ -540,25 +342,6 @@ fn assert_responses_parity(
         );
     }
     assert_parity(scenario, &typed, &normalized, expected_finish);
-}
-
-#[tokio::test]
-async fn responses_text_turn_parity() {
-    const SCENARIO: &str = "raw_completion_parity_matrix/responses_text_turn_parity";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_completion_parity_matrix/responses_text_turn_parity",
-        |client| {
-            capture_completion_pair(
-                client.openai.completion(MODEL),
-                text_request(),
-                observed.clone(),
-            )
-        },
-    )
-    .await
-    .expect("responses_text_turn_parity should replay from its cassette");
-    assert_responses_parity(SCENARIO, &observed, FinishReason::Stop, false);
 }
 
 /// A completed Responses turn reports `status: completed` — mapped to `Stop`

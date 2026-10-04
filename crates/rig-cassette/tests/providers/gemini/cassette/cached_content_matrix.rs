@@ -50,7 +50,6 @@
 //! ```
 //!
 
-use rig::error::ProviderError;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use rig::providers::gemini::{self, GeminiConfig};
 use rig_test_support::cassette_models::GeminiModels;
@@ -514,27 +513,6 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
 }
 
 #[tokio::test]
-async fn sys_notools_nocfg_noname_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_nocfg_noname_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "ttl",
-                },
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn sys_notools_nocfg_noname_abs() {
     with_gemini_prompt_caching_cassette(
         "cached_content_matrix/sys_notools_nocfg_noname_abs",
@@ -547,48 +525,6 @@ async fn sys_notools_nocfg_noname_abs() {
                     tool_config: false,
                     display_name: false,
                     expiry: "abs",
-                },
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_nocfg_noname_default() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_nocfg_noname_default",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: false,
-                    expiry: "default",
-                },
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn sys_notools_nocfg_named_ttl() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/sys_notools_nocfg_named_ttl",
-        |client| async move {
-            run_cell(
-                client,
-                Cell {
-                    payload: "sys",
-                    tools: 0,
-                    tool_config: false,
-                    display_name: true,
-                    expiry: "ttl",
                 },
             )
             .await;
@@ -685,86 +621,6 @@ async fn both_notools_nocfg_noname_ttl() {
 // Edges the create matrix cannot reach
 // ---------------------------------------------------------------------------
 
-/// A cache under the minimum is refused by the provider, citing the minimum.
-///
-/// The create matrix pads every cell just over 1,024 tokens; this is the cell
-/// that proves that number is real rather than folklore. If Gemini lowers the
-/// floor, this fails and the matrix's padding can come down with it.
-#[tokio::test]
-async fn a_cache_below_the_minimum_is_refused_by_the_provider() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/edge_below_minimum",
-        |client| async move {
-            let refusal = client
-                .cached_contents()
-                .create(
-                    NewCachedContent::new(CACHE_MODEL)
-                        .system_instruction(crate::cache_conformance::cache_padding(4))
-                        .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
-                )
-                .await;
-
-            // The day Gemini lowers the floor this cell fails — but it fails
-            // having deleted the cache it just paid to create, rather than
-            // leaking one out of an `expect_err`.
-            let error = match refusal {
-                Err(error) => error,
-                Ok(created) => {
-                    let _ = client.cached_contents().delete(&created.name).await;
-                    panic!("a cache under the minimum should be refused");
-                }
-            };
-
-            let message = error.to_string();
-            assert!(
-                message.contains("too small") || message.contains("min_total_token_count"),
-                "the provider should say the cache is too small: {message}"
-            );
-        },
-    )
-    .await;
-}
-
-/// An `expireTime` already in the past is **accepted**.
-///
-/// Surprising, and worth pinning precisely because it is: Gemini does not
-/// validate that the timestamp is in the future, so a caller can create a cache
-/// that is dead on arrival and pay to store it. rig cannot prevent this without
-/// a clock, and guessing the caller's intent would be worse — so it is recorded
-/// as provider behaviour rather than patched over.
-#[tokio::test]
-async fn an_expiry_in_the_past_is_accepted_by_the_provider() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/edge_expiry_in_the_past",
-        |client| async move {
-            let created = client
-                .cached_contents()
-                .create(
-                    NewCachedContent::new(CACHE_MODEL)
-                        .system_instruction(pad())
-                        .expiry(CacheExpiry::expire_time("2020-01-01T00:00:00Z")),
-                )
-                .await
-                .expect("gemini accepts an expiry in the past");
-
-            let outcome = (created.expire_time.as_deref() == Some("2020-01-01T00:00:00Z"))
-                .then_some(())
-                .ok_or_else(|| {
-                    format!(
-                        "the past timestamp should be echoed back verbatim, got {:?}",
-                        created.expire_time
-                    )
-                });
-
-            // Delete before asserting: a failed assertion in record mode would
-            // otherwise leave a billed cache behind.
-            let _ = client.cached_contents().delete(&created.name).await;
-            outcome.unwrap_or_else(|failure| panic!("{failure}"));
-        },
-    )
-    .await;
-}
-
 /// Omitting both expiry forms defaults to one hour.
 #[tokio::test]
 async fn omitting_expiry_defaults_to_one_hour() {
@@ -795,109 +651,6 @@ async fn omitting_expiry_defaults_to_one_hour() {
                 }
             })
             .await;
-        },
-    )
-    .await;
-}
-
-/// `list` follows the cursor when the page is smaller than the collection.
-///
-/// The pagination loop and its cursor-does-not-advance guard were unreachable
-/// while only one cache existed. Creating three and asking the provider for
-/// them a page at a time exercises the loop for real rather than trusting it by
-/// inspection.
-#[tokio::test]
-async fn list_follows_the_cursor_across_pages() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/edge_list_pagination",
-        |client| async move {
-            let caches = client.cached_contents();
-            // The creates are collected rather than unwrapped: a second cache
-            // that fails to create still has to delete the first, or the very
-            // failure leaks three times the storage a passing run does.
-            let mut created = Vec::new();
-            let mut create_failure = None;
-            for index in 0..3 {
-                match caches
-                    .create(
-                        NewCachedContent::new(CACHE_MODEL)
-                            .system_instruction(pad())
-                            .display_name(format!("rig-page-{index}"))
-                            .expiry(CacheExpiry::ttl(Duration::from_secs(180))),
-                    )
-                    .await
-                {
-                    Ok(cache) => created.push(cache.name),
-                    Err(error) => {
-                        create_failure = Some(error);
-                        break;
-                    }
-                }
-            }
-
-            always_deleting_cached_contents(&client, &created, async {
-                if let Some(error) = create_failure {
-                    panic!("creating a page fixture should succeed: {error}");
-                }
-
-                // Page size 1 with three caches means three pages and a cursor
-                // followed twice — the loop runs for real instead of returning
-                // everything in one response as pageSize=1000 does.
-                let listed = rig::Model::new(
-                    caches.clone().wire.with_page_size(1),
-                    caches.clone().transport,
-                )
-                .list()
-                .await
-                .expect("paginated list should succeed");
-                for name in &created {
-                    assert!(
-                        listed.iter().any(|entry| entry.name == *name),
-                        "every created cache should appear in the listing: {name} missing from \
-                         {} entries",
-                        listed.len()
-                    );
-                }
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-/// Deleting a handle twice reports the second as gone rather than succeeding.
-#[tokio::test]
-async fn deleting_twice_reports_the_second_as_expired() {
-    with_gemini_prompt_caching_cassette(
-        "cached_content_matrix/edge_double_delete",
-        |client| async move {
-            let caches = client.cached_contents();
-            let created = caches
-                .create(
-                    NewCachedContent::new(CACHE_MODEL)
-                        .system_instruction(pad())
-                        .expiry(CacheExpiry::ttl(Duration::from_secs(120))),
-                )
-                .await
-                .expect("create should succeed");
-
-            caches.delete(&created.name).await.expect("first delete");
-            let error = caches
-                .delete(&created.name)
-                .await
-                .expect_err("a second delete should not silently succeed");
-            let ProviderError::CacheExpired { name, response } = &error else {
-
-                panic!("a handle that is already gone should report CacheExpired: {error:?}");
-            };
-            assert_eq!(*name, created.name);
-            let message = &response.body;
-            assert!(
-                message.contains("not found") || message.contains("permission"),
-                "CacheExpired should carry the provider's own message — a 403 also covers a disabled \
-                 key or a project without the API enabled, and the message is the only text that \
-                 says which: {message}"
-            );
         },
     )
     .await;

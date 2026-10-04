@@ -52,7 +52,6 @@ enum Transport {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
-    Gpt4oMini,
     Gpt41Mini,
 }
 
@@ -99,10 +98,6 @@ fn params(cell: Cell) -> Value {
 
 fn prompt(cell: Cell) -> &'static str {
     match (cell.model, cell.termination) {
-        (ModelVariant::Gpt4oMini, Termination::Stop) => "Reply with exactly: cobalt",
-        (ModelVariant::Gpt4oMini, Termination::Length) => {
-            "Write the English alphabet in order without spaces."
-        }
         (ModelVariant::Gpt41Mini, Termination::Stop) => {
             "What is 17 + 25? Answer with only the number."
         }
@@ -121,7 +116,6 @@ fn max_tokens(cell: Cell) -> u64 {
 
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
-        ModelVariant::Gpt4oMini => "gpt-4o-mini",
         ModelVariant::Gpt41Mini => "gpt-4.1-mini",
     }
 }
@@ -311,49 +305,15 @@ fn cell(transport: Transport, model: ModelVariant, termination: Termination, top
 crate::matrix::case_matrix! {
     wrapper: with_openai_chat_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
     # [tokio :: test]
-    blocking_gpt_4o_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_stop_top_zero: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_stop_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Zero ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_stop_top_two: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_stop_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_length_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Absent ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_length_top_zero: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Zero ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_length_top_two: ("chat_streaming_logprobs_matrix/blocking_gpt_4o_mini_length_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
     blocking_gpt_4_1_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
     # [tokio :: test]
-    blocking_gpt_4_1_mini_stop_top_zero: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Zero ,));
-    # [tokio :: test]
     blocking_gpt_4_1_mini_stop_top_two: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_length_top_absent: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_absent", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Absent ,));
     # [tokio :: test]
     blocking_gpt_4_1_mini_length_top_zero: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_zero", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Zero ,));
     # [tokio :: test]
     blocking_gpt_4_1_mini_length_top_two: ("chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_two", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Two ,));
     # [tokio :: test]
-    streaming_gpt_4o_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_stop_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_stop_top_zero: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_stop_top_zero", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Zero ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_stop_top_two: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_stop_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_length_top_absent: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_length_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_length_top_zero: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_length_top_zero", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Zero ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_length_top_two: ("chat_streaming_logprobs_matrix/streaming_gpt_4o_mini_length_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Termination :: Length , Top :: Two ,));
-    # [tokio :: test]
     streaming_gpt_4_1_mini_stop_top_absent: ("chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Absent ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_stop_top_zero: ("chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_zero", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Zero ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_stop_top_two: ("chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_two", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Stop , Top :: Two ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_length_top_absent: ("chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_length_top_absent", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Absent ,));
     # [tokio :: test]
     streaming_gpt_4_1_mini_length_top_zero: ("chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_length_top_zero", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Termination :: Length , Top :: Zero ,));
     # [tokio :: test]

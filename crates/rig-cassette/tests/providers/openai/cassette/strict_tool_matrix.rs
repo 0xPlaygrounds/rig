@@ -25,7 +25,6 @@
 //! | 1 | `non_strict_tool_omits_optional_argument_blocking` | blocking | raw model | `false` | optional arg omitted |
 //! | 2 | `non_strict_tool_omits_optional_argument_streaming` | streaming | raw model | `false` | optional arg omitted |
 //! | 3 | `strict_tools_opt_in_sends_strict_true` | blocking | raw model | `true` | every property present |
-//! | 4 | `agent_tool_turn_sends_strict_false` | blocking | agent + tool | `false` | both turns non-strict |
 //!
 //! Unit cells for the serializer itself live beside the type in
 //! `crates/rig-core/src/providers/openai/responses_api/tests.rs`
@@ -38,7 +37,7 @@ use rig_test_support::cassette_models::MapWire;
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
-use crate::support::{Adder, collect_raw_stream_observation};
+use crate::support::collect_raw_stream_observation;
 use rig::completion::CompletionRequest;
 
 const RECORD_FACT: &str = "record_fact";
@@ -222,43 +221,5 @@ async fn strict_tools_opt_in_sends_strict_true() {
     assert_recorded_strict(
         "strict_tool_matrix/strict_tools_opt_in_sends_strict_true",
         true,
-    );
-}
-
-#[tokio::test]
-async fn agent_tool_turn_sends_strict_false() {
-    with_openai_cassette(
-        "strict_tool_matrix/agent_tool_turn_sends_strict_false",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O_MINI))
-                .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
-                .tool(Adder)
-                .default_max_turns(4)
-                .build();
-
-            let answer = agent
-                .prompt("What is 17 + 25? Use the add tool.")
-                .await
-                .expect("agent tool turn should succeed");
-
-            assert!(
-                answer.output().contains("42"),
-                "the agent should report the tool's result, got {answer:?}"
-            );
-        },
-    )
-    .await;
-
-    // Both the tool-call turn and the follow-up turn advertise the tool, and
-    // neither may drift back to an omitted `strict`.
-    let flags = recorded_strict_flags("strict_tool_matrix/agent_tool_turn_sends_strict_false");
-    assert_eq!(
-        flags.len(),
-        2,
-        "the agent run should record the tool on two requests, got {flags:?}"
-    );
-    assert_recorded_strict(
-        "strict_tool_matrix/agent_tool_turn_sends_strict_false",
-        false,
     );
 }

@@ -1,45 +1,15 @@
 //! Cassette-backed Anthropic coverage for provider file IDs in generic document messages.
 
-use futures::FutureExt;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::providers::anthropic;
 use serde_json::Value;
-use std::future::Future;
-use std::panic::{AssertUnwindSafe, resume_unwind};
 
-use super::super::support::{
-    ANTHROPIC_FILES_BETA, delete_uploaded_file, upload_pdf_for_file_id_test,
-    with_anthropic_files_cassette,
-};
-use crate::support::{assert_nonempty_response, collect_stream_final_response};
-
-const DOCUMENT_PREAMBLE: &str =
-    "Answer using only the attached PDF. Keep answers short and return exact visible tokens.";
 const PAGE_ONE_VERIFIER: &str = "rig-file-id-page-one-verifier-3a91";
 const PAGE_TWO_VERIFIER: &str = "rig-file-id-page-two-verifier-8c27";
 const PAGE_THREE_VERIFIER: &str = "rig-file-id-page-three-verifier-f54e";
 const PAGE_VERIFIERS: [&str; 3] = [PAGE_ONE_VERIFIER, PAGE_TWO_VERIFIER, PAGE_THREE_VERIFIER];
-
-async fn with_uploaded_pdf<F, Fut>(base_url: &str, api_key: &str, test_body: F)
-where
-    F: FnOnce(String) -> Fut,
-    Fut: Future<Output = ()>,
-{
-    let uploaded = upload_pdf_for_file_id_test(base_url, api_key).await;
-    let file_id = uploaded.id;
-
-    let result = AssertUnwindSafe(test_body(file_id.clone()))
-        .catch_unwind()
-        .await;
-
-    delete_uploaded_file(base_url, api_key, &file_id).await;
-
-    if let Err(payload) = result {
-        resume_unwind(payload);
-    }
-}
 
 fn file_id_document(file_id: &str) -> Document {
     Document {
@@ -91,25 +61,6 @@ fn message_contains_file_id(message: &Message, expected_file_id: &str) -> bool {
             }) if file_id == expected_file_id
         )
     })
-}
-
-fn assert_history_preserves_single_file_id(history: &[Message], expected_file_id: &str) {
-    let mut file_id_message_count = 0;
-
-    for message in history {
-        let json = anthropic_wire_json(message.clone());
-        assert_no_text_file_id_fallback(&json, expected_file_id);
-
-        if message_contains_file_id(message, expected_file_id) {
-            file_id_message_count += 1;
-            assert_wire_json_has_exact_file_source(&json, expected_file_id);
-        }
-    }
-
-    assert_eq!(
-        file_id_message_count, 1,
-        "expected exactly one history message to preserve document file ID {expected_file_id}: {history:?}"
-    );
 }
 
 /// `message` as the Messages wire encodes it, alone in a request.
@@ -218,23 +169,6 @@ fn assert_no_verifier_leaked_into_prompt(message: &Message) {
     }
 }
 
-fn assert_verifier_response(response: &str, expected_verifier: &str) {
-    assert_nonempty_response(response);
-    assert!(
-        response.contains(expected_verifier),
-        "expected response to contain verifier {expected_verifier}, got {response:?}"
-    );
-
-    for verifier in PAGE_VERIFIERS {
-        if verifier != expected_verifier {
-            assert!(
-                !response.contains(verifier),
-                "response included wrong-page verifier {verifier}; response was {response:?}"
-            );
-        }
-    }
-}
-
 fn assert_generic_message_has_file_id(message: &Message, expected_file_id: &str) {
     assert!(
         message_contains_file_id(message, expected_file_id),
@@ -255,189 +189,4 @@ fn document_file_id_wire_assertions_cover_roundtrip_paths() {
     assert_no_verifier_leaked_into_prompt(&provider_native_roundtrip_message);
     assert_generic_message_has_file_id(&provider_native_roundtrip_message, file_id);
     assert_anthropic_wire_file_source(provider_native_roundtrip_message, file_id);
-}
-
-/// The uploaded file's id is the exact value every later request carries:
-/// each Messages request's document source and the delete path.
-fn assert_recorded_file_id_chain(scenario: &str, turns: usize) {
-    let paths = crate::cassettes::recorded_request_paths("anthropic", scenario);
-    let bodies = crate::cassettes::recorded_interaction_bodies("anthropic", scenario);
-    let upload: serde_json::Value =
-        serde_json::from_str(&bodies[0].1).expect("the upload reply is JSON");
-    let file_id = upload["id"].as_str().expect("the upload issued an id");
-    assert!(
-        !file_id.contains("REDACTED"),
-        "the file id is recorded verbatim"
-    );
-    let mut messages = 0;
-    for (path, (request, _)) in paths.iter().zip(&bodies).skip(1) {
-        if path.ends_with("/v1/messages") {
-            messages += 1;
-            let request: serde_json::Value = serde_json::from_str(request).expect("JSON");
-            let documents: Vec<&serde_json::Value> = request["messages"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .flat_map(|message| message["content"].as_array().into_iter().flatten())
-                .filter(|block| block["type"] == "document")
-                .collect();
-            assert!(
-                !documents.is_empty(),
-                "{path}: the request carries the document"
-            );
-            for document in documents {
-                assert_eq!(
-                    (&document["source"]["type"], &document["source"]["file_id"]),
-                    (&serde_json::json!("file"), &serde_json::json!(file_id)),
-                    "{path}: the document's source is the uploaded file by its exact id"
-                );
-            }
-        }
-    }
-    assert!(
-        messages >= turns,
-        "the file is referenced across {turns} turns, saw {messages}"
-    );
-    assert!(
-        paths
-            .last()
-            .is_some_and(|path| path.ends_with(&format!("/v1/files/{file_id}"))),
-        "the upload is deleted by its exact id"
-    );
-}
-
-#[tokio::test]
-async fn messages_document_file_id_roundtrip_live() {
-    with_anthropic_files_cassette(
-        "document_file_id/messages_document_file_id_roundtrip_live",
-        ANTHROPIC_FILES_BETA,
-        |parts| async move {
-            let client = parts.bound;
-            let base_url = parts.base_url;
-            let api_key = parts.api_key;
-            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
-                    .preamble(DOCUMENT_PREAMBLE)
-                    .build();
-                let mut history = Vec::new();
-
-                let direct_message = direct_file_id_document_question(&file_id, 2);
-                assert_no_verifier_leaked_into_prompt(&direct_message);
-                assert_anthropic_wire_file_source(direct_message, &file_id);
-
-                let provider_native_content = provider_file_content_as_generic_document(&file_id);
-                let provider_native_roundtrip_message =
-                    document_question(provider_native_content, 2);
-                assert_no_verifier_leaked_into_prompt(&provider_native_roundtrip_message);
-                assert_generic_message_has_file_id(&provider_native_roundtrip_message, &file_id);
-                assert_anthropic_wire_file_source(
-                    provider_native_roundtrip_message.clone(),
-                    &file_id,
-                );
-
-                let response = agent
-                    .chat(provider_native_roundtrip_message, &mut history)
-                    .await
-                    .expect("Messages API should read uploaded PDF by file_id").output();
-                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
-                assert_history_preserves_single_file_id(&history, &file_id);
-
-                let follow_up = agent
-                    .chat(
-                        "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
-                        &mut history,
-                    )
-                    .await
-                    .expect("Messages API should reuse file_id document from chat history").output();
-                assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
-                assert_history_preserves_single_file_id(&history, &file_id);
-
-                let direct_prompt = direct_file_id_document_question(&file_id, 1);
-                assert_no_verifier_leaked_into_prompt(&direct_prompt);
-                assert_anthropic_wire_file_source(direct_prompt.clone(), &file_id);
-                let direct_response = agent
-                    .prompt(direct_prompt)
-                    .await
-                    .expect("Messages API should read direct generic file_id document").output();
-                assert_verifier_response(&direct_response, PAGE_ONE_VERIFIER);
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_document_file_id_roundtrip_live() {
-    with_anthropic_files_cassette(
-        "document_file_id/streaming_document_file_id_roundtrip_live",
-        ANTHROPIC_FILES_BETA,
-        |parts| async move {
-            let client = parts.bound;
-            let base_url = parts.base_url;
-            let api_key = parts.api_key;
-            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = rig::AgentBuilder::new(
-                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
-                )
-                .preamble(DOCUMENT_PREAMBLE)
-                .build();
-
-                let stream_prompt = direct_file_id_document_question(&file_id, 2);
-                assert_no_verifier_leaked_into_prompt(&stream_prompt);
-                assert_anthropic_wire_file_source(stream_prompt.clone(), &file_id);
-
-                let mut stream = agent.prompt(stream_prompt).stream();
-                let response = collect_stream_final_response(&mut stream)
-                    .await
-                    .expect("streaming Messages API should read uploaded PDF by file_id");
-                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-/// A file chain in one session: upload, reference the id in a document on
-/// two turns (the second reading it from history), delete. The recorded
-/// upload id is the exact value both requests and the delete carry. The id
-/// is account-scoped and deleted by the recording, so the fixture replays but
-/// cannot seed a live call.
-#[tokio::test]
-async fn file_id_chain() {
-    with_anthropic_files_cassette(
-        "document_file_id/file_id_chain",
-        ANTHROPIC_FILES_BETA,
-        |parts| async move {
-            let client = parts.bound;
-            let base_url = parts.base_url;
-            let api_key = parts.api_key;
-            with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
-                let agent = rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
-                    .preamble(DOCUMENT_PREAMBLE)
-                    .build();
-                let mut history = Vec::new();
-                let response = agent
-                    .chat(direct_file_id_document_question(&file_id, 2), &mut history)
-                    .await
-                    .expect("the first turn reads the file by id")
-                    .output();
-                assert_verifier_response(&response, PAGE_TWO_VERIFIER);
-                let follow_up = agent
-                    .chat(
-                        "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
-                        &mut history,
-                    )
-                    .await
-                    .expect("the second turn reads the file from history")
-                    .output();
-                assert_verifier_response(&follow_up, PAGE_THREE_VERIFIER);
-                assert_history_preserves_single_file_id(&history, &file_id);
-            })
-            .await;
-        },
-    )
-    .await;
-    assert_recorded_file_id_chain("document_file_id/file_id_chain", 2);
 }
