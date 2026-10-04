@@ -803,6 +803,29 @@ fn retired(root: &Path, path: &str) -> Result<bool, String> {
     Ok(named.is_err_and(|error| !error.contains("fatal")))
 }
 
+/// The fixtures (`<provider>/<scenario>.yaml`) the cassette prune lists.
+fn pruned_fixtures(root: &Path) -> BTreeSet<String> {
+    std::fs::read_to_string(root.join(super::prune::MANIFEST))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.strip_prefix("fixture\t"))
+        .filter_map(|rest| rest.split('\t').next())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Whether a corpus file is a pruned fixture or one of its sidecars.
+fn pruned_file(path: &str, pruned: &BTreeSet<String>) -> bool {
+    let Some(relative) = path.strip_prefix("crates/rig-cassette/fixtures/cassettes/") else {
+        return false;
+    };
+    let stem = relative
+        .strip_suffix(".yaml")
+        .or_else(|| relative.strip_suffix(".requests.json"))
+        .or_else(|| relative.strip_suffix(".clock.json"));
+    stem.is_some_and(|stem| pruned.contains(&format!("{stem}.yaml")))
+}
+
 /// Whether an effect streamed: a completion requested as a stream, or one
 /// with a stream of its own or on a component.
 fn streamed(effect: &serde_json::Map<String, Value>) -> bool {
@@ -883,17 +906,28 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             _ => audit.other(line, "unreadable golden status"),
         }
     }
-    let cassettes = output(
+    let cassette_status = output(
         root,
         "git",
         &[
             "diff",
-            "--name-only",
+            "--name-status",
             &base,
             "--",
             "crates/rig-cassette/fixtures/cassettes",
         ],
     )?;
+    let pruned = pruned_fixtures(root);
+    let mut pruned_files = 0;
+    let mut cassettes = Vec::new();
+    for line in cassette_status.lines() {
+        let mut fields = line.split('\t');
+        match (fields.next(), fields.next()) {
+            (Some("D"), Some(path)) if pruned_file(path, &pruned) => pruned_files += 1,
+            (_, Some(path)) => cassettes.push(path),
+            _ => cassettes.push(line),
+        }
+    }
     for (path, head) in goldens(root)? {
         let path = path.as_str();
         let base = if changed.contains(&path) {
@@ -919,11 +953,14 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     }
     println!("other: {}", audit.other.len());
     println!("mismatches: {}", audit.mismatches.len());
-    println!("cassettes changed: {}", cassettes.lines().count());
+    println!("cassettes changed: {}", cassettes.len());
+    if pruned_files > 0 {
+        println!("cassette files the prune deleted: {pruned_files}");
+    }
     for problem in audit.mismatches.iter().chain(&audit.other).take(40) {
         println!("  {problem}");
     }
-    if audit.other.is_empty() && audit.mismatches.is_empty() && cassettes.trim().is_empty() {
+    if audit.other.is_empty() && audit.mismatches.is_empty() && cassettes.is_empty() {
         Ok(())
     } else {
         Err("the golden audit failed".into())

@@ -182,7 +182,8 @@ The other commands:
   an inserted close or reasoning start, a block added to an end, or a count
   shift that follows the inserted events, and fails on any other change or
   any mismatch. A deleted golden that no test names, or that the cassette
-  prune lists, is retired.
+  prune lists, is retired, and a fixture the prune lists is no cassette
+  change.
 - `cassette prune [--check]` deletes the cassette tests, fixtures and
   goldens the kept tests already cover (see "Cassette prune" below).
 - `cassette cleanup [ledger.jsonl]` runs the cleanup pass on its own.

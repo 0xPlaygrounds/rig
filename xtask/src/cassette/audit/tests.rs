@@ -406,3 +406,14 @@ fn every_golden_end_carries_what_its_fragments_assemble() {
         found.mismatches.join("\n")
     );
 }
+
+#[test]
+fn a_pruned_fixture_and_its_sidecars_are_no_cassette_change() {
+    let pruned = BTreeSet::from(["openai/a/b.yaml".to_owned()]);
+    let root = "crates/rig-cassette/fixtures/cassettes";
+    for file in ["b.yaml", "b.requests.json", "b.clock.json"] {
+        assert!(pruned_file(&format!("{root}/openai/a/{file}"), &pruned));
+    }
+    assert!(!pruned_file(&format!("{root}/openai/a/c.yaml"), &pruned));
+    assert!(!pruned_file("elsewhere/openai/a/b.yaml", &pruned));
+}
