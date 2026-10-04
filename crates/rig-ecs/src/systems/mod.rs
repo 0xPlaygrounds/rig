@@ -2549,8 +2549,9 @@ pub fn materialise_batch(
 }
 
 /// The reprompt a read turn in `Tool` mode earns while the budget lasts
-/// (one `OutputRetries`, under `MaxTurns`): an output-tool call missing
-/// required fields is answered with a `Skipped` result naming them; a text
+/// (one `OutputRetries`, under `MaxTurns`): an output-tool call whose
+/// arguments are not a JSON object, or that misses required fields, is
+/// answered with a `Skipped` result saying so; a text
 /// where the tool was due, unless it already is the structured output
 /// (CONTRACT §4), is asked for the tool. `None` when the turn earns no
 /// reprompt: `materialise_answer` settles it.
@@ -2561,13 +2562,17 @@ fn reprompt_for(
 ) -> Option<(MessageParts, Vec<ToolResultStatus>)> {
     match read.calls().find(|call| call.function.name == name) {
         Some(call) => {
-            let missing = schema
-                .map(|schema| missing_required_fields(schema, &call.function.arguments_value()))
-                .unwrap_or_default();
-            if missing.is_empty() {
-                return None;
-            }
-            let feedback = reprompt_missing_fields(name, &missing);
+            let feedback = if let Some(raw) = &call.function.invalid_arguments {
+                rig_core::transcript::invalid_arguments_feedback(name, raw)
+            } else {
+                let missing = schema
+                    .map(|schema| missing_required_fields(schema, &call.function.arguments_value()))
+                    .unwrap_or_default();
+                if missing.is_empty() {
+                    return None;
+                }
+                reprompt_missing_fields(name, &missing)
+            };
             let reprompt = MessageParts::User {
                 content: vec![UserContent::ToolResult(
                     call.error_result(vec![ToolResultContent::text(feedback)]),
@@ -2641,7 +2646,8 @@ pub fn materialise_reprompt(
 /// Settle remaining reads with output-tool arguments or assistant text.
 /// Output-tool history retains non-call content and appends the JSON answer;
 /// the effect record retains the original call. Clears transient reads and fails
-/// the run if history conversion fails.
+/// the run if history conversion fails, or if the output-tool call's
+/// arguments are not a JSON object.
 pub fn materialise_answer(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2674,6 +2680,16 @@ pub fn materialise_answer(
             ));
             continue;
         };
+        if let Some(raw) = &call.function.invalid_arguments {
+            let report = rig_core::error::ErrorReport::from(
+                &rig_core::error::ProviderError::Response(format!(
+                    "the output tool `{}` was called with arguments that are not a JSON object: {raw}",
+                    call.function.name
+                )),
+            );
+            commands.entity(run).end(Failed(Failure::Provider(report)));
+            continue;
+        }
         let output = call.function.arguments_value().to_string();
         let mut final_content: Vec<_> = read
             .content

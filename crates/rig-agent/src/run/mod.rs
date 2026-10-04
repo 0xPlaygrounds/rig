@@ -561,9 +561,11 @@ impl AgentRun {
         self
     }
 
-    /// Set the output schema and retry budget for missing output-tool calls or
-    /// required fields. Validation checks only top-level required field presence;
-    /// exhausting either the output or model-call budget finalizes best-effort.
+    /// Set the output schema and retry budget for missing output-tool calls,
+    /// output-tool arguments that are not a JSON object, or required fields.
+    /// Validation checks only top-level required field presence; exhausting
+    /// either the output or model-call budget finalizes best-effort, except
+    /// that arguments that are not a JSON object fail the run.
     pub fn with_output_validation(
         mut self,
         output_schema: Option<serde_json::Value>,
@@ -893,6 +895,30 @@ impl AgentRun {
                     let args = tool_call.function.arguments_value();
                     let tool_call_id = tool_call.id.clone();
                     let output = json_utils::serialize_json_value(&args);
+
+                    // Arguments that are not a JSON object are no answer:
+                    // the model is told why while the budget lasts.
+                    if let Some(raw) = &tool_call.function.invalid_arguments {
+                        if self.can_reprompt_for_output() {
+                            self.new_messages
+                                .extend(assistant_message(head, items.clone()));
+                            let feedback = rig_core::transcript::invalid_arguments_feedback(
+                                &output_tool_name,
+                                raw,
+                            );
+                            if let Some(user_message) =
+                                invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
+                            {
+                                self.new_messages.push(user_message);
+                            }
+                            return self.reprompt_for_output();
+                        }
+                        return Err(ProviderError::Response(format!(
+                            "the output tool `{output_tool_name}` was called with arguments \
+                             that are not a JSON object: {raw}"
+                        ))
+                        .into());
+                    }
 
                     let missing = self
                         .output_schema

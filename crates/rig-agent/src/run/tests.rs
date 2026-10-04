@@ -1387,6 +1387,60 @@ fn tool_mode_reprompts_when_output_args_missing_required_fields() {
     assert!(!run.is_done());
 }
 
+/// A turn calling the output tool with arguments that are not a JSON object.
+fn malformed_output_tool_turn() -> ModelTurn {
+    ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![AssistantContent::ToolCall(ToolCall::from_wire(
+            "call_1",
+            ToolFunction::parse(
+                rig_core::message::ToolName::new("final_result").expect("tool name"),
+                "{\"x\":",
+            ),
+        ))],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add", "final_result"]),
+        hand_raw(),
+    )
+}
+
+#[test]
+fn a_malformed_output_tool_call_is_not_the_runs_output() {
+    let mut run = AgentRun::new("summarize").with_output_tool_name("final_result");
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(malformed_output_tool_turn())
+            .expect("model_response should succeed"),
+    );
+    let error = run
+        .next_step()
+        .expect_err("malformed output arguments fail the run");
+    assert!(error.to_string().contains("not a JSON object"), "{error}");
+}
+
+#[test]
+fn tool_mode_reprompts_when_output_args_are_not_a_json_object() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result")
+        .with_output_validation(None, 1);
+
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(malformed_output_tool_turn())
+            .expect("model_response should succeed"),
+    );
+
+    let (prompt, mut history, turn) = expect_call_model(&mut run);
+    assert_eq!(turn, 2);
+    let prompt_json = serde_json::to_string(&prompt).expect("prompt should serialize");
+    assert!(prompt_json.contains("not a JSON object"), "{prompt_json}");
+    history.push(prompt);
+    assert_no_orphan_tool_use(&history);
+    assert!(!run.is_done());
+}
+
 #[test]
 fn tool_mode_accepts_valid_json_text_without_reprompting() {
     // The model returned valid structured output as plain text instead of an

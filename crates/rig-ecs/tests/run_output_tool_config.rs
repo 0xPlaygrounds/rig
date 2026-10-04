@@ -409,3 +409,59 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
         Some("final_result_1")
     );
 }
+
+#[test]
+fn an_output_tool_call_whose_arguments_are_not_an_object_fails_the_run() {
+    use rig_core::message::{ToolCall, ToolFunction, ToolName};
+    let malformed = AssistantContent::ToolCall(ToolCall::from_wire(
+        "c",
+        ToolFunction::parse(ToolName::new("submit").unwrap(), "{\"answer\":"),
+    ));
+    let mut app = app();
+    let (agent, _) = scripted_agent(&mut app, MODEL, vec![vec![malformed]]);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert((schema(), config()));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(1));
+    tick_until(&mut app, "output tool settlement", |world| {
+        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
+    });
+    assert!(app.world().get::<RunResult>(run).is_none());
+    match app.world().get::<Failed>(run) {
+        Some(Failed(Failure::Provider(report))) => {
+            assert!(report.to_string().contains("not a JSON object"), "{report}");
+        }
+        other => panic!("the run did not fail on the arguments: {other:?}"),
+    }
+}
+
+#[test]
+fn an_output_tool_call_whose_arguments_are_not_an_object_is_reprompted() {
+    use rig_core::message::{ToolCall, ToolFunction, ToolName};
+    let malformed = AssistantContent::ToolCall(ToolCall::from_wire(
+        "c",
+        ToolFunction::parse(ToolName::new("submit").unwrap(), "{\"answer\":"),
+    ));
+    let mut app = app();
+    let (agent, requests) = scripted_agent(
+        &mut app,
+        MODEL,
+        vec![
+            vec![malformed],
+            vec![call("d", "submit", serde_json::json!({"answer":42}))],
+        ],
+    );
+    app.world_mut()
+        .entity_mut(agent)
+        .insert((schema(), config()));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(2));
+    settle(&mut app, run);
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    let retry = serde_json::to_string(&requests[1].chat_history).unwrap();
+    assert!(retry.contains("not a JSON object"), "{retry}");
+}
