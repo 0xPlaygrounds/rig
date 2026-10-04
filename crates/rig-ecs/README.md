@@ -403,7 +403,7 @@ has committed it. `MemoryAppendScheduled` persists the fact that finalization
 created an append; its child effect carries the request, dispatch id and
 outcome. Loading a snapshot before finalization schedules that append;
 loading a queued, in-flight or completed append does not create another
-operation. See `tests/memory_resume.rs` for live-handler tests at these cuts.
+operation.
 
 An unanswered effect is retried on load under its saved id. The external
 write may already have happened: a process can stop between the write and

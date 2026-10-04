@@ -664,9 +664,7 @@ loaded or not. Pinned by `tests/run_commands.rs`
 resumed world cell.
 
 
-The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
-scheduling, while queued, after an external write but before its outcome,
-and after completion. `MemoryAppendScheduled` and the child effect persist
+`MemoryAppendScheduled` and the child effect persist
 separately from Bevy change-detection ticks: loading `Settled` is not a new
 append transition. An unanswered write is retried under its saved effect id;
 external deduplication or reconciliation is the host's responsibility.

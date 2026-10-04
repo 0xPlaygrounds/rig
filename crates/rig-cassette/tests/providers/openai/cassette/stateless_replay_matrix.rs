@@ -28,9 +28,6 @@
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
-//!
-//! Unit cells for the (de)serializers live in
-//! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
 use futures::StreamExt;
 use rig::completion::ToolDefinition;
