@@ -499,7 +499,7 @@ pub(crate) fn adapt_for(
     };
     let mut accepts = target.accepts(model);
     accepts.tools &= request.tools;
-    let hosted = hosted_sides(history, target, &same);
+    let hosted = hosted_pairs(history, target, &same);
     let last_turn = history
         .iter()
         .rposition(|message| matches!(message, Message::Assistant(_)));
@@ -521,8 +521,24 @@ pub(crate) fn adapt_for(
                 shaped.extend(user(content, &mut ids, &form).into_iter().map(Some));
             }
             Message::Assistant(turn) => {
-                let last = Some(at) == last_turn;
-                let adapted = assistant(turn, target, &same, accepts, &mut ids, &hosted, last);
+                // A use can still be running only in the last turn, and only
+                // while nothing new follows it or the turn awaits a client call.
+                let last = Some(at) == last_turn
+                    && (turn
+                        .content
+                        .iter()
+                        .any(|block| matches!(block, AssistantContent::ToolCall(_)))
+                        || history
+                            .get(at + 1..)
+                            .into_iter()
+                            .flatten()
+                            .all(|message| matches!(message, Message::System { .. })));
+                let here: HashSet<usize> = hosted
+                    .iter()
+                    .filter(|(message, _)| *message == at)
+                    .map(|(_, block)| *block)
+                    .collect();
+                let adapted = assistant(turn, target, &same, accepts, &mut ids, &here, last);
                 let adapted = AssistantMessage {
                     content: adapted
                         .content
@@ -824,7 +840,7 @@ fn assistant(
     same_model: &Same<'_>,
     accepts: Accepts,
     ids: &mut Renamed,
-    hosted: &HashSet<(Pairing, String)>,
+    hosted: &HashSet<usize>,
     last: bool,
 ) -> AssistantMessage {
     let model = same_model.model;
@@ -916,45 +932,63 @@ fn assistant(
     }
 }
 
-/// The hosted uses and results the model's own replayed turns hold, which
-/// pair across turns: a programmatic tool call's code execution returns its
-/// result in the turn after the client call it made.
-fn hosted_sides(
+/// The hosted uses and results that pair, as (message, block) positions in
+/// the model's own replayed turns. A use pairs with the next result of its id,
+/// in its turn or a later one: a programmatic tool call's code execution
+/// returns its result in the turn after the client call it made. A second use
+/// of an id before its result leaves the first unpaired.
+fn hosted_pairs(
     history: &[Message],
     target: &dyn ReplayTarget,
     same: &Same<'_>,
-) -> HashSet<(Pairing, String)> {
-    history
-        .iter()
-        .filter_map(|message| match message {
-            Message::Assistant(turn)
-                if !turn.stop.as_ref().is_some_and(|stop| stop.is_failure())
-                    && turn.origin.as_ref().is_some_and(|origin| same.is(origin)) =>
-            {
-                Some(turn)
+) -> HashSet<(usize, usize)> {
+    let mut open: HashMap<String, (usize, usize)> = HashMap::new();
+    let mut paired = HashSet::new();
+    for (at, message) in history.iter().enumerate() {
+        let Message::Assistant(turn) = message else {
+            continue;
+        };
+        if turn.stop.as_ref().is_some_and(|stop| stop.is_failure())
+            || !turn.origin.as_ref().is_some_and(|origin| same.is(origin))
+        {
+            continue;
+        }
+        for (index, block) in turn.content.iter().enumerate() {
+            let AssistantContent::Opaque(opaque) = block else {
+                continue;
+            };
+            if !opaque.replay {
+                continue;
             }
-            _ => None,
-        })
-        .flat_map(|turn| &turn.content)
-        .filter_map(|block| match block {
-            AssistantContent::Opaque(opaque) if opaque.replay => target.hosted_pair(&opaque.item),
-            _ => None,
-        })
-        .collect()
+            match target.hosted_pair(&opaque.item) {
+                Some((Pairing::Use, id)) => {
+                    open.insert(id, (at, index));
+                }
+                Some((Pairing::Result, id)) => {
+                    if let Some(used) = open.remove(&id) {
+                        paired.insert(used);
+                        paired.insert((at, index));
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+    paired
 }
 
 /// A same-model turn's kept blocks (`None` where `adapt` dropped one), with
 /// every block whose partner is gone dropped too: an item that needs the one
 /// after it ([`ReplayTarget::needs_next`]), edited or not, when that one is
-/// dropped or only rebuilt, and a hosted use or result whose other half no
-/// turn in `hosted` holds ([`ReplayTarget::hosted_pair`]). In the `last`
-/// turn, a use followed only by calls and opaque items is still running and
-/// stays.
+/// dropped or only rebuilt, and a hosted use or result whose block position
+/// is not in `hosted` ([`ReplayTarget::hosted_pair`]). In the `last` turn,
+/// one that ends the history or awaits a client call, a use followed only by
+/// calls and opaque items is still running and stays.
 fn paired(
     mut content: Vec<Option<AssistantContent>>,
     target: &dyn ReplayTarget,
     tools: bool,
-    hosted: &HashSet<(Pairing, String)>,
+    hosted: &HashSet<usize>,
     last: bool,
 ) -> Vec<AssistantContent> {
     let pair = |block: &AssistantContent| match block {
@@ -962,12 +996,8 @@ fn paired(
         _ => None,
     };
     for at in 0..content.len() {
-        let Some((side, id)) = content.get(at).and_then(Option::as_ref).and_then(pair) else {
+        let Some((side, _)) = content.get(at).and_then(Option::as_ref).and_then(pair) else {
             continue;
-        };
-        let other = match side {
-            Pairing::Use => Pairing::Result,
-            Pairing::Result => Pairing::Use,
         };
         let running = last
             && side == Pairing::Use
@@ -982,7 +1012,7 @@ fn paired(
                         AssistantContent::ToolCall(_) | AssistantContent::Opaque(_)
                     )
                 });
-        if !hosted.contains(&(other, id))
+        if !hosted.contains(&at)
             && !running
             && let Some(slot) = content.get_mut(at)
         {

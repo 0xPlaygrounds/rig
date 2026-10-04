@@ -1270,6 +1270,16 @@ fn a_hosted_use_still_running_when_the_last_turn_ended_replays() {
         vec![hosted("server_use", "s1"), call("c1")]
     );
 
+    // A new user message after a paused turn starts a new exchange: the
+    // use no longer runs.
+    let mut followed = paused.clone();
+    followed.push(Message::user("again"));
+    let adapted = adapt(&followed, &Paired);
+    assert_eq!(
+        assistant(&adapted[1]).content,
+        vec![AssistantContent::text("Searching.")]
+    );
+
     // An earlier turn's use never gets its result.
     let mut later = paused.clone();
     later.extend([
@@ -1280,6 +1290,42 @@ fn a_hosted_use_still_running_when_the_last_turn_ended_replays() {
     assert_eq!(
         assistant(&adapted[1]).content,
         vec![AssistantContent::text("Searching.")]
+    );
+}
+
+#[test]
+fn a_hosted_use_pairs_with_the_next_result_of_its_id() {
+    // The first use's id comes back in a later use before any result, so
+    // only the second use pairs with the result.
+    let history = vec![
+        Message::user("q"),
+        turn(Some(same()), vec![hosted("server_use", "s1")]),
+        Message::user("again"),
+        turn(
+            Some(same()),
+            vec![
+                hosted("server_use", "s1"),
+                hosted("server_result", "s1"),
+                AssistantContent::text("a"),
+            ],
+        ),
+        Message::user("next"),
+    ];
+    let adapted = adapt(&history, &Paired);
+    let turns: Vec<_> = adapted
+        .iter()
+        .filter_map(|message| match message {
+            Message::Assistant(turn) => Some(turn.content.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        turns,
+        vec![vec![
+            hosted("server_use", "s1"),
+            hosted("server_result", "s1"),
+            AssistantContent::text("a"),
+        ]]
     );
 }
 
