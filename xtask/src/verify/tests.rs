@@ -916,6 +916,18 @@ fn the_coverage_check_runs_the_cheap_gate_without_mutation() {
 }
 
 #[test]
+fn cassettes_snapshots_and_the_index_select_the_acceptance_check() {
+    for path in [
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.requests.json",
+        "crates/rig-cassette/fixtures/acceptance.toml",
+    ] {
+        assert!(ids("--changed", &[path]).contains("acceptance"), "{path}");
+    }
+    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("acceptance"));
+}
+
+#[test]
 fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
     for path in [
         "crates/rig-ecs/src/lib.rs",

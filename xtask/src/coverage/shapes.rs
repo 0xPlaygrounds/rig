@@ -82,50 +82,68 @@ pub(crate) struct Recorded {
 /// Every shape the corpus records.
 pub(crate) type Shapes = BTreeMap<ShapeKey, Recorded>;
 
+/// One recorded exchange: its request (`when`) and reply (`then`).
 #[derive(Debug, Deserialize)]
-struct Interaction {
-    when: Exchange,
-    then: Exchange,
+pub(crate) struct Interaction {
+    pub(crate) when: Exchange,
+    pub(crate) then: Exchange,
+}
+
+/// A recorded request or reply, as much of it as shapes read.
+#[derive(Debug, Deserialize)]
+pub(crate) struct Exchange {
+    #[serde(default)]
+    pub(crate) path: String,
+    #[serde(default)]
+    pub(crate) method: String,
+    #[serde(default)]
+    pub(crate) status: u16,
+    #[serde(default)]
+    pub(crate) header: Vec<NameValue>,
+    #[serde(default)]
+    pub(crate) body: Option<String>,
+    #[serde(default)]
+    pub(crate) body_encoding: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-struct Exchange {
-    #[serde(default)]
-    path: String,
-    #[serde(default)]
-    method: String,
-    #[serde(default)]
-    status: u16,
-    #[serde(default)]
-    header: Vec<NameValue>,
-    #[serde(default)]
-    body: Option<String>,
-    #[serde(default)]
-    body_encoding: Option<String>,
+pub(crate) struct NameValue {
+    pub(crate) name: String,
+    pub(crate) value: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct NameValue {
-    name: String,
-    value: String,
+/// One cassette fixture of the corpus.
+#[derive(Debug)]
+pub(crate) struct Fixture {
+    /// The path below the corpus root, `<provider>/...yaml`.
+    pub(crate) relative: String,
+    pub(crate) provider: String,
+    /// [`hash`] of the file's text: it changes when the fixture is re-recorded.
+    pub(crate) hash: String,
+    pub(crate) interactions: Vec<Interaction>,
 }
 
 impl Exchange {
-    fn content_type(&self) -> &str {
+    /// The encoder: the method and the path template.
+    pub(crate) fn encoder(&self) -> String {
+        format!("{} {}", self.method, path_template(&self.path))
+    }
+
+    pub(crate) fn content_type(&self) -> &str {
         self.header
             .iter()
             .find(|header| header.name.eq_ignore_ascii_case("content-type"))
             .map_or("", |header| header.value.as_str())
     }
 
-    fn is_base64(&self) -> bool {
+    pub(crate) fn is_base64(&self) -> bool {
         self.body_encoding.as_deref() == Some("base64")
     }
 }
 
-/// Collect every shape under `cassettes` (`<provider>/**/*.yaml`).
-pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
-    let mut shapes = Shapes::new();
+/// Every fixture under `cassettes` (`<provider>/**/*.yaml`), in path order.
+pub(crate) fn corpus(cassettes: &Path) -> Result<Vec<Fixture>> {
+    let mut fixtures = Vec::new();
     for file in files_under(cassettes, Some("yaml"))? {
         let relative = file
             .strip_prefix(cassettes)
@@ -135,24 +153,39 @@ pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
         let Some((provider, _)) = relative.split_once('/') else {
             continue;
         };
+        let provider = provider.to_owned();
         let text = std::fs::read_to_string(&file)?;
-        for (index, interaction) in interactions(&text)
-            .map_err(|error| invalid(format!("{relative}: {error}")))?
-            .into_iter()
-            .enumerate()
-        {
-            let encoder = format!(
-                "{} {}",
-                interaction.when.method,
-                path_template(&interaction.when.path)
-            );
+        let interactions =
+            interactions(&text).map_err(|error| invalid(format!("{relative}: {error}")))?;
+        fixtures.push(Fixture {
+            relative,
+            provider,
+            hash: hash(&text),
+            interactions,
+        });
+    }
+    Ok(fixtures)
+}
+
+/// Collect every shape under `cassettes` (`<provider>/**/*.yaml`).
+pub(crate) fn collect(cassettes: &Path) -> Result<Shapes> {
+    let mut shapes = Shapes::new();
+    for fixture in corpus(cassettes)? {
+        let Fixture {
+            relative,
+            provider,
+            interactions,
+            ..
+        } = fixture;
+        for (index, interaction) in interactions.into_iter().enumerate() {
+            let encoder = interaction.when.encoder();
             let example = format!("{relative}#{index}");
             for (kind, shape) in [
                 (Kind::Request, request_skeleton(&interaction.when)),
                 (Kind::Reply, reply_shape(&interaction.then)),
             ] {
                 let key = ShapeKey {
-                    provider: provider.to_owned(),
+                    provider: provider.clone(),
                     encoder: encoder.clone(),
                     kind,
                     hash: hash(&shape),
@@ -198,7 +231,7 @@ pub(crate) fn path_template(path: &str) -> String {
 }
 
 /// The fine skeleton of a request body.
-fn request_skeleton(request: &Exchange) -> String {
+pub(crate) fn request_skeleton(request: &Exchange) -> String {
     let body = request.body.as_deref().unwrap_or("");
     if body.is_empty() {
         return "empty".to_owned();

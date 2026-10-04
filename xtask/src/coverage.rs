@@ -20,7 +20,7 @@
 
 mod lines;
 mod mutants;
-mod shapes;
+pub(crate) mod shapes;
 #[cfg(test)]
 mod tests;
 

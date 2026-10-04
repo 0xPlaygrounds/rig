@@ -439,6 +439,19 @@ pub(super) fn plan(
     if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
     }
+    // Fixtures and their request snapshots are what the acceptance index
+    // reads.
+    if paths.iter().any(|p| {
+        p.starts_with("crates/rig-cassette/fixtures/cassettes/")
+            || p == "crates/rig-cassette/fixtures/acceptance.toml"
+    }) {
+        add(
+            &mut out,
+            all,
+            "acceptance",
+            "cassettes, snapshots or the index changed: every sent skeleton needs a recording",
+        )?;
+    }
     // Rust sources move line and branch coverage; fixtures move the
     // recorded shapes.
     if paths

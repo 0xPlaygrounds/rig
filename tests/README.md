@@ -328,6 +328,32 @@ A rewrite deletes every snapshot first, then replays with
 a change to what Rig sends or after re-recording a fixture, and review the
 snapshot diff with the change.
 
+#### Acceptance index
+
+`crates/rig-cassette/fixtures/acceptance.toml` maps every fine request
+skeleton Rig sends, per provider and encoder, to one interaction recorded
+live with exactly that skeleton. The skeleton is the coverage gate's: JSON
+keys and types kept, values erased, arrays collapsed to their element kinds.
+What Rig sends is read offline from each recording with its snapshot applied,
+so the check reads files only. A recording whose request body the proxy
+recorder dropped is pinned to the skeleton its snapshot showed when the
+fixture was first indexed, until the fixture changes.
+
+```bash
+cargo xtask cassette acceptance           # rewrite the index
+cargo xtask cassette acceptance --check   # CI's `verify --check acceptance`
+```
+
+`--check` fails when a skeleton Rig sends has no live recording, naming the
+provider, the encoder and an interaction that sends it, and when the index
+is stale. The rules for a change to what Rig sends:
+
+- it keeps every request's coarse shape: refresh the snapshots, rewrite the
+  index, and record nothing;
+- it adds a fine skeleton: record one acceptance cassette per provider and
+  skeleton that `--check` lists, and only those;
+- never re-record a cassette whose shape did not change.
+
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
 
 Bedrock cassette replay does not require AWS credentials. Bedrock record mode uses the AWS

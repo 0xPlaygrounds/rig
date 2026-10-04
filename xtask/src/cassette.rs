@@ -7,6 +7,7 @@
 //! (`recordings.tsv`), failed recordings, fixtures kept from failed runs and the
 //! created-resource ledger (`ledger.jsonl`).
 
+mod acceptance;
 mod audit;
 mod goldens;
 mod owner;
@@ -38,6 +39,10 @@ pub(crate) const USAGE: &str = "\
   cassette snapshots [--check] [--test TARGET]...
                               rewrite the request snapshots from replay, or
                               with --check fail when a request differs from one
+  cassette acceptance [--check]
+                              write the acceptance index, or with --check fail
+                              when a request skeleton Rig sends has no live
+                              recording or the index is stale
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -65,6 +70,7 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "goldens" => goldens::run(root, rest),
         "audit" => audit::run(root, rest),
         "snapshots" => snapshots::run(root, rest),
+        "acceptance" => acceptance::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }
