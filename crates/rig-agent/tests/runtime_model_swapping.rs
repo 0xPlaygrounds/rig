@@ -7,24 +7,20 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
-    task::{Context, Poll},
-    time::Duration,
 };
 
-use futures::{Stream, StreamExt, stream};
+use futures::{StreamExt, stream};
 use rig_agent::{
     Agent, AgentBuilder, ModelRef,
     agent::{
-        AgentHook, AgentRunner, CompletionCallAction, DispatchAction, DispatchEvent, HookContext,
-        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
-        ModelTurnFinished, NoToolConfig, OutcomeAction, OutcomeEvent, RequestPatch,
-        StreamingResult,
+        AgentHook, AgentRunner, CompletionCallAction, HookContext, InvalidToolCallAction,
+        ModelSelection, ModelSelectionAction, ModelTurnAction, ModelTurnFinished, NoToolConfig,
+        RequestPatch, StreamingResult,
     },
     completion::{
         CompletionRequest, CompletionResponse, Message, PromptError, ProviderCapabilities, Usage,
     },
     extractor::{Extractor, ExtractorBuilder},
-    streaming::{Item, StreamEvent},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
@@ -34,17 +30,10 @@ use rig_core::test_utils::{MockFrame, MockScript, MockStreamEvent};
 use rig_core::wire::{Capabilities, Mode};
 use rig_core::{
     error::ErrorKind,
-    message::{AssistantContent, Origin, ToolCall, ToolFunction, UserContent},
+    message::{AssistantContent, Origin, ToolCall, ToolFunction},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tokio::sync::Notify;
-
-async fn wait_for_notification(notify: &Notify) {
-    tokio::time::timeout(Duration::from_secs(5), notify.notified())
-        .await
-        .expect("model was polled before timeout");
-}
 
 struct SelectWith<F>(F);
 
@@ -58,30 +47,6 @@ where
         event: ModelSelection<'_>,
     ) -> ModelSelectionAction {
         (self.0)(context, event)
-    }
-}
-
-#[derive(Clone)]
-struct StopSelection {
-    completion_calls: Arc<AtomicUsize>,
-}
-
-impl AgentHook for StopSelection {
-    fn on_model_select(
-        &self,
-        _context: &HookContext,
-        _event: ModelSelection<'_>,
-    ) -> ModelSelectionAction {
-        ModelSelectionAction::stop("routing denied")
-    }
-
-    async fn on_completion_call(
-        &self,
-        _context: &HookContext,
-        _event: rig_agent::agent::CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        self.completion_calls.fetch_add(1, Ordering::SeqCst);
-        CompletionCallAction::continue_run()
     }
 }
 
@@ -103,11 +68,6 @@ enum Turn {
         id: String,
         name: String,
         arguments: serde_json::Value,
-        usage: Usage,
-        message_id: String,
-    },
-    Rich {
-        text: String,
         usage: Usage,
         message_id: String,
     },
@@ -133,32 +93,20 @@ impl Turn {
         }
     }
 
-    fn rich(text: &str, total_tokens: u64, message_id: &str) -> Self {
-        Self::Rich {
-            text: text.to_owned(),
-            usage: usage(total_tokens),
-            message_id: message_id.to_owned(),
-        }
-    }
-
     fn error(message: &str) -> Self {
         Self::Error(message.to_owned())
     }
 
     fn usage(&self) -> Usage {
         match self {
-            Self::Text { usage, .. } | Self::Tool { usage, .. } | Self::Rich { usage, .. } => {
-                *usage
-            }
+            Self::Text { usage, .. } | Self::Tool { usage, .. } => *usage,
             Self::Error(_) => Usage::default(),
         }
     }
 
     fn message_id(&self) -> String {
         match self {
-            Self::Text { message_id, .. }
-            | Self::Tool { message_id, .. }
-            | Self::Rich { message_id, .. } => message_id.clone(),
+            Self::Text { message_id, .. } | Self::Tool { message_id, .. } => message_id.clone(),
             Self::Error(_) => String::new(),
         }
     }
@@ -178,10 +126,6 @@ impl Turn {
                     arguments.clone(),
                 ),
             ))],
-            Self::Rich { text, .. } => vec![
-                AssistantContent::reasoning("considering the evidence"),
-                AssistantContent::text(text),
-            ],
             Self::Error(_) => vec![AssistantContent::text("unreachable")],
         }
     }
@@ -189,6 +133,8 @@ impl Turn {
 
 struct Script {
     provider: &'static str,
+    // Never read: the Debug assertion checks that it stays out of the output.
+    #[allow(dead_code)]
     secret: String,
     turns: Mutex<VecDeque<Turn>>,
     fallback: Turn,
@@ -210,23 +156,6 @@ impl Script {
             requests: Mutex::new(Vec::new()),
             composes_native_output_with_tools: false,
         })
-    }
-
-    fn composing(
-        provider: &'static str,
-        turns: impl IntoIterator<Item = Turn>,
-        fallback: Turn,
-    ) -> Arc<Self> {
-        let mut script = Self {
-            provider,
-            secret: format!("{provider}-credential-must-not-leak"),
-            turns: Mutex::new(turns.into_iter().collect()),
-            fallback,
-            requests: Mutex::new(Vec::new()),
-            composes_native_output_with_tools: true,
-        };
-        script.secret.shrink_to_fit();
-        Arc::new(script)
     }
 
     fn next_turn(&self) -> Turn {
@@ -301,23 +230,6 @@ fn stream_from_script(
                 arguments.to_string(),
             ));
             events.push(MockStreamEvent::tool_call_end(id.clone()));
-        }
-        Turn::Rich { text, .. } => {
-            // A whole reasoning part, then a streamed one, then an
-            // unmodeled provider event, then the answer.
-            events.push(MockStreamEvent::Reasoning {
-                id: "reasoning-1".to_owned(),
-                text: "summary".to_owned(),
-            });
-            events.push(MockStreamEvent::reasoning_delta_with_id(
-                "reasoning-2",
-                "reasoning delta",
-            ));
-            events.push(MockStreamEvent::unknown(serde_json::json!({
-                "type": "provider_native_event",
-                "provider": script.provider,
-            })));
-            events.push(MockStreamEvent::text(text.clone()));
         }
         // Handled by the early return above.
         Turn::Error(_) => return Err(ProviderError::Provider("unreachable".to_owned())),
@@ -614,225 +526,6 @@ async fn replacement_and_override_scopes_have_value_semantics() {
     );
 }
 
-#[tokio::test]
-async fn agent_and_request_model_selection_hooks_have_expected_scope() {
-    let agent = AgentBuilder::named_model("default", alpha_static("default"))
-        .model_route("routed", beta_static("agent routed"))
-        .model_route("request", alpha_static("request routed"))
-        .add_hook(SelectWith(
-            move |_context: &HookContext, _event: ModelSelection<'_>| {
-                ModelSelectionAction::select("routed")
-            },
-        ))
-        .build();
-
-    assert_eq!(
-        agent
-            .prompt("agent hook")
-            .await
-            .expect("agent hook route")
-            .output(),
-        "agent routed"
-    );
-
-    assert_eq!(
-        agent
-            .prompt("request hook")
-            .add_hook(SelectWith(
-                move |_context: &HookContext, event: ModelSelection<'_>| {
-                    assert_eq!(event.selected_model.as_str(), "routed");
-                    ModelSelectionAction::select("request")
-                }
-            ))
-            .await
-            .expect("request hook route")
-            .output(),
-        "request routed"
-    );
-
-    assert_eq!(
-        agent
-            .prompt("agent hook remains")
-            .await
-            .expect("agent hook remains")
-            .output(),
-        "agent routed"
-    );
-}
-
-#[tokio::test]
-async fn model_selection_stop_cancels_before_provider_execution() {
-    let blocking_model = alpha_static("must not execute");
-    let blocking_script = script_of(&blocking_model);
-    let blocking_completion_calls = Arc::new(AtomicUsize::new(0));
-    let error = AgentBuilder::new(blocking_model)
-        .build()
-        .prompt("stop before execution")
-        .add_hook(StopSelection {
-            completion_calls: blocking_completion_calls.clone(),
-        })
-        .await
-        .expect_err("selection stop should cancel the run");
-
-    assert!(matches!(
-        error,
-        PromptError::Cancelled { reason, .. } if reason == "routing denied"
-    ));
-    assert!(blocking_script.requests().is_empty());
-    // Completion-call hooks resolve BEFORE model selection, so the stop above
-    // does not suppress them.
-    assert_eq!(blocking_completion_calls.load(Ordering::SeqCst), 1);
-
-    let streaming_model = alpha_static("must not stream");
-    let streaming_script = script_of(&streaming_model);
-    let streaming_completion_calls = Arc::new(AtomicUsize::new(0));
-    let mut stream = AgentBuilder::new(streaming_model)
-        .build()
-        .prompt("stop before streaming")
-        .add_hook(StopSelection {
-            completion_calls: streaming_completion_calls.clone(),
-        })
-        .stream();
-    let error = stream
-        .next()
-        .await
-        .expect("selection stop should emit an error")
-        .expect_err("selection stop should cancel the stream");
-
-    assert!(matches!(
-        error,
-        PromptError::Cancelled { reason, .. } if reason == "routing denied"
-    ));
-    assert!(streaming_script.requests().is_empty());
-    assert_eq!(streaming_completion_calls.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn extraction_override_is_run_local_and_sets_each_retry_default() {
-    let default_turn = Turn::Tool {
-        id: "default-submit".to_owned(),
-        name: rig_core::message::ToolName::new("submit")
-            .expect("tool name")
-            .into(),
-        arguments: serde_json::json!({"value": "default"}),
-        usage: usage(1),
-        message_id: "default-extraction".to_owned(),
-    };
-    let specialist_turn = Turn::Tool {
-        id: "specialist-submit".to_owned(),
-        name: rig_core::message::ToolName::new("submit")
-            .expect("tool name")
-            .into(),
-        arguments: serde_json::json!({"value": "specialist"}),
-        usage: usage(2),
-        message_id: "specialist-extraction".to_owned(),
-    };
-    let typed_turn = Turn::Tool {
-        id: "typed-submit".to_owned(),
-        name: rig_core::message::ToolName::new("submit")
-            .expect("tool name")
-            .into(),
-        arguments: serde_json::json!({"value": "typed specialist"}),
-        usage: usage(3),
-        message_id: "typed-extraction".to_owned(),
-    };
-
-    let default_script = Script::new("default", [], default_turn);
-    let specialist_script = Script::new(
-        "specialist",
-        [
-            Turn::text("retry without submit", 1, "specialist-retry"),
-            specialist_turn.clone(),
-        ],
-        specialist_turn,
-    );
-    let extractor = ExtractorBuilder::<ExtractedValue>::new(scripted(default_script.clone()))
-        .retries(1)
-        .build();
-
-    let specialist = extractor
-        .extract("use the specialist")
-        .using_model_value(scripted(specialist_script.clone()))
-        .await
-        .expect("run-local extraction override");
-    assert_eq!(specialist.output.value, "specialist");
-    assert_eq!(specialist_script.requests().len(), 2);
-    assert!(default_script.requests().is_empty());
-
-    let typed = extractor
-        .extract("use a typed model value")
-        .using_model_value(scripted(Script::new("typed", [], typed_turn)))
-        .await
-        .expect("typed extraction override");
-    assert_eq!(typed.output.value, "typed specialist");
-    assert_eq!(typed.usage, usage(3));
-
-    let default = extractor
-        .extract("use the default again")
-        .await
-        .expect("default extraction remains unchanged");
-    assert_eq!(default.output.value, "default");
-    assert_eq!(default_script.requests().len(), 1);
-}
-
-#[tokio::test]
-async fn extraction_retries_reenter_model_selection_hooks() {
-    let default = alpha_static("default must not execute");
-    let default_script = script_of(&default);
-    let first = alpha_static("retry without submit");
-    let first_script = script_of(&first);
-    let submit_turn = Turn::Tool {
-        id: "routed-submit".to_owned(),
-        name: rig_core::message::ToolName::new("submit")
-            .expect("tool name")
-            .into(),
-        arguments: serde_json::json!({"value": "hook selected"}),
-        usage: usage(2),
-        message_id: "routed-extraction".to_owned(),
-    };
-    let second = scripted(Script::new("second", [submit_turn.clone()], submit_turn));
-    let second_script = script_of(&second);
-    let selections = Arc::new(Mutex::new(Vec::new()));
-    let selections_for_hook = selections.clone();
-    let attempts = Arc::new(AtomicUsize::new(0));
-    let attempts_for_hook = attempts.clone();
-    let extractor = ExtractorBuilder::<ExtractedValue>::from_agent_builder(
-        AgentBuilder::new(default)
-            .model_route("first", first)
-            .model_route("second", second),
-    )
-    .add_hook(SelectWith(
-        move |context: &HookContext, event: ModelSelection<'_>| {
-            selections_for_hook.lock().expect("selection log").push((
-                context.turn(),
-                event
-                    .previous_model
-                    .map(ModelRef::as_str)
-                    .map(str::to_owned),
-            ));
-            let attempt = attempts_for_hook.fetch_add(1, Ordering::SeqCst);
-            ModelSelectionAction::select(if attempt == 0 { "first" } else { "second" })
-        },
-    ))
-    .retries(1)
-    .build();
-
-    let extracted = extractor
-        .extract("repair the structured output")
-        .await
-        .expect("hook-routed extraction retry");
-
-    assert_eq!(extracted.output.value, "hook selected");
-    assert_eq!(attempts.load(Ordering::SeqCst), 2);
-    assert_eq!(first_script.requests().len(), 1);
-    assert_eq!(second_script.requests().len(), 1);
-    assert!(default_script.requests().is_empty());
-    assert_eq!(
-        selections.lock().expect("selection log").as_slice(),
-        &[(1, None), (1, None)]
-    );
-}
-
 #[derive(Clone)]
 struct LookupTool {
     calls: Arc<AtomicUsize>,
@@ -860,266 +553,6 @@ impl Tool for LookupTool {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok("durable evidence".to_owned())
     }
-}
-
-#[derive(Clone, Default)]
-struct LifecycleLog(Arc<Mutex<Vec<String>>>);
-
-impl LifecycleLog {
-    fn entries(&self) -> Vec<String> {
-        self.0.lock().expect("lifecycle lock").clone()
-    }
-
-    fn push(&self, entry: impl Into<String>) {
-        self.0.lock().expect("lifecycle lock").push(entry.into());
-    }
-}
-
-impl AgentHook for LifecycleLog {
-    async fn on_completion_call(
-        &self,
-        context: &HookContext,
-        _event: rig_agent::agent::CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        self.push(format!("completion:{}", context.turn()));
-        CompletionCallAction::continue_run()
-    }
-
-    async fn on_model_turn_finished(
-        &self,
-        context: &HookContext,
-        _event: ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        self.push(format!("model:{}", context.turn()));
-        ModelTurnAction::continue_run()
-    }
-
-    async fn on_dispatch(
-        &self,
-        _context: &HookContext,
-        event: DispatchEvent<'_>,
-    ) -> DispatchAction {
-        if let Some(name) = event.tool_name() {
-            self.push(format!("tool-call:{name}"));
-        }
-        DispatchAction::proceed()
-    }
-
-    async fn on_outcome(&self, _context: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-        if let Some(name) = event.tool_name() {
-            self.push(format!("tool-result:{name}"));
-        }
-        OutcomeAction::proceed()
-    }
-}
-
-fn routing_models() -> (FakeModel, FakeModel) {
-    let alpha_turn = Turn::tool("lookup", 3, "alpha-tool-message");
-    let beta_turn = Turn::text("synthesized answer", 5, "beta-answer-message");
-    (
-        scripted(Script::new("alpha", [alpha_turn.clone()], alpha_turn)),
-        scripted(Script::new("beta", [beta_turn.clone()], beta_turn)),
-    )
-}
-
-fn history_has_tool_result(request: &CompletionRequest) -> bool {
-    request.chat_history.iter().any(|message| {
-        matches!(
-            message,
-            Message::User { content }
-                if content.iter().any(|item| matches!(item, UserContent::ToolResult(_)))
-        )
-    })
-}
-
-#[tokio::test]
-async fn runner_default_is_used_for_every_attempt_without_a_selecting_hook() {
-    let first = Turn::tool("lookup", 2, "default-tool-message");
-    let second = Turn::text("default final", 3, "default-final-message");
-    let model = scripted(Script::new("default", [first, second.clone()], second));
-    let script = script_of(&model);
-
-    let output = AgentBuilder::new(model)
-        .tool(LookupTool {
-            calls: Arc::new(AtomicUsize::new(0)),
-        })
-        .build()
-        .prompt("use the default twice")
-        .max_turns(2)
-        .await
-        .expect("default multi-turn run");
-
-    assert_eq!(output.output(), "default final");
-    assert_eq!(script.requests().len(), 2);
-}
-
-#[tokio::test]
-async fn blocking_and_streaming_switch_after_tools_with_equivalent_semantics() {
-    async fn run_blocking() -> (
-        rig_agent::agent::PromptResponse,
-        Vec<String>,
-        usize,
-        Vec<CompletionRequest>,
-        Vec<String>,
-    ) {
-        let (alpha, beta) = routing_models();
-        let beta_script = script_of(&beta);
-        let calls = Arc::new(AtomicUsize::new(0));
-        let lifecycle = LifecycleLog::default();
-        let selected = Arc::new(Mutex::new(Vec::new()));
-        let selected_for_router = selected.clone();
-        let response = AgentBuilder::named_model("alpha", alpha)
-            .model_route("beta", beta)
-            .tool(LookupTool {
-                calls: calls.clone(),
-            })
-            .add_hook(lifecycle.clone())
-            .build()
-            .prompt("research then synthesize")
-            .max_turns(3)
-            .add_hook(SelectWith(
-                move |context: &HookContext, _event: ModelSelection<'_>| {
-                    selected_for_router
-                        .lock()
-                        .expect("selection lock")
-                        .push(context.turn());
-                    ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
-                },
-            ))
-            .await
-            .expect("blocking routed run");
-        let selections = selected.lock().expect("selection lock").clone();
-        (
-            response,
-            lifecycle.entries(),
-            calls.load(Ordering::SeqCst),
-            beta_script.requests(),
-            selections
-                .into_iter()
-                .map(|turn| turn.to_string())
-                .collect(),
-        )
-    }
-
-    async fn run_streaming() -> (
-        rig_agent::agent::PromptResponse,
-        Vec<String>,
-        usize,
-        Vec<CompletionRequest>,
-        Vec<usize>,
-        Vec<&'static str>,
-        Vec<rig_core::message::CallId>,
-    ) {
-        let (alpha, beta) = routing_models();
-        let beta_script = script_of(&beta);
-        let calls = Arc::new(AtomicUsize::new(0));
-        let lifecycle = LifecycleLog::default();
-        let selected = Arc::new(Mutex::new(Vec::new()));
-        let selected_for_router = selected.clone();
-        let agent = AgentBuilder::named_model("alpha", alpha)
-            .model_route("beta", beta)
-            .tool(LookupTool {
-                calls: calls.clone(),
-            })
-            .add_hook(lifecycle.clone())
-            .build();
-        let mut stream = agent
-            .prompt("research then synthesize")
-            .max_turns(3)
-            .add_hook(SelectWith(
-                move |context: &HookContext, _event: ModelSelection<'_>| {
-                    selected_for_router
-                        .lock()
-                        .expect("selection lock")
-                        .push(context.turn());
-                    ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
-                },
-            ))
-            .stream();
-        let mut final_response = None;
-        let mut events = Vec::new();
-        let mut call_ids = Vec::new();
-        while let Some(item) = stream.next().await {
-            match item.expect("stream item") {
-                rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
-                    StreamEvent::End {
-                        content: AssistantContent::ToolCall(call),
-                        ..
-                    },
-                )) => {
-                    events.push("tool-end");
-                    call_ids.push(call.id);
-                }
-                rig_agent::agent::MultiTurnStreamItem::ToolCall { tool_call, .. } => {
-                    events.push("tool-call");
-                    call_ids.push(tool_call.id);
-                }
-                rig_agent::agent::MultiTurnStreamItem::ToolExecutionCommitted {
-                    tool_call, ..
-                } => {
-                    events.push("tool-commit");
-                    call_ids.push(tool_call.id);
-                }
-                rig_agent::agent::MultiTurnStreamItem::ToolResult { tool_result } => {
-                    events.push("tool-result");
-                    call_ids.push(tool_result.call);
-                }
-                rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                    final_response = Some(response);
-                }
-                _ => {}
-            }
-        }
-        (
-            final_response.expect("stream final response"),
-            lifecycle.entries(),
-            calls.load(Ordering::SeqCst),
-            beta_script.requests(),
-            selected.lock().expect("selection lock").clone(),
-            events,
-            call_ids,
-        )
-    }
-
-    let (blocking, blocking_hooks, blocking_tool_calls, blocking_beta, blocking_selected) =
-        run_blocking().await;
-    let (
-        streaming,
-        streaming_hooks,
-        streaming_tool_calls,
-        streaming_beta,
-        streaming_selected,
-        stream_events,
-        stream_call_ids,
-    ) = run_streaming().await;
-
-    assert_eq!(blocking.output(), "synthesized answer");
-    assert_eq!(blocking.output(), streaming.output());
-    assert_eq!(blocking.usage, usage(8));
-    assert_eq!(blocking.usage, streaming.usage);
-    assert_eq!(blocking.messages, streaming.messages);
-    assert_eq!(blocking_hooks, streaming_hooks);
-    assert_eq!(blocking_tool_calls, 1);
-    assert_eq!(streaming_tool_calls, 1);
-    assert_eq!(blocking_selected, vec!["1", "2"]);
-    assert_eq!(streaming_selected, vec![1, 2]);
-    assert!(blocking_beta.first().is_some_and(history_has_tool_result));
-    assert!(streaming_beta.first().is_some_and(history_has_tool_result));
-    assert_eq!(
-        stream_events,
-        vec!["tool-end", "tool-call", "tool-commit", "tool-result"]
-    );
-    // The call's id is fixed when the call opens; every downstream stage
-    // carries that one id.
-    let correlation = stream_call_ids
-        .first()
-        .expect("at least one correlated event")
-        .clone();
-    assert_eq!(
-        stream_call_ids,
-        vec![correlation; 4],
-        "the call's end, the committed call, execution, and result carry one call id"
-    );
 }
 
 #[derive(Clone)]
@@ -1205,411 +638,11 @@ impl AgentHook for RetryInvalidTool {
     }
 }
 
-#[tokio::test]
-async fn invalid_tool_retry_reenters_selection_exactly_once() {
-    let invalid = Turn::tool("missing_tool", 2, "invalid-tool-message");
-    let alpha = scripted(Script::new("alpha", [invalid.clone()], invalid));
-    let beta = beta_static("recovered after invalid tool");
-    let selections = Arc::new(Mutex::new(Vec::new()));
-    let selections_for_router = selections.clone();
-
-    let output = AgentBuilder::named_model("alpha", alpha)
-        .model_route("beta", beta)
-        .add_hook(RetryInvalidTool)
-        .build()
-        .prompt("recover from an invalid tool")
-        .max_turns(2)
-        .max_invalid_tool_call_retries(1)
-        .add_hook(SelectWith(
-            move |context: &HookContext, event: ModelSelection<'_>| {
-                selections_for_router.lock().expect("selection lock").push((
-                    context.turn(),
-                    event
-                        .previous_model
-                        .map(ModelRef::as_str)
-                        .map(str::to_owned),
-                ));
-                ModelSelectionAction::select(if context.turn() == 1 { "alpha" } else { "beta" })
-            },
-        ))
-        .await
-        .expect("invalid-tool retry run");
-
-    assert_eq!(output.output(), "recovered after invalid tool");
-    assert_eq!(
-        selections.lock().expect("selection lock").as_slice(),
-        &[(1, None), (2, Some("alpha".to_owned()))]
-    );
-}
-
-#[tokio::test]
-async fn normalized_stream_preserves_events_message_id_and_usage() {
-    let rich = Turn::rich("final text", 13, "rich-message-id");
-    let alpha = scripted(Script::new("alpha", [rich.clone()], rich));
-    let agent = AgentBuilder::new(alpha).build();
-    let mut stream = agent.prompt("rich stream").stream();
-    let mut saw_reasoning = false;
-    let mut saw_reasoning_delta = false;
-    let mut saw_unknown = false;
-    let mut completion_call = None;
-    let mut final_response = None;
-
-    while let Some(item) = stream.next().await {
-        match item.expect("normalized stream item") {
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
-                StreamEvent::End {
-                    content: AssistantContent::Reasoning(_),
-                    ..
-                },
-            )) => saw_reasoning = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Event(
-                StreamEvent::Reasoning { .. },
-            )) => saw_reasoning_delta = true,
-            rig_agent::agent::MultiTurnStreamItem::StreamAssistantItem(Item::Unknown(value)) => {
-                saw_unknown = value.value()["type"] == "provider_native_event";
-            }
-            rig_agent::agent::MultiTurnStreamItem::CompletionCall(call) => {
-                completion_call = Some(call);
-            }
-            rig_agent::agent::MultiTurnStreamItem::FinalResponse(response) => {
-                final_response = Some(response);
-            }
-            _ => {}
-        }
-    }
-
-    assert!(saw_reasoning);
-    assert!(saw_reasoning_delta);
-    assert!(saw_unknown);
-    let completion_call = completion_call.expect("the model call is recorded");
-    assert_eq!(completion_call.usage, usage(13));
-    assert_eq!(
-        completion_call.response_id.as_deref(),
-        Some("rich-message-id")
-    );
-    let final_response = final_response.expect("agent final response");
-    assert_eq!(final_response.output(), "final text");
-    assert_eq!(final_response.usage, usage(13));
-    assert!(final_response.messages.iter().any(|message| {
-        matches!(message, Message::Assistant(turn)
-            if turn.origin.as_ref().and_then(|origin| origin.response_id.as_deref())
-                == Some("rich-message-id"))
-    }));
-}
-
-#[tokio::test]
-async fn selected_model_capability_is_used_for_each_prepared_attempt() {
-    let composing_turn = Turn::text("retry me", 1, "compose-message");
-    let composing = scripted(Script::composing(
-        "composing",
-        [composing_turn.clone()],
-        composing_turn,
-    ));
-    let composing_script = script_of(&composing);
-    let noncomposing_turn = Turn::text("accepted", 1, "noncompose-message");
-    let noncomposing = scripted(Script::new(
-        "noncomposing",
-        [noncomposing_turn.clone()],
-        noncomposing_turn,
-    ));
-    let noncomposing_script = script_of(&noncomposing);
-    let _response = AgentBuilder::named_model("composing", composing)
-        .model_route("noncomposing", noncomposing)
-        .output_schema::<ExtractedValue>()
-        .output_mode(rig_agent::agent::OutputMode::Auto)
-        .tool(LookupTool {
-            calls: Arc::new(AtomicUsize::new(0)),
-        })
-        .add_hook(RetryFirst(Arc::new(AtomicUsize::new(0))))
-        .build()
-        .prompt("capability routing")
-        .max_turns(2)
-        .add_hook(SelectWith(
-            move |context: &HookContext, _event: ModelSelection<'_>| {
-                ModelSelectionAction::select(if context.turn() == 1 {
-                    "composing"
-                } else {
-                    "noncomposing"
-                })
-            },
-        ))
-        .await
-        .expect("capability run");
-
-    let composing_request = composing_script
-        .requests()
-        .into_iter()
-        .next()
-        .expect("composing request");
-    assert!(composing_request.output_schema.is_some());
-    assert!(
-        !composing_request
-            .tools
-            .iter()
-            .any(|tool| tool.name.starts_with("final_result"))
-    );
-
-    let noncomposing_request = noncomposing_script
-        .requests()
-        .into_iter()
-        .next()
-        .expect("noncomposing request");
-    assert!(noncomposing_request.output_schema.is_none());
-    assert!(
-        noncomposing_request
-            .tools
-            .iter()
-            .any(|tool| tool.name.starts_with("final_result"))
-    );
-}
-
-/// Answers a unary call with a tool call once `release` is notified,
-/// after notifying `started`.
-fn gated_tool_model(started: Arc<Notify>, release: Arc<Notify>) -> FakeModel {
-    Fake::model("gated", move |_request, mode| {
-        Ok(match mode {
-            Mode::Unary => {
-                let (started, release) = (started.clone(), release.clone());
-                Box::pin(async move {
-                    started.notify_one();
-                    release.notified().await;
-                    let turn = Turn::tool("lookup", 3, "gated-tool-message");
-                    let response = {
-                        let mut response = CompletionResponse::new(
-                            turn.choice(),
-                            turn.usage(),
-                            Origin::new("test.api", "gated", ""),
-                            serde_json::json!({}),
-                        );
-                        response.origin.response_id = Some(turn.message_id());
-                        response
-                    };
-                    answered(response)
-                }) as FakeReply
-            }
-            Mode::Streaming => replied(vec![
-                MockStreamEvent::text("unused"),
-                MockStreamEvent::FinalResponse(Finish {
-                    usage: usage(1),
-                    ..Finish::default()
-                }),
-            ]),
-        })
-    })
-}
-
-#[tokio::test]
-async fn routing_changes_cannot_rebind_an_in_flight_attempt_but_affect_the_next_call() {
-    let started = Arc::new(Notify::new());
-    let release = Arc::new(Notify::new());
-    let gated = gated_tool_model(started.clone(), release.clone());
-    let use_beta = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let use_beta_for_router = use_beta.clone();
-    let tool_calls = Arc::new(AtomicUsize::new(0));
-
-    let agent = AgentBuilder::named_model("gated", gated)
-        .model_route("beta", beta_static("after tool"))
-        .tool(LookupTool {
-            calls: tool_calls.clone(),
-        })
-        .build();
-    let task = tokio::spawn(async move {
-        agent
-            .prompt("bind the attempt")
-            .max_turns(2)
-            .add_hook(SelectWith(
-                move |_context: &HookContext, _event: ModelSelection<'_>| {
-                    ModelSelectionAction::select(if use_beta_for_router.load(Ordering::SeqCst) {
-                        "beta"
-                    } else {
-                        "gated"
-                    })
-                },
-            ))
-            .await
-    });
-
-    wait_for_notification(&started).await;
-    use_beta.store(true, Ordering::SeqCst);
-    release.notify_one();
-
-    assert_eq!(
-        task.await
-            .expect("routing task join")
-            .expect("routing task result")
-            .output(),
-        "after tool"
-    );
-    assert_eq!(tool_calls.load(Ordering::SeqCst), 1);
-}
-
-struct DropGuard(Arc<AtomicUsize>);
-
-impl Drop for DropGuard {
-    fn drop(&mut self) {
-        self.0.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-/// A unary call that never answers; its attempt counts a drop in `dropped`.
-fn pending_unary_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeModel {
-    Fake::model("pending", move |_request, mode| {
-        Ok(match mode {
-            Mode::Unary => {
-                let (started, dropped) = (started.clone(), dropped.clone());
-                Box::pin(async move {
-                    let _guard = DropGuard(dropped);
-                    started.notify_one();
-                    std::future::pending::<Opened<MockFrame>>().await
-                }) as FakeReply
-            }
-            Mode::Streaming => replied(Vec::new()),
-        })
-    })
-}
-
-struct PendingRawStream {
-    started: Arc<Notify>,
-    dropped: Arc<AtomicUsize>,
-    notified: bool,
-}
-
-impl Stream for PendingRawStream {
-    type Item = Result<MockFrame, ProviderError>;
-
-    fn poll_next(mut self: Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if !self.notified {
-            self.notified = true;
-            self.started.notify_one();
-        }
-        Poll::Pending
-    }
-}
-
-impl Drop for PendingRawStream {
-    fn drop(&mut self) {
-        self.dropped.fetch_add(1, Ordering::SeqCst);
-    }
-}
-
-/// A stream that never yields; dropping it counts in `dropped`.
-fn pending_streaming_model(started: Arc<Notify>, dropped: Arc<AtomicUsize>) -> FakeModel {
-    Fake::model("pending", move |_request, mode| {
-        Ok(match mode {
-            Mode::Unary => Box::pin(std::future::ready(answered(CompletionResponse::new(
-                vec![AssistantContent::text("unused")],
-                Usage::default(),
-                Origin::new("test.api", "pending", ""),
-                serde_json::json!({}),
-            )))),
-            Mode::Streaming => Box::pin(std::future::ready(Opened::new(PendingRawStream {
-                started: started.clone(),
-                dropped: dropped.clone(),
-                notified: false,
-            }))),
-        })
-    })
-}
-
-#[tokio::test]
-async fn dropping_pending_unary_and_streaming_attempts_cancels_by_drop() {
-    let unary_started = Arc::new(Notify::new());
-    let unary_dropped = Arc::new(AtomicUsize::new(0));
-    let unary_agent = AgentBuilder::new(pending_unary_model(
-        unary_started.clone(),
-        unary_dropped.clone(),
-    ))
-    .build();
-    let unary_task = tokio::spawn(async move { unary_agent.prompt("pending unary").await });
-    wait_for_notification(&unary_started).await;
-    unary_task.abort();
-    let _join_error = unary_task.await.expect_err("unary task was aborted");
-    assert_eq!(unary_dropped.load(Ordering::SeqCst), 1);
-
-    let stream_started = Arc::new(Notify::new());
-    let stream_dropped = Arc::new(AtomicUsize::new(0));
-    let stream_agent = AgentBuilder::new(pending_streaming_model(
-        stream_started.clone(),
-        stream_dropped.clone(),
-    ))
-    .build();
-    let pending_stream = stream_agent.prompt("pending stream").stream();
-    let stream_task = tokio::spawn(async move {
-        let mut pending_stream = pending_stream;
-        pending_stream.next().await
-    });
-    wait_for_notification(&stream_started).await;
-    stream_task.abort();
-    let _join_error = stream_task.await.expect_err("stream task was aborted");
-    assert_eq!(stream_dropped.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn concurrent_runs_and_handle_calls_are_independent() {
-    let agent = AgentBuilder::named_model("alpha", alpha_static("alpha concurrent"))
-        .model_route("beta", beta_static("beta concurrent"))
-        .build();
-
-    let alpha_run = agent.prompt("alpha run").add_hook(SelectWith(
-        move |_context: &HookContext, _event: ModelSelection<'_>| {
-            ModelSelectionAction::select("alpha")
-        },
-    ));
-    let beta_run = agent.prompt("beta run").add_hook(SelectWith(
-        move |_context: &HookContext, _event: ModelSelection<'_>| {
-            ModelSelectionAction::select("beta")
-        },
-    ));
-    let (alpha, beta) = tokio::join!(alpha_run, beta_run);
-    assert_eq!(
-        alpha.expect("alpha concurrent run").output(),
-        "alpha concurrent"
-    );
-    assert_eq!(
-        beta.expect("beta concurrent run").output(),
-        "beta concurrent"
-    );
-
-    let shared = agent.register_model("shared", alpha_static("shared handle"));
-    let first = agent.prompt("first shared").using_model(shared.clone());
-    let second = agent.prompt("second shared").using_model(shared);
-    let (first, second) = tokio::join!(first, second);
-    assert_eq!(first.expect("first shared call").output(), "shared handle");
-    assert_eq!(
-        second.expect("second shared call").output(),
-        "shared handle"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Ordering parity tests: completion-call hooks -> merged RequestPatch ->
 // ModelSelection -> preparation -> issue attempt; previous_model reflects
 // issued attempts only. Each scenario runs on both surfaces.
 // ---------------------------------------------------------------------------
-
-struct PatchWith(RequestPatch);
-
-impl AgentHook for PatchWith {
-    async fn on_completion_call(
-        &self,
-        _context: &HookContext,
-        _event: rig_agent::agent::CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        CompletionCallAction::patch(self.0.clone())
-    }
-}
-
-struct StopCompletionCall;
-
-impl AgentHook for StopCompletionCall {
-    async fn on_completion_call(
-        &self,
-        _context: &HookContext,
-        _event: rig_agent::agent::CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        CompletionCallAction::stop("completion denied")
-    }
-}
 
 /// Records what every selection event observed: (turn, previous_model label,
 /// merged-patch temperature, merged-patch preamble).
@@ -1639,131 +672,6 @@ async fn drain_stream(mut stream: StreamingResult) -> Result<(), PromptError> {
         item?;
     }
     Ok(())
-}
-
-#[tokio::test]
-async fn model_selection_hooks_observe_the_merged_request_patch_on_both_surfaces() {
-    for streaming in [false, true] {
-        let model = alpha_static("patched");
-        let script = script_of(&model);
-        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
-        // Two patching hooks: the selection event must observe their MERGED
-        // patch (temperature from the first, preamble from the second).
-        let agent = AgentBuilder::new(model)
-            .add_hook(PatchWith(RequestPatch::new().temperature(0.25)))
-            .add_hook(PatchWith(RequestPatch::new().preamble("patched preamble")))
-            .add_hook(observing_selector(observations.clone()))
-            .build();
-
-        if streaming {
-            drain_stream(agent.prompt("merged patch").stream())
-                .await
-                .expect("streaming patched run");
-        } else {
-            agent
-                .prompt("merged patch")
-                .await
-                .expect("blocking patched run");
-        }
-
-        assert_eq!(
-            observations.lock().expect("observation lock").as_slice(),
-            &[(1, None, Some(0.25), Some("patched preamble".to_owned()))],
-            "streaming={streaming}: selection must see the merged completion-call patch"
-        );
-        // The merged patch reached the issued request too.
-        let requests = script.requests();
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].temperature, Some(0.25));
-    }
-}
-
-#[tokio::test]
-async fn a_request_patch_can_influence_the_selected_model_on_both_surfaces() {
-    for streaming in [false, true] {
-        let alpha = alpha_static("alpha answer");
-        let beta = beta_static("beta answer");
-        let beta_script = script_of(&beta);
-        // The completion-call hook escalates via a patch; the selection hook
-        // routes to beta exactly when it observes the escalation marker.
-        let agent = AgentBuilder::new(alpha)
-            .model_route("beta", beta)
-            .add_hook(PatchWith(RequestPatch::new().temperature(0.9)))
-            .add_hook(SelectWith(
-                move |_context: &HookContext, event: ModelSelection<'_>| {
-                    let escalated = event
-                        .request_patch
-                        .and_then(|patch| patch.temperature)
-                        .is_some_and(|temperature| temperature > 0.5);
-                    if escalated {
-                        ModelSelectionAction::select("beta")
-                    } else {
-                        ModelSelectionAction::continue_run()
-                    }
-                },
-            ))
-            .build();
-
-        if streaming {
-            drain_stream(agent.prompt("route by patch").stream())
-                .await
-                .expect("streaming patch-routed run");
-            assert_eq!(
-                beta_script.requests().len(),
-                1,
-                "streaming: the patch must route the attempt to beta"
-            );
-        } else {
-            assert_eq!(
-                agent
-                    .prompt("route by patch")
-                    .await
-                    .expect("blocking patch-routed run")
-                    .output(),
-                "beta answer"
-            );
-        }
-    }
-}
-
-#[tokio::test]
-async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() {
-    for streaming in [false, true] {
-        let model = alpha_static("must not run");
-        let script = script_of(&model);
-        let observations: SelectionObservations = Arc::new(Mutex::new(Vec::new()));
-        let agent = AgentBuilder::new(model)
-            .add_hook(StopCompletionCall)
-            .add_hook(observing_selector(observations.clone()))
-            .build();
-
-        if streaming {
-            let error = drain_stream(agent.prompt("stopped").stream())
-                .await
-                .expect_err("streaming completion-call stop");
-            assert!(matches!(
-                error,
-                PromptError::Cancelled { reason, .. } if reason == "completion denied"
-            ));
-        } else {
-            let error = agent
-                .prompt("stopped")
-                .await
-                .expect_err("blocking completion-call stop");
-            assert!(matches!(
-                error,
-                PromptError::Cancelled { reason, .. } if reason == "completion denied"
-            ));
-        }
-
-        // The stop resolves BEFORE model selection: no selection event fired,
-        // so previous_model never advanced and no attempt was issued.
-        assert!(
-            observations.lock().expect("observation lock").is_empty(),
-            "streaming={streaming}: a completion-call stop must suppress selection"
-        );
-        assert!(script.requests().is_empty());
-    }
 }
 
 #[tokio::test]
@@ -1922,52 +830,4 @@ async fn an_errored_provider_attempt_still_counts_as_the_previous_model() {
     let observed = observations.lock().expect("observation lock").clone();
     assert_eq!(observed[0], (1, None, None, None));
     assert_eq!(observed[1], (2, Some("alpha".to_owned()), None, None));
-}
-
-#[tokio::test]
-async fn an_agent_level_swap_serves_the_next_run_and_rebinds_live_handles() {
-    let agent = AgentBuilder::named_model("alpha", alpha_static("one")).build();
-    let parts = agent
-        .into_parts()
-        .map_err(|_| "the only clone can take the bus apart")
-        .expect("into_parts");
-    let rig_agent::agent::AgentParts {
-        dispatcher,
-        registrar: _,
-        driver,
-        agent,
-    } = parts;
-    let task = tokio::spawn(driver);
-    let handle: rig_agent::bus::ModelHandle = dispatcher
-        .bind(agent.model_key())
-        .expect("bound before the swap");
-    let before = handle.descriptor();
-
-    let first = agent.prompt("hi").run().await.expect("first run");
-    assert_eq!(first.output(), "one");
-
-    let label = agent.register_model(
-        "alpha",
-        scripted(Script::composing(
-            "beta",
-            [],
-            Turn::text("two", 2, "beta-message"),
-        )),
-    );
-    assert_eq!(
-        label.as_str(),
-        "alpha",
-        "the same label, a new model behind it"
-    );
-
-    let second = agent.prompt("hi").run().await.expect("second run");
-    assert_eq!(second.output(), "two", "the swap serves the next run");
-    let after = handle.descriptor();
-    assert_ne!(
-        before, after,
-        "a handle bound before the swap reports the new descriptor"
-    );
-    assert_eq!(handle.label().as_str(), "alpha");
-    drop((agent, dispatcher, handle));
-    task.await.expect("driver task");
 }

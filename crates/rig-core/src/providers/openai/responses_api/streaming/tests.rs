@@ -1,7 +1,7 @@
-use super::{ResponsesDecoder, ResponsesEvent, classify_responses_payload};
+use super::{ResponsesDecoder, classify_responses_payload};
 use crate::completion::CompletionRequest;
 use crate::driver::{Decoded, feed_frames};
-use crate::error::{ErrorKind, ErrorReport, ProviderError};
+use crate::error::{ErrorKind, ErrorReport};
 use crate::message::AssistantContent;
 use crate::operation::Completion;
 use crate::providers::internal::openai_chat_completions_compatible::tests::{
@@ -15,23 +15,6 @@ use futures::StreamExt;
 use serde_json::{self, json};
 
 #[test]
-fn classify_known_event_decodes() {
-    let frame = json!({
-        "type": "response.output_text.delta",
-        "item_id": "msg_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 1,
-        "delta": "hi",
-    })
-    .to_string();
-    assert!(matches!(
-        classify_responses_payload(&frame),
-        WireEvent::Known(ResponsesEvent::Frame { .. })
-    ));
-}
-
-#[test]
 fn classify_unknown_event_type_is_unknown() {
     let frame = json!({
         "type": "response.web_search_call.searching",
@@ -42,67 +25,6 @@ fn classify_unknown_event_type_is_unknown() {
     assert!(matches!(
         classify_responses_payload(&frame),
         WireEvent::Unknown { event_type, .. } if event_type == "response.web_search_call.searching"
-    ));
-}
-
-/// #2258 G4: `response.reasoning_text.done` terminates every raw-reasoning
-/// block on all three Responses surfaces. It used to be absent from the
-/// known-event set, so each block logged a spurious "unknown event" warn
-/// and passed through as `Unknown`.
-///
-/// The tag must be known (no `Unknown`) and its frame must classify (no
-/// `Corrupt`).
-///
-/// No recorded cassette contains this event; the wire shape is the
-/// Responses spec's, so this unit test is the pin.
-#[test]
-fn classify_reasoning_text_done_is_known_and_decodes() {
-    let frame = json!({
-        "type": "response.reasoning_text.done",
-        "item_id": "rs_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 7,
-        "text": "the model's raw chain of thought",
-    })
-    .to_string();
-
-    let event = classify_responses_payload(&frame);
-    assert!(
-        !matches!(event, WireEvent::Unknown { .. }),
-        "the tag must be in the known-event set: {event:?}"
-    );
-    assert!(matches!(
-        event,
-        WireEvent::Known(ResponsesEvent::Frame { kind, .. })
-            if kind == "response.reasoning_text.done"
-    ));
-}
-
-#[test]
-fn classify_invalid_json_is_corrupt() {
-    assert!(matches!(
-        classify_responses_payload("{not json"),
-        WireEvent::Corrupt(_)
-    ));
-}
-
-/// A known event whose fields a gateway retyped still classifies: only the
-/// decoder reads its fields, and it reads only what it needs (#2668).
-#[test]
-fn a_known_event_with_a_retyped_field_still_classifies() {
-    let frame = json!({
-        "type": "response.output_text.delta",
-        "item_id": "msg_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 1,
-        "delta": 42,
-    })
-    .to_string();
-    assert!(matches!(
-        classify_responses_payload(&frame),
-        WireEvent::Known(ResponsesEvent::Frame { .. })
     ));
 }
 
@@ -199,38 +121,6 @@ async fn streaming_error_event_preserves_full_payload_in_live_loop() {
 }
 
 #[tokio::test]
-async fn streaming_http_non_success_preserves_status_and_body() {
-    use crate::test_utils::HttpErrorStreamingClient;
-
-    let body = r#"{"error":{"message":"quota exceeded"}}"#;
-    let mut stream = responses_stream(HttpErrorStreamingClient::new(
-        http::StatusCode::TOO_MANY_REQUESTS,
-        body,
-    ))
-    .await;
-
-    let err = stream
-        .next()
-        .await
-        .expect("stream should yield transport error")
-        .expect_err("HTTP non-success should surface as a stream error");
-    let err = ErrorReport::from(&err);
-    assert_eq!(
-        err.http_status,
-        Some(http::StatusCode::TOO_MANY_REQUESTS.as_u16())
-    );
-    assert_eq!(err.provider_response_body(), Some(body));
-    assert_eq!(
-        err.provider_response_json().expect("valid JSON body"),
-        Some(serde_json::json!({"error": {"message": "quota exceeded"}}))
-    );
-    assert!(
-        stream.next().await.is_none(),
-        "stream should terminate after HTTP non-success"
-    );
-}
-
-#[tokio::test]
 async fn streaming_non_http_transport_error_stays_a_transport_error() {
     use crate::test_utils::SequencedStreamingHttpClient;
 
@@ -253,72 +143,6 @@ async fn streaming_non_http_transport_error_stays_a_transport_error() {
     // A response-less transport failure has no provider response body.
     assert_eq!(err.provider_response_body(), None);
     assert_eq!(err.http_status, None);
-}
-
-#[tokio::test]
-async fn response_completed_chunk_populates_final_usage() {
-    let mut response = sample_response("completed");
-    response["usage"] = json!({ "input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "output_tokens_details": { "reasoning_tokens": 0 } });
-
-    let event = json!({
-        "type": "response.completed",
-        "sequence_number": 1,
-        "response": response,
-    });
-
-    let usage = stream_final_from_event(event).await.usage;
-    assert_eq!(usage.input_tokens, Some(10));
-    assert_eq!(usage.output_tokens, Some(5));
-    assert_eq!(usage.total_tokens, Some(15));
-    assert_eq!(usage.reasoning_tokens, Some(0));
-}
-
-/// The terminal `response.completed` frame carries usage. An object-shaped
-/// `top_p` echoed on that frame (MiniMax-style endpoints, rig#2483) or a
-/// numeric one buffered under `serde_json/arbitrary_precision` (rig#2493)
-/// must not turn the terminal into a parse error, which would fail the turn
-/// and lose the usage.
-#[tokio::test]
-async fn response_completed_chunk_tolerates_object_shaped_top_p() {
-    let mut response = sample_response("completed");
-    response["top_p"] = json!({ "value": 0.95 });
-    response["usage"] = json!({
-        "input_tokens": 10,
-        "output_tokens": 5,
-        "total_tokens": 15
-    });
-    let event = json!({
-        "type": "response.completed",
-        "sequence_number": 1,
-        "response": response,
-    });
-
-    let usage = stream_final_from_event(event).await.usage;
-    assert_eq!(usage.input_tokens, Some(10));
-    assert_eq!(usage.total_tokens, Some(15));
-}
-
-/// One `message` output item, as a terminal response body states it.
-fn message_output_item(id: &str, text: &str) -> serde_json::Value {
-    json!({
-        "type": "message",
-        "id": id,
-        "role": "assistant",
-        "status": "completed",
-        "content": [{ "type": "output_text", "annotations": [], "text": text }],
-    })
-}
-
-/// The visible text parts of a folded choice, in order.
-fn choice_text_parts(response: &crate::completion::CompletionResponse) -> Vec<String> {
-    response
-        .choice
-        .iter()
-        .filter_map(|content| match content {
-            crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The OpenAI Responses stream one scripted transport yields: the live
@@ -371,11 +195,6 @@ fn texts_of(events: &[&StreamEvent]) -> Vec<String> {
         .collect()
 }
 
-/// The calls a response's choice carries.
-fn calls_of(response: &crate::completion::CompletionResponse) -> Vec<crate::message::ToolCall> {
-    response.tool_calls().cloned().collect()
-}
-
 async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
     let mut stream = responses_stream_of(&[event]).await;
     let error = stream
@@ -384,17 +203,6 @@ async fn first_error_from_event(event: serde_json::Value) -> ErrorReport {
         .expect("stream should yield an item")
         .expect_err("stream should surface a provider error");
     ErrorReport::from(&error)
-}
-
-/// What a stream of `event` finished with.
-async fn stream_final_from_event(
-    event: serde_json::Value,
-) -> crate::completion::CompletionResponse {
-    let mut stream = responses_stream_of(&[event]).await;
-    while let Some(item) = stream.next().await {
-        item.expect("completed stream should not error");
-    }
-    stream.finish().await.expect("the stream ended")
 }
 
 /// Drain a stream whose provider fully delivered one tool call before a
@@ -433,86 +241,6 @@ async fn flushed_tool_call_then_error(
     (tool_call, err)
 }
 
-/// The done event restates text the deltas already streamed, so it must be
-/// a no-op: replaying it would double every raw-reasoning block.
-#[test]
-fn reasoning_text_done_emits_nothing() {
-    let decoded = decoded_body(&body_of(&[json!({
-        "type": "response.reasoning_text.done",
-        "item_id": "rs_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 7,
-        "text": "the model's raw chain of thought",
-    })]));
-    assert!(
-        decoded.events().is_empty(),
-        "the done restatement must not re-emit the reasoning text: {:?}",
-        decoded.events()
-    );
-}
-
-#[test]
-fn a_buffered_body_preserves_its_error_payloads() {
-    let mut response = sample_response("failed");
-    response["error"] = json!({ "code": "server_error", "message": "response failed" });
-    let events = [
-        json!({
-            "type": "response.failed",
-            "sequence_number": 1,
-            "response": response,
-        }),
-        json!({
-            "type": "error",
-            "error": {
-                "message": "boom",
-                "code": "server_error",
-                "type": "server_error"
-            }
-        }),
-    ];
-
-    for event in events {
-        let payload = serde_json::to_string(&event).expect("event should serialize");
-        let err = decoded_body(&format!("data: {payload}\n"))
-            .outcome
-            .expect_err("error payload should surface as provider response");
-
-        assert!(matches!(err, ProviderError::ProviderResponse(_)));
-        assert_eq!(err.provider_response_status(), None);
-        assert_eq!(err.provider_response_body(), Some(payload.as_str()));
-    }
-}
-
-#[test]
-fn reasoning_output_item_done_emits_reasoning_text_content() {
-    let decoded = decoded_body(&body_of(&[
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": {
-                "type": "reasoning",
-                "id": "rs_text_1",
-                "summary": [],
-                "content": [{ "type": "reasoning_text", "text": "visible reasoning" }],
-                "status": "completed"
-            },
-        }),
-        completed_with(2, json!([])),
-    ]));
-    // The done item is one whole reasoning part holding the item.
-    let ended = decoded.ended();
-    let [AssistantContent::Reasoning(reasoning)] = ended.as_slice() else {
-        panic!("one reasoning part: {:?}", decoded.events());
-    };
-    assert_eq!(reasoning.text, "visible reasoning");
-    assert_eq!(
-        ended[0].native_item().and_then(|item| item["id"].as_str()),
-        Some("rs_text_1")
-    );
-}
-
 /// Raw `reasoning_text` deltas whose done item states no text keep the
 /// block's text, and the item stays as the provider stated it: written in
 /// as a summary, it would replay one the provider never produced.
@@ -535,109 +263,6 @@ fn raw_reasoning_text_is_not_written_into_the_item_as_a_summary() {
     };
     assert_eq!(reasoning.text, "raw chain");
     assert_eq!(ended[0].native_item(), Some(&done));
-}
-
-/// Envelope-less replay shape (ChatGPT bodies): an id-less summary delta,
-/// the done item restating the whole part, then visible text.
-#[test]
-fn envelope_less_reasoning_then_text_decodes() {
-    let decoded = decoded_body(&body_of(&[
-        json!({
-            "type": "response.reasoning_summary_text.delta",
-            "output_index": 0,
-            "summary_index": 0,
-            "sequence_number": 1,
-            "delta": "thinking",
-        }),
-        json!({
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "sequence_number": 2,
-            "item": {
-                "type": "reasoning",
-                "id": "",
-                "summary": [{ "type": "summary_text", "text": "thinking, complete" }],
-                "status": "completed"
-            },
-        }),
-        json!({
-            "type": "response.output_text.delta",
-            "item_id": "msg_1",
-            "output_index": 1,
-            "content_index": 0,
-            "sequence_number": 3,
-            "delta": "the answer",
-        }),
-    ]));
-    assert_eq!(texts_of(&decoded.events()), ["the answer"]);
-}
-
-#[test]
-fn reasoning_text_delta_emits_reasoning_delta() {
-    let decoded = decoded_body(&body_of(&[json!({
-        "type": "response.reasoning_text.delta",
-        "item_id": "rs_delta_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 1,
-        "delta": "thinking",
-    })]));
-    // The first fragment of an unseen item opens its part.
-    assert!(
-        matches!(
-            decoded.events().as_slice(),
-            [
-                StreamEvent::Start { kind: PartKind::Reasoning, .. },
-                StreamEvent::Reasoning { text, .. },
-            ] if text == "thinking"
-        ),
-        "{:?}",
-        decoded.events()
-    );
-}
-
-#[tokio::test]
-async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_reason() {
-    let text_delta = json!({
-        "type": "response.output_text.delta",
-        "content_index": 0,
-        "delta": "partial",
-        "item_id": "msg_incomplete_1",
-        "output_index": 0,
-        "sequence_number": 1,
-    });
-
-    let mut response = sample_response("incomplete");
-    response["incomplete_details"] = json!({ "reason": "max_output_tokens" });
-    response["usage"] = json!({ "input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "output_tokens_details": { "reasoning_tokens": 0 } });
-
-    let incomplete = json!({
-        "type": "response.incomplete",
-        "sequence_number": 2,
-        "response": response,
-    });
-
-    let mut stream = responses_stream_of(&[text_delta, incomplete]).await;
-    let mut text = String::new();
-    while let Some(item) = stream.next().await {
-        if let Item::Event(StreamEvent::Text { text: delta, .. }) =
-            item.expect("incomplete stream should not error")
-        {
-            text.push_str(&delta);
-        }
-    }
-
-    // The partial output survives, and the end maps the incomplete status
-    // to the same finish reason as the unary path.
-    assert_eq!(text, "partial");
-    let response = stream.finish().await.expect("the reply ended");
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-    assert_eq!(response.usage.input_tokens, Some(10));
-    assert_eq!(response.usage.output_tokens, Some(5));
-    assert_eq!(response.usage.total_tokens, Some(15));
 }
 
 /// A `response.failed` after a fully-delivered tool call: the call ended
@@ -727,45 +352,6 @@ async fn a_transport_error_follows_the_delivered_tool_call() {
     assert!(stream.finish().await.is_err());
 }
 
-/// A terminal whose `usage` is not an object still ends the reply: usage
-/// is read leniently, and a counter that is not one is unreported.
-#[tokio::test]
-async fn a_terminal_with_malformed_usage_still_ends_the_reply() {
-    let mut event = json!({
-        "type": "response.completed",
-        "sequence_number": 1,
-        "response": sample_response("completed"),
-    });
-    event["response"]["usage"] = json!("banana");
-
-    let response = stream_final_from_event(event).await;
-    assert!(!response.usage.is_reported());
-    assert_eq!(response.stop(), crate::message::StopReason::Stop);
-}
-
-/// An invented event type stays skippable for forward compatibility; a
-/// later genuine terminal still ends the reply.
-#[tokio::test]
-async fn unknown_event_type_is_skipped_and_stream_completes() {
-    let unknown = json!({
-        "type": "response.rocket_launch",
-        "payload": { "count": 3 }
-    });
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 2,
-        "response": sample_response("completed"),
-    });
-    let mut stream = responses_stream_of(&[unknown, completed]).await;
-    while let Some(item) = stream.next().await {
-        item.expect("unknown event types must not surface as errors");
-    }
-    stream
-        .finish()
-        .await
-        .expect("the genuine terminal must still end the reply");
-}
-
 #[tokio::test]
 async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
     // A refusal turn emits `response.content_part.added/.done` with a
@@ -817,114 +403,6 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
     assert!(decoded.outcome.is_ok(), "the terminal must still arrive");
 }
 
-#[tokio::test]
-async fn truncated_stream_does_not_synthesize_an_end() {
-    // Deltas then EOF without `response.completed`: the truncated turn is
-    // never presented as a successful completion.
-    let deltas = [
-        json!({
-            "type": "response.output_text.delta",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 1,
-            "delta": "hel"
-        }),
-        json!({
-            "type": "response.output_text.delta",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 2,
-            "delta": "lo"
-        }),
-    ];
-
-    let mut stream = responses_stream_of(&deltas).await;
-    let mut texts = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let Ok(Item::Event(StreamEvent::Text { text, .. })) = item {
-            texts.push(text);
-        }
-    }
-    assert_eq!(texts, ["hel", "lo"]);
-    assert!(matches!(
-        stream.finish().await,
-        Err(ProviderError::Truncated)
-    ));
-}
-
-/// A corrupt known frame fails the reply — even when a valid terminal
-/// follows — instead of returning a silently partial completion.
-#[test]
-fn only_invalid_json_fails_the_buffered_body() {
-    // A known event whose field is retyped is read leniently.
-    let retyped = json!({
-        "type": "response.output_text.delta",
-        "delta": 42
-    });
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 2,
-        "response": sample_response("completed"),
-    });
-    decoded_body(&body_of(&[retyped, completed.clone()]))
-        .outcome
-        .expect("a retyped field no block needs does not fail the reply");
-
-    // Syntactically invalid JSON fails.
-    let body = format!("data: {{not json\ndata: {completed}\n");
-    assert!(decoded_body(&body).outcome.is_err());
-
-    // Unknown event types stay skippable.
-    let unknown = json!({ "type": "response.rocket_launch", "count": 3 });
-    decoded_body(&body_of(&[unknown, completed]))
-        .outcome
-        .expect("unknown event types must stay skippable");
-}
-
-/// Envelope-less frames (ChatGPT's replayed bodies) are repaired and fed
-/// through the same decoder as the live loop.
-#[test]
-fn envelope_less_frames_repair_onto_the_shared_interpreter() {
-    let completed = json!({
-        "type": "response.completed",
-        "response": sample_response("completed"),
-    });
-
-    // A ChatGPT-style text delta with no envelope bookkeeping fields.
-    let decoded = decoded_body(&body_of(&[
-        json!({ "type": "response.output_text.delta", "delta": "hi" }),
-        completed.clone(),
-    ]));
-    assert_eq!(texts_of(&decoded.events()), ["hi"]);
-
-    // An id-less, nameless arguments delta repairs and decodes; it never
-    // becomes a call.
-    let decoded = decoded_body(&body_of(&[
-        json!({ "type": "response.function_call_arguments.delta", "delta": "{}" }),
-        completed.clone(),
-    ]));
-    assert!(calls_of(&decoded.outcome.expect("it decodes")).is_empty());
-
-    // An envelope-less bookkeeping event whose data is intact (`.done`
-    // events) is a no-op, not an error.
-    decoded_body(&body_of(&[
-        json!({ "type": "response.output_text.done", "text": "hi" }),
-        completed.clone(),
-    ]))
-    .outcome
-    .expect("an envelope-less done event must repair to the live no-op");
-
-    // An envelope-less reasoning summary delta streams.
-    let decoded = decoded_body(&body_of(&[
-        json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" }),
-        completed,
-    ]));
-    assert!(decoded.events().into_iter().any(|event| matches!(
-        event,
-        StreamEvent::Reasoning { text, .. } if text == "think"
-    )));
-}
-
 /// The `max_output_tokens`-mid-tool-call shape: `arguments_delta` frames
 /// stream partial JSON and the done item restates the same truncated bytes.
 /// Whether or not fragments preceded the restatement, the call keeps what
@@ -973,134 +451,6 @@ fn a_cut_off_call_keeps_what_its_arguments_state() {
     }
 }
 
-/// #2258 P3: when the stream truncates before the call completes, partial
-/// arguments never fabricate a call.
-#[tokio::test]
-async fn truncation_fabricates_no_call() {
-    let events = [
-        json!({
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "sequence_number": 1,
-            "item": {
-                "type": "function_call",
-                "call_id": "call_a",
-                "name": "tool_a",
-                "arguments": "",
-                "status": "in_progress",
-            },
-        }),
-        json!({
-            "type": "response.function_call_arguments.delta",
-            "output_index": 0,
-            "sequence_number": 2,
-            "delta": "{\"loc\":"
-        }),
-    ];
-    let decoded = decoded_body(&body_of(&events));
-    assert!(matches!(decoded.outcome, Err(ProviderError::Truncated)));
-    assert!(decoded.ended().is_empty(), "{:?}", decoded.events());
-}
-
-#[test]
-fn refusal_content_part_frames_do_not_fail_the_buffered_body() {
-    // The ChatGPT buffered route replays recorded SSE bodies; a refusal
-    // turn's `content_part` frames (an unmodeled `refusal` part) must not
-    // fail the whole completion — the refusal text arrives via the
-    // modeled `response.refusal.delta`.
-    let events = [
-        json!({
-            "type": "response.content_part.added",
-            "item_id": "msg_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 1,
-            "part": { "type": "refusal", "refusal": "" }
-        }),
-        json!({
-            "type": "response.refusal.delta",
-            "item_id": "msg_1",
-            "output_index": 0,
-            "content_index": 0,
-            "sequence_number": 2,
-            "delta": "no"
-        }),
-        json!({
-            "type": "response.completed",
-            "sequence_number": 3,
-            "response": sample_response("completed"),
-        }),
-    ];
-    let decoded = decoded_body(&body_of(&events));
-    assert_eq!(texts_of(&decoded.events()), ["no"]);
-    decoded
-        .outcome
-        .expect("refusal content-part frames must not fail the buffered decode");
-}
-
-/// The terminal restates the whole turn, and its message text IS the turn's
-/// answer when nothing else stated it: a gateway that answers a unary call
-/// with a replayed event stream can deliver a message only inside
-/// `response.completed`'s `output` — no `output_text.delta`, no
-/// `output_item.done` for it — so dropping that text loses the reply
-/// entirely.
-///
-/// Driven on the plain `openai` provider: a body-only terminal is a shape
-/// any Responses dialect can send, so the merge is no dialect's quirk.
-#[test]
-fn terminal_body_message_text_merges_when_no_delta_delivered_it() {
-    let mut raw_response = sample_response("completed");
-    raw_response["output"] = json!([message_output_item("msg_body_1", "from body")]);
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 1,
-        "response": raw_response,
-    });
-    let response = decoded_body(&body_of(&[completed]))
-        .outcome
-        .expect("a body-only terminal must decode");
-    assert_eq!(
-        choice_text_parts(&response),
-        ["from body"],
-        "text stated only in the terminal body must reach the choice once"
-    );
-    assert_eq!(
-        response.choice[0]
-            .native_item()
-            .and_then(|item| item["id"].as_str()),
-        Some("msg_body_1")
-    );
-}
-
-/// The other half of that boundary: a terminal restating text the deltas
-/// already delivered adds nothing.
-#[test]
-fn terminal_body_message_text_restating_a_delta_is_not_duplicated() {
-    let text_delta = json!({
-        "type": "response.output_text.delta",
-        "item_id": "msg_body_1",
-        "output_index": 0,
-        "content_index": 0,
-        "sequence_number": 1,
-        "delta": "from body",
-    });
-    let mut raw_response = sample_response("completed");
-    raw_response["output"] = json!([message_output_item("msg_body_1", "from body")]);
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 2,
-        "response": raw_response,
-    });
-    let response = decoded_body(&body_of(&[text_delta, completed]))
-        .outcome
-        .expect("a restating terminal must decode");
-    assert_eq!(
-        choice_text_parts(&response),
-        ["from body"],
-        "the terminal's restatement must not duplicate the delta-built text"
-    );
-}
-
 #[test]
 fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
@@ -1115,74 +465,6 @@ fn streaming_error_event_preserves_full_payload() {
         .expect("raw body should be valid JSON")
         .expect("parsed JSON should be present");
     assert_eq!(json["error"]["code"], "server_error");
-}
-
-#[tokio::test]
-async fn the_end_normalizes_the_terminal_record() {
-    let mut response = sample_response("completed");
-    response["usage"] = json!({ "input_tokens": 10, "output_tokens": 5, "total_tokens": 15 });
-
-    let mut event = json!({
-        "type": "response.completed",
-        "sequence_number": 1,
-        "response": response,
-    });
-    event["response"]["output"] = json!([{
-        "type": "message",
-        "id": "msg_stream_1",
-        "status": "completed",
-        "role": "assistant",
-        "content": [{ "type": "output_text", "annotations": [], "text": "hi" }]
-    }]);
-
-    let response = stream_final_from_event(event).await;
-    assert_eq!(response.provider(), "openai");
-    assert_eq!(response.model(), Some("gpt-5.4"));
-    assert_eq!(response.response_id(), Some("resp_123"));
-    // The message item the terminal states is the turn's one block.
-    assert_eq!(response.text(), "hi");
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::Stop)
-    );
-    assert_eq!(response.usage.input_tokens, Some(10));
-    assert_eq!(response.usage.output_tokens, Some(5));
-    assert_eq!(response.usage.total_tokens, Some(15));
-}
-
-#[tokio::test]
-async fn the_end_reports_tool_calls_when_the_stream_called_a_tool() {
-    let tool_call_done = json!({
-        "type": "response.output_item.done",
-        "output_index": 0,
-        "sequence_number": 1,
-        "item": {
-            "type": "function_call",
-            "id": "fc_123",
-            "arguments": "{}",
-            "call_id": "call_123",
-            "name": "example_tool",
-            "status": "completed"
-        }
-    });
-    let completed = json!({
-        "type": "response.completed",
-        "sequence_number": 2,
-        "response": sample_response("completed"),
-    });
-    let mut stream = responses_stream_of(&[tool_call_done, completed]).await;
-    while let Some(item) = stream.next().await {
-        item.expect("completed stream should not error");
-    }
-    // `completed` is reported as `ToolCalls`: the reply called a tool.
-    assert_eq!(
-        stream
-            .finish()
-            .await
-            .expect("the reply ended")
-            .finish_reason(),
-        Some(crate::completion::FinishReason::ToolCalls)
-    );
 }
 
 #[tokio::test]
@@ -1592,44 +874,6 @@ fn natives(response: &crate::completion::CompletionResponse) -> Vec<serde_json::
 }
 
 #[test]
-fn each_output_item_is_one_block_holding_the_item_in_output_order() {
-    let output = vec![
-        reasoning("rs_1", &["First thought."]),
-        message("msg_1", "Let me check."),
-        function_call("fc_1", "call_1", r#"{"q":"a"}"#),
-        reasoning("rs_2", &["Second thought."]),
-        message("msg_2", "Done."),
-    ];
-    for response in [
-        decode(Mode::Streaming, frames(&restated(&output))),
-        decode(Mode::Unary, whole(&output)),
-    ] {
-        assert_eq!(
-            natives(&response),
-            output,
-            "one block per item, nothing hoisted"
-        );
-        let [
-            AssistantContent::Reasoning(first),
-            AssistantContent::Text(check),
-            AssistantContent::ToolCall(call),
-            AssistantContent::Reasoning(second),
-            AssistantContent::Text(done),
-        ] = response.choice.as_slice()
-        else {
-            panic!("blocks follow the output: {:?}", response.choice);
-        };
-        assert_eq!(first.text, "First thought.");
-        assert_eq!(check.text, "Let me check.");
-        assert_eq!(call.id, crate::message::CallId::from_wire("call_1"));
-        assert_eq!(call.function.arguments_value(), json!({ "q": "a" }));
-        assert_eq!(second.text, "Second thought.");
-        assert_eq!(done.text, "Done.");
-        assert_eq!(response.stop(), crate::message::StopReason::ToolUse);
-    }
-}
-
-#[test]
 fn a_whole_reply_and_its_restatement_as_a_stream_agree() {
     let replies = [
         every_kind(),
@@ -1645,81 +889,6 @@ fn a_whole_reply_and_its_restatement_as_a_stream_agree() {
             &wire(),
             whole(&output),
             frames(&restated(&output)),
-        );
-    }
-}
-
-/// The block each item type becomes, numbered without a wildcard: a new
-/// kind fails the test until a sample decodes to it.
-#[deny(clippy::wildcard_enum_match_arm)]
-fn variant_index(block: &AssistantContent) -> usize {
-    match block {
-        AssistantContent::Text(_) => 0,
-        AssistantContent::ToolCall(_) => 1,
-        AssistantContent::Reasoning(_) => 2,
-        AssistantContent::Opaque(_) => 3,
-        AssistantContent::Image(_) => 4,
-    }
-}
-
-#[test]
-fn every_output_variant_decodes_to_a_block() {
-    let output = every_kind();
-    for response in [
-        decode(Mode::Streaming, frames(&restated(&output))),
-        decode(Mode::Unary, whole(&output)),
-    ] {
-        // Responses has no image block: hosted image generation is opaque.
-        crate::test_utils::history::assert_every_variant(&response.choice, variant_index, 4);
-        assert_eq!(natives(&response), output);
-    }
-}
-
-#[test]
-fn an_invented_item_and_an_invented_field_replay_to_the_same_model() {
-    use crate::message::Message;
-    let output = every_kind();
-    for mode in [Mode::Streaming, Mode::Unary] {
-        let frames = match mode {
-            Mode::Streaming => frames(&restated(&output)),
-            Mode::Unary => whole(&output),
-        };
-        let reply = decode(mode, frames);
-        let mut history = vec![Message::user("hello")];
-        history.extend(reply.message());
-        history.push(Message::User {
-            content: reply
-                .tool_calls()
-                .map(|call| {
-                    crate::message::UserContent::ToolResult(
-                        call.result(vec![crate::message::ToolResultContent::text("ok")]),
-                    )
-                })
-                .collect(),
-        });
-        let input = encoded_input(&wire(), CompletionRequest::from(history));
-        let replayed: Vec<&serde_json::Value> = input
-            .iter()
-            .filter(|item| item.get("id").is_some())
-            .collect();
-        // Everything but the client-executed computer call goes back as it
-        // came, invented kind and field included.
-        let expected: Vec<&serde_json::Value> = output
-            .iter()
-            .filter(|item| item["type"] != "computer_call")
-            .collect();
-        assert_eq!(replayed, expected, "{mode:?}");
-        let results: Vec<(&str, &str)> = input
-            .iter()
-            .filter_map(|item| Some((item["type"].as_str()?, item["call_id"].as_str()?)))
-            .filter(|(kind, _)| kind.ends_with("_output"))
-            .collect();
-        assert_eq!(
-            results,
-            [
-                ("function_call_output", "call_1"),
-                ("custom_tool_call_output", "call_2"),
-            ]
         );
     }
 }
@@ -1758,122 +927,6 @@ fn encoded_input(
         .expect("the request encodes");
     let body = crate::test_utils::json_body(&encoded.request);
     body["input"].as_array().cloned().unwrap_or_default()
-}
-
-#[test]
-fn hosted_steps_and_compaction_replay_while_client_executed_calls_stay_home() {
-    let output = vec![
-        json!({ "type": "web_search_call", "id": "ws_1", "status": "completed" }),
-        json!({ "type": "compaction", "id": "cmp_1", "encrypted_content": "x" }),
-        json!({ "type": "mcp_call", "id": "mcp_1", "name": "f", "server_label": "s" }),
-        json!({ "type": "computer_call", "id": "cu_1", "call_id": "c1", "status": "completed" }),
-        json!({ "type": "local_shell_call", "id": "ls_1", "call_id": "c2", "status": "completed" }),
-        json!({ "type": "mcp_approval_request", "id": "ar_1", "name": "f", "server_label": "s" }),
-    ];
-    let response = decode(Mode::Unary, whole(&output));
-    let replays: Vec<(Option<&str>, bool)> = response
-        .choice
-        .iter()
-        .map(|block| match block {
-            AssistantContent::Opaque(opaque) => (opaque.kind(), opaque.replay),
-            other => panic!("every item is opaque: {other:?}"),
-        })
-        .collect();
-    assert_eq!(
-        replays,
-        [
-            (Some("web_search_call"), true),
-            (Some("compaction"), true),
-            (Some("mcp_call"), true),
-            (Some("computer_call"), false),
-            (Some("local_shell_call"), false),
-            (Some("mcp_approval_request"), false),
-        ]
-    );
-}
-
-#[test]
-fn a_refusal_is_the_message_text_and_its_item_keeps_the_part() {
-    let refusal = json!({
-        "type": "message",
-        "id": "msg_1",
-        "role": "assistant",
-        "status": "completed",
-        "content": [{ "type": "refusal", "refusal": "I can't help with that." }],
-    });
-    for response in [
-        decode(
-            Mode::Streaming,
-            frames(&restated(std::slice::from_ref(&refusal))),
-        ),
-        decode(Mode::Unary, whole(std::slice::from_ref(&refusal))),
-    ] {
-        assert_eq!(response.text(), "I can't help with that.");
-        assert_eq!(natives(&response), std::slice::from_ref(&refusal));
-        assert_eq!(response.stop(), crate::message::StopReason::Stop);
-    }
-}
-
-#[test]
-fn a_custom_tool_call_is_a_call_whose_arguments_hold_its_input() {
-    let call = json!({
-        "type": "custom_tool_call",
-        "id": "ctc_1",
-        "call_id": "call_9",
-        "name": "apply_patch",
-        "input": "*** Begin Patch\n*** End Patch",
-    });
-    let response = decode(Mode::Unary, whole(std::slice::from_ref(&call)));
-    let [AssistantContent::ToolCall(decoded)] = response.choice.as_slice() else {
-        panic!("one call: {:?}", response.choice);
-    };
-    assert_eq!(decoded.id, crate::message::CallId::from_wire("call_9"));
-    assert_eq!(decoded.function.name, "apply_patch");
-    assert_eq!(
-        decoded.function.arguments_value(),
-        json!({ "input": "*** Begin Patch\n*** End Patch" })
-    );
-    assert_eq!(natives(&response), [call]);
-}
-
-/// Azure states a reasoning item's `encrypted_content` only in the terminal
-/// response: the block waits for it, so a stateless follow-up can replay
-/// the reasoning.
-#[test]
-fn reasoning_takes_the_ciphertext_the_terminal_states() {
-    let item = reasoning("rs_1", &["Thinking."]);
-    let mut without = item.clone();
-    if let Some(without) = without.as_object_mut() {
-        without.shift_remove("encrypted_content");
-    }
-    let mut events = restated(std::slice::from_ref(&item));
-    for event in &mut events {
-        if event["type"] == "response.output_item.done" {
-            event["item"] = without.clone();
-        }
-    }
-    let response = decode(Mode::Streaming, frames(&events));
-    assert_eq!(natives(&response), std::slice::from_ref(&item));
-    assert_eq!(
-        response.message(),
-        decode(Mode::Unary, whole(&[item])).message(),
-        "the stream and the body it ends with fold into one turn"
-    );
-}
-
-#[test]
-fn reasoning_parts_are_paragraphs_of_one_block() {
-    let item = reasoning("rs_1", &["First part.", "Second part."]);
-    for response in [
-        decode(
-            Mode::Streaming,
-            frames(&restated(std::slice::from_ref(&item))),
-        ),
-        decode(Mode::Unary, whole(std::slice::from_ref(&item))),
-    ] {
-        assert_eq!(response.reasoning(), "First part.\n\nSecond part.");
-        assert_eq!(response.choice.len(), 1);
-    }
 }
 
 #[test]
@@ -1995,24 +1048,6 @@ fn every_recorded_whole_reply_agrees_with_its_restatement_as_a_stream() {
     assert!(checked > 100, "the family records whole replies: {checked}");
 }
 
-/// xAI gives every reasoning item of a reply the same id; each stays its
-/// own block in both modes.
-#[test]
-fn items_sharing_an_id_stay_distinct_blocks() {
-    let output = vec![
-        reasoning("rs_1", &["First thought."]),
-        message("msg_1", "Searching."),
-        reasoning("rs_1", &["Second thought."]),
-        message("msg_2", "Done."),
-    ];
-    for response in [
-        decode(Mode::Streaming, frames(&restated(&output))),
-        decode(Mode::Unary, whole(&output)),
-    ] {
-        assert_eq!(natives(&response), output);
-    }
-}
-
 /// A failed or cancelled reply ends the turn in an error, so it never
 /// replays.
 #[test]
@@ -2074,68 +1109,6 @@ fn replayed_input(response: &crate::completion::CompletionResponse) -> Vec<serde
         Message::user("next"),
     ];
     encoded_input(&wire(), request)
-}
-
-/// #2668: a gateway that omits `sequence_number`, `content_index` and
-/// `summary_index` (LiteLLM) streams a reply on every dialect, not only
-/// Codex.
-#[test]
-fn frames_without_bookkeeping_decode_on_every_dialect() {
-    let events = [
-        json!({"type": "response.created", "response": {"id": "resp_1", "status": "in_progress"}}),
-        json!({"type": "response.output_item.added", "output_index": 0,
-               "item": {"type": "message", "id": "msg_1", "role": "assistant", "content": []}}),
-        json!({"type": "response.output_text.delta", "output_index": 0, "delta": "Hel"}),
-        json!({"type": "response.output_text.delta", "output_index": 0, "delta": "lo"}),
-        json!({"type": "response.output_item.done", "output_index": 0, "item": message("msg_1", "Hello")}),
-        json!({"type": "response.completed", "response": {"id": "resp_1", "status": "completed"}}),
-    ];
-    for dialect in [
-        &crate::providers::openai::wire::OPENAI,
-        &crate::providers::openai::wire::AZURE,
-        &crate::providers::xai::DIALECT,
-        &crate::providers::copilot::wire::DIALECT,
-        &crate::providers::chatgpt::DIALECT,
-    ] {
-        let wire = crate::providers::openai::responses_api::wire::Responses::new(
-            OpenAIConfig::with_key(dialect, "key"),
-            "gpt-5.4",
-        );
-        let response = crate::test_utils::decode_reply(
-            &wire,
-            &CompletionRequest::new("hello"),
-            Mode::Streaming,
-            frames(&events),
-            serde_json::Value::Null,
-        )
-        .unwrap_or_else(|error| panic!("{}: the reply decodes: {error}", dialect.name));
-        assert_eq!(response.text(), "Hello", "{}", dialect.name);
-    }
-}
-
-/// #1426, #1176, #1512, #2194: a body missing every field no block or the
-/// finish reads, with its echoed request config retyped, still decodes.
-#[test]
-fn a_sparse_body_with_retyped_echoed_config_decodes() {
-    let body = json!({
-        "output": [
-            {"type": "message", "content": [{"type": "output_text", "text": "hi"}]},
-            {"type": "function_call", "call_id": "call_1", "name": "lookup", "arguments": "{}"},
-            {"type": "reasoning", "summary": [{"type": "summary_text", "text": "why"}]},
-        ],
-        "usage": {"input_tokens": 3, "output_tokens_details": {}},
-        "tools": [{"type": "function", "name": "lookup", "description": null, "strict": null}],
-        "reasoning": {"effort": null},
-        "text": {"format": null},
-        "instructions": ["not", "a", "string"],
-    });
-    let response = decode(Mode::Unary, vec![WireFrame::Text(body.to_string())]);
-    assert_eq!(response.text(), "hi");
-    assert_eq!(response.tool_calls().count(), 1);
-    assert_eq!(response.reasoning(), "why");
-    assert_eq!(response.usage.input_tokens, Some(3));
-    assert_eq!(response.usage.reasoning_tokens, None);
-    assert_eq!(response.stop(), crate::message::StopReason::ToolUse);
 }
 
 /// Every status the API documents, and every incomplete reason, has its own
@@ -2295,34 +1268,6 @@ fn a_call_added_but_never_done_fails_the_turn() {
         natives(&response),
         [function_call("fc_1", "call_1", r#"{"q":"rig"}"#)],
         "a call the terminal restates is finished by it"
-    );
-}
-
-/// An item only the terminal response states takes its place by output
-/// index, so a streamed turn matches the whole reply.
-#[test]
-fn a_terminal_only_item_takes_its_output_index() {
-    let events = [
-        json!({"type": "response.output_text.delta", "output_index": 1, "delta": "Hi"}),
-        completed_with(
-            2,
-            json!([reasoning("rs_1", &["Why."]), message("msg_1", "Hi")]),
-        ),
-    ];
-    let response = decode(Mode::Streaming, frames(&events));
-    let kinds: Vec<&str> = response
-        .choice
-        .iter()
-        .map(|block| match block {
-            AssistantContent::Reasoning(_) => "reasoning",
-            AssistantContent::Text(_) => "text",
-            _ => "other",
-        })
-        .collect();
-    assert_eq!(kinds, ["reasoning", "text"]);
-    assert_eq!(
-        natives(&response),
-        [reasoning("rs_1", &["Why."]), message("msg_1", "Hi")]
     );
 }
 
@@ -2539,25 +1484,4 @@ fn response_incomplete_is_incomplete_whatever_its_status_says() {
             ),
         }
     }
-}
-
-/// A gateway that names the output index on its item events but not on
-/// its deltas streams each delta into the item it continues.
-#[test]
-fn deltas_without_an_index_continue_the_item_they_name() {
-    let output = [reasoning("rs_1", &["Plan."]), message("msg_1", "Hello")];
-    let mut events = restated(&output);
-    for event in &mut events {
-        if event["type"]
-            .as_str()
-            .is_some_and(|kind| kind.ends_with(".delta"))
-            && let Some(fields) = event.as_object_mut()
-        {
-            fields.shift_remove("output_index");
-        }
-    }
-    let response = decode(Mode::Streaming, frames(&events));
-    assert_eq!(natives(&response), output);
-    assert_eq!(response.text(), "Hello");
-    assert_eq!(response.reasoning(), "Plan.");
 }

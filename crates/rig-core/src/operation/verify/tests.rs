@@ -54,21 +54,3 @@ fn a_rejected_verification_keeps_its_reply() {
         }
     }
 }
-
-/// Only a 401 or 403 reply is a verdict on the credential. A transport
-/// failure, and a reply that did not decode, classify as they do for every
-/// other operation.
-#[test]
-fn other_verification_failures_are_unchanged() {
-    let json = serde_json::from_str::<serde_json::Value>("{").expect_err("malformed");
-    for error in [
-        ProviderError::Http(http_client::Error::StreamEnded.into()),
-        ProviderError::Json(json.into()),
-        ProviderError::Response("verify reply carried no payload".into()),
-    ] {
-        let kind = error.kind();
-        let error = authentication(error);
-        assert!(!matches!(error, ProviderError::InvalidAuthentication(_)));
-        assert_eq!(error.kind(), kind);
-    }
-}

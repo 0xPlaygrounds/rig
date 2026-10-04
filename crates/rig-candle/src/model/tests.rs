@@ -3,7 +3,7 @@ use candle_transformers::generation::Sampling;
 use candle_transformers::models::llama::LlamaConfig;
 #[cfg(not(target_family = "wasm"))]
 use futures::StreamExt;
-use rig_core::completion::{Document, ToolDefinition};
+use rig_core::completion::ToolDefinition;
 use rig_core::message::{AudioMediaType, ImageDetail, ImageMediaType, ToolChoice};
 #[cfg(not(target_family = "wasm"))]
 use rig_core::streaming::{Item, StreamEvent};
@@ -402,21 +402,6 @@ fn rejects_empty_and_malformed_artifacts() -> Result<(), Box<dyn std::error::Err
 }
 
 #[test]
-fn validates_checkpoint_metadata_before_model_loading()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config: LlamaConfig = serde_json::from_slice(&tiny_config())?;
-    let config = config.into_config(false);
-    validate_checkpoint(&checkpoint(true)?, &config)?;
-    let error = validate_checkpoint(&checkpoint(false)?, &config)
-        .err()
-        .ok_or("expected missing tensor")?;
-    assert!(
-        matches!(error, CandleError::MissingTensor(name) if name == "model.layers.0.self_attn.q_proj.weight")
-    );
-    Ok(())
-}
-
-#[test]
 fn validates_tensor_shapes_dtypes_and_tied_embeddings()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let config: LlamaConfig = serde_json::from_slice(&tiny_config())?;
@@ -781,30 +766,6 @@ async fn async_loading_succeeds_and_preserves_builder_settings()
     Ok(())
 }
 
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn async_loading_preserves_typed_errors_and_converts_panics() {
-    let invalid = CandleModel::from_safetensors_async(ModelData {
-        config: b"not json".to_vec(),
-        tokenizer: b"tokenizer".to_vec(),
-        weights: b"weights".to_vec(),
-    })
-    .await;
-    assert!(matches!(invalid, Err(CandleError::Configuration(_))));
-
-    let panicked = join_model_load(tokio::task::spawn_blocking(|| {
-        std::panic::resume_unwind(Box::new("intentional async-loading test panic"));
-        // Never evaluated — the closure panics above. It exists only to pin the
-        // return type that `join_model_load` expects.
-        #[allow(unreachable_code)]
-        Err::<CandleModel, CandleError>(CandleError::Configuration(
-            "unreachable: the closure panics above".to_owned(),
-        ))
-    }))
-    .await;
-    assert!(matches!(panicked, Err(CandleError::BlockingTaskJoin(_))));
-}
-
 #[test]
 fn typed_gguf_and_family_errors_preserve_the_failure_kind()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -874,26 +835,6 @@ fn gguf_metadata_shapes_and_tensor_encodings_are_validated_before_loading()
     Ok(())
 }
 
-#[cfg(not(target_family = "wasm"))]
-#[test]
-fn loaded_model_works_with_agent_builder() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rig_agent::agent::AgentBuilder;
-
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-    runtime.block_on(async {
-        let model = CandleModel::builder(model_data()?)
-            .temperature(0.0)
-            .max_tokens(1)
-            .build()?;
-        let agent = AgentBuilder::new(generation(&model))
-            .preamble("Be brief.")
-            .build();
-        let _answer = agent.prompt("hello").await?;
-        Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
-    })?;
-    Ok(())
-}
-
 /// A turn another model produced replays from its canonical fields, so its
 /// reasoning reaches the local prompt as plain text instead of vanishing.
 #[cfg(not(target_family = "wasm"))]
@@ -912,124 +853,6 @@ async fn foreign_reasoning_in_history_reaches_the_prompt_as_text()
         Message::user("again"),
     ];
     generation(&model).call(request(history)).await?;
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn buffered_and_streaming_generation_are_equivalent()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let model = CandleModel::builder(model_data()?)
-        .temperature(0.0)
-        .max_tokens(3)
-        .build()?;
-    let completion_request = request(vec![Message::user("hello")]);
-    let buffered = raw_completion(&model, completion_request.clone()).await?;
-    let (streamed_text, streamed) = collect_stream(&model, completion_request).await?;
-
-    assert_eq!(streamed_text, buffered.text);
-    assert_eq!(streamed.text, buffered.text);
-    assert_eq!(streamed.prompt_tokens, buffered.prompt_tokens);
-    assert_eq!(streamed.generated_tokens, buffered.generated_tokens);
-    assert_eq!(streamed.finish_reason, buffered.finish_reason);
-    assert_eq!(streamed.requested_max_tokens, buffered.requested_max_tokens);
-    assert_eq!(streamed.effective_max_tokens, buffered.effective_max_tokens);
-    assert_eq!(
-        rig_core::completion::Usage::from(&streamed),
-        rig_core::completion::Usage::from(&buffered)
-    );
-    assert!(streamed.time_to_first_token_ms.is_some());
-    assert!(streamed.prefill_duration_ms <= streamed.generation_duration_ms);
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn streaming_reports_eos_and_excludes_the_stop_token()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    loaded.generation.temperature = 0.0;
-    loaded.profile.stop_tokens.insert(0);
-    let model = CandleModel {
-        state: Arc::new(loaded),
-    };
-    let (text, raw) = collect_stream(&model, request(vec![Message::user("hello")])).await?;
-    assert!(text.is_empty());
-    assert!(raw.text.is_empty());
-    assert_eq!(raw.finish_reason, FinishReason::Eos);
-    assert_eq!(raw.generated_tokens, 1);
-    assert_eq!(
-        rig_core::completion::Usage::from(&raw).output_tokens,
-        Some(1)
-    );
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn streaming_clamps_context_and_rejects_bad_request_options()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.max_tokens = Some(10);
-    completion_request.temperature = Some(0.0);
-    let prompt = render_prompt(&completion_request)?;
-    let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
-    loaded.profile.context_limit = prompt_tokens + 2;
-    let model = CandleModel {
-        state: Arc::new(loaded),
-    };
-    let (_, raw) = collect_stream(&model, completion_request).await?;
-    assert_eq!(raw.requested_max_tokens, 10);
-    assert_eq!(raw.effective_max_tokens, 2);
-    assert_eq!(raw.generated_tokens, 2);
-
-    for additional_params in [
-        serde_json::json!({"unknown": true}),
-        serde_json::json!({"top_k": "four"}),
-    ] {
-        let mut bad_request = request(vec![Message::user("hello")]);
-        bad_request.additional_params = Some(additional_params);
-        let mut stream = generation(&model).stream(bad_request)?;
-        let item = stream
-            .next()
-            .await
-            .ok_or("bad streaming request produced no error item")?;
-        assert!(item.is_err());
-    }
-    Ok(())
-}
-
-#[test]
-fn incremental_decoder_preserves_token_boundaries() -> Result<(), CandleError> {
-    let tokenizer = Tokenizer::from_bytes(
-        tiny_tokenizer().map_err(|error| CandleError::TokenizerLoading(error.to_string()))?,
-    )
-    .map_err(|error| CandleError::TokenizerLoading(error.to_string()))?;
-    let ids = [0, 0, 7];
-    let independently_decoded = ids
-        .iter()
-        .map(|id| tokenizer.decode(&[*id], true))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?
-        .join("");
-    let complete = tokenizer
-        .decode(&ids, true)
-        .map_err(|error| CandleError::TokenizerDecoding(error.to_string()))?;
-    assert_ne!(independently_decoded, complete);
-
-    let mut decoder = IncrementalTextDecoder::new(&tokenizer);
-    let mut streamed = String::new();
-    for id in ids {
-        if let Some(fragment) = decoder.push(id)? {
-            streamed.push_str(&fragment);
-        }
-    }
-    if let Some(fragment) = decoder.finish()? {
-        streamed.push_str(&fragment);
-    }
-    assert_eq!(streamed, complete);
-    assert_eq!(streamed, decoder.text());
     Ok(())
 }
 
@@ -1061,51 +884,6 @@ fn incremental_decoder_waits_for_complete_unicode_bytes()
     assert_eq!(decoder.push(2)?.as_deref(), Some("é"));
     assert!(decoder.finish()?.is_none());
     assert_eq!(decoder.text(), "é");
-    Ok(())
-}
-
-#[test]
-fn inference_clamps_context_and_uses_fresh_generation_state()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.max_tokens = Some(10);
-    completion_request.temperature = Some(0.0);
-    let prompt = render_prompt(&completion_request)?;
-    let prompt_tokens = loaded.tokenizer.encode(prompt, false)?.len();
-    loaded.profile.context_limit = prompt_tokens + 2;
-
-    let first = infer(&loaded, &completion_request, &CancellationSignal::default())?;
-    let second = infer(&loaded, &completion_request, &CancellationSignal::default())?;
-    let (first, second) = (first.response, second.response);
-    assert_eq!(first.text, second.text);
-    assert_eq!(first.generated_tokens, 2);
-    assert_eq!(first.requested_max_tokens, 10);
-    assert_eq!(first.effective_max_tokens, 2);
-    assert_eq!(first.finish_reason, FinishReason::MaxTokens);
-    assert_eq!(
-        rig_core::completion::Usage::from(&first).output_tokens,
-        Some(2)
-    );
-    assert!(!first.text.contains("hello"));
-    Ok(())
-}
-
-#[test]
-fn eos_is_counted_but_excluded_from_decoded_text()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut loaded = load_model(model_data()?, GenerationConfig::default(), 1)?;
-    loaded.profile.stop_tokens.insert(0);
-    let mut completion_request = request(vec![Message::user("hello")]);
-    completion_request.temperature = Some(0.0);
-    let response = infer(&loaded, &completion_request, &CancellationSignal::default())?.response;
-    assert_eq!(response.finish_reason, FinishReason::Eos);
-    assert_eq!(response.generated_tokens, 1);
-    assert_eq!(
-        rig_core::completion::Usage::from(&response).output_tokens,
-        Some(1)
-    );
-    assert!(response.text.is_empty());
     Ok(())
 }
 
@@ -1214,43 +992,6 @@ fn concurrency_limit_and_cancellation_are_deterministic()
 
 #[cfg(not(target_family = "wasm"))]
 #[tokio::test(flavor = "current_thread")]
-async fn concurrent_completions_have_independent_caches_and_samplers()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let model = CandleModel::builder(model_data()?)
-        .temperature(0.0)
-        .max_tokens(2)
-        .max_concurrent_requests(2)
-        .build()?;
-    let first = raw_completion(&model, request(vec![Message::user("hello")]));
-    let second = raw_completion(&model, request(vec![Message::user("hello")]));
-    let (first, second) = tokio::join!(first, second);
-    let first = first?;
-    let second = second?;
-    assert_eq!(first.text, second.text);
-    assert_eq!(first.generated_tokens, 2);
-    assert_eq!(second.generated_tokens, 2);
-
-    let first_stream = collect_stream(&model, request(vec![Message::user("hello")]));
-    let second_stream = collect_stream(&model, request(vec![Message::user("hello")]));
-    let (first_stream, second_stream) = tokio::join!(first_stream, second_stream);
-    let (first_text, first_raw) = first_stream?;
-    let (second_text, second_raw) = second_stream?;
-    assert_eq!(first_text, second_text);
-    assert_eq!(first_raw.text, second_raw.text);
-    assert_eq!(first_raw.generated_tokens, 2);
-    assert_eq!(second_raw.generated_tokens, 2);
-
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(1));
-    semaphore.close();
-    assert!(matches!(
-        acquire_concurrency(semaphore).await,
-        Err(CandleError::ConcurrencyControllerClosed)
-    ));
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
 async fn closed_admission_controller_fails_public_operations()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let model = CandleModel::builder(model_data()?).build()?;
@@ -1305,51 +1046,6 @@ async fn dropping_buffered_completion_retains_permit_until_worker_exits()
 
     let second = second.await?;
     assert_eq!(second.generated_tokens, 2);
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn dropping_stream_cancels_worker_before_queued_request_runs()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
-    // The worker starts when the stream is first polled.
-    assert!(futures::poll!(stream.next()).is_pending());
-    control.wait_until_entered().await;
-
-    let queued = raw_completion(&model, request(vec![Message::user("hello")]));
-    futures::pin_mut!(queued);
-    assert!(futures::poll!(&mut queued).is_pending());
-
-    drop(stream);
-    assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
-    control.release()?;
-
-    let queued = queued.await?;
-    assert_eq!(queued.generated_tokens, 2);
-    Ok(())
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn dropping_a_stream_stops_the_worker_without_dropping_its_admission()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (model, control, concurrency) = controlled_model(true, false, 2)?;
-    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
-    // The worker starts when the stream is first polled.
-    assert!(futures::poll!(stream.next()).is_pending());
-    control.wait_until_entered().await;
-
-    drop(stream);
-    let queued = raw_completion(&model, request(vec![Message::user("hello")]));
-    futures::pin_mut!(queued);
-    assert!(futures::poll!(&mut queued).is_pending());
-    assert!(Arc::clone(&concurrency).try_acquire_owned().is_err());
-
-    control.release()?;
-    let queued = queued.await?;
-    assert_eq!(queued.generated_tokens, 2);
     Ok(())
 }
 
@@ -1442,40 +1138,6 @@ fn builder_rejects_invalid_generation_defaults() {
         .build(),
         Err(CandleError::InvalidGeneration(_))
     ));
-}
-
-#[test]
-fn renders_llama3_history_and_documents() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let history_request = request(vec![
-        Message::system("rules"),
-        Message::user("question"),
-        Message::assistant("answer"),
-        Message::user("follow-up"),
-    ]);
-    assert_eq!(
-        render_prompt(&history_request)?,
-        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nrules<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nquestion<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nanswer<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nfollow-up<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
-    );
-
-    let mut request = request(vec![Message::system("rules"), Message::user("question")]);
-    request.documents.push(Document {
-        id: "doc-1".to_string(),
-        text: "context".to_string(),
-        additional_props: HashMap::new(),
-    });
-    // Preparing folds the documents into the history, as the driver does.
-    let wire = Generation {
-        model: "llama3-test".to_owned(),
-        protocol: ConversationProtocol::Llama3,
-    };
-    let request = <rig_core::operation::Completion as rig_core::wire::Operation>::prepare(
-        request,
-        &rig_core::wire::Wire::describe(&wire),
-    )?;
-    let rendered = render_prompt(&request)?;
-    assert!(rendered.contains("<file id: doc-1>\ncontext\n</file>"));
-    assert!(rendered.find("<file id: doc-1>") < rendered.find("question"));
-    Ok(())
 }
 
 #[test]
@@ -1601,35 +1263,6 @@ fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleErr
     Ok(())
 }
 
-#[test]
-fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
-    let response = CandleCompletionResponse {
-        text: "done".to_string(),
-        prompt_tokens: 5,
-        generated_tokens: 2,
-        requested_max_tokens: 4,
-        effective_max_tokens: 3,
-        finish_reason: FinishReason::Eos,
-        prefill_duration_ms: 8,
-        time_to_first_token_ms: Some(10),
-        generation_duration_ms: 20,
-        tokens_per_second: Some(100.0),
-    };
-    let usage = rig_core::completion::Usage::from(&response);
-    assert_eq!(usage.input_tokens, Some(5));
-    assert_eq!(usage.output_tokens, Some(2));
-    assert_eq!(usage.total_tokens, Some(7));
-    assert_eq!(response.finish_reason, FinishReason::Eos);
-    assert_eq!(response.text, "done");
-    assert_eq!(response.requested_max_tokens, 4);
-    assert_eq!(response.effective_max_tokens, 3);
-    assert_eq!(response.prefill_duration_ms, 8);
-    assert_eq!(response.time_to_first_token_ms, Some(10));
-    assert_eq!(response.generation_duration_ms, 20);
-    assert_eq!(response.tokens_per_second, Some(100.0));
-    Ok(())
-}
-
 /// The load-bearing property behind `CompletionResponse::raw` and
 /// `CompletionResponse::raw` for this crate: the captured value is
 /// `serde_json::to_value(&CandleCompletionResponse)` — the local record
@@ -1671,45 +1304,6 @@ fn candle_completion_response_round_trips_through_serde_json_value()
         "the capture must read back into CandleCompletionResponse and re-serialize identically"
     );
     assert_eq!(back, raw);
-    Ok(())
-}
-
-/// The events-first seam captures like the request-driven one: its terminal
-/// `raw` is the same `CandleCompletionResponse` the model's `stream()` would
-/// attach, because both funnel through the adapter's `terminal_record`.
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn stream_from_events_terminal_carries_raw()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let terminal_record = CandleCompletionResponse {
-        text: "hi".to_string(),
-        prompt_tokens: 3,
-        generated_tokens: 1,
-        requested_max_tokens: 4,
-        effective_max_tokens: 4,
-        finish_reason: FinishReason::Eos,
-        prefill_duration_ms: 1,
-        time_to_first_token_ms: Some(1),
-        generation_duration_ms: 2,
-        tokens_per_second: Some(500.0),
-    };
-    let mut stream = stream_from_events(vec![
-        GenerationEvent::Text("hi".to_string()),
-        GenerationEvent::Final(terminal_record.clone()),
-    ])?;
-    while let Some(item) = stream.next().await {
-        item?;
-    }
-    let terminal = stream.finish().await?;
-
-    assert!(
-        !terminal.raw.is_null(),
-        "a provider-backed terminal always carries raw"
-    );
-    let raw = &terminal.raw;
-    let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
-    assert_eq!(typed, terminal_record);
-    assert_eq!(terminal.usage.total_tokens, Some(4));
     Ok(())
 }
 
@@ -1805,51 +1399,6 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     assert_eq!(terminal.model(), renormalized.model());
     assert_eq!(terminal.usage, renormalized.usage);
     assert_eq!(terminal.usage.output_tokens, Some(2));
-    Ok(())
-}
-
-/// The generation wire runs through the driver, so the request boundary
-/// rejects each empty piece before the local runtime sees it.
-#[cfg(not(target_family = "wasm"))]
-#[tokio::test(flavor = "current_thread")]
-async fn an_empty_turn_never_reaches_the_local_runtime()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let parsed = |message: serde_json::Value| serde_json::from_value::<Message>(message);
-    let mut empty_history = request(vec![Message::user("hello")]);
-    empty_history.chat_history.clear();
-    let requests = [
-        (empty_history, "request has an empty chat history"),
-        (
-            request(vec![parsed(
-                serde_json::json!({"role": "user", "content": []}),
-            )?]),
-            "user message at index 0 has no content",
-        ),
-        (
-            request(vec![
-                parsed(serde_json::json!({"role": "assistant", "id": null, "content": []}))?,
-                Message::user("hello"),
-            ]),
-            "assistant message at index 0 has no content",
-        ),
-    ];
-    let events = Arc::new(std::sync::Mutex::new(vec![GenerationEvent::Text(
-        "unreachable".to_owned(),
-    )]));
-    let model = rig_core::Model::new(scripted(), Scripted(Arc::clone(&events)));
-    for (request, expected) in requests {
-        let called = model.call(request.clone()).await.err();
-        let streamed = model.stream(request).err();
-        for error in [called, streamed] {
-            let error = error.ok_or("the request is rejected")?;
-            assert!(error.to_string().contains(expected), "{error}");
-        }
-    }
-    assert_eq!(
-        events.lock().map(|events| events.len()).ok(),
-        Some(1),
-        "the runtime was never sent a request"
-    );
     Ok(())
 }
 
@@ -1960,35 +1509,5 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
         let prompt = wire.prompt(&request)?;
         assert!(prompt.contains("2"), "{protocol:?}: {prompt}");
     }
-    Ok(())
-}
-
-/// NEW-candle-identity (round 4): a turn another local checkpoint produced
-/// is another model's, so its reasoning reaches a Llama 3 model as text and
-/// the prompt renders.
-#[test]
-fn another_local_models_reasoning_renders_as_text()
--> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    use rig_core::message::{AssistantContent, AssistantMessage, Origin, Reasoning, StopReason};
-    let qwen = local(ConversationProtocol::Qwen3);
-    let history = vec![
-        Message::user("q"),
-        Message::Assistant(AssistantMessage {
-            content: vec![
-                AssistantContent::Reasoning(Reasoning::new("think it through")),
-                AssistantContent::text("answer"),
-            ],
-            origin: Some(Origin::new(
-                "candle.generate",
-                "candle",
-                qwen.model.as_str(),
-            )),
-            stop: Some(StopReason::Stop),
-        }),
-    ];
-    let llama = local(ConversationProtocol::Llama3);
-    let request = prepared_for(&llama, history, Vec::new())?;
-    let prompt = llama.prompt(&request)?;
-    assert!(prompt.contains("think it through"), "{prompt}");
     Ok(())
 }

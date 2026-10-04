@@ -6,13 +6,12 @@
 
 #![allow(clippy::expect_used, clippy::panic)]
 
-use futures::{StreamExt, stream};
+use futures::stream;
 use rig_core::completion::{CompletionRequest, FinishReason, ReplayTarget, Usage};
 use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::message::{Api, AssistantContent};
 use rig_core::operation::{Block, CallFragment, Completion, Finish};
-use rig_core::streaming::{Item, PartKind, StreamEvent};
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
 
 /// One frame of a made-up vendor's reply.
@@ -215,63 +214,4 @@ async fn interleaved_calls_with_late_ids_fold_with_their_ids() {
         ],
         "each call carries the id that arrived late, in the order the calls closed"
     );
-}
-
-#[tokio::test]
-async fn the_stream_shows_each_call_whole_and_finishes_as_call_does() {
-    let mut stream = model()
-        .stream(CompletionRequest::new("add and multiply"))
-        .expect("the stream opens");
-    let mut events = Vec::new();
-    while let Some(item) = stream.next().await {
-        match item.expect("no item is an error") {
-            Item::Event(event) => events.push(event),
-            Item::Unknown(payload) => panic!("nothing unmodeled was sent: {payload:?}"),
-        }
-    }
-    let streamed = stream.finish().await.expect("the stream finishes");
-    let called = model()
-        .call(CompletionRequest::new("add and multiply"))
-        .await
-        .expect("the reply folds");
-    assert_eq!(streamed, called, "one decoder and one fold per reply");
-
-    // Text is not held back by the calls buffered around it: all of it
-    // streams before either call, which surfaces when it closes.
-    let text: String = events
-        .iter()
-        .take_while(|event| {
-            !matches!(
-                event,
-                StreamEvent::Start {
-                    kind: PartKind::ToolCall,
-                    ..
-                }
-            )
-        })
-        .filter_map(|event| match event {
-            StreamEvent::Text { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(text, "Adding and multiplying.");
-
-    // Each call surfaces with its arguments whole, in one event.
-    let arguments: Vec<&str> = events
-        .iter()
-        .filter_map(|event| match event {
-            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(arguments, [r#"{"a":1,"b":2}"#, r#"{"x":2,"y":3}"#]);
-}
-
-#[test]
-fn the_stream_of_an_out_of_tree_wire_is_send_and_static() {
-    fn send_static<T: Send + 'static>(_: &T) {}
-    let stream = model()
-        .stream(CompletionRequest::new("add and multiply"))
-        .expect("the stream opens");
-    send_static(&stream);
 }

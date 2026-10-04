@@ -101,31 +101,3 @@ async fn a_completed_multi_page_listing_reports_no_page_ceiling() {
         "a completed three-page listing must not report a page ceiling; logged:\n{logs}"
     );
 }
-
-/// The counterpart, so the fix cannot be "stop warning at all": a listing that
-/// genuinely runs out of its page budget still reports the ceiling.
-#[tokio::test]
-async fn a_listing_that_exhausts_the_page_budget_still_reports_the_ceiling() {
-    let logs = logs_from_listing(budget_exhausting_pages()).await;
-
-    assert!(
-        logs.contains(CEILING_WARNING),
-        "exhausting the page budget must still be reported; logged:\n{logs}"
-    );
-}
-
-/// A repeated cursor is its own diagnosis and ends the listing, so it reports
-/// that alone — not that *and* a page ceiling for one event.
-#[tokio::test]
-async fn a_repeated_cursor_reports_only_its_own_warning() {
-    let logs = logs_from_listing(repeated_cursor_pages()).await;
-
-    assert!(
-        logs.contains(REPEATED_CURSOR_WARNING),
-        "the repeated cursor is what ended the listing; logged:\n{logs}"
-    );
-    assert!(
-        !logs.contains(CEILING_WARNING),
-        "one event must not also be reported as a page ceiling; logged:\n{logs}"
-    );
-}

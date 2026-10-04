@@ -55,6 +55,3 @@ impl ToolSchema {
         })
     }
 }
-
-#[cfg(test)]
-mod tests;

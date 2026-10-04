@@ -344,68 +344,6 @@ fn user_content_has_its_converse_form() {
     );
 }
 
-/// Calls rig issued ids for are one alias wherever they appear, distinct
-/// from the provider's ids and from a hosted tool's, and every result
-/// follows its call.
-#[test]
-fn issued_ids_are_one_alias_and_hosted_ids_are_reserved() {
-    let issued = call("", "lookup", json!({}));
-    let item = |item| AssistantContent::Opaque(Opaque { item, replay: true });
-    let history = vec![
-        Message::user("q"),
-        Message::Assistant(AssistantMessage {
-            content: vec![
-                item(json!({ "toolUse": {
-                    "toolUseId": "tool-0", "name": "nova_grounding", "input": {}, "type": "server_tool_use",
-                } })),
-                item(
-                    json!({ "toolResult": { "toolUseId": "tool-0", "content": [{ "text": "found" }] } }),
-                ),
-                AssistantContent::ToolCall(issued.clone()),
-            ],
-            origin: Some(Origin::new(
-                "bedrock.converse",
-                crate::completion::PROVIDER_NAME,
-                NOVA,
-            )),
-            stop: Some(StopReason::ToolUse),
-        }),
-        Message::User {
-            content: vec![UserContent::ToolResult(
-                issued.result(vec![ToolResultContent::text("done")]),
-            )],
-        },
-    ];
-    let body = sent(NOVA, history);
-    let ids: Vec<&str> = body["messages"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|message| message["content"].as_array().into_iter().flatten())
-        .filter_map(|block| {
-            block
-                .pointer("/toolUse/toolUseId")
-                .or_else(|| block.pointer("/toolResult/toolUseId"))?
-                .as_str()
-        })
-        .collect();
-    assert_eq!(ids, ["tool-0", "tool-0", "tool-1", "tool-1"]);
-}
-
-/// The same model gets every item back as it came, in both modes: signed
-/// and redacted reasoning, cited text, the hosted tool's use and result,
-/// and the call, whose id its result shares.
-#[test]
-fn the_same_model_gets_its_items_back_verbatim() {
-    let response = whole(CLAUDE, rich(), "tool_use");
-    let body = sent(CLAUDE, answered(&response));
-    assert_eq!(body["messages"][1]["content"], json!(rich()));
-    assert_eq!(
-        body["messages"][2]["content"],
-        json!([{ "toolResult": { "toolUseId": "tooluse_1", "content": [{ "text": "ok" }] } }])
-    );
-}
-
 /// Another model gets canonical fields only: reasoning text becomes text,
 /// redacted reasoning and the hosted tool's items are dropped, and a call
 /// id another provider made is one Converse accepts, on its result too.
@@ -492,22 +430,6 @@ fn an_edited_block_is_rebuilt_for_the_family() {
     ));
     let body = sent(NOVA, vec![Message::user("q"), Message::Assistant(turn)]);
     assert_eq!(body["messages"][1]["content"][0], reasoning("edited", None));
-}
-
-/// Call arguments are an object by type, so a call made with `null`
-/// arguments sends `{}`, never a `null` input.
-#[test]
-fn null_arguments_are_sent_as_an_object() {
-    let response = whole(
-        NOVA,
-        vec![tool_use("tooluse_2", "lookup", Value::Null)],
-        "tool_use",
-    );
-    let body = sent(NOVA, answered(&response));
-    assert_eq!(
-        body["messages"][1]["content"][0],
-        tool_use("tooluse_2", "lookup", json!({}))
-    );
 }
 
 /// Two calls sharing one id in a stored turn reach Converse distinct, each

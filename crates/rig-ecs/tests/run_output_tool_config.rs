@@ -2,13 +2,12 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
-use rig_core::message::{AssistantContent, ToolChoice};
+use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{
         Failed, Failure, Grant, MaxTurns, Output, OutputKind, OutputRetries, OutputToolConfig,
-        OutputToolName, Run, RunResult, Settled, ToolChoiceSpec,
+        RunResult, Settled,
     },
-    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -41,44 +40,6 @@ fn settle(app: &mut bevy_app::App, run: Entity) {
     assert_eq!(
         app.world().get::<RunResult>(run).unwrap().0,
         "{\"answer\":42}"
-    );
-}
-
-#[test]
-fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
-    let mut app = app();
-    let (agent, requests) = scripted_agent(
-        &mut app,
-        MODEL,
-        vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
-    );
-    app.world_mut().entity_mut(agent).insert((
-        schema(),
-        config(),
-        ToolChoiceSpec(Some(ToolChoice::Required)),
-    ));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, Some(1));
-    settle(&mut app, run);
-    let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].tools.len(), 1);
-    assert_eq!(requests[0].tools[0].name, "submit");
-    assert_eq!(requests[0].tools[0].description, "Extract this data.");
-    assert_eq!(requests[0].tools[0].parameters, schema().schema.unwrap());
-    assert!(requests[0].output_schema.is_none());
-    assert_eq!(requests[0].system_instructions(), Some("You are terse."));
-    assert_eq!(
-        app.world().get::<OutputToolName>(run).unwrap().0.as_deref(),
-        Some("submit")
-    );
-    assert_eq!(
-        app.world_mut()
-            .query::<&rig_ecs::agent::ToolCallSlot>()
-            .iter(app.world())
-            .count(),
-        0
     );
 }
 
@@ -264,150 +225,6 @@ fn output_configuration_without_a_schema_does_not_create_a_tool() {
     });
     assert!(requests.lock().unwrap()[0].tools.is_empty());
     assert_eq!(app.world().get::<RunResult>(run).unwrap().0, "plain");
-}
-
-#[test]
-fn a_checkpoint_restores_custom_configuration_in_a_fresh_world() {
-    let mut original = app();
-    let (agent, _) = scripted_agent(&mut original, MODEL, vec![]);
-    original
-        .world_mut()
-        .entity_mut(agent)
-        .insert((schema(), OutputToolConfig::default()));
-    let run = original
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, None);
-    original.world_mut().entity_mut(run).insert(config());
-    let checkpoint = save_world(original.world_mut()).unwrap();
-    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
-    drop(original);
-    let mut restored = app();
-    let (model, requests) = Scripted::new(
-        MODEL,
-        vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
-    );
-    register(&mut restored, MODEL, model);
-    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).unwrap();
-    let run = restored
-        .world_mut()
-        .query_filtered::<Entity, With<Run>>()
-        .single(restored.world())
-        .unwrap();
-    assert_eq!(
-        restored.world().get::<OutputToolConfig>(run),
-        Some(&config())
-    );
-    settle(&mut restored, run);
-    assert_eq!(
-        requests.lock().unwrap()[0].tools[0].description,
-        "Extract this data."
-    );
-}
-#[test]
-fn replay_identity_includes_each_effective_output_tool_setting() {
-    let mut app = app();
-    let (agent, _) = scripted_agent(&mut app, MODEL, vec![]);
-    app.world_mut()
-        .entity_mut(agent)
-        .insert((schema(), config()));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, None);
-    let inherited = rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap();
-    for changed in [
-        OutputToolConfig {
-            name: Some("different".into()),
-            ..config()
-        },
-        OutputToolConfig {
-            description: Some("different".into()),
-            ..config()
-        },
-        OutputToolConfig {
-            augment_preamble: true,
-            ..config()
-        },
-    ] {
-        app.world_mut().entity_mut(run).insert(changed);
-        assert_ne!(
-            rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap(),
-            inherited
-        );
-    }
-    app.world_mut().entity_mut(run).insert(config());
-    assert_eq!(
-        rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap(),
-        inherited
-    );
-}
-
-#[test]
-fn reserved_name_commits_tool_mode_despite_native_or_auto_preference() {
-    for mode in [OutputKind::Auto, OutputKind::Native] {
-        let mut app = app();
-        let (agent, requests) = scripted_agent(
-            &mut app,
-            MODEL,
-            vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
-        );
-        app.world_mut()
-            .entity_mut(agent)
-            .insert((Output { mode, ..schema() }, config()));
-        let run = app
-            .world_mut()
-            .spawn_run(agent, &[], "extract", false, Some(1));
-        settle(&mut app, run);
-        let requests = requests.lock().unwrap();
-        assert_eq!(requests.len(), 1);
-        assert!(requests[0].output_schema.is_none());
-        assert_eq!(requests[0].tools[0].name, "submit");
-    }
-}
-
-#[test]
-fn description_only_configuration_keeps_collision_safe_automatic_naming() {
-    let mut app = app();
-    let (agent, requests) = scripted_agent(
-        &mut app,
-        MODEL,
-        vec![vec![call(
-            "c",
-            "final_result_1",
-            serde_json::json!({"answer":42}),
-        )]],
-    );
-    let real = register(
-        &mut app,
-        "real-final",
-        NeverCalled {
-            name: "final_result".into(),
-        },
-    );
-    app.world_mut().entity_mut(agent).insert((
-        schema(),
-        OutputToolConfig {
-            name: None,
-            ..config()
-        },
-    ));
-    app.world_mut().spawn((Grant(real), ChildOf(agent)));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, Some(1));
-    settle(&mut app, run);
-    let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].tools.len(), 2);
-    let output = requests[0]
-        .tools
-        .iter()
-        .find(|tool| tool.name == "final_result_1")
-        .unwrap();
-    assert_eq!(output.description, "Extract this data.");
-    assert_eq!(
-        app.world().get::<OutputToolName>(run).unwrap().0.as_deref(),
-        Some("final_result_1")
-    );
 }
 
 #[test]

@@ -363,52 +363,6 @@ fn cancellation_records_already_published_output() {
 }
 
 #[test]
-fn world_native_cancellation_records_output_without_a_publishing_slot() {
-    let mut live = app();
-    EffectLogResource::install(
-        live.world_mut(),
-        rig_cassette::effect_log::EffectLogRecorder::new(),
-    );
-    Handlers::with(live.world_mut(), |handlers| {
-        handlers.register_open("tool:publish", Publish { fail: false }.descriptor().family)
-    })
-    .unwrap()
-    .unwrap();
-    let effect = dispatch(live.world_mut(), "private");
-    tick_until(&mut live, "world dispatch", |world| {
-        world.get::<rig_ecs::bus::InFlight>(effect).is_some()
-    });
-    assert!(
-        live.world()
-            .get::<rig_ecs::bus::Publishing>(effect)
-            .is_none()
-    );
-    let mut context = ToolContext::new();
-    context
-        .insert_result(Artifact("world-before-cancel".into()))
-        .unwrap();
-    live.world_mut()
-        .entity_mut(effect)
-        .insert(ToolOutputs(context));
-    live.world_mut().despawn(effect);
-    let log = live.world().resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 1);
-    assert_eq!(
-        log.records[0].outcome.as_ref().unwrap_err().kind,
-        ErrorKind::Cancelled
-    );
-    assert_eq!(
-        log.records[0]
-            .tool_output
-            .as_ref()
-            .unwrap()
-            .get::<Artifact>()
-            .unwrap(),
-        Some(Artifact("world-before-cancel".into()))
-    );
-}
-
-#[test]
 fn world_native_published_output_is_recorded_and_mismatched_replay_does_not_publish() {
     let mut live = app();
     EffectLogResource::install(

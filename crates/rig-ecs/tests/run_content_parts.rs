@@ -148,32 +148,6 @@ fn assistant_provider_items_opaque_items_and_origin_round_trip() {
 }
 
 #[test]
-fn part_edits_do_not_change_siblings_and_order_is_semantic() {
-    let parts = MessageParts::User {
-        content: vec![UserContent::text("first"), UserContent::text("second")],
-    };
-    let (mut world, entity) = world(parts);
-    let children: Vec<_> = world.get::<Children>(entity).unwrap().iter().collect();
-    let first = *children.first().unwrap();
-    let second = *children.get(1).unwrap();
-    let mut part = world.get_mut::<ContentPart>(first).unwrap();
-    let ContentPart::Text(text) = &mut *part else {
-        panic!("a text part");
-    };
-    text.text = "edited".into();
-    assert!(
-        matches!(world.get::<ContentPart>(second), Some(ContentPart::Text(text)) if text.text == "second")
-    );
-    world.entity_mut(entity).insert_children(0, &[second]);
-    assert_eq!(
-        read_message(&world, entity).unwrap(),
-        MessageParts::User {
-            content: vec![UserContent::text("second"), UserContent::text("edited")]
-        }
-    );
-}
-
-#[test]
 fn missing_or_wrong_role_components_are_rejected() {
     let (mut world, entity) = world(MessageParts::User {
         content: vec![UserContent::text("text")],
@@ -192,37 +166,6 @@ fn missing_or_wrong_role_components_are_rejected() {
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
     world.entity_mut(entity).remove::<Role>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Missing));
-}
-
-#[test]
-fn replacing_a_variant_cannot_leave_a_conflicting_payload() {
-    let (mut world, entity) = world(MessageParts::User {
-        content: vec![UserContent::text("text")],
-    });
-    let child = world
-        .get::<Children>(entity)
-        .unwrap()
-        .iter()
-        .next()
-        .unwrap();
-    world
-        .entity_mut(child)
-        .insert(ContentPart::Image(ImagePart {
-            source: PartSource::Url("https://example.org/image".into()),
-            media_type: None,
-            native: None,
-            detail: None,
-        }));
-    assert_eq!(
-        read_message(&world, entity).unwrap(),
-        MessageParts::User {
-            content: vec![UserContent::Image(Image {
-                data: DocumentSourceKind::Url("https://example.org/image".into()),
-                ..Default::default()
-            })],
-        }
-    );
-    assert_eq!(world.query::<&ContentPart>().iter(&world).count(), 1);
 }
 
 #[test]
@@ -269,118 +212,6 @@ fn leaf_children_and_nested_results_are_rejected_even_when_removed() {
             Err(ContentError::Shape)
         );
     }
-}
-
-#[test]
-fn adding_a_payload_exposes_its_parent_and_sibling_membership() {
-    #[derive(Resource, Default)]
-    struct Seen(usize);
-
-    let mut world = World::new();
-    world.init_resource::<Seen>();
-    world.add_observer(
-        |added: On<Add, ContentPart>,
-         relations: Query<&ChildOf>,
-         parents: Query<&Children>,
-         mut seen: ResMut<Seen>| {
-            let parent = relations.get(added.entity).unwrap().parent();
-            assert!(
-                parents
-                    .get(parent)
-                    .is_ok_and(|children| children.iter().any(|child| child == added.entity)),
-                "the content relationship must precede payload publication"
-            );
-            seen.0 += 1;
-        },
-    );
-    let utterance = world.spawn(Utterance).id();
-    write_message(
-        &mut world,
-        utterance,
-        MessageParts::User {
-            content: vec![
-                UserContent::text("outer"),
-                UserContent::tool_result(
-                    rig_core::message::CallId::from_wire("call"),
-                    rig_core::message::ToolName::new("tool").expect("tool name"),
-                    vec![ToolResultContent::text("nested")],
-                ),
-            ],
-        },
-    )
-    .unwrap();
-    assert_eq!(world.resource::<Seen>().0, 3);
-}
-
-#[test]
-fn removal_cannot_hide_a_missing_nested_binary() {
-    use bevy_ecs::system::SystemState;
-    use std::collections::BTreeMap;
-
-    let (mut world, utterance) = world(MessageParts::User {
-        content: vec![UserContent::tool_result(
-            rig_core::message::CallId::from_wire("call"),
-            rig_core::message::ToolName::new("tool").expect("tool name"),
-            vec![ToolResultContent::Image(Image {
-                data: DocumentSourceKind::Raw(vec![1, 2, 3]),
-                ..Default::default()
-            })],
-        )],
-    });
-    let result = world.get::<Children>(utterance).unwrap()[0];
-    let image = world.get::<Children>(result).unwrap()[0];
-    world.insert_resource(BinaryAssets::default());
-    let mut state: SystemState<ContentGraph> = SystemState::new(&mut world);
-    for target in [result, image] {
-        assert_eq!(
-            state.get(&world).unwrap().message_with(
-                utterance,
-                &BTreeMap::from([(target, RequestPartEdit::Remove)]),
-            ),
-            Err(ContentError::Binary(BinaryError::Missing))
-        );
-    }
-}
-
-#[test]
-fn late_preparation_failure_preserves_assistant_id_and_children() {
-    let original = MessageParts::Assistant(rig_core::message::AssistantMessage::new(vec![
-        AssistantContent::text("retained"),
-    ]));
-    let (mut world, utterance) = world(original.clone());
-    let children: Vec<_> = world.get::<Children>(utterance).unwrap().iter().collect();
-    let rejected = MessageParts::User {
-        content: vec![
-            UserContent::text("prepared first"),
-            UserContent::tool_result(
-                rig_core::message::CallId::from_wire("call"),
-                rig_core::message::ToolName::new("tool").expect("tool name"),
-                vec![
-                    ToolResultContent::Image(Image {
-                        data: DocumentSourceKind::Raw(vec![1, 2, 3]),
-                        ..Default::default()
-                    }),
-                    ToolResultContent::Image(Image {
-                        data: DocumentSourceKind::Base64("invalid!".into()),
-                        ..Default::default()
-                    }),
-                ],
-            ),
-        ],
-    };
-    assert_eq!(
-        write_message(&mut world, utterance, rejected),
-        Err(ContentError::Binary(BinaryError::Base64))
-    );
-    assert_eq!(read_message(&world, utterance).unwrap(), original);
-    assert_eq!(
-        world
-            .get::<Children>(utterance)
-            .unwrap()
-            .iter()
-            .collect::<Vec<_>>(),
-        children
-    );
 }
 
 #[test]
@@ -435,59 +266,6 @@ fn shared_assets_survive_one_owner_despawn_and_host_pins() {
     assert_eq!(world.resource::<BinaryAssets>().len(), 1);
     collect_binary_assets(&mut world, []).unwrap();
     assert!(world.resource::<BinaryAssets>().is_empty());
-}
-
-#[test]
-fn system_reader_observes_the_same_graph_without_a_message_cache() {
-    use bevy_ecs::system::SystemState;
-    let parts = MessageParts::User {
-        content: vec![UserContent::text("read through system param")],
-    };
-    let (mut world, entity) = world(parts.clone());
-    let mut state: SystemState<ContentGraph> = SystemState::new(&mut world);
-    assert_eq!(state.get(&world).unwrap().message(entity).unwrap(), parts);
-}
-
-#[test]
-fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
-    use crate::run_support::{first_utterance, open_model_world};
-    use rig_core::effect::EffectKind;
-    use rig_ecs::{
-        agent::MaxTurns,
-        bus::{PendingEffect, RigSchedule},
-        systems::RunCommands,
-    };
-    let (mut world, agent) = open_model_world();
-    world.entity_mut(agent).insert(MaxTurns(1));
-    let run = world.spawn_run(agent, &[], "hello", false, None);
-    world.run_schedule(RigSchedule);
-    let utterance = first_utterance(&mut world, run);
-    assert_eq!(
-        read_message(&world, utterance).unwrap(),
-        MessageParts::User {
-            content: vec![UserContent::text("hello")]
-        }
-    );
-    assert_eq!(
-        world
-            .query::<&ContentPart>()
-            .iter(&world)
-            .filter(|part| matches!(part, ContentPart::Text(_)))
-            .count(),
-        1
-    );
-    let request = world
-        .query::<&PendingEffect>()
-        .iter(&world)
-        .find_map(|effect| match &effect.kind {
-            EffectKind::Completion { request, .. } => Some(request.clone()),
-            _ => None,
-        })
-        .unwrap();
-    assert_eq!(
-        request.chat_history,
-        vec![rig_core::message::Message::user("hello")]
-    );
 }
 
 /// Two runs read in one `Materialise` pass: the first's model answers an

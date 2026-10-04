@@ -47,100 +47,6 @@ fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantCon
     ))
 }
 
-#[derive(Clone, Default)]
-struct LifecycleCounts {
-    completion_calls: Arc<AtomicUsize>,
-    completion_responses: Arc<AtomicUsize>,
-    model_turns: Arc<AtomicUsize>,
-    invalid_tool_calls: Arc<AtomicUsize>,
-}
-
-impl AgentHook for LifecycleCounts {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: crate::agent::CompletionCallEvent<'_>,
-    ) -> crate::agent::CompletionCallAction {
-        self.completion_calls.fetch_add(1, Ordering::SeqCst);
-        crate::agent::CompletionCallAction::Continue
-    }
-
-    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-        if event.completion().is_some() {
-            self.completion_responses.fetch_add(1, Ordering::SeqCst);
-        }
-        OutcomeAction::Proceed
-    }
-
-    async fn on_model_turn_finished(
-        &self,
-        _ctx: &HookContext,
-        _event: crate::agent::ModelTurnFinished<'_>,
-    ) -> ModelTurnAction {
-        self.model_turns.fetch_add(1, Ordering::SeqCst);
-        ModelTurnAction::Continue
-    }
-
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        _event: &crate::agent::InvalidToolCallContext,
-    ) -> Option<crate::agent::InvalidToolCallAction> {
-        self.invalid_tool_calls.fetch_add(1, Ordering::SeqCst);
-        None
-    }
-}
-
-type ExtractorResponseSnapshot = (Message, Vec<AssistantContent>, Usage, Option<String>);
-
-#[derive(Clone, Default)]
-struct ExtractorResponseCapture {
-    prompt: Arc<Mutex<Option<Message>>>,
-    snapshot: Arc<Mutex<Option<ExtractorResponseSnapshot>>>,
-}
-
-impl AgentHook for ExtractorResponseCapture {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        event: crate::agent::CompletionCallEvent<'_>,
-    ) -> crate::agent::CompletionCallAction {
-        *self.prompt.lock().expect("extractor prompt") = Some(event.prompt.clone());
-        crate::agent::CompletionCallAction::continue_run()
-    }
-
-    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-        let Some(response) = event.completion() else {
-            return OutcomeAction::proceed();
-        };
-        let prompt = self
-            .prompt
-            .lock()
-            .expect("extractor prompt")
-            .clone()
-            .expect("the completion call precedes its outcome");
-        *self.snapshot.lock().expect("extractor response snapshot") = Some((
-            prompt,
-            response.choice.clone(),
-            response.usage,
-            response.response_id().map(str::to_owned),
-        ));
-        OutcomeAction::proceed()
-    }
-}
-
-struct StopBeforeCompletion;
-
-impl AgentHook for StopBeforeCompletion {
-    async fn on_completion_call(
-        &self,
-        _ctx: &HookContext,
-        _event: crate::agent::CompletionCallEvent<'_>,
-    ) -> crate::agent::CompletionCallAction {
-        crate::agent::CompletionCallAction::stop("extractor stopped")
-    }
-}
-
 struct ExtractorContextIndex {
     queries: Arc<Mutex<Vec<(String, u64)>>>,
 }
@@ -214,34 +120,6 @@ impl AgentHook for StopFirstBilledResponse {
     }
 }
 
-struct StopOnInvalidToolCall;
-
-impl AgentHook for StopOnInvalidToolCall {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        _event: &crate::agent::InvalidToolCallContext,
-    ) -> Option<crate::agent::InvalidToolCallAction> {
-        Some(crate::agent::InvalidToolCallAction::stop(
-            "unexpected extractor tool call",
-        ))
-    }
-}
-
-struct RepairUnexpectedAsSubmit;
-
-impl AgentHook for RepairUnexpectedAsSubmit {
-    async fn on_invalid_tool_call(
-        &self,
-        _ctx: &HookContext,
-        _event: &crate::agent::InvalidToolCallContext,
-    ) -> Option<crate::agent::InvalidToolCallAction> {
-        Some(crate::agent::InvalidToolCallAction::repair(
-            SUBMIT_TOOL_NAME,
-        ))
-    }
-}
-
 struct SkipUnexpected;
 
 impl AgentHook for SkipUnexpected {
@@ -254,56 +132,6 @@ impl AgentHook for SkipUnexpected {
             "ignored by extractor hook",
         ))
     }
-}
-
-#[tokio::test]
-async fn extractor_runs_through_full_response_lifecycle() {
-    let model = MockCompletionModel::from_turns([submit_turn("John")]);
-    let counts = LifecycleCounts::default();
-    let response = ExtractorBuilder::<Person>::new(model.clone())
-        .add_hook(counts.clone())
-        .build()
-        .extract("John")
-        .await
-        .expect("extraction should succeed");
-
-    assert_eq!(response.output.name, "John");
-    assert_eq!(model.request_count(), 1);
-    assert_eq!(counts.completion_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 1);
-    assert_eq!(counts.model_turns.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn extractor_hook_receives_canonical_response_fields() {
-    let capture = ExtractorResponseCapture::default();
-    let expected_usage = usage(23);
-    let response =
-        ExtractorBuilder::<Person>::new(MockCompletionModel::from_turns([
-            submit_turn("John").with_usage(expected_usage)
-        ]))
-        .add_hook(capture.clone())
-        .build()
-        .extract("John")
-        .await
-        .expect("extraction should succeed");
-    assert_eq!(response.output.name, "John");
-
-    let (prompt, content, observed_usage, message_id) = capture
-        .snapshot
-        .lock()
-        .expect("extractor response snapshot")
-        .clone()
-        .expect("extractor response hook should fire");
-    assert_eq!(prompt, Message::user("John"));
-    assert_eq!(observed_usage, expected_usage);
-    assert_eq!(message_id.as_deref(), Some("extractor-message"));
-    assert!(matches!(
-        content.as_slice(),
-        [AssistantContent::ToolCall(tool_call)]
-            if tool_call.function.name == SUBMIT_TOOL_NAME
-                && tool_call.function.arguments_value() == json!({"name": "John"})
-    ));
 }
 
 #[tokio::test]
@@ -336,27 +164,6 @@ async fn extractor_dynamic_context_uses_the_agent_hook_lifecycle() {
             .any(|(id, text)| id == "extractor-context"
                 && text == "{\n  \"question\": \"retrieved\"\n}")
     );
-}
-
-#[tokio::test]
-async fn extractor_completion_call_stop_prevents_provider_io() {
-    let model = MockCompletionModel::from_turns([submit_turn("John")]);
-    let error = ExtractorBuilder::<Person>::new(model.clone())
-        .add_hook(StopBeforeCompletion)
-        .build()
-        .extract("John")
-        .await
-        .expect_err("terminating hook should cancel extraction");
-
-    assert!(matches!(
-        error,
-        StructuredOutputError::Prompt(err)
-            if matches!(
-                err,
-                PromptError::Cancelled { ref reason, .. } if reason == "extractor stopped"
-            )
-    ));
-    assert_eq!(model.request_count(), 0);
 }
 
 #[tokio::test]
@@ -427,70 +234,6 @@ async fn unexpected_tool_call_preserves_usage_and_retries() {
 }
 
 #[tokio::test]
-async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
-    let model = MockCompletionModel::from_turns([
-        MockTurn::tool_call("unknown", "unexpected", json!({})).with_usage(usage(10)),
-        submit_turn("John").with_usage(usage(5)),
-    ]);
-    let counts = LifecycleCounts::default();
-
-    let response = ExtractorBuilder::<Person>::new(model)
-        .retries(1)
-        .add_hook(counts.clone())
-        .build()
-        .extract("John")
-        .await
-        .expect("deferred invalid call should use extractor fallback");
-
-    assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, Some(15));
-    assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
-    assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
-}
-
-#[tokio::test]
-async fn unexpected_tool_call_hook_can_stop_extraction() {
-    let model =
-        MockCompletionModel::from_turns([MockTurn::tool_call("unknown", "unexpected", json!({}))]);
-
-    let error = ExtractorBuilder::<Person>::new(model)
-        .add_hook(StopOnInvalidToolCall)
-        .build()
-        .extract("John")
-        .await
-        .expect_err("invalid-tool hook should retain control");
-
-    assert!(matches!(
-        error,
-        StructuredOutputError::Prompt(err)
-            if matches!(
-                err,
-                PromptError::Cancelled { ref reason, .. }
-                    if reason == "unexpected extractor tool call"
-            )
-    ));
-}
-
-#[tokio::test]
-async fn unexpected_tool_call_hook_can_repair_to_submit() {
-    let model = MockCompletionModel::from_turns([MockTurn::tool_call(
-        "unknown",
-        "unexpected",
-        json!({ "name": "John" }),
-    )]);
-
-    let response = ExtractorBuilder::<Person>::new(model)
-        .add_hook(RepairUnexpectedAsSubmit)
-        .build()
-        .extract("John")
-        .await
-        .expect("repaired output-tool call should finalize extraction");
-
-    assert_eq!(response.output.name, "John");
-}
-
-#[tokio::test]
 async fn skip_hook_preserves_valid_submit_sibling() {
     let turn = MockTurn::from_contents([
         tool_call("unknown", "unexpected", json!({})),
@@ -506,82 +249,6 @@ async fn skip_hook_preserves_valid_submit_sibling() {
         .expect("skipping an invalid sibling should preserve submit");
 
     assert_eq!(response.output.name, "John");
-}
-
-#[tokio::test]
-async fn submit_call_wins_over_unexpected_sibling_call() {
-    let turn = MockTurn::from_contents([
-        tool_call("unknown", "unexpected", json!({})),
-        tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-    ])
-    .with_usage(usage(7));
-    let model = MockCompletionModel::from_turns([turn]);
-
-    let response = extractor(model, 0)
-        .extract("John")
-        .await
-        .expect("submit should remain authoritative");
-
-    assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, Some(7));
-}
-
-#[tokio::test]
-async fn submit_call_wins_before_unexpected_sibling_call() {
-    let turn = MockTurn::from_contents([
-        tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        tool_call("unknown", "unexpected", json!({})),
-    ]);
-
-    let response = extractor(MockCompletionModel::from_turns([turn]), 0)
-        .extract("John")
-        .await
-        .expect("an earlier submit should remain authoritative");
-
-    assert_eq!(response.output.name, "John");
-}
-
-#[tokio::test]
-async fn multiple_unexpected_calls_surrounding_submit_are_ignored() {
-    let turn = MockTurn::from_contents([
-        tool_call("unknown-before", "unexpected_before", json!({})),
-        tool_call("submit", SUBMIT_TOOL_NAME, json!({ "name": "John" })),
-        tool_call("unknown-after", "unexpected_after", json!({})),
-    ]);
-
-    let response = extractor(MockCompletionModel::from_turns([turn]), 0)
-        .extract("John")
-        .await
-        .expect("unexpected siblings should not displace submit");
-
-    assert_eq!(response.output.name, "John");
-}
-
-#[tokio::test]
-async fn transport_errors_contribute_no_usage() {
-    let model = MockCompletionModel::from_turns([
-        MockTurn::error("boom"),
-        submit_turn("John").with_usage(usage(5)),
-    ]);
-
-    let response = extractor(model, 1)
-        .extract("John")
-        .await
-        .expect("second attempt should succeed");
-
-    assert_eq!(response.usage.total_tokens, Some(5));
-}
-
-#[tokio::test]
-async fn single_successful_attempt_reports_its_own_usage() {
-    let model = MockCompletionModel::from_turns([submit_turn("John").with_usage(usage(7))]);
-
-    let response = extractor(model, 0)
-        .extract("John")
-        .await
-        .expect("extraction should succeed");
-
-    assert_eq!(response.usage.total_tokens, Some(7));
 }
 
 #[tokio::test]

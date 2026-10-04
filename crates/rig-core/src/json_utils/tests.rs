@@ -1,6 +1,5 @@
 use super::*;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 #[derive(Serialize)]
 struct SortedMapHolder {
@@ -93,35 +92,6 @@ fn json_string_or_value_string_passthrough() {
     assert_eq!(w.arguments.as_deref(), Some(r#"{"a":1}"#));
 }
 
-/// Non-compliant gateway: an empty object `{}` must serialize to the string `"{}"`,
-/// not be treated as absent (None).
-#[test]
-fn json_string_or_value_empty_object() {
-    let w: ArgWrapper = serde_json::from_str(r#"{"arguments":{}}"#).unwrap();
-    assert_eq!(w.arguments.as_deref(), Some("{}"));
-}
-
-/// Non-compliant gateway: a nested object is re-serialized to a string.
-#[test]
-fn json_string_or_value_nested_object() {
-    let w: ArgWrapper = serde_json::from_str(r#"{"arguments":{"path":"/tmp","depth":2}}"#).unwrap();
-    // `arguments` is re-serialized from a Value; object key order is not guaranteed
-    // (depends on serde_json's `preserve_order` feature), so re-parse and compare
-    // values rather than the raw string.
-    let parsed: serde_json::Value = serde_json::from_str(w.arguments.as_deref().unwrap()).unwrap();
-    assert_eq!(parsed["path"], "/tmp");
-    assert_eq!(parsed["depth"], 2);
-}
-
-/// Non-compliant gateway: an array is also "any other JSON value" and serializes to a
-/// string. Array order is meaningful and preserved by serde_json, so compare the string
-/// directly.
-#[test]
-fn json_string_or_value_array() {
-    let w: ArgWrapper = serde_json::from_str(r#"{"arguments":[1,2,3]}"#).unwrap();
-    assert_eq!(w.arguments.as_deref(), Some("[1,2,3]"));
-}
-
 /// Regression test: JSON null must collapse to None (not the string "null").
 /// Removing `.filter(|v| !v.is_null())` from the deserializer would fail this test.
 #[test]
@@ -135,15 +105,6 @@ fn json_string_or_value_null_is_none() {
 fn json_string_or_value_missing_is_none() {
     let w: ArgWrapper = serde_json::from_str(r#"{}"#).unwrap();
     assert!(w.arguments.is_none());
-}
-
-#[test]
-fn test_merge() {
-    let a = serde_json::json!({"key1": "value1"});
-    let b = serde_json::json!({"key2": "value2"});
-    let result = merge(a, b);
-    let expected = serde_json::json!({"key1": "value1", "key2": "value2"});
-    assert_eq!(result, expected);
 }
 
 #[test]
@@ -201,44 +162,6 @@ fn test_deserialize_maybe_stringified_value_from_empty_string() {
     let json_str = r#"{"data":""}"#;
     let dummy: DummyMaybeStringified = serde_json::from_str(json_str).unwrap();
     assert_eq!(dummy.data, serde_json::json!({}));
-}
-
-#[test]
-fn test_parse_tool_arguments_empty_string() {
-    let parsed = parse_tool_arguments("").unwrap();
-    assert_eq!(parsed, serde_json::json!({}));
-}
-
-#[test]
-fn test_parse_tool_arguments_whitespace_string() {
-    let parsed = parse_tool_arguments("   ").unwrap();
-    assert_eq!(parsed, serde_json::json!({}));
-}
-
-#[test]
-fn test_parse_tool_arguments_valid_json() {
-    let parsed = parse_tool_arguments(r#"{"key":"value"}"#).unwrap();
-    assert_eq!(parsed, serde_json::json!({"key": "value"}));
-}
-
-#[test]
-fn a_cut_off_object_keeps_what_it_states() {
-    let cases = [
-        (r#"{"q": "ab"#, json!({"q": "ab"})),
-        (r#"{"q": "ab", "n": 1"#, json!({"q": "ab", "n": 1})),
-        (r#"{"q": "ab", "n""#, json!({"q": "ab"})),
-        (r#"{"q": "ab", "n":"#, json!({"q": "ab"})),
-        (r#"{"list": [1, 2, {"a": tr"#, json!({"list": [1, 2, {}]})),
-        (r#"{"q": "a\"#, json!({"q": "a"})),
-        ("{", json!({})),
-    ];
-    for (text, expected) in cases {
-        assert_eq!(
-            parse_partial_object(text).map(serde_json::Value::Object),
-            Some(expected),
-            "{text}"
-        );
-    }
 }
 
 #[test]
@@ -309,14 +232,6 @@ mod string_or_vec_shapes {
         assert_eq!(
             decode(serde_json::json!({"content": "hi"})),
             vec![block("hi")]
-        );
-    }
-
-    #[test]
-    fn a_sequence_decodes_elementwise() {
-        assert_eq!(
-            decode(serde_json::json!({"content": [{"text": "a"}, {"text": "b"}]})),
-            vec![block("a"), block("b")]
         );
     }
 

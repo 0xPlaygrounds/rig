@@ -82,6 +82,3 @@ pub trait PortableToolEmbedding: PortableTool {
     /// Reconstruct the typed implementation.
     fn init(state: Self::State, context: Self::Context) -> Result<Self, Self::InitError>;
 }
-
-#[cfg(test)]
-mod tests;

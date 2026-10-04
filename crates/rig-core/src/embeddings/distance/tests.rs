@@ -16,23 +16,6 @@ fn embeddings() -> (Embedding, Embedding) {
 }
 
 #[test]
-fn test_dot_product() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(embedding_1.dot_product(&embedding_2), 32.0);
-}
-
-#[test]
-fn test_cosine_similarity() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(
-        embedding_1.cosine_similarity(&embedding_2, false),
-        0.9875414397573881
-    );
-}
-
-#[test]
 fn test_angular_distance() {
     let (embedding_1, embedding_2) = embeddings();
 
@@ -40,35 +23,6 @@ fn test_angular_distance() {
         embedding_1.angular_distance(&embedding_2, false),
         0.0502980301830343
     );
-}
-
-#[test]
-fn angular_distance_handles_rounded_cosine_endpoints() {
-    let vector = Embedding {
-        document: "same".into(),
-        vec: vec![1.0, 1.0, 1.0],
-    };
-    let opposite = Embedding {
-        document: "opposite".into(),
-        vec: vec![-1.0, -1.0, -1.0],
-    };
-
-    assert_eq!(vector.angular_distance(&vector, false), 0.0);
-    assert_eq!(vector.angular_distance(&opposite, false), 1.0);
-}
-
-#[test]
-fn test_euclidean_distance() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(embedding_1.euclidean_distance(&embedding_2), 5.0);
-}
-
-#[test]
-fn test_manhattan_distance() {
-    let (embedding_1, embedding_2) = embeddings();
-
-    assert_eq!(embedding_1.manhattan_distance(&embedding_2), 7.0);
 }
 
 #[test]

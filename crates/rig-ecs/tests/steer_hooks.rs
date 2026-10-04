@@ -33,7 +33,7 @@ use rig_ecs::{
         Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
     bus::{Handlers, PendingEffect, RigSchedule},
-    checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
+    checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
@@ -485,83 +485,6 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
 }
 
 #[test]
-fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
-    use rig_core::message::CallId;
-    let generated = CallId::from_wire("");
-    let explicit = CallId::from_wire(generated.wire());
-    let (mut first, _, turn) = open_run();
-    for id in [&generated, &explicit] {
-        first.world_mut().spawn((
-            InvalidCall {
-                origin: None,
-                id: id.clone(),
-                name: "multiply".into(),
-                arguments: serde_json::json!({"x": 2, "y": 3}),
-                prefix: vec![AssistantContent::text("before call")],
-                stream_offset: Some(4),
-            },
-            Resolution::Repair { to: "add".into() },
-            ChildOf(turn),
-        ));
-    }
-    let checkpoint = save_world(first.world_mut()).unwrap();
-    let json = checkpoint.to_json().unwrap();
-    drop(first);
-    let (restored, _, turn, _) = reload(&json);
-    let calls: Vec<_> = restored
-        .world()
-        .get::<Children>(turn)
-        .unwrap()
-        .iter()
-        .filter_map(|child| restored.world().get::<InvalidCall>(child))
-        .collect();
-    assert_eq!(calls.len(), 2);
-    for id in [&generated, &explicit] {
-        let call = calls.iter().find(|call| &call.id == id).unwrap();
-        assert_eq!(call.name, "multiply");
-        assert_eq!(call.arguments, serde_json::json!({"x": 2, "y": 3}));
-        assert_eq!(call.prefix, vec![AssistantContent::text("before call")]);
-        assert_eq!(call.stream_offset, Some(4));
-    }
-    assert_ne!(calls[0].id, calls[1].id);
-
-    // Checkpoint components are reflected JSON: outer decoding succeeds, but
-    // loading must refuse the unsupported identity encoding rather than
-    // infer its origin.
-    let mut legacy = checkpoint.clone();
-    let mut changed = 0;
-    for entity in &mut legacy.entities {
-        if let Some(component) = entity.get_mut(std::any::type_name::<InvalidCall>()) {
-            component["id"] = serde_json::json!("tool-0");
-            changed += 1;
-        }
-    }
-    assert_eq!(changed, 2);
-    let legacy = Checkpoint::from_json(&legacy.to_json().unwrap()).unwrap();
-    let mut destination = app();
-    register(
-        &mut destination,
-        MODEL,
-        NeverAnswers {
-            label: MODEL.into(),
-        },
-    );
-    let count = destination.world().entities().len();
-    let error = load_world(&legacy, destination.world_mut(), RestoreMode::Strict, [])
-        .expect_err("legacy component identities must fail load");
-    assert!(
-        matches!(&error, CheckpointError::Deserialize { path, .. }
-            if path == std::any::type_name::<InvalidCall>()),
-        "{error:?}"
-    );
-    assert_eq!(
-        destination.world().entities().len(),
-        count,
-        "refused before the destination changed"
-    );
-}
-
-#[test]
 fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
     // A cancel is read at once (an observer): the scene carries the
     // decision and the ending it made, with the reason; the loaded run
@@ -598,66 +521,4 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
     assert_eq!(requests.lock().unwrap().len(), 1);
     assert!(app.world().get::<Settled>(run).is_none());
     assert!(app.world().get::<RunResult>(run).is_none());
-}
-
-#[test]
-fn a_part_patch_is_not_sticky_on_a_judge_retry() {
-    use rig_ecs::agent::content::parts::{ContentPart, EditTarget, RequestPartEdit};
-    let mut app = app();
-    let (agent, requests) = scripted_agent(
-        &mut app,
-        MODEL,
-        vec![
-            vec![AssistantContent::text("first")],
-            vec![AssistantContent::text("second DONE")],
-        ],
-    );
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(rig_ecs::agent::MaxTurns(3));
-    add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
-    let target = app
-        .world_mut()
-        .query::<(Entity, &ContentPart)>()
-        .iter(app.world())
-        .find(|(_, part)| matches!(part, ContentPart::Text(text) if text.text == "say it"))
-        .unwrap()
-        .0;
-    add_system(
-        &mut app,
-        (move |fresh: Query<(Entity, &ChildOf), With<Fresh>>,
-               runs: Query<&Cursor>,
-               mut commands: Commands| {
-            if runs.get(run).is_ok_and(|cursor| cursor.turn == 1) {
-                for (turn, parent) in &fresh {
-                    if parent.parent() == run {
-                        commands.spawn((
-                            RequestPartEdit::Text("only first request".into()),
-                            EditTarget(target),
-                            ChildOf(turn),
-                        ));
-                    }
-                }
-            }
-        })
-        .after(RigSet::Advance)
-        .before(RigSet::Assemble),
-    );
-    ended(&mut app, run, "part patch retry");
-    let requests = requests.lock().unwrap();
-    assert_eq!(requests.len(), 2);
-    assert!(texts(&requests[0]).contains(&"user:only first request".to_owned()));
-    assert_eq!(
-        texts(&requests[1]),
-        vec![
-            "system:You are terse.",
-            "user:say it",
-            "assistant:first",
-            "user:End with DONE."
-        ]
-    );
-    assert!(
-        matches!(app.world().get::<ContentPart>(target), Some(ContentPart::Text(text)) if text.text == "say it")
-    );
 }

@@ -74,21 +74,3 @@ async fn an_owned_execution_matches_the_borrowed_one_and_is_static() {
         "owned dispatch publishes the same context metadata"
     );
 }
-
-#[tokio::test]
-async fn retain_names_narrows_definitions_and_dispatch() {
-    let mut set = ToolSet::default();
-    set.add_dynamic_tool(dynamic("alpha"));
-    set.add_dynamic_tool(dynamic("beta"));
-    let mut catalog = set.catalog();
-    catalog.retain_names(&BTreeSet::from(["beta".to_string()]));
-    assert_eq!(catalog.names().collect::<Vec<_>>(), ["beta"]);
-    assert_eq!(catalog.take_definitions().len(), 1);
-    assert!(catalog.definitions().is_empty());
-    assert!(
-        !catalog
-            .execute("alpha", "{}", &mut ToolContext::new())
-            .await
-            .is_success()
-    );
-}

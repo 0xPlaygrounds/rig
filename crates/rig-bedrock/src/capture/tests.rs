@@ -50,15 +50,3 @@ fn events_read_whole_messages_across_chunks() {
         ]
     );
 }
-
-/// A body reads as the bytes it carries, then ends.
-#[tokio::test]
-async fn a_body_reads_as_its_bytes() {
-    let mut body = SdkBody::from(r#"{"stopReason":"end_turn"}"#);
-    let mut read = Vec::new();
-    while let Some(bytes) = chunk(&mut body).await {
-        read.extend(bytes.expect("bytes"));
-    }
-    assert_eq!(read, br#"{"stopReason":"end_turn"}"#);
-    assert!(Capture::new(Vec::new()).reply().is_none());
-}

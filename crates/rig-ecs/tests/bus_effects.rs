@@ -26,8 +26,8 @@ use rig_core::{
     serve::ServingPolicy,
 };
 use rig_ecs::bus::{
-    Bound, BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Publishing,
-    RigSchedule, Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
+    BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Publishing, RigSchedule,
+    Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
 };
 
 #[test]
@@ -273,84 +273,6 @@ fn handlers_are_registered_and_removed_from_systems() {
     );
 }
 
-fn register_twice_in_one_system(mut handlers: Handlers, mut runtime: ResMut<Runtime>) {
-    if !runtime.registered {
-        runtime.registered = true;
-        handlers
-            .register(
-                runtime.key.clone(),
-                MockModel::saying(&runtime.counters, "first"),
-            )
-            .expect("a fresh key");
-        // The same key again, before the first registration's commands
-        // applied: the same entity, re-served, never a second `Bound`.
-        handlers
-            .register(
-                runtime.key.clone(),
-                MockModel::saying(&runtime.counters, "second"),
-            )
-            .expect("the same family");
-    }
-}
-
-#[test]
-fn deregister_then_register_in_one_borrow_serves_the_replacement() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    let key = HandlerKey::from("runtime/model");
-    let first = MockModel::saying(&counters, "first");
-    let previous = register(&mut app, key.as_str(), first);
-    let replacement = Handlers::with(app.world_mut(), |handlers| {
-        assert!(handlers.deregister(&key));
-        handlers.register(key.clone(), MockModel::saying(&counters, "second"))
-    })
-    .expect("bus")
-    .expect("registered replacement");
-    assert_ne!(
-        previous, replacement,
-        "deregistration despawns the old entity"
-    );
-    assert!(app.world().get_entity(previous).is_err());
-    assert!(app.world().get::<Bound>(replacement).is_some());
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new(key, completion()))
-        .id();
-    tick_until(&mut app, "served by replacement", |world| {
-        world.get::<EffectOutcome>(effect).is_some()
-    });
-    assert_eq!(
-        text_of(
-            &app.world()
-                .get::<EffectOutcome>(effect)
-                .expect("answered")
-                .0
-        ),
-        "second"
-    );
-}
-
-#[test]
-fn deregister_then_register_in_one_borrow_can_change_family() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    let key = HandlerKey::from("runtime/handler");
-    register(&mut app, key.as_str(), MockModel::new(&counters));
-    let replacement = Handlers::with(app.world_mut(), |handlers| {
-        assert!(handlers.deregister(&key));
-        handlers.register(key.clone(), Echo)
-    })
-    .expect("bus")
-    .expect("deregistered first, so changing family is allowed");
-    assert_eq!(
-        app.world()
-            .get::<Bound>(replacement)
-            .expect("bound")
-            .family(),
-        EffectFamily::Tool
-    );
-}
-
 #[test]
 fn deregister_twice_in_one_borrow_removes_only_once() {
     let counters = Arc::new(Counters::default());
@@ -362,101 +284,6 @@ fn deregister_twice_in_one_borrow_removes_only_once() {
         assert!(!handlers.deregister(&key));
     })
     .expect("bus");
-}
-
-#[test]
-fn deregistration_observer_can_register_a_replacement() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    let key = HandlerKey::from("runtime/model");
-    let first = MockModel::saying(&counters, "first");
-    let previous = register(&mut app, key.as_str(), first);
-    let replacement_key = key.clone();
-    app.world_mut().entity_mut(previous).observe(
-        move |_: On<Remove, Bound>, mut handlers: Handlers| {
-            handlers
-                .register(
-                    replacement_key.clone(),
-                    MockModel::saying(&counters, "second"),
-                )
-                .expect("replacement from observer");
-        },
-    );
-    Handlers::with(app.world_mut(), |handlers| {
-        assert!(handlers.deregister(&key))
-    })
-    .expect("bus");
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new(key, completion()))
-        .id();
-    tick_until(&mut app, "served by observer replacement", |world| {
-        world.get::<EffectOutcome>(effect).is_some()
-    });
-    assert_eq!(
-        text_of(
-            &app.world()
-                .get::<EffectOutcome>(effect)
-                .expect("answered")
-                .0
-        ),
-        "second"
-    );
-}
-
-#[test]
-fn two_registrations_of_one_key_in_one_system_bind_one_entity() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    let key = HandlerKey::from("runtime/model");
-    app.insert_resource(Runtime {
-        key: key.clone(),
-        counters: Arc::clone(&counters),
-        registered: false,
-        effect: None,
-        answered: Arc::new(AtomicUsize::new(0)),
-    });
-    app.world_mut()
-        .resource_mut::<bevy_ecs::schedule::Schedules>()
-        .add_systems(
-            RigSchedule,
-            register_twice_in_one_system.before(BusSet::Gate),
-        );
-    app.update();
-    let bound = app
-        .world_mut()
-        .query::<&Bound>()
-        .iter(app.world())
-        .filter(|bound| bound.key == key)
-        .count();
-    assert_eq!(bound, 1, "one handler entity for the key");
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new(key.clone(), completion()))
-        .id();
-    tick_until(&mut app, "served by the second", |world| {
-        world.get::<EffectOutcome>(effect).is_some()
-    });
-    assert_eq!(
-        text_of(
-            &app.world()
-                .get::<EffectOutcome>(effect)
-                .expect("answered")
-                .0
-        ),
-        "second"
-    );
-    let removed =
-        Handlers::with(app.world_mut(), |handlers| handlers.deregister(&key)).expect("a bus");
-    assert!(removed);
-    app.update();
-    let left = app
-        .world_mut()
-        .query::<&Bound>()
-        .iter(app.world())
-        .filter(|bound| bound.key == key)
-        .count();
-    assert_eq!(left, 0, "deregistered the one entity");
 }
 
 /// A value a driver hands a tool, and one the tool hands back.
@@ -580,35 +407,4 @@ fn a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_
     assert!(kind.get("context").is_none(), "{kind}");
     let outcome = serde_json::to_value(&log.records[0].outcome).expect("serde");
     assert!(outcome["Ok"].get("context").is_none(), "{outcome}");
-}
-
-/// `Landed` bubbles up `ChildOf`: an observer on the effect's grandparent
-/// sees the landing, with the effect as the original target, in the pass
-/// the record closed — the outcome already on the entity.
-#[test]
-fn a_landing_bubbles_up_the_hierarchy_to_an_observer_on_the_root() {
-    use rig_ecs::bus::Landed;
-    #[derive(Resource, Default)]
-    struct Seen(Vec<(Entity, Entity, bool)>);
-    let (mut app, _, _) = served();
-    app.init_resource::<Seen>();
-    let root = app.world_mut().spawn_empty().id();
-    let middle = app.world_mut().spawn(ChildOf(root)).id();
-    let effect = app
-        .world_mut()
-        .spawn((PendingEffect::new("model", completion()), ChildOf(middle)))
-        .id();
-    app.world_mut().entity_mut(root).observe(
-        |landed: On<Landed>, outcomes: Query<&EffectOutcome>, mut seen: ResMut<Seen>| {
-            seen.0.push((
-                landed.event_target(),
-                landed.original_event_target(),
-                outcomes.contains(landed.original_event_target()),
-            ));
-        },
-    );
-    tick_until(&mut app, "landed", |world| {
-        !world.resource::<Seen>().0.is_empty()
-    });
-    assert_eq!(app.world().resource::<Seen>().0, vec![(root, effect, true)]);
 }

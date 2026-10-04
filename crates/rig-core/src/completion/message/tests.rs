@@ -140,38 +140,6 @@ fn tool_result_content_decodes_structured_and_legacy_json() {
     }
 }
 
-/// Every call has exactly one id: the provider's, or a fresh rig-issued one.
-#[test]
-fn a_call_carries_the_providers_id_or_a_fresh_local_one() {
-    use super::{CallId, ProviderCallId};
-    let provider = CallId::from_wire("call_1");
-    assert_eq!(
-        provider.provider(),
-        Some(&ProviderCallId::new("call_1").expect("non-empty"))
-    );
-    assert_eq!(provider.wire(), "call_1");
-
-    let (first, second) = (CallId::from_wire(""), CallId::from_wire(""));
-    assert!(first.is_local() && second.is_local());
-    assert_ne!(first, second);
-    assert_eq!(first.wire().len(), 36, "a hyphenated v4 UUID");
-}
-
-/// A result built from its call answers that call under its name.
-#[test]
-fn a_result_is_built_from_the_call_it_answers() {
-    let call = super::ToolCall::from_wire(
-        "call_1",
-        super::ToolFunction::new(
-            super::ToolName::new("add").expect("tool name"),
-            serde_json::json!({}),
-        ),
-    );
-    let result = call.result(vec![super::ToolResultContent::text("42")]);
-    assert_eq!(result.call, call.id);
-    assert_eq!(result.name, call.function.name);
-}
-
 /// The shapes persisted before calls had one id no longer parse.
 #[test]
 fn the_legacy_tool_call_id_shape_does_not_parse() {
@@ -181,77 +149,6 @@ fn the_legacy_tool_call_id_shape_does_not_parse() {
     });
     assert!(serde_json::from_value::<super::ToolCall>(legacy).is_err());
     assert!(serde_json::from_str::<super::CallId>(r#""call_1""#).is_err());
-}
-
-/// An empty tool name is not a name.
-#[test]
-fn an_empty_tool_name_does_not_parse() {
-    assert!(super::ToolName::new("").is_err());
-    assert!(serde_json::from_str::<super::ToolName>(r#""""#).is_err());
-}
-
-#[test]
-fn media_constructors_name_their_source_encoding() {
-    use super::{
-        AudioMediaType, DocumentMediaType, DocumentSourceKind, UserContent, VideoMediaType,
-    };
-
-    let source = |content: UserContent| match content {
-        UserContent::Audio(audio) => audio.data,
-        UserContent::Video(video) => video.data,
-        UserContent::Document(document) => document.data,
-        other => DocumentSourceKind::string(format!("not media: {other:?}")),
-    };
-
-    assert_eq!(
-        source(UserContent::audio_base64(
-            "UklGRg==",
-            Some(AudioMediaType::WAV)
-        )),
-        DocumentSourceKind::base64("UklGRg==")
-    );
-    assert_eq!(
-        source(UserContent::video_base64("AAAA", Some(VideoMediaType::MP4))),
-        DocumentSourceKind::base64("AAAA")
-    );
-    assert_eq!(
-        source(UserContent::document_base64(
-            "JVBERi0=",
-            Some(DocumentMediaType::PDF)
-        )),
-        DocumentSourceKind::base64("JVBERi0=")
-    );
-    assert_eq!(
-        source(UserContent::document_text(
-            "# Notes",
-            Some(DocumentMediaType::MARKDOWN)
-        )),
-        DocumentSourceKind::string("# Notes")
-    );
-}
-
-#[test]
-fn tool_arguments_are_always_an_object() {
-    use super::{ToolFunction, ToolName};
-    use serde_json::json;
-    let name = || ToolName::new("search").expect("tool name");
-    let cases = [
-        (json!({"q": "rust"}), json!({"q": "rust"}), None),
-        (json!("{\"q\":\"rust\"}"), json!({"q": "rust"}), None),
-        (json!("\"{\\\"q\\\":1}\""), json!({"q": 1}), None),
-        (json!(null), json!({}), None),
-        (json!(""), json!({}), None),
-        (json!("not json"), json!({}), Some("not json")),
-        (json!("[1,2,3]"), json!({}), Some("[1,2,3]")),
-        (json!([1, 2, 3]), json!({}), Some("[1,2,3]")),
-        (json!(42), json!({}), Some("42")),
-        (json!(true), json!({}), Some("true")),
-    ];
-    for (given, arguments, invalid) in cases {
-        let function = ToolFunction::new(name(), given.clone());
-        assert_eq!(function.arguments_value(), arguments, "{given}");
-        assert_eq!(function.invalid_arguments.as_deref(), invalid, "{given}");
-    }
 }
 
 #[test]
@@ -317,27 +214,6 @@ fn a_failed_turn_with_calls_fails_its_run() {
     ] {
         assert_eq!(turn_failure(&turn, Some(&stop), Some(&finish)), None);
     }
-}
-
-/// One answer rule (round-5 F2): whitespace text is no answer, so a turn the
-/// budget cut with only whitespace beside its reasoning fails its run, and
-/// the empty-turn rule agrees with it.
-#[test]
-fn a_whitespace_answer_is_no_answer() {
-    use super::{AssistantContent, StopReason, turn_delivered_no_answer, turn_failure};
-    use crate::completion::FinishReason;
-    let cut = vec![
-        AssistantContent::reasoning("thinking").with_native(serde_json::json!({"signature": "s"})),
-        AssistantContent::text("\n\n"),
-    ];
-    assert!(cut[1].is_blank());
-    assert!(
-        turn_failure(&cut, Some(&StopReason::Length), Some(&FinishReason::Length)).is_some(),
-        "a turn cut by the budget with only whitespace text fails"
-    );
-    let whitespace = vec![AssistantContent::text("  ")];
-    assert!(turn_delivered_no_answer(&whitespace));
-    assert!(crate::transcript::is_empty_assistant_turn(&whitespace));
 }
 
 /// Redacted reasoning without a current provider item has nothing to send

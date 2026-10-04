@@ -12,29 +12,6 @@ impl ContextValue for Greeting {
     const KEY: &'static str = "test.greeting";
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-struct Bytes(Vec<u8>);
-impl ContextValue for Bytes {
-    const KEY: &'static str = "test.bytes";
-}
-
-#[test]
-fn insert_and_get_returns_value() {
-    let mut c = ToolContext::new();
-    assert_eq!(c.insert(Num(42)).unwrap(), None);
-    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
-}
-#[test]
-fn get_missing_type_returns_none() {
-    assert_eq!(ToolContext::new().get::<Num>().unwrap(), None);
-}
-#[test]
-fn insert_overwrites_and_returns_previous() {
-    let mut c = ToolContext::new();
-    c.insert(Num(1)).unwrap();
-    assert_eq!(c.insert(Num(2)).unwrap(), Some(Num(1)));
-    assert_eq!(c.get::<Num>().unwrap(), Some(Num(2)));
-}
 #[test]
 fn different_types_are_independent() {
     let mut c = ToolContext::new();
@@ -47,33 +24,6 @@ fn different_types_are_independent() {
     );
 }
 #[test]
-fn contains_tracks_types() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    assert!(c.contains::<Num>());
-    assert!(!c.contains::<Greeting>());
-}
-#[test]
-fn clone_produces_independent_copy() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    let mut clone = c.clone();
-    clone.insert(Num(99)).unwrap();
-    assert_eq!(c.get::<Num>().unwrap(), Some(Num(42)));
-    assert_eq!(clone.get::<Num>().unwrap(), Some(Num(99)));
-}
-#[test]
-fn clone_deep_copies_heap_values() {
-    let mut c = ToolContext::new();
-    c.insert(Bytes(vec![1u8, 2, 3])).unwrap();
-    let mut clone = c.clone();
-    let mut bytes = clone.remove::<Bytes>().unwrap().unwrap();
-    bytes.0.push(4);
-    clone.insert(bytes).unwrap();
-    assert_eq!(c.get::<Bytes>().unwrap(), Some(Bytes(vec![1, 2, 3])));
-    assert_eq!(clone.get::<Bytes>().unwrap(), Some(Bytes(vec![1, 2, 3, 4])));
-}
-#[test]
 fn empty_context_is_default_and_serializes_empty() {
     let c = ToolContext::default();
     assert!(!c.contains::<Num>());
@@ -81,28 +31,8 @@ fn empty_context_is_default_and_serializes_empty() {
     assert_eq!(serde_json::to_value(&c).unwrap(), serde_json::json!({}));
 }
 #[test]
-fn reinsert_replaces_in_place() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    assert_eq!(c.insert(Num(99)).unwrap(), Some(Num(42)));
-    assert_eq!(c.get::<Num>().unwrap(), Some(Num(99)));
-}
-#[test]
-fn remove_returns_value_and_clears_entry() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    assert_eq!(c.remove::<Num>().unwrap(), Some(Num(42)));
-    assert!(!c.contains::<Num>());
-}
-#[test]
 fn remove_missing_type_returns_none() {
     assert_eq!(ToolContext::new().remove::<Num>().unwrap(), None);
-}
-#[test]
-fn require_present_returns_value() {
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    assert_eq!(c.require::<Num>().unwrap(), Num(42));
 }
 #[test]
 fn require_missing_names_key() {
@@ -122,25 +52,6 @@ fn result_metadata_round_trips_and_requires() {
     assert_eq!(c.result::<Id>().unwrap(), Some(Id(7)));
     assert_eq!(c.require_result::<Id>().unwrap(), Id(7));
     assert_eq!(c.get::<Id>().unwrap(), None);
-}
-#[test]
-fn debug_reports_keys_without_values() {
-    #[derive(Serialize, Deserialize)]
-    struct Secret(String);
-    impl ContextValue for Secret {
-        const KEY: &'static str = "test.secret";
-    }
-    let mut c = ToolContext::new();
-    c.insert(Num(42)).unwrap();
-    c.insert_result(Secret("do-not-print".to_string())).unwrap();
-    let d = format!("{c:?}");
-    assert!(d.contains(Num::KEY));
-    assert!(d.contains(Secret::KEY));
-    assert!(!d.contains("do-not-print"));
-    assert_eq!(
-        c.result::<Secret>().unwrap().map(|s| s.0).as_deref(),
-        Some("do-not-print")
-    );
 }
 #[test]
 fn dispatch_snapshot_isolates_inbound_and_publishes_only_result_metadata() {

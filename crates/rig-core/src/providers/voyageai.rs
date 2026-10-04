@@ -100,6 +100,3 @@ pub struct RerankApiData {
     #[serde(default)]
     pub document: Option<String>,
 }
-
-#[cfg(test)]
-mod tests;

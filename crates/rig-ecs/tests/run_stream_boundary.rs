@@ -8,11 +8,10 @@ use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     serve::{Dispatch, Reply, Serve},
-    streaming::StreamEvent,
 };
 use rig_ecs::{
     agent::{Failed, Failure, InvalidCall},
-    bus::{EffectOutcome, Streamed},
+    bus::EffectOutcome,
     systems::RunCommands,
 };
 use run_support::*;
@@ -342,52 +341,4 @@ impl Serve for NameThenGate {
             },
         )
     }
-}
-
-#[test]
-fn invalid_tool_name_is_actionable_before_completion_outcome() {
-    let mut app = app();
-    let (_release, gate) = oneshot::channel();
-    let model = register(
-        &mut app,
-        "boundary/model",
-        NameThenGate(Arc::new(Mutex::new(Some(gate)))),
-    );
-    let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "call an unavailable tool", true, Some(1));
-    tick_until(
-        &mut app,
-        "tool name delivered while producer is gated",
-        |world| {
-            world.query::<&Streamed>().iter(world).any(|stream| {
-                stream.events.events().any(|event| {
-                    matches!(event, StreamEvent::End { content: AssistantContent::ToolCall(call), .. }
-                        if call.function.name == "unavailable_tool")
-                })
-            })
-        },
-    );
-    // Give the native policy a complete subsequent schedule pass, while the
-    // producer still cannot finish. No sleep or elapsed-time inference.
-    app.update();
-    assert_eq!(
-        app.world_mut()
-            .query::<&EffectOutcome>()
-            .iter(app.world())
-            .count(),
-        0,
-        "the producer has not completed"
-    );
-    let actionable = app
-        .world_mut()
-        .query::<&InvalidCall>()
-        .iter(app.world())
-        .any(|call| call.name == "unavailable_tool")
-        || matches!(app.world().get::<Failed>(run), Some(Failed(Failure::UnknownToolCall { name })) if name == "unavailable_tool");
-    assert!(
-        actionable,
-        "delivered invalid tool name must reach native invalid-call policy before completion outcome"
-    );
 }

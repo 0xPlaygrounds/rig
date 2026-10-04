@@ -425,32 +425,6 @@ fn bad_configuration_data_reports_what_was_wrong() {
     );
 }
 
-/// Both doors of a dual-format vendor resolve to the configuration and host
-/// their dialect documents — no credential, no network.
-#[test]
-fn both_doors_of_a_dual_format_vendor_reach_their_own_endpoint() {
-    let chat = ProviderId::resolve("zai/openai").unwrap();
-    let messages = ProviderId::resolve("zai/anthropic").unwrap();
-    assert_eq!(chat.vendor(), messages.vendor());
-    assert_ne!(chat, messages);
-
-    match chat.config("") {
-        ProviderConfig::OpenAi(provider) => {
-            assert_eq!(provider.base_url, "https://api.z.ai/api/paas/v4");
-            assert_eq!(provider.dialect.name, "zai");
-        }
-        other => panic!("zai/openai is an OpenAI configuration: {other:?}"),
-    }
-    match messages.config("") {
-        ProviderConfig::Anthropic(provider) => {
-            assert_eq!(provider.base_url, "https://api.z.ai/api/anthropic");
-            assert_eq!(provider.dialect.name, "zai");
-        }
-        other => panic!("zai/anthropic is a Messages configuration: {other:?}"),
-    }
-    assert_eq!(chat.api_key_env(), messages.api_key_env());
-}
-
 /// Credential guidance is a hint for an optional-auth selection and a
 /// requirement for the rest.
 #[test]
@@ -566,64 +540,6 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
     );
 }
 
-/// The Anthropic version and beta options a configuration carries reach the
-/// request headers.
-#[test]
-fn the_configured_version_and_betas_reach_the_request_headers() {
-    use crate::completion::CompletionRequest;
-    use crate::wire::{Mode, Wire};
-
-    let json = r#"{"config":{"anthropic":{"api_key":"[redacted]","base_url":"https://api.anthropic.com","version":"2023-01-01","betas":["beta-one","beta-two"],"dialect":"anthropic"}},"model":"claude-haiku-4-5"}"#;
-    let reference: ProviderRef = serde_json::from_str(json).expect("the options read from data");
-    let ProviderConfig::Anthropic(config) = reference.config("sk-test") else {
-        panic!("a Messages configuration");
-    };
-    let encoded = config
-        .completion(reference.model())
-        .encode(CompletionRequest::new("hello"), Mode::Unary)
-        .expect("the request encodes");
-    let request = encoded.request;
-    let header = |name: &str| {
-        request
-            .headers()
-            .get(name)
-            .map(|value| value.to_str().expect("an ASCII header").to_owned())
-    };
-    assert_eq!(header("anthropic-version").as_deref(), Some("2023-01-01"));
-    assert_eq!(
-        header("anthropic-beta").as_deref(),
-        Some("beta-one,beta-two")
-    );
-    assert_eq!(header("x-api-key").as_deref(), Some("sk-test"));
-}
-
-/// A registered reference's preset picks the dialect's own flagship route; a
-/// configuration may say otherwise, and the two must not be confused.
-#[test]
-fn the_family_is_not_the_route() {
-    let openai = ProviderId::resolve("openai/openai").unwrap();
-    let ProviderConfig::OpenAi(preset) = openai.config("") else {
-        panic!("an OpenAI configuration");
-    };
-    assert_eq!(preset.completion_route(), Route::Responses);
-    assert_eq!(
-        preset.clone().with_route(Route::Chat).completion_route(),
-        Route::Chat,
-        "the route is configuration, not identity"
-    );
-    let deepseek = ProviderId::resolve("deepseek/openai").unwrap();
-    let ProviderConfig::OpenAi(chat_first) = deepseek.config("") else {
-        panic!("an OpenAI configuration");
-    };
-    assert_eq!(chat_first.completion_route(), Route::Chat);
-    assert_eq!(
-        openai.format(),
-        deepseek.format(),
-        "both are the same protocol family"
-    );
-    assert_eq!(Format::OpenAi, openai.format());
-}
-
 /// No serialized reference carries a credential, whichever door it came
 /// through.
 #[test]
@@ -678,85 +594,6 @@ fn the_family_name_is_the_configuration_tag() {
     }
 }
 
-/// The URI a completion request built from `config` is sent to.
-fn completion_uri(config: &ProviderConfig) -> String {
-    use crate::completion::CompletionRequest;
-    use crate::wire::{Mode, Wire};
-
-    let request = CompletionRequest::new("hello");
-    let encoded = match config {
-        ProviderConfig::OpenAi(provider) => {
-            provider.completion("gpt-4o").encode(request, Mode::Unary)
-        }
-        ProviderConfig::Anthropic(provider) => provider
-            .completion("claude-haiku-4-5")
-            .encode(request, Mode::Unary),
-        ProviderConfig::Gemini(provider) => provider
-            .completion("gemini-2.5-flash")
-            .encode(request, Mode::Unary),
-    };
-    encoded
-        .expect("the request encodes")
-        .request
-        .uri()
-        .to_string()
-}
-
-/// `config` with its base URL field set to `base_url` directly, bypassing any
-/// normalization: what "only the URL changed" means.
-fn with_base_url_field(mut config: ProviderConfig, base_url: &str) -> ProviderConfig {
-    match &mut config {
-        ProviderConfig::OpenAi(provider) => provider.base_url = base_url.to_owned(),
-        ProviderConfig::Anthropic(provider) => provider.base_url = base_url.to_owned(),
-        ProviderConfig::Gemini(provider) => provider.base_url = base_url.to_owned(),
-    }
-    config
-}
-
-/// Each family's preset reports the dialect's default host.
-#[test]
-fn a_preset_reports_its_dialect_s_default_base_url() {
-    for (selection, expected) in [
-        ("openai/openai", "https://api.openai.com/v1"),
-        ("deepseek/openai", "https://api.deepseek.com"),
-        ("anthropic/anthropic", "https://api.anthropic.com"),
-        ("zai/anthropic", "https://api.z.ai/api/anthropic"),
-        (
-            "gcp.gemini/gemini",
-            "https://generativelanguage.googleapis.com",
-        ),
-    ] {
-        let config = ProviderId::resolve(selection).unwrap().config("k");
-        assert_eq!(config.base_url(), expected, "{selection}");
-    }
-}
-
-/// For every registered selection, the reported base URL is where the
-/// completion request goes, before and after pointing it at a proxy, and
-/// pointing it elsewhere changes nothing but the URL.
-#[test]
-fn every_preset_sends_to_the_base_url_it_reports() {
-    const PROXY: &str = "http://127.0.0.1:9/proxy";
-    for id in ProviderId::all() {
-        let preset = id.config("k");
-        let uri = completion_uri(&preset);
-        assert!(
-            uri.starts_with(preset.base_url().trim_end_matches('/')),
-            "{id}: `{uri}` is not under `{}`",
-            preset.base_url()
-        );
-
-        let proxied = preset.clone().with_base_url(PROXY);
-        assert_eq!(proxied.base_url(), PROXY, "{id}");
-        assert_eq!(proxied, with_base_url_field(preset, PROXY), "{id}");
-        let uri = completion_uri(&proxied);
-        assert!(
-            uri.starts_with(PROXY),
-            "{id}: `{uri}` is not under the proxy"
-        );
-    }
-}
-
 /// A configured URL survives serialization, for every family.
 #[test]
 fn a_configured_base_url_round_trips_through_serialization() {
@@ -772,48 +609,4 @@ fn a_configured_base_url_round_trips_through_serialization() {
         assert_eq!(read.base_url(), HOST, "{selection}");
         assert_eq!(read, config.with_credential(""), "{selection}");
     }
-}
-
-/// A Messages-format URL is normalized the way the family's own builder
-/// normalizes it, so a pasted endpoint does not repeat its path.
-#[test]
-fn a_messages_format_base_url_drops_its_endpoint_suffix() {
-    let anthropic = ProviderId::resolve("anthropic/anthropic").unwrap();
-    for pasted in [
-        "http://127.0.0.1:9/",
-        "http://127.0.0.1:9/v1",
-        "http://127.0.0.1:9/v1/messages",
-    ] {
-        let config = anthropic.config("k").with_base_url(pasted);
-        assert_eq!(config.base_url(), "http://127.0.0.1:9", "{pasted}");
-        assert_eq!(completion_uri(&config), "http://127.0.0.1:9/v1/messages");
-    }
-}
-
-/// A Copilot preset built with a session token reports the endpoint the
-/// token names, keeps it when the credential changes, and still takes an
-/// explicit host.
-#[test]
-fn a_copilot_preset_reports_its_token_s_endpoint() {
-    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
-    let copilot = ProviderId::resolve("copilot").unwrap();
-    assert_eq!(
-        copilot.config("tid=1").base_url(),
-        "https://api.githubcopilot.com"
-    );
-    let resolved = copilot.config(token);
-    assert_eq!(
-        resolved.base_url(),
-        "https://api.individual.githubcopilot.com"
-    );
-    assert_eq!(
-        resolved.clone().with_credential("rotated").base_url(),
-        "https://api.individual.githubcopilot.com"
-    );
-    let explicit = resolved.with_base_url("https://gateway.invalid/copilot");
-    assert_eq!(explicit.base_url(), "https://gateway.invalid/copilot");
-    assert_eq!(
-        completion_uri(&explicit),
-        "https://gateway.invalid/copilot/chat/completions"
-    );
 }

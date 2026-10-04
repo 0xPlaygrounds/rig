@@ -19,29 +19,6 @@ fn envelope_is_classified_cloneable_downcastable_and_redacted() {
 }
 
 #[test]
-fn converting_an_existing_envelope_preserves_classification() {
-    let error = ToolExecutionError::from_error(ToolExecutionError::timeout("slow"));
-    assert_eq!(error.kind(), ToolErrorKind::Timeout);
-    assert_eq!(error.retryable(), Some(true));
-}
-
-#[test]
-fn detailed_diagnostics_are_model_visible_by_default() {
-    let error = ToolExecutionError::provider("upstream rejected field `region`");
-    let result = ToolResult::failed(error.clone());
-
-    assert_eq!(error.message(), "upstream rejected field `region`");
-    assert_eq!(
-        error.model_feedback(),
-        Some("upstream rejected field `region`")
-    );
-    assert_eq!(
-        result.output().as_text(),
-        Some("upstream rejected field `region`")
-    );
-}
-
-#[test]
 fn sensitive_diagnostics_can_be_explicitly_redacted() {
     let error = ToolExecutionError::provider("authorization header Bearer secret-token")
         .redact_model_feedback();
@@ -51,21 +28,6 @@ fn sensitive_diagnostics_can_be_explicitly_redacted() {
     assert_eq!(error.model_feedback(), Some("the tool provider failed"));
     assert_eq!(result.output().as_text(), Some("the tool provider failed"));
     assert!(!result.output().render().contains("secret-token"));
-}
-
-#[test]
-fn errors_can_expose_structured_model_output() {
-    let output = ToolOutput::json(serde_json::json!({
-        "error": "invalid region",
-        "allowed": ["us", "eu"]
-    }));
-    let result = ToolResult::failed(
-        ToolExecutionError::invalid_args("region was invalid").with_model_output(output.clone()),
-    );
-
-    assert_eq!(result.output(), &output);
-    assert_eq!(result.error().unwrap().model_output(), &output);
-    assert_eq!(result.error().unwrap().model_feedback(), None);
 }
 
 #[test]

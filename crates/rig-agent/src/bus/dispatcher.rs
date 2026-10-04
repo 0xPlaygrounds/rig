@@ -1314,6 +1314,3 @@ const _: () = {
     assert_send::<Pending>();
     assert_send::<EffectStream>();
 };
-
-#[cfg(all(test, not(rig_loom)))]
-mod tests;

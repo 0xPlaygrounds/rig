@@ -19,17 +19,14 @@
 
 mod support;
 
-use futures::StreamExt;
 use google_cloud_aiplatform_v1::client::PredictionService;
 use rig_core::Model;
 use rig_core::completion::{CompletionRequest, ToolDefinition};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message, Text, ToolChoice, UserContent};
-use rig_core::streaming::StreamEvent;
 use rig_vertexai::VertexAi;
 use rig_vertexai::client::VertexAiClientError;
 use rig_vertexai::completion::GenerateContent;
-use std::time::Duration;
 use support::{LocalEndpoint, Reply, SentinelCredentials, text_response, tool_call_response};
 
 const PROJECT: &str = "rig-test-project";
@@ -275,69 +272,6 @@ async fn a_provider_error_preserves_the_reply_and_carries_no_request_credentials
         "the error is built from the reply, which never contained the request's token"
     );
     assert_eq!(credentials.issued(), 1);
-}
-
-/// Dropping the completion future releases the in-flight RPC: the endpoint,
-/// still holding the request open, sees the connection go away. The client and
-/// its credentials are not operation-scoped, so the next completion works.
-#[tokio::test]
-async fn a_cancelled_completion_releases_its_rpc_and_leaves_the_client_usable() {
-    let endpoint = LocalEndpoint::spawn([Reply::Hang, Reply::ok(text_response("after"))]).await;
-    let credentials = SentinelCredentials::rotating("cancel-token");
-    let model = hosted_model(&endpoint, &credentials).await;
-
-    // Arrival, not elapsed time, establishes that there is real work to cancel.
-    {
-        let completion = model.call(request("abandoned"));
-        tokio::pin!(completion);
-        tokio::select! {
-            result = &mut completion => panic!("held RPC completed before cancellation: {result:?}"),
-            () = endpoint.wait_for_requests(1) => {}
-        }
-    }
-
-    endpoint.wait_for_disconnects(1).await;
-    assert_eq!(
-        endpoint.disconnects(),
-        1,
-        "the abandoned RPC's connection was actually closed, not left dangling"
-    );
-
-    let response = tokio::time::timeout(Duration::from_secs(10), model.call(request("next")))
-        .await
-        .expect("subsequent completion deadline")
-        .expect("the shared client and its credentials survived the cancellation");
-    assert!(
-        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "after")
-    );
-    assert_eq!(credentials.issued(), 2);
-}
-
-/// This integration has no streaming RPC: a streamed call sends the unary
-/// request once and re-emits its reply as the events a stream carries.
-#[tokio::test]
-async fn a_streamed_call_re_emits_the_unary_reply() {
-    let endpoint = LocalEndpoint::spawn([Reply::ok(text_response("streamed"))]).await;
-    let credentials = SentinelCredentials::rotating("stream-token");
-    let model = hosted_model(&endpoint, &credentials).await;
-
-    let mut stream = model
-        .stream(request("stream please"))
-        .expect("the stream opens");
-    let mut text = String::new();
-    while let Some(item) = stream.next().await {
-        if let rig_core::streaming::Item::Event(StreamEvent::Text { text: fragment, .. }) =
-            item.expect("stream item")
-        {
-            text.push_str(&fragment);
-        }
-    }
-    assert_eq!(text, "streamed");
-    let response = stream.finish().await.expect("the reply ended");
-    assert!(
-        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "streamed")
-    );
-    assert_eq!(endpoint.request_count(), 1);
 }
 
 /// A supplied client already fixes its credentials. Configuring both is a

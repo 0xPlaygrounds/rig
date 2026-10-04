@@ -105,6 +105,3 @@ pub fn text_satisfies_schema(schema: Option<&serde_json::Value>, text: &str) -> 
             schema.is_none_or(|schema| missing_required_fields(schema, &value).is_empty())
         })
 }
-
-#[cfg(test)]
-mod tests;

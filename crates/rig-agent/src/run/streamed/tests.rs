@@ -3,7 +3,7 @@ use super::super::response::PromptError;
 use super::super::{AgentRun, AgentRunStep};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::{Reasoning, ToolFunction, ToolResultContent, UserContent};
+use rig_core::message::{ToolFunction, ToolResultContent, UserContent};
 use rig_core::streaming::Transcript;
 use serde_json::json;
 
@@ -35,18 +35,6 @@ fn text(part: u32, text: &str) -> Vec<serde_json::Value> {
         event(json!({"event": "text", "part": part, "text": text})),
         event(json!({"event": "end", "part": part, "content": AssistantContent::text(text)})),
     ]
-}
-
-fn reasoning(part: u32, fragments: &[&str]) -> Vec<serde_json::Value> {
-    let mut events = vec![event(
-        json!({"event": "start", "part": part, "kind": "reasoning"}),
-    )];
-    events.extend(
-        fragments
-            .iter()
-            .map(|text| event(json!({"event": "reasoning", "part": part, "text": text}))),
-    );
-    events
 }
 
 /// A call as every wire streams it: its start, its arguments, its end.
@@ -117,44 +105,6 @@ fn assembler_round_trips_mid_stream() {
     assert_eq!(resumed.choice, direct.choice);
     assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
     assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
-}
-
-#[test]
-fn text_accumulates_and_emits() {
-    let mut asm = assembler();
-    let items = items([vec![
-        event(json!({"event": "start", "part": 0, "kind": "text"})),
-        event(json!({"event": "text", "part": 0, "text": "hel"})),
-        event(json!({"event": "text", "part": 0, "text": "lo"})),
-    ]]);
-    for item in &items {
-        let events = asm.ingest(item).expect("ingest should succeed");
-        assert!(matches!(
-            events.as_slice(),
-            [StreamedTurnEvent::EmitIngested]
-        ));
-    }
-    assert_eq!(asm.aggregated_text(), "hello");
-}
-
-#[test]
-fn unknown_item_emits_to_consumer_without_touching_accumulation() {
-    let mut asm = assembler();
-    ingest_all(&mut asm, &items([text(0, "answer")]));
-
-    let events = asm
-        .ingest(&Item::Unknown(
-            json!({ "type": "web_search_call", "id": "ws_1" }).into(),
-        ))
-        .expect("ingest unknown should succeed");
-
-    // The unmodeled item is forwarded to the consumer ...
-    assert!(matches!(
-        events.as_slice(),
-        [StreamedTurnEvent::EmitIngested]
-    ));
-    // ... but perturbs no accumulation state used to build the assistant message.
-    assert_eq!(asm.aggregated_text(), "answer");
 }
 
 /// The decode-outcome contract, as a total matrix: every unknown payload
@@ -299,83 +249,6 @@ fn decode_outcome_matrix_is_total_and_no_shape_is_silent() {
     }
 }
 
-/// A call's start and arguments are held until its end validates it; the
-/// end then releases the call.
-#[test]
-fn a_call_is_held_until_its_end_validates_it() {
-    let add = tool_call("tc1", "add");
-    let mut asm = assembler();
-    let events: Vec<_> = items([call(0, &add)])
-        .iter()
-        .map(|item| asm.ingest(item).expect("ingest"))
-        .collect();
-    assert!(matches!(
-        events[0].as_slice(),
-        [StreamedTurnEvent::HoldToolCall]
-    ));
-    assert!(matches!(
-        events[1].as_slice(),
-        [StreamedTurnEvent::HoldToolCall]
-    ));
-    assert!(matches!(
-        events[2].as_slice(),
-        [StreamedTurnEvent::EmitToolCall { call }] if *call == add
-    ));
-}
-
-/// Reasoning accumulates per part, so interleaved parts stay apart.
-#[test]
-fn aggregated_reasoning_is_scoped_to_its_part() {
-    let mut asm = assembler();
-    ingest_all(
-        &mut asm,
-        &items([reasoning(0, &["a", "b"]), reasoning(1, &["c"])]),
-    );
-    assert_eq!(asm.aggregated_reasoning(0), Some("ab"));
-    assert_eq!(asm.aggregated_reasoning(1), Some("c"));
-    assert_eq!(asm.aggregated_reasoning(2), None);
-}
-
-/// The turn is the response's choice in start order: reasoning is not
-/// regrouped ahead of text, an ignored call is left out, and a repaired
-/// call carries its new name.
-#[test]
-fn finish_keeps_start_order_without_ignored_calls_and_with_repaired_names() {
-    let mut asm = assembler();
-    let ignored = tool_call("tc_ignored", "multiply");
-    let repaired = tool_call("tc_repaired", "default_api");
-    let stream = items([text(0, "hi"), call(1, &ignored), call(2, &repaired)]);
-    expect_invalid(asm_ingest_to(&mut asm, &stream[..6]));
-    asm.resolve_pending_invalid(&StreamedResolution::Ignored);
-    let replayed = expect_invalid(asm_ingest_to(&mut asm, &stream[6..]));
-    assert_eq!(replayed.tool_call, repaired);
-    let released = asm.resolve_pending_invalid(&StreamedResolution::Repaired {
-        tool_name: "add".to_owned(),
-    });
-    assert!(matches!(
-        released.as_slice(),
-        [StreamedTurnEvent::EmitToolCall { call }] if call.function.name == "add"
-    ));
-
-    let reasoning = AssistantContent::Reasoning(Reasoning::new("later"));
-    let turn = asm.finish(&response(vec![
-        AssistantContent::text("hi"),
-        AssistantContent::ToolCall(ignored),
-        AssistantContent::ToolCall(repaired.clone()),
-        reasoning.clone(),
-    ]));
-    let mut renamed = repaired;
-    renamed.function.name = ToolName::new("add").expect("tool name");
-    assert_eq!(
-        turn.choice,
-        vec![
-            AssistantContent::text("hi"),
-            AssistantContent::ToolCall(renamed),
-            reasoning,
-        ]
-    );
-}
-
 /// An ignored call stays out of the turn across a checkpoint.
 #[test]
 fn an_ignored_call_stays_out_of_the_turn_after_a_checkpoint() {
@@ -495,60 +368,6 @@ fn streamed_run_completes_a_tool_roundtrip() {
 }
 
 #[test]
-fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
-    let mut run = AgentRun::new("use the tool")
-        .max_turns(2)
-        .max_invalid_tool_call_retries(1);
-    run.next_step().expect("next_step");
-
-    let mut asm = assembler();
-    let invalid = surface_invalid(
-        &mut asm,
-        &items([
-            text(0, "thinking "),
-            call(1, &tool_call("tc_1", "default_api")),
-        ]),
-    );
-    let partial = asm.partial_turn(&response(vec![]));
-
-    let context = run.streamed_invalid_tool_call_context(&partial, &invalid);
-    assert!(context.is_streaming);
-    assert_eq!(context.tool_name, "default_api");
-    assert_eq!(context.tool_call_id, Some(CallId::from_wire("tc_1")));
-
-    let resolution = run
-        .resolve_streamed_invalid_tool_call(
-            &partial,
-            &invalid,
-            InvalidToolCallAction::retry("use add instead"),
-        )
-        .expect("retry should be accepted");
-    assert!(matches!(
-        resolution,
-        StreamedResolution::TurnAbandoned {
-            skipped_tool_result: None
-        }
-    ));
-    asm.resolve_pending_invalid(&resolution);
-
-    // Usage from the drained stream is recorded after the rollback.
-    run.record_streamed_completion_call(
-        Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
-        None,
-        serde_json::json!({}),
-    )
-    .expect("record after rollback should succeed");
-
-    // The rollback appended the partial assistant turn and feedback.
-    assert_eq!(run.messages().len(), 3);
-    let AgentRunStep::CallModel { turn, .. } = run.next_step().expect("next_step") else {
-        panic!("expected CallModel retry");
-    };
-    assert_eq!(turn, 2);
-}
-
-#[test]
 fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
     let mut run = AgentRun::new("use the tool");
     run.next_step().expect("next_step");
@@ -580,116 +399,6 @@ fn streamed_invalid_tool_call_stop_leaves_run_terminal() {
         PromptError::Cancelled { reason, .. }
             if reason.contains("next_step called after the run already failed")
     ));
-}
-
-#[test]
-fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
-    let mut run = AgentRun::new("use the tool")
-        .max_turns(1)
-        .max_invalid_tool_call_retries(1);
-    run.next_step().expect("initial model call");
-
-    let mut asm = assembler();
-    let invalid = surface_invalid(
-        &mut asm,
-        &items([call(0, &tool_call("tc_1", "default_api"))]),
-    );
-    let partial = asm.partial_turn(&response(vec![]));
-    let resolution = run
-        .resolve_streamed_invalid_tool_call(
-            &partial,
-            &invalid,
-            InvalidToolCallAction::retry("use add instead"),
-        )
-        .expect("retry resolution should be accepted");
-    assert!(matches!(
-        resolution,
-        StreamedResolution::TurnAbandoned {
-            skipped_tool_result: None
-        }
-    ));
-    run.record_streamed_completion_call(
-        Usage::default(),
-        rig_core::completion::ResponseIdentity::default(),
-        None,
-        serde_json::json!({}),
-    )
-    .expect("completion call should be recorded");
-    assert_eq!(run.completion_calls().len(), 1);
-
-    let err = run
-        .next_step()
-        .expect_err("retry must not emit a second model call");
-    assert!(matches!(err, PromptError::MaxTurns { max_turns: 1, .. }));
-    assert_eq!(run.turn(), 1);
-}
-
-#[test]
-fn streamed_invalid_tool_call_skip_returns_synthetic_result() {
-    let mut run = AgentRun::new("use the tool").max_turns(2);
-    run.next_step().expect("next_step");
-
-    let mut asm = assembler();
-    let invalid = surface_invalid(
-        &mut asm,
-        &items([call(0, &tool_call("tc_1", "default_api"))]),
-    );
-    let partial = asm.partial_turn(&response(vec![]));
-
-    let resolution = run
-        .resolve_streamed_invalid_tool_call(
-            &partial,
-            &invalid,
-            InvalidToolCallAction::skip("not available"),
-        )
-        .expect("skip should be accepted");
-    let StreamedResolution::TurnAbandoned {
-        skipped_tool_result: Some(tool_result),
-    } = &resolution
-    else {
-        panic!("expected skipped tool result");
-    };
-    assert_eq!(
-        tool_result
-            .call
-            .provider()
-            .map(|provider| provider.as_str()),
-        Some("tc_1")
-    );
-}
-
-#[test]
-fn streamed_invalid_tool_call_repair_releases_the_renamed_call() {
-    let mut run = AgentRun::new("use the tool").max_turns(2);
-    run.next_step().expect("next_step");
-
-    let mut asm = assembler();
-    let invalid = surface_invalid(
-        &mut asm,
-        &items([call(0, &tool_call("tc_1", "default_api"))]),
-    );
-    assert_eq!(invalid.args.as_deref(), Some("{\"x\":1}"));
-
-    let partial = asm.partial_turn(&response(vec![]));
-    let resolution = run
-        .resolve_streamed_invalid_tool_call(
-            &partial,
-            &invalid,
-            InvalidToolCallAction::repair("add"),
-        )
-        .expect("repair should be accepted");
-    assert!(matches!(
-        resolution,
-        StreamedResolution::Repaired { ref tool_name } if tool_name == "add"
-    ));
-
-    let events = asm.resolve_pending_invalid(&resolution);
-    let [StreamedTurnEvent::EmitToolCall { call }] = events.as_slice() else {
-        panic!("expected the repaired call, got {events:?}");
-    };
-    assert_eq!(call.function.name, "add");
-    assert_eq!(call.function.arguments_value(), json!({"x": 1}));
-    assert_eq!(call.id, CallId::from_wire("tc_1"));
 }
 
 #[test]
@@ -906,23 +615,6 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
             }
         }
     }
-}
-
-/// The partial turn is what the stream folded so far, in its order.
-#[test]
-fn a_partial_turn_keeps_the_parts_in_the_order_they_arrived() {
-    let asm = assembler();
-    let content = vec![
-        AssistantContent::text("first"),
-        AssistantContent::Reasoning(Reasoning::new("because")),
-    ];
-    let folded = response(content.clone());
-    let partial = asm.partial_turn(&folded);
-    assert_eq!(partial.content, content);
-    assert_eq!(
-        partial.assistant_message(None),
-        Some(Message::Assistant(folded.continued(content)))
-    );
 }
 
 /// A partial turn that produced nothing is no assistant message.

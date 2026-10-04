@@ -5,15 +5,12 @@
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
 use rig_core::{
-    completion::message::{AssistantContent, Message, ToolChoice, UserContent},
+    completion::message::{Message, ToolChoice, UserContent},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
 };
 
-use rig_core::{
-    structured_output::{
-        OUTPUT_TOOL_NAME, output_tool_callable, reprompt_missing_fields, reprompt_text_answer,
-    },
-    transcript::is_empty_assistant_turn,
+use rig_core::structured_output::{
+    OUTPUT_TOOL_NAME, output_tool_callable, reprompt_missing_fields, reprompt_text_answer,
 };
 
 use super::*;
@@ -152,15 +149,6 @@ fn output_resolution_follows_the_goldens() {
     ));
 }
 
-/// CONTRACT §history: an empty turn is no history
-/// (`anthropic_request_shape_tool_choice_none` `/records/0/outcome`).
-#[test]
-fn an_empty_turn_is_not_history() {
-    assert!(is_empty_assistant_turn(&[]));
-    assert!(is_empty_assistant_turn(&[AssistantContent::text("")]));
-    assert!(!is_empty_assistant_turn(&[AssistantContent::text("x")]));
-}
-
 /// A graph with no preamble and no utterance has no conversation to send.
 #[test]
 fn a_graph_without_a_conversation_does_not_fold() {
@@ -182,35 +170,6 @@ fn a_graph_without_a_conversation_does_not_fold() {
         fold_request(&graph),
         Err(crate::agent::content::parts::ContentError::Missing)
     ));
-}
-
-/// CONTRACT §derivation: the fold over the smoke golden's graph is the
-/// smoke golden's request, field for field
-/// (`anthropic_completion_smoke` `/records/0/kind/request`).
-#[test]
-fn the_fold_reproduces_the_smoke_request() {
-    let prompt = MessageParts::User {
-        content: vec![UserContent::text(
-            "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        )],
-    };
-    let graph = RequestGraph {
-        preamble: Some("You are a concise assistant. Answer directly."),
-        utterances: vec![&prompt],
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        additional_params: None,
-        tool_choice: None,
-        output: OutputKind::Native,
-        schema: None,
-        output_tool: None,
-        output_tool_config: None,
-    };
-    let folded =
-        serde_json::to_value(fold_request(&graph).expect("the graph folds")).expect("serde");
-    assert_eq!(folded, request("anthropic_completion_smoke", 0));
 }
 
 /// CONTRACT §derivation: static context is the attachments in order

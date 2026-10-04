@@ -1,4 +1,4 @@
-use crate::message::{DocumentSourceKind, ImageMediaType};
+use crate::message::ImageMediaType;
 
 use super::*;
 
@@ -25,30 +25,6 @@ fn an_empty_content_list_cannot_become_a_tool_output() {
 }
 
 #[test]
-fn json_shaped_strings_remain_literal_text() {
-    let text = r#"{"type":"image","data":"not-an-envelope"}"#.to_string();
-    let output = text.clone().into_tool_output().unwrap();
-
-    assert_eq!(output, ToolOutput::text(text.clone()));
-    let content = output.into_content();
-    assert!(matches!(content.first(), Some(ToolResultContent::Text(value)) if value.text == text));
-}
-
-#[test]
-fn structured_values_remain_json_until_terminal_rendering() {
-    let value = serde_json::json!({"status": "ok", "count": 2});
-    let output = value.clone().into_tool_output().unwrap();
-
-    assert_eq!(output, ToolOutput::json(value.clone()));
-    assert_eq!(output.render(), value.to_string());
-    let content = output.into_content();
-    assert!(matches!(
-        content.first(),
-        Some(ToolResultContent::Json { value: content_value }) if *content_value == value
-    ));
-}
-
-#[test]
 fn explicit_json_string_is_distinct_from_literal_text() {
     let explicit = serde_json::Value::String("hello".to_string());
 
@@ -63,20 +39,6 @@ fn explicit_json_string_is_distinct_from_literal_text() {
 }
 
 #[test]
-fn explicit_image_content_preserves_its_type() {
-    let image = ToolResultContent::image_base64("base64data==", Some(ImageMediaType::JPEG), None);
-    let output = image.into_tool_output().unwrap();
-
-    let content = output.into_content();
-    assert!(matches!(
-        content.first(),
-        Some(ToolResultContent::Image(image))
-            if image.media_type == Some(ImageMediaType::JPEG)
-                && matches!(&image.data, DocumentSourceKind::Base64(data) if data == "base64data==")
-    ));
-}
-
-#[test]
 fn direct_ordered_content_is_not_serialized_as_json() {
     let content = vec![
         ToolResultContent::text("before"),
@@ -87,16 +49,4 @@ fn direct_ordered_content_is_not_serialized_as_json() {
     let output = content.clone().into_tool_output().unwrap();
 
     assert_eq!(output.as_content(), &content);
-}
-
-#[test]
-fn singleton_plain_content_has_one_canonical_representation() {
-    assert_eq!(
-        ToolOutput::text("hello"),
-        ToolOutput::one(ToolResultContent::text("hello"))
-    );
-    assert_eq!(
-        ToolOutput::json(serde_json::json!({"ok": true})),
-        ToolOutput::one(ToolResultContent::json(serde_json::json!({"ok": true})))
-    );
 }

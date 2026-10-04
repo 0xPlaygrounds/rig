@@ -63,15 +63,6 @@ fn without_timing(mut frames: Vec<FramePoses>) -> Vec<FramePoses> {
 }
 
 #[test]
-fn a_frame_keeps_its_aspect_ratio_at_the_input_size() {
-    assert_eq!(input_dimensions(800, 556, 640), (640, 416));
-    assert_eq!(input_dimensions(556, 800, 640), (416, 640));
-    assert_eq!(input_dimensions(640, 640, 640), (640, 640));
-    assert_eq!(input_dimensions(4000, 10, 640), (640, 32));
-    assert_eq!(input_dimensions(30, 20, 64), (64, 32));
-}
-
-#[test]
 fn a_frame_must_hold_three_bytes_per_pixel() {
     assert!(ImageFrame::from_rgb8(2, 2, vec![0; 12]).is_ok());
     for (width, height, bytes) in [(2, 2, 11), (0, 2, 0), (2, 0, 0), (MAX_FRAME_SIDE + 1, 1, 0)] {

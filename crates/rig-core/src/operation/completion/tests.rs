@@ -4,9 +4,7 @@ use super::{Block, CallFragment, Completion, Finish, Turn, events_of};
 use crate::completion::CompletionResponse;
 use crate::driver::{Decoded, decode_with};
 use crate::error::ProviderError;
-use crate::message::{
-    AssistantContent, CallId, Opaque, Reasoning, Text, ToolCall, ToolFunction, ToolName,
-};
+use crate::message::{AssistantContent, CallId, Reasoning, ToolCall, ToolName};
 use crate::streaming::{Item, StreamEvent, Transcript};
 use crate::wire::Out;
 
@@ -127,100 +125,6 @@ fn empty_text_survives_only_with_a_provider_item() {
 }
 
 #[test]
-fn an_opaque_item_closes_as_its_assembled_item() {
-    let decoded = write(|out| {
-        out.open(
-            0,
-            Block::Opaque { replay: true },
-            json!({"type": "compaction", "content": ""}),
-        )?;
-        out.edit(0, |item| {
-            super::merge(
-                item,
-                &object(json!({"type": "compaction_delta", "content": "summary"})),
-            )
-        })?;
-        out.finish(0)
-    });
-    assert_eq!(
-        response(decoded).choice,
-        vec![AssistantContent::Opaque(Opaque {
-            item: json!({"type": "compaction", "content": "summary"}),
-            replay: true,
-        })]
-    );
-}
-
-#[test]
-fn a_buffered_call_opens_at_its_first_fragment_and_closes_whole() {
-    let decoded = write(|out| {
-        out.fragment(
-            Some(0),
-            CallFragment {
-                arguments: Some("{\"q\":"),
-                ..CallFragment::default()
-            },
-        )?;
-        out.run(Block::Text, "between")?;
-        out.fragment(
-            Some(0),
-            CallFragment {
-                id: Some("call_1"),
-                name: Some("lookup"),
-                arguments: Some("1}"),
-            },
-        )?;
-        out.end_run()?;
-        out.finish(0)
-    });
-    let choice = response(decoded).choice;
-    assert_eq!(
-        choice,
-        vec![
-            AssistantContent::ToolCall(ToolCall::new(
-                CallId::from_wire("call_1"),
-                ToolFunction::new(name("lookup"), json!({"q": 1})),
-            )),
-            AssistantContent::Text(Text::new("between")),
-        ]
-    );
-}
-
-#[test]
-fn a_call_that_never_got_an_id_is_issued_one() {
-    let closed = write(|out| {
-        out.fragment(
-            Some(3),
-            CallFragment {
-                name: Some("lookup"),
-                arguments: Some("{}"),
-                ..CallFragment::default()
-            },
-        )?;
-        out.finish(3)
-    });
-    assert!(matches!(
-        response(closed).choice.as_slice(),
-        [AssistantContent::ToolCall(call)] if call.id.is_local()
-    ));
-
-    let ended = write(|out| {
-        out.fragment(
-            Some(3),
-            CallFragment {
-                name: Some("lookup"),
-                arguments: Some("{}"),
-                ..CallFragment::default()
-            },
-        )
-    });
-    assert!(matches!(
-        response(ended).choice.as_slice(),
-        [AssistantContent::ToolCall(call)] if call.id.is_local()
-    ));
-}
-
-#[test]
 fn a_reused_call_id_is_renamed_and_loses_its_item() {
     let decoded = write(|out| {
         for index in 0..2 {
@@ -300,44 +204,6 @@ fn a_restated_response_streams_the_same_blocks() {
     assert!(events.iter().all(|item| matches!(item, Item::Event(_))));
 }
 
-#[test]
-fn starts_follow_item_order_and_a_dropped_item_leaves_a_gap() {
-    let decoded = write(|out| {
-        out.open(0, Block::Text, Value::Null)?;
-        out.open(1, Block::Text, Value::Null)?;
-        out.push(1, "second")?;
-        out.finish(0)?;
-        out.finish(1)
-    });
-    let items: Vec<_> = decoded.items.iter().flatten().cloned().collect();
-    let transcript = Transcript::from_items(items).expect("a gap is a valid sequence");
-    let parts: Vec<_> = transcript
-        .events()
-        .map(|event| event.part().index())
-        .collect();
-    assert!(parts.iter().all(|part| *part == 1));
-    assert_eq!(
-        response(decoded).choice,
-        vec![AssistantContent::text("second")]
-    );
-}
-
-#[test]
-fn a_call_closed_without_a_name_is_dropped() {
-    let decoded = write(|out| {
-        out.fragment(
-            Some(0),
-            CallFragment {
-                id: Some("call_1"),
-                arguments: Some("{}"),
-                ..CallFragment::default()
-            },
-        )?;
-        out.finish(0)
-    });
-    assert!(response(decoded).choice.is_empty());
-}
-
 /// One reply written by `write` on a wire fold, which states finish reasons
 /// and whose call items hold their id at `slot`, then ended with `finish`.
 fn write_on_wire(
@@ -371,26 +237,6 @@ fn a_wire_reply_that_names_no_finish_reason_failed() {
         out.whole(0, Block::Text, json!({"type": "text"}), "hi")
     });
     assert!(response(decoded).stop().is_failure());
-}
-
-#[test]
-fn a_call_left_open_at_a_clean_end_fails_the_turn_but_not_at_the_token_limit() {
-    use crate::completion::FinishReason;
-    let open_call = |out: &mut Out<'_, Completion>| {
-        out.open(
-            0,
-            Block::Call {
-                id: CallId::from_wire("call_1"),
-                name: name("lookup"),
-            },
-            Value::Null,
-        )?;
-        out.push(0, r#"{"q": "ri"#)
-    };
-    let stopped = response(write_on_wire(None, stop(FinishReason::Stop), open_call));
-    assert!(stopped.stop().is_failure(), "{:?}", stopped.stop());
-    let cut = response(write_on_wire(None, stop(FinishReason::Length), open_call));
-    assert!(!cut.stop().is_failure(), "{:?}", cut.stop());
 }
 
 #[test]

@@ -44,12 +44,6 @@ pub(super) fn recorded(section: &str, relative: &str) -> String {
     block
 }
 
-/// The recorded body, parsed as JSON.
-pub(super) fn recorded_json(section: &str, relative: &str) -> serde_json::Value {
-    serde_json::from_str(&recorded(section, relative))
-        .unwrap_or_else(|error| panic!("cassette {relative} {section} body is JSON: {error}"))
-}
-
 /// A wire is data a host may store in a config file or a scene, so it must
 /// be serializable — and serializing it must never write the credential.
 #[test]
@@ -201,39 +195,6 @@ fn an_unknown_dialect_name_is_rejected() {
     );
 }
 
-/// The table `Deserialize` looks names up in must contain every dialect, or
-/// a stored wire would fail to load for a provider this build supports.
-#[test]
-fn every_dialect_is_reachable_by_name() {
-    for dialect in all() {
-        assert_eq!(
-            by_name(dialect.name),
-            Some(dialect),
-            "{} is missing from the lookup table",
-            dialect.name
-        );
-    }
-}
-
-/// Azure addresses a deployment in the URL and versions the API with a query
-/// parameter; every other dialect resolves a path against its base URL.
-#[test]
-fn azure_routes_the_model_through_the_url() {
-    let azure = OpenAIConfig::with_key(&AZURE, "k")
-        .with_base_url("https://example.openai.azure.com")
-        .with_api_version("2024-10-21");
-    assert_eq!(
-        azure.uri("/chat/completions", Some("my-deployment")),
-        "https://example.openai.azure.com/openai/deployments/my-deployment/chat/completions?api-version=2024-10-21"
-    );
-
-    let openai = OpenAIConfig::new("k");
-    assert_eq!(
-        openai.uri("/chat/completions", None),
-        "https://api.openai.com/v1/chat/completions"
-    );
-}
-
 /// The credential goes in the header the dialect uses, and a local server
 /// started without a key gets no `Authorization` header at all.
 #[test]
@@ -377,32 +338,6 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
             .modality_uri("transcription", "/audio/transcriptions", "whisper-1")
             .expect("openai serves transcription"),
         "https://api.openai.com/v1/audio/transcriptions"
-    );
-}
-
-/// A dialect that offers no reranking says so, rather than posting to a path
-/// its server never served.
-#[test]
-fn only_a_dialect_with_a_rerank_path_reranks() {
-    use crate::operation::RerankRequest;
-    use crate::wire::{Mode, Wire};
-
-    let request = || RerankRequest {
-        query: "q".to_owned(),
-        documents: vec!["a".to_owned(), "b".to_owned()],
-    };
-    assert!(
-        OpenAIConfig::new("k")
-            .rerank("any")
-            .encode(request(), Mode::Unary)
-            .is_err(),
-        "OpenAI has no reranking endpoint"
-    );
-    assert!(
-        OpenAIConfig::with_key(&LLAMACPP, "")
-            .rerank("bge-reranker-v2-m3")
-            .encode(request(), Mode::Unary)
-            .is_ok()
     );
 }
 

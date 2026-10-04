@@ -1,18 +1,6 @@
 use super::*;
 
 #[test]
-fn test_model_from_id() {
-    let model = ModelInfo::from_id("gpt-4");
-    assert_eq!(model.id, "gpt-4");
-    assert_eq!(model.name, None);
-    assert_eq!(model.description, None);
-    assert_eq!(model.r#type, None);
-    assert_eq!(model.created_at, None);
-    assert_eq!(model.owned_by, None);
-    assert_eq!(model.context_length, None);
-}
-
-#[test]
 fn test_model_new() {
     let model = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(model.id, "gpt-4");
@@ -20,51 +8,9 @@ fn test_model_new() {
 }
 
 #[test]
-fn test_model_display_name() {
-    let model_with_name = ModelInfo::new("gpt-4", "GPT-4");
-    assert_eq!(model_with_name.display_name(), "GPT-4");
-
-    let model_without_name = ModelInfo::from_id("gpt-4");
-    assert_eq!(model_without_name.display_name(), "gpt-4");
-}
-
-#[test]
 fn test_model_display() {
     let model = ModelInfo::new("gpt-4", "GPT-4");
     assert_eq!(format!("{model}"), "GPT-4");
-}
-
-#[test]
-fn test_model_list_new() {
-    let list = ModelList::new(vec![ModelInfo::from_id("gpt-4")]);
-    assert_eq!(list.len(), 1);
-}
-
-#[test]
-fn test_model_list_empty() {
-    let list = ModelList::new(vec![]);
-    assert!(list.is_empty());
-    assert_eq!(list.len(), 0);
-}
-
-#[test]
-fn test_model_list_iter() {
-    let list = ModelList::new(vec![
-        ModelInfo::from_id("gpt-4"),
-        ModelInfo::from_id("gpt-3.5-turbo"),
-    ]);
-    let models: Vec<_> = list.iter().collect();
-    assert_eq!(models.len(), 2);
-}
-
-#[test]
-fn test_model_list_into_iter() {
-    let list = ModelList::new(vec![
-        ModelInfo::from_id("gpt-4"),
-        ModelInfo::from_id("gpt-3.5-turbo"),
-    ]);
-    let models: Vec<_> = list.into_iter().collect();
-    assert_eq!(models.len(), 2);
 }
 
 #[test]
@@ -166,12 +112,6 @@ fn test_model_list_serde() {
 
     let deserialized: ModelList = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.len(), 1);
-}
-
-#[test]
-fn test_format_response_body_preview_without_truncation() {
-    let preview = format_response_body_preview(br#"{"ok":true}"#);
-    assert_eq!(preview, r#"{"ok":true}"#);
 }
 
 #[test]

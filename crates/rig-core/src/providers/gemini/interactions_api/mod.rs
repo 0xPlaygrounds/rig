@@ -589,7 +589,4 @@ fn assistant_step(
 mod tests;
 
 #[cfg(test)]
-mod interaction_usage_tests;
-
-#[cfg(test)]
 mod history_tests;

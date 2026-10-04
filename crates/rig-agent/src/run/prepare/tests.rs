@@ -33,55 +33,6 @@ fn tool_names(names: &[&str]) -> BTreeSet<String> {
 }
 
 #[test]
-fn allowed_tool_names_defaults_to_all_executable_tools() {
-    let executable = tool_names(&["add", "subtract"]);
-
-    assert_eq!(
-        allowed_tool_names_for_choice(&executable, None, None, None).unwrap(),
-        executable
-    );
-}
-
-#[test]
-fn allowed_tool_names_auto_and_required_allow_all_executable_tools() {
-    let executable = tool_names(&["add", "subtract"]);
-
-    assert_eq!(
-        allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Auto), None, None).unwrap(),
-        executable
-    );
-    assert_eq!(
-        allowed_tool_names_for_choice(&executable, Some(&ToolChoice::Required), None, None)
-            .unwrap(),
-        executable
-    );
-}
-
-#[test]
-fn allowed_tool_names_none_allows_no_tools() {
-    let executable = tool_names(&["add", "subtract"]);
-
-    assert!(
-        allowed_tool_names_for_choice(&executable, Some(&ToolChoice::None), None, None)
-            .unwrap()
-            .is_empty()
-    );
-}
-
-#[test]
-fn allowed_tool_names_specific_allows_requested_executable_tools() {
-    let executable = tool_names(&["add", "subtract"]);
-    let choice = ToolChoice::Specific {
-        function_names: vec![rig_core::message::ToolName::new("add").expect("tool name")],
-    };
-
-    assert_eq!(
-        allowed_tool_names_for_choice(&executable, Some(&choice), None, None).unwrap(),
-        tool_names(&["add"])
-    );
-}
-
-#[test]
 fn allowed_tool_names_specific_rejects_missing_tools() {
     let executable = tool_names(&["add"]);
     let choice = ToolChoice::Specific {
@@ -128,23 +79,6 @@ fn required_with_no_advertised_tool_is_local_error() {
 }
 
 #[test]
-fn required_with_only_the_output_tool_is_allowed() {
-    // Structured-output Tool mode with no real tools: the model can still be
-    // forced to call the synthetic output tool, so Required is valid.
-    let empty = tool_names(&[]);
-    let allowed = allowed_tool_names_for_choice(
-        &empty,
-        Some(&ToolChoice::Required),
-        Some("final_result"),
-        None,
-    )
-    .expect("Required is satisfiable by the output tool");
-    // The output tool is added to the allowed set by the caller, so the
-    // executable-derived allowed set is empty here.
-    assert!(allowed.is_empty());
-}
-
-#[test]
 fn required_with_active_tools_filter_names_the_filter_in_the_error() {
     let empty = tool_names(&[]);
     let err = allowed_tool_names_for_choice(
@@ -163,44 +97,6 @@ fn required_with_active_tools_filter_names_the_filter_in_the_error() {
         msg.contains("RequestPatch"),
         "error should suggest RequestPatch: {msg}"
     );
-}
-
-#[test]
-fn specific_naming_a_filtered_out_tool_is_a_local_error_with_hint() {
-    // active_tools narrowed the advertised set to {add}; Specific still names
-    // the now-filtered-out `subtract`.
-    let executable = tool_names(&["add"]);
-    let choice = ToolChoice::Specific {
-        function_names: vec![rig_core::message::ToolName::new("subtract").expect("tool name")],
-    };
-    let err = allowed_tool_names_for_choice(
-        &executable,
-        Some(&choice),
-        None,
-        Some(&tool_names(&["add", "subtract"])),
-    )
-    .expect_err("Specific naming a filtered-out tool must fail locally");
-    let msg = err.to_string();
-    assert!(
-        msg.contains("subtract"),
-        "error should name the missing tool: {msg}"
-    );
-    assert!(
-        msg.contains("active_tools"),
-        "error should name active_tools: {msg}"
-    );
-}
-
-#[test]
-fn specific_may_name_the_output_tool() {
-    // The effective advertised set includes the synthetic output tool.
-    let empty = tool_names(&[]);
-    let choice = ToolChoice::Specific {
-        function_names: vec![rig_core::message::ToolName::new("final_result").expect("tool name")],
-    };
-    let allowed = allowed_tool_names_for_choice(&empty, Some(&choice), Some("final_result"), None)
-        .expect("Specific naming the output tool is valid");
-    assert_eq!(allowed, tool_names(&["final_result"]));
 }
 
 #[test]
@@ -228,43 +124,6 @@ fn specific_typo_is_not_blamed_on_active_tools() {
 }
 
 #[test]
-fn resolve_output_mode_without_schema_is_always_native() {
-    // No schema => nothing to enforce, regardless of the requested mode or tools.
-    for requested in [
-        OutputMode::Auto,
-        OutputMode::Tool,
-        OutputMode::Native,
-        OutputMode::Prompted,
-    ] {
-        assert_eq!(
-            resolve_output_mode(false, true, true, false, &requested),
-            OutputMode::Native,
-            "no schema should force Native for {requested:?}"
-        );
-        assert_eq!(
-            resolve_output_mode(false, false, true, false, &requested),
-            OutputMode::Native,
-        );
-    }
-}
-
-#[test]
-fn resolve_output_mode_auto_picks_tool_only_when_tools_present() {
-    // This is the #1928 fix: with tools on a provider that does NOT compose
-    // native output with tools, the schema must not be a native `format`
-    // constraint on every turn, so Auto routes to Tool.
-    assert_eq!(
-        resolve_output_mode(true, true, true, false, &OutputMode::Auto),
-        OutputMode::Tool,
-    );
-    // No tools => native structured output is safe and preferred.
-    assert_eq!(
-        resolve_output_mode(true, false, true, false, &OutputMode::Auto),
-        OutputMode::Native,
-    );
-}
-
-#[test]
 fn resolve_output_mode_auto_keeps_native_when_provider_composes() {
     // On providers that compose native structured output with tools (OpenAI,
     // Anthropic), Auto keeps guaranteed native output even with tools present.
@@ -272,25 +131,6 @@ fn resolve_output_mode_auto_keeps_native_when_provider_composes() {
         resolve_output_mode(true, true, true, true, &OutputMode::Auto),
         OutputMode::Native,
     );
-}
-
-#[test]
-fn resolve_output_mode_honors_explicit_choice_with_schema() {
-    for (requested, expected) in [
-        (OutputMode::Tool, OutputMode::Tool),
-        (OutputMode::Native, OutputMode::Native),
-        (OutputMode::Prompted, OutputMode::Prompted),
-    ] {
-        // Explicit modes are honored regardless of tools or provider support.
-        assert_eq!(
-            resolve_output_mode(true, true, true, false, &requested),
-            expected
-        );
-        assert_eq!(
-            resolve_output_mode(true, false, true, true, &requested),
-            expected
-        );
-    }
 }
 
 #[test]

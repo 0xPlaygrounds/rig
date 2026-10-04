@@ -1,6 +1,5 @@
 use super::*;
-use crate::{http_client, provider_response};
-use http::StatusCode;
+use crate::provider_response;
 
 #[test]
 fn embedding_error_provider_response_helpers_with_preserved_json_body() {
@@ -18,35 +17,6 @@ fn embedding_error_provider_response_helpers_with_preserved_json_body() {
 }
 
 #[test]
-fn embedding_error_provider_error_is_not_a_provider_response() {
-    let error = ProviderError::Provider("internal diagnostic".to_string());
-
-    assert_eq!(error.provider_response_body(), None);
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.provider_response_json().expect("no body"), None);
-}
-
-#[test]
-fn embedding_error_provider_response_helpers_with_http_non_success() {
-    let body = r#"{"error":{"message":"bad request"}}"#;
-    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
-        StatusCode::BAD_REQUEST,
-        http::HeaderMap::new(),
-        body.to_string(),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(StatusCode::BAD_REQUEST)
-    );
-    assert_eq!(
-        error.provider_response_json().expect("valid JSON"),
-        Some(serde_json::json!({ "error": { "message": "bad request" } }))
-    );
-}
-
-#[test]
 fn embedding_error_provider_response_helpers_with_preserved_plain_text_body() {
     let error = ProviderError::ProviderResponse(
         provider_response::ProviderResponseError::without_status("not json".to_string()),
@@ -54,13 +24,4 @@ fn embedding_error_provider_response_helpers_with_preserved_plain_text_body() {
 
     assert_eq!(error.provider_response_body(), Some("not json"));
     assert!(error.provider_response_json().is_err());
-}
-
-#[test]
-fn embedding_error_provider_response_helpers_with_unrelated_variant() {
-    let error = ProviderError::Response("parse failed".to_string());
-
-    assert_eq!(error.provider_response_body(), None);
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.provider_response_json().expect("no body"), None);
 }

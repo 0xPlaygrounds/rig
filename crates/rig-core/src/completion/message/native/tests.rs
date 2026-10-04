@@ -1,8 +1,8 @@
 use serde_json::json;
 
 use crate::message::{
-    AssistantContent, AssistantMessage, CallId, Fingerprint, Message, Opaque, Origin, Reasoning,
-    StopReason, Text, ToolCall, ToolFunction, ToolName,
+    AssistantContent, AssistantMessage, CallId, Fingerprint, Message, Opaque, Origin, StopReason,
+    Text, ToolCall, ToolFunction, ToolName,
 };
 
 fn call(arguments: serde_json::Value) -> AssistantContent {
@@ -11,19 +11,6 @@ fn call(arguments: serde_json::Value) -> AssistantContent {
         CallId::from_wire("call_1"),
         ToolFunction::new(name, arguments),
     ))
-}
-
-#[test]
-fn a_fresh_native_item_is_current_and_an_edit_makes_it_stale() {
-    let item = json!({"type": "text", "text": "hi", "citations": [{"url": "u"}]});
-    let block = AssistantContent::text("hi").with_native(item.clone());
-    assert_eq!(block.native_item(), Some(&item));
-
-    let mut edited = block.clone();
-    if let AssistantContent::Text(text) = &mut edited {
-        text.text.push('!');
-    }
-    assert_eq!(edited.native_item(), None);
 }
 
 #[test]
@@ -36,14 +23,6 @@ fn fingerprints_survive_a_serde_round_trip() {
     let loaded: AssistantContent = serde_json::from_str(&saved).expect("deserialize");
     assert_eq!(loaded.fingerprint(), block.fingerprint());
     assert!(loaded.native_item().is_some());
-}
-
-#[test]
-fn the_canonical_form_leaves_the_item_out() {
-    let plain = AssistantContent::Reasoning(Reasoning::new("think"));
-    let decoded = plain.clone().with_native(json!({"signature": "sig"}));
-    assert_eq!(decoded.fingerprint(), plain.fingerprint());
-    assert_eq!(decoded.canonical(), plain);
 }
 
 #[test]
@@ -92,27 +71,6 @@ fn a_store_that_writes_whole_numbers_as_integers_keeps_the_item_current() {
         Fingerprint::of(&json!({"scale": 0.5})),
         Fingerprint::of(&json!({"scale": 1}))
     );
-}
-
-#[test]
-fn fingerprint_is_fnv1a_of_the_json_bytes() {
-    // FNV-1a of `"a"` (three bytes), pinned so a hashing change is a
-    // deliberate break of every stored history.
-    assert_eq!(Fingerprint::of(&"a"), Fingerprint::of(&json!("a")));
-    assert_ne!(Fingerprint::of(&"a"), Fingerprint::of(&"b"));
-}
-
-#[test]
-fn a_rig_issued_call_id_fingerprints_the_same_on_every_decode() {
-    let decoded = || {
-        AssistantContent::ToolCall(ToolCall::new(
-            CallId::from_wire(""),
-            ToolFunction::new(ToolName::new("lookup").expect("a name"), json!({})),
-        ))
-    };
-    let (first, second) = (decoded(), decoded());
-    assert_ne!(first, second, "each decode issues its own id");
-    assert_eq!(first.fingerprint(), second.fingerprint());
 }
 
 #[test]

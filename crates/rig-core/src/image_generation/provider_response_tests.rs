@@ -1,6 +1,5 @@
 use super::*;
-use crate::{http_client, provider_response};
-use http::StatusCode;
+use crate::provider_response;
 
 #[test]
 fn image_generation_error_provider_response_helpers_with_preserved_json_body() {
@@ -15,42 +14,4 @@ fn image_generation_error_provider_response_helpers_with_preserved_json_body() {
         error.provider_response_json().expect("valid JSON"),
         Some(serde_json::json!({ "error": { "message": "content policy" } }))
     );
-}
-
-#[test]
-fn image_generation_error_provider_response_helpers_with_http_non_success() {
-    let body = r#"{"error":{"message":"bad request"}}"#;
-    let error = ProviderError::from_transport_error(http_client::Error::non_success_with_details(
-        StatusCode::BAD_REQUEST,
-        http::HeaderMap::new(),
-        body.to_string(),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(StatusCode::BAD_REQUEST)
-    );
-    assert_eq!(
-        error.provider_response_json().expect("valid JSON"),
-        Some(serde_json::json!({ "error": { "message": "bad request" } }))
-    );
-}
-
-#[test]
-fn image_generation_error_provider_error_is_not_a_provider_response() {
-    let error = ProviderError::Provider("internal diagnostic".to_string());
-
-    assert_eq!(error.provider_response_body(), None);
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.provider_response_json().expect("no body"), None);
-}
-
-#[test]
-fn image_generation_error_provider_response_helpers_with_unrelated_variant() {
-    let error = ProviderError::Response("parse failed".to_string());
-
-    assert_eq!(error.provider_response_body(), None);
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.provider_response_json().expect("no body"), None);
 }

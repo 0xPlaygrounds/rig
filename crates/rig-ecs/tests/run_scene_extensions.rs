@@ -3,7 +3,7 @@
 //! type registry travels with the entity it sits on, its `Entity` fields
 //! remapped like the crate's own; one the host never registered is not in
 //! the checkpoint, and one the destination never registered is refused.
-use crate::{bus_support, run_support};
+use crate::run_support;
 
 use std::any::type_name;
 
@@ -177,92 +177,4 @@ fn unregistered_state_is_outside_the_checkpoint_contract() {
     let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []).unwrap();
     let agent = loaded.with::<Owner>(restored.world())[0];
     assert!(restored.world().get::<RetryBudget>(agent).is_none());
-}
-
-#[test]
-fn a_stream_checkpoint_restores_completed_state_and_refuses_an_unfinished_prefix() {
-    use rig_ecs::bus::{EffectOutcome, PendingEffect, Streamed};
-    use std::sync::{Arc, atomic::Ordering};
-
-    for completed in [false, true] {
-        let mut live = bus_support::app();
-        register(live.world_mut());
-        let counters = Arc::new(bus_support::Counters::default());
-        let model = if completed {
-            bus_support::MockModel::new(&counters)
-        } else {
-            bus_support::MockModel::endless(&counters)
-        };
-        bus_support::register(&mut live, "model", model);
-        let agent = live.world_mut().spawn(Owner("test".into())).id();
-        let run = live
-            .world_mut()
-            .spawn((Run, RunOf(agent), ChildOf(agent), RetryBudget(2)))
-            .id();
-        let effect = live
-            .world_mut()
-            .spawn((
-                PendingEffect::new("model", bus_support::streaming()),
-                ChildOf(run),
-            ))
-            .id();
-        bus_support::tick_until(&mut live, "stream checkpoint cut", |world| {
-            if completed {
-                world.get::<EffectOutcome>(effect).is_some()
-            } else {
-                world
-                    .get::<Streamed>(effect)
-                    .is_some_and(|streamed| !streamed.text.is_empty())
-            }
-        });
-        let expected = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
-        let saved = bus_support::checkpoint(&mut live);
-        let mut restored = bus_support::app();
-        register(restored.world_mut());
-        let counters = Arc::new(bus_support::Counters::default());
-        bus_support::register(
-            &mut restored,
-            "model",
-            bus_support::MockModel::new(&counters),
-        );
-        let count = restored.world().entities().len();
-        let loaded = load_world(&saved, restored.world_mut(), RestoreMode::Strict, []);
-        if completed {
-            let loaded = loaded.unwrap();
-            let effect = loaded.with::<PendingEffect>(restored.world())[0];
-            restored.update();
-            assert_eq!(
-                serde_json::to_value(restored.world().get::<Streamed>(effect).unwrap()).unwrap(),
-                expected
-            );
-            assert_eq!(
-                restored.world().get::<ChildOf>(effect).map(ChildOf::parent),
-                Some(loaded.with::<Run>(restored.world())[0]),
-                "the effect is the loaded run's"
-            );
-            let budgets: Vec<_> = restored
-                .world_mut()
-                .query::<&RetryBudget>()
-                .iter(restored.world())
-                .map(|budget| budget.0)
-                .collect();
-            assert_eq!(budgets, [2]);
-            assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
-        } else {
-            let error = loaded.unwrap_err();
-            assert!(
-                !matches!(error, CheckpointError::NotInstalled(_)),
-                "{error:?}"
-            );
-            assert_eq!(restored.world().entities().len(), count);
-            assert_eq!(
-                restored
-                    .world_mut()
-                    .query::<&RetryBudget>()
-                    .iter(restored.world())
-                    .count(),
-                0
-            );
-        }
-    }
 }

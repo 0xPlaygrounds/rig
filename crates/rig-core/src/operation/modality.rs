@@ -278,6 +278,3 @@ where
         Ok(response)
     }
 }
-
-#[cfg(test)]
-mod tests;

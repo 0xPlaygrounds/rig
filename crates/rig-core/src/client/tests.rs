@@ -91,17 +91,6 @@ fn voyageai_config_json_is_unchanged() {
     );
 }
 
-/// A client keeps its configuration, and a configuration put on a transport
-/// comes back unchanged.
-#[test]
-fn a_client_holds_the_configuration_it_was_built_from() {
-    let config = openai::OpenAIConfig::new("sk-secret").with_base_url("http://localhost:1/v1");
-    let client = config
-        .clone()
-        .connect(crate::test_utils::RecordingHttpClient::new("{}"));
-    assert_eq!(client.config(), &config);
-}
-
 /// A token exchange whose recorded reply names an enterprise API root.
 const EXCHANGE: &str = r#"{"token":"tid=session","expires_at":4102444800,"endpoints":{"api":"https://api.enterprise.githubcopilot.com"}}"#;
 

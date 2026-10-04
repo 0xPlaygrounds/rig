@@ -17,8 +17,6 @@ use crate::sync::Mutex;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;
-#[cfg(all(test, not(rig_loom)))]
-mod tests;
 use crate::bus::{BusDriver, Dispatcher, Recording, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;

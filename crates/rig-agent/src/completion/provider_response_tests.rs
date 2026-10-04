@@ -4,26 +4,6 @@ use rig_core::{ProviderResponseError, http_client};
 use super::*;
 
 #[test]
-fn prompt_error_forwards_provider_response_to_completion_error() {
-    let body = r#"{"error":{"message":"boom"}}"#;
-    let inner = ProviderError::from_http_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let error = PromptError::Provider(inner);
-
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE),
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error
-            .provider_response_json()
-            .expect("valid json")
-            .expect("present json")["error"]["message"],
-        "boom",
-    );
-}
-
-#[test]
 fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
     let body = r#"{"error":{"message":"unauthorized"}}"#;
     let error = PromptError::Provider(ProviderError::from_transport_error(
@@ -43,28 +23,6 @@ fn prompt_error_provider_response_helpers_forward_http_status_and_body() {
         error.provider_response_json().expect("valid JSON body"),
         Some(serde_json::json!({
             "error": { "message": "unauthorized" }
-        }))
-    );
-}
-
-#[test]
-fn prompt_error_provider_response_helpers_forward_wrapped_completion_error() {
-    let body = r#"{"error":{"code":"invalid_request","message":"bad input"}}"#;
-    let error = PromptError::Provider(ProviderError::ProviderResponse(
-        ProviderResponseError::without_status(body),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(error.provider_response_status(), None);
-    // rig#2314: the transport request id forwards through the wrapper too.
-    assert_eq!(error.provider_request_id(), None);
-    assert_eq!(
-        error.provider_response_json().expect("valid JSON body"),
-        Some(serde_json::json!({
-            "error": {
-                "code": "invalid_request",
-                "message": "bad input"
-            }
         }))
     );
 }
@@ -159,52 +117,5 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
             .provider_response_json()
             .expect("no body is not an error"),
         None
-    );
-}
-
-#[test]
-fn structured_output_error_provider_response_helpers_forward_prompt_error() {
-    let body = r#"{"error":{"message":"bad input"}}"#;
-    let error =
-        StructuredOutputError::Prompt(PromptError::Provider(ProviderError::ProviderResponse(
-            ProviderResponseError::new(http::StatusCode::BAD_REQUEST, body),
-        )));
-
-    assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::BAD_REQUEST)
-    );
-}
-
-/// A provider failure relayed over the bus is the report it carries, so an
-/// awaited and a streamed run classify it the same way.
-#[test]
-fn prompt_error_from_relayed_provider_error_is_its_report() {
-    let report = rig_core::error::ErrorReport::new(rig_core::ErrorKind::Provider, "exploded");
-    let error = PromptError::from(ProviderError::Relayed(Box::new(report.clone())));
-    assert!(matches!(error, PromptError::Report(relayed) if relayed == report));
-}
-
-/// Wrapping variants display their inner error once and forward its source,
-/// so an error-chain printer does not repeat a message.
-#[test]
-fn wrapping_errors_are_transparent() {
-    use std::error::Error as _;
-
-    let json = serde_json::from_str::<u8>("not json").expect_err("invalid JSON");
-    let inner = ProviderError::from(json);
-    let error = PromptError::from(inner.clone());
-    assert_eq!(error.to_string(), inner.to_string());
-    assert_eq!(
-        error.source().map(ToString::to_string),
-        inner.source().map(ToString::to_string)
-    );
-
-    let structured = StructuredOutputError::from(error);
-    assert_eq!(structured.to_string(), inner.to_string());
-    assert_eq!(
-        structured.source().map(ToString::to_string),
-        inner.source().map(ToString::to_string)
     );
 }

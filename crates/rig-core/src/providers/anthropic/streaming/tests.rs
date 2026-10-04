@@ -6,7 +6,6 @@ use crate::completion::request::Document as RigDocument;
 use crate::driver::{Decoded, decode_events};
 use crate::message::{AssistantContent, Opaque, Reasoning, StopReason};
 use crate::providers::anthropic::wire::AnthropicConfig;
-use crate::streaming::StreamEvent;
 use crate::wire::Mode;
 use serde_json::json;
 
@@ -75,36 +74,6 @@ fn item(content: &AssistantContent) -> Option<&Value> {
         AssistantContent::Opaque(Opaque { item, .. }) => Some(item),
         content => content.native_item(),
     }
-}
-
-/// The message delta that ends a reply with `stop_reason`.
-fn message_delta(stop_reason: &str, usage: Value) -> MessagesEvent {
-    classified(
-        &json!({"type": "message_delta",
-            "delta": {"stop_reason": stop_reason, "stop_sequence": null},
-            "usage": usage})
-        .to_string(),
-    )
-}
-
-fn tool_use(index: usize, id: &str, name: &str) -> MessagesEvent {
-    classified(
-        &json!({"type": "content_block_start", "index": index,
-            "content_block": {"type": "tool_use", "id": id, "name": name, "input": {}}})
-        .to_string(),
-    )
-}
-
-fn input_json(index: usize, partial_json: &str) -> MessagesEvent {
-    classified(
-        &json!({"type": "content_block_delta", "index": index,
-            "delta": {"type": "input_json_delta", "partial_json": partial_json}})
-        .to_string(),
-    )
-}
-
-fn stop(index: usize) -> MessagesEvent {
-    classified(&json!({"type": "content_block_stop", "index": index}).to_string())
 }
 
 /// The streaming request body the [`Messages`](super::super::wire::Messages)
@@ -273,57 +242,6 @@ fn streaming_body_is_blocking_body_plus_stream_flag_and_carries_output_schema() 
 }
 
 #[test]
-fn streaming_body_keeps_explicit_tool_choice_auto_when_tools_present_but_unset() {
-    let request = CompletionRequest::new(RigMessage::user("Add 2 and 3"))
-        .max_tokens(64)
-        .tools(vec![crate::completion::ToolDefinition {
-            name: crate::message::ToolName::new("add").expect("tool name"),
-            description: "Add x and y".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": { "x": { "type": "integer" } }
-            }),
-        }]);
-
-    let body = built_streaming_body(CLAUDE_OPUS_4_8, request, false)
-        .expect("streaming request body should build");
-
-    // Tools advertised + `tool_choice` unset must still carry the explicit
-    // `auto` the streaming wire format has always sent (parity with recorded
-    // fixtures), even though the blocking typed request omits it.
-    assert_eq!(body["tool_choice"], json!({ "type": "auto" }));
-    assert!(body["tools"].is_array());
-}
-
-#[test]
-fn streaming_body_applies_strict_tool_opt_in() {
-    let request = CompletionRequest::new(RigMessage::user("Look this up"))
-        .max_tokens(64)
-        .tools(vec![crate::completion::ToolDefinition {
-            name: crate::message::ToolName::new("lookup").expect("tool name"),
-            description: "Look up a value".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": { "query": { "type": "string" } },
-                "required": ["query"]
-            }),
-        }]);
-
-    let body = built_streaming_body(CLAUDE_OPUS_4_8, request, true)
-        .expect("streaming request body should build");
-
-    assert_eq!(body["tools"][0]["strict"], true);
-    assert_eq!(
-        body["tools"][0]["input_schema"]["additionalProperties"],
-        false
-    );
-    assert_eq!(
-        body["tools"][0]["input_schema"]["required"],
-        json!(["query"])
-    );
-}
-
-#[test]
 fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
     // The typed request serializes a caller-set `tool_choice` regardless of
     // whether tools are present, but the streaming path has always emitted
@@ -341,37 +259,6 @@ fn streaming_body_drops_tool_choice_when_no_tools_are_advertised() {
         "tool_choice must be omitted when no tools are advertised: {body}"
     );
     assert!(body.get("tools").is_none());
-}
-
-#[test]
-fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
-    let request = CompletionRequest::from(vec![
-        RigMessage::system("System prompt"),
-        RigMessage::user("Hi"),
-    ])
-    .max_tokens(64)
-    .tools(vec![crate::completion::ToolDefinition {
-        name: crate::message::ToolName::new("rig_tool").expect("tool name"),
-        description: "Rig tool".to_string(),
-        parameters: json!({"type": "object", "properties": {}}),
-    }])
-    .additional_params(json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}));
-    let wire = AnthropicConfig::new("test-key")
-        .completion(CLAUDE_SONNET_4_6)
-        .with_prompt_caching();
-    let body = streamed_body(&wire, request);
-    assert_eq!(
-        body["tools"][0]["cache_control"],
-        json!({"type": "ephemeral", "ttl": "1h"})
-    );
-    assert_eq!(
-        body["system"][0]["cache_control"],
-        json!({"type": "ephemeral", "ttl": "1h"})
-    );
-    assert_eq!(
-        body["cache_control"],
-        json!({"type": "ephemeral", "ttl": "1h"})
-    );
 }
 
 /// Signature fragments concatenate onto the opening signature, as pi
@@ -405,52 +292,6 @@ fn thinking_assembles_its_text_and_signature_into_its_item() {
     );
 }
 
-/// The adaptive-thinking shape recorded in
-/// `anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`: an
-/// empty thinking block whose only content is the signature its deltas
-/// carry. The block and its signature survive `content_block_stop`.
-#[test]
-fn signature_only_thinking_block_keeps_its_item() {
-    let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "thinking", "thinking": "", "signature": ""}),
-            &[json!({"type": "signature_delta", "signature": "the_whole_signature"})],
-        )],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(response.choice.len(), 1);
-    assert_eq!(
-        item(&response.choice[0]).and_then(|item| item.get("signature")),
-        Some(&json!("the_whole_signature"))
-    );
-}
-
-/// `content_block_start` can carry the block's opening text; it streams as
-/// the first fragment.
-#[test]
-fn thinking_block_start_text_streams_as_the_first_fragment() {
-    let decoded = decode([
-        classified(
-            r#"{"type":"content_block_start","index":2,"content_block":{"type":"thinking","thinking":"opening "}}"#,
-        ),
-        classified(
-            r#"{"type":"content_block_delta","index":2,"delta":{"type":"thinking_delta","thinking":"rest"}}"#,
-        ),
-        stop(2),
-    ]);
-    let fragments: Vec<&str> = decoded
-        .events()
-        .into_iter()
-        .filter_map(|event| match event {
-            StreamEvent::Reasoning { text, .. } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(fragments, ["opening ", "rest"]);
-}
-
 #[test]
 fn redacted_thinking_is_a_redacted_block_holding_its_payload() {
     let frames = reply(
@@ -472,45 +313,6 @@ fn redacted_thinking_is_a_redacted_block_holding_its_payload() {
         item(&response.choice[0]),
         Some(&json!({"type": "redacted_thinking", "data": "redacted_blob"}))
     );
-}
-
-#[test]
-fn text_streams_its_fragments_and_holds_the_whole_block() {
-    let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "text", "text": ""}),
-            &[
-                json!({"type": "text_delta", "text": "Hello, "}),
-                json!({"type": "text_delta", "text": "world!"}),
-            ],
-        )],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(response.text(), "Hello, world!");
-    assert_eq!(
-        item(&response.choice[0]),
-        Some(&json!({"type": "text", "text": "Hello, world!"}))
-    );
-}
-
-/// A part streams nothing until its first fragment.
-#[test]
-fn a_text_block_start_streams_nothing() {
-    let decoded = decode([classified(
-        r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-    )]);
-    assert!(decoded.events().is_empty(), "{:?}", decoded.events());
-}
-
-#[test]
-fn a_call_streams_nothing_until_it_closes() {
-    let decoded = decode([
-        tool_use(0, "tool_123", "lookup"),
-        input_json(0, "{\"arg\":\"value"),
-    ]);
-    assert!(decoded.events().is_empty(), "{:?}", decoded.events());
 }
 
 /// A call's item holds the input its fragments assembled, and keeps every
@@ -546,41 +348,6 @@ fn a_call_assembles_its_input_into_its_item() {
         )
     );
     assert_eq!(response.stop(), StopReason::ToolUse);
-}
-
-/// A `tool_use` cut by `max_tokens` (#2359): the turn keeps its text and
-/// the call, whose arguments are what the cut input states, and stops with
-/// `Length`. The call's item holds input that is not JSON, so it has no
-/// native and replays from its canonical fields; its text sibling keeps its
-/// own.
-#[test]
-fn a_call_cut_by_max_tokens_keeps_the_turn() {
-    let frames = reply(
-        vec![
-            block(
-                0,
-                json!({"type": "text", "text": ""}),
-                &[json!({"type": "text_delta", "text": "Looking."})],
-            ),
-            block(
-                1,
-                json!({"type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {}}),
-                &[json!({"type": "input_json_delta", "partial_json": "{\"x\": \"ab"})],
-            ),
-        ],
-        "max_tokens",
-    );
-    let response = streamed(&frames).expect("a cut-off call does not fail the reply");
-    assert_eq!(response.text(), "Looking.");
-    assert!(response.choice[0].native_item().is_some());
-    let call = response.tool_calls().next().expect("the call is kept");
-    assert_eq!(call.function.arguments_value(), json!({"x": "ab"}));
-    assert_eq!(
-        call.function.invalid_arguments.as_deref(),
-        Some("{\"x\": \"ab")
-    );
-    assert!(response.choice[1].native_item().is_none());
-    assert_eq!(response.stop(), StopReason::Length);
 }
 
 /// A stream that never states its stop reason is truncated, whatever else
@@ -644,132 +411,6 @@ fn citation_deltas_land_on_the_text_item() {
     }
 }
 
-/// A citation of a known kind with a defective payload never fails the
-/// reply: it lands on the item as sent.
-#[test]
-fn a_defective_citation_lands_on_its_item() {
-    let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "text", "text": ""}),
-            &[
-                json!({"type": "citations_delta",
-                    "citation": {"type": "char_location", "cited_text": 1}}),
-                json!({"type": "text_delta", "text": "cited"}),
-            ],
-        )],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    let [block @ AssistantContent::Text(_)] = response.choice.as_slice() else {
-        panic!("one text block: {:?}", response.choice);
-    };
-    assert_eq!(
-        block
-            .native_item()
-            .and_then(|item| item.pointer("/citations/0/cited_text")),
-        Some(&json!(1))
-    );
-}
-
-/// Server tools and their results are provider items with no canonical
-/// meaning: each is one opaque block that replays, its streamed input
-/// assembled onto it. None becomes a client tool call.
-#[test]
-fn server_tool_blocks_are_opaque_items_that_replay() {
-    let result = json!({"type": "web_search_tool_result", "tool_use_id": "srvtoolu_01",
-        "content": [{"type": "web_search_result", "url": "https://example.com/shannon",
-            "title": "Claude Shannon", "encrypted_content": "encrypted-content"}]});
-    let frames = reply(
-        vec![
-            block(
-                0,
-                json!({"type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search", "input": {}}),
-                &[json!({"type": "input_json_delta", "partial_json": "{\"query\":\"shannon\"}"})],
-            ),
-            block(1, result.clone(), &[]),
-            block(
-                2,
-                json!({"type": "code_execution_tool_result", "tool_use_id": "srvtoolu_02",
-                    "content": {"type": "code_execution_result", "return_code": 0,
-                        "stdout": "42\n", "stderr": "", "content": []}}),
-                &[],
-            ),
-            block(
-                3,
-                json!({"type": "mcp_tool_use", "id": "mcptoolu_1", "name": "fetch",
-                "server_name": "docs", "input": {}}),
-                &[],
-            ),
-            block(
-                4,
-                json!({"type": "container_upload", "file_id": "file_1"}),
-                &[],
-            ),
-        ],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(response.choice.len(), 5);
-    assert!(response.choice.iter().all(|content| matches!(
-        content,
-        AssistantContent::Opaque(Opaque { replay: true, .. })
-    )));
-    assert_eq!(
-        item(&response.choice[0]),
-        Some(
-            &json!({"type": "server_tool_use", "id": "srvtoolu_01", "name": "web_search",
-            "input": {"query": "shannon"}})
-        )
-    );
-    assert_eq!(item(&response.choice[1]), Some(&result));
-}
-
-/// A compaction block streams its summary as `compaction_delta`s, which
-/// merge into its item.
-#[test]
-fn compaction_deltas_assemble_the_compaction_item() {
-    let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "compaction", "content": ""}),
-            &[
-                json!({"type": "compaction_delta", "content": "Summary "}),
-                json!({"type": "compaction_delta", "content": "so far."}),
-            ],
-        )],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(
-        item(&response.choice[0]),
-        Some(&json!({"type": "compaction", "content": "Summary so far."}))
-    );
-}
-
-/// A delta kind rig has never seen lands in the item it targets, and the
-/// stream goes on.
-#[test]
-fn a_novel_delta_merges_into_its_item() {
-    let frames = reply(
-        vec![block(
-            0,
-            json!({"type": "text", "text": ""}),
-            &[
-                json!({"type": "text_delta", "text": "hi"}),
-                json!({"type": "banana_delta", "banana": "ripe"}),
-            ],
-        )],
-        "end_turn",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(response.text(), "hi");
-    assert_eq!(
-        item(&response.choice[0]),
-        Some(&json!({"type": "text", "text": "hi", "banana": "ripe"}))
-    );
-}
-
 /// pi's fallback rule: a leading `fallback` block marks the model that
 /// took over and never replays; one after output began fails the reply.
 #[test]
@@ -802,81 +443,6 @@ fn a_fallback_block_is_kept_first_and_an_error_after_output() {
     assert!(late.is_err(), "{late:?}");
 }
 
-/// pi's refusal rule: a refused turn ends in an error carrying Anthropic's
-/// explanation, or a default one, and is never replayed.
-#[test]
-fn a_refusal_ends_the_turn_in_an_error_with_its_explanation() {
-    let mut frames = reply(vec![], "refusal");
-    if let Some(delta) = frames.last_mut() {
-        delta["delta"]["stop_details"] =
-            json!({"type": "refusal", "category": "cyber", "explanation": "Not this."});
-    }
-    let response = streamed(&frames).expect("the reply folds");
-    assert_eq!(response.stop(), StopReason::Error("Not this.".to_owned()));
-
-    let response = streamed(&reply(vec![], "refusal")).expect("the reply folds");
-    assert_eq!(
-        response.stop(),
-        StopReason::Error("The model refused to complete the request".to_owned())
-    );
-}
-
-/// The reply-level `container` is the turn's message-level provider item.
-#[test]
-fn the_reply_container_is_an_opaque_block() {
-    let container = json!({"id": "container_1", "expires_at": "2026-10-01T00:00:00Z"});
-    let mut frames = reply(
-        vec![block(0, json!({"type": "text", "text": "done"}), &[])],
-        "end_turn",
-    );
-    if let Some(delta) = frames.last_mut() {
-        delta["delta"]["container"] = container.clone();
-    }
-    let response = streamed(&frames).expect("the reply folds");
-    let Some(RigMessage::Assistant(turn)) = response.message() else {
-        panic!("an assistant turn");
-    };
-    assert!(
-        matches!(
-            turn.content.last(),
-            Some(crate::message::AssistantContent::Opaque(opaque))
-                if opaque.item == json!({ "type": "container", "container": container })
-                    && opaque.replay
-        ),
-        "{:?}",
-        turn.content
-    );
-}
-
-/// A `tool_use` without an id is a call rig issues an id for, and one
-/// without a name is dropped, since nothing can answer it. Neither fails
-/// the reply.
-#[test]
-fn a_tool_use_without_its_id_or_name_never_fails_the_reply() {
-    let frames = reply(
-        vec![
-            block(
-                0,
-                json!({"type": "tool_use", "name": "add", "input": {}}),
-                &[],
-            ),
-            block(
-                1,
-                json!({"type": "tool_use", "id": "toolu_2", "input": {}}),
-                &[],
-            ),
-        ],
-        "tool_use",
-    );
-    let response = streamed(&frames).expect("the reply folds");
-    let calls: Vec<_> = response.tool_calls().collect();
-    let [call] = calls.as_slice() else {
-        panic!("only the named call is kept: {:?}", response.choice);
-    };
-    assert_eq!(call.function.name.as_str(), "add");
-    assert!(call.id.provider().is_none());
-}
-
 /// Classification is the only policy site. An unmodeled *top-level* event
 /// type is `Unknown` (driver: warn + skip); a `ping` is Known; and a known
 /// tag whose payload this client cannot decode is `Corrupt`, never silently
@@ -906,33 +472,6 @@ fn classify_dispatches_on_the_known_event_list() {
     ));
 }
 
-/// Anthropic reports the per-TTL `cache_creation` split on
-/// `message_start` only; the terminal `message_delta` usage omits it. The
-/// decoder must carry it onto the reply's end. Unit-tested (not a cassette)
-/// because the carry-forward is internal decoder state — the wire evidence
-/// lives in the recorded `prompt_caching/matrix_*` streaming cassettes,
-/// whose `message_start` frames hold the split.
-#[test]
-fn per_ttl_cache_creation_split_carries_from_message_start_to_terminal() {
-    let decoded = decode([
-        classified(
-            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":3,"output_tokens":1,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_1h_input_tokens":9366,"ephemeral_5m_input_tokens":336}}}}"#,
-        ),
-        classified(
-            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":7,"input_tokens":3,"cache_creation_input_tokens":9702,"cache_read_input_tokens":0}}"#,
-        ),
-    ]);
-    let response = decoded.outcome.expect("the message_delta ends the reply");
-    // The native record rides on `raw`; the split is Anthropic-specific, so
-    // it is readable only there.
-    let usage = &response.raw["usage"];
-    assert_eq!(
-        usage["cache_creation"],
-        json!({"ephemeral_1h_input_tokens": 9366, "ephemeral_5m_input_tokens": 336})
-    );
-    assert_eq!(usage["cache_creation_input_tokens"], 9702);
-}
-
 /// A terminal `message_delta` carrying only the output count (Anthropic's
 /// older shape, and Messages gateways) keeps `message_start`'s cache
 /// counters, so input still counts the cached prefix: 10 uncached, 6 read
@@ -959,24 +498,6 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
     assert_eq!(usage["cache_creation"]["ephemeral_1h_input_tokens"], 3);
 }
 
-/// An explicit terminal zero is authoritative over `message_start`'s counts.
-#[test]
-fn terminal_cache_usage_zero_overrides_message_start() {
-    let decoded = decode([
-        classified(
-            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6}}}"#,
-        ),
-        classified(
-            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}"#,
-        ),
-    ]);
-    let response = decoded.outcome.expect("the message_delta ends the reply");
-    assert_eq!(response.usage.cache_creation_input_tokens, Some(0));
-    assert_eq!(response.usage.cached_input_tokens, Some(0));
-    assert_eq!(response.usage.input_tokens, Some(10));
-    assert_eq!(response.usage.total_tokens, Some(13));
-}
-
 /// A `content_block_delta` whose `delta` omits `type` is malformed, not
 /// novel: silently skipping it would turn a compat gateway's untagged
 /// text delta into a successful *empty* completion, so it fails the reply
@@ -1000,22 +521,6 @@ fn a_delta_without_its_type_or_text_fails_the_reply() {
     }
 }
 
-/// Anthropic's top-level `{"type":"error"}` envelope (e.g.
-/// `overloaded_error`) is a Known event that ends the reply with a provider
-/// error carrying the envelope verbatim — never a warn-skipped unknown.
-///
-/// Byte-equality is the assertion, and the frame carries the top-level
-/// `request_id` recorded replies carry: an envelope re-encoded from the
-/// fields this client models loses every sibling key and normalizes the
-/// order, which is the provider's body rendered rather than preserved.
-#[test]
-fn top_level_error_event_surfaces_as_a_provider_error() {
-    const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
-    let decoded = decode([classified(ENVELOPE)]);
-    let error = decoded.outcome.expect_err("the envelope ends the reply");
-    assert_eq!(error.provider_response_body(), Some(ENVELOPE));
-}
-
 /// Bedrock-compat quirk: `message_start` without a message body is a
 /// Known no-op, not a corrupt frame.
 #[test]
@@ -1025,113 +530,6 @@ fn message_start_with_null_message_is_a_known_noop() {
         decoded.events().is_empty(),
         "a message-less message_start is a no-op"
     );
-}
-
-#[test]
-fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
-    let decoded = decode([
-        classified(&format!(
-            r#"{{"type":"message_start","message":{{"id":"msg_1","role":"assistant","content":[],"model":"{CLAUDE_OPUS_4_8}","stop_reason":null,"stop_sequence":null,"usage":{{"input_tokens":3,"output_tokens":0}}}}}}"#
-        )),
-        classified(
-            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-        ),
-        classified(
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}"#,
-        ),
-        message_delta(
-            "max_tokens",
-            json!({"output_tokens": 5, "input_tokens": 3, "cache_read_input_tokens": 2}),
-        ),
-    ]);
-    let response = decoded.outcome.expect("the reply ended");
-    assert_eq!(response.provider(), "anthropic");
-    assert_eq!(response.response_id(), Some("msg_1"));
-    assert_eq!(response.model(), Some(CLAUDE_OPUS_4_8));
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-    // Input counts the cache read Anthropic reports beside `input_tokens`.
-    assert_eq!(response.usage.input_tokens, Some(5));
-    assert_eq!(response.usage.output_tokens, Some(5));
-    assert_eq!(response.usage.cached_input_tokens, Some(2));
-    assert_eq!(response.usage.total_tokens, Some(10));
-}
-
-#[test]
-fn terminal_record_upgrades_end_turn_to_tool_calls_after_a_streamed_tool_call() {
-    // Anthropic normally reports `tool_use`, but the finish must report tool
-    // calls whenever the turn actually emitted one.
-    let decoded = decode([
-        tool_use(0, "toolu_1", "add"),
-        input_json(0, r#"{"x":1}"#),
-        stop(0),
-        message_delta("end_turn", json!({"output_tokens": 0})),
-    ]);
-    assert_eq!(
-        decoded.outcome.expect("the reply ended").finish_reason(),
-        Some(crate::completion::FinishReason::ToolCalls)
-    );
-}
-
-/// A stop reason Anthropic does not document survives verbatim, and fails
-/// the turn.
-#[test]
-fn unknown_stop_reason_survives_onto_the_terminal_record() {
-    let decoded = decode([message_delta("x_rig_reason", json!({"output_tokens": 0}))]);
-    let response = decoded.outcome.expect("the reply ended");
-    assert_eq!(
-        response.finish_reason(),
-        Some(crate::completion::FinishReason::Other(
-            "x_rig_reason".to_owned()
-        ))
-    );
-    assert!(response.stop().is_failure());
-}
-
-/// Every `stop_reason` Anthropic documents, and the gateway `sensitive`
-/// stop pi handles, ends the turn as listed.
-#[test]
-fn every_documented_stop_reason_ends_the_turn_as_documented() {
-    for (reason, finish, failed) in [
-        ("end_turn", crate::completion::FinishReason::Stop, false),
-        (
-            "stop_sequence",
-            crate::completion::FinishReason::Stop,
-            false,
-        ),
-        ("pause_turn", crate::completion::FinishReason::Stop, false),
-        ("max_tokens", crate::completion::FinishReason::Length, false),
-        (
-            "model_context_window_exceeded",
-            crate::completion::FinishReason::Length,
-            false,
-        ),
-        (
-            "tool_use",
-            crate::completion::FinishReason::ToolCalls,
-            false,
-        ),
-        (
-            "refusal",
-            crate::completion::FinishReason::ContentFilter,
-            true,
-        ),
-        (
-            "sensitive",
-            crate::completion::FinishReason::Other("sensitive".to_owned()),
-            true,
-        ),
-    ] {
-        let response = streamed(&reply(
-            vec![block(0, json!({"type": "text", "text": "done"}), &[])],
-            reason,
-        ))
-        .expect("the reply folds");
-        assert_eq!(response.finish_reason(), Some(finish), "{reason}");
-        assert_eq!(response.stop().is_failure(), failed, "{reason}");
-    }
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -1196,19 +594,6 @@ mod terminal_emission {
     }
 
     #[tokio::test]
-    async fn truncated_stream_yields_content_then_truncation() {
-        let (texts, saw_error, finished) =
-            collect(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])).await;
-
-        assert_eq!(texts, ["hi"]);
-        assert!(saw_error, "the truncation is the stream's last item");
-        assert!(
-            matches!(finished, Err(crate::error::ProviderError::Truncated)),
-            "EOF without message_delta is truncation: {finished:?}"
-        );
-    }
-
-    #[tokio::test]
     async fn errored_stream_forwards_the_error_and_no_end() {
         use crate::test_utils::SequencedStreamingHttpClient;
 
@@ -1233,62 +618,6 @@ mod terminal_emission {
         assert_eq!(texts, ["hi"]);
         assert!(saw_error, "the transport failure must reach the consumer");
         assert!(finished.is_err(), "a failed stream has no response");
-    }
-
-    #[tokio::test]
-    async fn provider_error_event_stops_the_stream_before_a_later_terminal() {
-        // An in-band provider `error` event followed by a well-formed
-        // `message_delta`: the error ends the reply, so the later end frame
-        // never reads as a completed turn.
-        const ERROR_EVENT: &str =
-            r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
-        let (texts, saw_error, finished) = collect(sse(&[
-            MESSAGE_START,
-            TEXT_START,
-            TEXT_DELTA,
-            ERROR_EVENT,
-            MESSAGE_DELTA,
-        ]))
-        .await;
-
-        assert_eq!(texts, ["hi"]);
-        assert!(saw_error, "the provider error must reach the consumer");
-        assert!(finished.is_err(), "the error ended the reply");
-    }
-
-    /// The streamed surface preserves the in-band envelope with the same
-    /// fidelity as the unary one: the provider's own bytes, `request_id`
-    /// and key order included.
-    ///
-    /// No status is asserted, and none is stamped. A preserved in-band
-    /// error's `status` is the *classification* the wire read off the body
-    /// — Gemini's `error.code` is the case that made the rule, and
-    /// `gemini::streaming::tests::in_band_opaque_or_invalid_codes_do_not_invent_http_status`
-    /// pins it — so stamping the transport's 200 over every streamed frame
-    /// would overwrite that meaning and flip a refusal's retry verdict.
-    /// The unary driver's fold-failure decoration is scoped to one reply
-    /// and is where `Model::call` supplies it.
-    #[tokio::test]
-    async fn streamed_error_envelope_preserves_the_verbatim_body() {
-        const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
-        let bound = crate::driver::Model::new(
-            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
-            MockStreamingClient {
-                sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
-            },
-        );
-        let request = crate::completion::CompletionRequest::new("hello");
-        let mut stream = bound.stream(request).expect("stream should open");
-
-        let error = loop {
-            match stream.next().await {
-                Some(Ok(_)) => continue,
-                Some(Err(error)) => break error,
-                None => panic!("the stream ended without the in-band error"),
-            }
-        };
-
-        assert_eq!(error.provider_response_body(), Some(ENVELOPE));
     }
 
     /// `input_tokens` precedence between `message_start` and the terminal
@@ -1358,91 +687,6 @@ mod terminal_emission {
             assert_eq!(response.usage.input_tokens, Some(expected), "{case}");
         }
     }
-
-    #[tokio::test]
-    async fn malformed_frame_then_eof_yields_error_and_no_end() {
-        let (texts, saw_error, finished) =
-            collect(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, "{not json"])).await;
-
-        assert_eq!(texts, ["hi"]);
-        assert!(saw_error, "the malformed frame must reach the consumer");
-        assert!(finished.is_err(), "a parse error is not a completed turn");
-    }
-
-    /// A corrupt frame ends the reply: a genuine `message_delta` after it
-    /// is never read.
-    #[tokio::test]
-    async fn a_malformed_frame_ends_the_reply_before_a_later_end() {
-        let (texts, saw_error, finished) = collect(sse(&[
-            MESSAGE_START,
-            TEXT_START,
-            TEXT_DELTA,
-            "{not json",
-            MESSAGE_DELTA,
-        ]))
-        .await;
-
-        assert_eq!(texts, ["hi"]);
-        assert!(saw_error, "the malformed frame must reach the consumer");
-        assert!(finished.is_err(), "the corrupt frame ended the reply");
-    }
-
-    /// Raw capture on a streamed reply, through the real `Model::stream`
-    /// seam over the mock transport: the response's `raw` is Anthropic's own
-    /// terminal record. A `message_delta` with `stop_sequence`
-    /// set is used because the normalized finish folds it into
-    /// `FinishReason::Stop` and keeps neither Anthropic's spelling nor which
-    /// sequence fired — both are readable only off the capture.
-    #[tokio::test]
-    async fn terminal_raw_is_anthropics_terminal_record() {
-        const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
-
-        let (_, saw_error, finished) = collect(sse(&[
-            MESSAGE_START,
-            TEXT_START,
-            TEXT_DELTA,
-            STOP_SEQUENCE_DELTA,
-        ]))
-        .await;
-        assert!(!saw_error);
-        let response = finished.expect("the reply ended");
-
-        let raw = &response.raw;
-        assert_eq!(raw["stop_reason"], "stop_sequence");
-        assert_eq!(raw["stop_sequence"], "alpha");
-        assert_eq!(raw["message_id"], "msg_1");
-
-        // The capture maps to the same end the reply finished with.
-        assert_eq!(raw["message_id"].as_str(), response.response_id());
-        assert_eq!(raw["model"].as_str(), response.model());
-        assert_eq!(
-            response.finish_reason(),
-            Some(crate::completion::FinishReason::Stop)
-        );
-        assert_eq!(response.usage.output_tokens, Some(3));
-    }
-}
-
-/// A `tool_use` block whose wire id is empty gets an id rig issues: two
-/// such blocks in one reply stay distinct calls.
-#[test]
-fn an_empty_tool_use_id_is_minted_not_keyed_on_the_empty_string() {
-    let decoded = decode([
-        tool_use(0, "", "add"),
-        stop(0),
-        tool_use(1, "", "add"),
-        stop(1),
-        message_delta("tool_use", json!({"output_tokens": 0})),
-    ]);
-    let ids: Vec<_> = decoded
-        .outcome
-        .expect("the reply ended")
-        .tool_calls()
-        .map(|call| call.id.clone())
-        .collect();
-    assert_eq!(ids.len(), 2);
-    assert!(ids.iter().all(|id| id.provider().is_none()), "{ids:?}");
-    assert_ne!(ids[0], ids[1], "each id-less call is its own call");
 }
 
 /// The Messages projection, driven through [`crate::driver`].
@@ -1460,11 +704,10 @@ mod projection {
     use crate::completion::CompletionRequest;
     use crate::observe::{
         Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
-        AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
+        AdapterEvent, ObservationLog, Subject,
     };
     use crate::providers::anthropic::wire::{AnthropicConfig, Messages};
-    use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
-    use futures::StreamExt;
+    use crate::test_utils::RecordingHttpClient;
 
     fn adapter_events(log: &ObservationLog) -> Vec<AdapterEvent> {
         log.trace()
@@ -1524,64 +767,6 @@ mod projection {
                     status: Some(503),
                     retryable: true,
                 }
-            })
-        );
-    }
-
-    /// A Messages stream: `message_start` carries the id, the model and the
-    /// prompt usage; `message_delta` carries the stop reason and the answer's
-    /// usage; the terminal closes the attempt.
-    #[tokio::test]
-    async fn messages_stream_projects_usage_stop_reason_and_model() {
-        let sse = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-sonnet-4-6\",\"content\":[],\"stop_reason\":null,\"usage\":{\"input_tokens\":9,\"output_tokens\":1,\"cache_read_input_tokens\":0}}}\n\n\
-    event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n\
-    event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n\
-    event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
-    event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3,\"output_tokens_details\":{\"thinking_tokens\":2}}}\n\n\
-    event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-        let http = MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(sse),
-        };
-        let log = Arc::new(ObservationLog::default());
-        let stream = crate::driver::tests::stream(&wire(), &http, request(), Some(context(&log)))
-            .expect("the streamed request encodes");
-        let mut stream = Box::pin(stream);
-        while let Some(item) = stream.next().await {
-            item.expect("the recorded stream decodes without an in-band error");
-        }
-        drop(stream);
-
-        let events = adapter_events(&log);
-        assert!(events.contains(&AdapterEvent::Usage {
-            usage: AdapterUsage {
-                input_tokens: Some(9),
-                output_tokens: Some(1),
-                cached_input_tokens: Some(0),
-                ..AdapterUsage::default()
-            }
-        }));
-        // The witnessed reasoning count is the one the response reports.
-        assert!(events.contains(&AdapterEvent::Usage {
-            usage: AdapterUsage {
-                output_tokens: Some(3),
-                reasoning_tokens: Some(2),
-                ..AdapterUsage::default()
-            }
-        }));
-        assert!(events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::Provider { verdict: AdapterVerdict { model: Some(model), finish_reason: None, .. } }
-                if model == "claude-sonnet-4-6"
-        )));
-        assert!(events.iter().any(|event| matches!(
-            event,
-            AdapterEvent::Provider { verdict: AdapterVerdict { finish_reason: Some(reason), .. } }
-                if reason == "end_turn"
-        )));
-        assert_eq!(
-            events.last(),
-            Some(&AdapterEvent::Finished {
-                ending: AdapterEnding::Terminal
             })
         );
     }

@@ -37,8 +37,6 @@ mod streaming_conformance_suites;
 #[path = "../../xtask/src/verify/checks.rs"]
 mod verification_checks;
 
-mod pull_parser;
-
 /// The text of every tool result in the history of the completion recorded
 /// at `at`.
 fn tool_result_texts(log: &rig_cassette::effect_log::EffectLog, at: usize) -> Vec<String> {

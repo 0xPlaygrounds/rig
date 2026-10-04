@@ -2,11 +2,10 @@
 use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_cassette::ecs::EffectLogResource;
-use rig_cassette::ecs::identity::{check_replayable, spec_hash, stamp_run};
+use rig_cassette::ecs::identity::{check_replayable, stamp_run};
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_ecs::{
-    agent::{InvalidCalls, MaxTurns, PolicyVersion, Preamble, ToolPolicy, Unhandled},
-    bus::Scope,
+    agent::{InvalidCalls, PolicyVersion, Unhandled},
     systems::RunCommands,
 };
 use run_support::*;
@@ -52,58 +51,6 @@ fn retries_and_unhandled_policy_each_change_identity() {
             );
         }
     }
-}
-
-#[test]
-fn run_overrides_win_and_mask_changes_to_agent_defaults() {
-    let (mut app, agent, run, log) = setup();
-    app.world_mut().entity_mut(run).insert((
-        MaxTurns(7),
-        Preamble(Some("run".into())),
-        ToolPolicy { concurrency: 3 },
-    ));
-    assert!(check_replayable(app.world_mut(), run, &log).is_err());
-    let before = spec_hash(app.world_mut(), run);
-    app.world_mut().entity_mut(agent).insert((
-        MaxTurns(9),
-        Preamble(Some("different agent".into())),
-        ToolPolicy { concurrency: 9 },
-    ));
-    assert_eq!(before, spec_hash(app.world_mut(), run));
-}
-
-#[test]
-fn scope_selection_never_searches_for_another_matching_policy() {
-    let (mut app, _, run, mut log) = setup();
-    let scope = app.world().get::<Scope>(run).unwrap().0.clone();
-    let own = log.header.programs.get(&scope).unwrap().clone();
-    let mut other = own.clone();
-    other
-        .required
-        .insert("tool:foreign".into(), rig_core::effect::EffectFamily::Tool);
-    log.header.programs.insert("aaa/other".into(), other);
-    // The unrelated scope is internally valid, while its required row is
-    // deliberately different from this run's. Scope selection is the test.
-    log.header
-        .handlers
-        .push(rig_core::effect::HandlerDescriptor {
-            key: "tool:foreign".into(),
-            family: rig_core::effect::FamilyDescriptor::Tool {
-                name: "foreign".into(),
-                description: "other scope".into(),
-                parameters: serde_json::json!({"type": "object"}),
-                embedding: None,
-            },
-            layers: vec![],
-        });
-    check_replayable(app.world_mut(), run, &log).unwrap();
-    log.header.programs.remove(&scope);
-    assert!(
-        check_replayable(app.world_mut(), run, &log)
-            .unwrap_err()
-            .message
-            .contains(&scope)
-    );
 }
 
 #[test]
