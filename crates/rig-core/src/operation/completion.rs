@@ -88,6 +88,7 @@ impl Operation for Completion {
                 .replay
                 .is_some_and(|target| target.states_finish_reason()),
             call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
+            accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..Turn::new(origin)
         }
     }
@@ -223,6 +224,9 @@ pub struct Turn {
     ///
     /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
     call_id_slot: Option<&'static str>,
+    /// Whether the request accepts an unknown finish reason as a normal stop
+    /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
+    accept_unknown_finish: bool,
     /// The first position whose item closed without the provider stating it
     /// complete. An item there may be the partner a later one needs, so
     /// blocks from it on replay from their canonical fields.
@@ -448,6 +452,7 @@ impl Turn {
             call_ids: HashSet::new(),
             wire: false,
             call_id_slot: None,
+            accept_unknown_finish: false,
             first_incomplete: None,
             unfinished_call: false,
             last_call: None,
@@ -1011,7 +1016,8 @@ impl Turn {
             }
         });
         let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
-            .with_optional_finish_reason(reason);
+            .with_optional_finish_reason(reason)
+            .with_unknown_finish_reasons_accepted(self.accept_unknown_finish);
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
@@ -1137,6 +1143,14 @@ impl Fold<Completion> for Turn {
     }
 
     fn finish(self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+        if let Some(FinishReason::Other(reason)) = &end.reason {
+            tracing::warn!(
+                provider = %self.origin.provider,
+                reason = %reason,
+                accepted = self.accept_unknown_finish,
+                "the provider ended the reply with an unknown finish reason"
+            );
+        }
         let response = self.response(end, reply);
         self.span
             .record_response(response.response_id(), response.model(), &response.usage);

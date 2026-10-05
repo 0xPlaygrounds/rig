@@ -136,6 +136,7 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         additional_params: Some(json!({ "max_tokens": 99, "top_k": 3 })),
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let encoded = Chat::new(OpenAIConfig::with_key(&LLAMACPP, ""), "m")

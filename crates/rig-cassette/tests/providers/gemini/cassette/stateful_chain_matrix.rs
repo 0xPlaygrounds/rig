@@ -73,6 +73,7 @@ fn ask_with(history: Vec<Message>) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 
@@ -90,6 +91,7 @@ fn ask(prompt: &str) -> CompletionRequest {
         })),
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 

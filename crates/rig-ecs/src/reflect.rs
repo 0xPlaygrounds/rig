@@ -121,6 +121,7 @@ pub fn install_reflect(world: &mut World) {
             agent::Preamble,
             agent::Temperature,
             agent::MaxTokens,
+            agent::AcceptUnknownFinishReasons,
             agent::AdditionalParams,
             agent::ToolChoiceSpec,
             agent::Output,

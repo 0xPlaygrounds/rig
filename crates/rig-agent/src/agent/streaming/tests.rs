@@ -3720,3 +3720,45 @@ async fn a_repaired_call_streams_its_held_fragments_under_the_repaired_name() {
         ]
     );
 }
+
+/// A streamed answer that ends in an unknown finish reason fails the run by
+/// default, after its text streamed; accepted, it is the run's answer.
+#[tokio::test]
+async fn a_streamed_answer_with_an_unknown_finish_reason_needs_acceptance() {
+    for accept in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::FinalResponse(Finish {
+                reason: Some(FinishReason::Other("weird".to_string())),
+                ..mock_final(Usage::default())
+            }),
+        ]]);
+        let agent = AgentBuilder::new(model)
+            .accept_unknown_finish_reasons(accept)
+            .build();
+        let mut stream = agent.prompt("hello").stream();
+        let mut outcome = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    outcome = Some(Ok(res.output().to_owned()));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    outcome = Some(Err(err.to_string()));
+                    break;
+                }
+            }
+        }
+        match outcome.expect("the run ends") {
+            Ok(answer) => {
+                assert!(accept, "only an accepted reason answers");
+                assert_eq!(answer, "answer");
+            }
+            Err(error) => {
+                assert!(!accept, "an accepted reason does not fail: {error}");
+                assert!(error.contains("weird"), "{error}");
+            }
+        }
+    }
+}

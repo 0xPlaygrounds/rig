@@ -271,10 +271,14 @@ pub(crate) const REFUSAL: Cell = Cell {
     ..CELL
 };
 /// The wire filters the turn after some text (`finish_reason:
-/// content_filter`, Gemini's `SAFETY`): the text is the answer, the reason
-/// on the record.
+/// content_filter`, Gemini's `SAFETY`): the turn failed, so the run fails
+/// although text streamed, as replay leaves the turn out.
 pub(crate) const FILTERED_WITH_TEXT: Cell = Cell {
     name: "fault_filtered_with_text",
+    program: Program {
+        ending: Ending::Failed(ErrorKind::Response),
+        ..TEXT_STREAM
+    },
     fault: Some(Fault::Filtered { with_text: true }),
     ..REFUSAL
 };

@@ -271,6 +271,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let mut stream = agent.model.stream(request).expect("Turn 1 stream");
@@ -325,6 +326,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let mut stream2 = agent.model.stream(request2).expect("Turn 2 stream");
@@ -374,6 +376,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let response = agent.model.call(request).await.expect("Turn 1 completion");
@@ -417,6 +420,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let response2 = agent
