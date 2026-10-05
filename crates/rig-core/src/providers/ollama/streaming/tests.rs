@@ -48,7 +48,7 @@ fn whole(model: &str, message: Value, reason: &str) -> Value {
 }
 
 fn decode(model: &str, mode: Mode, records: &[Value]) -> Result<CompletionResponse, ProviderError> {
-    let wire = OllamaConfig::new().completion(model);
+    let wire = OllamaConfig::new().native_completion(model);
     crate::test_utils::history::decode(&wire, mode, frames(records))
 }
 
@@ -68,7 +68,7 @@ fn blocks(response: &CompletionResponse) -> Vec<(&'static str, String)> {
 /// The events the consumer has seen after each of `records` is decoded,
 /// before the reply ends: what streaming shows as it goes.
 fn events_after_each(model: &str, records: &[Value]) -> Vec<Vec<StreamEvent>> {
-    let wire = OllamaConfig::new().completion(model);
+    let wire = OllamaConfig::new().native_completion(model);
     let describe = wire.describe();
     let fold = Completion::fold(
         &CompletionRequest::new("hi"),
@@ -302,98 +302,69 @@ fn an_error_record_fails_and_a_cut_stream_is_truncated() {
     assert!(matches!(cut, ProviderError::Truncated), "{cut:?}");
 }
 
-/// The old whole-reply rule, unchanged: only a leading, terminated block
-/// splits, and `qwen3` also splits at its exact prefilled boundary.
-#[test]
-fn leading_reasoning_splits_only_a_leading_terminated_block() {
-    assert_eq!(
-        leading_reasoning("<think>private reasoning</think>\n\nvisible answer", false),
-        Held::Split("private reasoning", "visible answer")
-    );
-    assert_eq!(
-        leading_reasoning("private reasoning\n</think>\n\nvisible answer", true),
-        Held::Split("private reasoning", "visible answer")
-    );
-    assert_eq!(leading_reasoning("<think>unterminated", true), Held::Open);
-    assert_eq!(leading_reasoning("  <thi", false), Held::Open);
-    assert_eq!(leading_reasoning("", false), Held::Open);
-    assert_eq!(
-        leading_reasoning("The literal marker is <think>.", false),
-        Held::Text
-    );
-    assert_eq!(
-        leading_reasoning("  visible indentation", false),
-        Held::Text
-    );
-    // Without the exact boundary a `qwen3` reply stays open, so a whole one
-    // ends as the text it is.
-    assert_eq!(
-        leading_reasoning("Example:\n</think>\nis a closing tag.", true),
-        Held::Open
-    );
-    assert_eq!(
-        leading_reasoning("private reasoning\n</think>\n\nvisible answer", false),
-        Held::Text
-    );
-}
-
 /// Each inline case, whole and streamed one character at a time, folds to
-/// the same blocks.
+/// the same blocks. Only a leading `<think>` tag opens a block, whatever the
+/// model, and a block that never closes is reasoning.
 #[test]
 fn inline_think_splits_the_same_whole_and_streamed() {
     let qwen = "qwen3:4b";
-    let cases: [(&str, &str, Option<&str>, Vec<(&'static str, &str)>); 8] = [
+    let cases: [(&str, &str, &str, Vec<(&'static str, &str)>); 9] = [
         (
             "terminated",
             MODEL,
-            Some("<think>private</think>\n\nThe answer."),
+            "<think>private</think>\n\nThe answer.",
             vec![("reasoning", "private"), ("text", "The answer.")],
         ),
         (
-            "unterminated stays text",
+            "after leading whitespace",
             MODEL,
-            Some("<think>never closed"),
-            vec![("text", "<think>never closed")],
+            "\n <think>\nprivate\n</think>\nThe answer.",
+            vec![("reasoning", "private"), ("text", "The answer.")],
+        ),
+        (
+            "unterminated is reasoning",
+            MODEL,
+            "<think>never closed",
+            vec![("reasoning", "never closed")],
         ),
         (
             "absent",
             MODEL,
-            Some("Just an answer."),
+            "Just an answer.",
             vec![("text", "Just an answer.")],
         ),
         (
-            "qwen3 missing opening marker",
+            "a missing opening tag stays text, whatever the model",
             qwen,
-            Some("private\n</think>\n\nThe answer."),
-            vec![("reasoning", "private"), ("text", "The answer.")],
-        ),
-        (
-            "qwen3 without the boundary stays text",
-            qwen,
-            Some("Example:\n</think>\nis a tag."),
-            vec![("text", "Example:\n</think>\nis a tag.")],
-        ),
-        (
-            "missing opening marker on another model stays text",
-            MODEL,
-            Some("private\n</think>\n\nThe answer."),
+            "private\n</think>\n\nThe answer.",
             vec![("text", "private\n</think>\n\nThe answer.")],
         ),
         (
             "not at the start stays text",
             MODEL,
-            Some("Use <think>x</think> tags."),
+            "Use <think>x</think> tags.",
             vec![("text", "Use <think>x</think> tags.")],
         ),
         (
             "an empty block leaves only the answer",
             MODEL,
-            Some("<think>\n\n</think>\n\nThe answer."),
+            "<think>\n\n</think>\n\nThe answer.",
             vec![("text", "The answer.")],
+        ),
+        (
+            "a partial close tag inside the block is reasoning",
+            MODEL,
+            "<think>a </th b</think>c",
+            vec![("reasoning", "a </th b"), ("text", "c")],
+        ),
+        (
+            "a prefix of the opening tag is text",
+            MODEL,
+            "<thin ice",
+            vec![("text", "<thin ice")],
         ),
     ];
     for (case, model, content, expected) in cases {
-        let content = content.unwrap_or_default();
         let expected: Vec<(&str, String)> = expected
             .into_iter()
             .map(|(kind, text)| (kind, text.to_owned()))
@@ -468,50 +439,93 @@ fn native_thinking_turns_the_split_off() {
     assert_eq!(streamed(&events[1]).0, "<think>shown");
 }
 
-/// Streamed content is held while it may be a leading block: nothing shows
-/// until `</think>` arrives, then the block is reasoning and the rest
-/// streams as text as it comes.
+/// A reply that does not open with `<think>` streams as text record by
+/// record, with nothing held, whatever the model's name.
 #[test]
-fn a_streamed_block_is_held_until_it_closes() {
+fn a_reply_without_a_think_tag_streams_record_by_record() {
+    let coder = "qwen3-coder:30b";
+    let records = [
+        record(coder, json!({"role": "assistant", "content": "def"})),
+        record(coder, json!({"role": "assistant", "content": " add"})),
+        record(coder, json!({"role": "assistant", "content": "(a, b):"})),
+        done(coder, "stop"),
+    ];
+    let events = events_after_each(coder, &records);
+    assert_eq!(streamed(&events[0]), ("def".to_owned(), String::new()));
+    assert_eq!(streamed(&events[1]).0, "def add");
+    assert_eq!(streamed(&events[2]).0, "def add(a, b):");
+}
+
+/// Reasoning inside an open block streams as it arrives, before `</think>`.
+#[test]
+fn reasoning_streams_before_the_block_closes() {
     let records = [
         record(MODEL, json!({"role": "assistant", "content": "<thi"})),
         record(
             MODEL,
-            json!({"role": "assistant", "content": "nk>weighing"}),
+            json!({"role": "assistant", "content": "nk>step one"}),
         ),
-        record(
-            MODEL,
-            json!({"role": "assistant", "content": " it</think>"}),
-        ),
+        record(MODEL, json!({"role": "assistant", "content": ", step two"})),
+        record(MODEL, json!({"role": "assistant", "content": "</think>"})),
         record(MODEL, json!({"role": "assistant", "content": "\n\n"})),
-        record(MODEL, json!({"role": "assistant", "content": "Yes"})),
-        record(MODEL, json!({"role": "assistant", "content": ", indeed."})),
+        record(MODEL, json!({"role": "assistant", "content": "Done."})),
         done(MODEL, "stop"),
     ];
     let events = events_after_each(MODEL, &records);
-    assert_eq!(streamed(&events[1]), (String::new(), String::new()));
+    assert_eq!(streamed(&events[0]), (String::new(), String::new()));
+    assert_eq!(streamed(&events[1]), (String::new(), "step one".to_owned()));
     assert_eq!(
         streamed(&events[2]),
-        (String::new(), "weighing it".to_owned())
+        (String::new(), "step one, step two".to_owned())
     );
-    assert_eq!(streamed(&events[3]).0, "");
-    assert_eq!(streamed(&events[4]).0, "Yes");
-    assert_eq!(streamed(&events[5]).0, "Yes, indeed.");
+    assert_eq!(streamed(&events[4]).0, "");
+    assert_eq!(streamed(&events[5]).0, "Done.");
 }
 
-/// A stream that ends inside an unterminated block shows everything it
-/// held as text, so the answer is never swallowed; so does a call that
-/// arrives while content is held.
+/// A `</think>` split across two records is still found: only its partial
+/// start is held back, and none of it reaches either block.
 #[test]
-fn held_content_is_text_when_the_block_never_closes() {
+fn a_close_tag_split_across_records_is_found() {
+    let records = [
+        record(
+            MODEL,
+            json!({"role": "assistant", "content": "<think>plan</th"}),
+        ),
+        record(MODEL, json!({"role": "assistant", "content": "ink>Answer"})),
+        done(MODEL, "stop"),
+    ];
+    let events = events_after_each(MODEL, &records);
+    assert_eq!(streamed(&events[0]), (String::new(), "plan".to_owned()));
+    assert_eq!(
+        streamed(&events[1]),
+        ("Answer".to_owned(), "plan".to_owned())
+    );
+    let response = decode(MODEL, Mode::Streaming, &records).expect("the reply decodes");
+    assert_eq!(
+        blocks(&response),
+        [
+            ("reasoning", "plan".to_owned()),
+            ("text", "Answer".to_owned())
+        ]
+    );
+}
+
+/// A stream that ends inside an open block keeps it as reasoning, as the
+/// whole reply does. Text before a call is text, as it arrived.
+#[test]
+fn an_unterminated_block_is_reasoning_and_a_call_ends_the_text() {
     let records = [
         record(MODEL, json!({"role": "assistant", "content": "<think>"})),
         record(MODEL, json!({"role": "assistant", "content": "the answer"})),
         done(MODEL, "length"),
     ];
     let events = events_after_each(MODEL, &records);
-    assert_eq!(streamed(&events[1]).0, "");
-    assert_eq!(streamed(&events[2]).0, "<think>the answer");
+    assert_eq!(
+        streamed(&events[1]),
+        (String::new(), "the answer".to_owned())
+    );
+    let response = decode(MODEL, Mode::Streaming, &records).expect("the reply decodes");
+    assert_eq!(blocks(&response), [("reasoning", "the answer".to_owned())]);
 
     let records = [
         record(
@@ -526,6 +540,10 @@ fn held_content_is_text_when_the_block_never_closes() {
         ),
         done("qwen3:4b", "stop"),
     ];
+    assert_eq!(
+        streamed(&events_after_each("qwen3:4b", &records)[0]).0,
+        "Calling."
+    );
     let response = decode("qwen3:4b", Mode::Streaming, &records).expect("the reply decodes");
     assert_eq!(blocks(&response), [("text", "Calling.".to_owned())]);
     assert_eq!(response.tool_calls().count(), 1);

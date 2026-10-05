@@ -1,5 +1,5 @@
 when:
-  path: /api/chat
+  path: /v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"messages":[{"content":"Reply with exactly this one word and nothing else: captured","role":"user"}],"model":"qwen3:4b","options":{"num_predict":1024,"temperature":0.0},"stream":false}'
+  body: '{"max_tokens":1024,"messages":[{"content":"Reply with exactly this one word and nothing else: captured","role":"user"}],"model":"qwen3:4b","temperature":0.0}'
 then:
   status: 200
   header:
   - name: content-type
-    value: application/json; charset=utf-8
-  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":181,"eval_duration":4719832000,"load_duration":1662338,"message":{"content":"captured","role":"assistant","thinking":"Hmm, the user wants me to reply with exactly one word: \"captured\". They specified \"exactly this one word and nothing else\", so I need to be precise.\n\nThis seems straightforward - they''re testing if I follow instructions strictly. No extra words, no explanations, just the word \"captured\". \n\nI recall that in previous interactions, users sometimes ask for specific responses to check compliance. Maybe they''re verifying my ability to handle simple commands without adding fluff.\n\nThe user might be a developer testing API responses, or just someone practicing precise communication. Either way, I''ll stick to the request.\n\nImportant: Must not add any punctuation, spaces, or additional text. Just the word \"captured\" as a standalone response.\n\nOkay, crafting the reply: I''ll output only \"captured\" with no extra characters. That''s the exact response they need.\n"},"model":"qwen3:4b","prompt_eval_cached_count":1,"prompt_eval_count":21,"prompt_eval_duration":68710000,"total_duration":4830868626}'
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"captured","reasoning":"Hmm, the user wants me to reply with exactly one word: \"captured\". They specified \"exactly this one word and nothing else\", so I need to be precise.\n\nThis seems straightforward - they''re testing if I follow instructions strictly. No extra words, no explanations, just the word \"captured\". \n\nI recall that in previous interactions, users sometimes ask for specific responses to check compliance. Maybe they''re verifying my ability to handle simple commands without adding fluff.\n\nThe user might be a developer testing API responses, or just someone practicing precise communication. Either way, I''ll stick to the request.\n\nImportant: Must not add any punctuation, spaces, or additional text. Just the word \"captured\" as a standalone response.\n\nOkay, crafting the reply: I''ll output only \"captured\" with no extra characters. That should satisfy their requirement perfectly.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-232","model":"qwen3:4b","object":"chat.completion","system_fingerprint":"fp_ollama","usage":{"completion_tokens":180,"prompt_tokens":21,"total_tokens":201}}'

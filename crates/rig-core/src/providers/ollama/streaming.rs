@@ -3,8 +3,8 @@
 //!
 //! A record's `thinking` is reasoning, its `content` text and its
 //! `tool_calls` whole calls. A reply with no `thinking` may carry its
-//! reasoning as a leading `<think>…</think>` block in `content`; that block
-//! is split out as reasoning (see [`ChatDecoder`]).
+//! reasoning as a leading `<think>` block in `content`; that block is split
+//! out as reasoning (see [`ChatDecoder`]).
 //!
 //! ```
 //! use rig_core::providers::ollama::streaming::ChatDecoder;
@@ -32,13 +32,10 @@ use crate::wire::{
 /// `message` or `done`, and an in-band failure carries `error`.
 const RECORD_KEYS: &[&str] = &["message", "done", "error"];
 
-/// The marker that opens an inline reasoning block.
+/// The tag that opens an inline reasoning block.
 const THINK_OPEN: &str = "<think>";
-/// The marker that closes it.
+/// The tag that closes it.
 const THINK_CLOSE: &str = "</think>";
-/// The exact boundary after a `qwen3` reasoning block whose opening marker
-/// the chat template prefilled.
-const QWEN3_BOUNDARY: &str = "\n</think>\n\n";
 
 /// One `/api/chat` record, as the daemon sent it.
 #[derive(Debug, Default, Deserialize)]
@@ -54,13 +51,13 @@ pub struct ChatRecord(pub Map<String, Value>);
 /// `prompt_eval_count`, `prompt_eval_cached_count` (the part of the prompt
 /// read from the daemon's cache) and `eval_count` are the usage.
 ///
-/// A reply with no `thinking` has its leading, terminated
-/// `<think>…</think>` block split out of `content` as reasoning; for a
-/// `qwen3` model, whose chat template prefills the opening marker, so is
-/// text that ends at the exact boundary `\n</think>\n\n`. Content is held
-/// while it could still be such a block: once the block closes it is
-/// reasoning and the rest streams as text, and content that cannot be one,
-/// or a reply that ends before the block closes, is text as it arrived.
+/// A reply with no `thinking` whose `content`, after leading whitespace,
+/// starts with `<think>` has that block split out as reasoning, by its tags
+/// alone. Content is held only while its start could still become
+/// `<think>`; content that cannot is text at once. Inside the block,
+/// reasoning streams as it arrives, holding back only trailing whitespace
+/// and a partial `</think>`. After `</think>` the rest is text. A block
+/// that never closes is reasoning to the end of the reply.
 #[derive(Debug, Default)]
 pub struct ChatDecoder {
     /// Where the inline split stands.
@@ -74,8 +71,13 @@ pub struct ChatDecoder {
 /// Where a reply's inline reasoning split stands.
 #[derive(Debug)]
 enum Split {
-    /// Content held while it could still be a leading reasoning block.
-    Holding(String),
+    /// Content held while its start, after whitespace, could still become
+    /// `<think>`.
+    Opening(String),
+    /// Inside a leading `<think>` block. `held` is trailing whitespace and a
+    /// partial `</think>` not yet written; `started` is whether any
+    /// reasoning was, so leading whitespace is dropped until then.
+    Inside { held: String, started: bool },
     /// Content is text. `trim` drops leading whitespace until visible text
     /// arrives after a split block.
     Text { trim: bool },
@@ -83,48 +85,17 @@ enum Split {
 
 impl Default for Split {
     fn default() -> Self {
-        Self::Holding(String::new())
+        Self::Opening(String::new())
     }
 }
 
-/// What the content held so far is.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Held<'a> {
-    /// It may still be a leading reasoning block.
-    Open,
-    /// A leading reasoning block, then visible text, each trimmed.
-    Split(&'a str, &'a str),
-    /// It cannot be one: it is text as it stands.
-    Text,
-}
-
-/// Read `content`, held from the start of a reply, as a leading reasoning
-/// block. `qwen3` also accepts a block whose opening marker the template
-/// prefilled, closed by the exact [`QWEN3_BOUNDARY`]. An unterminated
-/// `<think>` stays open, so a whole reply keeps it as text.
-pub(crate) fn leading_reasoning(content: &str, qwen3: bool) -> Held<'_> {
-    let trimmed = content.trim_start();
-    let split = if let Some(rest) = trimmed.strip_prefix(THINK_OPEN) {
-        match rest.split_once(THINK_CLOSE) {
-            Some(split) => split,
-            None => return Held::Open,
-        }
-    } else if THINK_OPEN.starts_with(trimmed) {
-        return Held::Open;
-    } else if qwen3 {
-        match trimmed.split_once(QWEN3_BOUNDARY) {
-            Some(split) => split,
-            None => return Held::Open,
-        }
-    } else {
-        return Held::Text;
-    };
-    Held::Split(split.0.trim(), split.1.trim_start())
-}
-
-/// Whether `model` names a `qwen3` model.
-fn is_qwen3(model: &str) -> bool {
-    model.to_ascii_lowercase().contains("qwen3")
+/// The length of the longest proper prefix of `tag` that `text` ends with.
+/// The tags are ASCII, so the cut is a character boundary.
+fn partial_suffix(text: &str, tag: &str) -> usize {
+    (1..tag.len())
+        .rev()
+        .find(|&len| text.ends_with(&tag[..len]))
+        .unwrap_or(0)
 }
 
 impl<'id> Decoder<'id, Completion> for ChatDecoder {
@@ -201,49 +172,68 @@ impl ChatDecoder {
         content: &str,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
-        let held = match &mut self.split {
+        match std::mem::replace(&mut self.split, Split::Text { trim: false }) {
             Split::Text { trim } => {
-                let text = if *trim { content.trim_start() } else { content };
+                let text = if trim { content.trim_start() } else { content };
+                self.split = Split::Text {
+                    trim: trim && text.is_empty(),
+                };
                 if !text.is_empty() {
-                    *trim = false;
                     out.run(Block::Text, text)?;
                 }
-                return Ok(());
+                Ok(())
             }
-            Split::Holding(held) => {
+            Split::Opening(mut held) => {
                 held.push_str(content);
-                std::mem::take(held)
-            }
-        };
-        let qwen3 = self.model.as_deref().is_some_and(is_qwen3);
-        match leading_reasoning(&held, qwen3) {
-            Held::Open => self.split = Split::Holding(held),
-            Held::Text => {
-                self.split = Split::Text { trim: false };
-                out.run(Block::Text, &held)?;
-            }
-            Held::Split(reasoning, visible) => {
-                if !reasoning.is_empty() {
-                    reason(reasoning, out)?;
+                let trimmed = held.trim_start();
+                if let Some(rest) = trimmed.strip_prefix(THINK_OPEN) {
+                    let rest = rest.to_owned();
+                    self.split = Split::Inside {
+                        held: String::new(),
+                        started: false,
+                    };
+                    self.content(&rest, out)
+                } else if THINK_OPEN.starts_with(trimmed) {
+                    self.split = Split::Opening(held);
+                    Ok(())
+                } else {
+                    out.run(Block::Text, &held)?;
+                    Ok(())
                 }
-                self.split = Split::Text {
-                    trim: visible.is_empty(),
+            }
+            Split::Inside {
+                mut held,
+                mut started,
+            } => {
+                held.push_str(content);
+                if let Some((reasoning, rest)) = held.split_once(THINK_CLOSE) {
+                    write_reasoning(reasoning.trim_end(), started, out)?;
+                    self.split = Split::Text { trim: true };
+                    return self.content(rest, out);
+                }
+                let cut = held.len() - partial_suffix(&held, THINK_CLOSE);
+                let cut = held[..cut].trim_end().len();
+                started |= write_reasoning(&held[..cut], started, out)?;
+                self.split = Split::Inside {
+                    held: held.split_off(cut),
+                    started,
                 };
-                if !visible.is_empty() {
-                    out.run(Block::Text, visible)?;
-                }
+                Ok(())
             }
         }
-        Ok(())
     }
 
-    /// End the split: content still held is text as it arrived.
+    /// End the split: content held at the start is text as it arrived, and
+    /// what an open block held is reasoning.
     fn release(&mut self, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        if let Split::Holding(held) =
-            std::mem::replace(&mut self.split, Split::Text { trim: false })
-            && !held.is_empty()
-        {
-            out.run(Block::Text, &held)?;
+        match std::mem::replace(&mut self.split, Split::Text { trim: false }) {
+            Split::Opening(held) if !held.is_empty() => {
+                out.run(Block::Text, &held)?;
+            }
+            Split::Inside { held, started } => {
+                write_reasoning(held.trim_end(), started, out)?;
+            }
+            Split::Opening(_) | Split::Text { .. } => {}
         }
         Ok(())
     }
@@ -314,6 +304,21 @@ impl ChatDecoder {
             .emit(sink);
         }
     }
+}
+
+/// Write a fragment of an inline block's reasoning, its leading whitespace
+/// dropped until the block has `started`. Returns whether it wrote any.
+fn write_reasoning(
+    text: &str,
+    started: bool,
+    out: &mut Out<'_, Completion>,
+) -> Result<bool, ProviderError> {
+    let text = if started { text } else { text.trim_start() };
+    if text.is_empty() {
+        return Ok(false);
+    }
+    reason(text, out)?;
+    Ok(true)
 }
 
 /// Write a fragment of reasoning. Its block's item is the `thinking` it

@@ -1,7 +1,7 @@
-//! What only Ollama's native `/api/chat` carries: model `options` such as
-//! `num_ctx`, `think` as a level, `keep_alive`, a `qwen3` reply's inline
-//! reasoning split out of its content, and tool calls streamed as NDJSON
-//! records.
+//! What only Ollama's native `/api/chat` (`Ollama::native_completion`)
+//! carries: model `options` such as `num_ctx`, `think` as a level,
+//! `keep_alive`, content that only a leading `<think>` tag splits, and tool
+//! calls streamed as NDJSON records.
 //!
 //! Replays by default; record with a local daemon serving `qwen3:4b`:
 //! `cargo xtask cassette record ollama/native/<scenario>.yaml`.
@@ -56,7 +56,7 @@ async fn options_reach_the_daemon() {
     let scenario = "native/options_and_keep_alive";
     with_ollama_cassette("native/options_and_keep_alive", |client| async move {
         let response = client
-            .completion(CASSETTE_MODEL)
+            .native_completion(CASSETTE_MODEL)
             .call(
                 CompletionRequest::new("Reply with exactly the single word: pong")
                     .temperature(0.0)
@@ -91,7 +91,7 @@ async fn a_thinking_level_returns_reasoning() {
     let scenario = "native/think_level";
     with_ollama_cassette("native/think_level", |client| async move {
         let response = client
-            .completion(CASSETTE_MODEL)
+            .native_completion(CASSETTE_MODEL)
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
@@ -115,16 +115,16 @@ async fn a_thinking_level_returns_reasoning() {
     assert_eq!(recorded_json_request(PROVIDER, scenario)["think"], "low");
 }
 
-/// With thinking off, `qwen3:4b` writes its reasoning into the content and
-/// closes it with the bare `\n</think>\n\n` its template's prefilled marker
-/// leaves. That block is reasoning, and the answer after it is the text,
-/// whole and streamed.
+/// With thinking off, `qwen3:4b` writes its reasoning into the content with
+/// no opening `<think>` tag, closed by a bare `</think>`. Only a leading
+/// `<think>` tag opens a block, so all of it is text, whole and streamed,
+/// and nothing is reasoning. Leave `think` on to get the native `thinking`.
 #[tokio::test]
-async fn qwen3_inline_reasoning_is_split_whole() {
+async fn reasoning_without_an_opening_tag_is_text_whole() {
     let scenario = "native/inline_think_whole";
     with_ollama_cassette("native/inline_think_whole", |client| async move {
         let response = client
-            .completion(CASSETTE_MODEL)
+            .native_completion(CASSETTE_MODEL)
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
@@ -133,51 +133,48 @@ async fn qwen3_inline_reasoning_is_split_whole() {
             .await
             .expect("the request succeeds");
         let (text, reasoning) = texts(&response.choice);
-        assert!(
-            !reasoning.trim().is_empty(),
-            "the inline block is reasoning"
-        );
-        assert!(!text.contains("</think>"), "{text}");
-        assert!(text.contains('4'), "{text}");
+        assert!(reasoning.is_empty(), "{reasoning}");
+        assert_eq!(text, recorded_content(scenario));
     })
     .await;
+    let content = recorded_content(scenario);
     assert!(
-        recorded_content(scenario).contains("\n</think>\n\n"),
-        "{scenario}: the premise, an inline block"
+        content.contains("\n</think>\n\n") && !content.trim_start().starts_with("<think>"),
+        "{scenario}: the premise, a block with no opening tag"
     );
 }
 
 #[tokio::test]
-async fn qwen3_inline_reasoning_is_split_streamed() {
+async fn reasoning_without_an_opening_tag_is_text_streamed() {
     let scenario = "native/inline_think_streamed";
     with_ollama_cassette("native/inline_think_streamed", |client| async move {
         let mut stream = client
-            .completion(CASSETTE_MODEL)
+            .native_completion(CASSETTE_MODEL)
             .stream(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
                     .additional_params(json!({"think": false, "seed": 7})),
             )
             .expect("the stream starts");
-        let mut streamed_text = String::new();
+        let (mut streamed_text, mut first) = (String::new(), None);
         while let Some(item) = stream.next().await {
             if let Item::Event(StreamEvent::Text { text, .. }) = item.expect("an item") {
+                first.get_or_insert_with(|| text.clone());
                 streamed_text.push_str(&text);
             }
         }
         let response = stream.finish().await.expect("the stream ends");
         let (text, reasoning) = texts(&response.choice);
-        assert!(
-            !reasoning.trim().is_empty(),
-            "the inline block is reasoning"
-        );
-        assert_eq!(streamed_text, text, "only the answer streamed as text");
-        assert!(!text.contains("</think>"), "{text}");
+        assert!(reasoning.is_empty(), "{reasoning}");
+        assert_eq!(streamed_text, text);
+        assert_eq!(text, recorded_content(scenario));
+        // Nothing is held: the first record's content streams on its own.
+        assert_eq!(first.as_deref(), Some("Okay"));
     })
     .await;
     assert!(
         recorded_content(scenario).contains("\n</think>\n\n"),
-        "{scenario}: the premise, an inline block"
+        "{scenario}: the premise, a block with no opening tag"
     );
 }
 
@@ -188,7 +185,7 @@ async fn qwen3_inline_reasoning_is_split_streamed() {
 async fn ndjson_tool_calls_stream() {
     with_ollama_cassette("native/streamed_tool_call", |client| async move {
         let mut stream = client
-            .completion(CASSETTE_MODEL)
+            .native_completion(CASSETTE_MODEL)
             .stream(
                 CompletionRequest::new("Use the add tool to add 2 and 3.")
                     .preamble(TOOLS_PREAMBLE.to_owned())

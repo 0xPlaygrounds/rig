@@ -1,11 +1,11 @@
 //! Ollama configuration, model identifiers, and its chat, embedding and
 //! model-listing wires.
 //!
-//! Chat goes through the daemon's native `/api/chat` ([`Chat`]), which takes
-//! `think`, `keep_alive` and model `options` such as `num_ctx`.
-//! [`Ollama::openai_compatible_completion`] reaches its OpenAI-compatible
-//! `/v1/chat/completions` instead, on the shared Chat Completions wire as
-//! the [`OLLAMA`](crate::providers::openai::wire::OLLAMA) dialect.
+//! Chat goes through the daemon's OpenAI-compatible `/v1/chat/completions`
+//! on the shared Chat Completions wire, as the
+//! [`OLLAMA`](crate::providers::openai::wire::OLLAMA) dialect.
+//! [`Ollama::native_completion`] reaches its native `/api/chat` instead
+//! ([`Chat`]), the only route that sends model `options` such as `num_ctx`.
 //! Embeddings use `/api/embed`, and the model listing `/api/tags`.
 //!
 //! ```no_run
@@ -15,6 +15,7 @@
 //! let provider = ollama::Ollama::new();
 //!
 //! let qwen = provider.completion("qwen2.5:14b");
+//! let native = provider.native_completion("qwen2.5:14b");
 //! let embeddings = provider.embedding(ollama::ALL_MINILM, Some(384));
 //! # Ok(())
 //! # }

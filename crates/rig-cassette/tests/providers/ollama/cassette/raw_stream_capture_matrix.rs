@@ -1,34 +1,19 @@
-//! Raw response capture on Ollama's streamed native `/api/chat` route.
+//! Raw response capture on Ollama's streamed Chat Completions route.
 //!
-//! The stream is NDJSON: every line is a chat record, and the last one says
-//! `done`. A streamed reply's `raw` is that record as the daemon sent it, and
-//! its usage is the record's counters.
+//! A streamed reply's `raw` is the terminal record the decoder assembled
+//! from the stream; its usage is the one usage chunk the stream carried.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_terminal_reproduces_the_usage_chunk` | terminal record | `raw` is the recorded `done` record, and usage and the model are its own | recorded |
+//! | 1 | `stream_terminal_reproduces_the_usage_chunk` | terminal record | the terminal reproduces the recorded usage chunk's id, model and usage | recorded |
 
 use rig::completion::CompletionRequest;
-use serde_json::Value;
 
 use super::super::{CASSETTE_MODEL, support::with_ollama_cassette};
-use crate::cassettes::recorded_interaction_bodies;
-use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal};
-use crate::support::{Observed, assert_wire_value_matches};
+use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
+use crate::support::Observed;
 
 const PROVIDER: &str = "ollama";
-
-/// The recorded stream's records, one per NDJSON line.
-fn recorded_records(scenario: &str) -> Vec<Value> {
-    let interactions = recorded_interaction_bodies(PROVIDER, scenario);
-    let [(_, body)] = interactions.as_slice() else {
-        panic!("{scenario}: one interaction was recorded");
-    };
-    body.lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).expect("each line is a record"))
-        .collect()
-}
 
 #[tokio::test]
 async fn stream_terminal_reproduces_the_usage_chunk() {
@@ -54,25 +39,7 @@ async fn stream_terminal_reproduces_the_usage_chunk() {
     .await;
     let (text, terminal) = sink.take();
     assert!(!text.trim().is_empty(), "the stream carried text");
-    let records = recorded_records(scenario);
-    assert!(records.len() > 1, "{scenario}: the premise, a stream");
-    let done = records.last().expect("a record");
-    assert_eq!(done["done"], true, "{scenario}: the stream ends on `done`");
-    for field in [
-        "done",
-        "done_reason",
-        "model",
-        "prompt_eval_count",
-        "eval_count",
-    ] {
-        assert_eq!(terminal.raw.get(field), done.get(field), "{field}");
-    }
-    assert_wire_value_matches(&terminal.raw, done, "created_at");
-    assert_eq!(
-        terminal.usage.input_tokens,
-        done["prompt_eval_count"].as_u64()
-    );
-    assert_eq!(terminal.usage.output_tokens, done["eval_count"].as_u64());
-    assert_eq!(terminal.model(), done["model"].as_str());
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, scenario);
+    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, scenario);
     assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
 }

@@ -8,7 +8,7 @@
 //! ```
 //! use rig_core::providers::ollama::OllamaConfig;
 //!
-//! let wire = OllamaConfig::new().client().completion("qwen3:4b").wire;
+//! let wire = OllamaConfig::new().client().native_completion("qwen3:4b").wire;
 //! assert_eq!(wire.model, "qwen3:4b");
 //! ```
 
@@ -70,7 +70,7 @@ impl Chat {
     /// `think` (a boolean or `low`, `medium`, `high` or `max`) and the keys
     /// in [`TOP_LEVEL`] go at the top level, `tools` join the request's
     /// tools, an `options` object merges into `options`, and every other key
-    /// is an `options` entry. `temperature` and `max_tokens` (as
+    /// is an `options` entry, `reasoning_effort` included, with a warning. `temperature` and `max_tokens` (as
     /// `num_predict`) go in `options`, where a caller's own entries win.
     fn body(
         &self,
@@ -116,6 +116,13 @@ impl Chat {
             match key.as_str() {
                 "think" => {
                     top.insert(key, think(value)?);
+                }
+                "reasoning_effort" => {
+                    tracing::warn!(
+                        "Ollama's `/api/chat` takes `think`, not `reasoning_effort`; \
+                         it is sent as a model option"
+                    );
+                    options.insert(key, value);
                 }
                 "keep_alive" if !(value.is_string() || value.is_number()) => {
                     return Err(EncodeError::request(

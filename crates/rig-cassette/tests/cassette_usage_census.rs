@@ -468,7 +468,7 @@ fn replaying_model(
             .erase(),
         Route::Ollama => OllamaConfig::new()
             .connect(recorded_http(headers, body))
-            .completion(model)
+            .native_completion(model)
             .erase(),
         Route::GenerateContent => GeminiConfig::new("census")
             .connect(recorded_http(headers, body))

@@ -1,5 +1,435 @@
 {
-  "openai_compatible/optional_argument.yaml#0": {
+  "agent/max_tokens.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "We are to explain Rust in one or two sentences, focusing on what it is and why memory safety matters.\n Rust is",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 42,
+      "output_tokens": 24,
+      "total_tokens": 66
+    },
+    "response_id": "chatcmpl-46",
+    "finish_reason": "length",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "message": {
+            "content": "We are to explain Rust in one or two sentences, focusing on what it is and why memory safety matters.\n Rust is",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-46",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
+      "usage": {
+        "completion_tokens": 24,
+        "prompt_tokens": 42,
+        "total_tokens": 66
+      }
+    }
+  },
+  "agentic/native_mode.yaml#1": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "{\n  \"city\": \"Tokyo\",\n  \"summary\": \"Sunny with light clouds, 72°F (22°C), humidity 45%, wind 8 mph from the northwest.\"\n}\n",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 870,
+      "output_tokens": 44,
+      "total_tokens": 914
+    },
+    "response_id": "chatcmpl-347",
+    "finish_reason": "stop",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "{\n  \"city\": \"Tokyo\",\n  \"summary\": \"Sunny with light clouds, 72°F (22°C), humidity 45%, wind 8 mph from the northwest.\"\n}\n",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-347",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
+      "usage": {
+        "completion_tokens": 44,
+        "prompt_tokens": 870,
+        "total_tokens": 914
+      }
+    }
+  },
+  "agentic/streaming_structured_output_with_tools.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "Okay, the user is asking for the current weather in Tokyo. I need to use the get_weather tool provided. Let me check the function signature. The function requires a city name as a parameter. The city here is Tokyo.\n\nSo I should call get_weather with city set to \"Tokyo\". The response should be a JSON object with the function name and arguments. The arguments need to be a JSON object where the key is \"city\" and the value is \"Tokyo\".\n\nWait, the function's parameters are defined as having a city which is a string. The description says \"City name to get weather for\". So yes, I need to pass \"Tokyo\" as the city parameter.\n\nLet me make sure there's no typo in the city name. The user said Tokyo, which is correct.\n\nSo the tool call would be:\n\n{\n  \"name\": \"get_weather\",\n  \"arguments\": {\n    \"city\": \"Tokyo\"\n  }\n}\n\nYes, that seems right. I don't need to do anything else since the user just wants the tool call. The next step would be to get the response from the tool and then return the city name and a one-sentence summary. But for now, the task is to generate the tool call. So this is the correct JSON in the tool_call tags.\n</think>\n\n",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "call_7bvcwd02",
+          "name": "get_weather",
+          "arguments": {
+            "city": "Tokyo"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"city\":\"Tokyo\"}",
+                "name": "get_weather"
+              },
+              "id": "call_7bvcwd02",
+              "type": "function"
+            },
+            "fingerprint": "816b698cb08776d3"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 195,
+      "output_tokens": 291,
+      "total_tokens": 486
+    },
+    "response_id": "chatcmpl-325",
+    "finish_reason": "tool_calls",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "completion_tokens": 291,
+        "prompt_tokens": 195,
+        "total_tokens": 486
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-325",
+      "model": "qwen3:4b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ollama"
+      }
+    }
+  },
+  "agentic/streaming_structured_output_with_tools.yaml#1": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "{\n  \"city\": \"Tokyo\",\n  \"summary\": \"Sunny with light clouds, 72F (22C), humidity 45%, wind 8 mph NW\"\n}\n",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 526,
+      "output_tokens": 42,
+      "total_tokens": 568
+    },
+    "response_id": "chatcmpl-96",
+    "finish_reason": "stop",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "completion_tokens": 42,
+        "prompt_tokens": 526,
+        "total_tokens": 568
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-96",
+      "model": "qwen3:4b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ollama"
+      }
+    }
+  },
+  "history_survival_matrix/streaming.yaml#3": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "Okay, let's see. The user wants me to look up the alpha and beta records, verify each code, and report both with their verification status.\n\nFirst, I tried looking up \"alpha\" and \"beta\" via lookup_record. But there was a parsing error because the arguments were missing the 'record' field instead of 'name'. So I corrected that by using the right field name 'record' as per the tool's definition.\n\nThen, the lookups succeeded, returning codes \"alpha-code-7431\" and \"beta-code-2286\". Next, I called verify_code for each code.\n\nFor alpha-code-7431, the verify succeeded. But for beta-code-2286, the tool failed. The user said if a tool reports a transient failure, try again once. So I need to retry the verify for beta.\n\nWait, the latest tool response says \"the tool failed\" for beta. So I should retry the verify_code for beta-code-2286 once.\n\nSo the next step is to call verify_code again for beta-code-2286.\n\nLet me structure the tool call for that.\n\nThe function is verify_code with the code \"beta-code-2286\".\n\nSo the tool_call should be:\n\n{\"name\": \"verify_code\", \"arguments\": {\"code\": \"beta-code-2286\"}}\n\nAfter retrying, if it succeeds, report status. If still fails, maybe handle differently, but the user says to retry once.\n\nSo the answer here is to retry the beta verification.\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "Okay, let's see. The user wants me to look up the alpha and beta records, verify each code, and report both with their verification status.\n\nFirst, I tried looking up \"alpha\" and \"beta\" via lookup_record. But there was a parsing error because the arguments were missing the 'record' field instead of 'name'. So I corrected that by using the right field name 'record' as per the tool's definition.\n\nThen, the lookups succeeded, returning codes \"alpha-code-7431\" and \"beta-code-2286\". Next, I called verify_code for each code.\n\nFor alpha-code-7431, the verify succeeded. But for beta-code-2286, the tool failed. The user said if a tool reports a transient failure, try again once. So I need to retry the verify for beta.\n\nWait, the latest tool response says \"the tool failed\" for beta. So I should retry the verify_code for beta-code-2286 once.\n\nSo the next step is to call verify_code again for beta-code-2286.\n\nLet me structure the tool call for that.\n\nThe function is verify_code with the code \"beta-code-2286\".\n\nSo the tool_call should be:\n\n{\"name\": \"verify_code\", \"arguments\": {\"code\": \"beta-code-2286\"}}\n\nAfter retrying, if it succeeds, report status. If still fails, maybe handle differently, but the user says to retry once.\n\nSo the answer here is to retry the beta verification.\n"
+            },
+            "fingerprint": "48776623fb56df5a"
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "call_1mh4447p",
+          "name": "verify_code",
+          "arguments": {
+            "code": "beta-code-2286"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"code\":\"beta-code-2286\"}",
+                "name": "verify_code"
+              },
+              "id": "call_1mh4447p",
+              "type": "function"
+            },
+            "fingerprint": "d97bb7e6d6a274dc"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 4752,
+      "output_tokens": 351,
+      "total_tokens": 5103
+    },
+    "response_id": "chatcmpl-986",
+    "finish_reason": "tool_calls",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "completion_tokens": 351,
+        "prompt_tokens": 4752,
+        "total_tokens": 5103
+      },
+      "finish_reason": "tool_calls",
+      "response_id": "chatcmpl-986",
+      "model": "qwen3:4b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ollama"
+      }
+    }
+  },
+  "history_survival_matrix/unary.yaml#6": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "Okay, let's see. The user asked to verify the alpha code once more and confirm if it's unchanged. So I made the tool call for verify_code on alpha-code-7431. The response was \"verified alpha-code-7431\". That means the code is still valid and unchanged.\n\nNow I need to report back to the user. The previous messages showed that both alpha and beta were verified successfully after some retries. Since this latest verification for alpha succeeded again, I should state that it's unchanged. The user wanted confirmation of whether it's still unchanged, and the tool response confirms it's verified, so it's unchanged.\n\nI'll phrase it concisely as \"Alpha code alpha-code-7431 remains unchanged and verified.\" That covers the request without extra details.\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "Okay, let's see. The user asked to verify the alpha code once more and confirm if it's unchanged. So I made the tool call for verify_code on alpha-code-7431. The response was \"verified alpha-code-7431\". That means the code is still valid and unchanged.\n\nNow I need to report back to the user. The previous messages showed that both alpha and beta were verified successfully after some retries. Since this latest verification for alpha succeeded again, I should state that it's unchanged. The user wanted confirmation of whether it's still unchanged, and the tool response confirms it's verified, so it's unchanged.\n\nI'll phrase it concisely as \"Alpha code alpha-code-7431 remains unchanged and verified.\" That covers the request without extra details.\n"
+            },
+            "fingerprint": "caea5f39e13bcb59"
+          }
+        }
+      },
+      {
+        "text": "Alpha code alpha-code-7431 remains unchanged and verified.",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 1577,
+      "output_tokens": 180,
+      "total_tokens": 1757
+    },
+    "response_id": "chatcmpl-642",
+    "finish_reason": "stop",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "content": "Alpha code alpha-code-7431 remains unchanged and verified.",
+            "reasoning": "Okay, let's see. The user asked to verify the alpha code once more and confirm if it's unchanged. So I made the tool call for verify_code on alpha-code-7431. The response was \"verified alpha-code-7431\". That means the code is still valid and unchanged.\n\nNow I need to report back to the user. The previous messages showed that both alpha and beta were verified successfully after some retries. Since this latest verification for alpha succeeded again, I should state that it's unchanged. The user wanted confirmation of whether it's still unchanged, and the tool response confirms it's verified, so it's unchanged.\n\nI'll phrase it concisely as \"Alpha code alpha-code-7431 remains unchanged and verified.\" That covers the request without extra details.\n",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-642",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
+      "usage": {
+        "completion_tokens": 180,
+        "prompt_tokens": 1577,
+        "total_tokens": 1757
+      }
+    }
+  },
+  "raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "text": "Hmm, the user just asked me to reply with exactly the single word \"pong\". That's pretty straightforward. \n\nOkay, let me think about this. The user seems to be testing a very specific instruction - they want nothing but the word \"pong\" with no extra characters or explanations. \n\nI recall that in computing",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 18,
+      "output_tokens": 64,
+      "total_tokens": 82
+    },
+    "response_id": "chatcmpl-473",
+    "finish_reason": "length",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "completion_tokens": 64,
+        "prompt_tokens": 18,
+        "total_tokens": 82
+      },
+      "finish_reason": "length",
+      "response_id": "chatcmpl-473",
+      "model": "qwen3:4b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ollama"
+      }
+    }
+  },
+  "raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "Okay, let's see. The user wants me to use the add tool to add 2 and 3, then state the result.\n\nFirst, I need to check the tools provided. The tool given is a function called add that takes two numbers, x and y. So the function is add with parameters x and y, both numbers.\n\nThe user is asking to add 2 and 3. So x should be 2 and y should be 3. I need to make a tool call with those numbers.\n\nWait, the tool's description says the function is add, and the arguments are x and y as numbers. So I should structure the tool call as {\"name\": \"add\", \"arguments\": {\"x\": 2, \"y\": 3}}.\n\nThen, after that tool call, the result should be 5. But the user says to state the result after using the tool. So I need to output the tool call first, then the result.\n\nWait, the instructions say for each function call, return a json object within tool_call tags. Then after the tool call, the model should provide the answer. But in this case, the user wants me to do the addition and state the result.\n\nSo first, I create the tool call. Then the system would probably return the result, but since this is a simulation, I have to imagine that after the tool call, the result is 5.\n\nWait, the user says \"Use the add tool to add 2 and 3, then state the result.\" So the assistant should first call the add function with 2 and 3, then output the result.\n\nSo the tool_call here would be:\n\n{\n  \"name\": \"add\",\n  \"arguments\": {\n    \"x\": 2,\n    \"y\": 3\n  }\n}\n\nThen the result is 5. So the final answer is 5.\n\nI need to make sure that the tool is called correctly. The function's parameters are x and y as numbers. So yes, 2 and 3.\n\nI think that's it. So the tool call is as above, and the result is 5.\n</think>\n\n",
+        "native": null
+      },
+      {
+        "tool_call": {
+          "id": "call_9ej0q8ms",
+          "name": "add",
+          "arguments": {
+            "x": 2,
+            "y": 3
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"x\":2,\"y\":3}",
+                "name": "add"
+              },
+              "id": "call_9ej0q8ms",
+              "type": "function"
+            },
+            "fingerprint": "e47f2007fd182616"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 192,
+      "output_tokens": 466,
+      "total_tokens": 658
+    },
+    "response_id": "chatcmpl-782",
+    "finish_reason": "tool_calls",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "message": {
+            "content": "Okay, let's see. The user wants me to use the add tool to add 2 and 3, then state the result.\n\nFirst, I need to check the tools provided. The tool given is a function called add that takes two numbers, x and y. So the function is add with parameters x and y, both numbers.\n\nThe user is asking to add 2 and 3. So x should be 2 and y should be 3. I need to make a tool call with those numbers.\n\nWait, the tool's description says the function is add, and the arguments are x and y as numbers. So I should structure the tool call as {\"name\": \"add\", \"arguments\": {\"x\": 2, \"y\": 3}}.\n\nThen, after that tool call, the result should be 5. But the user says to state the result after using the tool. So I need to output the tool call first, then the result.\n\nWait, the instructions say for each function call, return a json object within tool_call tags. Then after the tool call, the model should provide the answer. But in this case, the user wants me to do the addition and state the result.\n\nSo first, I create the tool call. Then the system would probably return the result, but since this is a simulation, I have to imagine that after the tool call, the result is 5.\n\nWait, the user says \"Use the add tool to add 2 and 3, then state the result.\" So the assistant should first call the add function with 2 and 3, then output the result.\n\nSo the tool_call here would be:\n\n{\n  \"name\": \"add\",\n  \"arguments\": {\n    \"x\": 2,\n    \"y\": 3\n  }\n}\n\nThen the result is 5. So the final answer is 5.\n\nI need to make sure that the tool is called correctly. The function's parameters are x and y as numbers. So yes, 2 and 3.\n\nI think that's it. So the tool call is as above, and the result is 5.\n</think>\n\n",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\":2,\"y\":3}",
+                  "name": "add"
+                },
+                "id": "call_9ej0q8ms",
+                "index": 0,
+                "type": "function"
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-782",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
+      "usage": {
+        "completion_tokens": 466,
+        "prompt_tokens": 192,
+        "total_tokens": 658
+      }
+    }
+  },
+  "raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk.yaml#0": {
+    "mode": "streaming",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "Hmm, the user wants me to reply with exactly one word: \"streamed\" and nothing else. \n\nThis seems straightforward - they're testing if I can follow precise instructions without adding anything. \n\nI recall the instruction says \"exactly this one word and nothing else\" so I must avoid any extra spaces, punctuation, or text. \n\nThe word \"streamed\" is already in the correct format. \n\nI'll just output it as requested - no explanations, no modifications. \n\nUser probably wants to see if I can be minimalist in responses. Maybe they're debugging something or testing AI behavior. \n\nOkay, response is locked in: just \"streamed\"\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning": "Hmm, the user wants me to reply with exactly one word: \"streamed\" and nothing else. \n\nThis seems straightforward - they're testing if I can follow precise instructions without adding anything. \n\nI recall the instruction says \"exactly this one word and nothing else\" so I must avoid any extra spaces, punctuation, or text. \n\nThe word \"streamed\" is already in the correct format. \n\nI'll just output it as requested - no explanations, no modifications. \n\nUser probably wants to see if I can be minimalist in responses. Maybe they're debugging something or testing AI behavior. \n\nOkay, response is locked in: just \"streamed\"\n"
+            },
+            "fingerprint": "b7b97f2b16092cef"
+          }
+        }
+      },
+      {
+        "text": "streamed",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 21,
+      "output_tokens": 139,
+      "total_tokens": 160
+    },
+    "response_id": "chatcmpl-584",
+    "finish_reason": "stop",
+    "model": "qwen3:4b",
+    "provider_request_id": null,
+    "raw": {
+      "usage": {
+        "completion_tokens": 139,
+        "prompt_tokens": 21,
+        "total_tokens": 160
+      },
+      "finish_reason": "stop",
+      "response_id": "chatcmpl-584",
+      "model": "qwen3:4b",
+      "additional_params": {
+        "created": 0,
+        "object": "chat.completion.chunk",
+        "system_fingerprint": "fp_ollama"
+      }
+    }
+  },
+  "tools/optional_argument.yaml#0": {
     "mode": "unary",
     "choice": [
       {
@@ -77,177 +507,6 @@
         "completion_tokens": 277,
         "prompt_tokens": 203,
         "total_tokens": 480
-      }
-    }
-  },
-  "openai_compatible/optional_argument.yaml#1": {
-    "mode": "unary",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "Okay, let me see. The user asked to repeat \"banana\" 3 times using the repeat_text tool. I called the tool with text \"banana\" and times 3. The response from the tool was \"banana banana banana\".\n\nWait, but the expected output might be a single string with spaces or without? The tool's description says \"Repeat `text`\". So normally, repeating \"banana\" three times would be \"bananabananabanana\" without spaces. But the tool response here shows each word separated by a space.\n\nHmm, maybe the tool adds spaces between repetitions? Let me check the tool's function definition again. The tool's function says: \"Repeat `text`. `times` is optional and defaults to 2.\" The description says the output is the repeated text. The example response from the tool here is \"banana banana banana\", which has spaces between each repetition.\n\nWait, but the user said \"show me the exact result\". The tool's response shows each banana separated by a space. So the exact result is \"banana banana banana\". But maybe the tool is designed to add spaces? Or maybe it's a typo in the tool's response.\n\nWait, in the initial tool definition provided to me, the function has a description that says \"Repeat `text`\". The typical behavior of such tools might concatenate without spaces, but the tool response here shows spaces. Since the user says \"show me the exact result\", I need to output what the tool returned.\n\nSo the tool's response is \"banana banana banana\", which has spaces between each instance. So the answer is that exact string. Therefore, after using the tool, the result is \"banana banana banana\".\n",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning": "Okay, let me see. The user asked to repeat \"banana\" 3 times using the repeat_text tool. I called the tool with text \"banana\" and times 3. The response from the tool was \"banana banana banana\".\n\nWait, but the expected output might be a single string with spaces or without? The tool's description says \"Repeat `text`\". So normally, repeating \"banana\" three times would be \"bananabananabanana\" without spaces. But the tool response here shows each word separated by a space.\n\nHmm, maybe the tool adds spaces between repetitions? Let me check the tool's function definition again. The tool's function says: \"Repeat `text`. `times` is optional and defaults to 2.\" The description says the output is the repeated text. The example response from the tool here is \"banana banana banana\", which has spaces between each repetition.\n\nWait, but the user said \"show me the exact result\". The tool's response shows each banana separated by a space. So the exact result is \"banana banana banana\". But maybe the tool is designed to add spaces? Or maybe it's a typo in the tool's response.\n\nWait, in the initial tool definition provided to me, the function has a description that says \"Repeat `text`\". The typical behavior of such tools might concatenate without spaces, but the tool response here shows spaces. Since the user says \"show me the exact result\", I need to output what the tool returned.\n\nSo the tool's response is \"banana banana banana\", which has spaces between each instance. So the answer is that exact string. Therefore, after using the tool, the result is \"banana banana banana\".\n"
-            },
-            "fingerprint": "9867cdae6c08f525"
-          }
-        }
-      },
-      {
-        "text": "The exact result after repeating the word \"banana\" 3 times is:\n\nbanana banana banana",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 497,
-      "output_tokens": 364,
-      "total_tokens": 861
-    },
-    "response_id": "chatcmpl-843",
-    "finish_reason": "stop",
-    "model": "qwen3:4b",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "message": {
-            "content": "The exact result after repeating the word \"banana\" 3 times is:\n\nbanana banana banana",
-            "reasoning": "Okay, let me see. The user asked to repeat \"banana\" 3 times using the repeat_text tool. I called the tool with text \"banana\" and times 3. The response from the tool was \"banana banana banana\".\n\nWait, but the expected output might be a single string with spaces or without? The tool's description says \"Repeat `text`\". So normally, repeating \"banana\" three times would be \"bananabananabanana\" without spaces. But the tool response here shows each word separated by a space.\n\nHmm, maybe the tool adds spaces between repetitions? Let me check the tool's function definition again. The tool's function says: \"Repeat `text`. `times` is optional and defaults to 2.\" The description says the output is the repeated text. The example response from the tool here is \"banana banana banana\", which has spaces between each repetition.\n\nWait, but the user said \"show me the exact result\". The tool's response shows each banana separated by a space. So the exact result is \"banana banana banana\". But maybe the tool is designed to add spaces? Or maybe it's a typo in the tool's response.\n\nWait, in the initial tool definition provided to me, the function has a description that says \"Repeat `text`\". The typical behavior of such tools might concatenate without spaces, but the tool response here shows spaces. Since the user says \"show me the exact result\", I need to output what the tool returned.\n\nSo the tool's response is \"banana banana banana\", which has spaces between each instance. So the answer is that exact string. Therefore, after using the tool, the result is \"banana banana banana\".\n",
-            "role": "assistant"
-          }
-        }
-      ],
-      "created": 0,
-      "id": "chatcmpl-843",
-      "model": "qwen3:4b",
-      "object": "chat.completion",
-      "system_fingerprint": "fp_ollama",
-      "usage": {
-        "completion_tokens": 364,
-        "prompt_tokens": 497,
-        "total_tokens": 861
-      }
-    }
-  },
-  "openai_compatible/reasoning_roundtrip_streaming.yaml#0": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "Okay, let's see. I need to figure out when two trains meet and how far from Station A that is. Let me start by understanding the problem.\n\nFirst, Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B, which is 300 km away from A, 30 minutes later (so 0.5 hours later) at 90 km/h towards A. We need to find the meeting time and the distance from A.\n\nHmm, so I should probably set up a timeline. Let's denote the time when Train 2 leaves as t = 0. Then Train 1 has already been traveling for 0.5 hours when Train 2 leaves. Wait, no. Wait, the problem says: \"Another train leaves Station B 30 minutes later\". So, Train 1 leaves A at time t = 0, then 30 minutes later (t = 0.5 hours) Train 2 leaves B. So, when we calculate, we need to consider that Train 1 has a head start of 30 minutes.\n\nLet me define variables.\n\nLet’s let t be the time in hours that Train ... wait, maybe better to set t as the time after Train 2 leaves. So, when Train 2 starts moving, Train 1 has already been moving for 0.5 hours.\n\nSo, distance covered by Train 1 by the time Train 2 starts: 60 km/h * 0.5 h = 30 km. So Train 1 is 30 km away from A when Train 2 starts.\n\nTotal distance between A and B is 300 km, so the distance between Train 1 and Train 2 when Train 2 starts is 300 km - 30 km = 270 km.\n\nNow, after Train 2 starts, both trains are moving towards each other. So their relative speed is 60 km/h + 90 km/h = 150 km/h.\n\nSo the time it takes for them to meet after Train 2 starts is the distance between them divided by relative speed: 270 km / 150 km/h = 1.8 hours.\n\nWait, let me check that.\n\nWait, 270 divided by 150 is 1.8 hours. Let's see: 1.8 hours is 1 hour and 48 minutes.\n\nSo, the total time from when Train 1 left A is 0.5 hours + 1.8 hours = 2.3 hours.\n\nSo meeting time is 2.3 hours after Train 1 left A. If Train 1 left at some time, say, 12:00 PM, then they meet at 2:18 PM (since 0.3 hours is 18 minutes).\n\nBut the problem says \"at what time do they meet\". Wait, the problem doesn't specify the departure time of Train 1. Wait, the problem says: \"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later...\" So maybe the problem expects the answer in terms of time after leaving A? Wait, no, it says \"at what time do they meet\", but since it's not given a specific departure time, maybe we can just state the time elapsed from when Train 1 left Station A, and the distance.\n\nWait, the problem says \"Show your work.\" So probably the answer is the time after Train 1 departed, and the distance from A.\n\nWait, let me re-read the problem: \"At what time do they meet, and how far from Station A?\"\n\nHmm, the problem doesn't specify the starting time, so maybe the answer is in terms of time elapsed, or maybe it's a trick question. But I think in such problems, usually, you state when they meet relative to the start of the first train.\n\nWait, maybe the problem expects the answer like \"2 hours and 18 minutes after the first train leaves\" and \"138 km from Station A\". Let's check.\n\nLet me set up equations.\n\nLet t be the time in hours after Train 1 left Station A.\n\nThen, Train 2 left Station B 0.5 hours later, so Train 2's travel time is (t - 0.5) hours.\n\nDistance covered by Train 1 when they meet: 60t km.\n\nDistance covered by Train 2 when they meet: 90(t - 0.5) km.\n\nSince the total distance between A and B is 300 km, the sum of their distances should be 300 km.\n\nSo:\n\n60t + 90(t - 0.5) = 300\n\nLet's solve that.\n\n60t + 90t - 45 = 300\n\n150t = 300 + 45 = 345\n\nt = 345 / 150 = 2.3 hours.\n\nYes, 2.3 hours is 2 hours and 18 minutes (since 0.3 hours * 60 minutes/hour = 18 minutes).\n\nSo they meet 2.3 hours after Train 1 left Station A.\n\nDistance from Station A is 60t = 60 * 2.3 = 138 km.\n\nLet me verify.\n\nTrain 2's travel time is 2.3 - 0.5 = 1.8 hours.\n\nDistance covered by Train 2: 90 * 1.8 = 162 km.\n\n138 + 162 = 300 km. Perfect, that adds up.\n\nSo the meeting time is 2 hours and 18 minutes after the first train departed Station A, and they meet 138 km from Station A.\n\nThe problem says \"at what time do they meet\"—since the problem doesn't specify when the first train departed, the answer is probably expressed as \"2 hours 18 minutes after the first train leaves Station A\" and \"138 km from Station A\".\n\nI think that's it.\n\nLet me just check if the units make sense.\n\nSpeed of Train 1: 60 km/h, time = 2.3 h, so distance = 138 km.\n\nTrain 2: left 0.5 h later, so traveled 1.8 h, 90 km/h * 1.8 h = 162 km. 138 + 162 = 300 km, which is correct.\n\nYes, that seems right.\n",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning": "Okay, let's see. I need to figure out when two trains meet and how far from Station A that is. Let me start by understanding the problem.\n\nFirst, Train 1 leaves Station A at 60 km/h. Train 2 leaves Station B, which is 300 km away from A, 30 minutes later (so 0.5 hours later) at 90 km/h towards A. We need to find the meeting time and the distance from A.\n\nHmm, so I should probably set up a timeline. Let's denote the time when Train 2 leaves as t = 0. Then Train 1 has already been traveling for 0.5 hours when Train 2 leaves. Wait, no. Wait, the problem says: \"Another train leaves Station B 30 minutes later\". So, Train 1 leaves A at time t = 0, then 30 minutes later (t = 0.5 hours) Train 2 leaves B. So, when we calculate, we need to consider that Train 1 has a head start of 30 minutes.\n\nLet me define variables.\n\nLet’s let t be the time in hours that Train ... wait, maybe better to set t as the time after Train 2 leaves. So, when Train 2 starts moving, Train 1 has already been moving for 0.5 hours.\n\nSo, distance covered by Train 1 by the time Train 2 starts: 60 km/h * 0.5 h = 30 km. So Train 1 is 30 km away from A when Train 2 starts.\n\nTotal distance between A and B is 300 km, so the distance between Train 1 and Train 2 when Train 2 starts is 300 km - 30 km = 270 km.\n\nNow, after Train 2 starts, both trains are moving towards each other. So their relative speed is 60 km/h + 90 km/h = 150 km/h.\n\nSo the time it takes for them to meet after Train 2 starts is the distance between them divided by relative speed: 270 km / 150 km/h = 1.8 hours.\n\nWait, let me check that.\n\nWait, 270 divided by 150 is 1.8 hours. Let's see: 1.8 hours is 1 hour and 48 minutes.\n\nSo, the total time from when Train 1 left A is 0.5 hours + 1.8 hours = 2.3 hours.\n\nSo meeting time is 2.3 hours after Train 1 left A. If Train 1 left at some time, say, 12:00 PM, then they meet at 2:18 PM (since 0.3 hours is 18 minutes).\n\nBut the problem says \"at what time do they meet\". Wait, the problem doesn't specify the departure time of Train 1. Wait, the problem says: \"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later...\" So maybe the problem expects the answer in terms of time after leaving A? Wait, no, it says \"at what time do they meet\", but since it's not given a specific departure time, maybe we can just state the time elapsed from when Train 1 left Station A, and the distance.\n\nWait, the problem says \"Show your work.\" So probably the answer is the time after Train 1 departed, and the distance from A.\n\nWait, let me re-read the problem: \"At what time do they meet, and how far from Station A?\"\n\nHmm, the problem doesn't specify the starting time, so maybe the answer is in terms of time elapsed, or maybe it's a trick question. But I think in such problems, usually, you state when they meet relative to the start of the first train.\n\nWait, maybe the problem expects the answer like \"2 hours and 18 minutes after the first train leaves\" and \"138 km from Station A\". Let's check.\n\nLet me set up equations.\n\nLet t be the time in hours after Train 1 left Station A.\n\nThen, Train 2 left Station B 0.5 hours later, so Train 2's travel time is (t - 0.5) hours.\n\nDistance covered by Train 1 when they meet: 60t km.\n\nDistance covered by Train 2 when they meet: 90(t - 0.5) km.\n\nSince the total distance between A and B is 300 km, the sum of their distances should be 300 km.\n\nSo:\n\n60t + 90(t - 0.5) = 300\n\nLet's solve that.\n\n60t + 90t - 45 = 300\n\n150t = 300 + 45 = 345\n\nt = 345 / 150 = 2.3 hours.\n\nYes, 2.3 hours is 2 hours and 18 minutes (since 0.3 hours * 60 minutes/hour = 18 minutes).\n\nSo they meet 2.3 hours after Train 1 left Station A.\n\nDistance from Station A is 60t = 60 * 2.3 = 138 km.\n\nLet me verify.\n\nTrain 2's travel time is 2.3 - 0.5 = 1.8 hours.\n\nDistance covered by Train 2: 90 * 1.8 = 162 km.\n\n138 + 162 = 300 km. Perfect, that adds up.\n\nSo the meeting time is 2 hours and 18 minutes after the first train departed Station A, and they meet 138 km from Station A.\n\nThe problem says \"at what time do they meet\"—since the problem doesn't specify when the first train departed, the answer is probably expressed as \"2 hours 18 minutes after the first train leaves Station A\" and \"138 km from Station A\".\n\nI think that's it.\n\nLet me just check if the units make sense.\n\nSpeed of Train 1: 60 km/h, time = 2.3 h, so distance = 138 km.\n\nTrain 2: left 0.5 h later, so traveled 1.8 h, 90 km/h * 1.8 h = 162 km. 138 + 162 = 300 km, which is correct.\n\nYes, that seems right.\n"
-            },
-            "fingerprint": "4e87ad8c1b15269d"
-          }
-        }
-      },
-      {
-        "text": "To determine when the two trains meet and how far from Station A, we analyze the situation using relative motion and consistent units.\n\n---\n\n### **Step 1: Define Variables and Time Frame**\n\n- Let **Train 1** leave **Station A** at time $ t = 0 $.\n- **Train 2** leaves **Station B** (300 km away from A) at $ t = 0.5 $ hours later (i.e., 30 minutes after Train 1).\n- Let $ t $ be the time in **hours** after **Train 1** starts.\n\nSo, by the time Train 2 begins moving, Train 1 has already traveled:\n$$\n60 \\times 0.5 = 30 \\text{ km}\n$$\nThus, the distance between the two trains at $ t = 0.5 $ is:\n$$\n300 - 30 = 270 \\text{ km}\n$$\n\n---\n\n### **Step 2: Relative Speed and Meeting Time**\n\nAfter Train 2 starts, both trains move toward each other with a **combined speed** of:\n$$\n60 + 90 = 150 \\text{ km/h}\n$$\n\nThe time it takes for them to meet *after* Train 2 starts is:\n$$\n\\frac{270}{150} = 1.8 \\text{ hours}\n$$\n\nTherefore, they meet **after 1.8 hours** from when Train 2 started, which means they meet:\n$$\n0.5 + 1.8 = 2.3 \\text{ hours} \\text{ after Train 1 departed}\n$$\n\nConvert $ 2.3 $ hours to hours and minutes:\n$$\n2.3 = 2 \\text{ hours } + 0.3 \\times 60 = 18 \\text{ minutes}\n$$\n\n---\n\n### **Step 3: Distance from Station A at Meeting Point**\n\nTrain 1 travels for $ 2.3 $ hours at $ 60 $ km/h:\n$$\n60 \\times 2.3 = 138 \\text{ km}\n$$\n\nThis is the distance from **Station A**.\n\n---\n\n### ✅ **Final Answer**\n\n- **Time they meet**: **2 hours and 18 minutes after Train 1 departs Station A**\n- **Distance from Station A**: **138 km**\n\n$$\n\\boxed{138}\n$$",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 83,
-      "output_tokens": 1939,
-      "total_tokens": 2022
-    },
-    "response_id": "chatcmpl-180",
-    "finish_reason": "stop",
-    "model": "qwen3:4b",
-    "provider_request_id": null,
-    "raw": {
-      "usage": {
-        "completion_tokens": 1939,
-        "prompt_tokens": 83,
-        "total_tokens": 2022
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-180",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
-      }
-    }
-  },
-  "openai_compatible/streaming_smoke.yaml#0": {
-    "mode": "streaming",
-    "choice": [
-      {
-        "text": "Hmm, the user wants a concise explanation of what a solar eclipse is, and they specifically asked for it in one short paragraph with plain text. \n\nI need to make sure my response is accurate but super brief - no fluff. The key points are: solar eclipse = Moon blocking Sun's light, happens during lunar eclipse? Wait no, lunar is different - solar is Moon blocking Sun. Should clarify it's when the Moon passes between Earth and Sun, casting shadow on Earth. \n\nAlso important to mention it's a temporary event where Sun is partially or fully covered. Must avoid common mistakes like confusing with lunar eclipses. User said \"short paragraph\" so I'll aim for 20-30 words max. \n\nUser seems to want quick educational content - maybe a student doing homework or just curious. No need for complex terms like \"umbra\" or \"penumbra\" since they asked for concise. \n\nOkay, drafting: \"A solar eclipse occurs when the Moon passes between the Earth and Sun, temporarily blocking the Sun's light and casting a shadow on Earth.\" That's 15 words - perfect. Wait, is \"temporarily\" necessary? Well, it's brief but accurate. \n\nDouble-checking: yes, this covers the essentials without being technical. User said \"plain text\" so no markdown. Keeping it neutral and factual. \n\nFinal check: avoids saying \"lunar eclipse\" (which is wrong), specifies Moon between Earth/Sun, mentions shadow effect. Nailed it.\n</think>\n\nA solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light and casting a shadow on Earth.",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 39,
-      "output_tokens": 339,
-      "total_tokens": 378
-    },
-    "response_id": "chatcmpl-83",
-    "finish_reason": "stop",
-    "model": "qwen3:4b",
-    "provider_request_id": null,
-    "raw": {
-      "usage": {
-        "completion_tokens": 339,
-        "prompt_tokens": 39,
-        "total_tokens": 378
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-83",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
-      }
-    }
-  },
-  "openai_compatible/structured_output_smoke.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "text": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Rust\",\n  \"summary\": \"Local Rust community gathering for developers to share knowledge and discuss Rust programming language topics. Includes code reviews, talks, and networking opportunities. The group aims to foster collaboration and help developers improve their Rust skills and projects. This is a casual event for enthusiasts of all levels, from beginners to experienced Rust developers. Attendance is free, and snacks and drinks will be provided. All are welcome to attend and participate in discussions. The next meetup is scheduled for [Date] at [Time] in [Venue]. Please join us for an engaging and informative evening with fellow Rust developers in Seattle. We look forward to seeing you there. The next event is for [Date] at [Time] at [Venue]. If you're interested in joining, be sure to check the meetup's website for more details and registration. The group's goal is to provide a supportive environment for Rust developers in the Seattle area to learn, share, and collaborate on Rust-related projects. This event is a great opportunity to connect with like-minded individuals and get involved with the Rust community. The meetup will be held in the [Venue] and will include both technical discussions and social interaction to build community spirit. We encourage newcomers to participate and ask questions to help them get started with Rust. The event is open to all skill levels and focuses on real-world Rust usage and applications. Please note that the event is intended for [Seattle, WA] residents and is not open to international participants without prior approval. The next meetup is scheduled for [Date] at [Time] and will take place at [Venue]. Attendees may bring their own laptops or work on Rust projects during the event. This meetup is organized by the Seattle Rust Community Group, which has been active in the tech community for [X] years. The group is dedicated to promoting Rust language adoption and providing resources for developers in Seattle. The event will be conducted in English and is accessible for all participants with reasonable accommodations available upon request. The group has a strong focus on inclusivity and accessibility, ensuring that everyone can participate comfortably. This meetup is an excellent opportunity to stay connected with the Rust community and to contribute to the growth of the Rust ecosystem in Seattle. The next event is scheduled for [Date] at [Time] at [Place] (e.g., Seattle Center Convention Center). For more information, visit the group's website or follow their social media channels. Please come prepared to engage in conversations about Rust, share your experiences, and help others learn. This event is part of the broader Rust community in the Pacific Northwest and aims to support the local tech scene. The meetup is open to all who are interested in Rust, regardless of their experience level. We hope to see you there! The next event is scheduled for [Date] at [Time] at [Venue] and will be an interactive session with opportunities to learn and share. Please register early to secure your spot, as the group has limited capacity for attendees. The group has been hosting meetups for over [X] years and has a large following in the Seattle tech community. This meetup is designed to be both educational and social, with a focus on practical Rust applications and solutions. The group is active on social media and encourages participants to follow for updates and announcements. We look forward to seeing you at the next meetup in Seattle! The next event is scheduled for [Date] at [. Time] at [Venue]. We encourage you to bring your own laptop and code snippets to share and discuss. The event will follow a schedule that includes talks, code reviews, and open discussion periods. Please note that the group has a history of successful meetups in Seattle and is committed to maintaining a welcoming environment for all participants. The meetup will be held at [Venue] and will accommodate [Number] attendees. All event details can be found on the group's website or by contacting the organizers directly. The group is committed to promoting open-source collaboration and has been instrumental in supporting the growth of the Rust ecosystem in Seattle. This event is an important part of the local tech community and provides a platform for developers to showcase their work and learn from others. The group has a diverse membership, including both experienced and beginner Rust developers, and is dedicated to creating a supportive and inclusive space for all. The next meetup is scheduled for [Date] at [Time] at [Venue]. Please make sure to check the group's website for any changes to the event details or additional information. We hope to see you there!\"\n}\n",
-        "native": null
-      }
-    ],
-    "usage": {
-      "input_tokens": 23,
-      "output_tokens": 927,
-      "total_tokens": 950
-    },
-    "response_id": "chatcmpl-49",
-    "finish_reason": "stop",
-    "model": "qwen3:4b",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "stop",
-          "index": 0,
-          "message": {
-            "content": "{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Rust\",\n  \"summary\": \"Local Rust community gathering for developers to share knowledge and discuss Rust programming language topics. Includes code reviews, talks, and networking opportunities. The group aims to foster collaboration and help developers improve their Rust skills and projects. This is a casual event for enthusiasts of all levels, from beginners to experienced Rust developers. Attendance is free, and snacks and drinks will be provided. All are welcome to attend and participate in discussions. The next meetup is scheduled for [Date] at [Time] in [Venue]. Please join us for an engaging and informative evening with fellow Rust developers in Seattle. We look forward to seeing you there. The next event is for [Date] at [Time] at [Venue]. If you're interested in joining, be sure to check the meetup's website for more details and registration. The group's goal is to provide a supportive environment for Rust developers in the Seattle area to learn, share, and collaborate on Rust-related projects. This event is a great opportunity to connect with like-minded individuals and get involved with the Rust community. The meetup will be held in the [Venue] and will include both technical discussions and social interaction to build community spirit. We encourage newcomers to participate and ask questions to help them get started with Rust. The event is open to all skill levels and focuses on real-world Rust usage and applications. Please note that the event is intended for [Seattle, WA] residents and is not open to international participants without prior approval. The next meetup is scheduled for [Date] at [Time] and will take place at [Venue]. Attendees may bring their own laptops or work on Rust projects during the event. This meetup is organized by the Seattle Rust Community Group, which has been active in the tech community for [X] years. The group is dedicated to promoting Rust language adoption and providing resources for developers in Seattle. The event will be conducted in English and is accessible for all participants with reasonable accommodations available upon request. The group has a strong focus on inclusivity and accessibility, ensuring that everyone can participate comfortably. This meetup is an excellent opportunity to stay connected with the Rust community and to contribute to the growth of the Rust ecosystem in Seattle. The next event is scheduled for [Date] at [Time] at [Place] (e.g., Seattle Center Convention Center). For more information, visit the group's website or follow their social media channels. Please come prepared to engage in conversations about Rust, share your experiences, and help others learn. This event is part of the broader Rust community in the Pacific Northwest and aims to support the local tech scene. The meetup is open to all who are interested in Rust, regardless of their experience level. We hope to see you there! The next event is scheduled for [Date] at [Time] at [Venue] and will be an interactive session with opportunities to learn and share. Please register early to secure your spot, as the group has limited capacity for attendees. The group has been hosting meetups for over [X] years and has a large following in the Seattle tech community. This meetup is designed to be both educational and social, with a focus on practical Rust applications and solutions. The group is active on social media and encourages participants to follow for updates and announcements. We look forward to seeing you at the next meetup in Seattle! The next event is scheduled for [Date] at [. Time] at [Venue]. We encourage you to bring your own laptop and code snippets to share and discuss. The event will follow a schedule that includes talks, code reviews, and open discussion periods. Please note that the group has a history of successful meetups in Seattle and is committed to maintaining a welcoming environment for all participants. The meetup will be held at [Venue] and will accommodate [Number] attendees. All event details can be found on the group's website or by contacting the organizers directly. The group is committed to promoting open-source collaboration and has been instrumental in supporting the growth of the Rust ecosystem in Seattle. This event is an important part of the local tech community and provides a platform for developers to showcase their work and learn from others. The group has a diverse membership, including both experienced and beginner Rust developers, and is dedicated to creating a supportive and inclusive space for all. The next meetup is scheduled for [Date] at [Time] at [Venue]. Please make sure to check the group's website for any changes to the event details or additional information. We hope to see you there!\"\n}\n",
-            "role": "assistant"
-          }
-        }
-      ],
-      "created": 0,
-      "id": "chatcmpl-49",
-      "model": "qwen3:4b",
-      "object": "chat.completion",
-      "system_fingerprint": "fp_ollama",
-      "usage": {
-        "completion_tokens": 927,
-        "prompt_tokens": 23,
-        "total_tokens": 950
       }
     }
   }

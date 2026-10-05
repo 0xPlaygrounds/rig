@@ -696,7 +696,7 @@ fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
     {
         return Err(EncodeError::request(format!(
             "Ollama's OpenAI-compatible API ignores `{key}`; send it through the native \
-             route (`Ollama::completion`)"
+             route (`Ollama::native_completion`)"
         )));
     }
     let Some(think) = map.shift_remove("think") else {

@@ -15,7 +15,6 @@ mod cassette {
     mod history_survival_matrix;
     mod models;
     mod native;
-    mod openai_compatible;
     mod portability_matrix;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;

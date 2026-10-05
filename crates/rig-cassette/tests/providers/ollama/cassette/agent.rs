@@ -13,7 +13,7 @@ async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(BASIC_PREAMBLE)
-            .additional_params(serde_json::json!({ "think": false }))
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
             .build();
 
         let response = agent
@@ -26,13 +26,10 @@ async fn completion_smoke() {
     .await;
 }
 
-/// Guards the native token-limit mapping on the wire. `max_tokens` has no
-/// top-level field in Ollama's `/api/chat`; the equivalent is the
-/// `num_predict` model parameter inside `options`. The recorded request
-/// carries `"options":{"num_predict":24}`, and its request snapshot pins the
-/// body, so a request that dropped `num_predict` or moved it to the top level
-/// would fail here. The recorded response has `done_reason: "length"`, the
-/// daemon confirming it honored the budget.
+/// Guards the token limit on the wire: the recorded request carries
+/// `"max_tokens":24`, and the cassette matcher compares request bodies, so a
+/// request that dropped it would stop matching. The recorded response
+/// finishes on `"length"`, the daemon confirming it honored the budget.
 #[tokio::test]
 async fn completion_respects_max_tokens() {
     with_ollama_cassette("agent/max_tokens", |client| async move {
@@ -41,7 +38,7 @@ async fn completion_respects_max_tokens() {
             // Small enough to truncate the answer well before the model would
             // stop on its own, so the budget is what ends generation.
             .max_tokens(24)
-            .additional_params(serde_json::json!({ "think": false }))
+            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
             .build();
 
         let response = agent

@@ -292,7 +292,7 @@ fn the_response_format_waits_for_a_tool_result() {
 /// `num_ctx` and `options`, which are refused rather than dropped.
 #[test]
 fn ollama_compatible_bodies_rewrite_think_and_refuse_native_options() {
-    let wire = crate::providers::ollama::OllamaConfig::new().openai_compatible_completion("qwen3");
+    let wire = crate::providers::ollama::OllamaConfig::new().completion("qwen3");
     let sent = |params: Value| {
         let mut request = CompletionRequest::new("hi");
         request.additional_params = Some(params);

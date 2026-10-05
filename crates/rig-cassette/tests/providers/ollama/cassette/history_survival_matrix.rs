@@ -9,7 +9,7 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: OllamaModels, cell: Cell) -> rig::Model<rig::providers::ollama::Chat> {
+fn model(client: OllamaModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::Chat> {
     client.completion(cell.model)
 }
 

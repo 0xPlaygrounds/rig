@@ -18,7 +18,7 @@ use crate::wire::{Mode, Operation, Wire, WireFrame};
 const MODEL: &str = "qwen3:4b";
 
 fn wire() -> Chat {
-    OllamaConfig::new().openai_compatible_completion(MODEL)
+    OllamaConfig::new().completion(MODEL)
 }
 
 fn sent(history: Vec<Message>) -> Value {

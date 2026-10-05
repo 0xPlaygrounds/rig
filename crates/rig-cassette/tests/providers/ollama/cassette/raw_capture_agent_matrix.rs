@@ -1,6 +1,6 @@
 //! Matrix for raw provider response capture through the agent on Ollama's
-//! native `/api/chat` route: the hook events, `PromptResponse::completion_calls`,
-//! and the streamed terminal record.
+//! OpenAI-compatible Chat Completions route: the hook events, `PromptResponse::completion_calls`, and
+//! the streamed terminal record.
 //!
 //! # The feature
 //!
@@ -16,7 +16,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; its counters match the fixture's `done` record | recorded |
+//! | 2 | `hooks_observe_raw_streamed` | `agent.prompt(..).stream()` | `CompletionResponse` and `ModelTurnFinished` see `raw`; its usage matches the fixture's usage chunk | recorded |
 //! | 3 | `multi_turn_tool_run_records_distinct_raw_blocking` | tool run, `agent.prompt` | two `completion_calls`, two different payloads whose fingerprints equal the interactions' in order; the first carries `tool_calls` | recorded |
 //!
 //! Both surfaces fire the same two events per accepted model turn:
@@ -30,8 +30,8 @@
 //! # Identity on this route
 //!
 //! Ollama assigns no request id. What distinguishes one attempt from the next
-//! is its token accounting and timing, which the daemon reports on every
-//! blocking body and on every stream's `done` record. Each cell compares that *fingerprint*
+//! is its token accounting, which the daemon reports on every blocking body
+//! and on every stream's usage chunk. Each cell compares that *fingerprint*
 //! of the observed payload against the fixture's, interaction by
 //! interaction, and the multi-turn cells additionally require the two
 //! recorded fingerprints to differ, so "the second call carries the second
@@ -69,8 +69,12 @@ const TEXT_PROMPT: &str = "Reply with exactly the single word: pong";
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3, then state the result.";
 
 /// The fields that fingerprint one Ollama attempt: reported on every blocking
-/// body and every stream's `done` record, never scrubbed by the harness.
-const FINGERPRINT_FIELDS: [&str; 3] = ["/prompt_eval_count", "/eval_count", "/total_duration"];
+/// body and every stream's usage chunk, never scrubbed by the harness.
+const FINGERPRINT_FIELDS: [&str; 3] = [
+    "/usage/prompt_tokens",
+    "/usage/completion_tokens",
+    "/usage/total_tokens",
+];
 
 /// One `CompletionResponse` observation: which driver fired it, whether the
 /// canonical content carried a tool call, and the attempt's `raw`.
@@ -177,20 +181,21 @@ async fn drain(mut stream: rig::agent::StreamingResult) -> StreamedRun {
 }
 
 /// The JSON documents of one recorded response: the blocking body itself, or
-/// each NDJSON record of a stream.
+/// each SSE data frame of a stream.
 fn recorded_documents(response: &str) -> Vec<Value> {
     if let Ok(body) = serde_json::from_str::<Value>(response) {
         return vec![body];
     }
     response
         .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
+        .filter_map(|line| line.trim().strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
         .collect()
 }
 
-/// Every recorded interaction's `done` record, in wire order: the blocking
-/// body itself, or the stream's last record. Asserts the premise on the way:
-/// each reports the fingerprint fields.
+/// Every recorded interaction's usage-bearing record, in wire order: the
+/// blocking body itself, or the stream's usage chunk. Asserts the premise on
+/// the way: each reports the fingerprint fields.
 fn recorded_completed_records(scenario: &str, streamed: bool) -> Vec<Value> {
     let records: Vec<Value> = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario)
         .iter()
@@ -203,8 +208,8 @@ fn recorded_completed_records(scenario: &str, streamed: bool) -> Vec<Value> {
             );
             documents
                 .into_iter()
-                .rfind(|document| document.get("done") == Some(&Value::Bool(true)))
-                .unwrap_or_else(|| panic!("{scenario}: the recorded reply should end on `done`"))
+                .rfind(|document| document.get("usage").is_some_and(Value::is_object))
+                .unwrap_or_else(|| panic!("{scenario}: the recorded reply should report usage"))
         })
         .collect();
     assert!(
@@ -242,22 +247,25 @@ fn fingerprints(payloads: &[Value]) -> Vec<Vec<(&'static str, Value)>> {
 
 /// Whether each recorded interaction's assistant message carries a
 /// `tool_calls` entry naming `add`, in wire order. A stream carries its call
-/// on a record before the `done` one, so the streamed side scans every record.
+/// on a delta before the usage chunk, so the streamed side scans every frame.
 fn recorded_add_call_turns(scenario: &str) -> Vec<bool> {
     recorded_interaction_bodies(OLLAMA_PROVIDER, scenario)
         .iter()
         .map(|(_, response)| {
             recorded_documents(response).into_iter().any(|record| {
-                record
-                    .pointer("/message/tool_calls")
-                    .into_iter()
-                    .filter_map(Value::as_array)
-                    .any(|calls| {
-                        calls.iter().any(|call| {
-                            call.pointer("/function/name")
-                                == Some(&Value::String(Adder::NAME.to_string()))
-                        })
+                [
+                    "/choices/0/message/tool_calls",
+                    "/choices/0/delta/tool_calls",
+                ]
+                .into_iter()
+                .filter_map(|pointer| record.pointer(pointer))
+                .filter_map(Value::as_array)
+                .any(|calls| {
+                    calls.iter().any(|call| {
+                        call.pointer("/function/name")
+                            == Some(&Value::String(Adder::NAME.to_string()))
                     })
+                })
             })
         })
         .collect()
@@ -300,7 +308,7 @@ async fn hooks_observe_raw_streamed() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .max_tokens(64)
-                .additional_params(json!({ "think": false }))
+                .additional_params(json!({ "reasoning_effort": "none" }))
                 .add_hook(hook)
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
@@ -327,11 +335,8 @@ async fn hooks_observe_raw_streamed() {
     assert_eq!(&turns[0], raw, "both events observe the same payload");
     // The streamed payload is the *terminal* record: the stream's accounting,
     // not its message content.
-    assert_eq!(raw["done"], true);
-    assert!(
-        raw.pointer("/message/content")
-            .is_none_or(|content| content == "")
-    );
+    assert!(raw.get("usage").is_some_and(Value::is_object));
+    assert!(raw.get("choices").is_none());
     let records = recorded_completed_records(scenario, true);
     assert_eq!(records.len(), 1);
     assert_eq!(fingerprints(&responses), fingerprints(&records));
@@ -354,7 +359,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(TOOLS_PREAMBLE)
-                .additional_params(json!({ "think": false }))
+                .additional_params(json!({ "reasoning_effort": "none" }))
                 .tool(Adder)
                 .add_hook(hook)
                 .build();
@@ -386,19 +391,19 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
     );
     assert!(
         raws[0]
-            .pointer("/message/tool_calls/0/function/name")
+            .pointer("/choices/0/message/tool_calls/0/function/name")
             .is_some_and(|name| name == Adder::NAME),
         "the first payload carries the wire's tool_calls: {:?}",
         raws[0]
     );
     assert_eq!(
-        raws[0].pointer("/message/tool_calls/0/function/arguments"),
-        records[0].pointer("/message/tool_calls/0/function/arguments"),
+        raws[0].pointer("/choices/0/message/tool_calls/0/function/arguments"),
+        records[0].pointer("/choices/0/message/tool_calls/0/function/arguments"),
         "raw carries the wire's tool-call arguments untouched"
     );
     assert!(
         raws[1]
-            .pointer("/message/tool_calls")
+            .pointer("/choices/0/message/tool_calls")
             .is_none_or(|calls| calls.as_array().is_some_and(Vec::is_empty)),
         "the second payload is the text turn: {:?}",
         raws[1]

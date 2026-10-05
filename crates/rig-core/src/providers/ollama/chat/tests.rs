@@ -18,7 +18,7 @@ use crate::wire::{Mode, Operation, Wire};
 const MODEL: &str = "qwen3:8b";
 
 fn wire() -> Chat {
-    OllamaConfig::new().completion(MODEL)
+    OllamaConfig::new().native_completion(MODEL)
 }
 
 fn name(name: &str) -> ToolName {
@@ -117,6 +117,56 @@ fn every_additional_param_lands_in_its_place() {
     );
     // A request with nothing to tune sends no options.
     assert!(body(CompletionRequest::new("hi")).get("options").is_none());
+}
+
+/// `/api/chat` reads thinking from `think`, so a `reasoning_effort` key is a
+/// model option like any other, sent with a warning that names `think`.
+#[test]
+fn reasoning_effort_is_an_option_with_a_warning() {
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Clone)]
+    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for SharedWriter {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.0
+                .lock()
+                .expect("the log buffer is not poisoned")
+                .extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_ansi(false)
+        .without_time()
+        .with_writer({
+            let captured = captured.clone();
+            move || SharedWriter(captured.clone())
+        })
+        .finish();
+    let sent = tracing::subscriber::with_default(subscriber, || {
+        body(with_params(json!({"reasoning_effort": "high"})))
+    });
+    assert_eq!(sent["options"], json!({"reasoning_effort": "high"}));
+    assert!(sent.get("think").is_none());
+    let logs = String::from_utf8(
+        captured
+            .lock()
+            .expect("the log buffer is not poisoned")
+            .clone(),
+    )
+    .expect("the logs are UTF-8");
+    assert!(logs.contains("takes `think`"), "{logs}");
 }
 
 /// A value the daemon cannot read is a request error, never dropped.
