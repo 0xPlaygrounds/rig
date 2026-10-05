@@ -460,7 +460,8 @@ pub struct Descriptor<'a> {
     /// What a runtime accounts for.
     pub capabilities: Capabilities,
     /// The telemetry operation for a call in each mode, when the endpoint
-    /// has a canonical name of its own (Gemini `generate_content`).
+    /// has a canonical name of its own (Gemini `generate_content`). The mode
+    /// itself is recorded separately, as `gen_ai.request.stream`.
     pub telemetry: Option<fn(Mode) -> crate::telemetry::GenAiOperation>,
 }
 

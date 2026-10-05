@@ -218,3 +218,67 @@ fn near_miss_completion_parent_warns_once_per_callsite() {
         "warning must point at the supported fix, got: {message}"
     );
 }
+
+/// A runtime's completion parent (an agent's chat span) is adopted by the
+/// provider's completion span, so the delivery mode reaches it the same way
+/// the operation does. A runtime still naming the deprecated streaming
+/// operation reports the standard `chat` operation and the stream flag.
+#[test]
+#[allow(deprecated)]
+fn adopted_completion_parents_report_the_standard_operation_and_stream_flag() {
+    let capture = TraceCapture::default();
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+    tracing::subscriber::with_default(capture.subscriber(), || {
+        for (operation, streaming) in [
+            (GenAiOperation::Chat, Some(false)),
+            (GenAiOperation::Chat, Some(true)),
+            (GenAiOperation::ChatStreaming, None),
+        ] {
+            let parent = completion_parent_span!(
+                target: "third_party_runtime",
+                name: "chat",
+                operation: Empty,
+                system_instructions: Option::<&str>::None,
+            );
+            let _entered = parent.enter();
+            let builder = SpanBuilder::new("prov", "model", operation);
+            match streaming {
+                Some(streaming) => builder.streaming(streaming),
+                None => builder,
+            }
+            .build();
+        }
+    });
+
+    let reported = capture
+        .spans()
+        .iter()
+        .map(|span| {
+            (
+                span.target,
+                span.value("gen_ai.operation.name").cloned(),
+                span.value("gen_ai.request.stream").cloned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        reported,
+        [
+            (
+                "third_party_runtime",
+                Some(json!("chat")),
+                Some(json!(false))
+            ),
+            (
+                "third_party_runtime",
+                Some(json!("chat")),
+                Some(json!(true))
+            ),
+            (
+                "third_party_runtime",
+                Some(json!("chat")),
+                Some(json!(true))
+            ),
+        ]
+    );
+}

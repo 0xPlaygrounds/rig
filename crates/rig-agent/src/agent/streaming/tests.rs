@@ -528,7 +528,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         .expect("outer span should be captured");
     let chat_spans = span_snapshot
         .iter()
-        .filter(|span| span.name == "chat_streaming")
+        .filter(|span| span.target == "rig::agent_chat")
         .collect::<Vec<_>>();
 
     assert_eq!(chat_spans.len(), expected_usages.len());
@@ -543,7 +543,12 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         // records its own operation onto it.
         assert_eq!(
             chat_span.text("gen_ai.operation.name").as_deref(),
-            Some("chat_streaming")
+            Some("chat")
+        );
+        assert_eq!(chat_span.name, "chat");
+        assert_eq!(
+            chat_span.value("gen_ai.request.stream"),
+            Some(&serde_json::json!(true))
         );
         // A counter the provider did not report leaves its span field unset.
         let field = |name: &str| chat_span.u64(name);
@@ -641,8 +646,8 @@ async fn capture_stream_message_telemetry(
     let span = spans
         .spans()
         .into_iter()
-        .find(|span| span.name == "chat_streaming")
-        .expect("chat_streaming span should be captured");
+        .find(|span| span.target == "rig::agent_chat")
+        .expect("the agent chat span should be captured");
     (span, recorded_model.requests())
 }
 
@@ -842,8 +847,8 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let chat_span = spans
         .spans()
         .into_iter()
-        .find(|span| span.name == "chat_streaming")
-        .expect("chat_streaming span should be captured");
+        .find(|span| span.target == "rig::agent_chat")
+        .expect("the agent chat span should be captured");
     assert!(
         chat_span.record_count("gen_ai.input.messages") > 0,
         "opt-in rejected stream should still record input messages"

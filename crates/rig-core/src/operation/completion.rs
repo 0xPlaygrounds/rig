@@ -44,13 +44,10 @@ impl Operation for Completion {
     /// The call's span names the model the request overrides to, when it
     /// names one: every wire honours the override on encode.
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold {
-        let telemetry = call.wire.telemetry.map_or_else(
-            || match call.mode {
-                Mode::Unary => GenAiOperation::Chat,
-                Mode::Streaming => GenAiOperation::ChatStreaming,
-            },
-            |telemetry| telemetry(call.mode),
-        );
+        let telemetry = call
+            .wire
+            .telemetry
+            .map_or(GenAiOperation::Chat, |telemetry| telemetry(call.mode));
         debug_assert!(telemetry.is_completion());
         let model = request
             .model
@@ -59,6 +56,7 @@ impl Operation for Completion {
             .or_else(|| call.wire.replay.map(|target| target.model()))
             .unwrap_or_default();
         let span = SpanBuilder::new(call.wire.name, model, telemetry)
+            .streaming(matches!(call.mode, Mode::Streaming))
             .system_instructions(
                 request.system_instructions(),
                 request.record_telemetry_content,
