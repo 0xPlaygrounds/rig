@@ -2037,6 +2037,11 @@ fn tool_input_streaming_reads_its_names_and_sends_the_beta_flag_once() {
             serde_json::from_value::<ToolInputStreaming>(json!(name)).ok(),
             Some(streaming)
         );
+        assert_eq!(serde_json::to_value(streaming).ok(), Some(json!(name)));
+        assert!(!format!("{streaming:?}").is_empty());
+    }
+    for unknown in [json!("fine_grained"), json!(1)] {
+        assert!(serde_json::from_value::<ToolInputStreaming>(unknown).is_err());
     }
     let wire = AnthropicConfig::new("k")
         .with_beta("fine-grained-tool-streaming-2025-05-14")
