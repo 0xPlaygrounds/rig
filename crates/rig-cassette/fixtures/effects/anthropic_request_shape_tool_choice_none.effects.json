@@ -124,14 +124,15 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfLcdVPLFQVZ4DJMY1Hcy"
+            "response_id": "msg_011Cfio5NwrJ9z79TKT7HesZ"
           },
-          "provider_request_id": "req_011CfLcdUuoVgAfp62JtDBUa",
+          "provider_request_id": "req_011Cfio5Na2z14nePqt9grN2",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [],
-            "id": "msg_011CfLcdVPLFQVZ4DJMY1Hcy",
+            "diagnostics": null,
+            "id": "msg_011Cfio5NwrJ9z79TKT7HesZ",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

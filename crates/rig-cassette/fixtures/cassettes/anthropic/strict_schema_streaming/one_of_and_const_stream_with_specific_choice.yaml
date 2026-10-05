@@ -9,20 +9,20 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record a created event with id = 9.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Call the requested tool exactly once with the requested values.","type":"text"}],"tool_choice":{"name":"stream_event","type":"tool"},"tools":[{"description":"Record the requested values in a streaming strict tool call.","input_schema":{"additionalProperties":false,"properties":{"event":{"anyOf":[{"additionalProperties":false,"properties":{"id":{"type":"integer"},"kind":{"const":"created"}},"required":["kind","id"],"type":"object"},{"additionalProperties":false,"properties":{"id":{"type":"integer"},"kind":{"const":"deleted"}},"required":["kind","id"],"type":"object"}]}},"required":["event"],"type":"object"},"name":"stream_event","strict":true}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record a created event with id = 9.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Call the requested tool exactly once with the requested values.","type":"text"}],"tool_choice":{"name":"stream_event","type":"tool"},"tools":[{"description":"Record the requested values in a streaming strict tool call.","eager_input_streaming":true,"input_schema":{"additionalProperties":false,"properties":{"event":{"anyOf":[{"additionalProperties":false,"properties":{"id":{"type":"integer"},"kind":{"const":"created"}},"required":["kind","id"],"type":"object"},{"additionalProperties":false,"properties":{"id":{"type":"integer"},"kind":{"const":"deleted"}},"required":["kind","id"],"type":"object"}]}},"required":["event"],"type":"object"},"name":"stream_event","strict":true}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_011CfLd52PbCg97auesn9jtM
+    value: req_011Cfikkd1vGEExnmYzyaGC6
   body: |+
     event: message_start
-    data: {"message":{"container":null,"content":[],"id":"msg_011CfLd537zGi4tQBejTrgER","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":779,"output_tokens":14,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfikkdNWER1jDTsmc3vRn","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":779,"output_tokens":14,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_019PXraANn2Ncwf4V9rw9dpf","input":{},"name":"stream_event","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01NDqAq8r1fZahaXwSMeGxSm","input":{},"name":"stream_event","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -31,19 +31,16 @@ then:
     data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"{\"event","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"{\"event\": {\"kind\": \"","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"\": {\"ki","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"created\", \"id\": 9","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"nd\":\"cr","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"eated\",","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
-
-    event: content_block_delta
-    data: {"delta":{"partial_json":"\"id\":9}}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}

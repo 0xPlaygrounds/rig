@@ -91,7 +91,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01GgNEUDumBo7WZMM6qMidZn"
+                "provider": "toolu_0131dNkHGcu6fHpwsL6M8Xiz"
               },
               "function": {
                 "name": "final_result",
@@ -106,7 +106,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01GgNEUDumBo7WZMM6qMidZn",
+                  "id": "toolu_0131dNkHGcu6fHpwsL6M8Xiz",
                   "input": {
                     "title": "Seattle Rust Meetup",
                     "category": "Technology / Programming",
@@ -115,7 +115,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": "2f1bd9391c2c03cb"
+                "fingerprint": "7a0e472bffd84d95"
               }
             }
           ],
@@ -131,9 +131,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfLccqL7BL1hUWEhUi3xw"
+            "response_id": "msg_011CfikXC1uPLVYewF8YV1eA"
           },
-          "provider_request_id": "req_011CfLccoe9uGkgpsPVD2Zmn",
+          "provider_request_id": "req_011CfikXBfKKq9ELyVwkpAuo",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
@@ -147,7 +147,7 @@
               }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfLccqL7BL1hUWEhUi3xw",
+            "message_id": "msg_011CfikXC1uPLVYewF8YV1eA",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -167,7 +167,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"title"
+            "json": "{\"title\": \"Seattle"
           }
         },
         {
@@ -175,7 +175,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "\": \"Sea"
+            "json": " Rust Meetup"
           }
         },
         {
@@ -183,7 +183,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "ttle Ru"
+            "json": "\", \"category\": \"Technology"
           }
         },
         {
@@ -191,7 +191,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "st Meet"
+            "json": " /"
           }
         },
         {
@@ -199,7 +199,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "up\""
+            "json": " Programming"
           }
         },
         {
@@ -207,7 +207,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": ", \"cate"
+            "json": "\", \"summary\": \"A local gathering"
           }
         },
         {
@@ -215,7 +215,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "gory\": "
+            "json": " for Rust programming"
           }
         },
         {
@@ -223,7 +223,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "\"Techno"
+            "json": " language"
           }
         },
         {
@@ -231,7 +231,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "logy / "
+            "json": " enthusiasts in Seattle. Attend"
           }
         },
         {
@@ -239,7 +239,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "Program"
+            "json": "ees share"
           }
         },
         {
@@ -247,7 +247,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "ming\""
+            "json": " projects"
           }
         },
         {
@@ -255,7 +255,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": ", \"summ"
+            "json": ", discuss best"
           }
         },
         {
@@ -263,7 +263,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "ary\": \""
+            "json": " practices, explore"
           }
         },
         {
@@ -271,7 +271,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "A local"
+            "json": " new"
           }
         },
         {
@@ -279,7 +279,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": " gather"
+            "json": " Rust features, and network"
           }
         },
         {
@@ -287,7 +287,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "ing for"
+            "json": " with fellow developers passionate"
           }
         },
         {
@@ -295,7 +295,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": " Rust p"
+            "json": " about systems"
           }
         },
         {
@@ -303,7 +303,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "rogramm"
+            "json": " programming and memory"
           }
         },
         {
@@ -311,7 +311,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "ing lan"
+            "json": "-"
           }
         },
         {
@@ -319,7 +319,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "guage e"
+            "json": "safe software"
           }
         },
         {
@@ -327,7 +327,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "nthusia"
+            "json": " development."
           }
         },
         {
@@ -335,231 +335,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "sts in "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "Seattle"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": ". Atten"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "dees sh"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "are pro"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "jects, "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "discuss"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": " best p"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "ractice"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "s, expl"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "ore new"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": " Rust f"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "eatures"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": ", and n"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "etwork "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "with fe"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "llow de"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "veloper"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "s passi"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "onate a"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "bout sy"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "stems p"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "rogramm"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "ing and"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": " memory"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "-safe s"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "oftware"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": " develo"
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "pment.\"}"
+            "json": "\"}"
           }
         },
         {
@@ -570,7 +346,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01GgNEUDumBo7WZMM6qMidZn"
+                "provider": "toolu_0131dNkHGcu6fHpwsL6M8Xiz"
               },
               "function": {
                 "name": "final_result",
@@ -585,7 +361,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01GgNEUDumBo7WZMM6qMidZn",
+                  "id": "toolu_0131dNkHGcu6fHpwsL6M8Xiz",
                   "input": {
                     "title": "Seattle Rust Meetup",
                     "category": "Technology / Programming",
@@ -594,7 +370,7 @@
                   "name": "final_result",
                   "type": "tool_use"
                 },
-                "fingerprint": "2f1bd9391c2c03cb"
+                "fingerprint": "7a0e472bffd84d95"
               }
             }
           }

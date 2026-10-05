@@ -578,13 +578,13 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_011CfciAcZSDDarcuzidZx3m
+    value: req_011CfikYPaxPCm1GMUvFknSe
   body: |+
     event: message_start
-    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfciActncFEPY5FVLVJMt","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":622,"output_tokens":22,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfikYPvncRLwwRQ3ccwQA","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":622,"output_tokens":22,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
-    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01RseU4cNr18LPj87HXhA7Gt","input":{},"name":"add","type":"tool_use"},"index":0,"type":"content_block_start"}
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_01CL8nu1dfchgrE6E1d1U1Sg","input":{},"name":"add","type":"tool_use"},"index":0,"type":"content_block_start"}
 
     event: ping
     data: {"type":"ping"}
@@ -596,10 +596,10 @@ then:
     data: {"delta":{"partial_json":"{\"x\": 9","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":", \"y\": ","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":", \"y\": 16","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_delta
-    data: {"delta":{"partial_json":"16}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
+    data: {"delta":{"partial_json":"}","type":"input_json_delta"},"index":0,"type":"content_block_delta"}
 
     event: content_block_stop
     data: {"index":0,"type":"content_block_stop"}
@@ -624,10 +624,10 @@ then:
   - name: content-type
     value: text/event-stream; charset=utf-8
   - name: request-id
-    value: req_011CfciAhoDG5bDsxBu3vFiB
+    value: req_011CfikYVnmALBrhTjTfuQp2
   body: |+
     event: message_start
-    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfciAi8nwyw2LvbxMnYuJ","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":704,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+    data: {"message":{"container":null,"content":[],"diagnostics":null,"id":"msg_011CfikYW96PxBjRsxECf6ie","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":704,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
 
     event: content_block_start
     data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
@@ -883,8 +883,8 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011CfciArhzNxNtqbUGJHkmh
-  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01JYKnvqWY6BS1sXSbL7ASij","input":{"x":7,"y":15},"name":"add","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfciAs4aHG2HJF7g3JdbP","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":622,"output_tokens":69,"service_tier":"standard"}}'
+    value: req_011CfioDFvefjtthgbMEMRsW
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_014rDo9JGfopcgwL3j4AcGTw","input":{"x":7,"y":15},"name":"add","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfioDGKTZV3qMyoYpVbFe","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":622,"output_tokens":69,"service_tier":"standard"}}'
 ---
 provider: anthropic
 encoder: POST /v1/messages
@@ -899,8 +899,8 @@ then:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011CfciAwvXQnE4qaDN57SRw
-  body: '{"container":null,"content":[{"text":"22","type":"text"}],"diagnostics":null,"id":"msg_011CfciAxGc8hkYzTSTAZS4N","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":704,"output_tokens":4,"service_tier":"standard"}}'
+    value: req_011CfioDMynNCREwuKfE7MHA
+  body: '{"container":null,"content":[{"text":"22","type":"text"}],"diagnostics":null,"id":"msg_011CfioDNMN8RGMpNx8Bg3PV","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":704,"output_tokens":4,"service_tier":"standard"}}'
 ---
 provider: anthropic
 encoder: POST /v1/messages

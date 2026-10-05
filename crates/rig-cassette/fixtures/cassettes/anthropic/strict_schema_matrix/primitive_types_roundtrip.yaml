@@ -9,12 +9,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record text = alpha, count = 7, ratio = 1.5, enabled = true, and nothing = null exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","input_schema":{"additionalProperties":false,"properties":{"count":{"type":"integer"},"enabled":{"type":"boolean"},"nothing":{"type":"null"},"ratio":{"type":"number"},"text":{"type":"string"}},"required":["text","count","ratio","enabled","nothing"],"type":"object"},"name":"record_primitives","strict":true}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record text = alpha, count = 7, ratio = 1.5, enabled = true, and nothing = null exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","eager_input_streaming":true,"input_schema":{"additionalProperties":false,"properties":{"count":{"type":"integer"},"enabled":{"type":"boolean"},"nothing":{"type":"null"},"ratio":{"type":"number"},"text":{"type":"string"}},"required":["text","count","ratio","enabled","nothing"],"type":"object"},"name":"record_primitives","strict":true}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011CfLcz6x3MTGgRrp317K3Z
-  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01YUVJ8WK57R7J74hDQCNHC7","input":{"count":7,"enabled":true,"nothing":null,"ratio":1.5,"text":"alpha"},"name":"record_primitives","type":"tool_use"}],"id":"msg_011CfLcz7QqDQfasjJhCo2bx","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":754,"output_tokens":109,"service_tier":"standard"}}'
+    value: req_011CfipEmeDxrK6iM4mgrw7R
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_014zTbXeQ92E7Koc3gepWsYC","input":{"count":7,"enabled":true,"nothing":null,"ratio":1.5,"text":"alpha"},"name":"record_primitives","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfipEn1oLGKrWLMwQvuKV","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":754,"output_tokens":109,"service_tier":"standard"}}'

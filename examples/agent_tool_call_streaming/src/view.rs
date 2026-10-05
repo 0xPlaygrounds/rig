@@ -16,9 +16,29 @@ struct CallView {
     tool: String,
     fragments: usize,
     arguments: String,
-    first: Option<Duration>,
-    last: Option<Duration>,
+    /// When each fragment arrived.
+    arrivals: Vec<Duration>,
     ended: Option<(String, Value)>,
+}
+
+impl CallView {
+    /// How evenly the fragments arrived: the 50 ms windows they landed in,
+    /// and the longest wait between two of them. A provider that holds an
+    /// argument back sends it in a few windows after a long wait.
+    fn pacing(&self) -> (usize, Duration) {
+        let windows: std::collections::BTreeSet<u128> =
+            self.arrivals.iter().map(|at| at.as_millis() / 50).collect();
+        let longest = self
+            .arrivals
+            .windows(2)
+            .filter_map(|pair| match pair {
+                [earlier, later] => Some(later.saturating_sub(*earlier)),
+                _ => None,
+            })
+            .max()
+            .unwrap_or_default();
+        (windows.len(), longest)
+    }
 }
 
 /// The tool calls of one completion, by part.
@@ -57,8 +77,7 @@ impl StreamView {
                         tool,
                         fragments: 0,
                         arguments: String::new(),
-                        first: None,
-                        last: None,
+                        arrivals: Vec::new(),
                         ended: None,
                     },
                 );
@@ -72,8 +91,7 @@ impl StreamView {
                 };
                 call.fragments += 1;
                 call.arguments.push_str(json);
-                call.first.get_or_insert(at);
-                call.last = Some(at);
+                call.arrivals.push(at);
                 let partial = Value::Object(parse_partial_arguments(&call.arguments));
                 println!(
                     "{stamp} part {} args   +{:>4}B {:?}  now {}",
@@ -117,17 +135,18 @@ impl StreamView {
             return true;
         }
         println!(
-            "\n{:<5} {:<12} {:>9} {:>14} {:<32} matches end",
-            "part", "tool", "fragments", "first..last", "call id"
+            "\n{:<5} {:<12} {:>9} {:>14} {:>8} {:>9} {:<32} matches end",
+            "part", "tool", "fragments", "first..last", "windows", "max gap", "call id"
         );
         let mut all_match = true;
         for (part, call) in &self.calls {
-            let window = match (call.first, call.last) {
+            let window = match (call.arrivals.first(), call.arrivals.last()) {
                 (Some(first), Some(last)) => {
                     format!("{}..{}ms", first.as_millis(), last.as_millis())
                 }
                 _ => "-".to_owned(),
             };
+            let (windows, longest) = call.pacing();
             let (id, matches) = match &call.ended {
                 Some((id, arguments)) => {
                     let joined = parse_partial_arguments(&call.arguments);
@@ -141,9 +160,10 @@ impl StreamView {
                 None => ("(never ended)", "-"),
             };
             println!(
-                "{part:<5} {:<12} {:>9} {window:>14} {:<32} {matches}",
+                "{part:<5} {:<12} {:>9} {window:>14} {windows:>8} {:>7}ms {:<32} {matches}",
                 call.tool,
                 call.fragments,
+                longest.as_millis(),
                 clip(id, 32)
             );
         }

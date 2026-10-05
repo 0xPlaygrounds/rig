@@ -2,7 +2,7 @@
   "header": {
     "deliveries": [
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "stream",
@@ -10,21 +10,21 @@
         }
       },
       {
-        "batch": 3,
+        "batch": 2,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 4,
+        "batch": 3,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 7,
+        "batch": 5,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -155,7 +155,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01RseU4cNr18LPj87HXhA7Gt"
+                "provider": "toolu_01CL8nu1dfchgrE6E1d1U1Sg"
               },
               "function": {
                 "name": "add",
@@ -169,7 +169,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01RseU4cNr18LPj87HXhA7Gt",
+                  "id": "toolu_01CL8nu1dfchgrE6E1d1U1Sg",
                   "input": {
                     "x": 9,
                     "y": 16
@@ -177,7 +177,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "ca4da2c9ffa69065"
+                "fingerprint": "16675b8e2dd372bf"
               }
             }
           ],
@@ -193,9 +193,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciActncFEPY5FVLVJMt"
+            "response_id": "msg_011CfikYPvncRLwwRQ3ccwQA"
           },
-          "provider_request_id": "req_011CfciAcZSDDarcuzidZx3m",
+          "provider_request_id": "req_011CfikYPaxPCm1GMUvFknSe",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
@@ -209,7 +209,7 @@
               }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfciActncFEPY5FVLVJMt",
+            "message_id": "msg_011CfikYPvncRLwwRQ3ccwQA",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -237,7 +237,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": ", \"y\": "
+            "json": ", \"y\": 16"
           }
         },
         {
@@ -245,7 +245,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "16}"
+            "json": "}"
           }
         },
         {
@@ -256,7 +256,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01RseU4cNr18LPj87HXhA7Gt"
+                "provider": "toolu_01CL8nu1dfchgrE6E1d1U1Sg"
               },
               "function": {
                 "name": "add",
@@ -270,7 +270,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01RseU4cNr18LPj87HXhA7Gt",
+                  "id": "toolu_01CL8nu1dfchgrE6E1d1U1Sg",
                   "input": {
                     "x": 9,
                     "y": 16
@@ -278,7 +278,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "ca4da2c9ffa69065"
+                "fingerprint": "16675b8e2dd372bf"
               }
             }
           }
@@ -344,7 +344,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01RseU4cNr18LPj87HXhA7Gt"
+                    "provider": "toolu_01CL8nu1dfchgrE6E1d1U1Sg"
                   },
                   "function": {
                     "name": "add",
@@ -358,7 +358,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01RseU4cNr18LPj87HXhA7Gt",
+                      "id": "toolu_01CL8nu1dfchgrE6E1d1U1Sg",
                       "input": {
                         "x": 9,
                         "y": 16
@@ -366,7 +366,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "ca4da2c9ffa69065"
+                    "fingerprint": "16675b8e2dd372bf"
                   }
                 }
               ],
@@ -375,7 +375,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciActncFEPY5FVLVJMt"
+                "response_id": "msg_011CfikYPvncRLwwRQ3ccwQA"
               },
               "stop": "tool_use"
             },
@@ -385,7 +385,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01RseU4cNr18LPj87HXhA7Gt"
+                    "provider": "toolu_01CL8nu1dfchgrE6E1d1U1Sg"
                   },
                   "name": "add",
                   "content": [
@@ -458,9 +458,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciAi8nwyw2LvbxMnYuJ"
+            "response_id": "msg_011CfikYW96PxBjRsxECf6ie"
           },
-          "provider_request_id": "req_011CfciAhoDG5bDsxBu3vFiB",
+          "provider_request_id": "req_011CfikYVnmALBrhTjTfuQp2",
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -474,7 +474,7 @@
               }
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfciAi8nwyw2LvbxMnYuJ",
+            "message_id": "msg_011CfikYW96PxBjRsxECf6ie",
             "model": "claude-sonnet-4-6"
           }
         }

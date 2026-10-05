@@ -163,7 +163,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01CxNsHcC5qcQPjeYDwLBKoc"
+                "provider": "toolu_01GmCL1fghqcG9yf4uWRdvv4"
               },
               "function": {
                 "name": "subtract",
@@ -177,7 +177,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01CxNsHcC5qcQPjeYDwLBKoc",
+                  "id": "toolu_01GmCL1fghqcG9yf4uWRdvv4",
                   "input": {
                     "x": 2,
                     "y": 5
@@ -185,7 +185,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": "fff6d7302ff6a402"
+                "fingerprint": "af4726672f68ddb6"
               }
             }
           ],
@@ -201,9 +201,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciBcR2kPzwNdo6mnhWQ"
+            "response_id": "msg_011CfikjYrsag8ZVhbTBoNM8"
           },
-          "provider_request_id": "req_011CfciBc6S3J7AG6jYQiie1",
+          "provider_request_id": "req_011CfikjYVYm3irAxDYPqpWe",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
@@ -217,7 +217,7 @@
               }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfciBcR2kPzwNdo6mnhWQ",
+            "message_id": "msg_011CfikjYrsag8ZVhbTBoNM8",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -245,7 +245,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": ", \"y\": "
+            "json": ", \"y\": 5"
           }
         },
         {
@@ -253,7 +253,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "5}"
+            "json": "}"
           }
         },
         {
@@ -264,7 +264,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01CxNsHcC5qcQPjeYDwLBKoc"
+                "provider": "toolu_01GmCL1fghqcG9yf4uWRdvv4"
               },
               "function": {
                 "name": "subtract",
@@ -278,7 +278,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01CxNsHcC5qcQPjeYDwLBKoc",
+                  "id": "toolu_01GmCL1fghqcG9yf4uWRdvv4",
                   "input": {
                     "x": 2,
                     "y": 5
@@ -286,7 +286,7 @@
                   "name": "subtract",
                   "type": "tool_use"
                 },
-                "fingerprint": "fff6d7302ff6a402"
+                "fingerprint": "af4726672f68ddb6"
               }
             }
           }
@@ -350,7 +350,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01CxNsHcC5qcQPjeYDwLBKoc"
+                    "provider": "toolu_01GmCL1fghqcG9yf4uWRdvv4"
                   },
                   "function": {
                     "name": "subtract",
@@ -364,7 +364,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01CxNsHcC5qcQPjeYDwLBKoc",
+                      "id": "toolu_01GmCL1fghqcG9yf4uWRdvv4",
                       "input": {
                         "x": 2,
                         "y": 5
@@ -372,7 +372,7 @@
                       "name": "subtract",
                       "type": "tool_use"
                     },
-                    "fingerprint": "fff6d7302ff6a402"
+                    "fingerprint": "af4726672f68ddb6"
                   }
                 }
               ],
@@ -381,7 +381,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciBcR2kPzwNdo6mnhWQ"
+                "response_id": "msg_011CfikjYrsag8ZVhbTBoNM8"
               },
               "stop": "tool_use"
             },
@@ -391,7 +391,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01CxNsHcC5qcQPjeYDwLBKoc"
+                    "provider": "toolu_01GmCL1fghqcG9yf4uWRdvv4"
                   },
                   "name": "subtract",
                   "content": [
@@ -485,9 +485,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciBhJxeHeTWJ9ptizbg"
+            "response_id": "msg_011CfikjekKsitR1EQagC7RD"
           },
-          "provider_request_id": "req_011CfciBgyNn2UPZELSEQQS9",
+          "provider_request_id": "req_011CfikjeMX6haL9RtCfSchy",
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -501,7 +501,7 @@
               }
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011CfciBhJxeHeTWJ9ptizbg",
+            "message_id": "msg_011CfikjekKsitR1EQagC7RD",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -520,7 +520,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "The result"
+            "text": "The result of"
           }
         },
         {
@@ -528,7 +528,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " of 2 - 5"
+            "text": " 2 - 5 "
           }
         },
         {
@@ -536,7 +536,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " is **-3**."
+            "text": "is **-3**."
           }
         },
         {

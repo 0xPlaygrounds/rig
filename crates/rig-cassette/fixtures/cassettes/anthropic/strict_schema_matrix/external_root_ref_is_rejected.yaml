@@ -9,12 +9,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call record_external_ref.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","input_schema":{"$ref":"https://example.com/schemas/input.json"},"name":"record_external_ref","strict":true}]}'
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call record_external_ref.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","eager_input_streaming":true,"input_schema":{"$ref":"https://example.com/schemas/input.json"},"name":"record_external_ref","strict":true}]}'
 then:
   status: 400
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011CfLcyrZc71xwZ9FU9NVCU
-  body: '{"error":{"message":"tools.0.custom.input_schema.type: Field required","type":"invalid_request_error"},"request_id":"req_011CfLcyrZc71xwZ9FU9NVCU","type":"error"}'
+    value: req_011CfipEJiUSSw2NkS56vsMn
+  body: '{"error":{"message":"tools.0.custom.input_schema.type: Field required","type":"invalid_request_error"},"request_id":"req_011CfipEJiUSSw2NkS56vsMn","type":"error"}'

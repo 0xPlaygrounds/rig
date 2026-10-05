@@ -142,7 +142,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_015SZv9zwURJmrvy3mcCBx3p"
+                "provider": "toolu_011SJK1weWgzkNa4YLXaGmzF"
               },
               "function": {
                 "name": "add",
@@ -156,7 +156,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_015SZv9zwURJmrvy3mcCBx3p",
+                  "id": "toolu_011SJK1weWgzkNa4YLXaGmzF",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -164,7 +164,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "c70e0472f48f6255"
+                "fingerprint": "75f111e78c443f5f"
               }
             }
           ],
@@ -180,9 +180,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchjsRTKa26BVT9cHnCr"
+            "response_id": "msg_011CfinqMcqTF5aZ3iUotdz2"
           },
-          "provider_request_id": "req_011Cfchjs67dHUzTNfSAJzWe",
+          "provider_request_id": "req_011CfinqME2tTvQ5zjWpnAdv",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -191,7 +191,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_015SZv9zwURJmrvy3mcCBx3p",
+                "id": "toolu_011SJK1weWgzkNa4YLXaGmzF",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -201,7 +201,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchjsRTKa26BVT9cHnCr",
+            "id": "msg_011CfinqMcqTF5aZ3iUotdz2",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -276,7 +276,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_015SZv9zwURJmrvy3mcCBx3p"
+                    "provider": "toolu_011SJK1weWgzkNa4YLXaGmzF"
                   },
                   "function": {
                     "name": "add",
@@ -290,7 +290,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_015SZv9zwURJmrvy3mcCBx3p",
+                      "id": "toolu_011SJK1weWgzkNa4YLXaGmzF",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -298,7 +298,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "c70e0472f48f6255"
+                    "fingerprint": "75f111e78c443f5f"
                   }
                 }
               ],
@@ -307,7 +307,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfchjsRTKa26BVT9cHnCr"
+                "response_id": "msg_011CfinqMcqTF5aZ3iUotdz2"
               },
               "stop": "tool_use"
             },
@@ -317,7 +317,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_015SZv9zwURJmrvy3mcCBx3p"
+                    "provider": "toolu_011SJK1weWgzkNa4YLXaGmzF"
                   },
                   "name": "add",
                   "content": [
@@ -390,9 +390,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchjxqdkzV5A9QTdmZjz"
+            "response_id": "msg_011CfinqTUZxVaJpZQBd3rkn"
           },
-          "provider_request_id": "req_011CfchjxUKB1SVv77GiX9Zt",
+          "provider_request_id": "req_011CfinqT6FQVYWzzxaf7Xao",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -403,7 +403,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchjxqdkzV5A9QTdmZjz",
+            "id": "msg_011CfinqTUZxVaJpZQBd3rkn",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

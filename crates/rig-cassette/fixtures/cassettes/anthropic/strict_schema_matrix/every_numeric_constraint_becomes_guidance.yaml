@@ -9,12 +9,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record value = 6 exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","input_schema":{"additionalProperties":false,"properties":{"value":{"description":"A constrained test value.\n\n{minimum: 2, maximum: 10, exclusiveMinimum: 1, exclusiveMaximum: 11, multipleOf: 2}","type":"integer"}},"required":["value"],"type":"object"},"name":"record_constrained_number","strict":true}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record value = 6 exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","eager_input_streaming":true,"input_schema":{"additionalProperties":false,"properties":{"value":{"description":"A constrained test value.\n\n{minimum: 2, maximum: 10, exclusiveMinimum: 1, exclusiveMaximum: 11, multipleOf: 2}","type":"integer"}},"required":["value"],"type":"object"},"name":"record_constrained_number","strict":true}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011Cfcz3UQDbNU7kzRC4Q4FE
-  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01DBq8Bk93F5anZZ3PNaGo8q","input":{"value":6},"name":"record_constrained_number","type":"tool_use"}],"diagnostics":null,"id":"msg_011Cfcz3UkoHtQa5Qovsgpvg","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":734,"output_tokens":41,"service_tier":"standard"}}'
+    value: req_011CfipC8dhJSCDJdUEPi5YK
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01MFha73LBN7Cb3mFa5dKS8P","input":{"value":6},"name":"record_constrained_number","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfipC9123Nymi4pXVBM3U","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":734,"output_tokens":41,"service_tier":"standard"}}'

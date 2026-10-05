@@ -18,15 +18,21 @@
 //! cargo run -p agent_tool_call_streaming -- openai-responses --mode agent
 //! cargo run -p agent_tool_call_streaming -- gemini --mode core
 //! cargo run -p agent_tool_call_streaming -- deepseek --stop-after 5
+//! cargo run -p agent_tool_call_streaming -- anthropic --tool-input-streaming off
 //! ```
 //!
 //! Providers: `anthropic` (`ANTHROPIC_API_KEY`), `openai` (Chat Completions)
 //! and `openai-responses` (`OPENAI_API_KEY`), `gemini` and
 //! `gemini-interactions` (`GEMINI_API_KEY`), `deepseek` (`DEEPSEEK_API_KEY`),
-//! `openrouter` (`OPENROUTER_API_KEY`). Gemini's generateContent sends each
-//! call whole, so its calls start, carry one fragment, and end together.
+//! `deepseek-anthropic` (DeepSeek's Anthropic-format endpoint, as an
+//! Anthropic-compatible gateway, `DEEPSEEK_API_KEY`), `openrouter`
+//! (`OPENROUTER_API_KEY`). Gemini's generateContent sends each call whole,
+//! so its calls start, carry one fragment, and end together.
 //! `--stop-after N` stops the agent run from a hook after N argument
 //! fragments, before any call ends, and shows that no tool ran.
+//! `--tool-input-streaming eager|beta|off` chooses how an Anthropic-format
+//! provider is asked to stream tool input; with `off`, Anthropic holds a
+//! long argument value back and sends it in one burst.
 
 mod hook;
 mod tools;
@@ -40,13 +46,23 @@ use rig::completion::CompletionRequest;
 use rig::message::{Message, ToolChoice, ToolResultContent};
 use rig::operation::Completion;
 use rig::prelude::*;
-use rig::providers::{anthropic, deepseek, gemini, openai, openrouter};
+use rig::providers::anthropic::{self, AnthropicConfig, ToolInputStreaming};
+use rig::providers::{deepseek, gemini, openai, openrouter};
 use rig::streaming::Item;
 use rig::tool::ToolSet;
 
 use hook::FragmentHook;
 use tools::{Add, Executed, WriteFile};
 use view::StreamView;
+
+/// DeepSeek's Anthropic-format endpoint, as any Anthropic-compatible gateway
+/// is described.
+const DEEPSEEK_ANTHROPIC: anthropic::Dialect = anthropic::compatible(
+    "deepseek-anthropic",
+    "https://api.deepseek.com/anthropic",
+    "DEEPSEEK_API_KEY",
+    None,
+);
 
 const PREAMBLE: &str = "You are a careful assistant. Use the tools you are given. \
                         When asked for several tool calls, make them all in one turn.";
@@ -64,6 +80,7 @@ enum Provider {
     Gemini,
     GeminiInteractions,
     DeepSeek,
+    DeepSeekAnthropic,
     OpenRouter,
 }
 
@@ -76,10 +93,11 @@ impl Provider {
             "gemini" => Self::Gemini,
             "gemini-interactions" => Self::GeminiInteractions,
             "deepseek" => Self::DeepSeek,
+            "deepseek-anthropic" => Self::DeepSeekAnthropic,
             "openrouter" => Self::OpenRouter,
             other => bail!(
                 "unknown provider `{other}`: use anthropic, openai, openai-responses, gemini, \
-                 gemini-interactions, deepseek or openrouter"
+                 gemini-interactions, deepseek, deepseek-anthropic or openrouter"
             ),
         })
     }
@@ -89,20 +107,32 @@ impl Provider {
             Self::Anthropic => anthropic::completion::CLAUDE_HAIKU_4_5,
             Self::OpenAiChat | Self::OpenAiResponses => openai::GPT_5_4_MINI,
             Self::Gemini | Self::GeminiInteractions => gemini::completion::GEMINI_2_5_FLASH,
-            Self::DeepSeek => deepseek::DEEPSEEK_V4_FLASH,
+            Self::DeepSeek | Self::DeepSeekAnthropic => deepseek::DEEPSEEK_V4_FLASH,
             Self::OpenRouter => "openai/gpt-4o-mini",
         }
     }
 
     /// The completion model, its client built from the provider's
-    /// environment variables.
-    fn model(self, model: &str) -> Result<DynModel<Completion>> {
+    /// environment variables. An Anthropic-format provider asks for tool
+    /// input as `streaming` says, or as its dialect does.
+    fn model(
+        self,
+        model: &str,
+        streaming: Option<ToolInputStreaming>,
+    ) -> Result<DynModel<Completion>> {
         let context = || format!("building the {self:?} client from the environment");
+        let messages = |config: AnthropicConfig| {
+            let mut model = config.client().completion(model);
+            if let Some(streaming) = streaming {
+                model.wire = model.wire.with_tool_input_streaming(streaming);
+            }
+            model.erase()
+        };
         Ok(match self {
-            Self::Anthropic => anthropic::Anthropic::from_env()
-                .with_context(context)?
-                .completion(model)
-                .erase(),
+            Self::Anthropic => messages(AnthropicConfig::from_env().with_context(context)?),
+            Self::DeepSeekAnthropic => {
+                messages(AnthropicConfig::from_env_with(&DEEPSEEK_ANTHROPIC).with_context(context)?)
+            }
             Self::OpenAiChat => openai::OpenAI::from_env()
                 .with_context(context)?
                 .chat(model)
@@ -143,6 +173,7 @@ struct Options {
     model: String,
     mode: Mode,
     stop_after: Option<usize>,
+    tool_input_streaming: Option<ToolInputStreaming>,
 }
 
 impl Options {
@@ -158,6 +189,7 @@ impl Options {
             model: provider.default_model().to_owned(),
             mode: Mode::Both,
             stop_after: None,
+            tool_input_streaming: None,
         };
         while let Some(flag) = args.next() {
             let mut value = || args.next().ok_or_else(|| anyhow!("`{flag}` needs a value"));
@@ -173,6 +205,16 @@ impl Options {
                 }
                 "--stop-after" => {
                     options.stop_after = Some(value()?.parse().context("--stop-after")?);
+                }
+                "--tool-input-streaming" => {
+                    options.tool_input_streaming = Some(match value()?.as_str() {
+                        "eager" => ToolInputStreaming::Eager,
+                        "beta" => ToolInputStreaming::BetaHeader,
+                        "off" => ToolInputStreaming::Off,
+                        other => {
+                            bail!("unknown tool input streaming `{other}`: use eager, beta or off")
+                        }
+                    });
                 }
                 other => bail!("unknown flag `{other}`"),
             }
@@ -309,7 +351,9 @@ async fn agent_stream(model: DynModel<Completion>, stop_after: Option<usize>) ->
 #[tokio::main]
 async fn main() -> Result<()> {
     let options = Options::from_args()?;
-    let model = options.provider.model(&options.model)?;
+    let model = options
+        .provider
+        .model(&options.model, options.tool_input_streaming)?;
     println!("provider {:?}, model {}", options.provider, options.model);
 
     let mut all_match = true;

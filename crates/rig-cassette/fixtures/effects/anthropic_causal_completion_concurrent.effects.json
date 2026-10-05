@@ -109,7 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01DCHi7LAjASY8id3rGq1QyL"
+                "provider": "toolu_017nMyw7uQUzJpwCcc6Su6ot"
               },
               "function": {
                 "name": "lookup",
@@ -122,14 +122,14 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01DCHi7LAjASY8id3rGq1QyL",
+                  "id": "toolu_017nMyw7uQUzJpwCcc6Su6ot",
                   "input": {
                     "q": "What is the capital of France?"
                   },
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": "25b91bb7f66c2cb9"
+                "fingerprint": "81ea3a9f5a652fd2"
               }
             }
           ],
@@ -145,9 +145,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchcaWmExgeZfbg7sUzp"
+            "response_id": "msg_011CfinkxNkJgScMBCRkgHvN"
           },
-          "provider_request_id": "req_011CfchcaAgnWykJAqm44JWU",
+          "provider_request_id": "req_011Cfinkx2emXDqSXYkrPYfY",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -156,7 +156,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01DCHi7LAjASY8id3rGq1QyL",
+                "id": "toolu_017nMyw7uQUzJpwCcc6Su6ot",
                 "input": {
                   "q": "What is the capital of France?"
                 },
@@ -165,7 +165,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchcaWmExgeZfbg7sUzp",
+            "id": "msg_011CfinkxNkJgScMBCRkgHvN",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -273,9 +273,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfchcfh4RSJdcm3nP5b7B"
+            "response_id": "msg_011Cfinm3xqbmVXx34x6JiF1"
           },
-          "provider_request_id": "req_011CfchcfLyZzbY23HzcTLcu",
+          "provider_request_id": "req_011Cfinm3dFczyYp2dhqopDg",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -286,7 +286,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfchcfh4RSJdcm3nP5b7B",
+            "id": "msg_011Cfinm3xqbmVXx34x6JiF1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -338,7 +338,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01DCHi7LAjASY8id3rGq1QyL"
+                    "provider": "toolu_017nMyw7uQUzJpwCcc6Su6ot"
                   },
                   "function": {
                     "name": "lookup",
@@ -351,14 +351,14 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01DCHi7LAjASY8id3rGq1QyL",
+                      "id": "toolu_017nMyw7uQUzJpwCcc6Su6ot",
                       "input": {
                         "q": "What is the capital of France?"
                       },
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": "25b91bb7f66c2cb9"
+                    "fingerprint": "81ea3a9f5a652fd2"
                   }
                 }
               ],
@@ -367,7 +367,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfchcaWmExgeZfbg7sUzp"
+                "response_id": "msg_011CfinkxNkJgScMBCRkgHvN"
               },
               "stop": "tool_use"
             },
@@ -377,7 +377,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01DCHi7LAjASY8id3rGq1QyL"
+                    "provider": "toolu_017nMyw7uQUzJpwCcc6Su6ot"
                   },
                   "name": "lookup",
                   "content": [
@@ -449,9 +449,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchcjC9yA9rCrMEHVLaV"
+            "response_id": "msg_011Cfinm79qKJ4kp8AMfkHua"
           },
-          "provider_request_id": "req_011CfchcipqUsLXJsVY9cPhr",
+          "provider_request_id": "req_011Cfinm6pF4ETjmjG6vCJ3y",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -462,7 +462,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchcjC9yA9rCrMEHVLaV",
+            "id": "msg_011Cfinm79qKJ4kp8AMfkHua",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,

@@ -9,12 +9,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call record_scalar_root with alpha.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","input_schema":{"type":"string"},"name":"record_scalar_root","strict":true}]}'
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call record_scalar_root with alpha.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","eager_input_streaming":true,"input_schema":{"type":"string"},"name":"record_scalar_root","strict":true}]}'
 then:
   status: 400
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011CfLd3jMddiUMghGcJTFRd
-  body: '{"error":{"message":"tools.0.custom.input_schema.type: Input should be ''object''","type":"invalid_request_error"},"request_id":"req_011CfLd3jMddiUMghGcJTFRd","type":"error"}'
+    value: req_011CfipNVgzYTtkh327SVBkd
+  body: '{"error":{"message":"tools.0.custom.input_schema.type: Input should be ''object''","type":"invalid_request_error"},"request_id":"req_011CfipNVgzYTtkh327SVBkd","type":"error"}'

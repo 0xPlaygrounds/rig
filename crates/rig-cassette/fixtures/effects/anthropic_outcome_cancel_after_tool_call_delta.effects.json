@@ -130,7 +130,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"title"
+            "json": "{\"title\": \"Rust"
           }
         }
       ],

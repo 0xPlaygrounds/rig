@@ -112,7 +112,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01BMpqr6dbFJtgWcCq3tbYqU"
+                "provider": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ"
               },
               "function": {
                 "name": "add",
@@ -126,7 +126,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01BMpqr6dbFJtgWcCq3tbYqU",
+                  "id": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -134,7 +134,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "0b47504642110342"
+                "fingerprint": "9bd8f4581cb102a2"
               }
             }
           ],
@@ -150,9 +150,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfdxpw4sMDHoVik8w2ZUs"
+            "response_id": "msg_011CfikWgGVxxoYrJKfmegtJ"
           },
-          "provider_request_id": "req_011CfdxpvC2MvjXau5gAvuYe",
+          "provider_request_id": "req_011CfikWftBjSpMfWteVM4QP",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
@@ -166,7 +166,7 @@
               }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011Cfdxpw4sMDHoVik8w2ZUs",
+            "message_id": "msg_011CfikWgGVxxoYrJKfmegtJ",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -186,7 +186,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 1"
+            "json": "{\"x\": 17"
           }
         },
         {
@@ -194,7 +194,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "7"
+            "json": ", \"y\": 25"
           }
         },
         {
@@ -202,15 +202,7 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": ", \"y\": "
-          }
-        },
-        {
-          "item": "event",
-          "value": {
-            "event": "arguments",
-            "part": 0,
-            "json": "25}"
+            "json": "}"
           }
         },
         {
@@ -221,7 +213,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01BMpqr6dbFJtgWcCq3tbYqU"
+                "provider": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ"
               },
               "function": {
                 "name": "add",
@@ -235,7 +227,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01BMpqr6dbFJtgWcCq3tbYqU",
+                  "id": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -243,7 +235,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "0b47504642110342"
+                "fingerprint": "9bd8f4581cb102a2"
               }
             }
           }
@@ -315,7 +307,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01BMpqr6dbFJtgWcCq3tbYqU"
+                    "provider": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ"
                   },
                   "function": {
                     "name": "add",
@@ -329,7 +321,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01BMpqr6dbFJtgWcCq3tbYqU",
+                      "id": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -337,7 +329,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "0b47504642110342"
+                    "fingerprint": "9bd8f4581cb102a2"
                   }
                 }
               ],
@@ -346,7 +338,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfdxpw4sMDHoVik8w2ZUs"
+                "response_id": "msg_011CfikWgGVxxoYrJKfmegtJ"
               },
               "stop": "tool_use"
             },
@@ -356,7 +348,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01BMpqr6dbFJtgWcCq3tbYqU"
+                    "provider": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ"
                   },
                   "name": "add",
                   "content": [
@@ -406,13 +398,13 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
+              "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
               "native": {
                 "item": {
-                  "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
+                  "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                   "type": "text"
                 },
-                "fingerprint": "d4741149f204d3e4"
+                "fingerprint": "0403ecaff038be47"
               }
             }
           ],
@@ -428,9 +420,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfdxq2XXXd6vL57AJ1tMj"
+            "response_id": "msg_011CfikWn7yEiJZUJqxAV5cs"
           },
-          "provider_request_id": "req_011Cfdxq2ATG9c7CxKbrq2Ax",
+          "provider_request_id": "req_011CfikWmiuT2qbGq6TxnqEq",
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -444,7 +436,7 @@
               }
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011Cfdxq2XXXd6vL57AJ1tMj",
+            "message_id": "msg_011CfikWn7yEiJZUJqxAV5cs",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -511,7 +503,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " unable to complete"
+            "text": " unable to compute"
           }
         },
         {
@@ -519,7 +511,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": " the calculation"
+            "text": " the"
           }
         },
         {
@@ -527,7 +519,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": ". Please"
+            "text": " result. Please"
           }
         },
         {
@@ -551,7 +543,7 @@
           "value": {
             "event": "text",
             "part": 0,
-            "text": "."
+            "text": "!"
           }
         },
         {
@@ -561,13 +553,13 @@
             "part": 0,
             "content": {
               "type": "text",
-              "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
+              "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
               "native": {
                 "item": {
-                  "text": "I'm sorry, but the add tool returned an error and was unable to complete the calculation. Please try again later.",
+                  "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
                   "type": "text"
                 },
-                "fingerprint": "d4741149f204d3e4"
+                "fingerprint": "0403ecaff038be47"
               }
             }
           }
