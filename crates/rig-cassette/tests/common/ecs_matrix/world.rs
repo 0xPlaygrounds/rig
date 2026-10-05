@@ -168,8 +168,8 @@ fn gate_events(mut events: StreamEvents, tool: bool, release: Arc<Semaphore>) ->
     })
 }
 
-/// Whether a stream event is a tool call arriving: its arguments, which
-/// every call streams when it closes, before its end.
+/// Whether a stream event is a tool call arriving: a fragment of its
+/// arguments, which stream from its start to its end.
 pub(crate) fn is_tool_call_progress(event: &StreamEvent) -> bool {
     matches!(event, StreamEvent::Arguments { .. })
 }

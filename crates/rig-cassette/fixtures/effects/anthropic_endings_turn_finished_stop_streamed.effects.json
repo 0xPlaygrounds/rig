@@ -183,7 +183,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "add"
           }
         },
         {
@@ -191,7 +192,31 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 17, \"y\": 25}"
+            "json": "{\"x\": 1"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "7"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": ", \"y\": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "25}"
           }
         },
         {

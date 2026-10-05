@@ -180,8 +180,12 @@ pub enum StreamedResolution {
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is.
     EmitIngested,
-    /// Hold the ingested item back: it belongs to a tool call that is not
-    /// validated until its end.
+    /// Forward the ingested argument fragment of a call to an allowed tool,
+    /// once the tool-call delta hooks let it through. The call is not
+    /// executable until its end.
+    EmitToolCallDelta,
+    /// Hold the ingested item back: it belongs to a call naming a tool the
+    /// turn does not allow, which is resolved at its end.
     HoldToolCall,
     /// Forward the held items of the call that just ended, then its end
     /// carrying `call` (the call as validated, with a repaired name).
@@ -193,6 +197,15 @@ pub enum StreamedTurnEvent {
     /// `AgentRun::resolve_streamed_invalid_tool_call`, then apply the
     /// outcome with [`StreamedTurnAssembler::resolve_pending_invalid`].
     InvalidToolCall(StreamedInvalidToolCall),
+}
+
+/// A tool call still streaming: the tool it named as it started, whether
+/// its items stream live, and its argument text so far.
+#[derive(Clone, Serialize, Deserialize)]
+struct OpenCall {
+    name: Option<ToolName>,
+    live: bool,
+    arguments: String,
 }
 
 /// A complete tool call with a disallowed name, awaiting resolution.
@@ -212,6 +225,9 @@ pub struct StreamedTurnAssembler {
     text: String,
     /// Reasoning text per part, by the part's position.
     reasoning: BTreeMap<usize, String>,
+    /// Tool calls still streaming, by the part's position.
+    #[serde(default)]
+    open_calls: BTreeMap<usize, OpenCall>,
     pending_tool_calls: Vec<ToolCall>,
     pending_invalid: Option<PendingInvalid>,
     /// Calls an [`StreamedResolution::Ignored`] dropped: the stream's
@@ -259,6 +275,7 @@ impl StreamedTurnAssembler {
             allowed_tool_names,
             text: String::new(),
             reasoning: BTreeMap::new(),
+            open_calls: BTreeMap::new(),
             pending_tool_calls: Vec::new(),
             pending_invalid: None,
             ignored_calls: Vec::new(),
@@ -282,6 +299,20 @@ impl StreamedTurnAssembler {
     /// The reasoning text accumulated so far for the part at `index`.
     pub fn aggregated_reasoning(&self, index: usize) -> Option<&str> {
         self.reasoning.get(&index).map(String::as_str)
+    }
+
+    /// The argument text the streaming call at part `index` sent so far.
+    pub fn aggregated_arguments(&self, index: usize) -> Option<&str> {
+        self.open_calls
+            .get(&index)
+            .map(|call| call.arguments.as_str())
+    }
+
+    /// The tool the streaming call at part `index` named as it started.
+    pub fn streaming_tool_name(&self, index: usize) -> Option<&ToolName> {
+        self.open_calls
+            .get(&index)
+            .and_then(|call| call.name.as_ref())
     }
 
     /// Ingest one provider stream item and return what the driver must do.
@@ -327,14 +358,45 @@ impl StreamedTurnAssembler {
                 Ok(vec![StreamedTurnEvent::EmitIngested])
             }
             StreamEvent::Start {
+                part,
                 kind: PartKind::ToolCall,
-                ..
-            }
-            | StreamEvent::Arguments { .. } => Ok(vec![StreamedTurnEvent::HoldToolCall]),
-            StreamEvent::End {
-                content: AssistantContent::ToolCall(tool_call),
-                ..
+                name,
             } => {
+                let live = name
+                    .as_ref()
+                    .is_some_and(|name| self.allowed_tool_names.contains(name.as_str()));
+                self.open_calls.insert(
+                    part.index(),
+                    OpenCall {
+                        name: name.clone(),
+                        live,
+                        arguments: String::new(),
+                    },
+                );
+                Ok(vec![if live {
+                    StreamedTurnEvent::EmitIngested
+                } else {
+                    StreamedTurnEvent::HoldToolCall
+                }])
+            }
+            StreamEvent::Arguments { part, json } => {
+                let call = self.open_calls.entry(part.index()).or_insert(OpenCall {
+                    name: None,
+                    live: false,
+                    arguments: String::new(),
+                });
+                call.arguments.push_str(json);
+                Ok(vec![if call.live {
+                    StreamedTurnEvent::EmitToolCallDelta
+                } else {
+                    StreamedTurnEvent::HoldToolCall
+                }])
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(tool_call),
+            } => {
+                self.open_calls.remove(&part.index());
                 if !self
                     .allowed_tool_names
                     .contains(tool_call.function.name.as_str())

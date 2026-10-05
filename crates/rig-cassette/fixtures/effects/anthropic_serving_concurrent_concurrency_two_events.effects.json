@@ -266,7 +266,8 @@
           "value": {
             "event": "start",
             "part": 1,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "lookup_harbor_label"
           }
         },
         {
@@ -311,7 +312,8 @@
           "value": {
             "event": "start",
             "part": 2,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "lookup_orchard_label"
           }
         },
         {

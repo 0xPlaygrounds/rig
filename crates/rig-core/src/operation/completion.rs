@@ -299,6 +299,8 @@ impl Body {
 #[derive(Default)]
 struct Arguments {
     text: String,
+    /// How many bytes of `text` the stream has carried.
+    streamed: usize,
     overflowed: bool,
     /// Whether any fragment carried a non-blank byte.
     substantive: bool,
@@ -346,6 +348,22 @@ impl Arguments {
         function
     }
 
+    /// The text the stream has not carried yet, now marked carried. A text
+    /// that may still be a gateway's placeholder `null` waits, since the
+    /// first real fragment replaces it.
+    fn unstreamed(&mut self) -> Option<String> {
+        if "null".starts_with(self.text.trim()) {
+            return None;
+        }
+        let fragment = self.text.get(self.streamed..)?;
+        if fragment.is_empty() {
+            return None;
+        }
+        let fragment = fragment.to_owned();
+        self.streamed = self.text.len();
+        Some(fragment)
+    }
+
     /// Whether the text is a complete JSON object.
     fn complete(&self) -> bool {
         !self.overflowed
@@ -381,6 +399,41 @@ fn not_open(index: usize) -> ProviderError {
     ProviderError::Response(format!(
         "the reply wrote to item {index}, which is not open"
     ))
+}
+
+/// Carry what the open call `draft` has not streamed yet: its start once it
+/// names a tool, then the argument text since the last fragment. A call
+/// that never names a tool stays unseen, as its close drops it.
+fn stream_call(items: &mut Items, draft: &mut Draft) {
+    let Body::Call {
+        name, arguments, ..
+    } = &mut draft.body
+    else {
+        return;
+    };
+    if !draft.started {
+        let Ok(name) = ToolName::new(name.clone()) else {
+            return;
+        };
+        draft.started = true;
+        emit(
+            items,
+            StreamEvent::Start {
+                part: draft.part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            },
+        );
+    }
+    if let Some(json) = arguments.unstreamed() {
+        emit(
+            items,
+            StreamEvent::Arguments {
+                part: draft.part,
+                json,
+            },
+        );
+    }
 }
 
 impl Turn {
@@ -439,6 +492,7 @@ impl Turn {
 
     pub(crate) fn open_item(
         &mut self,
+        items: &mut Items,
         index: usize,
         block: Block,
         item: serde_json::Value,
@@ -463,6 +517,7 @@ impl Turn {
             Block::Opaque { replay } => Body::Opaque { replay },
         };
         self.insert(index, body, item);
+        stream_call(items, self.draft(index)?);
         Ok(())
     }
 
@@ -513,6 +568,7 @@ impl Turn {
                 name, arguments, ..
             } => {
                 arguments.push(fragment, name);
+                stream_call(items, draft);
                 return Ok(());
             }
             Body::Image(image) => {
@@ -537,6 +593,7 @@ impl Turn {
                 StreamEvent::Start {
                     part: draft.part,
                     kind: draft.body.kind(),
+                    name: None,
                 },
             );
         }
@@ -629,21 +686,36 @@ impl Turn {
                     );
                     return Ok(());
                 };
+                if !started {
+                    emit(
+                        items,
+                        StreamEvent::Start {
+                            part,
+                            kind: PartKind::ToolCall,
+                            name: Some(name.clone()),
+                        },
+                    );
+                }
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                let json = if arguments.text.is_empty() {
-                    serde_json::Value::Object(function.arguments.clone()).to_string()
+                // A call whose text never streamed states its arguments
+                // whole; one that streamed carries only its remainder.
+                let json = if arguments.streamed == 0 {
+                    Some(if arguments.text.is_empty() {
+                        serde_json::Value::Object(function.arguments.clone()).to_string()
+                    } else {
+                        arguments.text
+                    })
                 } else {
-                    arguments.text
+                    arguments
+                        .text
+                        .get(arguments.streamed..)
+                        .filter(|rest| !rest.is_empty())
+                        .map(str::to_owned)
                 };
-                emit(
-                    items,
-                    StreamEvent::Start {
-                        part,
-                        kind: PartKind::ToolCall,
-                    },
-                );
-                emit(items, StreamEvent::Arguments { part, json });
+                if let Some(json) = json {
+                    emit(items, StreamEvent::Arguments { part, json });
+                }
                 let call = ToolCall::new(id, function);
                 let content = with_item(AssistantContent::ToolCall(call), item);
                 emit(items, StreamEvent::End { part, content });
@@ -656,6 +728,7 @@ impl Turn {
                 StreamEvent::Start {
                     part,
                     kind: kind_of(&content),
+                    name: None,
                 },
             );
         }
@@ -714,7 +787,7 @@ impl Turn {
             None => {
                 self.end_run(items)?;
                 let index = self.fresh_index();
-                self.open_item(index, block, serde_json::Value::Null)?;
+                self.open_item(items, index, block, serde_json::Value::Null)?;
                 self.run = Some(index);
                 index
             }
@@ -749,11 +822,16 @@ impl Turn {
             content => content,
         };
         let part = self.next();
+        let name = match &content {
+            AssistantContent::ToolCall(call) => Some(call.function.name.clone()),
+            _ => None,
+        };
         emit(
             items,
             StreamEvent::Start {
                 part,
                 kind: kind_of(&content),
+                name,
             },
         );
         match &content {
@@ -1096,7 +1174,9 @@ impl<'id> Out<'id, Completion> {
         block: Block,
         item: serde_json::Value,
     ) -> Result<(), ProviderError> {
-        self.lock().fold.open_item(index, block, item)
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.open_item(items, index, block, item)
     }
 
     /// Append a fragment to the open item at `index`: text, reasoning, or a
@@ -1203,28 +1283,36 @@ impl<'id> Out<'id, Completion> {
         Ok(())
     }
 
-    /// Replace the text or reasoning of the open item at `index` with
-    /// `text`, the whole of it as the provider restates it at its end. The
-    /// fragments already streamed stand; the block ends holding `text`.
+    /// Replace the text, reasoning or argument JSON of the open item at
+    /// `index` with `text`, the whole of it as the provider restates it at
+    /// its end. The fragments already streamed stand and nothing more
+    /// streams for them; the block ends holding `text`.
     pub fn restate(&mut self, index: usize, text: &str) -> Result<(), ProviderError> {
-        if let Body::Text(body) | Body::Reasoning { text: body, .. } =
-            &mut self.lock().fold.draft(index)?.body
-        {
-            text.clone_into(body);
+        let mut shared = self.lock();
+        let draft = shared.fold.draft(index)?;
+        match &mut draft.body {
+            Body::Text(body) | Body::Reasoning { text: body, .. } => text.clone_into(body),
+            Body::Call { arguments, .. } => {
+                text.clone_into(&mut arguments.text);
+                // A call not yet started streams the restated text whole.
+                arguments.streamed = if draft.started { text.len() } else { 0 };
+            }
+            Body::Image(_) | Body::Opaque { .. } => {}
         }
         Ok(())
     }
 
-    /// Buffer one fragment of a tool call the provider streams, opening the
+    /// Write one fragment of a tool call the provider streams, opening the
     /// call at its first fragment. Its id and name may arrive in any
-    /// fragment; the call becomes visible when it closes. Calls are told
-    /// apart by `index` when the wire gives one. A new id under an index
-    /// starts a new call once the held call's arguments are a complete
+    /// fragment: the call starts streaming once it names a tool, carrying
+    /// the argument text held until then, and its end states its id. Calls
+    /// are told apart by `index` when the wire gives one. A new id under an
+    /// index starts a new call once the held call's arguments are a complete
     /// object or when it names a tool: some providers send a fresh id, and
-    /// no name, with every chunk of one call. Without
-    /// an index (`None`, or the wire's `null`), a fragment with an unseen id
-    /// opens a call, and one with no id continues the latest call while its
-    /// arguments are incomplete.
+    /// no name, with every chunk of one call. Without an index (`None`, or
+    /// the wire's `null`), a fragment with an unseen id opens a call, and one
+    /// with no id continues the latest call while its arguments are
+    /// incomplete.
     pub fn fragment(
         &mut self,
         index: Option<usize>,
@@ -1310,6 +1398,7 @@ impl<'id> Out<'id, Completion> {
         if let Some(fragment) = fragment.arguments {
             arguments.push(fragment, name);
         }
+        stream_call(items, turn.draft(index)?);
         Ok(())
     }
 

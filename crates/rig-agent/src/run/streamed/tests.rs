@@ -37,10 +37,16 @@ fn text(part: u32, text: &str) -> Vec<serde_json::Value> {
     ]
 }
 
-/// A call as every wire streams it: its start, its arguments, its end.
+/// A call as a wire that sends it whole streams it: its start naming the
+/// tool, its arguments, its end.
 fn call(part: u32, call: &ToolCall) -> Vec<serde_json::Value> {
     vec![
-        event(json!({"event": "start", "part": part, "kind": "tool_call"})),
+        event(json!({
+            "event": "start",
+            "part": part,
+            "kind": "tool_call",
+            "name": call.function.name,
+        })),
         event(json!({
             "event": "arguments",
             "part": part,

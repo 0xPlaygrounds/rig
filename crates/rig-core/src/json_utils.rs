@@ -217,6 +217,113 @@ pub fn parse_partial_object(text: &str) -> Option<serde_json::Map<String, serde_
         })
 }
 
+/// The best object a tool call's argument text states so far, for showing a
+/// call while it streams. It never fails: complete JSON parses as is, text
+/// with raw control characters or invalid escapes is repaired first, a
+/// cut-off prefix keeps the longest object it states
+/// ([`parse_partial_object`]), and anything else is an empty object, as is
+/// a top level that is not an object.
+///
+/// It is for display only. A call's arguments are what its end states, and
+/// only those are validated and executed.
+///
+/// ```
+/// use rig_core::streaming::parse_partial_arguments;
+///
+/// let partial = parse_partial_arguments(r#"{"path": "notes.md", "content": "Hel"#);
+/// assert_eq!(partial["path"], "notes.md");
+/// assert_eq!(partial["content"], "Hel");
+/// ```
+pub fn parse_partial_arguments(text: &str) -> serde_json::Map<String, serde_json::Value> {
+    if text.trim().is_empty() {
+        return serde_json::Map::new();
+    }
+    let repaired = repair_json(text);
+    let complete = serde_json::from_str(text)
+        .ok()
+        .or_else(|| serde_json::from_str(&repaired).ok());
+    if let Some(value) = complete {
+        return match value {
+            serde_json::Value::Object(object) => object,
+            _ => serde_json::Map::new(),
+        };
+    }
+    let cut = without_partial_escape(&repaired);
+    parse_partial_object(cut)
+        .or_else(|| parse_partial_object(text))
+        .unwrap_or_default()
+}
+
+/// `text` with raw control characters inside strings escaped and each
+/// backslash that starts no valid escape doubled, as models sometimes write
+/// them.
+fn repair_json(text: &str) -> String {
+    let mut repaired = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if !in_string {
+            in_string = c == '"';
+            repaired.push(c);
+            continue;
+        }
+        match c {
+            '"' => {
+                in_string = false;
+                repaired.push(c);
+            }
+            '\\' => match chars.peek() {
+                Some('"' | '\\' | '/' | 'b' | 'f' | 'n' | 'r' | 't' | 'u') => {
+                    repaired.push(c);
+                    if let Some(next) = chars.next() {
+                        repaired.push(next);
+                    }
+                }
+                // A trailing backslash may begin an escape the next fragment ends.
+                None => repaired.push(c),
+                Some(_) => repaired.push_str("\\\\"),
+            },
+            '\n' => repaired.push_str("\\n"),
+            '\r' => repaired.push_str("\\r"),
+            '\t' => repaired.push_str("\\t"),
+            c if c.is_control() => {
+                use std::fmt::Write as _;
+                // Writing to a `String` cannot fail.
+                let _ = write!(repaired, "\\u{:04x}", u32::from(c));
+            }
+            c => repaired.push(c),
+        }
+    }
+    repaired
+}
+
+/// `text` without a `\u` escape its end cuts short, which would otherwise
+/// cost the whole string it ends.
+fn without_partial_escape(text: &str) -> &str {
+    let bytes = text.as_bytes();
+    let tail = bytes.len().saturating_sub(5);
+    let Some(at) = (tail..bytes.len())
+        .rev()
+        .find(|at| bytes.get(*at..*at + 2) == Some(b"\\u"))
+    else {
+        return text;
+    };
+    let digits = bytes.get(at + 2..).unwrap_or_default();
+    // A preceding backslash run of odd length escapes this backslash itself.
+    let escaping = bytes
+        .get(..at)
+        .unwrap_or_default()
+        .iter()
+        .rev()
+        .take_while(|byte| **byte == b'\\')
+        .count();
+    if digits.len() < 4 && digits.iter().all(u8::is_ascii_hexdigit) && escaping % 2 == 0 {
+        text.get(..at).unwrap_or(text)
+    } else {
+        text
+    }
+}
+
 /// Serde adapters for JSON encoded inside strings. Empty or whitespace-only
 /// strings deserialize to empty objects.
 pub mod stringified_json {

@@ -123,7 +123,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "final_result"
           }
         },
         {
@@ -131,7 +132,15 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", \"summary\": \"A meetup.\"}"
+            "json": "{\"title\": \"Seattle Rust Meetup\", \"category\": \"Technology\", "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "\"summary\": \"A meetup.\"}"
           }
         },
         {

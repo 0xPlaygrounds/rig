@@ -2,29 +2,29 @@
   "header": {
     "deliveries": [
       {
-        "batch": 5,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "stream",
-          "items": 3
+          "items": 5
         }
       },
       {
-        "batch": 6,
+        "batch": 3,
         "id": 0,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 7,
+        "batch": 4,
         "id": 1,
         "kind": {
           "delivery": "outcome"
         }
       },
       {
-        "batch": 13,
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "stream",
@@ -32,7 +32,7 @@
         }
       },
       {
-        "batch": 13,
+        "batch": 7,
         "id": 2,
         "kind": {
           "delivery": "outcome"
@@ -220,7 +220,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "add"
           }
         },
         {
@@ -228,7 +229,23 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 9, \"y\": 16}"
+            "json": "{\"x\": 9"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": ", \"y\": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "16}"
           }
         },
         {

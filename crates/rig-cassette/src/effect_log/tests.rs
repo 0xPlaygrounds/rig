@@ -705,7 +705,12 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
             .enumerate()
             .flat_map(|(part, call)| {
                 [
-                    serde_json::json!({"event": "start", "part": part, "kind": "tool_call"}),
+                    serde_json::json!({
+                        "event": "start",
+                        "part": part,
+                        "kind": "tool_call",
+                        "name": call.function.name,
+                    }),
                     serde_json::json!({
                         "event": "arguments",
                         "part": part,

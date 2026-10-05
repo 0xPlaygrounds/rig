@@ -164,6 +164,8 @@ struct Slot {
     part: u64,
     /// A call's streamed argument text, or a custom call's input.
     arguments: String,
+    /// The argument JSON already written to the call.
+    sent: String,
     custom: bool,
     /// Whether the call's id was stated.
     named: bool,
@@ -418,6 +420,7 @@ impl ResponsesDecoder {
             field: None,
             part: 0,
             arguments: arguments.unwrap_or_default().to_owned(),
+            sent: String::new(),
             custom,
             named: item.str("call_id").is_some_and(|id| !id.is_empty()),
             titled: item.str("name").is_some_and(|name| !name.is_empty()),
@@ -427,6 +430,13 @@ impl ResponsesDecoder {
             self.indexed.insert(index, slot);
         }
         self.current = Some(slot);
+        if let Some(call) = self
+            .slots
+            .get_mut(slot)
+            .filter(|slot| slot.kind == Kind::Call)
+        {
+            send(call, out)?;
+        }
         Ok(slot)
     }
 
@@ -512,9 +522,13 @@ impl ResponsesDecoder {
         out.push(streamed.at, delta)
     }
 
-    /// Append an argument delta to the call `frame` addresses. A call shows
-    /// nothing until it closes, so its arguments wait for its done item.
-    fn arguments(&mut self, frame: &Value) -> Result<(), ProviderError> {
+    /// Append an argument delta to the call `frame` addresses and write
+    /// it to the call, which streams it.
+    fn arguments(
+        &mut self,
+        frame: &Value,
+        out: &mut Out<'_, Completion>,
+    ) -> Result<(), ProviderError> {
         let slot = self.addressed(frame, Kind::Call)?;
         if let Some(call) = slot
             .and_then(|slot| self.slots.get_mut(slot))
@@ -522,6 +536,7 @@ impl ResponsesDecoder {
         {
             call.arguments
                 .push_str(frame.str("delta").unwrap_or_default());
+            send(call, out)?;
         }
         Ok(())
     }
@@ -548,12 +563,13 @@ impl ResponsesDecoder {
             Kind::Call => {
                 nameless = !done.titled && item.str("name").is_none_or(str::is_empty);
                 let arguments = arguments_of(&item).unwrap_or_else(|| streamed_arguments(done));
+                let rest = remainder(done, &arguments, out)?;
                 out.fragment(
                     Some(at),
                     CallFragment {
                         id: item.str("call_id").filter(|_| !done.named),
                         name: item.str("name"),
-                        arguments: Some(&arguments),
+                        arguments: Some(&rest),
                     },
                 )?;
             }
@@ -637,7 +653,7 @@ impl ResponsesDecoder {
             }
             "response.reasoning_text.delta" => self.text(&frame, "reasoning", "content_index", out),
             "response.function_call_arguments.delta" | "response.custom_tool_call_input.delta" => {
-                self.arguments(&frame)
+                self.arguments(&frame, out)
             }
             _ => Ok(()),
         }
@@ -760,7 +776,7 @@ impl ResponsesDecoder {
         let open = self.slots.iter().any(|slot| slot.open);
         self.release(!open, &mut out)?;
         // A call never done shows what streamed, in a turn that fails.
-        for slot in self.slots.iter().filter(|slot| slot.open) {
+        for slot in self.slots.iter_mut().filter(|slot| slot.open) {
             if slot.kind == Kind::Call {
                 flush(slot, &mut out)?;
             }
@@ -782,13 +798,64 @@ impl ResponsesDecoder {
 }
 
 /// Give `slot`'s call what it streamed, before it closes undone.
-fn flush(slot: &Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+fn flush(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
     let arguments = streamed_arguments(slot);
+    let rest = remainder(slot, &arguments, out)?;
     let fragment = CallFragment {
-        arguments: Some(&arguments),
+        arguments: Some(&rest),
         ..CallFragment::default()
     };
     out.fragment(Some(slot.at), fragment)
+}
+
+/// Write the argument JSON `slot`'s call streamed so far that the call has
+/// not been given yet. A custom call's input streams inside its
+/// `{"input": ...}` object, escaped as the object's string, so its
+/// fragments join to the object its end states.
+fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
+    if slot.arguments.is_empty() {
+        return Ok(());
+    }
+    let streamed = if slot.custom {
+        let quoted = Value::String(slot.arguments.clone()).to_string();
+        // The string without its closing quote: later input extends it.
+        format!("{{\"input\":{}", &quoted[..quoted.len() - 1])
+    } else {
+        slot.arguments.clone()
+    };
+    let Some(rest) = streamed.strip_prefix(slot.sent.as_str()) else {
+        return Ok(());
+    };
+    if rest.is_empty() {
+        return Ok(());
+    }
+    let fragment = CallFragment {
+        arguments: Some(rest),
+        ..CallFragment::default()
+    };
+    out.fragment(Some(slot.at), fragment)?;
+    slot.sent = streamed;
+    Ok(())
+}
+
+/// What of `arguments`, the whole JSON `slot`'s call states, the call has
+/// not been given yet. When `arguments` does not extend what streamed, it
+/// replaces the call's text and nothing more streams: the call's end states
+/// it.
+fn remainder(
+    slot: &mut Slot,
+    arguments: &str,
+    out: &mut Out<'_, Completion>,
+) -> Result<String, ProviderError> {
+    let rest = match arguments.strip_prefix(slot.sent.as_str()) {
+        Some(rest) => rest.to_owned(),
+        None => {
+            out.restate(slot.at, arguments)?;
+            String::new()
+        }
+    };
+    arguments.clone_into(&mut slot.sent);
+    Ok(rest)
 }
 
 /// The argument JSON of what `slot`'s call streamed.

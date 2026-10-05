@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::completion::CompletionResponse;
 use crate::driver::{lock, record_request_id};
 use crate::error::{ErrorReport, ProviderError};
+pub use crate::json_utils::parse_partial_arguments;
 use crate::operation::{Completion, Turn};
 use crate::wasm_compat::WasmBoxedStream;
 use crate::wire::{Operation, Shared};

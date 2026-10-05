@@ -381,3 +381,278 @@ fn an_empty_or_null_id_names_no_call() {
         assert!(call.id.provider().is_none(), "{:?}", call.id);
     }
 }
+
+/// The events a decoded reply carried, in order, checked as a stream that
+/// may have stopped early.
+fn events(decoded: &Decoded<Completion>) -> Vec<StreamEvent> {
+    let items: Vec<Item<StreamEvent>> = decoded
+        .items
+        .iter()
+        .filter_map(|item| item.as_ref().ok().cloned())
+        .collect();
+    let transcript = Transcript::from_items(items).expect("a valid sequence");
+    transcript.events().cloned().collect()
+}
+
+/// A compact view of `events`: `start:<name>`, `args:<json>`, `text:<text>`
+/// and `end`, each with its part.
+fn shape(events: &[StreamEvent]) -> Vec<String> {
+    events
+        .iter()
+        .map(|event| match event {
+            StreamEvent::Start { part, name, .. } => format!(
+                "{}:start:{}",
+                part.index(),
+                name.as_ref().map_or("", ToolName::as_str)
+            ),
+            StreamEvent::Arguments { part, json } => format!("{}:args:{json}", part.index()),
+            StreamEvent::Text { part, text } => format!("{}:text:{text}", part.index()),
+            StreamEvent::Reasoning { part, text } => format!("{}:reasoning:{text}", part.index()),
+            StreamEvent::End { part, .. } => format!("{}:end", part.index()),
+        })
+        .collect()
+}
+
+/// The joined argument fragments of the call at `part`, and the arguments
+/// its end states.
+fn streamed_and_final(events: &[StreamEvent], part: usize) -> (String, Value) {
+    let streamed = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Arguments { part: at, json } if at.index() == part => Some(json.as_str()),
+            _ => None,
+        })
+        .collect();
+    let ended = events
+        .iter()
+        .find_map(|event| match event {
+            StreamEvent::End {
+                part: at,
+                content: AssistantContent::ToolCall(call),
+            } if at.index() == part => Some(call.function.arguments_value()),
+            _ => None,
+        })
+        .expect("the call ended");
+    (streamed, ended)
+}
+
+#[test]
+fn a_named_call_starts_when_it_opens_and_streams_each_fragment() {
+    let decoded = write(|out| {
+        out.open(
+            0,
+            Block::Call {
+                id: CallId::from_wire("call_1"),
+                name: name("lookup"),
+            },
+            Value::Null,
+        )?;
+        out.push(0, r#"{"city":"#)?;
+        out.open(1, Block::Text, Value::Null)?;
+        out.push(1, "checking")?;
+        out.push(0, r#""Paris"}"#)?;
+        out.finish(0)?;
+        out.finish(1)
+    });
+    let events = events(&decoded);
+    assert_eq!(
+        shape(&events),
+        [
+            "0:start:lookup",
+            r#"0:args:{"city":"#,
+            "1:start:",
+            "1:text:checking",
+            r#"0:args:"Paris"}"#,
+            "0:end",
+            "1:end",
+        ]
+    );
+    let (streamed, ended) = streamed_and_final(&events, 0);
+    assert_eq!(serde_json::from_str::<Value>(&streamed).ok(), Some(ended));
+}
+
+#[test]
+fn fragments_before_the_name_wait_for_it_then_stream() {
+    let decoded = write(|out| {
+        let fragment = |name, arguments| CallFragment {
+            id: Some("call_1"),
+            name,
+            arguments,
+        };
+        out.fragment(Some(0), fragment(None, Some(r#"{"x":"#)))?;
+        out.fragment(Some(0), fragment(Some("add"), None))?;
+        out.fragment(Some(0), fragment(None, Some("1,")))?;
+        out.fragment(Some(0), fragment(None, Some(r#""y":2}"#)))?;
+        Ok(())
+    });
+    let events = events(&decoded);
+    assert_eq!(
+        shape(&events),
+        [
+            "0:start:add",
+            r#"0:args:{"x":"#,
+            "0:args:1,",
+            r#"0:args:"y":2}"#,
+            "0:end",
+        ]
+    );
+    let (streamed, ended) = streamed_and_final(&events, 0);
+    assert_eq!(streamed, r#"{"x":1,"y":2}"#);
+    assert_eq!(ended, json!({"x": 1, "y": 2}));
+}
+
+#[test]
+fn parallel_calls_interleave_under_their_own_parts() {
+    let decoded = write(|out| {
+        let fragment = |id, name, arguments| CallFragment {
+            id: Some(id),
+            name: Some(name),
+            arguments: Some(arguments),
+        };
+        out.fragment(Some(0), fragment("a", "add", r#"{"x":"#))?;
+        out.fragment(Some(1), fragment("b", "weather", r#"{"city":"#))?;
+        out.fragment(Some(0), fragment("a", "add", "1}"))?;
+        out.fragment(Some(1), fragment("b", "weather", r#""Rome"}"#))?;
+        Ok(())
+    });
+    let events = events(&decoded);
+    assert_eq!(
+        shape(&events),
+        [
+            "0:start:add",
+            r#"0:args:{"x":"#,
+            "1:start:weather",
+            r#"1:args:{"city":"#,
+            "0:args:1}",
+            r#"1:args:"Rome"}"#,
+            "0:end",
+            "1:end",
+        ]
+    );
+    for (part, arguments) in [(0, json!({"x": 1})), (1, json!({"city": "Rome"}))] {
+        let (streamed, ended) = streamed_and_final(&events, part);
+        assert_eq!(ended, arguments);
+        assert_eq!(
+            serde_json::from_str::<Value>(&streamed).ok(),
+            Some(arguments)
+        );
+    }
+}
+
+#[test]
+fn a_call_sent_whole_starts_streams_once_and_ends() {
+    let decoded = write(|out| {
+        out.whole(
+            0,
+            Block::Call {
+                id: CallId::from_wire("call_1"),
+                name: name("add"),
+            },
+            Value::Null,
+            r#"{"x":1}"#,
+        )?;
+        out.open(
+            1,
+            Block::Call {
+                id: CallId::from_wire("call_2"),
+                name: name("noop"),
+            },
+            Value::Null,
+        )?;
+        out.finish(1)
+    });
+    assert_eq!(
+        shape(&events(&decoded)),
+        [
+            "0:start:add",
+            r#"0:args:{"x":1}"#,
+            "0:end",
+            "1:start:noop",
+            "1:args:{}",
+            "1:end",
+        ]
+    );
+}
+
+#[test]
+fn a_call_that_never_names_a_tool_streams_nothing() {
+    let decoded = write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: None,
+                arguments: Some(r#"{"x":1}"#),
+            },
+        )?;
+        out.open(1, Block::Text, Value::Null)?;
+        out.push(1, "done")?;
+        out.finish(1)
+    });
+    assert_eq!(
+        shape(&events(&decoded)),
+        ["1:start:", "1:text:done", "1:end"]
+    );
+}
+
+#[test]
+fn a_placeholder_null_waits_for_the_real_arguments() {
+    let decoded = write(|out| {
+        let fragment = |arguments| CallFragment {
+            id: Some("call_1"),
+            name: Some("add"),
+            arguments: Some(arguments),
+        };
+        out.fragment(Some(0), fragment("null"))?;
+        out.fragment(Some(0), fragment(r#"{"x":"#))?;
+        out.fragment(Some(0), fragment("1}"))?;
+        Ok(())
+    });
+    let events = events(&decoded);
+    assert_eq!(
+        shape(&events),
+        ["0:start:add", r#"0:args:{"x":"#, "0:args:1}", "0:end"]
+    );
+    let (streamed, ended) = streamed_and_final(&events, 0);
+    assert_eq!(streamed, r#"{"x":1}"#);
+    assert_eq!(ended, json!({"x": 1}));
+}
+
+#[test]
+fn a_reply_that_fails_mid_call_never_ends_the_call() {
+    let decoded = decode_with(Turn::relayed("test"), "test", |reply| {
+        let mut out = reply.out();
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("add"),
+                arguments: Some(r#"{"x":"#),
+            },
+        )?;
+        Err(ProviderError::Response("the connection dropped".to_owned()))
+    });
+    assert_eq!(shape(&events(&decoded)), ["0:start:add", r#"0:args:{"x":"#]);
+    assert!(decoded.outcome.is_err());
+}
+
+#[test]
+fn a_restated_call_starts_with_its_name() {
+    let call = ToolCall::from_wire(
+        "call_1",
+        crate::message::ToolFunction::new(name("add"), json!({"x": 1})),
+    );
+    let response = CompletionResponse::new(
+        vec![AssistantContent::ToolCall(call)],
+        crate::completion::Usage::default(),
+        crate::message::Origin::new("test", "test", "test"),
+        Value::Null,
+    );
+    let items = events_of(&response).expect("restates");
+    let transcript = Transcript::from_items(items).expect("a valid sequence");
+    let events: Vec<StreamEvent> = transcript.events().cloned().collect();
+    assert_eq!(
+        shape(&events),
+        ["0:start:add", r#"0:args:{"x":1}"#, "0:end"]
+    );
+}

@@ -228,7 +228,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "subtract"
           }
         },
         {
@@ -236,7 +237,23 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 2, \"y\": 5}"
+            "json": "{\"x\": 2"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": ", \"y\": "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "5}"
           }
         },
         {
