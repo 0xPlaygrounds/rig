@@ -711,3 +711,22 @@ fn a_placeholder_null_never_replaced_streams_the_ended_arguments() {
     let (streamed, ended) = streamed_and_final(&events, 0);
     assert_eq!(serde_json::from_str::<Value>(&streamed).ok(), Some(ended));
 }
+
+/// Restating an item with no text of its own changes nothing.
+#[test]
+fn restating_an_opaque_item_keeps_it() {
+    let decoded = write(|out| {
+        out.open(
+            0,
+            Block::Opaque { replay: true },
+            json!({"type": "compaction", "summary": "kept"}),
+        )?;
+        out.restate(0, "ignored")?;
+        out.finish(0)
+    });
+    let choice = response(decoded).choice;
+    assert!(
+        matches!(&choice[..], [AssistantContent::Opaque(opaque)] if opaque.item["summary"] == "kept"),
+        "{choice:?}"
+    );
+}

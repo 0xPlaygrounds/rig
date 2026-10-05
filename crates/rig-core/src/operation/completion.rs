@@ -633,7 +633,10 @@ impl Turn {
         index: usize,
         closing: Closing,
     ) -> Result<(), ProviderError> {
-        let draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
+        let mut draft = self.open.remove(&index).ok_or_else(|| not_open(index))?;
+        // A call streams what it has not yet: its start, if it names a tool,
+        // and the argument text since its last fragment.
+        stream_call(items, &mut draft);
         if self.run == Some(index) {
             self.run = None;
         }
@@ -686,36 +689,12 @@ impl Turn {
                     );
                     return Ok(());
                 };
-                if !started {
-                    emit(
-                        items,
-                        StreamEvent::Start {
-                            part,
-                            kind: PartKind::ToolCall,
-                            name: Some(name.clone()),
-                        },
-                    );
-                }
                 let function = arguments.function(name);
                 let (id, item) = self.distinct_call_id(id, item);
-                // A call whose text never streamed states its arguments
-                // whole; one that streamed carries only its remainder.
-                // A text that never got past a placeholder `null` states
-                // the arguments the call ends with instead.
-                let json = if arguments.streamed == 0 {
-                    Some(if "null".starts_with(arguments.text.trim()) {
-                        serde_json::Value::Object(function.arguments.clone()).to_string()
-                    } else {
-                        arguments.text
-                    })
-                } else {
-                    arguments
-                        .text
-                        .get(arguments.streamed..)
-                        .filter(|rest| !rest.is_empty())
-                        .map(str::to_owned)
-                };
-                if let Some(json) = json {
+                // A call that streamed no text (none arrived, or only a
+                // placeholder `null`) states the arguments it ends with.
+                if arguments.streamed == 0 {
+                    let json = serde_json::Value::Object(function.arguments.clone()).to_string();
                     emit(items, StreamEvent::Arguments { part, json });
                 }
                 let call = ToolCall::new(id, function);

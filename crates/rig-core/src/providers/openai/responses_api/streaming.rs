@@ -823,12 +823,12 @@ fn send(slot: &mut Slot, out: &mut Out<'_, Completion>) -> Result<(), ProviderEr
     } else {
         slot.arguments.clone()
     };
-    let Some(rest) = streamed.strip_prefix(slot.sent.as_str()) else {
+    let Some(rest) = streamed
+        .strip_prefix(slot.sent.as_str())
+        .filter(|rest| !rest.is_empty())
+    else {
         return Ok(());
     };
-    if rest.is_empty() {
-        return Ok(());
-    }
     let fragment = CallFragment {
         arguments: Some(rest),
         ..CallFragment::default()

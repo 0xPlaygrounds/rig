@@ -2022,3 +2022,28 @@ fn a_wire_serialized_without_tool_input_streaming_reloads_eager() {
     let restored: Messages = serde_json::from_value(json).expect("the wire reloads");
     assert_eq!(restored.tool_input_streaming, ToolInputStreaming::Eager);
 }
+
+/// Each setting reads back from its serialized name, and the beta flag is
+/// sent once when the caller already asked for it.
+#[test]
+fn tool_input_streaming_reads_its_names_and_sends_the_beta_flag_once() {
+    use crate::providers::anthropic::wire::ToolInputStreaming;
+    for (name, streaming) in [
+        ("eager", ToolInputStreaming::Eager),
+        ("beta_header", ToolInputStreaming::BetaHeader),
+        ("off", ToolInputStreaming::Off),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<ToolInputStreaming>(json!(name)).ok(),
+            Some(streaming)
+        );
+    }
+    let wire = AnthropicConfig::new("k")
+        .with_beta("fine-grained-tool-streaming-2025-05-14")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_tool_input_streaming(ToolInputStreaming::BetaHeader);
+    assert_eq!(
+        tool_input_streaming_sent(&wire, Mode::Streaming, vec![generic_tool("lookup")]).1,
+        Some("fine-grained-tool-streaming-2025-05-14".to_owned())
+    );
+}

@@ -1624,3 +1624,26 @@ fn custom_tool_input_streams_as_its_json_object() {
         Some(json!({"input": "echo \"hi\"\nls"}))
     );
 }
+
+/// Arguments the added item already states stream at once, and an empty
+/// delta streams nothing.
+#[test]
+fn arguments_the_added_item_states_stream_and_an_empty_delta_is_nothing() {
+    let events = [
+        json!({"type": "response.output_item.added", "output_index": 0,
+               "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "add", "arguments": "{\"x\":"}}),
+        argument_delta(0, ""),
+        argument_delta(0, "1}"),
+        done_call(0, "fc_1", "call_1", "add", "{\"x\":1}"),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    assert_eq!(
+        call_events(&decoded_body(&body_of(&events))),
+        [
+            "0:start:add",
+            "0:args:{\"x\":",
+            "0:args:1}",
+            "0:end:{\"x\":1}"
+        ]
+    );
+}
