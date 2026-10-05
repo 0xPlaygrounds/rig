@@ -2,3 +2,5 @@
 # cover (`cargo xtask tests prune` reads this list; see tests/README.md).
 # Each line is a test (`<binary id> <test path>`) and why it stays.
 rig-core providers::registry::tests::both_doors_of_a_dual_format_vendor_reach_their_own_endpoint    the one deterministic killer of `<impl PartialEq for ProviderId>::eq -> true`; the other named killer catches it only when two ids share a HashSet bucket
+rig-ecs::bus bus_delivery::cancelled_record_is_immutable_when_an_active_worker_poll_returns    the one test that reaches rig-ecs bus/effect.rs 228 every run; the other coverer reaches it only in some runs
+rig-ecs::run run_stream_boundary::early_skip_retains_prefix_and_drained_usage_without_dispatching_tool    the one test that reaches rig-ecs systems/stream_invalid.rs 45-51 every run; the other coverer reaches it only in some runs

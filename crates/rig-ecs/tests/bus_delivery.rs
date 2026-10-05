@@ -1448,3 +1448,84 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
         );
     }
 }
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
+    use std::sync::mpsc;
+
+    struct Release(Option<mpsc::Sender<()>>);
+    impl Drop for Release {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+    struct Dropped(mpsc::Sender<()>);
+    impl Drop for Dropped {
+        fn drop(&mut self) {
+            let _ = self.0.send(());
+        }
+    }
+    struct InPoll {
+        entered: mpsc::Sender<()>,
+        release: Mutex<Option<mpsc::Receiver<()>>>,
+        dropped: mpsc::Sender<()>,
+    }
+    impl Serve for InPoll {
+        type Family = rig_core::effect::family::Completion;
+        fn descriptor(&self) -> HandlerDescriptor {
+            completion_descriptor("active-poll", "mock")
+        }
+        async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+            let entered = self.entered.clone();
+            let release = self.release.lock().unwrap().take().unwrap();
+            let dropped = Dropped(self.dropped.clone());
+            let mut returned = false;
+            Reply::Stream(Box::pin(futures::stream::poll_fn(move |_| {
+                let _owned = &dropped;
+                if returned {
+                    return std::task::Poll::Ready(None);
+                }
+                returned = true;
+                entered.send(()).unwrap();
+                release.recv_timeout(bus_support::GUARD).unwrap();
+                std::task::Poll::Ready(Some(bus_support::done("mock")))
+            })))
+        }
+    }
+    let (entered_tx, entered_rx) = mpsc::channel();
+    let (release_tx, release_rx) = mpsc::channel();
+    let release = Release(Some(release_tx));
+    let (drop_tx, drop_rx) = mpsc::channel();
+    let mut app = bus_support::app();
+    bus_support::register(
+        &mut app,
+        "active-poll",
+        InPoll {
+            entered: entered_tx,
+            release: Mutex::new(Some(release_rx)),
+            dropped: drop_tx,
+        },
+    );
+    let recorder = EffectLogRecorder::keeping_stream_events();
+    EffectLogResource::install(app.world_mut(), recorder.clone());
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new("active-poll", bus_support::streaming()))
+        .id();
+    bus_support::tick_until(&mut app, "worker entered its source poll", |_| {
+        entered_rx.try_recv().is_ok()
+    });
+    app.world_mut().despawn(effect);
+    let cancelled = serde_json::to_value(recorder.log()).unwrap();
+    drop(release);
+    drop_rx.recv_timeout(bus_support::GUARD).unwrap();
+    assert_eq!(
+        serde_json::to_value(recorder.log()).unwrap(),
+        cancelled,
+        "a poll returning after cancellation must not mutate the closed recording"
+    );
+    rig_cassette::effect_log::EffectLogReplayer::check_header(&recorder.log()).unwrap();
+}
