@@ -700,8 +700,10 @@ impl Turn {
                 let (id, item) = self.distinct_call_id(id, item);
                 // A call whose text never streamed states its arguments
                 // whole; one that streamed carries only its remainder.
+                // A text that never got past a placeholder `null` states
+                // the arguments the call ends with instead.
                 let json = if arguments.streamed == 0 {
-                    Some(if arguments.text.is_empty() {
+                    Some(if "null".starts_with(arguments.text.trim()) {
                         serde_json::Value::Object(function.arguments.clone()).to_string()
                     } else {
                         arguments.text
@@ -1304,7 +1306,8 @@ impl<'id> Out<'id, Completion> {
 
     /// Write one fragment of a tool call the provider streams, opening the
     /// call at its first fragment. Its id and name may arrive in any
-    /// fragment: the call starts streaming once it names a tool, carrying
+    /// fragment, and the first name it is given stays: the call starts
+    /// streaming once it names a tool, carrying
     /// the argument text held until then, and its end states its id. Calls
     /// are told apart by `index` when the wire gives one. A new id under an
     /// index starts a new call once the held call's arguments are a complete
@@ -1392,7 +1395,11 @@ impl<'id> Out<'id, Completion> {
         if let Some(call_id) = fragment.id.filter(|id| stated(id)) {
             *id = Some(CallId::from_wire(call_id));
         }
-        if let Some(fragment) = fragment.name.filter(|name| !name.is_empty()) {
+        // A call keeps the first name it is given, so the tool its start
+        // names is the tool its end names.
+        if name.is_empty()
+            && let Some(fragment) = fragment.name.filter(|name| !name.is_empty())
+        {
             fragment.clone_into(name);
         }
         if let Some(fragment) = fragment.arguments {

@@ -656,3 +656,58 @@ fn a_restated_call_starts_with_its_name() {
         ["0:start:add", r#"0:args:{"x":1}"#, "0:end"]
     );
 }
+
+/// A call keeps the first name it is given, so a later fragment naming
+/// another tool cannot end a call its start named differently.
+#[test]
+fn a_started_call_keeps_the_name_its_start_stated() {
+    let decoded = write(|out| {
+        let fragment = |name, arguments| CallFragment {
+            id: Some("call_1"),
+            name,
+            arguments,
+        };
+        out.fragment(Some(0), fragment(Some("add"), Some(r#"{"x":1,"#)))?;
+        out.fragment(Some(0), fragment(Some("multiply"), Some(r#""y":2}"#)))?;
+        Ok(())
+    });
+    let events = events(&decoded);
+    assert_eq!(
+        shape(&events),
+        [
+            "0:start:add",
+            r#"0:args:{"x":1,"#,
+            r#"0:args:"y":2}"#,
+            "0:end"
+        ]
+    );
+    let ended = events.iter().find_map(|event| match event {
+        StreamEvent::End {
+            content: AssistantContent::ToolCall(call),
+            ..
+        } => Some(call.function.name.clone()),
+        _ => None,
+    });
+    assert_eq!(ended, Some(name("add")));
+}
+
+/// A placeholder `null` no real fragment replaced streams the arguments
+/// the call ends with, so the joined fragments still state them.
+#[test]
+fn a_placeholder_null_never_replaced_streams_the_ended_arguments() {
+    let decoded = write(|out| {
+        out.fragment(
+            Some(0),
+            CallFragment {
+                id: Some("call_1"),
+                name: Some("noop"),
+                arguments: Some("null"),
+            },
+        )?;
+        Ok(())
+    });
+    let events = events(&decoded);
+    assert_eq!(shape(&events), ["0:start:noop", "0:args:{}", "0:end"]);
+    let (streamed, ended) = streamed_and_final(&events, 0);
+    assert_eq!(serde_json::from_str::<Value>(&streamed).ok(), Some(ended));
+}

@@ -110,3 +110,52 @@ async fn a_resumed_run_applies_its_own_policy_on_both_surfaces() {
         );
     }
 }
+
+/// A call that streams live under an allowed tool and is renamed by a later
+/// fragment keeps the tool its start named, so its start always has an end
+/// and the run never ignores a call it already forwarded.
+#[tokio::test]
+async fn a_call_renamed_after_its_start_keeps_its_streamed_name() {
+    use rig_core::message::AssistantContent;
+    use rig_core::streaming::{Item, PartKind, StreamEvent};
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "multiply"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]))
+    .tool(Add)
+    .build();
+    let run =
+        AgentRun::new("go").with_unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore);
+    let mut stream = agent.resume(run.max_turns(2)).stream();
+    let (mut starts, mut ends, mut results) = (Vec::new(), Vec::new(), 0);
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Start {
+                kind: PartKind::ToolCall,
+                name,
+                ..
+            }))) => starts.push(name.map(|name| name.as_str().to_owned())),
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            }))) => ends.push(Some(call.function.name.as_str().to_owned())),
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => results += 1,
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(_) => {}
+            Err(error) => panic!("unexpected streaming error: {error}"),
+        }
+    }
+    assert_eq!(starts, [Some("add".to_owned())]);
+    assert_eq!(ends, starts);
+    assert_eq!(results, 1);
+}
