@@ -49,6 +49,7 @@ use rig::operation::Completion;
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::copilot::CopilotConfig;
 use rig::providers::gemini::GeminiConfig;
+use rig::providers::ollama::OllamaConfig;
 use rig::providers::openai::wire::{
     COHERE, DEEPSEEK, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OLLAMA, OPENAI, OPENROUTER,
     OpenAIConfig, PERPLEXITY, VENICE,
@@ -123,6 +124,8 @@ enum Route {
     Copilot {
         responses: bool,
     },
+    /// Ollama's native `/api/chat`.
+    Ollama,
     GenerateContent,
     Interactions,
     Converse,
@@ -135,7 +138,7 @@ impl Route {
     fn wire(self) -> &'static str {
         match self {
             Self::Messages => "messages",
-            Self::Chat(_) | Self::Copilot { responses: false } => "chat",
+            Self::Chat(_) | Self::Ollama | Self::Copilot { responses: false } => "chat",
             Self::Responses(_) | Self::Copilot { responses: true } => "responses",
             Self::GenerateContent => "generate_content",
             Self::Interactions => "interactions",
@@ -205,6 +208,7 @@ fn classify(provider: &str, method: &str, path: &str) -> Endpoint {
         }
         "gemini" if path.ends_with("/interactions") => Some(Route::Interactions),
         "cohere" if path.ends_with("/v2/chat") => Some(Route::CohereChat),
+        "ollama" if path == "/api/chat" => Some(Route::Ollama),
         _ if path.ends_with("/chat/completions") => chat_dialect(provider).map(Route::Chat),
         _ if path.ends_with("/responses") => responses_dialect(provider).map(Route::Responses),
         _ => None,
@@ -351,6 +355,8 @@ fn recorded_streamed(route: Route, path: &str, body: &Value) -> bool {
     match route {
         Route::GenerateContent => path.ends_with(":streamGenerateContent"),
         Route::Converse => path.ends_with("/converse-stream"),
+        // Ollama streams unless the request says otherwise.
+        Route::Ollama => body["stream"] != Value::Bool(false),
         _ => body["stream"] == Value::Bool(true),
     }
 }
@@ -460,6 +466,10 @@ fn replaying_model(
             .connect(recorded_http(headers, body))
             .completion(model)
             .erase(),
+        Route::Ollama => OllamaConfig::new()
+            .connect(recorded_http(headers, body))
+            .completion(model)
+            .erase(),
         Route::GenerateContent => GeminiConfig::new("census")
             .connect(recorded_http(headers, body))
             .completion(model)
@@ -518,6 +528,7 @@ fn reply_documents(route: Route, streamed: bool, body: &[u8]) -> Vec<Value> {
             }
             payloads
         }
+        (Route::Ollama, true) => frame_texts(Framing::Ndjson.split(body)),
         (_, true) => frame_texts(Framing::Sse.split(body)),
         (_, false) => frame_texts(Framing::Whole.split(body)),
     };

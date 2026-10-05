@@ -1705,37 +1705,46 @@ mistralrs/responses_api/responses_api_reasoning_plus_answer_completes.yaml	POST 
 mistralrs/streaming/chat_completions_stream_emits_reasoning_and_text_incrementally.yaml	POST /v1/chat/completions;92568b7bf62916df;
 mistralrs/tools/raw_chat_completion_emits_requested_tool_call.yaml	POST /v1/chat/completions;275e8637b370f747;report_usage
 mistralrs/usage/chat_completion_usage_without_output_tokens_details_deserializes.yaml	POST /v1/chat/completions;108775c032fee2f1;
-ollama/agent/completion_smoke.yaml	POST /v1/chat/completions;c388bd63f494e85e;
-ollama/agent/max_tokens.yaml	POST /v1/chat/completions;679d25e68daf2c0a;
-ollama/agentic/native_mode.yaml	POST /v1/chat/completions;c555100e1db0a877;get_weather	POST /v1/chat/completions;c388bd63f494e85e;
+ollama/agent/completion_smoke.yaml	POST /api/chat;f28a1de54878a342;
+ollama/agent/max_tokens.yaml	POST /api/chat;67ff536ee85477a6;
+ollama/agentic/native_mode.yaml	POST /api/chat;54096936d1e9f808;get_weather	POST /api/chat;f28a1de54878a342;
 ollama/agentic/prompted_mode.yaml	POST /v1/chat/completions;c388bd63f494e85e;
-ollama/agentic/streaming_structured_output_with_tools.yaml	POST /v1/chat/completions;160bcd545660cf36;get_weather	POST /v1/chat/completions;ad5f1cf921b3df68;
-ollama/agentic/structured_output_with_tools.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;get_weather	POST /v1/chat/completions;22f6c59516ace485;
-ollama/history_survival_matrix/streaming.yaml	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;b9fbdfee0b00af54;
-ollama/history_survival_matrix/unary.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;22f6c59516ace485;
+ollama/agentic/streaming_structured_output_with_tools.yaml	POST /api/chat;78f3b081f7d9f772;get_weather	POST /api/chat;db3c060e1ab5040c;
+ollama/agentic/structured_output_with_tools.yaml	POST /api/chat;0e589e5f1b076de5;get_weather	POST /api/chat;ca566cb30a835bc5;
+ollama/history_survival_matrix/streaming.yaml	POST /api/chat;f6e030d0b8a34251;lookup_record	POST /api/chat;5fb873f5df636acb;lookup_record	POST /api/chat;e68dbc28244e90cb;verify_code	POST /api/chat;e68dbc28244e90cb;verify_code	POST /api/chat;a558c59850d37487;	POST /api/chat;e68dbc28244e90cb;verify_code	POST /api/chat;a558c59850d37487;	POST /api/chat;a558c59850d37487;
+ollama/history_survival_matrix/unary.yaml	POST /api/chat;5aa8f8ce370b80c3;lookup_record	POST /api/chat;e878274c4476b9db;verify_code	POST /api/chat;e878274c4476b9db;verify_code	POST /api/chat;ca566cb30a835bc5;	POST /api/chat;e878274c4476b9db;verify_code	POST /api/chat;ca566cb30a835bc5;	POST /api/chat;ca566cb30a835bc5;
+ollama/native/inline_think_streamed.yaml	POST /api/chat;db3c060e1ab5040c;
+ollama/native/inline_think_whole.yaml	POST /api/chat;f28a1de54878a342;
+ollama/native/options_and_keep_alive.yaml	POST /api/chat;67ff536ee85477a6;
+ollama/native/streamed_tool_call.yaml	POST /api/chat;38fa26a1af4ed7df;add
+ollama/native/think_level.yaml	POST /api/chat;ca566cb30a835bc5;
+ollama/openai_compatible/optional_argument.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;repeat_text	POST /v1/chat/completions;22f6c59516ace485;
+ollama/openai_compatible/reasoning_roundtrip_streaming.yaml	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;b9fbdfee0b00af54;
+ollama/openai_compatible/streaming_smoke.yaml	POST /v1/chat/completions;ad5f1cf921b3df68;
+ollama/openai_compatible/structured_output_smoke.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_anthropic.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_gemini.yaml	POST /v1/chat/completions;c388bd63f494e85e;
-ollama/portability_matrix/from_openai_responses.yaml	POST /v1/chat/completions;c388bd63f494e85e;
+ollama/portability_matrix/from_openai_responses.yaml	POST /api/chat;f28a1de54878a342;
 ollama/raw_capture_agent_matrix/hooks_observe_raw_blocking.yaml	POST /v1/chat/completions;679d25e68daf2c0a;
-ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml	POST /v1/chat/completions;b06ccc55a1b71eb4;
-ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml	POST /v1/chat/completions;c555100e1db0a877;add	POST /v1/chat/completions;c388bd63f494e85e;
+ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml	POST /api/chat;571097958c8e7d24;
+ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml	POST /api/chat;0687584b4019e957;add	POST /api/chat;f28a1de54878a342;
 ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_streamed.yaml	POST /v1/chat/completions;160bcd545660cf36;add	POST /v1/chat/completions;ad5f1cf921b3df68;
-ollama/raw_capture_matrix/raw_exposes_envelope_fields.yaml	POST /v1/chat/completions;22f6c59516ace485;
+ollama/raw_capture_matrix/raw_exposes_envelope_fields.yaml	POST /api/chat;ca566cb30a835bc5;
 ollama/raw_capture_matrix/raw_is_the_reply_document.yaml	POST /v1/chat/completions;22f6c59516ace485;
-ollama/raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk.yaml	POST /v1/chat/completions;b9fbdfee0b00af54;
-ollama/reasoning_roundtrip/nonstreaming.yaml	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;22f6c59516ace485;
-ollama/reasoning_roundtrip/streaming.yaml	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;b9fbdfee0b00af54;
-ollama/reasoning_tool_roundtrip/nonstreaming.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;get_weather	POST /v1/chat/completions;22f6c59516ace485;
+ollama/raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk.yaml	POST /api/chat;a558c59850d37487;
+ollama/reasoning_roundtrip/nonstreaming.yaml	POST /api/chat;ca566cb30a835bc5;	POST /api/chat;ca566cb30a835bc5;
+ollama/reasoning_roundtrip/streaming.yaml	POST /api/chat;a558c59850d37487;	POST /api/chat;a558c59850d37487;
+ollama/reasoning_tool_roundtrip/nonstreaming.yaml	POST /api/chat;0e589e5f1b076de5;get_weather	POST /api/chat;ca566cb30a835bc5;
 ollama/reasoning_tool_roundtrip/streaming.yaml	POST /v1/chat/completions;71673396efbe4767;get_weather	POST /v1/chat/completions;b9fbdfee0b00af54;
-ollama/streaming/streaming_smoke.yaml	POST /v1/chat/completions;ad5f1cf921b3df68;
+ollama/streaming/streaming_smoke.yaml	POST /api/chat;db3c060e1ab5040c;
 ollama/streaming_grammar/chat_sourced_history_replay.yaml	POST /v1/chat/completions;ad5f1cf921b3df68;
 ollama/streaming_grammar/parallel_tool_calls.yaml	POST /v1/chat/completions;160bcd545660cf36;lookup_harbor_label,lookup_orchard_label
 ollama/streaming_grammar/same_tool_twice.yaml	POST /v1/chat/completions;160bcd545660cf36;add
-ollama/streaming_grammar/thinking_and_tool_call.yaml	POST /v1/chat/completions;71673396efbe4767;lookup_harbor_label
+ollama/streaming_grammar/thinking_and_tool_call.yaml	POST /api/chat;7e6164e01dfe1733;lookup_harbor_label
 ollama/streaming_tools/streaming_tools_smoke.yaml	POST /v1/chat/completions;160bcd545660cf36;subtract	POST /v1/chat/completions;ad5f1cf921b3df68;
-ollama/structured_output/raw_with_thinking.yaml	POST /v1/chat/completions;22f6c59516ace485;
-ollama/structured_output/structured_output_smoke.yaml	POST /v1/chat/completions;c388bd63f494e85e;
-ollama/tools/optional_argument.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;repeat_text	POST /v1/chat/completions;22f6c59516ace485;
+ollama/structured_output/raw_with_thinking.yaml	POST /api/chat;ca566cb30a835bc5;
+ollama/structured_output/structured_output_smoke.yaml	POST /api/chat;ca566cb30a835bc5;
+ollama/tools/optional_argument.yaml	POST /api/chat;2143bacf748a8479;repeat_text	POST /api/chat;ca566cb30a835bc5;
 openai/additional_params_tools/builder_tools_survive_additional_params_tools.yaml	POST /v1/chat/completions;7247abbb79f39707;lookup_alpha
 openai/adversarial/colliding_ids_chat.yaml	POST /v1/chat/completions;8fe14392e5f46d8a;
 openai/adversarial/colliding_ids_responses.yaml	POST /v1/responses;f701ec3dce6c98d4;

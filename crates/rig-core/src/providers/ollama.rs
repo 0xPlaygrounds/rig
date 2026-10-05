@@ -1,10 +1,12 @@
-//! Ollama configuration, model identifiers, and its embedding and
+//! Ollama configuration, model identifiers, and its chat, embedding and
 //! model-listing wires.
 //!
-//! Chat goes through the daemon's OpenAI-compatible `/v1/chat/completions`
-//! on the shared Chat Completions wire, as the
-//! [`OLLAMA`](crate::providers::openai::wire::OLLAMA) dialect. Embeddings
-//! use `/api/embed`, and the model listing `/api/tags`.
+//! Chat goes through the daemon's native `/api/chat` ([`Chat`]), which takes
+//! `think`, `keep_alive` and model `options` such as `num_ctx`.
+//! [`Ollama::openai_compatible_completion`] reaches its OpenAI-compatible
+//! `/v1/chat/completions` instead, on the shared Chat Completions wire as
+//! the [`OLLAMA`](crate::providers::openai::wire::OLLAMA) dialect.
+//! Embeddings use `/api/embed`, and the model listing `/api/tags`.
 //!
 //! ```no_run
 //! use rig_core::providers::ollama;
@@ -20,11 +22,14 @@
 //!
 //! `Ollama::from_env` reads `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` for
 //! remote or authenticated daemons.
+pub mod chat;
 pub mod embedding;
 pub mod model_listing;
+pub mod streaming;
 pub mod wire;
 
 pub use crate::client::ollama::Ollama;
+pub use chat::Chat;
 pub use embedding::{
     ALL_MINILM, BGE_M3, EMBEDDINGGEMMA, EmbeddingResponse, Embeddings, MXBAI_EMBED_LARGE,
     NOMIC_EMBED_TEXT, QWEN3_EMBEDDING,

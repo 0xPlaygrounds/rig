@@ -609,6 +609,7 @@ impl Chat {
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map),
+            BodyRewrite::Ollama => finalize_ollama(map)?,
             BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
             BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
         }
@@ -682,6 +683,42 @@ fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, Encode
             json!({"type": "function", "function": {"name": name}})
         }
     })
+}
+
+/// Ollama's OpenAI-compatible body. `keep_alive` passes as it is, and
+/// `think` becomes `reasoning_effort`: `true` is `medium`, `false` is
+/// `none`, and a level passes through. `num_ctx` and `options` are refused:
+/// this API ignores them, and only the native route sends them.
+fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
+    if let Some(key) = ["num_ctx", "options"]
+        .into_iter()
+        .find(|key| map.contains_key(*key))
+    {
+        return Err(EncodeError::request(format!(
+            "Ollama's OpenAI-compatible API ignores `{key}`; send it through the native \
+             route (`Ollama::completion`)"
+        )));
+    }
+    let Some(think) = map.shift_remove("think") else {
+        return Ok(());
+    };
+    if map.contains_key("reasoning_effort") {
+        return Err(EncodeError::request(
+            "Ollama takes one of `think` and `reasoning_effort`, not both",
+        ));
+    }
+    let effort = match think {
+        Value::Bool(true) => Value::from("medium"),
+        Value::Bool(false) => Value::from("none"),
+        level @ Value::String(_) => level,
+        _ => {
+            return Err(EncodeError::request(
+                "Ollama `think` must be a boolean or a thinking level",
+            ));
+        }
+    };
+    map.insert("reasoning_effort".to_owned(), effort);
+    Ok(())
 }
 
 /// The body's messages, each as its object.

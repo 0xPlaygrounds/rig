@@ -286,3 +286,44 @@ fn the_response_format_waits_for_a_tool_result() {
         "WeatherResponse"
     );
 }
+
+/// Ollama's OpenAI-compatible API reads `keep_alive` as it is and maps
+/// `reasoning_effort` to thinking, so `think` is sent as that; it ignores
+/// `num_ctx` and `options`, which are refused rather than dropped.
+#[test]
+fn ollama_compatible_bodies_rewrite_think_and_refuse_native_options() {
+    let wire = crate::providers::ollama::OllamaConfig::new().openai_compatible_completion("qwen3");
+    let sent = |params: Value| {
+        let mut request = CompletionRequest::new("hi");
+        request.additional_params = Some(params);
+        let request = crate::operation::Completion::prepare(request, &wire.describe())
+            .expect("the request prepares");
+        wire.encode(request, Mode::Unary)
+            .map(|encoded| json_body(&encoded.request))
+    };
+    let body = sent(json!({"keep_alive": "10m"})).expect("encodes");
+    assert_eq!(body["keep_alive"], json!("10m"));
+    assert!(body.get("reasoning_effort").is_none());
+    for (think, effort) in [
+        (json!(true), json!("medium")),
+        (json!(false), json!("none")),
+        (json!("high"), json!("high")),
+        (json!("low"), json!("low")),
+    ] {
+        let body = sent(json!({"think": think})).expect("encodes");
+        assert_eq!(body["reasoning_effort"], effort, "{think}");
+        assert!(body.get("think").is_none());
+    }
+    for (params, named) in [
+        (json!({"num_ctx": 8192}), "`num_ctx`"),
+        (json!({"options": {"num_ctx": 8192}}), "`options`"),
+        (
+            json!({"think": true, "reasoning_effort": "low"}),
+            "`reasoning_effort`",
+        ),
+        (json!({"think": 1}), "`think`"),
+    ] {
+        let refused = sent(params.clone()).expect_err("the request is refused");
+        assert!(refused.to_string().contains(named), "{params}: {refused}");
+    }
+}

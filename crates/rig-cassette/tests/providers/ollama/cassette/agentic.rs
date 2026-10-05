@@ -3,10 +3,11 @@
 //! These mirror the way real consumers drive Ollama (e.g. repo-tagger):
 //! `output_schema_raw` (raw JSON Schema) combined with thinking, tools, and the
 //! multi-turn non-streaming agent loop — a combination the other cassettes only
-//! exercise separately. rig maps `output_schema` to `response_format` and sends
-//! `tools` on the same request, so this checks that the model's JSON answer is
-//! produced and parsed correctly when a schema, tools and thinking are all set
-//! at once (the path where the #1926 reasoning drop bit).
+//! exercise separately. rig maps `output_schema` to Ollama's `format` field
+//! once the tools are answered and sends `tools` on the same request, so this
+//! checks that the model's JSON answer is produced and parsed correctly when a
+//! schema, tools and thinking are all set at once (the path where the #1926
+//! reasoning drop bit).
 //!
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
@@ -178,7 +179,7 @@ async fn streaming_structured_output_with_tools() {
                 )
                 .tool(WeatherTool::new(call_count.clone()))
                 .output_schema_raw(schema)
-                .additional_params(json!({ "reasoning_effort": "none" }))
+                .additional_params(json!({ "think": false }))
                 .default_max_turns(5)
                 .build();
 
@@ -234,7 +235,7 @@ async fn native_mode_emits_structured_output() {
             .tool(WeatherTool::new(call_count.clone()))
             .output_schema_raw(schema)
             .output_mode(OutputMode::Native)
-            .additional_params(json!({ "reasoning_effort": "none" }))
+            .additional_params(json!({ "think": false }))
             .default_max_turns(3)
             .build();
 

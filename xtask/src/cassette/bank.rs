@@ -60,6 +60,7 @@ const PREAMBLE: &str = "\
 
 /// Path suffixes of the encoders that answer a completion.
 const COMPLETION_PATHS: &[&str] = &[
+    "/api/chat",
     "/chat/completions",
     "/converse",
     "/converse-stream",
@@ -84,7 +85,13 @@ const SCRIPTS_HEADER: &str =
     "fixture\treplies (encoder;shape;calls, `-` for a reply the bank does not hold)";
 
 /// Keys whose string value says how a turn ended.
-const ENDINGS: &[&str] = &["finishReason", "finish_reason", "stopReason", "stop_reason"];
+const ENDINGS: &[&str] = &[
+    "done_reason",
+    "finishReason",
+    "finish_reason",
+    "stopReason",
+    "stop_reason",
+];
 
 /// Keys whose value is a tool call's arguments: an object with a `name` and
 /// one of these is a tool call.

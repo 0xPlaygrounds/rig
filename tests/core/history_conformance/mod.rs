@@ -30,6 +30,7 @@ pub mod mistral;
 pub mod mock;
 pub mod moonshot;
 pub mod ollama;
+pub mod ollama_native;
 pub mod openai_chat;
 pub mod openai_responses;
 pub mod openrouter;
@@ -58,6 +59,7 @@ pub const SUITE_WIRES: &[&str] = &[
     groq::HISTORY_WIRE,
     mistral::HISTORY_WIRE,
     ollama::HISTORY_WIRE,
+    ollama_native::HISTORY_WIRE,
     openai_chat::HISTORY_WIRE,
     openai_responses::HISTORY_WIRE,
     openrouter::HISTORY_WIRE,

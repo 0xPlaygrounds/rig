@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"What is 2 + 2? Answer with one number.","role":"user"}],"model":"qwen3:4b","options":{"seed":7,"temperature":0.0},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":246,"eval_duration":6906402000,"load_duration":1120108,"message":{"content":"Okay, the user asked \"What is 2 + 2? Answer with one number.\" Hmm, this seems straightforward but let me think carefully. \n\nFirst, I recall basic arithmetic: 2 plus 2 equals 4. That''s elementary math, no tricks here. The user specifically wants just the number, no extra text. \n\nI wonder why they''re asking such a simple question though. Maybe they''re testing if I''ll overcomplicate it? Or perhaps it''s a kid learning math? The phrasing \"Answer with one number\" suggests they want minimal response - probably to avoid confusion with other answers. \n\nShould I consider any edge cases? Like if this is in a different number system? But no, standard math context implies base 10. 2+2 is always 4 in regular arithmetic. \n\nAlso, the user said \"one number\" so I must output only \"4\" without any spaces or punctuation. No explanations, just the digit. \n\n*Double-checking*: Yep, 2 + 2 = 4. Simple addition. No need to overthink. \n\nFinal answer is definitely 4. I''ll respond with just that number as instructed.\n</think>\n\n4","role":"assistant"},"model":"qwen3:4b","prompt_eval_cached_count":22,"prompt_eval_count":23,"prompt_eval_duration":28645000,"total_duration":6949687503}'

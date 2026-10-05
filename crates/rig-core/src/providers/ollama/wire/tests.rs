@@ -13,9 +13,16 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
         .with_base_url("http://ollama.internal:11434")
         .completion("qwen3:4b");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
+    let restored: crate::providers::ollama::Chat =
+        serde_json::from_str(&serialized).expect("the wire deserializes");
+    assert_eq!(restored, wire);
+
+    let wire = OllamaConfig::new()
+        .with_base_url("http://ollama.internal:11434")
+        .openai_compatible_completion("qwen3:4b");
+    let serialized = serde_json::to_string(&wire).expect("the wire serializes");
     let restored: crate::providers::openai::wire::Chat =
         serde_json::from_str(&serialized).expect("the wire deserializes");
-
     assert_eq!(restored.model, wire.model);
     assert_eq!(
         restored.provider.base_url,
@@ -34,6 +41,14 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
 fn a_local_daemon_sends_no_authorization_header() {
     let encoded = OllamaConfig::new()
         .completion("qwen3:4b")
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
+        .expect("the request encodes");
+    let request = &encoded.request;
+    assert_eq!(request.uri(), "http://localhost:11434/api/chat");
+    assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
+
+    let encoded = OllamaConfig::new()
+        .openai_compatible_completion("qwen3:4b")
         .encode(CompletionRequest::new("hi"), Mode::Unary)
         .expect("the request encodes");
     let request = &encoded.request;

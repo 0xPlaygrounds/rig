@@ -164,6 +164,10 @@ pub enum BodyRewrite {
     /// OpenRouter: ephemeral `cache_control` on the system prompt when
     /// prompt caching is on.
     OpenRouter,
+    /// Ollama's OpenAI-compatible API: `think` sent as `reasoning_effort`,
+    /// and a refusal of `num_ctx` and `options`, which only the native
+    /// route can send.
+    Ollama,
 }
 
 /// Request restrictions and response handling for a Responses dialect.

@@ -1,5 +1,5 @@
-//! Ollama's OpenAI-compatible API: reasoning under `reasoning`, text, and
-//! tool calls it streams whole.
+//! Ollama's OpenAI-compatible API (`Ollama::openai_compatible_completion`):
+//! reasoning under `reasoning`, text, and tool calls it streams whole.
 
 use rig_core::providers::openai::wire::OLLAMA;
 use serde_json::{Value, json};

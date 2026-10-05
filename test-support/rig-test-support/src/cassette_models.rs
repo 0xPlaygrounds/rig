@@ -364,9 +364,17 @@ impl OllamaModels {
         ))
     }
 
-    /// The chat model for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Model<openai::wire::Chat> {
+    /// The chat model for `model`, on the daemon's native `/api/chat`.
+    pub fn completion(&self, model: impl Into<String>) -> Model<ollama::Chat> {
         self.client().completion(model)
+    }
+
+    /// The chat model for `model`, on the daemon's OpenAI-compatible API.
+    pub fn openai_compatible_completion(
+        &self,
+        model: impl Into<String>,
+    ) -> Model<openai::wire::Chat> {
+        self.client().openai_compatible_completion(model)
     }
 
     /// The embedding model for `model`.

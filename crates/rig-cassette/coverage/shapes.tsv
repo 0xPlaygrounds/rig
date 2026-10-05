@@ -1589,60 +1589,91 @@ mistralrs	POST /v1/responses	request	$.input[].content[] {text:str,type:"output_
 mistralrs	POST /v1/responses	reply	b822b8a39fd2c63b	2	mistralrs/responses_api/responses_api_multi_turn_replays_history.yaml#0
 ollama	GET /api/tags	request	$ empty	1	ollama/models/list_models_smoke.yaml#0
 ollama	GET /api/tags	reply	b78b1057c501b58f	1	ollama/models/list_models_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str,stream:bool,stream_options:{}}	1	ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str,tools:[{}]}	1	ollama/portability_matrix/from_openai_responses.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str}	1	ollama/agent/max_tokens.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,stream_options:{},temperature:num}	1	ollama/raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,stream_options:{},tools:[{}]}	8	ollama/history_survival_matrix/streaming.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,temperature:num}	1	ollama/raw_capture_matrix/raw_exposes_envelope_fields.yaml#0
-ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tools:[{}]}	8	ollama/history_survival_matrix/unary.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,response_format:{},stream:bool,stream_options:{},tools:[{}]}	1	ollama/agentic/streaming_structured_output_with_tools.yaml#1
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,response_format:{},tools:[{}]}	1	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,response_format:{}}	1	ollama/structured_output/structured_output_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,stream:bool,stream_options:{},tools:[{}]}	1	ollama/agentic/streaming_structured_output_with_tools.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,stream:bool,stream_options:{}}	1	ollama/streaming/streaming_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,tools:[{}]}	3	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str}	1	ollama/agent/completion_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,response_format:{},tools:[{}]}	1	ollama/agentic/structured_output_with_tools.yaml#1
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,response_format:{}}	1	ollama/structured_output/raw_with_thinking.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,stream_options:{},tools:[{}]}	1	ollama/streaming_grammar/thinking_and_tool_call.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,stream_options:{}}	2	ollama/reasoning_roundtrip/streaming.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tools:[{}]}	5	ollama/agentic/structured_output_with_tools.yaml#0
-ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str}	2	ollama/reasoning_roundtrip/nonstreaming.yaml#0
-ollama	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	37	ollama/agent/completion_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$.messages[] {content:str,reasoning:str,role:"assistant"}	8	ollama/history_survival_matrix/streaming.yaml#5
-ollama	POST /v1/chat/completions	request	$.messages[] {content:str,role:"assistant",tool_calls:[{}]}	3	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.messages[] {content:str,role:"tool",tool_call_id:str}	21	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	42	ollama/agent/completion_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$.messages[] {reasoning:str,role:"assistant",tool_calls:[{}]}	17	ollama/agentic/structured_output_with_tools.yaml#1
-ollama	POST /v1/chat/completions	request	$.messages[] {role:"assistant",tool_calls:[{}]}	1	ollama/portability_matrix/from_openai_responses.yaml#0
-ollama	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	37	ollama/agent/completion_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	21	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.messages[].tool_calls[].function {arguments:str,name:str}	21	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.response_format {json_schema:{},type:"json_schema"}	5	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.response_format.json_schema {name:str,schema:{},strict:bool}	5	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.response_format.json_schema.schema {$schema:str,additionalProperties:bool,properties:{},required:[str],title:str,type:"object"}	1	ollama/structured_output/structured_output_smoke.yaml#0
-ollama	POST /v1/chat/completions	request	$.response_format.json_schema.schema {additionalProperties:bool,properties:{},required:[str],type:"object"}	4	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.response_format.json_schema.schema.properties.* {type:"string"}	5	ollama/agentic/native_mode.yaml#1
-ollama	POST /v1/chat/completions	request	$.stream_options {include_usage:bool}	16	ollama/agentic/streaming_structured_output_with_tools.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[] {function:{},type:"function"}	30	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function {description:str,name:str,parameters:{}}	30	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters {$schema:str,properties:{},required:[str],title:str,type:"object"}	2	ollama/tools/optional_argument.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters {properties:{},required:[],type:"object"}	1	ollama/streaming_grammar/thinking_and_tool_call.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters {properties:{},required:[str],type:"object"}	27	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.* {description:str,format:str,minimum:num,type:[str]}	2	ollama/tools/optional_argument.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.* {description:str,type:"number"}	2	ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml#0
-ollama	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.* {description:str,type:"string"}	27	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	reply	160bcd545660cf36	1	ollama/agentic/streaming_structured_output_with_tools.yaml#0
-ollama	POST /v1/chat/completions	reply	22f6c59516ace485	10	ollama/agentic/structured_output_with_tools.yaml#1
-ollama	POST /v1/chat/completions	reply	679d25e68daf2c0a	1	ollama/agent/max_tokens.yaml#0
-ollama	POST /v1/chat/completions	reply	71673396efbe4767	6	ollama/history_survival_matrix/streaming.yaml#0
-ollama	POST /v1/chat/completions	reply	ad5f1cf921b3df68	2	ollama/agentic/streaming_structured_output_with_tools.yaml#1
-ollama	POST /v1/chat/completions	reply	b06ccc55a1b71eb4	1	ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml#0
-ollama	POST /v1/chat/completions	reply	b9fbdfee0b00af54	6	ollama/history_survival_matrix/streaming.yaml#4
-ollama	POST /v1/chat/completions	reply	c388bd63f494e85e	5	ollama/agent/completion_smoke.yaml#0
-ollama	POST /v1/chat/completions	reply	c555100e1db0a877	2	ollama/agentic/native_mode.yaml#0
-ollama	POST /v1/chat/completions	reply	ef9fb6bb0bbe8828	8	ollama/agentic/structured_output_with_tools.yaml#0
+ollama	POST /api/chat	request	$ {format:{},messages:[{}],model:str,stream:bool,think:bool,tools:[{}]}	2	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$ {format:{},messages:[{}],model:str,stream:bool,tools:[{}]}	1	ollama/agentic/structured_output_with_tools.yaml#1
+ollama	POST /api/chat	request	$ {format:{},messages:[{}],model:str,stream:bool}	2	ollama/structured_output/raw_with_thinking.yaml#0
+ollama	POST /api/chat	request	$ {keep_alive:str,messages:[{}],model:str,options:{},stream:bool,think:bool}	1	ollama/native/options_and_keep_alive.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:bool,tools:[{}]}	2	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:bool}	4	ollama/agent/max_tokens.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:str}	1	ollama/native/think_level.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,tools:[{}]}	15	ollama/history_survival_matrix/streaming.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool}	2	ollama/raw_capture_matrix/raw_exposes_envelope_fields.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,stream:bool,think:bool,tools:[{}]}	4	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,stream:bool,think:bool}	2	ollama/agent/completion_smoke.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,stream:bool,tools:[{}]}	6	ollama/agentic/structured_output_with_tools.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,stream:bool}	4	ollama/reasoning_roundtrip/nonstreaming.yaml#0
+ollama	POST /api/chat	request	$.format {$schema:str,properties:{},required:[str],title:str,type:"object"}	1	ollama/structured_output/structured_output_smoke.yaml#0
+ollama	POST /api/chat	request	$.format {properties:{},required:[str],type:"object"}	4	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.format.properties.* {type:"string"}	5	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"assistant",thinking:str,tool_calls:[{}]}	18	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"assistant",thinking:str}	8	ollama/history_survival_matrix/streaming.yaml#5
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"assistant",tool_calls:[{}]}	2	ollama/portability_matrix/from_openai_responses.yaml#0
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"system"}	37	ollama/agent/completion_smoke.yaml#0
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"tool",tool_call_id:str,tool_name:str}	20	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"user"}	46	ollama/agent/completion_smoke.yaml#0
+ollama	POST /api/chat	request	$.messages[].tool_calls[] {function:{},id:str}	20	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.messages[].tool_calls[].function {arguments:{},index:num,name:str}	19	ollama/agentic/native_mode.yaml#1
+ollama	POST /api/chat	request	$.messages[].tool_calls[].function {arguments:{},name:str}	1	ollama/portability_matrix/from_openai_responses.yaml#0
+ollama	POST /api/chat	request	$.options {num_ctx:num,num_predict:num,seed:num,temperature:num,top_k:num}	1	ollama/native/options_and_keep_alive.yaml#0
+ollama	POST /api/chat	request	$.options {num_predict:num,temperature:num}	2	ollama/raw_capture_matrix/raw_exposes_envelope_fields.yaml#0
+ollama	POST /api/chat	request	$.options {num_predict:num}	18	ollama/agent/max_tokens.yaml#0
+ollama	POST /api/chat	request	$.options {seed:num,temperature:num}	4	ollama/native/inline_think_streamed.yaml#0
+ollama	POST /api/chat	request	$.tools[] {function:{},type:"function"}	30	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	request	$.tools[].function {description:str,name:str,parameters:{}}	30	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters {$schema:str,properties:{},required:[str],title:str,type:"object"}	2	ollama/tools/optional_argument.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters {properties:{},required:[],type:"object"}	1	ollama/streaming_grammar/thinking_and_tool_call.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters {properties:{},required:[str],type:"object"}	27	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters.properties.* {description:str,format:str,minimum:num,type:[str]}	2	ollama/tools/optional_argument.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters.properties.* {description:str,type:"number"}	3	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters.properties.* {description:str,type:"string"}	26	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	reply	0687584b4019e957	1	ollama/raw_capture_agent_matrix/multi_turn_tool_run_records_distinct_raw_blocking.yaml#0
+ollama	POST /api/chat	reply	0e589e5f1b076de5	2	ollama/agentic/structured_output_with_tools.yaml#0
+ollama	POST /api/chat	reply	2143bacf748a8479	1	ollama/tools/optional_argument.yaml#0
+ollama	POST /api/chat	reply	38fa26a1af4ed7df	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	reply	54096936d1e9f808	1	ollama/agentic/native_mode.yaml#0
+ollama	POST /api/chat	reply	571097958c8e7d24	1	ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml#0
+ollama	POST /api/chat	reply	5aa8f8ce370b80c3	1	ollama/history_survival_matrix/unary.yaml#0
+ollama	POST /api/chat	reply	5fb873f5df636acb	1	ollama/history_survival_matrix/streaming.yaml#1
+ollama	POST /api/chat	reply	67ff536ee85477a6	2	ollama/agent/max_tokens.yaml#0
+ollama	POST /api/chat	reply	78f3b081f7d9f772	1	ollama/agentic/streaming_structured_output_with_tools.yaml#0
+ollama	POST /api/chat	reply	7e6164e01dfe1733	1	ollama/streaming_grammar/thinking_and_tool_call.yaml#0
+ollama	POST /api/chat	reply	a558c59850d37487	6	ollama/history_survival_matrix/streaming.yaml#4
+ollama	POST /api/chat	reply	ca566cb30a835bc5	12	ollama/agentic/structured_output_with_tools.yaml#1
+ollama	POST /api/chat	reply	db3c060e1ab5040c	3	ollama/agentic/streaming_structured_output_with_tools.yaml#1
+ollama	POST /api/chat	reply	e68dbc28244e90cb	3	ollama/history_survival_matrix/streaming.yaml#2
+ollama	POST /api/chat	reply	e878274c4476b9db	3	ollama/history_survival_matrix/unary.yaml#1
+ollama	POST /api/chat	reply	f28a1de54878a342	5	ollama/agent/completion_smoke.yaml#0
+ollama	POST /api/chat	reply	f6e030d0b8a34251	1	ollama/history_survival_matrix/streaming.yaml#0
+ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,response_format:{}}	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,reasoning_effort:str,stream:bool,stream_options:{}}	1	ollama/openai_compatible/streaming_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,stream_options:{}}	2	ollama/openai_compatible/reasoning_roundtrip_streaming.yaml#0
+ollama	POST /v1/chat/completions	request	$ {messages:[{}],model:str,tools:[{}]}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	5	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.messages[] {content:str,reasoning:str,role:"assistant"}	1	ollama/openai_compatible/reasoning_roundtrip_streaming.yaml#1
+ollama	POST /v1/chat/completions	request	$.messages[] {content:str,role:"tool",tool_call_id:str}	1	ollama/openai_compatible/optional_argument.yaml#1
+ollama	POST /v1/chat/completions	request	$.messages[] {content:str,role:"user"}	6	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.messages[] {reasoning:str,role:"assistant",tool_calls:[{}]}	1	ollama/openai_compatible/optional_argument.yaml#1
+ollama	POST /v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	5	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	1	ollama/openai_compatible/optional_argument.yaml#1
+ollama	POST /v1/chat/completions	request	$.messages[].tool_calls[].function {arguments:str,name:str}	1	ollama/openai_compatible/optional_argument.yaml#1
+ollama	POST /v1/chat/completions	request	$.response_format {json_schema:{},type:"json_schema"}	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$.response_format.json_schema {name:str,schema:{},strict:bool}	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$.response_format.json_schema.schema {$schema:str,additionalProperties:bool,properties:{},required:[str],title:str,type:"object"}	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$.response_format.json_schema.schema.properties.* {type:"string"}	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	request	$.stream_options {include_usage:bool}	3	ollama/openai_compatible/reasoning_roundtrip_streaming.yaml#0
+ollama	POST /v1/chat/completions	request	$.tools[] {function:{},type:"function"}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.tools[].function {description:str,name:str,parameters:{}}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.tools[].function.parameters {$schema:str,properties:{},required:[str],title:str,type:"object"}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.* {description:str,format:str,minimum:num,type:[str]}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	request	$.tools[].function.parameters.properties.* {description:str,type:"string"}	2	ollama/openai_compatible/optional_argument.yaml#0
+ollama	POST /v1/chat/completions	reply	160bcd545660cf36	1	bank:ollama/streaming_grammar/same_tool_twice.yaml#0
+ollama	POST /v1/chat/completions	reply	22f6c59516ace485	1	ollama/openai_compatible/optional_argument.yaml#1
+ollama	POST /v1/chat/completions	reply	679d25e68daf2c0a	1	bank:ollama/agent/max_tokens.yaml#0
+ollama	POST /v1/chat/completions	reply	71673396efbe4767	1	bank:ollama/reasoning_tool_roundtrip/streaming.yaml#0
+ollama	POST /v1/chat/completions	reply	ad5f1cf921b3df68	1	ollama/openai_compatible/streaming_smoke.yaml#0
+ollama	POST /v1/chat/completions	reply	b9fbdfee0b00af54	2	ollama/openai_compatible/reasoning_roundtrip_streaming.yaml#0
+ollama	POST /v1/chat/completions	reply	c388bd63f494e85e	1	ollama/openai_compatible/structured_output_smoke.yaml#0
+ollama	POST /v1/chat/completions	reply	ef9fb6bb0bbe8828	1	ollama/openai_compatible/optional_argument.yaml#0
 openai	DELETE /v1/files/{id}	request	$ empty	1	openai/stateful_chain_matrix/file_id_chain.yaml#3
 openai	DELETE /v1/files/{id}	reply	a6b01115bb2902d7	1	openai/stateful_chain_matrix/file_id_chain.yaml#3
 openai	DELETE /v1/responses/{id}	request	$ empty	3	openai/stateful_chain_matrix/stored_chain_with_tool_call.yaml#3
