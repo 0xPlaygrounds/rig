@@ -47,8 +47,21 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
 /// and calls theirs from [`CALLS`] on.
 const PLAN_INDEX: usize = 1 << 21;
 
-/// The wire index of the first tool call.
+/// The wire index of the first tool call. A content or call index Cohere
+/// states must stay below it.
 const CALLS: usize = 1 << 20;
+
+/// `index` as Cohere stated it for a content part or call, failing when it
+/// would reach the indices the decoder keeps for calls and the plan.
+fn checked(index: usize) -> Result<usize, ProviderError> {
+    if index < CALLS {
+        Ok(index)
+    } else {
+        Err(ProviderError::Response(format!(
+            "Cohere stated index {index}, past the {CALLS} parts or calls a reply may hold"
+        )))
+    }
+}
 
 /// One stream event, or the whole reply a unary call answers (`kind` is
 /// then empty), as Cohere sent it.
@@ -63,7 +76,7 @@ impl ChatEvent {
         self.fields.str("type").unwrap_or_default()
     }
 
-    /// The part, call or citation the event addresses.
+    /// The part or call the event addresses.
     fn index(&self) -> Result<usize, ProviderError> {
         self.fields
             .u64("index")
@@ -71,6 +84,7 @@ impl ChatEvent {
             .ok_or_else(|| {
                 ProviderError::Response(format!("Cohere `{}` names no index", self.kind()))
             })
+            .and_then(checked)
     }
 
     /// The object at `pointer` under the event's `delta.message`.
@@ -111,6 +125,7 @@ impl ChatDecoder {
         part: &Map<String, Value>,
         out: &mut Out<'_, Completion>,
     ) -> Result<(), ProviderError> {
+        let index = checked(index)?;
         let part = Value::Object(part.clone());
         let (kind, block, key) = match part.str("type") {
             Some("text") | None => (Kind::Text, Block::Text, "text"),
@@ -186,7 +201,7 @@ impl ChatDecoder {
         if self.open.contains_key(&PLAN_INDEX) {
             self.stop(PLAN_INDEX, out)?;
         }
-        let index = CALLS + index;
+        let index = CALLS + checked(index)?;
         let item = Value::Object(call.clone());
         let id = item.str("id").unwrap_or_default().to_owned();
         let arguments = item
@@ -236,15 +251,18 @@ impl ChatDecoder {
 
     /// Attach `citation` to the item of the block it cites: the tool plan,
     /// or the content part at its `content_index` (the first by default).
-    /// A citation of a block that never opened has nowhere to go.
+    /// A citation of a block that never opened has nowhere to go, and one
+    /// whose `content_index` reaches [`CALLS`] fails the reply.
     fn cite(&self, citation: Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let index = if citation.str("type") == Some("PLAN") {
             PLAN_INDEX
         } else {
-            citation
-                .u64("content_index")
-                .and_then(|index| usize::try_from(index).ok())
-                .unwrap_or(0)
+            checked(
+                citation
+                    .u64("content_index")
+                    .map_or(Ok(0), usize::try_from)
+                    .unwrap_or(usize::MAX),
+            )?
         };
         if !self.started.contains(&index) {
             tracing::warn!(
@@ -345,7 +363,14 @@ impl ChatDecoder {
         mut out: Out<'_, Completion>,
     ) -> Result<Flow, ProviderError> {
         self.message_id = reply.str("id").map(str::to_owned);
-        let message = reply.get("message").unwrap_or(&Value::Null);
+        // A `message` string is Cohere's error body, sent with a success
+        // status.
+        let message = match reply.get("message") {
+            Some(Value::String(_)) => {
+                return Err(ProviderError::from_provider_body(reply.to_string()));
+            }
+            message => message.unwrap_or(&Value::Null),
+        };
         // The plan leads, as it streams first.
         if let Some(plan) = message.str(PLAN).filter(|plan| !plan.is_empty()) {
             self.plan(plan, &mut out)?;

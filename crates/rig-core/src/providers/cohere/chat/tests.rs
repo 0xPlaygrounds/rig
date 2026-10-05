@@ -127,6 +127,13 @@ fn the_route_follows_the_request_and_the_setting() {
         body["messages"].to_string().contains("Dock Seven"),
         "the Compatibility API gets documents as text: {body}"
     );
+    let default = CohereConfig::new("key").completion("command-a-03-2025");
+    assert_eq!(default.route, ChatRoute::Compatibility);
+    let (path, _) = sent(&default, with_documents(), Mode::Unary);
+    assert_eq!(
+        path, "/compatibility/v1/chat/completions",
+        "the native API is opt-in"
+    );
 }
 
 /// Tools, the tool choice, strict tools, the output schema and sampling

@@ -1,13 +1,14 @@
-//! Cohere's configuration, and its chat wire: the OpenAI Compatibility API,
-//! or the native chat API when a request carries documents or the wire's
-//! route asks for it.
+//! Cohere's configuration, and its chat wire: the OpenAI Compatibility API
+//! by default, or the native chat API when the wire's route opts in.
 //!
 //! ```
 //! use rig_core::providers::cohere::{ChatRoute, CohereConfig};
 //! let config = CohereConfig::new("key").with_base_url("https://api.cohere.ai/");
 //! assert_eq!(config.base_url, "https://api.cohere.ai");
-//! let chat = config.completion("command-a-03-2025").with_route(ChatRoute::Native);
-//! assert_eq!(chat.route, ChatRoute::Native);
+//! let chat = config.completion("command-a-03-2025");
+//! assert_eq!(chat.route, ChatRoute::Compatibility);
+//! let chat = chat.with_route(ChatRoute::Auto);
+//! assert_eq!(chat.route, ChatRoute::Auto);
 //! ```
 
 use crate::client::env::{self, EnvError};
@@ -63,7 +64,7 @@ impl CohereConfig {
     }
 
     /// The chat wire for `model` under this API root, on the
-    /// [`ChatRoute::Auto`] route.
+    /// [`ChatRoute::Compatibility`] route.
     pub fn completion(&self, model: impl Into<String>) -> CohereChat {
         let model = model.into();
         CohereChat {
@@ -71,29 +72,32 @@ impl CohereConfig {
                 .with_base_url(format!("{}{COMPATIBILITY_PATH}", self.base_url))
                 .chat(model.clone()),
             native_api: NativeChat::new(self.clone(), model),
-            route: ChatRoute::Auto,
+            route: ChatRoute::Compatibility,
         }
     }
 }
 
-/// Which Cohere API a chat request goes to.
+/// Which Cohere API a chat request goes to. The default is
+/// [`Compatibility`](Self::Compatibility); the native API is opt-in.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ChatRoute {
     /// The native API for a request that carries documents, so Cohere
     /// grounds the answer in them and cites them, and the Compatibility
     /// API for any other.
-    #[default]
     Auto,
     /// The native API for every request.
     Native,
     /// The Compatibility API for every request, with documents sent as
     /// text in the history.
+    #[default]
     Compatibility,
 }
 
 /// Cohere chat: each request goes to the OpenAI Compatibility API or the
-/// native chat API, as [`ChatRoute`] says.
+/// native chat API, as [`ChatRoute`] says. Requests stay on the
+/// Compatibility API unless [`with_route`](Self::with_route) opts in to
+/// the native one.
 ///
 /// The two are different APIs to history replay. A turn made on one route
 /// replays on the other from its canonical fields only, so its citations
@@ -196,11 +200,15 @@ pub enum CohereEvent {
     Native(super::streaming::ChatEvent),
     /// A Compatibility API chunk, reply or signal.
     Compatibility(crate::providers::openai::wire::chat::ChatEvent),
+    /// Cohere's error envelope delivered with a success status, which fails
+    /// the turn.
+    Failure(ProviderError),
 }
 
 /// Decodes a Cohere chat reply from either API. The decoder is not told
 /// which API a request went to, so each frame is read by its shape: a
-/// native event carries a `type`, and a native reply a `message`.
+/// native event carries a `type`, a native reply a `message` object, and
+/// Cohere's error envelope a `message` string.
 pub struct CohereDecoder {
     native_api: super::streaming::ChatDecoder,
     compatibility_api: crate::providers::openai::wire::chat::ChatDecoder,
@@ -209,25 +217,47 @@ pub struct CohereDecoder {
     native_seen: bool,
 }
 
-/// Whether `data` is a native chat frame.
-fn is_native(data: &str) -> bool {
+/// How a frame's shape names the API that sent it.
+#[derive(Debug, Clone, Copy)]
+enum Shape {
+    Native,
+    Compatibility,
+    /// `{"id": ..., "message": "..."}`, Cohere's error body.
+    Error,
+}
+
+/// Which API sent `data`, read off its top-level keys.
+fn shape(data: &str) -> Shape {
     let Ok(serde_json::Value::Object(frame)) = serde_json::from_str(data) else {
-        return false;
+        return Shape::Compatibility;
     };
-    frame.get("type").is_some_and(serde_json::Value::is_string)
-        || (frame.contains_key("message") && !frame.contains_key("choices"))
+    if frame.get("type").is_some_and(serde_json::Value::is_string) {
+        return Shape::Native;
+    }
+    if frame.contains_key("choices") {
+        return Shape::Compatibility;
+    }
+    match frame.get("message") {
+        Some(serde_json::Value::Object(_)) => Shape::Native,
+        Some(serde_json::Value::String(_)) => Shape::Error,
+        _ => Shape::Compatibility,
+    }
 }
 
 impl<'id> Decoder<'id, Completion> for CohereDecoder {
     type Event = CohereEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<CohereEvent> {
-        if is_native(&frame.as_str()) {
-            self.native_api.classify(frame).map(CohereEvent::Native)
-        } else {
-            self.compatibility_api
+        let data = frame.as_str();
+        match shape(&data) {
+            Shape::Error => WireEvent::Known(CohereEvent::Failure(
+                ProviderError::from_provider_body(data.into_owned()),
+            )),
+            Shape::Native => self.native_api.classify(frame).map(CohereEvent::Native),
+            Shape::Compatibility => self
+                .compatibility_api
                 .classify(frame)
-                .map(CohereEvent::Compatibility)
+                .map(CohereEvent::Compatibility),
         }
     }
 
@@ -242,6 +272,7 @@ impl<'id> Decoder<'id, Completion> for CohereDecoder {
                 self.native_api.decode(event, out)
             }
             CohereEvent::Compatibility(event) => self.compatibility_api.decode(event, out),
+            CohereEvent::Failure(error) => Err(error),
         }
     }
 

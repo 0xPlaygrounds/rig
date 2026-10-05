@@ -95,3 +95,21 @@ fn a_reply_cut_short_on_either_api_is_truncated() {
         assert!(streamed(&frames).is_err(), "{frames:?}");
     }
 }
+
+/// Cohere's error body, a `message` string, sent with a success status fails
+/// the turn with its text on either mode, and is not read as a native reply.
+#[test]
+fn an_error_body_with_a_success_status_fails_the_turn() {
+    let body = r#"{"id":"x","message":"internal error"}"#;
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let error = crate::test_utils::decode_reply(
+            &cohere().completion("command-a-03-2025"),
+            &CompletionRequest::new("hi"),
+            mode,
+            [WireFrame::Text(body.to_owned())],
+            serde_json::Value::Null,
+        )
+        .expect_err("an error body fails the turn");
+        assert!(error.to_string().contains("internal error"), "{error}");
+    }
+}

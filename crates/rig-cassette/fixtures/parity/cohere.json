@@ -1,4 +1,56 @@
 {
+  "context/document_metadata_and_multiple_documents_are_accepted.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "text": "According to the information provided in **harbor-record-1**, beacon code **amber-73** is assigned to **Dock Seven**.",
+        "native": null
+      }
+    ],
+    "usage": {
+      "input_tokens": 100,
+      "output_tokens": 29,
+      "total_tokens": 129,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 0
+    },
+    "response_id": "bbcd3dd0-d581-4bbb-8dca-058d4b22a52b",
+    "finish_reason": "length",
+    "model": "command-a-03-2025",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "content": "According to the information provided in **harbor-record-1**, beacon code **amber-73** is assigned to **Dock Seven**.",
+            "role": "assistant"
+          }
+        }
+      ],
+      "created": 0,
+      "id": "bbcd3dd0-d581-4bbb-8dca-058d4b22a52b",
+      "model": "command-a-03-2025",
+      "object": "chat.completion",
+      "usage": {
+        "completion_tokens": 29,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 100,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        },
+        "total_tokens": 129
+      }
+    }
+  },
   "streaming/streaming_smoke.yaml#0": {
     "mode": "streaming",
     "choice": [

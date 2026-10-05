@@ -514,3 +514,128 @@ fn a_whole_reply_skips_parts_that_are_not_objects() {
     .expect("the reply decodes");
     assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
 }
+
+/// Cohere's error body, `{"id", "message": "..."}`, sent with a success
+/// status fails the reply with its text instead of folding to an empty
+/// answer.
+#[test]
+fn an_error_body_with_a_success_status_fails_with_its_text() {
+    let error = folded(&[json!({"id": "x", "message": "internal error"})])
+        .expect_err("an error body fails the reply");
+    assert!(error.to_string().contains("internal error"), "{error}");
+}
+
+/// A native reply whose message holds no content delivers no answer, and
+/// the shared rules judge it as on every wire: an answerless `COMPLETE` is
+/// for the run to judge, an answerless `MAX_TOKENS` fails the turn, and a
+/// reply that states no finish reason fails the turn.
+#[test]
+fn a_reply_without_content_answers_nothing() {
+    use crate::completion::message::{turn_delivered_no_answer, turn_failure};
+    let empty = |finish: Option<&str>| {
+        let mut reply = json!({"id": "x", "message": {"role": "assistant"}});
+        if let (Some(reply), Some(finish)) = (reply.as_object_mut(), finish) {
+            reply.insert("finish_reason".to_owned(), json!(finish));
+        }
+        let response = on_wire(&[reply]).expect("the reply folds");
+        assert!(
+            turn_delivered_no_answer(&response.choice),
+            "{:?}",
+            response.choice
+        );
+        let failure = turn_failure(
+            &response.choice,
+            response.head().stop.as_ref(),
+            response.finish_reason().as_ref(),
+        );
+        (response, failure)
+    };
+    let (complete, failure) = empty(Some("COMPLETE"));
+    assert_eq!(complete.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(failure, None);
+    let (_, failure) = empty(Some("MAX_TOKENS"));
+    assert!(
+        failure.is_some_and(|failure| failure.contains("no answer")),
+        "an answerless cut turn fails"
+    );
+    let (unstated, failure) = empty(None);
+    assert_eq!(
+        unstated.error.as_deref(),
+        Some("the provider ended the reply without a finish reason")
+    );
+    assert!(failure.is_some(), "a reply with no finish reason fails");
+}
+
+/// A content, call or cited index that reaches the indices the decoder keeps
+/// for calls and the tool plan fails the reply.
+#[test]
+fn an_index_past_the_reserved_range_fails() {
+    for frames in [
+        vec![content_start(CALLS, "text")],
+        vec![call_start(CALLS, "c1", "lookup")],
+        vec![
+            content_start(0, "text"),
+            content_delta(PLAN_INDEX, "text", "x"),
+        ],
+        vec![
+            content_start(0, "text"),
+            citation_start(0, citation(0, 1, "doc-1", json!({"content_index": CALLS}))),
+        ],
+        whole(
+            json!({"content": [{"type": "text", "text": "hi"}],
+                "citations": [citation(0, 1, "doc-1", json!({"content_index": PLAN_INDEX}))]}),
+            "COMPLETE",
+        ),
+    ] {
+        let error = folded(&frames).expect_err("the index is refused");
+        assert!(
+            matches!(&error, ProviderError::Response(message) if message.contains("index")),
+            "{frames:?}: {error}"
+        );
+    }
+}
+
+/// A native finish reason Cohere does not document fails a text turn
+/// through the driver, and a request that accepts unknown reasons gets a
+/// turn that stops normally.
+#[test]
+fn an_unknown_finish_reason_fails_unless_accepted() {
+    let wire = super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a");
+    let reply = |accept: bool| {
+        crate::test_utils::decode_reply(
+            &wire,
+            &crate::completion::CompletionRequest::new("hi")
+                .accepting_unknown_finish_reasons(accept),
+            crate::wire::Mode::Unary,
+            whole(
+                json!({"content": [{"type": "text", "text": "hi"}]}),
+                "SOMETHING_NEW",
+            )
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+            Value::Null,
+        )
+        .expect("the reply folds")
+    };
+    let failed = reply(false);
+    let stop = failed.head().stop;
+    assert!(
+        crate::completion::message::turn_failure(
+            &failed.choice,
+            stop.as_ref(),
+            failed.finish_reason().as_ref()
+        )
+        .is_some_and(|failure| failure.contains("SOMETHING_NEW")),
+        "{stop:?}"
+    );
+    let accepted = reply(true);
+    assert_eq!(accepted.head().stop, Some(crate::message::StopReason::Stop));
+    assert_eq!(
+        crate::completion::message::turn_failure(
+            &accepted.choice,
+            accepted.head().stop.as_ref(),
+            accepted.finish_reason().as_ref()
+        ),
+        None
+    );
+}

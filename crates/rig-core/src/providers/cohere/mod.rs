@@ -1,13 +1,13 @@
 //! Cohere configuration, model identifiers, and its chat and embedding
 //! wires.
 //!
-//! Chat goes through [`CohereChat`]: Cohere's OpenAI Compatibility API on
-//! the shared Chat Completions wire, as the
-//! [`COHERE`](crate::providers::openai::wire::COHERE) dialect, or Cohere's
-//! native chat API ([`NativeChat`]) for a request that carries documents.
-//! The native API grounds the answer in the documents, and each text block
-//! keeps the citations that point at it in its provider item. Text and
-//! image embeddings use Cohere's own `/v1/embed`.
+//! Chat goes through [`CohereChat`]: by default Cohere's OpenAI
+//! Compatibility API on the shared Chat Completions wire, as the
+//! [`COHERE`](crate::providers::openai::wire::COHERE) dialect. A
+//! [`ChatRoute`] opts in to Cohere's native chat API ([`NativeChat`]), which
+//! grounds the answer in the request's documents and keeps the citations
+//! that point at each text block in its provider item. Text and image
+//! embeddings use Cohere's own `/v1/embed`.
 //!
 //! ```no_run
 //! use rig_core::providers::cohere;
@@ -16,7 +16,7 @@
 //! let provider = cohere::Cohere::from_env()?;
 //!
 //! let mut command_a = provider.completion(cohere::COMMAND_A_03_2025);
-//! command_a.wire = command_a.wire.with_route(cohere::ChatRoute::Native);
+//! command_a.wire = command_a.wire.with_route(cohere::ChatRoute::Auto);
 //! let embeddings = provider.embedding(cohere::EMBED_V4, None);
 //! # Ok(())
 //! # }

@@ -29,8 +29,8 @@ impl Cohere {
         Ok(CohereConfig::from_env()?.client())
     }
 
-    /// The chat model for `model`: on Cohere's OpenAI Compatibility API,
-    /// or its native chat API for a request that carries documents
+    /// The chat model for `model`, on Cohere's OpenAI Compatibility API
+    /// until its wire opts in to the native chat API
     /// ([`ChatRoute`](crate::providers::cohere::ChatRoute)).
     pub fn completion(&self, model: impl Into<String>) -> Model<CohereChat> {
         self.model(self.config.completion(model))

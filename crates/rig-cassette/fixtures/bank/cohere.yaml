@@ -2099,17 +2099,3 @@ then:
   - name: content-type
     value: application/json
   body: '{"finish_reason":"COMPLETE","id":"c66737c9-0dc4-4ed3-b0db-5bc941a40984","message":{"citations":[{"end":2,"sources":[{"id":"subtract_d41p5xnhmncp:0","tool_output":{"content":"-3"},"type":"tool"}],"start":0,"text":"-3","type":"TEXT_CONTENT"}],"content":[{"text":"-3","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":95,"output_tokens":2},"cached_tokens":704,"tokens":{"input_tokens":1623,"output_tokens":15}}}'
----
-provider: cohere
-encoder: POST /v2/chat
-shape: f6412019bc53c754
-calls: []
-ends:
-- COMPLETE
-source: cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml#0
-then:
-  status: 200
-  header:
-  - name: content-type
-    value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"bcb69bf6-e34a-4670-9d1f-c9d1c9aa2edc","message":{"citations":[{"end":10,"sources":[{"document":{"id":"harbor-record-1","region":"north-bay","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1","type":"document"}],"start":0,"text":"Dock Seven","type":"TEXT_CONTENT"}],"content":[{"text":"Dock Seven is assigned beacon code amber-73.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":57,"output_tokens":11},"cached_tokens":1504,"tokens":{"input_tokens":1713,"output_tokens":25}}}'

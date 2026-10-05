@@ -62,14 +62,16 @@ async fn streamed(
     (events, response)
 }
 
-/// A streamed answer grounded in documents cites them: each citation, with
-/// its source document, sits in the provider item of the text it cites.
+/// On the `Auto` route a streamed answer grounded in documents cites them:
+/// each citation, with its source document, sits in the provider item of
+/// the text it cites.
 #[tokio::test]
 async fn documents_ground_a_streamed_answer_with_citations() {
     with_cohere_cassette(
         "native/documents_ground_a_streamed_answer_with_citations",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let mut model = client.completion(CASSETTE_MODEL);
+            model.wire = model.wire.with_route(ChatRoute::Auto);
             let mut request =
                 CompletionRequest::new("Which dock has beacon amber-73, and when does it close?")
                     .max_tokens(96);
@@ -163,16 +165,17 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
     .await;
 }
 
-/// A conversation that moves between the APIs replays on each: a native
-/// turn grounded in documents, a Compatibility API turn without them that
-/// reads the first canonically, and a native turn that sends the first
-/// back with its citations and the second canonically.
+/// A conversation the `Auto` route moves between the APIs replays on each:
+/// a native turn grounded in documents, a Compatibility API turn without
+/// them that reads the first canonically, and a native turn that sends the
+/// first back with its citations and the second canonically.
 #[tokio::test]
 async fn a_conversation_switching_routes_replays() {
     with_cohere_cassette(
         "native/a_conversation_switching_routes_replays",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
+            let mut model = client.completion(CASSETTE_MODEL);
+            model.wire = model.wire.with_route(ChatRoute::Auto);
             let ask = |history: &[Message], prompt: &str, grounded: bool| {
                 let mut request = CompletionRequest::new(prompt).max_tokens(64);
                 request.chat_history.splice(0..0, history.iter().cloned());

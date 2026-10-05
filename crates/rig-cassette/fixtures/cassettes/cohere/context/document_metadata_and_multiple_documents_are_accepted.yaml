@@ -1,5 +1,5 @@
 when:
-  path: /v2/chat
+  path: /compatibility/v1/chat/completions
   method: POST
   query_param: []
   header:
@@ -7,10 +7,10 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"documents":[{"data":{"region":"north-bay","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1"},{"data":{"source":"harbor-registry","text":"Beacon code violet-19 is assigned to Dock Three."},"id":"harbor-record-2"}],"max_tokens":32,"messages":[{"content":[{"text":"Which dock is assigned beacon code amber-73?","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"<file id: harbor-record-1>\n<metadata region: \"north-bay\" source: \"harbor-registry\" />\nBeacon code amber-73 is assigned to Dock Seven.\n</file>\n","type":"text"},{"text":"<file id: harbor-record-2>\n<metadata source: \"harbor-registry\" />\nBeacon code violet-19 is assigned to Dock Three.\n</file>\n","type":"text"},{"text":"Which dock is assigned beacon code amber-73?","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
-  body: '{"finish_reason":"COMPLETE","id":"bcb69bf6-e34a-4670-9d1f-c9d1c9aa2edc","message":{"citations":[{"end":10,"sources":[{"document":{"id":"harbor-record-1","region":"north-bay","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1","type":"document"}],"start":0,"text":"Dock Seven","type":"TEXT_CONTENT"}],"content":[{"text":"Dock Seven is assigned beacon code amber-73.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":57,"output_tokens":11},"cached_tokens":1504,"tokens":{"input_tokens":1713,"output_tokens":25}}}'
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"According to the information provided in **harbor-record-1**, beacon code **amber-73** is assigned to **Dock Seven**.","role":"assistant"}}],"created":0,"id":"bbcd3dd0-d581-4bbb-8dca-058d4b22a52b","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":29,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":100,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":129}}'
