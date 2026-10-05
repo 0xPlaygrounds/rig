@@ -1256,9 +1256,11 @@ fn an_accepted_unknown_finish_reason_runs_the_call() {
         .with_unknown_finish_reasons_accepted(true),
         reply(vec![AssistantContent::text("3")]),
     ]);
-    app.world_mut()
-        .entity_mut(agent)
-        .insert(rig_ecs::agent::AcceptUnknownFinishReasons(true));
+    let accept: rig_ecs::agent::AcceptUnknownFinishReasons = serde_json::from_value(
+        serde_json::to_value(rig_ecs::agent::AcceptUnknownFinishReasons(true)).unwrap(),
+    )
+    .unwrap();
+    app.world_mut().entity_mut(agent).insert(accept);
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "add once", false, None);

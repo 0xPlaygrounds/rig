@@ -1416,7 +1416,9 @@ impl Settings<'_, '_> {
                 .and_then(|p| p.max_tokens)
                 .or_else(|| setting(run, agent, &self.max_tokens).and_then(|m| m.0)),
             accept_unknown_finish_reasons: setting(run, agent, &self.unknown_finishes)
-                .is_some_and(|accept| accept.0),
+                .copied()
+                .unwrap_or_default()
+                .0,
             additional_params,
             tool_choice: patch
                 .and_then(|p| p.tool_choice.clone())
