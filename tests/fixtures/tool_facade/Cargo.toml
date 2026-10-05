@@ -30,6 +30,7 @@ all_root = [
     "rig/helixdb",
     "rig/lancedb",
     "rig/memory",
+    "rig/memory-file",
     "rig/milvus",
     "rig/mongodb",
     "rig/neo4j",

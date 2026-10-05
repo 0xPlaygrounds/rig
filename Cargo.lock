@@ -10771,9 +10771,12 @@ name = "rig-memory"
 version = "0.43.0"
 dependencies = [
  "anyhow",
+ "assert_fs",
  "rig-agent",
  "rig-core",
  "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]

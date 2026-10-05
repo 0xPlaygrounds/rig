@@ -77,7 +77,8 @@ impl MemoryError {
 ///
 /// Implementors store an ordered list of [`Message`]s per `conversation_id`. Rig
 /// runtimes invoke [`ConversationMemory::load`] before sending a prompt and
-/// [`ConversationMemory::append`] after a successful run.
+/// [`ConversationMemory::append`] after a successful run. Other callers may
+/// append at any point, for example after each tool result.
 ///
 /// Appends run inline before the agent returns its response. Load failures
 /// prevent model calls; append failures are reported alongside the successful
@@ -94,8 +95,10 @@ pub trait ConversationMemory: WasmCompatSend + WasmCompatSync {
 
     /// Append `messages` to the conversation identified by `conversation_id`.
     ///
-    /// Called after a successful agent turn with the user prompt, the assistant
-    /// response, and any tool-call/tool-result pairs that occurred during the turn.
+    /// Each call adds `messages`, in order, after the messages already stored.
+    /// It may be called at any point, such as mid-turn after a tool result.
+    /// Rig runtimes call it after a successful agent turn with the user prompt,
+    /// the assistant response, and any tool-call/tool-result pairs from the turn.
     fn append<'a>(
         &'a self,
         conversation_id: &'a ConversationId,

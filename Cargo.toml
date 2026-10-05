@@ -78,6 +78,7 @@ features = [
     "image",
     "lancedb",
     "memory",
+    "memory-file",
     "milvus",
     "mongodb",
     "native-tls",
@@ -496,6 +497,8 @@ gemini-grpc = ["dep:rig-gemini-grpc"]
 helixdb = ["dep:rig-helixdb"]
 lancedb = ["dep:rig-lancedb"]
 memory = ["dep:rig-memory"]
+# `rig::memory::FileConversationMemory`, native targets only.
+memory-file = ["memory", "rig-memory/file"]
 milvus = ["dep:rig-milvus"]
 mongodb = ["dep:rig-mongodb"]
 neo4j = ["dep:rig-neo4j"]
