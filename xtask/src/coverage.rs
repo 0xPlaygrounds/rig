@@ -3,7 +3,8 @@
 //! line and branch coverage of production code per file (`lines.tsv`), the
 //! mutants the fast suites kill in the replay core (`mutants.tsv`), and the
 //! request facts and reply shapes the cassette corpus records
-//! (`shapes.tsv`).
+//! (`shapes.tsv`). The line part leaves out the regions a race reaches in
+//! only some runs, each listed with its reason in `unstable.tsv`.
 //!
 //! Without `--check` the measured parts overwrite their baseline files. With
 //! `--check` they are compared instead, and the command fails when a file's
@@ -25,6 +26,7 @@ pub(crate) mod mutants;
 pub(crate) mod shapes;
 #[cfg(test)]
 mod tests;
+pub(crate) mod unstable;
 
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -196,7 +198,16 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<()> {
             _ => None,
         };
         let (measured, lost) = match part {
-            Part::Lines => lines::measure(root, baseline.as_deref(), options.runs)?,
+            Part::Lines => {
+                let unstable_path = baseline_dir.join(unstable::FILE);
+                let rows = std::fs::read_to_string(&unstable_path).unwrap_or_default();
+                let measured = lines::measure(root, baseline.as_deref(), &rows, options.runs)?;
+                if let Some(text) = measured.unstable {
+                    write(&unstable_path, &text)?;
+                    println!("wrote {}", unstable_path.display());
+                }
+                (measured.text, measured.lost)
+            }
             Part::Shapes => {
                 let mut current =
                     shapes::collect(&root.join("crates/rig-cassette/fixtures/cassettes"))?;

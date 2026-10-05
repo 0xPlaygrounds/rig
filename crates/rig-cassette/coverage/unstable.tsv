@@ -1,0 +1,3 @@
+file	source	region	code	reason
+crates/rig-cassette/src/ecs/delivery.rs	4ec2e30fec9b7272	318.1.2	if *closed || remaining.as_deref() == Some(&0) {	collect polls a cancelled stream again after its recorded prefix is spent only when the cancellation has not landed by that pass, which depends on when the pool thread delivers the items
+crates/rig-cassette/src/ecs/delivery.rs	4ec2e30fec9b7272	514.0.1	(DeliveryKind::Cancelled, _) if world.get::<Observed>(entity).is_some_and(|observed| observed.0.has_outcome()) => {}	collect reaches the cancelled step before the replayed answer is observed only when the pool thread has not finished by that pass

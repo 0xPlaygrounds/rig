@@ -491,14 +491,31 @@ baseline of it in `crates/rig-cassette/coverage/`:
   trees of the facade and `crates/*`, without test modules, test helpers and
   proc-macro crates). It comes from `cargo llvm-cov nextest` over the
   workspace with all features under the `local` profile. A baseline keeps only
-  what three instrumented runs all covered, so a branch that a race reaches
-  in some runs is not held against a later one. A count llvm-cov prints
+  what every instrumented run covered (three unless `--runs` says otherwise),
+  so a branch that a race reaches in some runs is not held against a later
+  one. Only what the current platform instruments is compared, so code
+  another platform compiles out is never a loss; production code has no
+  macOS- or Linux-only region today. A count llvm-cov prints
   wrapped (`u64::MAX` for a line, `u32::MAX` for a branch) is not coverage:
   llvm-cov derives some counts by subtracting counters, and a panic that
   unwinds out of a function between two increments drives one below zero.
   A test whose panic races another ending of the test makes such counts come
   and go, so a test ends one way only; the live-tool tripwire in
   `world_replay_world.rs` never answers instead of panicking on the pool.
+- `unstable.tsv`: the regions whose coverage depends on scheduling, each
+  with its file's source hash, the trimmed source line and a one-line reason.
+  The line part leaves them out of the baseline and of every measurement, so
+  neither outcome of the race fails the gate. A row applies while the file's
+  source and its `lines.tsv` row carry the row's hash; when the file changes,
+  its ratio leaves the rows' regions off its totals. Prefer making the test
+  deterministic: a row is for a race the test cannot control, such as a pool
+  thread finishing before or after a system pass. Writing the baseline adds
+  every region its runs disagree on, with an empty reason, and moves kept
+  rows to their code's new line. `--check` fails on a row without a reason
+  or written for another baseline. When `--check` loses a region of an
+  unchanged file it prints that region's row; CI uploads its measurement. If
+  the loss is a race, adopt the row with a reason; if a change lost it, fix
+  the change.
 - `shapes.tsv`: per provider and encoder (method and path template), every
   request fact and reply shape the cassettes record, with its count of
   recordings and one example fixture. A request fact is the acceptance
@@ -522,6 +539,7 @@ baseline of it in `crates/rig-cassette/coverage/`:
 cargo xtask coverage --check            # lines and shapes: CI's `verify --check coverage`
 cargo xtask coverage --check --mutants  # also mutation: run it in a PR that deletes tests
 cargo xtask coverage [--only lines,shapes,mutants] [--sample N] [--jobs N]  # rewrite the baseline
+NEXTEST_TEST_THREADS=4 cargo xtask coverage --only lines --runs 5  # lines.tsv and unstable.tsv as CI's 4 cores see them
 cargo xtask coverage --per-test         # every test's lines and branches, in target/coverage/per-test.tsv
 ```
 

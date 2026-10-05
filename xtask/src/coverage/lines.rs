@@ -12,7 +12,8 @@
 //! what every run covered, so a branch that only some runs reach is not
 //! held against a later one. A file whose source is unchanged fails the
 //! check when a line or branch it covered is no longer covered; a changed
-//! file fails when its line or branch ratio falls.
+//! file fails when its line or branch ratio falls. The regions in
+//! [`unstable`](super::unstable) are left out of every measurement.
 //!
 //! `--per-test` reruns the suites with a nextest wrapper script that gives
 //! every test process its own profile, converts it to covered lines and
@@ -69,6 +70,16 @@ impl FileCoverage {
                 self.branches.values().filter(|covered| **covered).count(),
                 self.branches.len(),
             ),
+        }
+    }
+
+    /// Count as covered what either covered.
+    pub(crate) fn unite(&mut self, other: &Self) {
+        for (line, covered) in &other.lines {
+            *self.lines.entry(*line).or_insert(false) |= *covered;
+        }
+        for (branch, covered) in &other.branches {
+            *self.branches.entry(*branch).or_insert(false) |= *covered;
         }
     }
 
@@ -307,10 +318,14 @@ pub(crate) fn dropped(before: (usize, usize), now: (usize, usize)) -> bool {
 
 /// Every baseline file whose coverage regressed. `source` gives a file's
 /// current hash, `None` when the file is gone, which is not a regression.
+/// `unstable` gives the line and branch rows of each file's
+/// [`unstable`](super::unstable) regions: a changed file still measures them,
+/// while its baseline counts leave them out, so they come off its totals.
 pub(crate) fn regressions(
     baseline: &BTreeMap<String, Row>,
     current: &BTreeMap<String, FileCoverage>,
     source: impl Fn(&str) -> Option<String>,
+    unstable: &BTreeMap<String, (usize, usize)>,
 ) -> Vec<String> {
     let mut found = Vec::new();
     for (file, row) in baseline {
@@ -350,7 +365,11 @@ pub(crate) fn regressions(
             }
             continue;
         }
-        let now = coverage.counts();
+        let mut now = coverage.counts();
+        if let Some((lines, branches)) = unstable.get(file) {
+            now.lines.1 = now.lines.1.saturating_sub(*lines);
+            now.branches.1 = now.branches.1.saturating_sub(*branches);
+        }
         for (what, before, now) in [
             ("lines", row.counts.lines, now.lines),
             ("branches", row.counts.branches, now.branches),
@@ -360,6 +379,36 @@ pub(crate) fn regressions(
                     "{file}: {what} {}/{} -> {}/{}",
                     before.0, before.1, now.0, now.1
                 ));
+            }
+        }
+    }
+    found
+}
+
+/// The lines and branches an unchanged file's baseline covered that `current`
+/// instruments and no longer covers.
+pub(crate) fn lost_regions(
+    baseline: &BTreeMap<String, Row>,
+    current: &BTreeMap<String, FileCoverage>,
+    source: impl Fn(&str) -> Option<String>,
+) -> Vec<(String, super::unstable::Region)> {
+    use super::unstable::Region;
+    let mut found = Vec::new();
+    for (file, row) in baseline {
+        let (Some(coverage), Some(hash)) = (current.get(file), source(file)) else {
+            continue;
+        };
+        if hash != row.source {
+            continue;
+        }
+        for line in &row.covered_lines {
+            if coverage.lines.get(line) == Some(&false) {
+                found.push((file.clone(), Region::Line(*line)));
+            }
+        }
+        for branch in &row.covered_branches {
+            if coverage.branches.get(branch) == Some(&false) {
+                found.push((file.clone(), Region::Branch(*branch)));
             }
         }
     }
@@ -449,6 +498,14 @@ fn source_hash(root: &Path, file: &str) -> Option<String> {
     Some(hash(&String::from_utf8_lossy(&bytes)))
 }
 
+/// A file's text and its hash, `None` when it cannot be read.
+fn source_text(root: &Path, file: &str) -> Option<(String, String)> {
+    let bytes = std::fs::read(root.join(file)).ok()?;
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let source = hash(&text);
+    Some((text, source))
+}
+
 /// One instrumented run's report. `clean` rebuilds the instrumented crates
 /// first, as cargo-llvm-cov does by default.
 fn run_once(root: &Path, clean: bool) -> Result<BTreeMap<String, FileCoverage>> {
@@ -511,14 +568,28 @@ fn proc_macro_dirs(root: &Path) -> Result<Vec<String>> {
     Ok(dirs)
 }
 
+/// What [`measure`] found: the rendered measurement, its regressions, and
+/// when writing a baseline, the [`unstable`](super::unstable) rows to write
+/// beside it.
+pub(crate) struct Measured {
+    pub(crate) text: String,
+    pub(crate) lost: Vec<String>,
+    pub(crate) unstable: Option<String>,
+}
+
 /// Measure over `runs` runs, keeping what every run covered, print per-crate
-/// totals, and compare with `baseline` when given.
+/// totals, and compare with `baseline` when given. The regions `unstable`
+/// names are left out of the measurement. Without a baseline, the regions
+/// the runs disagree on join `unstable`, and the rows to write come back.
 pub(crate) fn measure(
     root: &Path,
     baseline: Option<&str>,
+    unstable: &str,
     runs: usize,
-) -> Result<(String, Vec<String>)> {
+) -> Result<Measured> {
+    let rows = super::unstable::parse(unstable)?;
     let mut files = run_once(root, true)?;
+    let mut union = files.clone();
     for run in 1..runs {
         let next = run_once(root, false)?;
         let mut flaky = 0;
@@ -531,20 +602,73 @@ pub(crate) fn measure(
                 }
             }
         }
+        for (file, coverage) in next {
+            union.entry(file).or_default().unite(&coverage);
+        }
         println!(
             "lines: run {} of {runs}; {flaky} files covered less than before",
             run + 1
         );
     }
+    let source = |file: &str| source_hash(root, file);
+    let (rows, written) = match baseline {
+        Some(_) => (rows, None),
+        None => {
+            let found = super::unstable::disagreements(&union, &files);
+            let (rows, notes) =
+                super::unstable::refresh(&rows, &found, |file| source_text(root, file));
+            for note in notes {
+                println!("{note}");
+            }
+            let text = super::unstable::render(&rows);
+            (rows, Some(text))
+        }
+    };
+    super::unstable::exclude(&mut files, &rows, source);
+    println!(
+        "lines: {} unstable regions held out ({})",
+        rows.len(),
+        super::unstable::FILE
+    );
     print_totals(&files);
     let lost = match baseline {
-        Some(text) => regressions(&parse(text)?, &files, |file| source_hash(root, file)),
+        Some(text) => {
+            let baseline = parse(text)?;
+            let mut lost = super::unstable::problems(&rows, |file| {
+                baseline.get(file).map(|row| row.source.clone())
+            });
+            lost.extend(regressions(
+                &baseline,
+                &files,
+                source,
+                &super::unstable::per_file(&rows),
+            ));
+            let candidates = lost_regions(&baseline, &files, source);
+            if !candidates.is_empty() {
+                // A region a race reaches only sometimes is adopted by adding
+                // these rows, each with its reason, to the committed file.
+                let (rows, _) =
+                    super::unstable::refresh(&[], &candidates, |file| source_text(root, file));
+                println!(
+                    "lines: if a race, not a test change, lost these regions, add these rows \
+                     with a reason to {}:\n{}",
+                    super::unstable::FILE,
+                    super::unstable::render(&rows)
+                        .lines()
+                        .skip(1)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+            }
+            lost
+        }
         None => Vec::new(),
     };
-    Ok((
-        render(&files, |file| source_hash(root, file).unwrap_or_default()),
+    Ok(Measured {
+        text: render(&files, |file| source_hash(root, file).unwrap_or_default()),
         lost,
-    ))
+        unstable: written,
+    })
 }
 
 /// Delete the `default_*.profraw` files that test children started with a

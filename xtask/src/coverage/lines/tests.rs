@@ -126,7 +126,15 @@ fn baseline() -> BTreeMap<String, Row> {
 #[test]
 fn an_unchanged_file_fails_on_any_lost_line_or_branch() {
     let mut current = report();
-    assert!(regressions(&baseline(), &current, |_| Some("same".to_owned())).is_empty());
+    assert!(
+        regressions(
+            &baseline(),
+            &current,
+            |_| Some("same".to_owned()),
+            &BTreeMap::new()
+        )
+        .is_empty()
+    );
     let a = current.get_mut("crates/rig-core/src/a.rs").unwrap();
     a.lines.insert(4, false);
     a.lines.insert(2, true);
@@ -134,7 +142,12 @@ fn an_unchanged_file_fails_on_any_lost_line_or_branch() {
     a.branches.insert((2, 0, 1), true);
     // Same counts, different sets: still two regressions.
     assert_eq!(a.counts(), report()["crates/rig-core/src/a.rs"].counts());
-    let found = regressions(&baseline(), &current, |_| Some("same".to_owned()));
+    let found = regressions(
+        &baseline(),
+        &current,
+        |_| Some("same".to_owned()),
+        &BTreeMap::new(),
+    );
     assert_eq!(
         found,
         [
@@ -153,7 +166,15 @@ fn only_what_the_baseline_covered_and_is_still_instrumented_counts() {
     a.lines.insert(7, false);
     a.lines.remove(&1);
     a.branches.remove(&(2, 0, 0));
-    assert!(regressions(&baseline(), &current, |_| Some("same".to_owned())).is_empty());
+    assert!(
+        regressions(
+            &baseline(),
+            &current,
+            |_| Some("same".to_owned()),
+            &BTreeMap::new()
+        )
+        .is_empty()
+    );
 }
 
 #[test]
@@ -162,19 +183,80 @@ fn a_changed_file_fails_only_when_a_ratio_falls() {
     let a = current.get_mut("crates/rig-core/src/a.rs").unwrap();
     a.lines.insert(1, false);
     a.lines.insert(2, true);
-    assert!(regressions(&baseline(), &current, |_| Some("edited".to_owned())).is_empty());
+    assert!(
+        regressions(
+            &baseline(),
+            &current,
+            |_| Some("edited".to_owned()),
+            &BTreeMap::new()
+        )
+        .is_empty()
+    );
     let a = current.get_mut("crates/rig-core/src/a.rs").unwrap();
     a.lines.insert(9, false);
-    let found = regressions(&baseline(), &current, |_| Some("edited".to_owned()));
+    let found = regressions(
+        &baseline(),
+        &current,
+        |_| Some("edited".to_owned()),
+        &BTreeMap::new(),
+    );
     assert_eq!(found, ["crates/rig-core/src/a.rs: lines 2/3 -> 2/4"]);
+}
+
+#[test]
+fn the_lost_regions_of_an_unchanged_file_are_named() {
+    use crate::coverage::unstable::Region;
+    let mut current = report();
+    let a = current.get_mut("crates/rig-core/src/a.rs").unwrap();
+    a.lines.insert(4, false);
+    a.branches.insert((2, 0, 0), false);
+    let file = "crates/rig-core/src/a.rs".to_owned();
+    assert_eq!(
+        lost_regions(&baseline(), &current, |_| Some("same".to_owned())),
+        [
+            (file.clone(), Region::Line(4)),
+            (file, Region::Branch((2, 0, 0)))
+        ]
+    );
+    assert!(lost_regions(&baseline(), &current, |_| Some("edited".to_owned())).is_empty());
+}
+
+#[test]
+fn a_changed_file_leaves_its_unstable_regions_off_the_totals() {
+    let mut current = report();
+    let a = current.get_mut("crates/rig-core/src/a.rs").unwrap();
+    a.lines.insert(9, false);
+    let edited = |_: &str| Some("edited".to_owned());
+    assert_eq!(
+        regressions(&baseline(), &current, edited, &BTreeMap::new()),
+        ["crates/rig-core/src/a.rs: lines 2/3 -> 2/4"]
+    );
+    let unstable = BTreeMap::from([("crates/rig-core/src/a.rs".to_owned(), (1, 0))]);
+    assert!(regressions(&baseline(), &current, edited, &unstable).is_empty());
+}
+
+#[test]
+fn a_union_keeps_what_either_covered() {
+    let mut first = report()["crates/rig-core/src/a.rs"].clone();
+    let mut second = first.clone();
+    second.lines.insert(2, true);
+    second.lines.insert(8, false);
+    first.unite(&second);
+    assert_eq!(first.covered_lines().collect::<Vec<_>>(), [1, 2, 4]);
+    assert_eq!(first.lines.get(&8), Some(&false));
 }
 
 #[test]
 fn a_deleted_file_is_not_a_regression_but_an_unmeasured_one_is() {
     let empty = BTreeMap::new();
-    assert!(regressions(&baseline(), &empty, |_| None).is_empty());
+    assert!(regressions(&baseline(), &empty, |_| None, &BTreeMap::new()).is_empty());
     assert_eq!(
-        regressions(&baseline(), &empty, |_| Some("same".to_owned())),
+        regressions(
+            &baseline(),
+            &empty,
+            |_| Some("same".to_owned()),
+            &BTreeMap::new()
+        ),
         ["crates/rig-core/src/a.rs: no longer measured"]
     );
 }

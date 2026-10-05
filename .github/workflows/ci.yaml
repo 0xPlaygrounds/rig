@@ -163,6 +163,8 @@ jobs:
   # shapes, each against crates/rig-cassette/coverage. Mutation is too slow
   # for every PR; `cargo xtask coverage --check --mutants` runs it locally.
   # No warm cache: the instrumented build shares no artifacts with the rest.
+  # A failed run prints the unstable.tsv rows for every lost region and
+  # uploads its measurement, so a race this runner exposes can be adopted.
   coverage:
     name: stable / coverage gate
     runs-on: ubuntu-latest
@@ -177,6 +179,12 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - run: cargo xtask verify --check coverage
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-measurement
+          path: target/coverage/*.tsv
+          if-no-files-found: ignore
 
   # Every interleaving of the bus's wait/wake models under loom.
   loom:
