@@ -1,3 +1,5 @@
 file	source	region	code	reason
+crates/rig-candle/src/runtime.rs	429e34fe07f9380c	54.0.0	while *blocked {	a generation waits on the test gate only when it reaches the gate before the test opens it, which depends on when the blocking thread runs
+crates/rig-candle/src/runtime.rs	429e34fe07f9380c	55	blocked = self.gate_changed.wait(blocked).map_err(|_| {	a generation waits on the test gate only when it reaches the gate before the test opens it, which depends on when the blocking thread runs
 crates/rig-cassette/src/ecs/delivery.rs	4ec2e30fec9b7272	318.1.2	if *closed || remaining.as_deref() == Some(&0) {	collect polls a cancelled stream again after its recorded prefix is spent only when the cancellation has not landed by that pass, which depends on when the pool thread delivers the items
 crates/rig-cassette/src/ecs/delivery.rs	4ec2e30fec9b7272	514.0.1	(DeliveryKind::Cancelled, _) if world.get::<Observed>(entity).is_some_and(|observed| observed.0.has_outcome()) => {}	collect reaches the cancelled step before the replayed answer is observed only when the pool thread has not finished by that pass

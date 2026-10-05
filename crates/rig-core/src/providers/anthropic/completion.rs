@@ -143,6 +143,10 @@ pub fn binds_context(model: &str) -> bool {
 /// to another context instead of rejecting the request.
 pub(super) const THINKING_BINDING_BETA: &str = "thinking-binding-controls-2026-08-01";
 
+/// The beta flag that streams tool input as it is written, for a provider
+/// that rejects the per-tool `eager_input_streaming` field.
+pub(super) const FINE_GRAINED_TOOL_STREAMING_BETA: &str = "fine-grained-tool-streaming-2025-05-14";
+
 /// Whether a request to `model` on `wire`, with `thinking` as the caller
 /// sets it, asks Anthropic to drop thinking bound to another context (pi's
 /// `drop_block`): Anthropic's own API, for a model whose thinking binds, in
@@ -213,7 +217,8 @@ pub(super) fn body(
     };
     let top = top_level_cache_control(wire, &mut params)?;
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
-    let mut tools = tools(request.tools, &mut params, strict)?;
+    let eager = wire.tool_input_streaming == super::wire::ToolInputStreaming::Eager;
+    let mut tools = tools(request.tools, &mut params, strict, eager)?;
     let (mut system, history) =
         split_system(&request.chat_history, takes_mid_conversation_system(&model));
     let ids = WireIds::for_target(&history, wire, &model);
@@ -484,12 +489,14 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
     })
 }
 
-/// The request's tools: Rig's, strict when `strict`, then those
+/// The request's tools: Rig's, strict when `strict` and asking for their
+/// input as it is written when `eager`, then those
 /// `additional_params.tools` names, verbatim.
 fn tools(
     tools: Vec<completion::ToolDefinition>,
     params: &mut Map<String, Value>,
     strict: bool,
+    eager: bool,
 ) -> Result<Vec<Value>, EncodeError> {
     let extra = match params.shift_remove("tools") {
         None => Vec::new(),
@@ -510,6 +517,7 @@ fn tools(
             ("description", Some(json!(tool.description))),
             ("input_schema", Some(schema)),
             ("strict", strict.then_some(Value::Bool(true))),
+            ("eager_input_streaming", eager.then_some(Value::Bool(true))),
         ]))
     });
     Ok(rig.chain(extra).collect())

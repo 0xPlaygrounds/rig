@@ -1909,3 +1909,146 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+/// What `wire` sends for a request with one Rig tool and one provider tool:
+/// each tool's `eager_input_streaming`, and the `anthropic-beta` header.
+fn tool_input_streaming_sent(
+    wire: &crate::providers::anthropic::wire::Messages,
+    mode: Mode,
+    tools: Vec<completion::ToolDefinition>,
+) -> (Vec<Option<Value>>, Option<String>) {
+    use crate::wire::Wire;
+    let request = completion_request_with_tools(
+        tools,
+        Some(json!({"tools": [{"type": "web_search_20250305", "name": "web_search"}]})),
+    );
+    let encoded = wire.encode(request, mode).expect("the request encodes");
+    let body = json_body(&encoded.request);
+    let eager = body["tools"]
+        .as_array()
+        .map(|tools| {
+            tools
+                .iter()
+                .map(|tool| tool.get("eager_input_streaming").cloned())
+                .collect()
+        })
+        .unwrap_or_default();
+    let beta = encoded
+        .request
+        .headers()
+        .get("anthropic-beta")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    (eager, beta)
+}
+
+/// A request with Rig tools asks every dialect to stream their input as it
+/// is written, as pi does, unary or streamed alike so the tool definitions
+/// a prompt cache keys on never change; a provider tool is left as given,
+/// and a request without Rig tools asks nothing.
+#[test]
+fn a_request_with_tools_asks_for_eager_tool_input_on_every_dialect() {
+    use crate::providers::anthropic::wire::{ANTHROPIC, MINIMAX, MOONSHOT, XIAOMIMIMO, ZAI};
+    for dialect in [ANTHROPIC, ZAI, MINIMAX, MOONSHOT, XIAOMIMIMO] {
+        let wire = AnthropicConfig::with_key(&dialect, "k").completion("some-model");
+        assert_eq!(
+            tool_input_streaming_sent(&wire, Mode::Streaming, vec![generic_tool("lookup")]),
+            (vec![Some(json!(true)), None], None),
+            "{}",
+            dialect.name
+        );
+        assert_eq!(
+            tool_input_streaming_sent(&wire, Mode::Unary, vec![generic_tool("lookup")]),
+            (vec![Some(json!(true)), None], None),
+            "{}",
+            dialect.name
+        );
+        assert_eq!(
+            tool_input_streaming_sent(&wire, Mode::Streaming, Vec::new()),
+            (vec![None], None),
+            "{}",
+            dialect.name
+        );
+    }
+}
+
+/// A gateway that rejects the per-tool field gets the beta flag instead,
+/// beside the caller's own flags, and one that rejects both gets neither.
+#[test]
+fn tool_input_streaming_falls_back_to_the_beta_flag_or_off() {
+    use crate::providers::anthropic::wire::ToolInputStreaming;
+    let provider = AnthropicConfig::new("k").with_beta("files-api-2025-04-14");
+    let beta = provider
+        .completion(CLAUDE_SONNET_4_6)
+        .with_tool_input_streaming(ToolInputStreaming::BetaHeader);
+    assert_eq!(
+        tool_input_streaming_sent(&beta, Mode::Streaming, vec![generic_tool("lookup")]),
+        (
+            vec![None, None],
+            Some("files-api-2025-04-14,fine-grained-tool-streaming-2025-05-14".to_owned())
+        )
+    );
+    assert_eq!(
+        tool_input_streaming_sent(&beta, Mode::Unary, vec![generic_tool("lookup")]),
+        (
+            vec![None, None],
+            Some("files-api-2025-04-14,fine-grained-tool-streaming-2025-05-14".to_owned())
+        )
+    );
+    assert_eq!(
+        tool_input_streaming_sent(&beta, Mode::Streaming, Vec::new()),
+        (vec![None], Some("files-api-2025-04-14".to_owned()))
+    );
+    let off = provider
+        .completion(CLAUDE_SONNET_4_6)
+        .with_tool_input_streaming(ToolInputStreaming::Off);
+    assert_eq!(
+        tool_input_streaming_sent(&off, Mode::Streaming, vec![generic_tool("lookup")]),
+        (vec![None, None], Some("files-api-2025-04-14".to_owned()))
+    );
+}
+
+/// A wire serialized before the setting existed reloads with eager input.
+#[test]
+fn a_wire_serialized_without_tool_input_streaming_reloads_eager() {
+    use crate::providers::anthropic::wire::{Messages, ToolInputStreaming};
+    let wire = AnthropicConfig::new("k")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_tool_input_streaming(ToolInputStreaming::Off);
+    let mut json = serde_json::to_value(&wire).expect("the wire serializes");
+    assert_eq!(json["tool_input_streaming"], json!("off"));
+    json.as_object_mut()
+        .map(|wire| wire.shift_remove("tool_input_streaming"));
+    let restored: Messages = serde_json::from_value(json).expect("the wire reloads");
+    assert_eq!(restored.tool_input_streaming, ToolInputStreaming::Eager);
+}
+
+/// Each setting reads back from its serialized name, and the beta flag is
+/// sent once when the caller already asked for it.
+#[test]
+fn tool_input_streaming_reads_its_names_and_sends_the_beta_flag_once() {
+    use crate::providers::anthropic::wire::ToolInputStreaming;
+    for (name, streaming) in [
+        ("eager", ToolInputStreaming::Eager),
+        ("beta_header", ToolInputStreaming::BetaHeader),
+        ("off", ToolInputStreaming::Off),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<ToolInputStreaming>(json!(name)).ok(),
+            Some(streaming)
+        );
+        assert_eq!(serde_json::to_value(streaming).ok(), Some(json!(name)));
+        assert!(!format!("{streaming:?}").is_empty());
+    }
+    for unknown in [json!("fine_grained"), json!(1)] {
+        assert!(serde_json::from_value::<ToolInputStreaming>(unknown).is_err());
+    }
+    let wire = AnthropicConfig::new("k")
+        .with_beta("fine-grained-tool-streaming-2025-05-14")
+        .completion(CLAUDE_SONNET_4_6)
+        .with_tool_input_streaming(ToolInputStreaming::BetaHeader);
+    assert_eq!(
+        tool_input_streaming_sent(&wire, Mode::Streaming, vec![generic_tool("lookup")]).1,
+        Some("fine-grained-tool-streaming-2025-05-14".to_owned())
+    );
+}

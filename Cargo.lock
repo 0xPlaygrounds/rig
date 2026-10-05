@@ -151,6 +151,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_tool_call_streaming"
+version = "0.43.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "rig",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "agent_with_agent_tool"
 version = "0.43.0"
 dependencies = [

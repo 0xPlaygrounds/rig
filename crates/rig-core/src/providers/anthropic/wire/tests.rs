@@ -91,3 +91,21 @@ fn each_dialect_reads_images_on_its_vision_models() {
         assert!(accepts.tools, "{model}");
     }
 }
+
+/// Every Messages-format dialect asks for tool input as it is written by
+/// default, as pi does for every provider it does not know to reject it.
+#[test]
+fn every_dialect_defaults_to_eager_tool_input() {
+    for quirks in [Quirks::anthropic(), Quirks::gateway()] {
+        assert_eq!(quirks.tool_input_streaming, ToolInputStreaming::Eager);
+    }
+    for dialect in all() {
+        assert_eq!(
+            dialect.quirks.tool_input_streaming,
+            ToolInputStreaming::Eager,
+            "{}",
+            dialect.name
+        );
+    }
+    assert_eq!(Quirks::gateway().max_tokens, MaxTokens::Fixed(4096));
+}

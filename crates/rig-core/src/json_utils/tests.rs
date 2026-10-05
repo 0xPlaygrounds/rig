@@ -240,3 +240,118 @@ mod string_or_vec_shapes {
         assert!(decode(serde_json::json!({"content": null})).is_empty());
     }
 }
+
+mod partial_arguments {
+    use super::super::parse_partial_arguments;
+    use serde_json::{Value, json};
+
+    fn parsed(text: &str) -> Value {
+        Value::Object(parse_partial_arguments(text))
+    }
+
+    #[test]
+    fn cut_off_text_keeps_what_it_states() {
+        for (text, expected) in [
+            ("", json!({})),
+            ("   ", json!({})),
+            ("{", json!({})),
+            (r#"{"path"#, json!({})),
+            (r#"{"path":"#, json!({})),
+            (r#"{"path": "no"#, json!({"path": "no"})),
+            (r#"{"path": "notes.md","#, json!({"path": "notes.md"})),
+            (r#"{"path": "notes.md", "con"#, json!({"path": "notes.md"})),
+            (r#"{"a": {"b": [1, 2"#, json!({"a": {"b": [1, 2]}})),
+            (r#"{"a": [{"b": "c"}, {"d"#, json!({"a": [{"b": "c"}, {}]})),
+            (r#"{"a": 1, "b": 2,"#, json!({"a": 1, "b": 2})),
+            (r#"{"line": "one\ntw"#, json!({"line": "one\ntw"})),
+            (r#"{"quote": "say \"hi"#, json!({"quote": "say \"hi"})),
+        ] {
+            assert_eq!(parsed(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn escapes_cut_short_keep_the_string_before_them() {
+        for (text, expected) in [
+            (r#"{"a": "x\"#, json!({"a": "x"})),
+            (r#"{"a": "x\u"#, json!({"a": "x"})),
+            (r#"{"a": "x\u00"#, json!({"a": "x"})),
+            (r#"{"a": "x\u00e"#, json!({"a": "x"})),
+            (r#"{"a": "x\u00e9"#, json!({"a": "xé"})),
+            (r#"{"a": "x\\u00"#, json!({"a": "x\\u00"})),
+        ] {
+            assert_eq!(parsed(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn numbers_and_literals_cut_short_are_dropped_until_valid() {
+        for (text, expected) in [
+            (r#"{"n": 1"#, json!({"n": 1})),
+            (r#"{"n": 1."#, json!({})),
+            (r#"{"n": -"#, json!({})),
+            (r#"{"n": 1e"#, json!({})),
+            (r#"{"n": 1.5"#, json!({"n": 1.5})),
+            (r#"{"b": tru"#, json!({})),
+            (r#"{"b": true"#, json!({"b": true})),
+            (r#"{"v": nul"#, json!({})),
+            (r#"{"a": 1, "v": nul"#, json!({"a": 1})),
+        ] {
+            assert_eq!(parsed(text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn raw_control_characters_and_stray_backslashes_are_repaired() {
+        assert_eq!(
+            parsed("{\"text\": \"line one\nline two\ttabbed\"}"),
+            json!({"text": "line one\nline two\ttabbed"})
+        );
+        assert_eq!(
+            parsed(r#"{"path": "C:\Users\me"}"#),
+            json!({"path": "C:\\Users\\me"})
+        );
+        assert_eq!(
+            parsed("{\"text\": \"cut\nshort"),
+            json!({"text": "cut\nshort"})
+        );
+    }
+
+    #[test]
+    fn a_complete_object_parses_as_serde_does() {
+        let text = r#"{"path": "a.md", "content": "x\ny \"q\" \u00e9", "n": [1, 2.5, -3e2], "o": {"t": true, "f": null}}"#;
+        assert_eq!(
+            parsed(text),
+            serde_json::from_str::<Value>(text).expect("valid json")
+        );
+    }
+
+    #[test]
+    fn a_top_level_that_is_not_an_object_is_empty() {
+        for text in [
+            "[1, 2]", "[1, 2", "\"str\"", "\"str", "12", "true", "null", "not json",
+        ] {
+            assert_eq!(parsed(text), json!({}), "{text}");
+        }
+    }
+
+    #[test]
+    fn every_prefix_parses_and_the_whole_text_parses_exactly() {
+        for whole in [
+            json!({"path": "notes/today.md", "content": "Line one.\nLine \"two\" \\ é ✓\n\tIndented."}),
+            json!({"x": 1, "y": -2.5, "z": 3e10, "flags": [true, false, null], "nested": {"a": [{"b": "c"}]}}),
+            json!({"query": "", "limit": 0, "filters": {}, "tags": []}),
+        ] {
+            for text in [
+                whole.to_string(),
+                serde_json::to_string_pretty(&whole).expect("json"),
+            ] {
+                for (cut, _) in text.char_indices() {
+                    // Never fails, and always an object.
+                    let _ = parse_partial_arguments(&text[..cut]);
+                }
+                assert_eq!(parsed(&text), whole);
+            }
+        }
+    }
+}

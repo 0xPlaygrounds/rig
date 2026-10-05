@@ -9,12 +9,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record values = [1, 2] exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","input_schema":{"additionalProperties":false,"properties":{"values":{"description":"{maxItems: 4, uniqueItems: true, contains: {\"const\":2}, minContains: 1, maxContains: 1, minItems: 2}","items":{"type":"integer"},"type":"array"}},"required":["values"],"type":"object"},"name":"record_unique_values","strict":true}]}'
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record values = [1, 2] exactly.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","eager_input_streaming":true,"input_schema":{"additionalProperties":false,"properties":{"values":{"description":"{maxItems: 4, uniqueItems: true, contains: {\"const\":2}, minContains: 1, maxContains: 1, minItems: 2}","items":{"type":"integer"},"type":"array"}},"required":["values"],"type":"object"},"name":"record_unique_values","strict":true}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011Cfcz5gYmiTQqVbgw71W6A
-  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01GqXJSw8hagYBFuAHfG8nLr","input":{"values":[1,2]},"name":"record_unique_values","type":"tool_use"}],"diagnostics":null,"id":"msg_011Cfcz5gv6cPU4Lx57HvQPN","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":741,"output_tokens":45,"service_tier":"standard"}}'
+    value: req_011CfipPU3oDxPV7wc22vik6
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01B535dTdLQkSp78ZZHJKsAx","input":{"values":[1,2]},"name":"record_unique_values","type":"tool_use"}],"diagnostics":null,"id":"msg_011CfipPUSNS4EUV1VP5ZFbU","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":741,"output_tokens":45,"service_tier":"standard"}}'

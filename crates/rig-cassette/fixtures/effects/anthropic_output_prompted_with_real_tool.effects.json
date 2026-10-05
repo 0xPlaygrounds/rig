@@ -127,7 +127,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01URtrYRGDDQ342dWtkmP5bC"
+                "provider": "toolu_01W52EpzXrxRwdjrpcJNLksZ"
               },
               "function": {
                 "name": "add",
@@ -141,7 +141,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01URtrYRGDDQ342dWtkmP5bC",
+                  "id": "toolu_01W52EpzXrxRwdjrpcJNLksZ",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -149,7 +149,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "ed10f2948d1ea38f"
+                "fingerprint": "7968da555daa0dac"
               }
             }
           ],
@@ -165,9 +165,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci5dBkmc1C3NrkLygJm"
+            "response_id": "msg_011CfinyyJuQN2SS4GDkC4Zi"
           },
-          "provider_request_id": "req_011Cfci5cmSjYEnwkK49nhPy",
+          "provider_request_id": "req_011CfinyxwLFnQFMTo9ZqAK4",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -180,7 +180,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01URtrYRGDDQ342dWtkmP5bC",
+                "id": "toolu_01W52EpzXrxRwdjrpcJNLksZ",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -190,7 +190,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci5dBkmc1C3NrkLygJm",
+            "id": "msg_011CfinyyJuQN2SS4GDkC4Zi",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -276,7 +276,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01URtrYRGDDQ342dWtkmP5bC"
+                    "provider": "toolu_01W52EpzXrxRwdjrpcJNLksZ"
                   },
                   "function": {
                     "name": "add",
@@ -290,7 +290,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01URtrYRGDDQ342dWtkmP5bC",
+                      "id": "toolu_01W52EpzXrxRwdjrpcJNLksZ",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -298,7 +298,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "ed10f2948d1ea38f"
+                    "fingerprint": "7968da555daa0dac"
                   }
                 }
               ],
@@ -307,7 +307,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfci5dBkmc1C3NrkLygJm"
+                "response_id": "msg_011CfinyyJuQN2SS4GDkC4Zi"
               },
               "stop": "tool_use"
             },
@@ -317,7 +317,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01URtrYRGDDQ342dWtkmP5bC"
+                    "provider": "toolu_01W52EpzXrxRwdjrpcJNLksZ"
                   },
                   "name": "add",
                   "content": [
@@ -368,20 +368,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected at this exciting gathering of Rust enthusiasts.\"}",
+              "text": "The sum is **42**! Now I'll craft the event object with that result baked into the summary.\n\n{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Seattle Rust Meetup! 17 + 25 = 42 — just like the answer to life, the universe, and everything, Rust brings order to the chaos of systems programming.\"}",
               "native": {
                 "item": {
-                  "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected at this exciting gathering of Rust enthusiasts.\"}",
+                  "text": "The sum is **42**! Now I'll craft the event object with that result baked into the summary.\n\n{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Seattle Rust Meetup! 17 + 25 = 42 — just like the answer to life, the universe, and everything, Rust brings order to the chaos of systems programming.\"}",
                   "type": "text"
                 },
-                "fingerprint": "51067910d8a46c2e"
+                "fingerprint": "506d8377931377b0"
               }
             }
           ],
           "usage": {
             "input_tokens": 822,
-            "output_tokens": 57,
-            "total_tokens": 879,
+            "output_tokens": 91,
+            "total_tokens": 913,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -390,20 +390,20 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfci5jNZq9gwvMVsjuXQz"
+            "response_id": "msg_011Cfinz5tYHQcSjrbXU6ghN"
           },
-          "provider_request_id": "req_011Cfci5j2VMV3PbaiMmi7Qe",
+          "provider_request_id": "req_011Cfinz5WUe9xr7CDcoCkSV",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Rust Meetup in Seattle! 17 + 25 = 42 attendees are expected at this exciting gathering of Rust enthusiasts.\"}",
+                "text": "The sum is **42**! Now I'll craft the event object with that result baked into the summary.\n\n{\"title\":\"Rust Meetup Seattle\",\"category\":\"Technology\",\"summary\":\"Join us for the Seattle Rust Meetup! 17 + 25 = 42 — just like the answer to life, the universe, and everything, Rust brings order to the chaos of systems programming.\"}",
                 "type": "text"
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfci5jNZq9gwvMVsjuXQz",
+            "id": "msg_011Cfinz5tYHQcSjrbXU6ghN",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -419,7 +419,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 822,
-              "output_tokens": 57,
+              "output_tokens": 91,
               "service_tier": "standard"
             }
           }

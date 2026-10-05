@@ -68,3 +68,24 @@ fn an_open_part_is_a_prefix_but_not_a_transcript() {
     let prefix = Transcript::parse_prefix(value).expect("a stream cut short");
     assert_eq!(prefix.events().count(), 2);
 }
+
+/// A tool call's start names its tool, and no other part's start names one.
+#[test]
+fn only_a_tool_call_start_names_a_tool() {
+    let start = |kind: &str, name: Option<&str>| {
+        let mut value = json!({"event": "start", "part": 0, "kind": kind});
+        if let Some(name) = name {
+            value["name"] = json!(name);
+        }
+        json!([{"item": "event", "value": value}])
+    };
+    assert!(Transcript::parse_prefix(start("tool_call", Some("add"))).is_ok());
+    assert_eq!(
+        Transcript::parse_prefix(start("tool_call", None)).err(),
+        Some(SequenceError::WrongKind(0))
+    );
+    assert_eq!(
+        Transcript::parse_prefix(start("text", Some("add"))).err(),
+        Some(SequenceError::WrongKind(0))
+    );
+}

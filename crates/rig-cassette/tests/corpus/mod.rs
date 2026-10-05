@@ -3729,20 +3729,26 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             // engine resolves it — the hook's decision, else the
                             // runner's policy — through the run's streamed seam.
                             for streamed in events {
-                                // A valid call's one arguments delta fires when
-                                // its end validates it, as in the engine.
-                                if let StreamedTurnEvent::EmitToolCall { .. } = streamed {
-                                    delta_stop =
-                                        if program.hooks.contains(&Hook::StopOnToolCallDelta) {
-                                            Some(STOP_ON_TOOL_CALL_DELTA)
-                                        } else if program
-                                            .hooks
-                                            .contains(&Hook::StopOnToolArgumentsDelta)
-                                        {
-                                            Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
-                                        } else {
-                                            None
-                                        };
+                                // An allowed call's argument fragment fires as it
+                                // streams, as in the engine.
+                                if let StreamedTurnEvent::EmitToolCallDelta = streamed {
+                                    let substantive = matches!(
+                                        &item,
+                                        Item::Event(StreamEvent::Arguments { json, .. })
+                                            if !json.is_empty()
+                                    );
+                                    delta_stop = if program
+                                        .hooks
+                                        .contains(&Hook::StopOnToolCallDelta)
+                                    {
+                                        Some(STOP_ON_TOOL_CALL_DELTA)
+                                    } else if substantive
+                                        && program.hooks.contains(&Hook::StopOnToolArgumentsDelta)
+                                    {
+                                        Some(STOP_ON_TOOL_ARGUMENTS_DELTA)
+                                    } else {
+                                        None
+                                    };
                                     if delta_stop.is_some() {
                                         break;
                                     }

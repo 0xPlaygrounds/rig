@@ -1485,3 +1485,165 @@ fn response_incomplete_is_incomplete_whatever_its_status_says() {
         }
     }
 }
+
+/// The compact shape of a decoded stream's events: each event's part and
+/// payload.
+fn call_events(decoded: &Decoded<Completion>) -> Vec<String> {
+    decoded
+        .events()
+        .into_iter()
+        .map(|event| match event {
+            StreamEvent::Start { part, name, .. } => format!(
+                "{}:start:{}",
+                part.index(),
+                name.as_ref().map_or("", |name| name.as_str())
+            ),
+            StreamEvent::Arguments { part, json } => format!("{}:args:{json}", part.index()),
+            StreamEvent::Text { part, text } => format!("{}:text:{text}", part.index()),
+            StreamEvent::Reasoning { part, .. } => format!("{}:reasoning", part.index()),
+            StreamEvent::End { part, content } => match content {
+                AssistantContent::ToolCall(call) => {
+                    format!("{}:end:{}", part.index(), call.function.arguments_value())
+                }
+                _ => format!("{}:end", part.index()),
+            },
+        })
+        .collect()
+}
+
+fn added_call(index: usize, id: &str, call_id: &str, name: &str) -> serde_json::Value {
+    json!({"type": "response.output_item.added", "output_index": index,
+           "item": {"type": "function_call", "id": id, "call_id": call_id, "name": name, "arguments": ""}})
+}
+
+fn argument_delta(index: usize, delta: &str) -> serde_json::Value {
+    json!({"type": "response.function_call_arguments.delta", "output_index": index, "delta": delta})
+}
+
+fn done_call(
+    index: usize,
+    id: &str,
+    call_id: &str,
+    name: &str,
+    arguments: &str,
+) -> serde_json::Value {
+    json!({"type": "response.output_item.done", "output_index": index,
+           "item": {"type": "function_call", "id": id, "call_id": call_id, "name": name,
+                    "arguments": arguments, "status": "completed"}})
+}
+
+/// Each argument delta streams as it arrives, before the call's done
+/// item, and parallel calls keep their own parts.
+#[test]
+fn argument_deltas_stream_before_the_done_item() {
+    let events = [
+        added_call(0, "fc_1", "call_1", "add"),
+        argument_delta(0, "{\"x\":"),
+        added_call(1, "fc_2", "call_2", "lookup"),
+        argument_delta(1, "{\"q\":\"ri"),
+        argument_delta(0, "1}"),
+        argument_delta(1, "g\"}"),
+        done_call(0, "fc_1", "call_1", "add", "{\"x\":1}"),
+        done_call(1, "fc_2", "call_2", "lookup", "{\"q\":\"rig\"}"),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    let decoded = decoded_body(&body_of(&events));
+    assert_eq!(
+        call_events(&decoded),
+        [
+            "0:start:add",
+            "0:args:{\"x\":",
+            "1:start:lookup",
+            "1:args:{\"q\":\"ri",
+            "0:args:1}",
+            "1:args:g\"}",
+            "0:end:{\"x\":1}",
+            "1:end:{\"q\":\"rig\"}",
+        ]
+    );
+}
+
+/// A done item that extends what streamed sends only the rest; one that
+/// states other arguments replaces them, and the call's end states those.
+#[test]
+fn a_done_item_sends_the_rest_or_restates_the_arguments() {
+    let extended = [
+        added_call(0, "fc_1", "call_1", "add"),
+        argument_delta(0, "{\"x\":"),
+        done_call(0, "fc_1", "call_1", "add", "{\"x\":1}"),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    assert_eq!(
+        call_events(&decoded_body(&body_of(&extended))),
+        [
+            "0:start:add",
+            "0:args:{\"x\":",
+            "0:args:1}",
+            "0:end:{\"x\":1}"
+        ]
+    );
+    let restated = [
+        added_call(0, "fc_1", "call_1", "add"),
+        argument_delta(0, "{\"x\":"),
+        done_call(0, "fc_1", "call_1", "add", "{\"y\":2}"),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    assert_eq!(
+        call_events(&decoded_body(&body_of(&restated))),
+        ["0:start:add", "0:args:{\"x\":", "0:end:{\"y\":2}"]
+    );
+}
+
+/// A custom tool's raw input streams inside its `{"input": ...}` object,
+/// so its fragments join to the object its end states.
+#[test]
+fn custom_tool_input_streams_as_its_json_object() {
+    let events = [
+        json!({"type": "response.output_item.added", "output_index": 0,
+               "item": {"type": "custom_tool_call", "id": "ctc_1", "call_id": "call_1", "name": "shell", "input": ""}}),
+        json!({"type": "response.custom_tool_call_input.delta", "output_index": 0, "delta": "echo \"hi"}),
+        json!({"type": "response.custom_tool_call_input.delta", "output_index": 0, "delta": "\"\nls"}),
+        json!({"type": "response.output_item.done", "output_index": 0,
+               "item": {"type": "custom_tool_call", "id": "ctc_1", "call_id": "call_1", "name": "shell",
+                        "input": "echo \"hi\"\nls", "status": "completed"}}),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    let decoded = decoded_body(&body_of(&events));
+    let fragments: Vec<&str> = decoded
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(fragments.len() >= 2, "{fragments:?}");
+    let joined: String = fragments.concat();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&joined).ok(),
+        Some(json!({"input": "echo \"hi\"\nls"}))
+    );
+}
+
+/// Arguments the added item already states stream at once, and an empty
+/// delta streams nothing.
+#[test]
+fn arguments_the_added_item_states_stream_and_an_empty_delta_is_nothing() {
+    let events = [
+        json!({"type": "response.output_item.added", "output_index": 0,
+               "item": {"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "add", "arguments": "{\"x\":"}}),
+        argument_delta(0, ""),
+        argument_delta(0, "1}"),
+        done_call(0, "fc_1", "call_1", "add", "{\"x\":1}"),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    assert_eq!(
+        call_events(&decoded_body(&body_of(&events))),
+        [
+            "0:start:add",
+            "0:args:{\"x\":",
+            "0:args:1}",
+            "0:end:{\"x\":1}"
+        ]
+    );
+}

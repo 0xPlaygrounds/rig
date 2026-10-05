@@ -109,7 +109,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
+                "provider": "toolu_015iwaRaVEkyyiQRanv5FCvv"
               },
               "function": {
                 "name": "lookup",
@@ -122,14 +122,14 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                  "id": "toolu_015iwaRaVEkyyiQRanv5FCvv",
                   "input": {
                     "q": "What is the capital of France?"
                   },
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": "351b872626d3d13b"
+                "fingerprint": "ee62d10cfca39fd3"
               }
             }
           ],
@@ -145,9 +145,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchdsvJ6bmwdDLbP33KG"
+            "response_id": "msg_011CfikL6G55Y4u1MuKdc5xu"
           },
-          "provider_request_id": "req_011Cfchdsai8pmz1v1tCmGJo",
+          "provider_request_id": "req_011CfikL54eG6mF2d5J5x9N2",
           "finish_reason": "tool_calls",
           "raw": {
             "usage": {
@@ -161,7 +161,7 @@
               }
             },
             "stop_reason": "tool_use",
-            "message_id": "msg_011CfchdsvJ6bmwdDLbP33KG",
+            "message_id": "msg_011CfikL6G55Y4u1MuKdc5xu",
             "model": "claude-sonnet-4-6"
           }
         }
@@ -172,7 +172,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "lookup"
           }
         },
         {
@@ -180,7 +181,15 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"q\": \"What is the capital of France?\"}"
+            "json": "{\"q\": \"What is the capital of France?"
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "\"}"
           }
         },
         {
@@ -191,7 +200,7 @@
             "content": {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
+                "provider": "toolu_015iwaRaVEkyyiQRanv5FCvv"
               },
               "function": {
                 "name": "lookup",
@@ -204,14 +213,14 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                  "id": "toolu_015iwaRaVEkyyiQRanv5FCvv",
                   "input": {
                     "q": "What is the capital of France?"
                   },
                   "name": "lookup",
                   "type": "tool_use"
                 },
-                "fingerprint": "351b872626d3d13b"
+                "fingerprint": "ee62d10cfca39fd3"
               }
             }
           }
@@ -308,9 +317,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchdxvvSqat6sXR3FPZj"
+            "response_id": "msg_011CfikLBuQfcJohUeqrsLBt"
           },
-          "provider_request_id": "req_011CfchdxbLwQ8UryczmuLEV",
+          "provider_request_id": "req_011CfikLBXqJc4SomsxY6SpB",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -321,7 +330,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchdxvvSqat6sXR3FPZj",
+            "id": "msg_011CfikLBuQfcJohUeqrsLBt",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -373,7 +382,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
+                    "provider": "toolu_015iwaRaVEkyyiQRanv5FCvv"
                   },
                   "function": {
                     "name": "lookup",
@@ -386,14 +395,14 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01RSgvARo1AhSANdsufgh8Nc",
+                      "id": "toolu_015iwaRaVEkyyiQRanv5FCvv",
                       "input": {
                         "q": "What is the capital of France?"
                       },
                       "name": "lookup",
                       "type": "tool_use"
                     },
-                    "fingerprint": "351b872626d3d13b"
+                    "fingerprint": "ee62d10cfca39fd3"
                   }
                 }
               ],
@@ -402,7 +411,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfchdsvJ6bmwdDLbP33KG"
+                "response_id": "msg_011CfikL6G55Y4u1MuKdc5xu"
               },
               "stop": "tool_use"
             },
@@ -412,7 +421,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01RSgvARo1AhSANdsufgh8Nc"
+                    "provider": "toolu_015iwaRaVEkyyiQRanv5FCvv"
                   },
                   "name": "lookup",
                   "content": [
@@ -484,9 +493,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfche1mLWhYTwQzfVqQ4P"
+            "response_id": "msg_011CfikLFJHmvE4YSMeuCeRJ"
           },
-          "provider_request_id": "req_011Cfche1PWsDw5uzhTFbg4c",
+          "provider_request_id": "req_011CfikLEtFHKifwbDLHpxRN",
           "finish_reason": "stop",
           "raw": {
             "usage": {
@@ -500,7 +509,7 @@
               }
             },
             "stop_reason": "end_turn",
-            "message_id": "msg_011Cfche1mLWhYTwQzfVqQ4P",
+            "message_id": "msg_011CfikLFJHmvE4YSMeuCeRJ",
             "model": "claude-sonnet-4-6"
           }
         }

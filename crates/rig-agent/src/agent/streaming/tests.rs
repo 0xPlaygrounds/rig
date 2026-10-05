@@ -226,8 +226,8 @@ fn assistant_reasoning_precedes_text_and_tool_call(
 struct PanicOnUnknownToolHook;
 
 impl AgentHook for PanicOnUnknownToolHook {
-    /// A valid call's arguments stream once its end validates it; an
-    /// unknown call's never do.
+    /// A call to a known tool streams its arguments; an unknown one's are
+    /// held for its end and never reach the hook.
     async fn on_tool_call_delta(
         &self,
         _: &HookContext,
@@ -949,7 +949,8 @@ fn streaming_final_only_model() -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([[MockStreamEvent::final_response_with_total_tokens(1)]])
 }
 
-type RecordedToolCallDelta = (rig_core::message::CallId, String, String);
+/// A recorded tool-call delta: its part's position, the tool it names, and the fragment.
+type RecordedToolCallDelta = (usize, String, String);
 type RecordedReasoningDelta = (usize, String, String);
 
 #[derive(Clone)]
@@ -1033,7 +1034,7 @@ impl AgentHook for RecordingToolCallDeltaHook {
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
         let record = (
-            event.call_id.clone(),
+            event.part.index(),
             event.tool_name.to_string(),
             event.delta.to_string(),
         );
@@ -1241,7 +1242,7 @@ impl AgentHook for TerminatingToolCallDeltaHook {
         event: ToolCallDelta<'_>,
     ) -> ObservationAction {
         let record = (
-            event.call_id.clone(),
+            event.part.index(),
             event.tool_name.to_string(),
             event.delta.to_string(),
         );
@@ -2243,7 +2244,7 @@ async fn disallowed_specific_tool_call_fails_before_streaming_second_request() {
 }
 
 #[tokio::test]
-async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
+async fn tool_call_fragments_before_the_name_stream_once_the_call_is_named() {
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
@@ -2283,8 +2284,8 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
         }
     }
 
-    // The buffered fragments close as one call, visible once: its whole
-    // arguments, then its end.
+    // The fragment sent before the name waits for it, then each fragment
+    // streams as it arrives, ahead of the call's end.
     let [call] = ended.as_slice() else {
         panic!("one call: {ended:?}");
     };
@@ -2293,14 +2294,13 @@ async fn tool_call_fragments_before_the_name_emit_one_call_when_it_closes() {
         call.function.arguments_value(),
         serde_json::json!({"x": 1, "y": 2})
     );
-    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
+    assert_eq!(arguments, vec!["{\"x\":1,", "\"y\":2}"]);
     assert_eq!(
         hook.observed(),
-        vec![(
-            call.id.clone(),
-            "add".to_string(),
-            "{\"x\":1,\"y\":2}".to_string()
-        )]
+        vec![
+            (0, "add".to_string(), "{\"x\":1,".to_string()),
+            (0, "add".to_string(), "\"y\":2}".to_string()),
+        ]
     );
 }
 
@@ -2506,18 +2506,15 @@ async fn stream_prompt_emits_tool_call_deltas_after_hook_continue() {
         }
     }
 
-    let [call_id] = call_ids.as_slice() else {
-        panic!("one call: {call_ids:?}");
-    };
+    assert_eq!(call_ids.len(), 1, "one call: {call_ids:?}");
     assert_eq!(
         hook.observed(),
-        vec![(
-            call_id.clone(),
-            "add".to_string(),
-            "{\"x\":1,\"y\":2}".to_string()
-        )]
+        vec![
+            (0, "add".to_string(), "{\"x\":1,".to_string()),
+            (0, "add".to_string(), "\"y\":2}".to_string()),
+        ]
     );
-    assert_eq!(arguments, vec!["{\"x\":1,\"y\":2}".to_string()]);
+    assert_eq!(arguments, vec!["{\"x\":1,", "\"y\":2}"]);
 }
 
 #[tokio::test]
@@ -3332,4 +3329,300 @@ async fn a_blocking_run_belongs_to_the_span_it_was_started_in() {
         .collect();
     assert_eq!(chat_spans.len(), 1, "one model turn: {snapshot:?}");
     assert_eq!(chat_spans[0].parent, Some(outer_id));
+}
+
+/// The argument fragments a streamed run forwarded, and the error that
+/// ended it, if any.
+async fn forwarded_arguments(mut stream: StreamingResult) -> (Vec<String>, Option<PromptError>) {
+    let mut arguments = Vec::new();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                json,
+                ..
+            }))) => arguments.push(json),
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(_) => {}
+            Err(err) => return (arguments, Some(err)),
+        }
+    }
+    (arguments, None)
+}
+
+#[tokio::test]
+async fn stream_prompt_emits_tool_call_deltas_without_hook() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let (arguments, error) =
+        forwarded_arguments(agent.prompt("stream a tool call").max_turns(2).stream()).await;
+
+    assert!(error.is_none(), "{error:?}");
+    assert_eq!(arguments, ["{\"x\":1,", "\"y\":2}"]);
+}
+
+/// Two calls streamed in one turn interleave their fragments, each under
+/// its own part, and both execute once the turn ends.
+#[tokio::test]
+async fn interleaved_tool_calls_stream_under_their_own_parts() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::tool_call_name_delta("tool_2", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_2", "{\"x\":3,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::tool_call_arguments_delta("tool_2", "\"y\":4}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
+    let hook = RecordingToolCallDeltaHook::default();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let mut stream = agent
+        .prompt("stream two tool calls")
+        .add_hook(hook.clone())
+        .max_turns(2)
+        .stream();
+    let mut fragments: Vec<(usize, String)> = Vec::new();
+    let mut results = 0;
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                part,
+                json,
+            }))) => fragments.push((part.index(), json)),
+            Ok(MultiTurnStreamItem::ToolResult { .. }) => {
+                // Every fragment of the turn arrived before any tool ran.
+                assert_eq!(fragments.len(), 4);
+                results += 1;
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+
+    let expected = [
+        (0, "{\"x\":1,".to_string()),
+        (1, "{\"x\":3,".to_string()),
+        (0, "\"y\":2}".to_string()),
+        (1, "\"y\":4}".to_string()),
+    ];
+    assert_eq!(fragments, expected);
+    assert_eq!(
+        hook.observed(),
+        expected
+            .iter()
+            .map(|(part, delta)| (*part, "add".to_string(), delta.clone()))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(results, 2);
+}
+
+#[tokio::test]
+async fn unknown_tool_call_name_delta_fails_before_streaming_delta_hook_or_emit() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("should not be requested"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let (arguments, error) = forwarded_arguments(
+        agent
+            .prompt("stream a bad tool call")
+            .add_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .stream(),
+    )
+    .await;
+
+    assert!(arguments.is_empty(), "{arguments:?}");
+    match error.expect("an unknown tool-call name fails the run") {
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools,
+            allowed_tools,
+            chat_history,
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert_eq!(available_tools, vec!["add".to_string()]);
+            assert_eq!(allowed_tools, vec!["add".to_string()]);
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
+    }
+    assert_eq!(recorded.request_count(), 1);
+}
+
+#[tokio::test]
+async fn tool_call_args_delta_before_unknown_name_fails_before_hook_or_emit() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("should not be requested"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let (arguments, error) = forwarded_arguments(
+        agent
+            .prompt("stream a bad tool call")
+            .add_hook(PanicOnUnknownToolHook)
+            .max_turns(3)
+            .stream(),
+    )
+    .await;
+
+    assert!(arguments.is_empty(), "{arguments:?}");
+    match error.expect("an unknown tool-call name rejects the buffered arguments") {
+        PromptError::UnknownToolCall {
+            tool_name,
+            chat_history,
+            ..
+        } => {
+            assert_eq!(tool_name, "default_api");
+            assert!(history_contains_tool_call(&chat_history, "default_api"));
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
+    }
+    assert_eq!(recorded.request_count(), 1);
+}
+
+#[tokio::test]
+async fn tool_choice_none_holds_args_then_rejects_name_without_emit() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1}"),
+            MockStreamEvent::tool_call_name_delta("tool_1", "add"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("should not be requested"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model)
+        .tool(MockAddTool)
+        .tool_choice(ToolChoice::None)
+        .build();
+
+    let hook = RecordingToolCallDeltaHook::default();
+    let (arguments, error) = forwarded_arguments(
+        agent
+            .prompt("do not use tools")
+            .add_hook(hook.clone())
+            .max_turns(3)
+            .stream(),
+    )
+    .await;
+
+    assert!(arguments.is_empty(), "{arguments:?}");
+    assert!(hook.observed().is_empty(), "{:?}", hook.observed());
+    match error.expect("ToolChoice::None rejects a streamed call") {
+        PromptError::UnknownToolCall {
+            tool_name,
+            allowed_tools,
+            ..
+        } => {
+            assert_eq!(tool_name, "add");
+            assert!(allowed_tools.is_empty());
+        }
+        other => panic!("expected UnknownToolCall, got {other:?}"),
+    }
+    assert_eq!(recorded.request_count(), 1);
+}
+
+/// A call to an unknown tool that a hook repairs streams its held start
+/// and fragments under the repaired name, then executes.
+#[tokio::test]
+async fn a_repaired_call_streams_its_held_fragments_under_the_repaired_name() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call_name_delta("tool_1", "default_api"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "{\"x\":1,"),
+            MockStreamEvent::tool_call_arguments_delta("tool_1", "\"y\":2}"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+        vec![
+            MockStreamEvent::text("3"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+    ]);
+    let delta = RecordingToolCallDeltaHook::default();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let mut stream = agent
+        .prompt("stream a misnamed tool call")
+        .add_hook(RepairDefaultApiHook)
+        .add_hook(delta.clone())
+        .max_turns(2)
+        .stream();
+    let mut events = Vec::new();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(event))) => {
+                events.push(event);
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(_)) => break,
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+
+    let call_events: Vec<String> = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Start {
+                name: Some(name), ..
+            } => Some(format!("start:{}", name.as_str())),
+            StreamEvent::Arguments { json, .. } => Some(format!("args:{json}")),
+            StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            } => Some(format!("end:{}", call.function.name)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        call_events,
+        ["start:add", "args:{\"x\":1,", "args:\"y\":2}", "end:add"]
+    );
+    assert_eq!(
+        delta.observed(),
+        [
+            (0, "add".to_string(), "{\"x\":1,".to_string()),
+            (0, "add".to_string(), "\"y\":2}".to_string()),
+        ]
+    );
 }

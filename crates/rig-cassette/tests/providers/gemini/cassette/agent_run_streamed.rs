@@ -71,7 +71,9 @@ async fn run_streamed_turn(
                         collected_text.push_str(text);
                     }
                 }
-                StreamedTurnEvent::HoldToolCall | StreamedTurnEvent::EmitToolCall { .. } => {}
+                StreamedTurnEvent::EmitToolCallDelta
+                | StreamedTurnEvent::HoldToolCall
+                | StreamedTurnEvent::EmitToolCall { .. } => {}
                 StreamedTurnEvent::InvalidToolCall(invalid) => {
                     let partial = assembler.partial_turn(&stream.partial());
                     let context = run.streamed_invalid_tool_call_context(&partial, &invalid);

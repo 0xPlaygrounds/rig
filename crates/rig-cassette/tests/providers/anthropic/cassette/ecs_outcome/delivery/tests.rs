@@ -65,7 +65,9 @@ fn items() -> Vec<Result<Relayed, ErrorReport>> {
     );
     relayed(
         serde_json::json!([
-            event(serde_json::json!({"event": "start", "part": 0, "kind": "tool_call"})),
+            event(
+                serde_json::json!({"event": "start", "part": 0, "kind": "tool_call", "name": "add"})
+            ),
             event(serde_json::json!({"event": "arguments", "part": 0, "json": "{}"})),
             event(serde_json::json!({
                 "event": "end",
@@ -127,7 +129,9 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
     );
     let mut expected = relayed(
         serde_json::json!([
-            event(serde_json::json!({"event": "start", "part": 0, "kind": "tool_call"})),
+            event(
+                serde_json::json!({"event": "start", "part": 0, "kind": "tool_call", "name": "add"})
+            ),
             event(serde_json::json!({"event": "arguments", "part": 0, "json": "{}"})),
             event(serde_json::json!({
                 "event": "end",

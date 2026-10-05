@@ -25,4 +25,7 @@ pub use completion::{
     CLAUDE_SONNET_5_5,
 };
 pub use modality::{Models, Verify};
-pub use wire::{ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Quirks, compatible};
+pub use wire::{
+    ANTHROPIC, AnthropicConfig, Dialect, MaxTokens, Messages, Quirks, ToolInputStreaming,
+    compatible,
+};

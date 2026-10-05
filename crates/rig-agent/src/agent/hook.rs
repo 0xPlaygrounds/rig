@@ -499,17 +499,20 @@ pub struct ReasoningDelta<'a> {
     pub aggregated: &'a str,
 }
 
-/// Streaming tool-call delta.
+/// Streaming tool-call argument delta. Fires per fragment as the provider
+/// streams a call to an allowed tool; the call's id and final arguments
+/// arrive with its end, and nothing executes before it.
 #[derive(Clone, Copy)]
 pub struct ToolCallDelta<'a> {
-    /// The call's part.
+    /// The call's part: stable across its deltas and its end.
     pub part: Part,
-    /// The call's id, as its [`DispatchEvent`] carries it.
-    pub call_id: &'a CallId,
     /// The tool the call names.
     pub tool_name: &'a str,
-    /// The call's argument JSON: a call streams once, when it ends.
+    /// The newly received fragment of argument JSON.
     pub delta: &'a str,
+    /// The call's argument JSON accumulated through this delta. Read it with
+    /// [`parse_partial_arguments`](rig_core::streaming::parse_partial_arguments).
+    pub aggregated: &'a str,
 }
 
 /// Initial prompt event before the first completion-call hook. In a [`HookStack`],
@@ -1067,7 +1070,10 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
         async { ObservationAction::Continue }
     }
 
-    /// Observes an argument delta for a streaming tool call.
+    /// Observes an argument fragment of a streaming tool call, before the
+    /// fragment reaches the stream. A stop cancels the run before the call
+    /// executes. Like all streamed deltas, it remains provisional until the
+    /// model turn is accepted.
     ///
     /// The default action continues the run.
     fn on_tool_call_delta(

@@ -123,7 +123,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01D7oBjYVF6DdVyRLrwmemUn"
+                "provider": "toolu_016BpkHyT4MkiupXdGWuDS6o"
               },
               "function": {
                 "name": "add",
@@ -137,7 +137,7 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01D7oBjYVF6DdVyRLrwmemUn",
+                  "id": "toolu_016BpkHyT4MkiupXdGWuDS6o",
                   "input": {
                     "x": 17,
                     "y": 25
@@ -145,7 +145,7 @@
                   "name": "add",
                   "type": "tool_use"
                 },
-                "fingerprint": "6a9ad90f829fb65c"
+                "fingerprint": "ce02a6abbe34974e"
               }
             }
           ],
@@ -161,9 +161,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011Cfchtb4ww8ubsG9dCACaf"
+            "response_id": "msg_011CfinsSohJSpoygYc5zw6r"
           },
-          "provider_request_id": "req_011CfchtaiNiXzcV1C4wALFg",
+          "provider_request_id": "req_011CfinsSRs1GHH1gNQVfQgD",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -172,7 +172,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01D7oBjYVF6DdVyRLrwmemUn",
+                "id": "toolu_016BpkHyT4MkiupXdGWuDS6o",
                 "input": {
                   "x": 17,
                   "y": 25
@@ -182,7 +182,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011Cfchtb4ww8ubsG9dCACaf",
+            "id": "msg_011CfinsSohJSpoygYc5zw6r",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -257,7 +257,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01D7oBjYVF6DdVyRLrwmemUn"
+                    "provider": "toolu_016BpkHyT4MkiupXdGWuDS6o"
                   },
                   "function": {
                     "name": "add",
@@ -271,7 +271,7 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01D7oBjYVF6DdVyRLrwmemUn",
+                      "id": "toolu_016BpkHyT4MkiupXdGWuDS6o",
                       "input": {
                         "x": 17,
                         "y": 25
@@ -279,7 +279,7 @@
                       "name": "add",
                       "type": "tool_use"
                     },
-                    "fingerprint": "6a9ad90f829fb65c"
+                    "fingerprint": "ce02a6abbe34974e"
                   }
                 }
               ],
@@ -288,7 +288,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011Cfchtb4ww8ubsG9dCACaf"
+                "response_id": "msg_011CfinsSohJSpoygYc5zw6r"
               },
               "stop": "tool_use"
             },
@@ -298,7 +298,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01D7oBjYVF6DdVyRLrwmemUn"
+                    "provider": "toolu_016BpkHyT4MkiupXdGWuDS6o"
                   },
                   "name": "add",
                   "content": [
@@ -349,20 +349,20 @@
           "choice": [
             {
               "type": "text",
-              "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
+              "text": "Wait, that doesn't seem right. Let me re-examine the result — the tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool. However, as instructed to reply with just the number returned by the tool:\n\n99",
               "native": {
                 "item": {
-                  "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
+                  "text": "Wait, that doesn't seem right. Let me re-examine the result — the tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool. However, as instructed to reply with just the number returned by the tool:\n\n99",
                   "type": "text"
                 },
-                "fingerprint": "d8ade6a19acee83c"
+                "fingerprint": "1c56c0e4374f8111"
               }
             }
           ],
           "usage": {
             "input_tokens": 715,
-            "output_tokens": 56,
-            "total_tokens": 771,
+            "output_tokens": 64,
+            "total_tokens": 779,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0
           },
@@ -371,20 +371,20 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfchtgHEMmK4E9rAZQ6fm"
+            "response_id": "msg_011CfinsYyGghWYqY93vwmY4"
           },
-          "provider_request_id": "req_011CfchtfvPqN4u3s8DSzc7H",
+          "provider_request_id": "req_011CfinsYZTqoNmdzFHGnRNc",
           "finish_reason": "stop",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "Wait, that doesn't seem right. Let me re-examine the result.\n\nThe tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool's output. The correct answer is:\n\n42",
+                "text": "Wait, that doesn't seem right. Let me re-examine the result — the tool returned **99**, but 17 + 25 = 42. There may be an issue with the tool. However, as instructed to reply with just the number returned by the tool:\n\n99",
                 "type": "text"
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfchtgHEMmK4E9rAZQ6fm",
+            "id": "msg_011CfinsYyGghWYqY93vwmY4",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -400,7 +400,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 715,
-              "output_tokens": 56,
+              "output_tokens": 64,
               "service_tier": "standard"
             }
           }

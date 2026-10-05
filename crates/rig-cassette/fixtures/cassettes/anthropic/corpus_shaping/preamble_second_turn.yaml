@@ -9,15 +9,15 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","eager_input_streaming":true,"input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011Cfci9EHxyJ42hMy5rdPAs
-  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01LDwP6isYyRaZUSN9eyZ4tc","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"diagnostics":null,"id":"msg_011Cfci9EeJENyDVfMjY3jeF","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":633,"output_tokens":69,"service_tier":"standard"}}'
+    value: req_011Cfio9qkXTzutfz1L8hC82
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_01JirN4KENTQMnYBU9DVCjuw","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"diagnostics":null,"id":"msg_011Cfio9r9arGfbkxN3EEyvn","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":633,"output_tokens":69,"service_tier":"standard"}}'
 ---
 when:
   path: /v1/messages
@@ -30,12 +30,12 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"},{"content":[{"caller":{"type":"direct"},"id":"toolu_01LDwP6isYyRaZUSN9eyZ4tc","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"42","type":"text"}],"tool_use_id":"toolu_01LDwP6isYyRaZUSN9eyZ4tc","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a pirate. Answer in one short sentence.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"},{"content":[{"caller":{"type":"direct"},"id":"toolu_01JirN4KENTQMnYBU9DVCjuw","input":{"x":17,"y":25},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"42","type":"text"}],"tool_use_id":"toolu_01JirN4KENTQMnYBU9DVCjuw","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a pirate. Answer in one short sentence.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","eager_input_streaming":true,"input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
 then:
   status: 200
   header:
   - name: content-type
     value: application/json
   - name: request-id
-    value: req_011Cfci9Kfux3gNJCnQ9mJKT
-  body: '{"container":null,"content":[{"text":"42","type":"text"}],"diagnostics":null,"id":"msg_011Cfci9L1zwq7qVEvg2x6yR","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":703,"output_tokens":4,"service_tier":"standard"}}'
+    value: req_011Cfio9wVYfnKBY47hMTAQX
+  body: '{"container":null,"content":[{"text":"42","type":"text"}],"diagnostics":null,"id":"msg_011Cfio9wt82q24gkEoZA9Cf","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":703,"output_tokens":4,"service_tier":"standard"}}'

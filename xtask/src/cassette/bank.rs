@@ -205,6 +205,19 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
             scripts.insert(fixture, script);
         }
     }
+    // A re-recorded fixture can stop giving a key a kept script still names;
+    // the committed reply that gave it is still a real recording.
+    let stranded: Vec<Entry> = stranded(&committed, &candidates, &scripts)
+        .map(|kept| {
+            entry(
+                &kept.provider,
+                &kept.encoder,
+                &kept.then.exchange(),
+                kept.source.clone(),
+            )
+        })
+        .collect();
+    candidates.extend(stranded);
     let bank = build(candidates);
     let mut rendered = render(&bank)?;
     rendered.insert(SCRIPTS.to_owned(), render_scripts(&scripts));
@@ -248,6 +261,32 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
     }
     println!("wrote {}", dir.display());
     Ok(())
+}
+
+/// The committed entries whose key a script names and no candidate gives.
+pub(crate) fn stranded<'a>(
+    committed: &'a [Entry],
+    candidates: &[Entry],
+    scripts: &Scripts,
+) -> impl Iterator<Item = &'a Entry> {
+    let given: BTreeSet<(String, String)> = candidates
+        .iter()
+        .map(|entry| (entry.provider.clone(), entry.script_key()))
+        .collect();
+    let named: BTreeSet<(String, String)> = scripts
+        .iter()
+        .flat_map(|(fixture, script)| {
+            let provider = fixture.split('/').next().unwrap_or_default().to_owned();
+            script
+                .iter()
+                .flatten()
+                .map(move |key| (provider.clone(), key.clone()))
+        })
+        .collect();
+    committed.iter().filter(move |kept| {
+        let key = (kept.provider.clone(), kept.script_key());
+        named.contains(&key) && !given.contains(&key)
+    })
 }
 
 /// The fixtures (`<provider>/<scenario>.yaml`) whose owning test marks them

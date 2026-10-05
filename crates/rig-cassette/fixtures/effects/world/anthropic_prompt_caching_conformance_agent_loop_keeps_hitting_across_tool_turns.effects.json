@@ -142,19 +142,19 @@
           "choice": [
             {
               "type": "text",
-              "text": "I'll start by looking up the cache policy for 'prefix' first.",
+              "text": "I'll look up the cache policy for 'prefix' first.",
               "native": {
                 "item": {
-                  "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                  "text": "I'll look up the cache policy for 'prefix' first.",
                   "type": "text"
                 },
-                "fingerprint": "18143a0c3a65ecb6"
+                "fingerprint": "ec0259e4e2194c2d"
               }
             },
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01Ln6DSfoDdsu9C428YzfFPb"
+                "provider": "toolu_0121W9xsHppgW5TZwPvZcFaC"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -167,21 +167,21 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01Ln6DSfoDdsu9C428YzfFPb",
+                  "id": "toolu_0121W9xsHppgW5TZwPvZcFaC",
                   "input": {
                     "topic": "prefix"
                   },
                   "name": "lookup_cache_policy",
                   "type": "tool_use"
                 },
-                "fingerprint": "6ae87df206754066"
+                "fingerprint": "e317d16c99fb0e12"
               }
             }
           ],
           "usage": {
             "input_tokens": 5172,
-            "output_tokens": 72,
-            "total_tokens": 5244,
+            "output_tokens": 70,
+            "total_tokens": 5242,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 5169
           },
@@ -190,22 +190,22 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciBr9XM18X7bLzh7ZiF"
+            "response_id": "msg_011CfioEKGqxBN3vGk2zcJhq"
           },
-          "provider_request_id": "req_011CfciBqnT2hADkXEbtvwkF",
+          "provider_request_id": "req_011CfioEJt2W432kK3MjGSGU",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
             "content": [
               {
-                "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                "text": "I'll look up the cache policy for 'prefix' first.",
                 "type": "text"
               },
               {
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01Ln6DSfoDdsu9C428YzfFPb",
+                "id": "toolu_0121W9xsHppgW5TZwPvZcFaC",
                 "input": {
                   "topic": "prefix"
                 },
@@ -214,7 +214,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfciBr9XM18X7bLzh7ZiF",
+            "id": "msg_011CfioEKGqxBN3vGk2zcJhq",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -230,7 +230,7 @@
               "cache_read_input_tokens": 0,
               "inference_geo": "global",
               "input_tokens": 3,
-              "output_tokens": 72,
+              "output_tokens": 70,
               "service_tier": "standard"
             }
           }
@@ -290,19 +290,19 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                  "text": "I'll look up the cache policy for 'prefix' first.",
                   "native": {
                     "item": {
-                      "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                      "text": "I'll look up the cache policy for 'prefix' first.",
                       "type": "text"
                     },
-                    "fingerprint": "18143a0c3a65ecb6"
+                    "fingerprint": "ec0259e4e2194c2d"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01Ln6DSfoDdsu9C428YzfFPb"
+                    "provider": "toolu_0121W9xsHppgW5TZwPvZcFaC"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -315,14 +315,14 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01Ln6DSfoDdsu9C428YzfFPb",
+                      "id": "toolu_0121W9xsHppgW5TZwPvZcFaC",
                       "input": {
                         "topic": "prefix"
                       },
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": "6ae87df206754066"
+                    "fingerprint": "e317d16c99fb0e12"
                   }
                 }
               ],
@@ -331,7 +331,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciBr9XM18X7bLzh7ZiF"
+                "response_id": "msg_011CfioEKGqxBN3vGk2zcJhq"
               },
               "stop": "tool_use"
             },
@@ -341,7 +341,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01Ln6DSfoDdsu9C428YzfFPb"
+                    "provider": "toolu_0121W9xsHppgW5TZwPvZcFaC"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -399,7 +399,7 @@
             {
               "type": "toolcall",
               "id": {
-                "provider": "toolu_01JDndecn4B7Am1Qds5Y4Q9f"
+                "provider": "toolu_01WGFrHEL94VnrJvQcns1kpj"
               },
               "function": {
                 "name": "lookup_cache_policy",
@@ -412,32 +412,32 @@
                   "caller": {
                     "type": "direct"
                   },
-                  "id": "toolu_01JDndecn4B7Am1Qds5Y4Q9f",
+                  "id": "toolu_01WGFrHEL94VnrJvQcns1kpj",
                   "input": {
                     "topic": "breakpoint"
                   },
                   "name": "lookup_cache_policy",
                   "type": "tool_use"
                 },
-                "fingerprint": "2fb483d120b1c462"
+                "fingerprint": "cedb881b4de5bc55"
               }
             }
           ],
           "usage": {
-            "input_tokens": 5271,
+            "input_tokens": 5269,
             "output_tokens": 71,
-            "total_tokens": 5342,
+            "total_tokens": 5340,
             "cached_input_tokens": 5169,
-            "cache_creation_input_tokens": 101
+            "cache_creation_input_tokens": 99
           },
           "origin": {
             "api": "anthropic.messages",
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciByzpAjE2K2Pr5rBxS"
+            "response_id": "msg_011CfioEVy2ULSczCFqPUcwV"
           },
-          "provider_request_id": "req_011CfciBygD7iiZ1v4GD8UtT",
+          "provider_request_id": "req_011CfioEVXjqPJ2aQjkKMUzU",
           "finish_reason": "tool_calls",
           "raw": {
             "container": null,
@@ -450,7 +450,7 @@
                 "caller": {
                   "type": "direct"
                 },
-                "id": "toolu_01JDndecn4B7Am1Qds5Y4Q9f",
+                "id": "toolu_01WGFrHEL94VnrJvQcns1kpj",
                 "input": {
                   "topic": "breakpoint"
                 },
@@ -459,7 +459,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfciByzpAjE2K2Pr5rBxS",
+            "id": "msg_011CfioEVy2ULSczCFqPUcwV",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -469,9 +469,9 @@
             "usage": {
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
-                "ephemeral_5m_input_tokens": 101
+                "ephemeral_5m_input_tokens": 99
               },
-              "cache_creation_input_tokens": 101,
+              "cache_creation_input_tokens": 99,
               "cache_read_input_tokens": 5169,
               "inference_geo": "global",
               "input_tokens": 1,
@@ -535,19 +535,19 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                  "text": "I'll look up the cache policy for 'prefix' first.",
                   "native": {
                     "item": {
-                      "text": "I'll start by looking up the cache policy for 'prefix' first.",
+                      "text": "I'll look up the cache policy for 'prefix' first.",
                       "type": "text"
                     },
-                    "fingerprint": "18143a0c3a65ecb6"
+                    "fingerprint": "ec0259e4e2194c2d"
                   }
                 },
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01Ln6DSfoDdsu9C428YzfFPb"
+                    "provider": "toolu_0121W9xsHppgW5TZwPvZcFaC"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -560,14 +560,14 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01Ln6DSfoDdsu9C428YzfFPb",
+                      "id": "toolu_0121W9xsHppgW5TZwPvZcFaC",
                       "input": {
                         "topic": "prefix"
                       },
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": "6ae87df206754066"
+                    "fingerprint": "e317d16c99fb0e12"
                   }
                 }
               ],
@@ -576,7 +576,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciBr9XM18X7bLzh7ZiF"
+                "response_id": "msg_011CfioEKGqxBN3vGk2zcJhq"
               },
               "stop": "tool_use"
             },
@@ -586,7 +586,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01Ln6DSfoDdsu9C428YzfFPb"
+                    "provider": "toolu_0121W9xsHppgW5TZwPvZcFaC"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -615,7 +615,7 @@
                 {
                   "type": "toolcall",
                   "id": {
-                    "provider": "toolu_01JDndecn4B7Am1Qds5Y4Q9f"
+                    "provider": "toolu_01WGFrHEL94VnrJvQcns1kpj"
                   },
                   "function": {
                     "name": "lookup_cache_policy",
@@ -628,14 +628,14 @@
                       "caller": {
                         "type": "direct"
                       },
-                      "id": "toolu_01JDndecn4B7Am1Qds5Y4Q9f",
+                      "id": "toolu_01WGFrHEL94VnrJvQcns1kpj",
                       "input": {
                         "topic": "breakpoint"
                       },
                       "name": "lookup_cache_policy",
                       "type": "tool_use"
                     },
-                    "fingerprint": "2fb483d120b1c462"
+                    "fingerprint": "cedb881b4de5bc55"
                   }
                 }
               ],
@@ -644,7 +644,7 @@
                 "provider": "anthropic",
                 "model": "claude-sonnet-4-6",
                 "response_model": "claude-sonnet-4-6",
-                "response_id": "msg_011CfciByzpAjE2K2Pr5rBxS"
+                "response_id": "msg_011CfioEVy2ULSczCFqPUcwV"
               },
               "stop": "tool_use"
             },
@@ -654,7 +654,7 @@
                 {
                   "type": "toolresult",
                   "call": {
-                    "provider": "toolu_01JDndecn4B7Am1Qds5Y4Q9f"
+                    "provider": "toolu_01WGFrHEL94VnrJvQcns1kpj"
                   },
                   "name": "lookup_cache_policy",
                   "content": [
@@ -711,10 +711,10 @@
             }
           ],
           "usage": {
-            "input_tokens": 5370,
+            "input_tokens": 5368,
             "output_tokens": 6,
-            "total_tokens": 5376,
-            "cached_input_tokens": 5270,
+            "total_tokens": 5374,
+            "cached_input_tokens": 5268,
             "cache_creation_input_tokens": 99
           },
           "origin": {
@@ -722,9 +722,9 @@
             "provider": "anthropic",
             "model": "claude-sonnet-4-6",
             "response_model": "claude-sonnet-4-6",
-            "response_id": "msg_011CfciC5pYsXi5ExLNxZN7M"
+            "response_id": "msg_011CfioEcDKSUtRNRR2W1VBy"
           },
-          "provider_request_id": "req_011CfciC5TUHtq7MET1CmzzA",
+          "provider_request_id": "req_011CfioEbrEdey3Myd4av7fD",
           "finish_reason": "stop",
           "raw": {
             "container": null,
@@ -735,7 +735,7 @@
               }
             ],
             "diagnostics": null,
-            "id": "msg_011CfciC5pYsXi5ExLNxZN7M",
+            "id": "msg_011CfioEcDKSUtRNRR2W1VBy",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
             "stop_details": null,
@@ -748,7 +748,7 @@
                 "ephemeral_5m_input_tokens": 99
               },
               "cache_creation_input_tokens": 99,
-              "cache_read_input_tokens": 5270,
+              "cache_read_input_tokens": 5268,
               "inference_geo": "global",
               "input_tokens": 1,
               "output_tokens": 6,

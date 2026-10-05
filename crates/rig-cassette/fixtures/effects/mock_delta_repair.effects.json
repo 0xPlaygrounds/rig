@@ -145,7 +145,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "multiply"
           }
         },
         {
@@ -153,7 +154,15 @@
           "value": {
             "event": "arguments",
             "part": 0,
-            "json": "{\"x\": 2, \"y\": 3}"
+            "json": "{\"x\": 2, "
+          }
+        },
+        {
+          "item": "event",
+          "value": {
+            "event": "arguments",
+            "part": 0,
+            "json": "\"y\": 3}"
           }
         },
         {

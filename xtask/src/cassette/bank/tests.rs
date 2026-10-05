@@ -203,3 +203,32 @@ fn the_committed_bank_holds_reply_shapes_only_for_swept_providers() {
     assert!(held.keys().any(|key| key.provider == "openai"));
     assert!(!held.keys().any(|key| key.provider == "bedrock"));
 }
+
+/// A key a kept script names stays in the bank after its source fixture is
+/// re-recorded with another shape; a key no script names, or one a current
+/// recording gives, is not kept from the committed bank.
+#[test]
+fn a_key_a_script_names_survives_its_source_being_re_recorded() {
+    let named = candidate(
+        r#"{"choices":[{"finish_reason":"stop","message":{"content":"old"}}]}"#,
+        "openai/rerecorded.yaml#0",
+    );
+    let unnamed = candidate(
+        r#"{"choices":[{"finish_reason":"length","message":{"content":"old"}}]}"#,
+        "openai/rerecorded.yaml#1",
+    );
+    let given = candidate(
+        r#"{"choices":[{"finish_reason":"tool_calls","message":{"tool_calls":[{"function":{"name":"add","arguments":"{}"}}]}}]}"#,
+        "openai/rerecorded.yaml#2",
+    );
+    let committed = vec![named.clone(), unnamed, given.clone()];
+    let candidates = vec![given.clone()];
+    let scripts = Scripts::from([(
+        "openai/pruned.yaml".to_owned(),
+        vec![Some(named.script_key()), Some(given.script_key()), None],
+    )]);
+    let kept: Vec<&str> = stranded(&committed, &candidates, &scripts)
+        .map(|entry| entry.source.as_str())
+        .collect();
+    assert_eq!(kept, ["openai/rerecorded.yaml#0"]);
+}

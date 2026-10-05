@@ -144,7 +144,8 @@
           "value": {
             "event": "start",
             "part": 0,
-            "kind": "tool_call"
+            "kind": "tool_call",
+            "name": "multiply"
           }
         },
         {

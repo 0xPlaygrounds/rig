@@ -24,7 +24,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::message::AssistantContent;
+use crate::message::{AssistantContent, ToolName};
 
 use super::UnknownPayload;
 
@@ -70,12 +70,17 @@ pub enum PartKind {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
-    /// A part opened.
+    /// A part opened. A tool call opens once its tool is named, so a call
+    /// streams its arguments under a known tool.
     Start {
         /// The part.
         part: Part,
         /// What it holds.
         kind: PartKind,
+        /// The tool a [`PartKind::ToolCall`] names as it opens; `None` for
+        /// every other kind. The call's end states the name it settled on.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<ToolName>,
     },
     /// A text part grew.
     Text {
@@ -91,11 +96,13 @@ pub enum StreamEvent {
         /// The fragment.
         text: String,
     },
-    /// A tool call's arguments, as the provider sent them.
+    /// A tool call's arguments grew. The fragments of one call, joined,
+    /// are the argument JSON the provider sent; read an incomplete prefix
+    /// with [`parse_partial_arguments`](super::parse_partial_arguments).
     Arguments {
         /// The part.
         part: Part,
-        /// The raw JSON arguments.
+        /// The fragment of raw argument JSON.
         json: String,
     },
     /// A part ended with the content it finalized.
@@ -181,7 +188,8 @@ pub enum SequenceError {
     /// A part ended twice, or grew after its end.
     #[error("item {0} touches a part that already ended")]
     EndedTwice(usize),
-    /// A fragment or end does not match the part's kind.
+    /// A fragment or end does not match the part's kind, or a start names a
+    /// tool for a part that is not a call, or none for one that is.
     #[error("item {0} does not match its part's kind")]
     WrongKind(usize),
     /// A part started and never ended.
@@ -196,6 +204,8 @@ enum RawEvent {
     Start {
         part: u32,
         kind: PartKind,
+        #[serde(default)]
+        name: Option<ToolName>,
     },
     Text {
         part: u32,
@@ -233,10 +243,13 @@ impl Transcript {
         for item in raw {
             transcript.push(match item {
                 Item::Unknown(payload) => Item::Unknown(payload),
-                Item::Event(RawEvent::Start { part, kind }) => Item::Event(StreamEvent::Start {
-                    part: Part(part),
-                    kind,
-                }),
+                Item::Event(RawEvent::Start { part, kind, name }) => {
+                    Item::Event(StreamEvent::Start {
+                        part: Part(part),
+                        kind,
+                        name,
+                    })
+                }
                 Item::Event(RawEvent::Text { part, text }) => Item::Event(StreamEvent::Text {
                     part: Part(part),
                     text,
@@ -269,7 +282,10 @@ impl Transcript {
         if let Item::Event(event) = &item {
             let index = event.part().index();
             let kind = match event {
-                StreamEvent::Start { kind, .. } => {
+                StreamEvent::Start { kind, name, .. } => {
+                    if (*kind == PartKind::ToolCall) != name.is_some() {
+                        return Err(SequenceError::WrongKind(position));
+                    }
                     if self.parts.insert(index, (*kind, false)).is_some() {
                         return Err(SequenceError::UnknownPart(position));
                     }

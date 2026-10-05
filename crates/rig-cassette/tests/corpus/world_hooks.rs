@@ -534,7 +534,7 @@ fn after_fold(
         let mut stop: Option<&str> = None;
         for event in streamed.events.events() {
             stop = match event {
-                // A call's one arguments delta; its name is known with it.
+                // A call's first arguments delta; its start named the tool.
                 StreamEvent::Arguments { .. } if hooks.has(Hook::StopOnToolCallDelta) => {
                     Some(STOP_ON_TOOL_CALL_DELTA)
                 }

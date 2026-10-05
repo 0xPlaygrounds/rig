@@ -59,6 +59,27 @@ pub struct Quirks {
     /// Kimi does (pi's `allowEmptySignature`). Elsewhere unsigned thinking
     /// replays as text.
     pub unsigned_thinking: bool,
+    /// How a request with tools asks the provider to stream tool input
+    /// (pi's `supportsEagerToolInputStreaming`).
+    pub tool_input_streaming: ToolInputStreaming,
+}
+
+/// How a request with tools asks a Messages-format provider to stream each
+/// call's input as the model writes it. Without it, Anthropic holds a long
+/// argument value back and sends it in one burst. Unary requests ask too, so
+/// a tool definition, which a prompt cache keys on, is the same whether a
+/// turn streams.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolInputStreaming {
+    /// `eager_input_streaming: true` on each Rig tool definition.
+    #[default]
+    Eager,
+    /// The `fine-grained-tool-streaming-2025-05-14` beta flag, for a
+    /// provider that rejects the per-tool field.
+    BetaHeader,
+    /// Neither: the provider streams tool input as it chooses.
+    Off,
 }
 
 impl Quirks {
@@ -68,15 +89,19 @@ impl Quirks {
             max_tokens: MaxTokens::ByModel,
             strict_tool_schemas: true,
             unsigned_thinking: false,
+            tool_input_streaming: ToolInputStreaming::Eager,
         }
     }
 
-    /// Default to 4096 output tokens without constrained tool schemas.
+    /// Default to 4096 output tokens without constrained tool schemas, with
+    /// eager tool input, which pi sends every Messages-format provider it
+    /// does not know to reject it.
     pub const fn gateway() -> Self {
         Self {
             max_tokens: MaxTokens::Fixed(4096),
             strict_tool_schemas: false,
             unsigned_thinking: false,
+            tool_input_streaming: ToolInputStreaming::Eager,
         }
     }
 }
@@ -277,26 +302,29 @@ impl AnthropicConfig {
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
+            tool_input_streaming: self.dialect.quirks.tool_input_streaming,
         }
     }
 
     /// The request headers every Messages-format endpoint takes.
     pub(super) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
-        self.headers_with(builder, None)
+        self.headers_with(builder, &[])
     }
 
     /// [`Self::headers`], with `extra` among the `anthropic-beta` flags.
     pub(super) fn headers_with(
         &self,
         builder: http::request::Builder,
-        extra: Option<&str>,
+        extra: &[&str],
     ) -> http::request::Builder {
         let builder = builder
             .header("x-api-key", self.api_key.expose())
             .header("anthropic-version", &self.version);
         let mut betas: Vec<&str> = self.betas.iter().map(String::as_str).collect();
-        if let Some(extra) = extra.filter(|extra| !betas.contains(extra)) {
-            betas.push(extra);
+        for extra in extra {
+            if !betas.contains(extra) {
+                betas.push(extra);
+            }
         }
         if betas.is_empty() {
             builder
@@ -343,6 +371,10 @@ pub struct Messages {
     pub static_prefix_cache_ttl: Option<CacheTtl>,
     /// Whether Rig-generated tools request the provider's strict validation.
     pub strict_tools: bool,
+    /// How a request with tools asks for tool input as it is written; the
+    /// dialect's by default.
+    #[serde(default)]
+    pub tool_input_streaming: ToolInputStreaming,
 }
 
 impl Messages {
@@ -442,6 +474,26 @@ impl Messages {
         self.strict_tools = true;
         self
     }
+
+    /// Choose how a request with tools asks for tool input as the model
+    /// writes it, for a gateway whose support differs from its dialect's:
+    /// [`ToolInputStreaming::BetaHeader`] for one that rejects the per-tool
+    /// field, [`ToolInputStreaming::Off`] for one that rejects both.
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::{Anthropic, completion::CLAUDE_SONNET_4_6};
+    /// use rig_core::providers::anthropic::ToolInputStreaming;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
+    /// messages.wire = messages.wire.with_tool_input_streaming(ToolInputStreaming::BetaHeader);
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn with_tool_input_streaming(mut self, streaming: ToolInputStreaming) -> Self {
+        self.tool_input_streaming = streaming;
+        self
+    }
 }
 
 impl Wire for Messages {
@@ -464,9 +516,17 @@ impl Wire for Messages {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
+        let fine_grained = !request.tools.is_empty()
+            && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
         let body = super::completion::body(self, request, mode)?;
-        let beta = super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
-            .then_some(super::completion::THINKING_BINDING_BETA);
+        let betas: Vec<&str> = [
+            super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
+                .then_some(super::completion::THINKING_BINDING_BETA),
+            fine_grained.then_some(super::completion::FINE_GRAINED_TOOL_STREAMING_BETA),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Anthropic completion request",
@@ -476,7 +536,7 @@ impl Wire for Messages {
             .provider
             .headers_with(
                 http::Request::post(format!("{}/v1/messages", self.provider.base_url)),
-                beta,
+                &betas,
             )
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))?;
