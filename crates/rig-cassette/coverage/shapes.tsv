@@ -43,7 +43,7 @@ anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,st
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],temperature:num}	8	anthropic/corpus_host/custom_at_start_streamed.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],thinking:{},tool_choice:{},tools:[{}]}	4	anthropic/models/sonnet_5_5/session.yaml#26
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],thinking:{}}	1	anthropic/corpus_request_shape/thinking_streamed.yaml#0
-anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],tool_choice:{},tools:[{}]}	15	anthropic/lifecycle_matrix/entry_log_order.yaml#0
+anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}],tool_choice:{},tools:[{}]}	14	anthropic/lifecycle_matrix/entry_log_order.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,system:[{}]}	2	anthropic/lifecycle_matrix/middleware_streaming.yaml#0
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,thinking:{},tool_choice:{},tools:[{}]}	1	anthropic/models/sonnet_5_5/session.yaml#53
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,thinking:{}}	2	anthropic/models/sonnet_5_5/session.yaml#20
@@ -68,32 +68,32 @@ anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str,to
 anthropic	POST /v1/messages	request	$ {max_tokens:num,messages:[{}],model:str}	3	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
 anthropic	POST /v1/messages	request	$.cache_control {ttl:str,type:"ephemeral"}	1	anthropic/strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools.yaml#0
 anthropic	POST /v1/messages	request	$.cache_control {type:"ephemeral"}	267	anthropic/long_run_caching/document_60.yaml#0
-anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"assistant"}	346	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"assistant"}	345	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"system"}	102	anthropic/long_run_caching/mid_system_every_10_60.yaml#20
-anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"user"}	556	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.messages[] {content:[{}],role:"user"}	555	anthropic/adversarial/empty_signed_reasoning.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[] {cache_control:{},content:[{}],tool_use_id:str,type:"tool_result"}	2	anthropic/prompt_caching/conformance_agent_loop.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {cache_control:{},text:str,type:"text"}	1	anthropic/prompt_caching/conformance_agent_loop.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[] {caller:{},content:[{}],tool_use_id:str,type:"web_search_tool_result"}	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
-anthropic	POST /v1/messages	request	$.messages[].content[] {caller:{},id:str,input:{},name:str,type:"tool_use"}	271	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[] {caller:{},id:str,input:{},name:str,type:"tool_use"}	270	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {citations:[{}],text:str,type:"text"}	63	anthropic/long_run_caching/document_60.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {citations:{},source:{},title:str,type:"document"}	78	anthropic/long_run_caching/document_60.yaml#0
-anthropic	POST /v1/messages	request	$.messages[].content[] {content:[{}],is_error:bool,tool_use_id:str,type:"tool_result"}	13	anthropic/checkpoint_matrix/parallel_batch.yaml#1
-anthropic	POST /v1/messages	request	$.messages[].content[] {content:[{}],tool_use_id:str,type:"tool_result"}	269	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[] {content:[{}],is_error:bool,tool_use_id:str,type:"tool_result"}	12	anthropic/checkpoint_matrix/parallel_batch.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[] {content:[{}],tool_use_id:str,type:"tool_result"}	268	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {data:str,type:"redacted_thinking"}	1	anthropic/messages_thinking/redacted_thinking_roundtrip_nonstreaming.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {id:str,input:{},name:str,type:"server_tool_use"}	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
-anthropic	POST /v1/messages	request	$.messages[].content[] {id:str,input:{},name:str,type:"tool_use"}	5	anthropic/context_binding/between_tools_after_tool_change.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[] {id:str,input:{},name:str,type:"tool_use"}	4	anthropic/context_binding/between_tools_after_tool_change.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {signature:str,thinking:str,type:"thinking"}	257	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[] {source:{},type:"document"}	6	anthropic/corpus_request_shape/static_context.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[] {source:{},type:"image"}	6	anthropic/models/sonnet_5_5/session.yaml#13
-anthropic	POST /v1/messages	request	$.messages[].content[] {text:str,type:"text"}	555	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.messages[].content[] {text:str,type:"text"}	554	anthropic/adversarial/empty_signed_reasoning.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[].cache_control {type:"ephemeral"}	3	anthropic/prompt_caching/conformance_agent_loop.yaml#0
-anthropic	POST /v1/messages	request	$.messages[].content[].caller {type:"direct"}	272	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[].caller {type:"direct"}	271	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[].citations {enabled:bool}	78	anthropic/long_run_caching/document_60.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[].citations[] {cited_text:str,document_index:num,document_title:str,end_char_index:num,start_char_index:num,type:"char_location"}	60	anthropic/long_run_caching/document_60.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[].citations[] {cited_text:str,document_index:num,document_title:str,end_page_number:num,start_page_number:num,type:"page_location"}	4	anthropic/models/sonnet_5_5/session.yaml#15
 anthropic	POST /v1/messages	request	$.messages[].content[].content[] {encrypted_content:str,page_age:null,title:str,type:"web_search_result",url:str}	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[].content[] {encrypted_content:str,page_age:str,title:str,type:"web_search_result",url:str}	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#1
-anthropic	POST /v1/messages	request	$.messages[].content[].content[] {text:str,type:"text"}	275	anthropic/adversarial/empty_signed_reasoning.yaml#1
+anthropic	POST /v1/messages	request	$.messages[].content[].content[] {text:str,type:"text"}	274	anthropic/adversarial/empty_signed_reasoning.yaml#1
 anthropic	POST /v1/messages	request	$.messages[].content[].source {data:str,media_type:str,type:"base64"}	6	anthropic/models/sonnet_5_5/session.yaml#13
 anthropic	POST /v1/messages	request	$.messages[].content[].source {data:str,media_type:str,type:"text"}	83	anthropic/corpus_request_shape/static_context.yaml#0
 anthropic	POST /v1/messages	request	$.messages[].content[].source {file_id:str,type:"file"}	1	anthropic/models/sonnet_5_5/session.yaml#54
@@ -105,7 +105,7 @@ anthropic	POST /v1/messages	request	$.output_config.format.schema {$schema:str,a
 anthropic	POST /v1/messages	request	$.output_config.format.schema {additionalProperties:bool,properties:{},required:[str],type:"object"}	5	anthropic/corpus_output/tool_under_none_degrades.yaml#0
 anthropic	POST /v1/messages	request	$.output_config.format.schema.properties.* {type:"string"}	8	anthropic/corpus_output/tool_under_none_degrades.yaml#0
 anthropic	POST /v1/messages	request	$.system[] {cache_control:{},text:str,type:"text"}	5	anthropic/prompt_caching/conformance_agent_loop.yaml#0
-anthropic	POST /v1/messages	request	$.system[] {text:str,type:"text"}	504	anthropic/agent/completion_smoke.yaml#0
+anthropic	POST /v1/messages	request	$.system[] {text:str,type:"text"}	503	anthropic/agent/completion_smoke.yaml#0
 anthropic	POST /v1/messages	request	$.system[].cache_control {ttl:str,type:"ephemeral"}	2	anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit.yaml#0
 anthropic	POST /v1/messages	request	$.system[].cache_control {type:"ephemeral"}	3	anthropic/prompt_caching/conformance_agent_loop.yaml#0
 anthropic	POST /v1/messages	request	$.thinking {block_binding:{},display:str,type:"adaptive"}	7	anthropic/context_binding/between_tools_after_tool_change.yaml#0
@@ -118,13 +118,15 @@ anthropic	POST /v1/messages	request	$.thinking {type:"between_tools"}	2	anthropi
 anthropic	POST /v1/messages	request	$.thinking.block_binding {prefix_mismatch_behavior:str}	301	anthropic/context_binding/between_tools_after_tool_change.yaml#0
 anthropic	POST /v1/messages	request	$.tool_choice {name:str,type:"tool"}	4	anthropic/corpus_output/tool_choice_specific_output.yaml#0
 anthropic	POST /v1/messages	request	$.tool_choice {type:"any"}	47	anthropic/corpus_output/tool_choice_required.yaml#0
-anthropic	POST /v1/messages	request	$.tool_choice {type:"auto"}	53	anthropic/corpus_causal/completion_streamed.yaml#0
+anthropic	POST /v1/messages	request	$.tool_choice {type:"auto"}	52	anthropic/corpus_causal/completion_streamed.yaml#0
 anthropic	POST /v1/messages	request	$.tool_choice {type:"none"}	7	anthropic/corpus_output/tool_under_none_degrades.yaml#0
-anthropic	POST /v1/messages	request	$.tools[] {cache_control:{},description:str,input_schema:{},name:str,strict:bool}	1	anthropic/strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools.yaml#0
-anthropic	POST /v1/messages	request	$.tools[] {cache_control:{},description:str,input_schema:{},name:str}	4	anthropic/prompt_caching/conformance_agent_loop.yaml#0
-anthropic	POST /v1/messages	request	$.tools[] {description:str,input_schema:bool,name:str,strict:bool}	1	anthropic/strict_schema_matrix/boolean_root_schema_is_rejected_for_tool_input.yaml#0
-anthropic	POST /v1/messages	request	$.tools[] {description:str,input_schema:{},name:str,strict:bool}	38	anthropic/messages_strict_tools/array_items_and_formats_roundtrip.yaml#0
-anthropic	POST /v1/messages	request	$.tools[] {description:str,input_schema:{},name:str}	370	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {cache_control:{},description:str,eager_input_streaming:bool,input_schema:{},name:str,strict:bool}	1	anthropic/strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {cache_control:{},description:str,eager_input_streaming:bool,input_schema:{},name:str}	3	anthropic/prompt_caching/conformance_agent_loop.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {cache_control:{},description:str,input_schema:{},name:str}	1	anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {description:str,eager_input_streaming:bool,input_schema:bool,name:str,strict:bool}	1	anthropic/strict_schema_matrix/boolean_root_schema_is_rejected_for_tool_input.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {description:str,eager_input_streaming:bool,input_schema:{},name:str,strict:bool}	38	anthropic/messages_strict_tools/array_items_and_formats_roundtrip.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {description:str,eager_input_streaming:bool,input_schema:{},name:str}	369	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.tools[] {description:str,input_schema:{},name:str}	2	anthropic/response_identity_edge/repaired_invalid_call_keeps_call_identity.yaml#0
 anthropic	POST /v1/messages	request	$.tools[] {name:str,type:"web_search_20250305"}	2	anthropic/models/sonnet_5_5/session.yaml#53
 anthropic	POST /v1/messages	request	$.tools[] {name:str,type:"web_search_20260209"}	1	anthropic/opus_4_8/web_search_with_dynamic_filtering_succeeds.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].cache_control {ttl:str,type:"ephemeral"}	2	anthropic/prompt_caching/static_prefix_with_explicit_tool_marker_at_marker_limit.yaml#0
@@ -144,7 +146,7 @@ anthropic	POST /v1/messages	request	$.tools[].input_schema {additionalProperties
 anthropic	POST /v1/messages	request	$.tools[].input_schema {additionalProperties:bool,properties:{},type:"object"}	7	anthropic/long_loop_matrix/parallel_calls.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema {anyOf:[{}]}	1	anthropic/strict_schema_matrix/top_level_any_of_is_rejected_for_tool_input.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema {properties:{},required:[],type:"object"}	10	anthropic/corpus_memory/serial_two_tools.yaml#0
-anthropic	POST /v1/messages	request	$.tools[].input_schema {properties:{},required:[str],type:"object"}	341	anthropic/adversarial/empty_signed_reasoning.yaml#0
+anthropic	POST /v1/messages	request	$.tools[].input_schema {properties:{},required:[str],type:"object"}	340	anthropic/adversarial/empty_signed_reasoning.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema {properties:{},type:"object"}	19	anthropic/models/sonnet_5_5/session.yaml#1
 anthropic	POST /v1/messages	request	$.tools[].input_schema {type:"string"}	1	anthropic/strict_schema_matrix/scalar_root_schema_is_rejected_for_tool_input.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.$defs.* {$defs:{},additionalProperties:bool,properties:{},required:[str],type:"object"}	1	anthropic/strict_schema_matrix/root_ref_keeps_document_defs_authoritative_on_collision.yaml#0
@@ -186,7 +188,7 @@ anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {descrip
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,properties:{},required:[str],type:"object"}	2	anthropic/messages_tool_args/nested_arguments_roundtrip_nonstreaming.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,type:"boolean"}	6	anthropic/corpus_causal/completion_concurrent.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,type:"integer"}	1	anthropic/strict_schema_matrix/every_numeric_constraint_becomes_guidance.yaml#0
-anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,type:"number"}	90	anthropic/corpus_endings/answer_turn_stop.yaml#0
+anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,type:"number"}	89	anthropic/corpus_endings/answer_turn_stop.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {description:str,type:"string"}	31	anthropic/corpus_causal/completion_concurrent.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {enum:[num],type:"integer"}	2	anthropic/checkpoint_matrix/parallel_batch.yaml#0
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.* {enum:[str],type:"string"}	1	anthropic/strict_schema_matrix/scalar_enum_and_const_roundtrip.yaml#0
@@ -232,36 +234,37 @@ anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.*.properti
 anthropic	POST /v1/messages	request	$.tools[].input_schema.properties.*.properties.*.properties.* {type:"string"}	3	anthropic/messages_strict_tools/nested_optional_object_can_be_partially_populated.yaml#0
 anthropic	POST /v1/messages	reply	0094284073f9c1d7	1	bank:anthropic/streaming_grammar/parallel_tool_use.yaml#0
 anthropic	POST /v1/messages	reply	00fcfdd116dec69d	1	bank:anthropic/strict_schema_integrations/parallel_strict_tool_calls_preserve_each_schema.yaml#0
-anthropic	POST /v1/messages	reply	0126c79c72a34227	1	anthropic/messages_strict_tools/draft7_definitions_ref_preserves_optional_member.yaml#0
 anthropic	POST /v1/messages	reply	05de81f5cd78acae	6	anthropic/long_run_caching/document_60.yaml#7
 anthropic	POST /v1/messages	reply	06680522b9e1c60e	1	bank:anthropic/long_run_caching/tool_loop_60.yaml#0
-anthropic	POST /v1/messages	reply	074527bdc05a7784	1	anthropic/messages_strict_tools/nested_optional_object_can_be_partially_populated.yaml#0
 anthropic	POST /v1/messages	reply	0823a1ee3086cf90	1	bank:anthropic/reasoning_matrix/tool_unary.yaml#0
 anthropic	POST /v1/messages	reply	08fe48f998fac13d	1	bank:anthropic/reasoning_usage_matrix/streaming_tool_use_terminal.yaml#0
+anthropic	POST /v1/messages	reply	0a270b738c933ec9	1	anthropic/strict_schema_matrix/supported_array_minimums_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	0ab83572cafc9b65	1	bank:anthropic/messages_sessions/long_history_replay_nonstreaming.yaml#0
 anthropic	POST /v1/messages	reply	0ac5c313d1160bbb	2	anthropic/models/sonnet_5_5/session.yaml#2
-anthropic	POST /v1/messages	reply	0f08bf2f5de496d8	7	anthropic/context_binding/changed_system_with_drop_block.yaml#1
-anthropic	POST /v1/messages	reply	125a6d0ea094821e	11	anthropic/corpus_causal/completion_streamed.yaml#0
-anthropic	POST /v1/messages	reply	13c2c7bbb3b3109e	1	anthropic/strict_schema_matrix/root_ref_retains_sibling_definitions.yaml#0
-anthropic	POST /v1/messages	reply	148cc8d4e69e541a	6	anthropic/strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools.yaml#0
+anthropic	POST /v1/messages	reply	0f08bf2f5de496d8	6	anthropic/context_binding/changed_system_with_drop_block.yaml#1
+anthropic	POST /v1/messages	reply	125a6d0ea094821e	21	anthropic/corpus_causal/completion_streamed.yaml#0
+anthropic	POST /v1/messages	reply	148cc8d4e69e541a	1	bank:anthropic/strict_schema_integrations/manual_prompt_caching_coexists_with_strict_tools.yaml#0
 anthropic	POST /v1/messages	reply	15156b6c42867df7	1	bank:anthropic/messages_strict_tools/strict_tools_opt_in_roundtrip.yaml#0
-anthropic	POST /v1/messages	reply	18b3f1ce875ef619	1	anthropic/long_run_caching/dynamic_tools_30.yaml#20
+anthropic	POST /v1/messages	reply	1600fb52fcccf59e	1	anthropic/stop_sequence_terminal_matrix/raw_with_tools_sequence_fires.yaml#0
 anthropic	POST /v1/messages	reply	196083eabce2c533	1	bank:anthropic/messages_tool_choice/required_maps_to_any_and_forces_tool_use.yaml#0
-anthropic	POST /v1/messages	reply	1b842d621b138b1a	1	bank:anthropic/empty_end_turn/prompt_loop_accepts_empty_terminal_turn_after_tool_result.yaml#1
+anthropic	POST /v1/messages	reply	1b842d621b138b1a	1	anthropic/corpus_request_shape/tool_choice_none.yaml#0
 anthropic	POST /v1/messages	reply	1c9d6faf7729dbef	5	anthropic/models/sonnet_5_5/session.yaml#3
+anthropic	POST /v1/messages	reply	1df950eb81a63c4a	1	anthropic/models/sonnet_5_5/session.yaml#17
 anthropic	POST /v1/messages	reply	2483ddf47068a111	12	anthropic/context_binding/between_tools_after_tool_change.yaml#2
 anthropic	POST /v1/messages	reply	256049f5695ee7fc	1	bank:anthropic/tool_result_rewrite/tool_result_redacted_by_hook_blocking.yaml#0
-anthropic	POST /v1/messages	reply	25ad2f5c67e982af	38	anthropic/checkpoint_matrix/parallel_batch.yaml#1
+anthropic	POST /v1/messages	reply	25ad2f5c67e982af	41	anthropic/checkpoint_matrix/parallel_batch.yaml#1
 anthropic	POST /v1/messages	reply	25c9fa0b89b4b0ca	1	bank:anthropic/long_run_caching/tool_loop_60.yaml#13
 anthropic	POST /v1/messages	reply	264add5d56f040ae	3	anthropic/models/sonnet_5_5/session.yaml#9
 anthropic	POST /v1/messages	reply	2897fe4e50f190b6	1	bank:anthropic/strict_schema_limits/sixteen_union_parameters_across_tools_are_accepted.yaml#0
 anthropic	POST /v1/messages	reply	28d51b977d372a0e	1	anthropic/strict_schema_matrix/conditionals_and_dependencies_become_guidance.yaml#0
-anthropic	POST /v1/messages	reply	28fea182e60c6d0f	2	anthropic/stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires.yaml#0
+anthropic	POST /v1/messages	reply	28fea182e60c6d0f	1	anthropic/stop_sequence_terminal_matrix/raw_with_preamble_sequence_fires.yaml#0
 anthropic	POST /v1/messages	reply	2ab406a3eb823934	1	bank:anthropic/opus_4_7/messages_adaptive_thinking_streaming_tool_roundtrip_smoke.yaml#0
 anthropic	POST /v1/messages	reply	2b5f91799a849e18	1	bank:anthropic/checkpoint_matrix/multi_turn_unary.yaml#0
 anthropic	POST /v1/messages	reply	2bcf12f049ecc66f	1	anthropic/checkpoint_matrix/parallel_batch.yaml#0
 anthropic	POST /v1/messages	reply	2cfb9f7440e33370	1	bank:anthropic/reasoning_tool_roundtrip/streaming.yaml#0
+anthropic	POST /v1/messages	reply	2d835fe1f7a18f96	1	anthropic/strict_schema_matrix/nested_arrays_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	2fb294d228bfb845	3	anthropic/models/sonnet_5_5/session.yaml#21
+anthropic	POST /v1/messages	reply	3033eab592caa043	1	anthropic/empty_stop_sequence_matrix/with_tools_empty_stop.yaml#0
 anthropic	POST /v1/messages	reply	30bf3e586db1679a	1	anthropic/reasoning_tool_roundtrip/nonstreaming.yaml#0
 anthropic	POST /v1/messages	reply	331fdceaee93a04f	1	anthropic/models/sonnet_5_5/session.yaml#51
 anthropic	POST /v1/messages	reply	34c507e97d4751e5	1	bank:anthropic/streamed_server_tools/streamed_web_search_preserves_server_tool_blocks.yaml#0
@@ -269,28 +272,29 @@ anthropic	POST /v1/messages	reply	34d58faedc0e3783	1	bank:anthropic/think_tool_w
 anthropic	POST /v1/messages	reply	3611bfa87ec07c9c	1	bank:anthropic/request_identity_matrix/messages.yaml#2
 anthropic	POST /v1/messages	reply	371fbe976409892c	2	anthropic/messages_thinking/redacted_thinking_roundtrip_nonstreaming.yaml#0
 anthropic	POST /v1/messages	reply	37c8784bcf0b81ce	1	bank:anthropic/reasoning_usage_matrix/streaming_max_tokens_truncation.yaml#0
-anthropic	POST /v1/messages	reply	3b02ae05fdf7f567	6	anthropic/corpus_endings/tool_dispatch_cancelled.yaml#0
+anthropic	POST /v1/messages	reply	3b02ae05fdf7f567	1	bank:anthropic/response_identity_edge/max_turns_exhaustion_still_observed_completed_calls.yaml#0
 anthropic	POST /v1/messages	reply	3c17a9fb67caac54	1	anthropic/models/sonnet_5_5/session.yaml#40
 anthropic	POST /v1/messages	reply	3d88b87a00aa396f	2	anthropic/corpus_causal/completion_concurrent.yaml#0
-anthropic	POST /v1/messages	reply	3f293812ee950ec1	1	anthropic/long_run_caching/mid_system_every_10_60.yaml#20
+anthropic	POST /v1/messages	reply	3f293812ee950ec1	2	anthropic/long_run_caching/mid_system_every_10_60.yaml#20
 anthropic	POST /v1/messages	reply	3f4cd35af6272306	1	bank:anthropic/messages_strict_tools/defs_ref_preserves_optional_member.yaml#0
-anthropic	POST /v1/messages	reply	44a58ff3350c1e02	1	anthropic/strict_schema_matrix/supported_array_minimums_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	4ad20946338f577d	3	anthropic/corpus_output/prompted_with_real_tool.yaml#0
 anthropic	POST /v1/messages	reply	4b6b323481eb486b	1	anthropic/adversarial/three_provider_round_trip.yaml#0
-anthropic	POST /v1/messages	reply	4fa9e5a9dc50f702	1	anthropic/messages_strict_tools/nested_optional_object_can_be_omitted.yaml#0
 anthropic	POST /v1/messages	reply	50600ddadcc8f29c	1	bank:anthropic/opus_4_7/messages_extractor_smoke.yaml#0
-anthropic	POST /v1/messages	reply	53457b403a6bad22	1	anthropic/strict_schema_matrix/scalar_enum_and_const_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	549f0cc056311c5d	1	bank:anthropic/empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice.yaml#0
+anthropic	POST /v1/messages	reply	58edfcbaaf632c37	1	anthropic/messages_strict_tools/nested_optional_object_can_be_partially_populated.yaml#0
 anthropic	POST /v1/messages	reply	594b626a8dda1a57	1	anthropic/request_override/request_overridden_by_hook_blocking.yaml#1
-anthropic	POST /v1/messages	reply	61adb2f868e6b672	15	anthropic/long_run_caching/dynamic_tools_30.yaml#21
-anthropic	POST /v1/messages	reply	654e0b070eebfba5	19	anthropic/long_run_caching/dynamic_tools_30.yaml#22
+anthropic	POST /v1/messages	reply	59d528073525183d	1	anthropic/strict_schema_matrix/root_ref_retains_sibling_definitions.yaml#0
+anthropic	POST /v1/messages	reply	5a74cc81f01fc7e9	1	anthropic/strict_schema_matrix/scalar_enum_and_const_roundtrip.yaml#0
+anthropic	POST /v1/messages	reply	61adb2f868e6b672	16	anthropic/long_run_caching/dynamic_tools_30.yaml#25
+anthropic	POST /v1/messages	reply	6501e25b6d4bb3ca	1	anthropic/models/sonnet_5_5/session.yaml#14
+anthropic	POST /v1/messages	reply	654e0b070eebfba5	20	anthropic/long_run_caching/dynamic_tools_30.yaml#20
+anthropic	POST /v1/messages	reply	65cff7fc398fd04f	1	anthropic/strict_schema_matrix/explicit_any_of_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	665a85c54c79b8a6	2	anthropic/prompt_caching/conformance_agent_loop.yaml#0
-anthropic	POST /v1/messages	reply	667690444c20af97	25	anthropic/long_run_caching/document_60.yaml#0
+anthropic	POST /v1/messages	reply	667690444c20af97	24	anthropic/long_run_caching/document_60.yaml#0
 anthropic	POST /v1/messages	reply	6928de3ca98a8669	1	bank:anthropic/checkpoint_matrix/large_result.yaml#0
 anthropic	POST /v1/messages	reply	6969bea644091b15	5	anthropic/context_binding/between_tools_after_tool_change.yaml#0
 anthropic	POST /v1/messages	reply	69c3faacf90ab427	1	bank:anthropic/opus_4_7/messages_tools_smoke.yaml#0
-anthropic	POST /v1/messages	reply	6a5c707e2eaffbb9	1	anthropic/corpus_request_shape/tool_choice_none.yaml#0
-anthropic	POST /v1/messages	reply	6c01d772e1b347a8	14	anthropic/corpus_host/custom_at_start_streamed.yaml#0
+anthropic	POST /v1/messages	reply	6c01d772e1b347a8	12	anthropic/corpus_host/custom_at_start_streamed.yaml#0
 anthropic	POST /v1/messages	reply	6c171d3cb53a840a	1	anthropic/long_loop_matrix/parallel_calls.yaml#0
 anthropic	POST /v1/messages	reply	6f2cf8ec8c89761f	2	anthropic/corpus_outcome/model_error.yaml#0
 anthropic	POST /v1/messages	reply	77055423b88342a8	1	bank:anthropic/session_matrix/memory_unary.yaml#0
@@ -300,56 +304,56 @@ anthropic	POST /v1/messages	reply	7d58f73de916bfda	2	anthropic/long_loop_matrix/
 anthropic	POST /v1/messages	reply	806378bbbaf351a9	1	anthropic/models/sonnet_5_5/session.yaml#32
 anthropic	POST /v1/messages	reply	82c771c5989881cd	1	bank:anthropic/session_matrix/memory_streamed.yaml#2
 anthropic	POST /v1/messages	reply	8753e3c9d4f19baa	2	anthropic/corpus_request_shape/thinking_streamed.yaml#0
-anthropic	POST /v1/messages	reply	8a2f95d9dda334f2	27	anthropic/corpus_endings/answer_turn_stop.yaml#0
+anthropic	POST /v1/messages	reply	8a2f95d9dda334f2	33	anthropic/corpus_endings/answer_turn_stop.yaml#0
 anthropic	POST /v1/messages	reply	8c1dc0c9bc0ac8db	1	anthropic/models/sonnet_5_5/session.yaml#53
-anthropic	POST /v1/messages	reply	8cf70e2b96d3d1d8	17	anthropic/long_run_caching/dynamic_tools_30.yaml#1
+anthropic	POST /v1/messages	reply	8c547f1748861975	1	anthropic/strict_schema_matrix/root_ref_preserves_sibling_all_of.yaml#0
+anthropic	POST /v1/messages	reply	8cf70e2b96d3d1d8	16	anthropic/long_run_caching/dynamic_tools_30.yaml#1
 anthropic	POST /v1/messages	reply	8e4e7b40058a1e35	1	anthropic/raw_stream_capture_matrix/raw_exposes_stop_sequence.yaml#0
-anthropic	POST /v1/messages	reply	8fa44ea0f17602d1	1	anthropic/models/sonnet_5_5/session.yaml#14
-anthropic	POST /v1/messages	reply	90a3adb38e0687c3	1	anthropic/strict_schema_matrix/nested_arrays_roundtrip.yaml#0
-anthropic	POST /v1/messages	reply	92a55882b05e0eba	41	anthropic/agent/completion_smoke.yaml#0
+anthropic	POST /v1/messages	reply	8fa44ea0f17602d1	1	bank:anthropic/models/opus_5_5/session.yaml#14
+anthropic	POST /v1/messages	reply	911f1c26aa9ff38e	1	anthropic/malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error.yaml#0
+anthropic	POST /v1/messages	reply	918d061035ad367b	1	anthropic/raw_capture_matrix/raw_exposes_tool_use_block.yaml#0
+anthropic	POST /v1/messages	reply	92a55882b05e0eba	38	anthropic/agent/completion_smoke.yaml#0
 anthropic	POST /v1/messages	reply	92ea36b9d57153ad	3	anthropic/adversarial/empty_signed_reasoning.yaml#1
-anthropic	POST /v1/messages	reply	95c1f92c2695850b	1	anthropic/malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error.yaml#0
+anthropic	POST /v1/messages	reply	9659796c4e46b9c9	1	anthropic/messages_strict_tools/nested_optional_object_can_be_omitted.yaml#0
 anthropic	POST /v1/messages	reply	9673f08f8b7d4ae4	1	bank:anthropic/messages_strict_tools/nullable_union_can_emit_null.yaml#0
 anthropic	POST /v1/messages	reply	971c2208cfff562f	5	anthropic/models/sonnet_5_5/session.yaml#24
 anthropic	POST /v1/messages	reply	973519f44f3f5f21	1	bank:anthropic/opus_4_7/messages_adaptive_thinking_tool_roundtrip_smoke.yaml#0
 anthropic	POST /v1/messages	reply	98f16b606cc834ce	1	anthropic/corpus_request_shape/max_tokens.yaml#0
 anthropic	POST /v1/messages	reply	9ba6cfa4ca292b7a	1	bank:anthropic/reasoning_usage_matrix/streaming_adaptive_declines_to_think.yaml#0
 anthropic	POST /v1/messages	reply	9f6a9cfe78867c3a	1	bank:anthropic/reasoning_usage_matrix/blocking_tool_use_terminal.yaml#0
-anthropic	POST /v1/messages	reply	9f9803225cd65ac1	2	anthropic/strict_schema_matrix/annotations_become_guidance_without_overwriting_description.yaml#0
-anthropic	POST /v1/messages	reply	a07dca1d08cdab25	71	anthropic/long_run_caching/dynamic_tools_30.yaml#0
+anthropic	POST /v1/messages	reply	9f9803225cd65ac1	8	anthropic/strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools.yaml#0
+anthropic	POST /v1/messages	reply	a07dca1d08cdab25	70	anthropic/long_run_caching/dynamic_tools_30.yaml#0
 anthropic	POST /v1/messages	reply	a4ee457c5b536fdc	1	anthropic/adversarial/empty_signed_reasoning.yaml#0
-anthropic	POST /v1/messages	reply	a5af07e252be1370	1	anthropic/raw_capture_matrix/raw_exposes_tool_use_block.yaml#0
+anthropic	POST /v1/messages	reply	a5af07e252be1370	1	bank:anthropic/messages_strict_tools/optional_scalar_can_be_omitted.yaml#0
 anthropic	POST /v1/messages	reply	abd31bf6dd25a9fb	1	anthropic/models/sonnet_5_5/session.yaml#52
-anthropic	POST /v1/messages	reply	ae7ba780577be681	2	anthropic/strict_schema_matrix/root_all_of_local_draft7_ref_branch_roundtrip.yaml#0
+anthropic	POST /v1/messages	reply	ae7ba780577be681	1	bank:anthropic/strict_schema_matrix/root_all_of_object_schema_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	b05596143edfc88c	1	bank:anthropic/strict_schema_matrix/root_defs_ref_roundtrip.yaml#0
-anthropic	POST /v1/messages	reply	b09bd66dabea93d4	1	anthropic/messages_strict_tools/array_items_and_formats_roundtrip.yaml#0
+anthropic	POST /v1/messages	reply	b3b05186b355171e	1	anthropic/strict_schema_matrix/primitive_types_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	b5970d812971d76c	1	anthropic/opus_4_8/messages_preserve_system_role_after_server_tool_result.yaml#0
 anthropic	POST /v1/messages	reply	b5c6ae3fdf4b2fd2	1	bank:anthropic/plaintext_document/document_citations_followup_preserves_history.yaml#0
+anthropic	POST /v1/messages	reply	b6ca27428dc00807	1	anthropic/messages_strict_tools/array_items_and_formats_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	bba3e07f955ba4fe	24	anthropic/long_run_caching/document_60.yaml#1
 anthropic	POST /v1/messages	reply	bc5e7b2b85dcf82d	1	bank:anthropic/streamed_server_tools/blocking_web_search_preserves_server_tool_blocks.yaml#0
 anthropic	POST /v1/messages	reply	c0135fbcd0cc38b7	6	anthropic/long_run_caching/document_60.yaml#2
 anthropic	POST /v1/messages	reply	c03816bcb20312c8	1	anthropic/opus_4_7/messages_structured_output_smoke.yaml#0
-anthropic	POST /v1/messages	reply	c716412664035f7c	1	anthropic/strict_schema_matrix/explicit_any_of_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	c7c354a1ef97601d	1	bank:anthropic/strict_schema_matrix/required_and_optional_property_order_schema_is_accepted.yaml#0
-anthropic	POST /v1/messages	reply	ca56fe71a416afa6	3	anthropic/corpus_memory/serial_two_tools.yaml#0
+anthropic	POST /v1/messages	reply	ca56fe71a416afa6	2	anthropic/corpus_memory/serial_two_tools.yaml#0
 anthropic	POST /v1/messages	reply	cad3b61685dc1477	1	anthropic/request_override/request_overridden_by_hook_blocking.yaml#0
-anthropic	POST /v1/messages	reply	cd6b33ef5d4a1016	1	anthropic/strict_schema_matrix/root_ref_preserves_sibling_all_of.yaml#0
-anthropic	POST /v1/messages	reply	cdd4d984580ab0b7	3	anthropic/corpus_output/tool_choice_required.yaml#0
+anthropic	POST /v1/messages	reply	cd6b33ef5d4a1016	1	bank:anthropic/messages_strict_tools/all_of_composition_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	cfa90e5e9dcb6cf2	1	anthropic/strict_schema_matrix/every_numeric_constraint_becomes_guidance.yaml#0
 anthropic	POST /v1/messages	reply	d0a44cd8a457d4a2	1	bank:anthropic/strict_schema_limits/twenty_strict_tools_are_accepted.yaml#0
 anthropic	POST /v1/messages	reply	d18697b78f375a7c	1	bank:anthropic/long_run_caching/tool_loop_60.yaml#1
-anthropic	POST /v1/messages	reply	d28331c9a86986ab	1	anthropic/strict_schema_matrix/primitive_types_roundtrip.yaml#0
+anthropic	POST /v1/messages	reply	d299f2562a699880	2	anthropic/strict_schema_matrix/root_all_of_local_draft7_ref_branch_roundtrip.yaml#0
 anthropic	POST /v1/messages	reply	d4d44e8fbfe0940d	1	anthropic/corpus_output/tool_with_real_tool.yaml#1
-anthropic	POST /v1/messages	reply	d53dd0a3a20033bf	14	anthropic/corpus_causal/completion_streamed.yaml#2
+anthropic	POST /v1/messages	reply	d53dd0a3a20033bf	16	anthropic/corpus_causal/completion_streamed.yaml#2
 anthropic	POST /v1/messages	reply	d7647a88eb88fb75	1	bank:anthropic/think_tool_with_other_tools/think_tool_with_other_tools.yaml#3
-anthropic	POST /v1/messages	reply	d81d195773096520	3	anthropic/empty_stop_sequence_matrix/with_preamble_empty_stop.yaml#0
-anthropic	POST /v1/messages	reply	d8ae85fd29670e8f	10	anthropic/corpus_endings/tool_call_delta_stop.yaml#0
+anthropic	POST /v1/messages	reply	d81d195773096520	2	anthropic/empty_stop_sequence_matrix/with_preamble_empty_stop.yaml#0
+anthropic	POST /v1/messages	reply	d8ae85fd29670e8f	1	bank:anthropic/raw_completion_parity_matrix/streamed_tool_call_turn_parity.yaml#0
 anthropic	POST /v1/messages	reply	d8c79481ba0007dd	1	bank:anthropic/pdf_citations/pdf_document_citations_decode_as_page_locations.yaml#0
 anthropic	POST /v1/messages	reply	d997e7da5937c863	1	bank:anthropic/empty_stop_sequence_matrix/nonempty_stop_sequence_control.yaml#0
 anthropic	POST /v1/messages	reply	d9ab9695b4777e9b	1	anthropic/strict_schema_matrix/unsupported_object_constraints_become_guidance.yaml#0
 anthropic	POST /v1/messages	reply	da8b18349ace6cd4	1	anthropic/streaming/input_tokens_agree_across_frames.yaml#0
 anthropic	POST /v1/messages	reply	de777c8d9e8e8590	1	anthropic/messages_tool_args/nested_arguments_roundtrip_nonstreaming.yaml#0
-anthropic	POST /v1/messages	reply	e13f672376204403	1	anthropic/messages_strict_tools/discriminated_any_of_preserves_const.yaml#0
 anthropic	POST /v1/messages	reply	e55c709414a994aa	1	anthropic/opus_4_8/web_search_with_dynamic_filtering_succeeds.yaml#0
 anthropic	POST /v1/messages	reply	e7172fd83157495b	1	anthropic/strict_schema_matrix/unsupported_array_constraints_become_guidance.yaml#0
 anthropic	POST /v1/messages	reply	e8c078abefce319c	4	anthropic/corpus_oracle/concurrent_notes.yaml#0
@@ -357,16 +361,18 @@ anthropic	POST /v1/messages	reply	e9e931bd43bbc05c	6	anthropic/models/sonnet_5_5
 anthropic	POST /v1/messages	reply	eb668ca406fb5868	1	bank:anthropic/messages_thinking/redacted_thinking_streaming.yaml#0
 anthropic	POST /v1/messages	reply	eb8eb02d2b54788a	2	anthropic/corpus_request_shape/thinking_unary.yaml#0
 anthropic	POST /v1/messages	reply	ed4b34c3d875e1a1	1	bank:anthropic/adversarial/out_of_order_results.yaml#0
+anthropic	POST /v1/messages	reply	efee430bf1ef6ed6	1	anthropic/messages_strict_tools/discriminated_any_of_preserves_const.yaml#0
 anthropic	POST /v1/messages	reply	f0de0ce1b8049add	1	bank:anthropic/opus_4_7/messages_streaming_tools_smoke.yaml#1
-anthropic	POST /v1/messages	reply	f0eb55ffccec87a2	71	anthropic/long_run_caching/dynamic_tools_30.yaml#5
+anthropic	POST /v1/messages	reply	f0eb55ffccec87a2	72	anthropic/long_run_caching/dynamic_tools_30.yaml#3
 anthropic	POST /v1/messages	reply	f11edd55fc817078	1	bank:anthropic/empty_end_turn/prompt_loop_preserves_pre_tool_text_when_terminal_followup_is_empty.yaml#0
+anthropic	POST /v1/messages	reply	f1645305ea481db2	1	anthropic/messages_strict_tools/draft7_definitions_ref_preserves_optional_member.yaml#0
 anthropic	POST /v1/messages	reply	f2dc4ebb6e652ebe	1	anthropic/messages_strict_tools/optional_scalar_can_be_included_after_constraint_transform.yaml#0
-anthropic	POST /v1/messages	reply	f39f59881c192345	1	anthropic/corpus_output/tool_thinking.yaml#0
-anthropic	POST /v1/messages	reply	f52074c3e5a89082	1	anthropic/corpus_shaping/tool_choice_none_on_committed_output.yaml#2
+anthropic	POST /v1/messages	reply	f52074c3e5a89082	4	anthropic/corpus_output/tool_choice_required.yaml#0
 anthropic	POST /v1/messages	reply	f575c4412e4a3532	1	bank:anthropic/reasoning_usage_matrix/blocking_max_tokens_truncation.yaml#0
 anthropic	POST /v1/messages	reply	f94981e4ab104b53	1	anthropic/context_binding/between_tools_after_tool_change.yaml#1
 anthropic	POST /v1/messages	reply	fb6348431c8b6d51	1	bank:anthropic/think_tool_with_other_tools/think_tool_with_other_tools.yaml#0
 anthropic	POST /v1/messages	reply	fe0fb60807db31d1	1	bank:anthropic/plaintext_document/streaming_document_citations_accepts_null_citation_start.yaml#0
+anthropic	POST /v1/messages	reply	fee0bb812a576a60	1	anthropic/corpus_output/tool_thinking.yaml#0
 bedrock	POST /model/{model}/converse	request	$ {guardrailConfig:{},inferenceConfig:{},messages:[{}]}	1	bedrock/raw_provider_data/guardrail_trace_survives_into_raw_completion.yaml#0
 bedrock	POST /model/{model}/converse	request	$ {inferenceConfig:{},messages:[{}],system:[{}],toolConfig:{}}	2	bedrock/agent/tool_roundtrip_smoke.yaml#0
 bedrock	POST /model/{model}/converse	request	$ {inferenceConfig:{},messages:[{}],system:[{}]}	2	bedrock/agent/completion_smoke.yaml#0
