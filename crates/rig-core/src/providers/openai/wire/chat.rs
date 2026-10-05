@@ -1186,6 +1186,8 @@ pub struct ChatDecoder {
     fields: Map<String, Value>,
     /// Whether a finish reason or a whole reply ended the turn.
     ended: bool,
+    /// Whether a stream chunk arrived.
+    chunked: bool,
 }
 
 impl ChatDecoder {
@@ -1685,6 +1687,21 @@ impl ChatDecoder {
         self.close_calls(&mut out, true)?;
         self.end(out, true)
     }
+
+    /// The `[DONE]` sentinel. A dialect whose streams omit the finish reason
+    /// ends a turn that streamed a chunk as pi does without
+    /// `supportsFinishReason`: a tool call when it holds one, else a stop.
+    fn done(&mut self, out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
+        if !self.ended && self.chunked && self.quirks.done_without_finish_reason {
+            self.finish = Some(if self.calls.is_empty() {
+                FinishReason::Stop
+            } else {
+                FinishReason::ToolCalls
+            });
+            self.ended = true;
+        }
+        self.finish(out)
+    }
 }
 
 /// Append streamed reasoning details to the block's, by pi's merge: a
@@ -1773,11 +1790,12 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
     ) -> Result<Flow, ProviderError> {
         match event {
             ChatEvent::Chunk(frame) => {
+                self.chunked = true;
                 self.chunk(&frame, &mut out)?;
                 Ok(Flow::More)
             }
             ChatEvent::Whole(frame) => self.whole(&frame, out),
-            ChatEvent::Done => self.finish(out),
+            ChatEvent::Done => self.done(out),
             // A bare string is the whole answer, ended: pi's stop for a
             // reply that names no reason.
             ChatEvent::BareText(text) => {

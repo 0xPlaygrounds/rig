@@ -305,6 +305,10 @@ pub struct Quirks {
     /// Whether a streaming request asks for the usage chunk through
     /// `stream_options`.
     pub stream_include_usage: bool,
+    /// Whether a stream's `[DONE]` ends the turn when no finish reason
+    /// arrived, as a tool call when the reply holds one and a stop otherwise.
+    /// Off, such a stream is truncated.
+    pub done_without_finish_reason: bool,
     /// How the dialect spells the output-token cap.
     pub output_cap: OutputCap,
     /// Whether to consult upstream-native finish reasons when normalized ones are absent.
@@ -385,6 +389,7 @@ impl Quirks {
             supports_image_tool_results: false,
             later_system: crate::completion::LaterSystem::InPlace,
             stream_include_usage: true,
+            done_without_finish_reason: false,
             output_cap: OutputCap::Legacy,
             native_finish_reason: false,
             finishes: &[],
@@ -415,6 +420,18 @@ impl Quirks {
     /// sends no `stream_options`, so streamed usage reports `None`.
     pub const fn without_stream_usage(mut self) -> Self {
         self.stream_include_usage = false;
+        self
+    }
+
+    /// These quirks for a gateway whose streams omit `finish_reason`: a
+    /// `[DONE]` after at least one chunk ends the turn as
+    /// [`FinishReason::ToolCalls`](crate::completion::FinishReason::ToolCalls)
+    /// when the reply holds a tool call, and
+    /// [`FinishReason::Stop`](crate::completion::FinishReason::Stop)
+    /// otherwise. A cut-off stream that still sends `[DONE]` then reads as
+    /// complete, so set this only for a gateway known to omit the field.
+    pub const fn done_without_finish_reason(mut self) -> Self {
+        self.done_without_finish_reason = true;
         self
     }
 
