@@ -72,6 +72,7 @@ pub const HISTORY_WIRES: &[&str] = &[
     "moonshot",
     "xiaomimimo",
     "cohere",
+    "cohere_native",
     "ollama",
     "gemini_rest",
     "gemini_interactions",

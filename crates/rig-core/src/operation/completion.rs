@@ -49,11 +49,16 @@ impl Operation for Completion {
             .telemetry
             .map_or(GenAiOperation::Chat, |telemetry| telemetry(call.mode));
         debug_assert!(telemetry.is_completion());
+        // A wire that picks its API per request records the one it used.
+        let replay = call
+            .wire
+            .replay
+            .map(|target| target.route(request).unwrap_or(target));
         let model = request
             .model
             .as_deref()
             .or(call.wire.model)
-            .or_else(|| call.wire.replay.map(|target| target.model()))
+            .or_else(|| replay.map(|target| target.model()))
             .unwrap_or_default();
         let span = SpanBuilder::new(call.wire.name, model, telemetry)
             .streaming(matches!(call.mode, Mode::Streaming))
@@ -63,29 +68,20 @@ impl Operation for Completion {
             )
             .build();
         call.instrument(span.clone());
-        let api = call.wire.replay.map_or_else(
+        let api = replay.map_or_else(
             || Api::from(call.wire.name.to_owned()),
             |target| target.api(),
         );
         let mut origin = Origin::new(api, call.wire.name, model);
         // Only a wire that binds items to the context needs it recorded.
-        if call
-            .wire
-            .replay
-            .is_some_and(|target| target.binds_context(model))
-        {
-            origin.context = call
-                .wire
-                .replay
-                .map(|target| crate::completion::history::context_of(request, target, model));
+        if replay.is_some_and(|target| target.binds_context(model)) {
+            origin.context =
+                replay.map(|target| crate::completion::history::context_of(request, target, model));
         }
         Turn {
             span,
-            wire: call
-                .wire
-                .replay
-                .is_some_and(|target| target.states_finish_reason()),
-            call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
+            wire: replay.is_some_and(|target| target.states_finish_reason()),
+            call_id_slot: replay.and_then(|target| target.call_id_slot()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..Turn::new(origin)
         }
@@ -117,10 +113,13 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
+        let target = target.route(&request).unwrap_or(target);
         // Documents join the history before it is adapted, so the adapter's
-        // rules apply to them and no encoder places them.
-        request.chat_history = request.chat_history_with_documents();
-        request.documents.clear();
+        // rules apply to them, unless the encoder sends them itself.
+        if !target.takes_documents() {
+            request.chat_history = request.chat_history_with_documents();
+            request.documents.clear();
+        }
         let stored = target.continues_stored(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),

@@ -112,6 +112,7 @@ fn only_completion_encoders_are_banked() {
         "POST /v1beta/models/{model}:streamGenerateContent"
     ));
     assert!(is_completion("POST /model/{model}/converse-stream"));
+    assert!(is_completion("POST /v2/chat"));
     assert!(!is_completion("POST /v1/embeddings"));
     assert!(!is_completion("GET /v1/responses"));
     assert!(!is_completion("DELETE /v1/responses/{id}"));

@@ -14,6 +14,7 @@ pub mod azure;
 pub mod chat;
 pub mod chatgpt;
 pub mod cohere;
+pub mod cohere_native;
 pub mod copilot;
 pub mod deepseek;
 pub mod doubleword;
@@ -49,6 +50,7 @@ pub const SUITE_WIRES: &[&str] = &[
     anthropic_xiaomimimo::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     cohere::HISTORY_WIRE,
+    cohere_native::HISTORY_WIRE,
     copilot::HISTORY_WIRE,
     deepseek::HISTORY_WIRE,
     gemini_interactions::HISTORY_WIRE,

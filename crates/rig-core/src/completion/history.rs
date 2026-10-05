@@ -224,6 +224,21 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         false
     }
 
+    /// The target `request` is sent to, for a wire that picks its API per
+    /// request. Preparing the request and folding its reply both read the
+    /// target this names, so a turn records the API it was made on. `None`,
+    /// the default, is this target.
+    fn route(&self, request: &crate::completion::CompletionRequest) -> Option<&dyn ReplayTarget> {
+        let _ = request;
+        None
+    }
+
+    /// Whether the encoder sends a request's documents itself. Otherwise
+    /// they join the history as text before it is adapted.
+    fn takes_documents(&self) -> bool {
+        false
+    }
+
     /// Whether this provider item requires the item after it in its turn
     /// (Responses reasoning): when that one is not replayed, neither is
     /// this.

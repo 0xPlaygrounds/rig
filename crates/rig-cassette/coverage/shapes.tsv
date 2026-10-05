@@ -492,7 +492,7 @@ cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,message
 cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,stream_options:{}}	1	cohere/streaming/streaming_smoke.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,temperature:num}	1	cohere/raw_capture_matrix/raw_exposes_envelope_fields.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,tool_choice:str,tools:[{}]}	1	cohere/tools/strict_required_tool_choice_is_accepted.yaml#0
-cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str}	1	cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml#0
+cohere	POST /compatibility/v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str}	3	cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:str,stream:bool,stream_options:{},tools:[{}]}	2	cohere/streaming_tools/streaming_tool_call_roundtrip.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:str,temperature:num,tools:[{}]}	2	cohere/prompt_caching/agent_loop.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:str,temperature:num}	1	cohere/agent/completion_smoke.yaml#0
@@ -500,12 +500,12 @@ cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:st
 cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:str,tools:[{}]}	2	cohere/tools/tool_call_roundtrip.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$ {messages:[{}],model:str}	1	cohere/errors/completion_error_preserves_status_and_body.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:[{}],role:"system"}	16	cohere/agent/completion_smoke.yaml#0
-cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:[{}],role:"user"}	1	cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml#0
-cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:str,role:"assistant"}	3	cohere/history_survival_matrix/streaming.yaml#4
+cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:[{}],role:"user"}	2	cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml#0
+cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:str,role:"assistant"}	4	cohere/history_survival_matrix/streaming.yaml#4
 cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:str,role:"tool",tool_call_id:str}	9	cohere/history_survival_matrix/streaming.yaml#1
-cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:str,role:"user"}	23	cohere/agent/completion_smoke.yaml#0
+cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {content:str,role:"user"}	24	cohere/agent/completion_smoke.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$.messages[] {role:"assistant",tool_calls:[{}]}	9	cohere/history_survival_matrix/streaming.yaml#1
-cohere	POST /compatibility/v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	17	cohere/agent/completion_smoke.yaml#0
+cohere	POST /compatibility/v1/chat/completions	request	$.messages[].content[] {text:str,type:"text"}	18	cohere/agent/completion_smoke.yaml#0
 cohere	POST /compatibility/v1/chat/completions	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	9	cohere/history_survival_matrix/streaming.yaml#1
 cohere	POST /compatibility/v1/chat/completions	request	$.messages[].tool_calls[].function {arguments:str,name:str}	9	cohere/history_survival_matrix/streaming.yaml#1
 cohere	POST /compatibility/v1/chat/completions	request	$.stream_options {include_usage:bool}	12	cohere/history_survival_matrix/streaming.yaml#0
@@ -524,13 +524,41 @@ cohere	POST /compatibility/v1/chat/completions	reply	7d90ab41974819c3	1	cohere/c
 cohere	POST /compatibility/v1/chat/completions	reply	87acf785f514f116	1	bank:cohere/streaming_grammar/reasoning_then_tool_call.yaml#0
 cohere	POST /compatibility/v1/chat/completions	reply	cdb5722a1e2ab3b6	4	cohere/prompt_caching/agent_loop.yaml#0
 cohere	POST /compatibility/v1/chat/completions	reply	e2122e534523c795	1	cohere/errors/completion_error_preserves_status_and_body.yaml#0
-cohere	POST /compatibility/v1/chat/completions	reply	fffb1b56de34809f	6	cohere/agent/completion_smoke.yaml#0
+cohere	POST /compatibility/v1/chat/completions	reply	fffb1b56de34809f	8	cohere/agent/completion_smoke.yaml#0
 cohere	POST /v1/embed	request	$ {embedding_types:[str],images:[str],input_type:str,model:str}	1	cohere/embeddings/embed_image_smoke.yaml#0
 cohere	POST /v1/embed	request	$ {input_type:str,model:str,texts:[str]}	3	cohere/embedding_matrix/error_preserves_provider_body.yaml#0
 cohere	POST /v1/embed	reply	59d84928088b3ce9	1	cohere/embeddings/embed_image_smoke.yaml#0
 cohere	POST /v1/embed	reply	8daa743f541f381b	1	cohere/embedding_matrix/normalized_response_is_complete.yaml#0
 cohere	POST /v1/embed	reply	a10307b46706615f	1	cohere/embeddings/embed_search_query_smoke.yaml#0
 cohere	POST /v1/embed	reply	e2122e534523c795	1	cohere/embedding_matrix/error_preserves_provider_body.yaml#0
+cohere	POST /v2/chat	request	$ {documents:[{}],max_tokens:num,messages:[{}],model:str,stream:bool}	1	cohere/native/documents_ground_a_streamed_answer_with_citations.yaml#0
+cohere	POST /v2/chat	request	$ {documents:[{}],max_tokens:num,messages:[{}],model:str}	2	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$ {messages:[{}],model:str,stream:bool,tools:[{}]}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	request	$ {messages:[{}],model:str,tools:[{}]}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
+cohere	POST /v2/chat	request	$.documents[] {data:{},id:str}	3	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$.documents[].data {source:str,text:str}	3	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$.documents[].data {text:str}	3	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$.messages[] {citations:[{}],content:[{}],role:"assistant"}	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	request	$.messages[] {content:[{}],role:"assistant"}	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	request	$.messages[] {content:[{}],role:"tool",tool_call_id:str}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
+cohere	POST /v2/chat	request	$.messages[] {content:[{}],role:"user"}	5	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$.messages[] {content:str,role:"system"}	2	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	request	$.messages[] {role:"assistant",tool_calls:[{}],tool_plan:str}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
+cohere	POST /v2/chat	request	$.messages[].citations[] {content_index:num,end:num,sources:[{}],start:num,text:str,type:"TEXT_CONTENT"}	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	request	$.messages[].citations[].sources[] {document:{},id:str,type:"document"}	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	request	$.messages[].citations[].sources[].document {id:str,source:str,text:str}	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	request	$.messages[].content[] {text:str,type:"text"}	5	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	request	$.messages[].tool_calls[] {function:{},id:str,type:"function"}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
+cohere	POST /v2/chat	request	$.messages[].tool_calls[].function {arguments:str,name:str}	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
+cohere	POST /v2/chat	request	$.tools[] {function:{},type:"function"}	2	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	request	$.tools[].function {description:str,name:str,parameters:{}}	2	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	request	$.tools[].function.parameters {properties:{},required:[str],type:"object"}	2	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	request	$.tools[].function.parameters.properties.* {description:str,type:"integer"}	2	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	reply	4ffde215ae556b95	1	cohere/native/a_conversation_switching_routes_replays.yaml#2
+cohere	POST /v2/chat	reply	609de2c1349c2fc3	1	cohere/native/a_conversation_switching_routes_replays.yaml#0
+cohere	POST /v2/chat	reply	b5be025e44afcb68	1	cohere/native/documents_ground_a_streamed_answer_with_citations.yaml#0
+cohere	POST /v2/chat	reply	bfcabca3d721c68d	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#0
+cohere	POST /v2/chat	reply	c9614e18316b0255	1	cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml#1
 copilot	GET /models	request	$ empty	1	copilot/models/list_models_smoke.yaml#0
 copilot	GET /models	reply	66a3e4adf4b04946	1	copilot/models/list_models_smoke.yaml#0
 copilot	POST /chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,stream:bool,stream_options:{},tools:[{}]}	2	copilot/streaming_tools/example_streaming_with_tools.yaml#0
