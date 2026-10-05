@@ -59,7 +59,7 @@ pub struct AgentRunner<O = ()> {
     pub(crate) origin: RunOrigin,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) max_malformed_tool_call_retries: usize,
+    pub(crate) max_malformed_tool_call_retries: Option<usize>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
@@ -107,8 +107,7 @@ impl AgentRunner {
             origin,
             chat_history: None,
             max_invalid_tool_call_retries: 0,
-            max_malformed_tool_call_retries:
-                crate::run::spec::RunSpec::DEFAULT_MALFORMED_TOOL_CALL_RETRIES,
+            max_malformed_tool_call_retries: None,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             output_tool_name: None,
@@ -375,14 +374,12 @@ impl<O> AgentRunner<O> {
     }
 
     /// Set how many consecutive turns may call a tool with arguments that are
-    /// not a JSON object (default 3). Each such call is answered with
-    /// feedback, or as the invalid-call hook decides; a turn whose calls all
-    /// parse resets the count. Past the limit the
-    /// [`unhandled_invalid_tool_call`](Self::unhandled_invalid_tool_call)
-    /// policy applies: `Fail` ends the run, `Ignore` keeps answering. A
+    /// not a JSON object. Each such call is answered with feedback, or as the
+    /// invalid-call hook decides; a turn whose calls all parse resets the
+    /// count. Past the limit the run fails. Without it there is no limit. A
     /// resumed run keeps the limit it persisted.
     pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_malformed_tool_call_retries = retries;
+        self.max_malformed_tool_call_retries = Some(retries);
         self
     }
 

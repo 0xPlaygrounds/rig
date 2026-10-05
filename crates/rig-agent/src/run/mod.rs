@@ -374,7 +374,7 @@ pub struct AgentRun {
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
     /// See [`RunSpec::max_malformed_tool_call_retries`].
-    max_malformed_tool_call_retries: usize,
+    max_malformed_tool_call_retries: Option<usize>,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
@@ -480,7 +480,7 @@ impl AgentRun {
             format: RUN_FORMAT,
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
-            max_malformed_tool_call_retries: RunSpec::DEFAULT_MALFORMED_TOOL_CALL_RETRIES,
+            max_malformed_tool_call_retries: None,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             tool_choice: None,
             output_tool_name: None,
@@ -637,10 +637,10 @@ impl AgentRun {
     }
 
     /// Set how many consecutive turns may answer a tool call whose arguments
-    /// are not a JSON object before the unhandled-call policy applies. See
-    /// [`RunSpec::max_malformed_tool_call_retries`].
+    /// are not a JSON object before the run fails. Without it there is no
+    /// limit. See [`RunSpec::max_malformed_tool_call_retries`].
     pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_malformed_tool_call_retries = retries;
+        self.max_malformed_tool_call_retries = Some(retries);
         self
     }
 
@@ -1181,9 +1181,8 @@ impl AgentRun {
 
     /// Count a tool step that answers a call whose arguments are not a JSON
     /// object, or reset the count when every executed call parsed. Past
-    /// [`RunSpec::max_malformed_tool_call_retries`] consecutive steps,
-    /// [`UnhandledInvalidToolCall::Fail`] fails the run naming the tool and
-    /// the parse error; `Ignore` lets the step answer the call again.
+    /// [`RunSpec::max_malformed_tool_call_retries`] consecutive steps, when
+    /// set, fails the run naming the tool and the parse error.
     fn count_malformed_tool_calls(&mut self, calls: &[PendingToolCall]) -> Result<(), PromptError> {
         let malformed = calls.iter().find_map(|call| {
             call.preresolved_result
@@ -1202,18 +1201,17 @@ impl AgentRun {
             return Ok(());
         };
         self.malformed_tool_call_retries = self.malformed_tool_call_retries.saturating_add(1);
-        if self.malformed_tool_call_retries <= self.max_malformed_tool_call_retries
-            || self.unhandled_invalid_tool_call == UnhandledInvalidToolCall::Ignore
-        {
+        let Some(limit) = self
+            .max_malformed_tool_call_retries
+            .filter(|limit| self.malformed_tool_call_retries > *limit)
+        else {
             return Ok(());
-        }
+        };
         let error = policy::arguments_parse_error(raw);
         Err(ProviderError::Response(format!(
             "tool `{}` was called with arguments that are not a JSON object on {} consecutive \
              turns, more than the {} retries allowed: {error}",
-            tool_call.function.name,
-            self.malformed_tool_call_retries,
-            self.max_malformed_tool_call_retries,
+            tool_call.function.name, self.malformed_tool_call_retries, limit,
         ))
         .into())
     }
@@ -1799,9 +1797,9 @@ impl AgentRun {
         let mut run = AgentRun::new(prompt)
             .max_turns(spec.effective_max_turns())
             .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
-            .max_malformed_tool_call_retries(spec.max_malformed_tool_call_retries)
             .with_unhandled_invalid_tool_call(spec.unhandled_invalid_tool_call)
             .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
+        run.max_malformed_tool_call_retries = spec.max_malformed_tool_call_retries;
         if let Some(history) = history {
             run = run.with_history(history);
         }

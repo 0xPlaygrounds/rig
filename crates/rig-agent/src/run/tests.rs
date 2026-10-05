@@ -1150,14 +1150,30 @@ fn a_well_formed_tool_step_resets_the_malformed_count() {
 }
 
 #[test]
-fn ignore_answers_malformed_turns_past_the_limit() {
+fn without_a_limit_malformed_turns_are_answered_until_max_turns() {
+    let mut run = AgentRun::new("go").max_turns(4);
+    for id in ["c1", "c2", "c3", "c4"] {
+        tool_step(&mut run, malformed_call_turn(id)).expect("answered");
+    }
+    assert!(
+        run.next_step().is_err(),
+        "the turn budget, not a malformed limit, ends the run"
+    );
+}
+
+#[test]
+fn ignore_does_not_lift_the_malformed_limit() {
     let mut run = AgentRun::new("go")
         .max_turns(10)
         .max_malformed_tool_call_retries(0)
         .with_unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore);
-    for id in ["c1", "c2", "c3"] {
-        tool_step(&mut run, malformed_call_turn(id)).expect("ignored");
-    }
+    let error = tool_step(&mut run, malformed_call_turn("c1")).expect_err("past the limit");
+    assert!(
+        error
+            .to_string()
+            .contains("more than the 0 retries allowed"),
+        "{error}"
+    );
 }
 
 #[test]

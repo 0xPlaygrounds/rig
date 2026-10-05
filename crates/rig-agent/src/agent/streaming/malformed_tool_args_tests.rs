@@ -1,8 +1,9 @@
 //! A tool call whose arguments are not a JSON object never reaches the tool.
 //! The tool step offers it to the invalid-call hook, then answers it with a
-//! tool result so the model can call again, and a model that keeps sending
-//! malformed arguments is stopped after `max_malformed_tool_call_retries`
-//! consecutive turns. Every case runs on the blocking and the streamed
+//! tool result so the model can call again. A model that keeps sending
+//! malformed arguments is answered until `max_turns`, or stopped after
+//! `max_malformed_tool_call_retries` consecutive turns when that is set.
+//! Every case runs on the blocking and the streamed
 //! surface, which share the tool step, and asserts what the model sees on
 //! its next request.
 
@@ -341,11 +342,34 @@ async fn fail_and_repair_end_the_run_naming_the_tool_and_the_parse_error() {
 }
 
 #[tokio::test]
+async fn without_a_limit_malformed_arguments_are_answered_until_max_turns() {
+    let script = [Turn::Malformed; 10];
+    for surface in SURFACES {
+        let (outcome, requests) = run(surface, &script, |r| r).await;
+        let error = outcome.expect_err("the turn budget ends the run");
+        assert!(
+            error.contains("reached the max turns limit of 10"),
+            "{surface:?}: {error}"
+        );
+        assert_eq!(requests.len(), 10, "{surface:?}");
+        for turn in 1..10 {
+            assert!(
+                answer_text(&requests, turn).contains("not a JSON object"),
+                "{surface:?}: call {turn} is answered with feedback"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_model_that_keeps_sending_malformed_arguments_stops_after_the_limit() {
     let script = [Turn::Malformed; 8];
     for surface in SURFACES {
         let hook = Decide::new(Some(InvalidToolCallAction::retry("again")));
-        let (outcome, requests) = run(surface, &script, |r| r.add_hook(hook.clone())).await;
+        let (outcome, requests) = run(surface, &script, |r| {
+            r.max_malformed_tool_call_retries(3).add_hook(hook.clone())
+        })
+        .await;
         let error = outcome.expect_err("the limit ends the run");
         assert!(
             error.contains("tool `add` was called with arguments that are not a JSON object on 4 consecutive turns")
@@ -384,33 +408,42 @@ async fn a_well_formed_call_between_malformed_ones_resets_the_count() {
         Malformed, Malformed, Malformed, WellFormed, Malformed, Malformed, Malformed, Answer,
     ];
     for surface in SURFACES {
-        let (outcome, requests) = run(surface, &script, |r| r).await;
+        let (outcome, requests) =
+            run(surface, &script, |r| r.max_malformed_tool_call_retries(3)).await;
         assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
         assert_eq!(requests.len(), 8, "{surface:?}");
         assert!(!answer(&requests[4].chat_history, 4).is_some_and(|result| result.is_error));
     }
 }
 
+/// `Ignore` governs unknown and disallowed names only; it does not lift a
+/// malformed-arguments limit.
 #[tokio::test]
-async fn ignore_keeps_answering_malformed_arguments() {
+async fn ignore_does_not_lift_the_limit() {
     let mut script = vec![Turn::Malformed; 6];
     script.push(Turn::Answer);
     for surface in SURFACES {
         let (outcome, requests) = run(surface, &script, |r| {
-            r.unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
+            r.max_malformed_tool_call_retries(3)
+                .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
         })
         .await;
-        assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
-        assert_eq!(requests.len(), 7, "{surface:?}");
-        assert!(answer_text(&requests, 6).contains("not a JSON object"));
+        let error = outcome.expect_err("the limit ends the run");
+        assert!(
+            error.contains("on 4 consecutive turns"),
+            "{surface:?}: {error}"
+        );
+        assert_eq!(requests.len(), 4, "{surface:?}");
     }
 }
 
-/// A run persisted after two malformed turns resumes with its count: two
-/// more malformed turns pass the default limit of three.
+/// A run persisted after two malformed turns resumes with its count and
+/// limit: two more malformed turns pass its limit of three.
 #[tokio::test]
 async fn the_count_survives_a_serialize_and_resume() {
-    let mut run = AgentRun::new("add 2 and something").max_turns(10);
+    let mut run = AgentRun::new("add 2 and something")
+        .max_turns(10)
+        .max_malformed_tool_call_retries(3);
     for turn in 1..=2 {
         assert!(matches!(
             run.next_step(),

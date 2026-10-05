@@ -74,7 +74,7 @@ use crate::goldens::capture_world_programs;
 use serde::{Deserialize, Serialize};
 
 use super::cells::{CELL, Cell, ThinkingWire, ToolKind};
-use super::corpus::{Ending, Program, Unhandled};
+use super::corpus::{Ending, Program};
 
 // -- programs -----------------------------------------------------------------
 
@@ -194,8 +194,7 @@ pub(crate) const MAX_TURNS_MIDWAY: Cell = Cell {
 /// * [`Ending::MaxTurns`]: OpenAI Chat and DeepSeek keep a length-cut tool
 ///   call with what its arguments state, as pi does; the loop answers it
 ///   with an error result and never runs it, and the turn budget ends the
-///   run. The cell sets `Unhandled::Ignore`, so the malformed-arguments
-///   limit keeps answering instead of failing the run first.
+///   run.
 /// * [`Ending::Failed`]`(Response)`: the run fails at the capped
 ///   completion. OpenAI Responses: the turn carries neither text nor a
 ///   call, and rig-agent refuses it ("produced no answer and stopped with
@@ -212,7 +211,6 @@ pub(crate) const fn output_cap_cell(ending: Ending) -> Cell {
         program: Program {
             max_tokens: Some(OUTPUT_CAP_TOKENS),
             ending,
-            unhandled: Unhandled::Ignore,
             ..BASE
         },
         provider_retries: Some(0),
