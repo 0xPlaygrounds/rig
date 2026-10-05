@@ -627,6 +627,50 @@ async fn a_trailing_thought_signature_joins_the_text_it_follows() {
     assert_eq!(replayed["parts"], json!([signed]));
 }
 
+/// Gemini repeats `responseId` and `modelVersion` on every streamed chunk.
+/// Each `Span::record` is one more attribute update, and OpenTelemetry SDKs
+/// cap updates per span (128 by default), so re-recording unchanged values
+/// per chunk crowds out the usage and output a long stream records last. The
+/// span takes each value when it first appears (so a stream that errors
+/// still names its response) and again when the reply finishes.
+#[tokio::test]
+async fn a_long_stream_records_its_response_metadata_once() {
+    const CHUNKS: usize = 64;
+    let chunk = r#"data: {"candidates":[{"content":{"parts":[{"text":"word "}],"role":"model"},"index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"totalTokenCount":17}}"#;
+    let last = r#"data: {"candidates":[{"content":{"parts":[{"text":"end"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":65,"promptTokenCount":14,"totalTokenCount":79}}"#;
+    let body: &'static str = format!(
+        "{}{last}\r\n\r\n",
+        format!("{chunk}\r\n\r\n").repeat(CHUNKS)
+    )
+    .leak();
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let capture = crate::test_utils::TraceCapture::default();
+    let _default = tracing::subscriber::set_default(capture.subscriber());
+    streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
+    tracing::callsite::rebuild_interest_cache();
+    capture.clear();
+
+    let response = streamed("gemini-3-flash-preview", body).await;
+    assert_eq!(response.usage.output_tokens, Some(65));
+
+    let spans = capture.spans();
+    let [span] = spans
+        .iter()
+        .filter(|span| span.target == "rig::completions")
+        .collect::<Vec<_>>()[..]
+    else {
+        panic!("one completion span: {spans:?}");
+    };
+    assert_eq!(span.record_count("gen_ai.response.id"), 2);
+    assert_eq!(span.record_count("gen_ai.response.model"), 2);
+    assert_eq!(
+        span.text("gen_ai.response.id").as_deref(),
+        Some("id_REDACTED_1")
+    );
+    assert_eq!(span.u64("gen_ai.usage.output_tokens"), Some(65));
+}
+
 /// The one request an `Encoded` carries.
 fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
     &encoded.request

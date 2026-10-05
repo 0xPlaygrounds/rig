@@ -92,12 +92,18 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         mut out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         let data = Value::Object(data);
+        // Gemini repeats both on every chunk. Record a value when it changes:
+        // every span record counts against the exporter's attribute limit.
         let span = tracing::Span::current();
-        if let Some(id) = data.str("responseId").filter(|id| !id.is_empty()) {
+        if let Some(id) = data.str("responseId").filter(|id| !id.is_empty())
+            && self.response_id.as_deref() != Some(id)
+        {
             span.record("gen_ai.response.id", id);
             self.response_id = Some(id.to_owned());
         }
-        if let Some(model) = data.str("modelVersion").filter(|model| !model.is_empty()) {
+        if let Some(model) = data.str("modelVersion").filter(|model| !model.is_empty())
+            && self.model_version.as_deref() != Some(model)
+        {
             span.record("gen_ai.response.model", model);
             self.model_version = Some(model.to_owned());
         }
