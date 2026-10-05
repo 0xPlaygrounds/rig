@@ -598,7 +598,22 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
         match variant {
             0 => deliveries[0].id = rig_core::effect::EffectId::from_raw(999),
             1 => deliveries.push(deliveries.last().unwrap().clone()),
-            2 => deliveries[0].kind = rig_core::effect::DeliveryKind::Stream { items: usize::MAX },
+            // One stream delivery claiming every item, ahead of the outcome.
+            // How the live run batched its items varies, so the claim
+            // replaces them all and the count check is what refuses it.
+            2 => {
+                let first = deliveries[0].clone();
+                deliveries.retain(|delivery| {
+                    !matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
+                });
+                deliveries.insert(
+                    0,
+                    rig_core::effect::Delivery {
+                        kind: rig_core::effect::DeliveryKind::Stream { items: usize::MAX },
+                        ..first
+                    },
+                );
+            }
             _ => deliveries.clear(),
         }
         let mut app = bus_support::app();

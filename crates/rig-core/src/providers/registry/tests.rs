@@ -636,3 +636,14 @@ fn both_doors_of_a_dual_format_vendor_reach_their_own_endpoint() {
     }
     assert_eq!(chat.api_key_env(), messages.api_key_env());
 }
+
+/// Ids of different vendors are different ids even when they share a
+/// format. A hashed collection compares two such ids only when they share a
+/// bucket, so this is the check that always runs.
+#[test]
+fn ids_of_different_vendors_differ_in_one_format() {
+    let openai = ProviderId::resolve("openai/openai").unwrap();
+    let venice = ProviderId::resolve("venice/openai").unwrap();
+    assert_eq!(openai.format(), venice.format());
+    assert_ne!(openai, venice);
+}
