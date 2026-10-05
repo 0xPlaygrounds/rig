@@ -19,7 +19,7 @@ use crate::{
     streaming::{Item, StreamEvent},
 };
 use futures::{SinkExt, Stream, StreamExt, channel::mpsc, stream::FusedStream};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::pin::Pin;
 use tracing_futures::Instrument;
@@ -31,10 +31,13 @@ use rig_core::message::Message;
 /// The stream a streamed run yields: its items, then its ending.
 pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, PromptError>>;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 /// One item of a streamed run: a provider stream event, a committed tool
-/// call, a lifecycle marker, or the run's final response.
+/// call, a lifecycle marker, or the run's final response. An item reads back
+/// from its serialized form on its own, without checking its order against
+/// the items around it; [`Transcript::parse`](rig_core::streaming::Transcript::parse)
+/// checks a run's provider stream items.
 pub enum MultiTurnStreamItem {
     /// A provider stream item containing model-emitted content: part
     /// starts and ends, text and reasoning fragments, a tool call's

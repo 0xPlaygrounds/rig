@@ -2,9 +2,11 @@
 //! it writes through the reply's part handles
 //! ([`Out`](crate::wire::Out)), and the writer emits each part's start, its
 //! fragments and its end, in that order. A [`Part`] is a part's position in
-//! the response's `choice`; only this crate constructs one, so code outside
-//! the writer cannot build an event out of order. A recorded stream reads
-//! back through [`Transcript::parse`], the one place a sequence is checked.
+//! the response's `choice`; only this crate constructs one in code, so code
+//! outside the writer cannot build an event out of order. An item also reads
+//! back from its serialized form on its own, unchecked, so a client can
+//! decode a relayed stream as it arrives; [`Transcript::parse`] is the one
+//! place a sequence is checked.
 //!
 //! ```
 //! use rig_core::streaming::{PartKind, StreamEvent, Transcript};
@@ -29,12 +31,12 @@ use crate::message::{AssistantContent, ToolName};
 use super::UnknownPayload;
 
 /// A part's position in the response's `choice`. Only this crate constructs
-/// one:
+/// one, though it reads back from its serialized form:
 ///
 /// ```compile_fail,E0423
 /// let part = rig_core::streaming::Part(0);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Part(u32);
 
@@ -66,8 +68,9 @@ pub enum PartKind {
 }
 
 /// One event of a completion stream: a part starts, grows, or ends with the
-/// content it finalized.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// content it finalized. Deserializing one event checks nothing about its
+/// order; read a sequence through [`Transcript::parse`] to check it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// A part opened. A tool call opens once its tool is named, so a call
@@ -197,34 +200,6 @@ pub enum SequenceError {
     Unclosed(usize),
 }
 
-/// The serialized form of one event, before its order is checked.
-#[derive(Deserialize)]
-#[serde(tag = "event", rename_all = "snake_case")]
-enum RawEvent {
-    Start {
-        part: u32,
-        kind: PartKind,
-        #[serde(default)]
-        name: Option<ToolName>,
-    },
-    Text {
-        part: u32,
-        text: String,
-    },
-    Reasoning {
-        part: u32,
-        text: String,
-    },
-    Arguments {
-        part: u32,
-        json: String,
-    },
-    End {
-        part: u32,
-        content: AssistantContent,
-    },
-}
-
 impl Transcript {
     /// Read a serialized item sequence, refusing one the writer could not
     /// have produced. Every part must have ended.
@@ -237,42 +212,9 @@ impl Transcript {
     /// [`Self::parse`] for a stream that stopped early (an error or a
     /// cancellation): parts may still be open at its end.
     pub fn parse_prefix(value: serde_json::Value) -> Result<Self, SequenceError> {
-        let raw: Vec<Item<RawEvent>> = serde_json::from_value(value)
+        let items: Vec<Item<StreamEvent>> = serde_json::from_value(value)
             .map_err(|error| SequenceError::Shape(error.to_string()))?;
-        let mut transcript = Self::default();
-        for item in raw {
-            transcript.push(match item {
-                Item::Unknown(payload) => Item::Unknown(payload),
-                Item::Event(RawEvent::Start { part, kind, name }) => {
-                    Item::Event(StreamEvent::Start {
-                        part: Part(part),
-                        kind,
-                        name,
-                    })
-                }
-                Item::Event(RawEvent::Text { part, text }) => Item::Event(StreamEvent::Text {
-                    part: Part(part),
-                    text,
-                }),
-                Item::Event(RawEvent::Reasoning { part, text }) => {
-                    Item::Event(StreamEvent::Reasoning {
-                        part: Part(part),
-                        text,
-                    })
-                }
-                Item::Event(RawEvent::Arguments { part, json }) => {
-                    Item::Event(StreamEvent::Arguments {
-                        part: Part(part),
-                        json,
-                    })
-                }
-                Item::Event(RawEvent::End { part, content }) => Item::Event(StreamEvent::End {
-                    part: Part(part),
-                    content,
-                }),
-            })?;
-        }
-        Ok(transcript)
+        Self::from_items(items)
     }
 
     /// Append the next item a stream yielded, refusing one the writer could
@@ -377,9 +319,9 @@ impl<'de> Deserialize<'de> for Transcript {
 }
 
 // The stream vocabulary crosses threads on every target: the bus sends it
-// over a channel and the effect log records it.
+// over a channel, the effect log records it, and a client reads it back.
 const _: fn() = || {
-    fn assert_wire<T: Clone + Send + Sync + 'static + Serialize>() {}
+    fn assert_wire<T: Clone + Send + Sync + 'static + Serialize + serde::de::DeserializeOwned>() {}
     assert_wire::<StreamEvent>();
     assert_wire::<Transcript>();
     assert_wire::<Item<StreamEvent>>();

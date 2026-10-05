@@ -5,8 +5,10 @@
 //! and the replay is compared position by position across every key,
 //! which the earlier passes' risk statements said it was not); two tool
 //! calls served concurrently with a note inside each dispatch replay in
-//! the recorded order; a hook that carries state names itself in the
-//! header, so two programs differing only in that state are two headers;
+//! the recorded order; every recorded stream item reads back on its own
+//! to the value it was recorded as; a hook that carries state names itself
+//! in the header, so two programs differing only in that state are two
+//! headers;
 //! `Rerank` has a golden through a mock reranker on a host's bus; a
 //! `Prompted` answer is returned unvalidated; the handler table, the
 //! signature and the required row are three sets with stated inclusions;
@@ -19,7 +21,7 @@
 //! | instrument | id order · concurrent cross-key order · hook identity · the three header sets · a third interpreter |
 //! | family | `Rerank` (mock) · `Prompted` unvalidated |
 //!
-//! Recorded: 4 goldens and 3 corpus-wide tests below (the matrix is the
+//! Recorded: 4 goldens and 4 corpus-wide tests below (the matrix is the
 //! oracle's, so its rows are assertions over the corpus as much as
 //! cells). Pruned: a keyed rerank wire (none has a cassette suite:
 //! voyageai's is keyless here, llamacpp's local); a `Prompted` violation
@@ -60,6 +62,7 @@ use crate::corpus;
 
 use corpus::{Ending, Hook, Output, Program, RERANK_KEY};
 use rig_core::effect::{EffectFamily, HandlerKey};
+use rig_core::streaming::{Item, StreamEvent};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
@@ -201,6 +204,37 @@ fn the_header_sets_nest_as_stated() {
         Some(&EffectFamily::Rerank)
     );
     assert!(!rerank.header.required.contains_key(&key));
+}
+
+/// Every stream item a golden recorded reads back on its own, without the
+/// items around it, and writes the value it was recorded as: a client can
+/// decode a relayed stream item by item.
+#[test]
+fn every_recorded_stream_item_reads_back_on_its_own() {
+    let dir = corpus::fixtures::effects_dir();
+    let mut read = 0;
+    for (name, _) in every_golden() {
+        let path = dir.join(format!("{name}.effects.json"));
+        let text = std::fs::read_to_string(&path).expect("the golden reads");
+        let log: serde_json::Value = serde_json::from_str(&text).expect("the golden is JSON");
+        let records = log["records"].as_array().expect("records");
+        for events in records
+            .iter()
+            .filter_map(|record| record["events"].as_array())
+        {
+            for value in events {
+                let item: Item<StreamEvent> = serde_json::from_value(value.clone())
+                    .unwrap_or_else(|error| panic!("{name}: {value} does not read back: {error}"));
+                assert_eq!(
+                    &serde_json::to_value(&item).expect("an item serializes"),
+                    value,
+                    "{name}: an item writes what was recorded"
+                );
+                read += 1;
+            }
+        }
+    }
+    assert!(read > 1000, "the corpus records streams: {read} items");
 }
 
 /// A stateful hook is its own header: the stop-after-turn-two program's
