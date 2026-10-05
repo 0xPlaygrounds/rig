@@ -59,7 +59,7 @@ const GENERATE_SITES: &[(&str, &str)] = &[
     ),
     (
         "crates/rig-core/src/providers/chatgpt/mod.rs",
-        "a `session_id` transport header",
+        "a `session-id` transport header",
     ),
 ];
 
