@@ -126,6 +126,8 @@ enum Route {
     GenerateContent,
     Interactions,
     Converse,
+    /// Cohere's native `/v2/chat`.
+    CohereChat,
 }
 
 impl Route {
@@ -138,6 +140,7 @@ impl Route {
             Self::GenerateContent => "generate_content",
             Self::Interactions => "interactions",
             Self::Converse => "converse",
+            Self::CohereChat => "cohere_chat",
         }
     }
 }
@@ -201,6 +204,7 @@ fn classify(provider: &str, method: &str, path: &str) -> Endpoint {
             Some(Route::GenerateContent)
         }
         "gemini" if path.ends_with("/interactions") => Some(Route::Interactions),
+        "cohere" if path.ends_with("/v2/chat") => Some(Route::CohereChat),
         _ if path.ends_with("/chat/completions") => chat_dialect(provider).map(Route::Chat),
         _ if path.ends_with("/responses") => responses_dialect(provider).map(Route::Responses),
         _ => None,
@@ -464,6 +468,15 @@ fn replaying_model(
             .connect(recorded_http(headers, body))
             .interactions(model)
             .erase(),
+        Route::CohereChat => {
+            let mut model = rig::providers::cohere::CohereConfig::new("census")
+                .connect(recorded_http(headers, body))
+                .completion(model);
+            model.wire = model
+                .wire
+                .with_route(rig::providers::cohere::ChatRoute::Native);
+            model.erase()
+        }
     }
 }
 

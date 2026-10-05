@@ -313,7 +313,7 @@ impl CohereModels {
     }
 
     /// The chat model for `model`.
-    pub fn completion(&self, model: impl Into<String>) -> Model<openai::wire::Chat> {
+    pub fn completion(&self, model: impl Into<String>) -> Model<cohere::CohereChat> {
         self.client().completion(model)
     }
 

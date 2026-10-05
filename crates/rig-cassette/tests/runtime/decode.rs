@@ -179,7 +179,7 @@ pub(crate) fn gemini_model(http: rig::http_client::DynHttpClient) -> GeminiModel
 
 pub(crate) fn cohere_model(
     http: rig::http_client::DynHttpClient,
-) -> rig::Model<rig::providers::openai::wire::Chat> {
+) -> rig::Model<rig::providers::cohere::CohereChat> {
     CohereModels::new(CohereConfig::new(KEY).with_base_url(BASE_URL), http)
         .completion("command-a-03-2025")
 }

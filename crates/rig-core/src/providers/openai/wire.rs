@@ -21,7 +21,7 @@ use super::responses_api::SystemInstructionsPlacement;
 use super::responses_api::wire::Responses;
 
 mod auth;
-mod chat;
+pub(crate) mod chat;
 mod dialects;
 /// The merge that assembles a streamed provider object from its fragments.
 pub(crate) mod dto;

@@ -1,0 +1,96 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[{"data":{"source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1"},{"data":{"text":"Dock Seven closes for repairs every Tuesday."},"id":"harbor-record-2"}],"max_tokens":96,"messages":[{"content":[{"text":"Which dock has beacon amber-73, and when does it close?","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"6f0073cc-024b-4df8-866e-2d4712519fca","type":"message-start"}
+
+    event: content-start
+    data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"Dock"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" Seven"}}},"index":0,"type":"content-delta"}
+
+    event: citation-start
+    data: {"delta":{"message":{"citations":{"end":10,"sources":[{"document":{"id":"harbor-record-1","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1","type":"document"}],"start":0,"text":"Dock Seven","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
+
+    event: citation-end
+    data: {"index":0,"type":"citation-end"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" has"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" beacon"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" amber"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"-"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"7"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"3"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":","}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" and"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" it"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" "}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"closes"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" for"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" repairs"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" every"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" Tuesday"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"."}}},"index":0,"type":"content-delta"}
+
+    event: citation-start
+    data: {"delta":{"message":{"citations":{"end":72,"sources":[{"document":{"id":"harbor-record-2","text":"Dock Seven closes for repairs every Tuesday."},"id":"harbor-record-2","type":"document"}],"start":39,"text":"closes for repairs every Tuesday.","type":"TEXT_CONTENT"}}},"index":1,"type":"citation-start"}
+
+    event: citation-end
+    data: {"index":1,"type":"citation-end"}
+
+    event: content-end
+    data: {"index":0,"type":"content-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":45,"output_tokens":17},"cached_tokens":112,"tokens":{"input_tokens":1696,"output_tokens":41}}},"type":"message-end"}
+
+    data: [DONE]
+

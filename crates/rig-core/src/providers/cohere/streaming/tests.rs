@@ -1,0 +1,516 @@
+use super::*;
+use crate::completion::{AssistantContent, CompletionResponse};
+use crate::driver::{Decoded, feed_frames};
+use crate::streaming::{Item, StreamEvent};
+use crate::wire::AdapterEvent;
+use serde_json::json;
+
+/// `frames` decoded, classifier included, as one native reply.
+fn fed(frames: &[Value]) -> Decoded<Completion> {
+    feed_frames!(
+        ChatDecoder::default(),
+        "cohere",
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string()))
+    )
+}
+
+/// The response `frames` fold into.
+fn folded(frames: &[Value]) -> Result<CompletionResponse, ProviderError> {
+    fed(frames).outcome
+}
+
+/// The response `frames` fold into as a streamed reply on the native wire,
+/// whose fold holds the reply to its finish reason.
+fn on_wire(frames: &[Value]) -> Result<CompletionResponse, ProviderError> {
+    let wire = super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a");
+    crate::test_utils::decode_reply(
+        &wire,
+        &crate::completion::CompletionRequest::new("hi"),
+        crate::wire::Mode::Streaming,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+        Value::Null,
+    )
+}
+
+/// The provider item a block's `native` holds.
+fn item(native: &Option<crate::message::Native>) -> Option<Value> {
+    native.as_ref().map(|native| native.item.clone())
+}
+
+fn citation(start: u64, end: u64, id: &str, extra: Value) -> Value {
+    let mut citation = json!({
+        "start": start, "end": end, "text": "cited",
+        "sources": [{"type": "document", "id": id, "document": {"id": id, "text": "source"}}],
+        "type": "TEXT_CONTENT",
+    });
+    if let (Some(citation), Value::Object(extra)) = (citation.as_object_mut(), extra) {
+        citation.extend(extra);
+    }
+    citation
+}
+
+fn usage() -> Value {
+    json!({"billed_units": {"input_tokens": 56, "output_tokens": 20},
+        "tokens": {"input_tokens": 1706, "output_tokens": 43, "reasoning_tokens": 7},
+        "cached_tokens": 112})
+}
+
+/// A whole reply: `message` ending on `finish`.
+fn whole(message: Value, finish: &str) -> Vec<Value> {
+    vec![json!({"id": "resp_1", "message": message, "finish_reason": finish, "usage": usage()})]
+}
+
+/// A stream of `events` between `message-start` and a `message-end` on
+/// `finish`.
+fn stream(events: Vec<Value>, finish: &str) -> Vec<Value> {
+    let start = json!({"id": "resp_1", "type": "message-start", "delta": {"message":
+        {"role": "assistant", "content": [], "tool_plan": "", "tool_calls": [], "citations": []}}});
+    let end = json!({"type": "message-end", "delta": {"finish_reason": finish, "usage": usage()}});
+    std::iter::once(start).chain(events).chain([end]).collect()
+}
+
+fn content_start(index: usize, kind: &str) -> Value {
+    json!({"type": "content-start", "index": index,
+        "delta": {"message": {"content": {"type": kind, kind: ""}}}})
+}
+
+fn content_delta(index: usize, key: &str, text: &str) -> Value {
+    json!({"type": "content-delta", "index": index,
+        "delta": {"message": {"content": {key: text}}}})
+}
+
+fn content_end(index: usize) -> Value {
+    json!({"type": "content-end", "index": index})
+}
+
+fn call_start(index: usize, id: &str, name: &str) -> Value {
+    json!({"type": "tool-call-start", "index": index, "delta": {"message": {"tool_calls":
+        {"id": id, "type": "function", "function": {"name": name, "arguments": ""}}}}})
+}
+
+fn call_delta(index: usize, arguments: &str) -> Value {
+    json!({"type": "tool-call-delta", "index": index,
+        "delta": {"message": {"tool_calls": {"function": {"arguments": arguments}}}}})
+}
+
+fn call_end(index: usize) -> Value {
+    json!({"type": "tool-call-end", "index": index})
+}
+
+fn plan_delta(text: &str) -> Value {
+    json!({"type": "tool-plan-delta", "delta": {"message": {"tool_plan": text}}})
+}
+
+fn citation_start(index: usize, citation: Value) -> Value {
+    json!({"type": "citation-start", "index": index,
+        "delta": {"message": {"citations": citation}}})
+}
+
+/// A whole reply's text keeps the citations that point at it in its item,
+/// sources and all, and its usage counts what the model read and wrote.
+#[test]
+fn a_whole_reply_keeps_its_citations_on_the_text() {
+    let cited = citation(4, 9, "doc-1", json!({}));
+    let response = folded(&whole(
+        json!({"role": "assistant",
+            "content": [{"type": "text", "text": "The sky is green."}],
+            "citations": [cited.clone()]}),
+        "COMPLETE",
+    ))
+    .expect("the reply decodes");
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    assert_eq!(text.text, "The sky is green.");
+    assert_eq!(
+        item(&text.native),
+        Some(json!({"type": "text", "text": "The sky is green.", "citations": [cited]}))
+    );
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.usage.input_tokens, Some(1706));
+    assert_eq!(response.usage.output_tokens, Some(43));
+    assert_eq!(response.usage.cached_input_tokens, Some(112));
+    assert_eq!(response.usage.reasoning_tokens, Some(7));
+    assert_eq!(response.usage.total_tokens, Some(1749));
+    assert_eq!(response.response_id(), Some("resp_1"));
+}
+
+/// The tool plan is a reasoning block whose item says it is the plan and
+/// holds the plan's citations; each call keeps its item with its id.
+#[test]
+fn a_whole_reply_keeps_its_tool_plan_and_calls() {
+    let plan_citation = json!({"start": 0, "end": 3, "text": "use", "type": "PLAN",
+        "sources": [{"type": "tool", "id": "t1"}]});
+    let response = folded(&whole(
+        json!({"role": "assistant",
+            "tool_plan": "I will use the tool.",
+            "tool_calls": [
+                {"id": "get_weather_1", "type": "function",
+                    "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}},
+                {"id": "get_weather_2", "type": "function",
+                    "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"}},
+            ],
+            "citations": [plan_citation.clone()]}),
+        "TOOL_CALL",
+    ))
+    .expect("the reply decodes");
+    let [
+        AssistantContent::Reasoning(plan),
+        AssistantContent::ToolCall(paris),
+        AssistantContent::ToolCall(tokyo),
+    ] = response.choice.as_slice()
+    else {
+        panic!("a plan and two calls: {:?}", response.choice);
+    };
+    assert_eq!(plan.text, "I will use the tool.");
+    assert_eq!(
+        item(&plan.native),
+        Some(
+            json!({"type": "tool_plan", "tool_plan": "I will use the tool.",
+            "citations": [plan_citation]})
+        )
+    );
+    assert_eq!(paris.id.wire(), "get_weather_1");
+    assert_eq!(paris.function.arguments_value(), json!({"city": "Paris"}));
+    assert_eq!(
+        item(&paris.native).and_then(|item| item.at("/function/arguments").cloned()),
+        Some(json!("{\"city\":\"Paris\"}"))
+    );
+    assert_eq!(tokyo.function.arguments_value(), json!({"city": "Tokyo"}));
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+}
+
+/// Streamed calls go through the writer: each argument fragment reaches the
+/// consumer as its own `Arguments` event, after the plan streamed as
+/// reasoning.
+#[test]
+fn streamed_tool_calls_stream_each_argument_fragment() {
+    let decoded = fed(&stream(
+        vec![
+            plan_delta("I will"),
+            plan_delta(" look."),
+            call_start(0, "get_weather_1", "get_weather"),
+            call_delta(0, "{\"city\""),
+            call_delta(0, ": \"Paris\"}"),
+            call_end(0),
+            call_start(1, "get_weather_2", "get_weather"),
+            call_delta(1, "{\"city\": \"Tokyo\"}"),
+            call_end(1),
+        ],
+        "TOOL_CALL",
+    ));
+    let events: Vec<StreamEvent> = decoded
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Ok(Item::Event(event)) => Some(event.clone()),
+            _ => None,
+        })
+        .collect();
+    let fragments: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        fragments,
+        ["{\"city\"", ": \"Paris\"}", "{\"city\": \"Tokyo\"}"]
+    );
+    let reasoning: String = events
+        .iter()
+        .filter_map(|event| match event {
+            StreamEvent::Reasoning { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(reasoning, "I will look.");
+    let response = decoded.outcome.expect("the stream folds");
+    let [
+        AssistantContent::Reasoning(plan),
+        AssistantContent::ToolCall(paris),
+        AssistantContent::ToolCall(tokyo),
+    ] = response.choice.as_slice()
+    else {
+        panic!("a plan and two calls: {:?}", response.choice);
+    };
+    assert_eq!(
+        item(&plan.native).and_then(|item| item.str(PLAN).map(str::to_owned)),
+        Some("I will look.".to_owned())
+    );
+    assert_eq!(paris.function.arguments_value(), json!({"city": "Paris"}));
+    assert_eq!(
+        item(&paris.native),
+        Some(json!({"id": "get_weather_1", "type": "function",
+            "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}}))
+    );
+    assert_eq!(tokyo.id.wire(), "get_weather_2");
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+}
+
+/// Streamed citations land on the part their `content_index` names, here
+/// the text after the thinking, and thinking keeps its item.
+#[test]
+fn streamed_citations_attach_to_the_part_they_cite() {
+    let first = citation(0, 3, "doc-1", json!({"content_index": 1}));
+    let second = citation(4, 8, "doc-2", json!({"content_index": 1}));
+    let response = folded(&stream(
+        vec![
+            content_start(0, "thinking"),
+            content_delta(0, "thinking", "I need"),
+            content_delta(0, "thinking", " to look."),
+            content_end(0),
+            content_start(1, "text"),
+            content_delta(1, "text", "Sky is "),
+            citation_start(0, first.clone()),
+            json!({"type": "citation-end", "index": 0}),
+            content_delta(1, "text", "green."),
+            citation_start(1, second.clone()),
+            json!({"type": "citation-end", "index": 1}),
+            content_end(1),
+        ],
+        "COMPLETE",
+    ))
+    .expect("the stream folds");
+    let [
+        AssistantContent::Reasoning(thinking),
+        AssistantContent::Text(text),
+    ] = response.choice.as_slice()
+    else {
+        panic!("thinking then text: {:?}", response.choice);
+    };
+    assert_eq!(thinking.text, "I need to look.");
+    assert_eq!(
+        item(&thinking.native),
+        Some(json!({"type": "thinking", "thinking": "I need to look."}))
+    );
+    assert_eq!(text.text, "Sky is green.");
+    assert_eq!(
+        item(&text.native),
+        Some(json!({"type": "text", "text": "Sky is green.", "citations": [first, second]}))
+    );
+    assert_eq!(response.response_id(), Some("resp_1"));
+}
+
+/// A citation of a block that never opened is dropped, not fatal.
+#[test]
+fn a_citation_of_no_block_is_dropped() {
+    let response = folded(&stream(
+        vec![citation_start(
+            0,
+            citation(0, 1, "doc-1", json!({"content_index": 3})),
+        )],
+        "COMPLETE",
+    ))
+    .expect("the stream folds");
+    assert!(response.choice.is_empty(), "{:?}", response.choice);
+}
+
+/// Each documented finish reason, and the failures: `ERROR` reports the
+/// provider's error, and a reason Cohere does not document fails the turn.
+#[test]
+fn finish_reasons_map_to_rig_endings() {
+    for (reason, finish) in [
+        ("COMPLETE", FinishReason::Stop),
+        ("STOP_SEQUENCE", FinishReason::Stop),
+        ("MAX_TOKENS", FinishReason::Length),
+        ("TOOL_CALL", FinishReason::ToolCalls),
+        ("TIMEOUT", FinishReason::Other("TIMEOUT".to_owned())),
+    ] {
+        let response = folded(&whole(
+            json!({"content": [{"type": "text", "text": "hi"}]}),
+            reason,
+        ))
+        .expect("the reply decodes");
+        assert_eq!(response.finish_reason(), Some(finish), "{reason}");
+    }
+    let failed = folded(&whole(json!({"content": []}), "ERROR")).expect("the reply decodes");
+    assert_eq!(
+        failed.error.as_deref(),
+        Some("Cohere ended the reply with an error")
+    );
+    let stated = folded(&[
+        json!({"type": "message-end", "delta": {"finish_reason": "ERROR", "error": "overloaded"}}),
+    ])
+    .expect("the stream folds");
+    assert_eq!(stated.error.as_deref(), Some("overloaded"));
+    assert_eq!(stated.raw.at("/delta/error"), Some(&json!("overloaded")));
+}
+
+/// Usage without `tokens` falls back to the billed units.
+#[test]
+fn usage_falls_back_to_billed_units() {
+    let usage = usage_of(Some(
+        &json!({"billed_units": {"input_tokens": 3, "output_tokens": 4}}),
+    ));
+    assert_eq!(usage.input_tokens, Some(3));
+    assert_eq!(usage.output_tokens, Some(4));
+    assert_eq!(usage.total_tokens, Some(7));
+    assert_eq!(usage.cached_input_tokens, None);
+}
+
+/// Blank text keeps no item, and a call whose arguments never became a
+/// JSON object keeps none either; the reply's end closes a call whose
+/// arguments are cut short without stating it complete.
+#[test]
+fn incomplete_blocks_keep_no_item() {
+    let response = on_wire(&stream(
+        vec![
+            content_start(0, "text"),
+            content_delta(0, "text", "  "),
+            content_end(0),
+            call_start(0, "c1", "lookup"),
+            call_delta(0, "[1]"),
+            call_end(0),
+            call_start(1, "c2", "lookup"),
+            call_delta(1, "{\"q\": "),
+        ],
+        "TOOL_CALL",
+    ))
+    .expect("the stream folds");
+    let calls: Vec<&crate::message::ToolCall> = response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(calls.len(), 2, "{:?}", response.choice);
+    assert!(calls.iter().all(|call| item(&call.native).is_none()));
+    assert!(
+        response.error.is_some(),
+        "a call the provider never finished fails the turn"
+    );
+}
+
+/// Events addressed to blocks that are not open fail the reply.
+#[test]
+fn malformed_replies_fail() {
+    for frames in [
+        vec![content_delta(0, "text", "x")],
+        vec![call_delta(0, "{}")],
+        vec![content_end(0)],
+        vec![json!({"type": "content-start"})],
+    ] {
+        assert!(folded(&frames).is_err(), "{frames:?}");
+    }
+}
+
+/// A delta without the open part's text, a `debug` event and a plan delta
+/// without a plan change nothing; an event of a type Cohere may add later
+/// is unknown, not corrupt.
+#[test]
+fn unknown_and_empty_events_are_skipped() {
+    let response = folded(&stream(
+        vec![
+            json!({"type": "debug", "event_type": "stream-start"}),
+            content_start(0, "text"),
+            content_delta(0, "thinking", "ignored"),
+            content_delta(0, "text", "ok"),
+            json!({"type": "tool-plan-delta", "delta": {}}),
+            content_end(0),
+        ],
+        "COMPLETE",
+    ))
+    .expect("the stream folds");
+    assert_eq!(
+        response.choice,
+        vec![AssistantContent::text("ok").with_native(json!({"type": "text", "text": "ok"}))]
+    );
+    let decoder = ChatDecoder::default();
+    assert!(matches!(
+        decoder.classify(WireFrame::Text(r#"{"type":"x-new-event"}"#.into())),
+        WireEvent::Unknown { .. }
+    ));
+    assert!(matches!(
+        decoder.classify(WireFrame::Text("not json".into())),
+        WireEvent::Corrupt(_)
+    ));
+}
+
+/// A whole reply projects its usage and finish reason for observation,
+/// through the wire's encoded request and the driver.
+#[tokio::test]
+async fn a_reply_projects_its_metadata() {
+    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
+    use std::sync::Arc;
+
+    let body = json!({"id": "resp_1", "message": {"content": []}, "finish_reason": "COMPLETE",
+        "usage": usage()});
+    let http = crate::test_utils::RecordingHttpClient::new(body.to_string());
+    let wire = super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a");
+    let log = Arc::new(ObservationLog::default());
+    crate::driver::Model::new(wire, http)
+        .call_observed(
+            crate::completion::CompletionRequest::new("hi"),
+            AdapterContext::new(log.clone(), Subject::default(), "call"),
+        )
+        .await
+        .expect("the reply folds");
+    let events: Vec<AdapterEvent> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|o| match &o.action {
+            Action::Adapter { observation } => Some(observation.event.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        events.iter().any(|event| matches!(event,
+            AdapterEvent::Usage { usage } if usage.input_tokens == Some(1706))),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(event,
+            AdapterEvent::Provider { verdict } if verdict.finish_reason.as_deref() == Some("COMPLETE"))),
+        "{events:?}"
+    );
+    assert!(
+        events.iter().any(|event| matches!(event,
+            AdapterEvent::Started { route, .. } if route == "/v2/chat")),
+        "{events:?}"
+    );
+}
+
+/// A content part of a type rig does not know is kept whole, its deltas
+/// merged in, and replays as it came.
+#[test]
+fn an_unknown_part_is_kept_whole() {
+    let response = folded(&stream(
+        vec![
+            json!({"type": "content-start", "index": 0,
+                "delta": {"message": {"content": {"type": "x_rig_invented", "payload": "a"}}}}),
+            json!({"type": "content-delta", "index": 0,
+                "delta": {"message": {"content": {"payload": "b"}}}}),
+            content_end(0),
+        ],
+        "COMPLETE",
+    ))
+    .expect("the stream folds");
+    let [AssistantContent::Opaque(opaque)] = response.choice.as_slice() else {
+        panic!("one opaque block: {:?}", response.choice);
+    };
+    assert!(opaque.replay);
+    assert_eq!(
+        opaque.item,
+        json!({"type": "x_rig_invented", "payload": "ab"})
+    );
+}
+
+/// A whole reply's part or call that is not an object is skipped.
+#[test]
+fn a_whole_reply_skips_parts_that_are_not_objects() {
+    let response = folded(&whole(
+        json!({"content": ["text", {"type": "text", "text": "ok"}], "tool_calls": [1]}),
+        "COMPLETE",
+    ))
+    .expect("the reply decodes");
+    assert_eq!(response.choice.len(), 1, "{:?}", response.choice);
+}

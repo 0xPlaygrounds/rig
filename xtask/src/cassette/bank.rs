@@ -68,6 +68,7 @@ const COMPLETION_PATHS: &[&str] = &[
     "/responses",
     ":generateContent",
     ":streamGenerateContent",
+    "/v2/chat",
 ];
 
 /// The list of fixtures whose replies the bank keeps verbatim, each with

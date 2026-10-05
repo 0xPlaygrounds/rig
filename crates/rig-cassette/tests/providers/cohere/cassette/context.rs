@@ -46,6 +46,18 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
                 .collect::<String>();
 
             assert_contains_any_case_insensitive(&text, &["dock seven", "dock 7"]);
+            // Documents send the request to the native API, which cites them.
+            assert_eq!(response.origin.api.as_str(), "cohere.chat");
+            let cited = response
+                .choice
+                .iter()
+                .filter_map(rig::completion::AssistantContent::native_item)
+                .any(|item| item.to_string().contains("harbor-record-1"));
+            assert!(
+                cited,
+                "the answer cites its document: {:?}",
+                response.choice
+            );
         },
     )
     .await;
