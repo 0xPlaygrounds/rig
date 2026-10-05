@@ -760,7 +760,7 @@ impl TurnSource for StreamingTurnSource {
         runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
+        build_chat_span!(runner, effective_preamble, "chat", "chat")
     }
 
     fn run_model_turn<'a>(

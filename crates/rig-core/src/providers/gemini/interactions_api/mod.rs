@@ -53,13 +53,6 @@ impl Interactions {
     }
 }
 
-fn telemetry(mode: Mode) -> GenAiOperation {
-    match mode {
-        Mode::Unary => GenAiOperation::Interactions,
-        Mode::Streaming => GenAiOperation::InteractionsStreaming,
-    }
-}
-
 impl crate::wire::Wire for Interactions {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
@@ -69,7 +62,7 @@ impl crate::wire::Wire for Interactions {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .telemetry(telemetry)
+            .telemetry(|_| GenAiOperation::Chat)
             .replay(self)
     }
 
@@ -244,7 +237,7 @@ impl crate::wire::Wire for InteractionResume {
     /// origin takes.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
-            .telemetry(telemetry)
+            .telemetry(|_| GenAiOperation::Chat)
             .replay(self)
     }
 

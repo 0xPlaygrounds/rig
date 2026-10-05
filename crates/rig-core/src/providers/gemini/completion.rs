@@ -163,10 +163,7 @@ impl Wire for GenerateContent {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
-            .telemetry(|mode| match mode {
-                Mode::Unary => GenAiOperation::GenerateContent,
-                Mode::Streaming => GenAiOperation::ChatStreaming,
-            })
+            .telemetry(|_| GenAiOperation::GenerateContent)
             .replay(self)
     }
 
