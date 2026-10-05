@@ -106,6 +106,8 @@ async-stream = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-bedrockruntime = { workspace = true }
 aws-smithy-eventstream = { workspace = true }
+# Bedrock replay talks plain HTTP to the local replay server; no TLS stack.
+aws-smithy-http-client = { workspace = true, features = ["default-client"] }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
 # The world interpreter (`tests/world_replay.rs`) builds its own App; the ECS

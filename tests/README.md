@@ -240,6 +240,26 @@ why the bytes are not obtainable live. Scripted fault families need no marker:
 they borrow frames from another scenario's fixture and never open a recording
 session of their own.
 
+#### Stale objects slow macOS test processes
+
+On macOS, incremental builds leave each relinked test binary's object files
+beside it in `target/debug/deps`, and nothing deletes the old ones. Every
+process that asks CoreFoundation for its main bundle lists that directory:
+reqwest does when it reads the system proxy settings, and rustls-native-certs
+does when it loads the platform trust store. With hundreds of thousands of
+stale objects the listing takes seconds per test. A fully parallel
+`-p rig-cassette` run then fails the tests that start an httpmock server,
+which loads the trust store (`no native root CA certificates found`). Delete
+the stale objects. A binary built before then loses only its backtrace line
+numbers until it is relinked:
+
+```bash
+find target/debug/deps -maxdepth 1 -name '*.rcgu.o' -delete
+```
+
+Bedrock replay gives the SDK a plain HTTP client for the loopback replay
+server, so it never loads the trust store.
+
 #### Time in cassette tests
 
 Code whose requests depend on time (a cache that expires, a TTL chosen from
