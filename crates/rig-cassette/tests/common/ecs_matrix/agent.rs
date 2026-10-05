@@ -320,6 +320,10 @@ async fn run_prompts(
         if let Some(concurrency) = program.tool_concurrency {
             runner = runner.tool_concurrency(concurrency);
         }
+        runner = runner.unhandled_invalid_tool_call(match program.unhandled {
+            corpus::Unhandled::Fail => rig_agent::run::UnhandledInvalidToolCall::Fail,
+            corpus::Unhandled::Ignore => rig_agent::run::UnhandledInvalidToolCall::Ignore,
+        });
         let ending = if n == last {
             program.ending
         } else {

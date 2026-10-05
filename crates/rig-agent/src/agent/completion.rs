@@ -378,6 +378,7 @@ impl AgentConfig {
             tool_choice: self.tool_choice.clone(),
             max_turns: Some(self.max_turns),
             max_invalid_tool_call_retries: 0,
+            max_malformed_tool_call_retries: None,
             output_schema: self
                 .output_schema
                 .as_ref()

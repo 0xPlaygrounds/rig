@@ -341,7 +341,9 @@ impl HookContext {
     }
 }
 
-pub use crate::run::policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use crate::run::policy::{
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
+};
 
 /// Completion-call event.
 ///
@@ -1036,8 +1038,17 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     ///
     /// The call may be failed, retried, repaired, skipped, or used to stop the
     /// run. Return `None` to leave the decision to a later hook. If every hook
-    /// in a [`HookStack`] returns `None`, the agent preserves fail-fast
-    /// behavior.
+    /// in a [`HookStack`] returns `None`, the run's
+    /// [`UnhandledInvalidToolCall`](crate::run::UnhandledInvalidToolCall)
+    /// policy applies.
+    ///
+    /// A call whose arguments are not a JSON object
+    /// ([`InvalidToolCallReason::MalformedArguments`]) is offered in the tool
+    /// step, after its turn committed, and is always answered with a tool
+    /// result. `None` answers with feedback naming the arguments, `Retry`
+    /// with its feedback, and `Skip` with its reason. `Stop` and `Fail` end
+    /// the run, and `Repair` is refused, since renaming the tool cannot fix
+    /// its arguments.
     fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
