@@ -730,3 +730,69 @@ fn restating_an_opaque_item_keeps_it() {
         "{choice:?}"
     );
 }
+
+#[test]
+fn every_item_the_writer_emits_reads_back_on_its_own() {
+    let decoded = write(|out| {
+        out.open(0, Block::Reasoning { redacted: false }, Value::Null)?;
+        out.push(0, "think")?;
+        out.finish(0)?;
+        out.open(1, Block::Text, json!({"type": "text", "text": "hi"}))?;
+        out.push(1, "hi")?;
+        out.unknown(json!({"type": "web_search_call", "id": "ws_1"}).into());
+        out.open(
+            2,
+            Block::Call {
+                id: CallId::from_wire("call_1"),
+                name: name("write_file"),
+            },
+            json!({"type": "function_call", "call_id": "call_1"}),
+        )?;
+        out.push(2, r#"{"path":"a.md","#)?;
+        out.push(2, r#""content":"line\n"}"#)?;
+        out.finish(2)?;
+        out.finish(1)?;
+        out.open(
+            3,
+            Block::Opaque { replay: true },
+            json!({"type": "compaction"}),
+        )?;
+        out.finish(3)
+    });
+    let items: Vec<Item<StreamEvent>> = decoded
+        .items
+        .iter()
+        .filter_map(|item| item.as_ref().ok().cloned())
+        .collect();
+    assert_eq!(
+        shape(
+            &Transcript::from_items(items.clone())
+                .expect("a valid sequence")
+                .events()
+                .cloned()
+                .collect::<Vec<_>>()
+        ),
+        [
+            "0:start:",
+            "0:reasoning:think",
+            "0:end",
+            "1:start:",
+            "1:text:hi",
+            "2:start:write_file",
+            r#"2:args:{"path":"a.md","#,
+            r#"2:args:"content":"line\n"}"#,
+            "2:end",
+            "1:end",
+            "3:start:",
+            "3:end",
+        ]
+    );
+    assert!(items.iter().any(|item| matches!(item, Item::Unknown(_))));
+    for item in items {
+        let value = serde_json::to_value(&item).expect("an item serializes");
+        let back: Item<StreamEvent> =
+            serde_json::from_value(value.clone()).expect("an item reads back");
+        assert_eq!(back, item);
+        assert_eq!(serde_json::to_value(&back).expect("serializes"), value);
+    }
+}

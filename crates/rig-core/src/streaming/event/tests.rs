@@ -89,3 +89,83 @@ fn only_a_tool_call_start_names_a_tool() {
         Some(SequenceError::WrongKind(0))
     );
 }
+
+#[test]
+fn a_part_reads_back_from_its_serialized_form() {
+    let part: Part = serde_json::from_value(json!(7)).expect("a part");
+    assert_eq!(part.index(), 7);
+    assert_eq!(serde_json::to_value(part).expect("serializes"), json!(7));
+}
+
+#[test]
+fn a_tool_call_start_names_its_tool_and_no_other_start_does() {
+    let call = json!({"event": "start", "part": 0, "kind": "tool_call", "name": "add"});
+    let text = json!({"event": "start", "part": 1, "kind": "text"});
+    let event: StreamEvent = serde_json::from_value(call.clone()).expect("a call start");
+    assert!(matches!(
+        &event,
+        StreamEvent::Start { kind: PartKind::ToolCall, name: Some(name), .. } if name.as_str() == "add"
+    ));
+    assert_eq!(serde_json::to_value(&event).expect("serializes"), call);
+    let event: StreamEvent = serde_json::from_value(text.clone()).expect("a text start");
+    assert!(matches!(event, StreamEvent::Start { name: None, .. }));
+    assert_eq!(serde_json::to_value(&event).expect("serializes"), text);
+}
+
+#[test]
+fn an_item_reads_back_without_its_order_being_checked() {
+    let late = json!({"item": "event", "value": {"event": "text", "part": 3, "text": "late"}});
+    assert_eq!(
+        Transcript::parse(json!([late.clone()])),
+        Err(SequenceError::UnknownPart(0))
+    );
+    let item: Item<StreamEvent> = serde_json::from_value(late.clone()).expect("an item");
+    assert_eq!(serde_json::to_value(&item).expect("serializes"), late);
+}
+
+#[test]
+fn a_misshapen_item_is_refused() {
+    let value = json!({"item": "event", "value": {"event": "text", "part": -1, "text": "x"}});
+    assert!(serde_json::from_value::<Item<StreamEvent>>(value).is_err());
+}
+
+/// An image part reads back, checks against its kind, and hands its items
+/// back in order; each event names its variant without its payload.
+#[test]
+fn an_image_part_reads_back_and_names_its_events() {
+    use crate::message::{DocumentSourceKind, Image, ImageMediaType};
+
+    let image = AssistantContent::Image(Image {
+        data: DocumentSourceKind::base64("aGk="),
+        media_type: Some(ImageMediaType::PNG),
+        ..Image::default()
+    });
+    let end = json!({"item": "event", "value": {
+        "event": "end",
+        "part": 1,
+        "content": serde_json::to_value(&image).expect("an image serializes"),
+    }});
+    let value = json!([
+        {"item": "event", "value": {"event": "start", "part": 0, "kind": "reasoning"}},
+        {"item": "event", "value": {"event": "reasoning", "part": 0, "text": "hm"}},
+        {"item": "event", "value": {"event": "start", "part": 1, "kind": "image"}},
+        end,
+    ]);
+    let transcript = Transcript::parse_prefix(value.clone()).expect("an image part");
+    assert_eq!(
+        transcript
+            .events()
+            .map(StreamEvent::name)
+            .collect::<Vec<_>>(),
+        ["Start", "Reasoning", "Start", "End"]
+    );
+    assert!(matches!(
+        transcript.events().last(),
+        Some(StreamEvent::End {
+            content: AssistantContent::Image(_),
+            ..
+        })
+    ));
+    let items: Vec<Item<StreamEvent>> = transcript.into();
+    assert_eq!(serde_json::to_value(&items).expect("serializes"), value);
+}

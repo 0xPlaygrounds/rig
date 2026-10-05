@@ -855,7 +855,7 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
 }
 
 #[test]
-fn completion_calls_stream_item_serializes_to_the_expected_shape() {
+fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
     let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
         2,
         usage(3, 4),
@@ -877,6 +877,16 @@ fn completion_calls_stream_item_serializes_to_the_expected_shape() {
             "raw": {"id": "resp_2"}
         })
     );
+
+    let item: MultiTurnStreamItem =
+        serde_json::from_value(value).expect("deserialize completion call event");
+    match item {
+        MultiTurnStreamItem::CompletionCall(call) => assert_eq!(
+            call,
+            CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
+        ),
+        other => panic!("expected completion call event, got {other:?}"),
+    }
 
     let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
         3,
@@ -934,6 +944,90 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
                 "raw": {"id": "resp_1"}
             }
         ]))
+    );
+}
+
+/// A run relayed as newline-delimited JSON reads back line by line: every
+/// kind of item, each to the value it was written as, and a streamed call's
+/// fragments, joined, read as the arguments the call ended with.
+#[tokio::test]
+async fn a_streamed_run_reads_back_item_by_item() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::reasoning_delta("rejected"),
+            MockStreamEvent::final_response_with_total_tokens(1),
+        ],
+        vec![
+            MockStreamEvent::reasoning_delta("accepted"),
+            MockStreamEvent::tool_call_name_delta("tool_call_1", "add"),
+            MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x": 2"#),
+            MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#", "y": 3}"#),
+            MockStreamEvent::tool_call_end("tool_call_1"),
+            MockStreamEvent::final_response_with_total_tokens(2),
+        ],
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_total_tokens(3),
+        ],
+    ]);
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .prompt("add 2 and 3")
+        .add_hook(RetryFirstReasoningTurnHook::default())
+        .max_turns(3)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the run succeeds");
+
+    let mut ndjson = String::new();
+    for item in &items {
+        ndjson.push_str(&serde_json::to_string(item).expect("an item serializes"));
+        ndjson.push('\n');
+    }
+
+    let mut kinds = BTreeSet::new();
+    let mut fragments = String::new();
+    let mut ended = None;
+    for (line, item) in ndjson.lines().zip(&items) {
+        let back: MultiTurnStreamItem = serde_json::from_str(line).expect("an item reads back");
+        assert_eq!(
+            serde_json::to_value(&back).expect("serializes"),
+            serde_json::to_value(item).expect("serializes"),
+        );
+        let value: serde_json::Value = serde_json::from_str(line).expect("a JSON line");
+        kinds.insert(value["type"].as_str().expect("a tag").to_owned());
+        match back {
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Arguments {
+                json,
+                ..
+            })) => fragments.push_str(&json),
+            MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            })) => ended = Some(call.function.arguments_value()),
+            _ => {}
+        }
+    }
+
+    assert_eq!(
+        kinds.into_iter().collect::<Vec<_>>(),
+        [
+            "completionCall",
+            "finalResponse",
+            "modelTurnRetried",
+            "streamAssistantItem",
+            "toolCall",
+            "toolExecutionCommitted",
+            "toolResult",
+        ]
+    );
+    assert_eq!(fragments, r#"{"x": 2, "y": 3}"#);
+    assert_eq!(
+        Some(serde_json::Value::Object(
+            rig_core::streaming::parse_partial_arguments(&fragments)
+        )),
+        ended
     );
 }
 
