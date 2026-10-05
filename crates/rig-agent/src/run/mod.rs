@@ -40,7 +40,9 @@ pub mod policy;
 pub mod response;
 pub mod streamed;
 
-pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use policy::{
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
+};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::json_utils;
@@ -301,6 +303,16 @@ fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
     }
 }
 
+/// Why a call named `name` is outside the allowed set: not executable at
+/// all, or executable but excluded by the tool choice.
+fn name_reason(executable_tool_names: &BTreeSet<String>, name: &str) -> InvalidToolCallReason {
+    if executable_tool_names.contains(name) {
+        InvalidToolCallReason::DisallowedByToolChoice
+    } else {
+        InvalidToolCallReason::UnknownTool
+    }
+}
+
 fn has_tool_calls(items: &[AssistantContent]) -> bool {
     items
         .iter()
@@ -314,6 +326,15 @@ struct TurnState {
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
     skipped: BTreeMap<usize, UserContent>,
+    tool_names: ToolNames,
+}
+
+/// The tool names a turn was validated against, kept until its calls are
+/// answered so an invalid-call context raised in the tool step reports them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ToolNames {
+    executable: BTreeSet<String>,
+    allowed: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -331,7 +352,7 @@ enum RunState {
     /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
     /// Carrying the calls in the state keeps a serialized run self-contained:
     /// a resumed process re-obtains them from [`AgentRun::next_step`].
-    ExecutingTools(Vec<PendingToolCall>),
+    ExecutingTools(Vec<PendingToolCall>, ToolNames),
     /// Terminal: the run completed successfully.
     Done(PromptResponse),
     /// Terminal: the run returned an error.
@@ -352,6 +373,8 @@ pub struct AgentRun {
     format: u32,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
+    /// See [`RunSpec::max_malformed_tool_call_retries`].
+    max_malformed_tool_call_retries: usize,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
@@ -372,6 +395,9 @@ pub struct AgentRun {
     completion_calls: Vec<CompletionCall>,
     completion_call_index: usize,
     invalid_tool_call_retries: usize,
+    /// Consecutive tool steps that answered at least one call whose
+    /// arguments are not a JSON object.
+    malformed_tool_call_retries: usize,
     /// Set while a streamed turn rollback awaits its completion-call record;
     /// see [`AgentRun::record_streamed_completion_call`].
     rollback_pending: bool,
@@ -396,7 +422,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 1;
+pub const RUN_FORMAT: u32 = 2;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -454,6 +480,7 @@ impl AgentRun {
             format: RUN_FORMAT,
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
+            max_malformed_tool_call_retries: RunSpec::DEFAULT_MALFORMED_TOOL_CALL_RETRIES,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             tool_choice: None,
             output_tool_name: None,
@@ -467,6 +494,7 @@ impl AgentRun {
             completion_calls: Vec::new(),
             completion_call_index: 0,
             invalid_tool_call_retries: 0,
+            malformed_tool_call_retries: 0,
             rollback_pending: false,
             streamed_completion_call_recorded: false,
             previous_model: None,
@@ -605,6 +633,14 @@ impl AgentRun {
     /// budget.
     pub fn max_invalid_tool_call_retries(mut self, retries: usize) -> Self {
         self.max_invalid_tool_call_retries = retries;
+        self
+    }
+
+    /// Set how many consecutive turns may answer a tool call whose arguments
+    /// are not a JSON object before the unhandled-call policy applies. See
+    /// [`RunSpec::max_malformed_tool_call_retries`].
+    pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
+        self.max_malformed_tool_call_retries = retries;
         self
     }
 
@@ -823,6 +859,10 @@ impl AgentRun {
             tool_choice: self.tool_choice.clone(),
             chat_history: self.diagnostic_history(resolving),
             is_streaming: false,
+            reason: name_reason(
+                &resolving.executable_tool_names,
+                tool_call.function.name.as_str(),
+            ),
         })
     }
 
@@ -870,6 +910,7 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
+                    tool_names,
                 } = turn_state;
                 // A failed turn runs no tool and finalizes no output; reasoning
                 // alone is not an answer. A failed turn's calls never run, and
@@ -987,7 +1028,8 @@ impl AgentRun {
                             _ => None,
                         })
                         .collect();
-                    self.state = RunState::ExecutingTools(calls.clone());
+                    self.count_malformed_tool_calls(&calls)?;
+                    self.state = RunState::ExecutingTools(calls.clone(), tool_names);
                     Ok(AgentRunStep::CallTools { calls })
                 } else {
                     // Accept schema-compatible JSON text without requiring a tool call;
@@ -1009,13 +1051,13 @@ impl AgentRun {
                     Ok(self.finish(items, 0))
                 }
             }
-            RunState::ExecutingTools(calls) => {
+            RunState::ExecutingTools(calls, tool_names) => {
                 // Idempotent, like Done: a process resuming a serialized run
                 // re-obtains the pending tool calls from the state itself.
                 let step = AgentRunStep::CallTools {
                     calls: calls.clone(),
                 };
-                self.state = RunState::ExecutingTools(calls);
+                self.state = RunState::ExecutingTools(calls, tool_names);
                 Ok(step)
             }
             RunState::Done(response) => {
@@ -1126,13 +1168,80 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
+        tool_names: ToolNames,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
             head,
             items,
             has_tool_calls,
             skipped,
+            tool_names,
         });
+    }
+
+    /// Count a tool step that answers a call whose arguments are not a JSON
+    /// object, or reset the count when every executed call parsed. Past
+    /// [`RunSpec::max_malformed_tool_call_retries`] consecutive steps,
+    /// [`UnhandledInvalidToolCall::Fail`] fails the run naming the tool and
+    /// the parse error; `Ignore` lets the step answer the call again.
+    fn count_malformed_tool_calls(&mut self, calls: &[PendingToolCall]) -> Result<(), PromptError> {
+        let malformed = calls.iter().find_map(|call| {
+            call.preresolved_result
+                .is_none()
+                .then_some(&call.tool_call)
+                .and_then(|tool_call| {
+                    tool_call
+                        .function
+                        .invalid_arguments
+                        .as_deref()
+                        .map(|raw| (tool_call, raw))
+                })
+        });
+        let Some((tool_call, raw)) = malformed else {
+            self.malformed_tool_call_retries = 0;
+            return Ok(());
+        };
+        self.malformed_tool_call_retries = self.malformed_tool_call_retries.saturating_add(1);
+        if self.malformed_tool_call_retries <= self.max_malformed_tool_call_retries
+            || self.unhandled_invalid_tool_call == UnhandledInvalidToolCall::Ignore
+        {
+            return Ok(());
+        }
+        let error = policy::arguments_parse_error(raw);
+        Err(ProviderError::Response(format!(
+            "tool `{}` was called with arguments that are not a JSON object on {} consecutive \
+             turns, more than the {} retries allowed: {error}",
+            tool_call.function.name,
+            self.malformed_tool_call_retries,
+            self.max_malformed_tool_call_retries,
+        ))
+        .into())
+    }
+
+    /// The invalid-call context for a pending call whose arguments are not a
+    /// JSON object, for the driver to offer its invalid-call hook before
+    /// answering the call. `None` when the call's arguments parsed or no
+    /// [`AgentRunStep::CallTools`] is pending.
+    pub fn malformed_tool_call_context(
+        &self,
+        tool_call: &ToolCall,
+        is_streaming: bool,
+    ) -> Option<InvalidToolCallContext> {
+        let RunState::ExecutingTools(_, tool_names) = &self.state else {
+            return None;
+        };
+        let raw = tool_call.function.invalid_arguments.as_ref()?;
+        Some(InvalidToolCallContext {
+            tool_name: tool_call.function.name.to_string(),
+            tool_call_id: Some(tool_call.id.clone()),
+            args: Some(raw.clone()),
+            available_tools: tool_names.executable.iter().cloned().collect(),
+            allowed_tools: tool_names.allowed.iter().cloned().collect(),
+            tool_choice: self.tool_choice.clone(),
+            chat_history: self.full_history(),
+            is_streaming,
+            reason: InvalidToolCallReason::malformed_arguments(raw),
+        })
     }
 
     /// Validate the recovery policy shared by buffered and streamed turns.
@@ -1305,7 +1414,7 @@ impl AgentRun {
     /// Each must answer a pending call, with exactly one result per occurrence
     /// of its ID. Invalid or incomplete batches return a cancellation error.
     pub fn tool_results(&mut self, results: Vec<UserContent>) -> Result<(), PromptError> {
-        let RunState::ExecutingTools(pending) = &self.state else {
+        let RunState::ExecutingTools(pending, _) = &self.state else {
             return Err(
                 self.protocol_violation("tool_results called without a pending CallTools step")
             );
@@ -1398,6 +1507,8 @@ impl AgentRun {
             recovered,
             any_skipped,
             has_tool_calls,
+            executable_tool_names,
+            allowed_tool_names,
             ..
         } = resolving;
 
@@ -1413,7 +1524,16 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(head, items, has_tool_calls, skipped);
+        self.finalize_turn(
+            head,
+            items,
+            has_tool_calls,
+            skipped,
+            ToolNames {
+                executable: executable_tool_names,
+                allowed: allowed_tool_names,
+            },
+        );
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1467,6 +1587,10 @@ impl AgentRun {
             chat_history: self
                 .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
             is_streaming: true,
+            reason: name_reason(
+                &invalid.executable_tool_names,
+                invalid.tool_call.function.name.as_str(),
+            ),
         }
     }
 
@@ -1615,7 +1739,16 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(turn.head, turn.choice, has_tool_calls, BTreeMap::new());
+        self.finalize_turn(
+            turn.head,
+            turn.choice,
+            has_tool_calls,
+            BTreeMap::new(),
+            ToolNames {
+                executable: turn.executable_tool_names,
+                allowed: turn.allowed_tool_names,
+            },
+        );
         Ok(())
     }
 
@@ -1666,6 +1799,7 @@ impl AgentRun {
         let mut run = AgentRun::new(prompt)
             .max_turns(spec.effective_max_turns())
             .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
+            .max_malformed_tool_call_retries(spec.max_malformed_tool_call_retries)
             .with_unhandled_invalid_tool_call(spec.unhandled_invalid_tool_call)
             .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
         if let Some(history) = history {

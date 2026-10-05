@@ -1077,3 +1077,154 @@ fn transcript_helpers_build_no_message_from_nothing() {
         None
     );
 }
+
+/// A turn calling `add` with arguments that are not a JSON object.
+fn malformed_call_turn(id: &str) -> ModelTurn {
+    ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction::parse(
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                "{\"x\":",
+            ),
+        ))],
+        Usage::default(),
+        tool_names(&["add"]),
+        tool_names(&["add"]),
+        hand_raw(),
+    )
+}
+
+/// Drive one model turn through its tool step, answering every call.
+fn tool_step(run: &mut AgentRun, turn: ModelTurn) -> Result<(), PromptError> {
+    expect_call_model(run);
+    expect_continue(run.model_response(turn)?);
+    let calls = match run.next_step()? {
+        AgentRunStep::CallTools { calls } => calls,
+        step => {
+            return Err(PromptError::cancelled(
+                Vec::new(),
+                format!("expected CallTools, got {step:?}"),
+            ));
+        }
+    };
+    run.tool_results(
+        calls
+            .iter()
+            .map(|call| {
+                UserContent::ToolResult(
+                    call.tool_call
+                        .error_result(vec![ToolResultContent::text("answered")]),
+                )
+            })
+            .collect(),
+    )
+}
+
+#[test]
+fn malformed_turns_past_the_limit_fail_the_run() {
+    let mut run = AgentRun::new("go")
+        .max_turns(10)
+        .max_malformed_tool_call_retries(2);
+    tool_step(&mut run, malformed_call_turn("c1")).expect("first malformed turn");
+    tool_step(&mut run, malformed_call_turn("c2")).expect("second malformed turn");
+    let error = tool_step(&mut run, malformed_call_turn("c3")).expect_err("past the limit");
+    let message = error.to_string();
+    assert!(
+        message.contains("tool `add` was called with arguments that are not a JSON object on 3 consecutive turns, more than the 2 retries allowed: "),
+        "{message}"
+    );
+    assert!(run.next_step().is_err(), "the run stays failed");
+}
+
+#[test]
+fn a_well_formed_tool_step_resets_the_malformed_count() {
+    let mut run = AgentRun::new("go")
+        .max_turns(10)
+        .max_malformed_tool_call_retries(1);
+    tool_step(&mut run, malformed_call_turn("c1")).expect("malformed");
+    tool_step(&mut run, tool_call_turn("c2", "add")).expect("well formed");
+    tool_step(&mut run, malformed_call_turn("c3")).expect("malformed after the reset");
+    tool_step(&mut run, malformed_call_turn("c4")).expect_err("past the limit");
+}
+
+#[test]
+fn ignore_answers_malformed_turns_past_the_limit() {
+    let mut run = AgentRun::new("go")
+        .max_turns(10)
+        .max_malformed_tool_call_retries(0)
+        .with_unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore);
+    for id in ["c1", "c2", "c3"] {
+        tool_step(&mut run, malformed_call_turn(id)).expect("ignored");
+    }
+}
+
+#[test]
+fn the_malformed_count_survives_serde() {
+    let mut run = AgentRun::new("go")
+        .max_turns(10)
+        .max_malformed_tool_call_retries(1);
+    tool_step(&mut run, malformed_call_turn("c1")).expect("malformed");
+    let saved = serde_json::to_string(&run).expect("serialize");
+    let mut restored: AgentRun = serde_json::from_str(&saved).expect("deserialize");
+    tool_step(&mut restored, malformed_call_turn("c2")).expect_err("past the limit");
+}
+
+#[test]
+fn a_malformed_call_has_a_context_only_while_its_tools_are_pending() {
+    let mut run = AgentRun::new("go").max_turns(2);
+    let turn = malformed_call_turn("c1");
+    let AssistantContent::ToolCall(call) = turn.choice[0].clone() else {
+        panic!("a tool call");
+    };
+    assert!(run.malformed_tool_call_context(&call, false).is_none());
+    expect_call_model(&mut run);
+    expect_continue(run.model_response(turn).expect("model_response"));
+    let calls = expect_call_tools(&mut run);
+    let context = run
+        .malformed_tool_call_context(&calls[0].tool_call, true)
+        .expect("a malformed pending call has a context");
+    assert_eq!(context.tool_name, "add");
+    assert_eq!(context.args.as_deref(), Some("{\"x\":"));
+    assert_eq!(context.available_tools, ["add"]);
+    assert_eq!(context.allowed_tools, ["add"]);
+    assert!(context.is_streaming);
+    assert!(matches!(
+        context.reason,
+        InvalidToolCallReason::MalformedArguments { .. }
+    ));
+    let AssistantContent::ToolCall(parsed) = tool_call("c2", "add") else {
+        panic!("a tool call");
+    };
+    assert!(run.malformed_tool_call_context(&parsed, false).is_none());
+}
+
+#[test]
+fn invalid_call_contexts_name_why_the_name_was_rejected() {
+    let mut run = AgentRun::new("go");
+    expect_call_model(&mut run);
+    let context = expect_needs_resolution(
+        run.model_response(tool_call_turn("c1", "unknown"))
+            .expect("model_response"),
+    );
+    assert_eq!(context.reason, InvalidToolCallReason::UnknownTool);
+
+    let mut run = AgentRun::new("go");
+    expect_call_model(&mut run);
+    let context = expect_needs_resolution(
+        run.model_response(ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![tool_call("c1", "sub")],
+            Usage::default(),
+            tool_names(&["add", "sub"]),
+            tool_names(&["add"]),
+            hand_raw(),
+        ))
+        .expect("model_response"),
+    );
+    assert_eq!(
+        context.reason,
+        InvalidToolCallReason::DisallowedByToolChoice
+    );
+}

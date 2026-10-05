@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::output::OutputMode;
 
 /// Protocol-facing run configuration. See the [module docs](self).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RunSpec {
     /// System prompt.
@@ -34,6 +34,12 @@ pub struct RunSpec {
     pub max_turns: Option<usize>,
     /// How many times an invalid model tool call may be retried with feedback.
     pub max_invalid_tool_call_retries: usize,
+    /// How many consecutive turns may call a tool with arguments that are not
+    /// a JSON object. Each such call is answered with feedback; a turn whose
+    /// calls all parse resets the count. Past the limit,
+    /// [`unhandled_invalid_tool_call`](Self::unhandled_invalid_tool_call)
+    /// applies. Defaults to [`Self::DEFAULT_MALFORMED_TOOL_CALL_RETRIES`].
+    pub max_malformed_tool_call_retries: usize,
     /// JSON schema the final answer must satisfy, when structured output is
     /// requested.
     pub output_schema: Option<serde_json::Value>,
@@ -53,7 +59,10 @@ pub struct RunSpec {
 }
 
 /// Policy applied when every [`on_invalid_tool_call`] hook declines to resolve
-/// an invalid call. Defaults to failure; ignoring drops the call and continues.
+/// an invalid call, and when calls with arguments that are not a JSON object
+/// outlast [`RunSpec::max_malformed_tool_call_retries`]. Defaults to failure.
+/// Ignoring drops an invalid call and continues; for malformed arguments it
+/// keeps answering them with feedback.
 ///
 /// [`on_invalid_tool_call`]: crate::agent::AgentHook::on_invalid_tool_call
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,8 +71,31 @@ pub enum UnhandledInvalidToolCall {
     /// Fail the run.
     #[default]
     Fail,
-    /// Drop the call and continue the turn.
+    /// Drop the call and continue the turn, or keep answering malformed
+    /// arguments past the limit.
     Ignore,
+}
+
+impl Default for RunSpec {
+    fn default() -> Self {
+        Self {
+            preamble: None,
+            static_context: Vec::new(),
+            additional_params: None,
+            max_tokens: None,
+            temperature: None,
+            tool_choice: None,
+            max_turns: None,
+            max_invalid_tool_call_retries: 0,
+            max_malformed_tool_call_retries: Self::DEFAULT_MALFORMED_TOOL_CALL_RETRIES,
+            output_schema: None,
+            output_mode: OutputMode::default(),
+            output_tool_name: None,
+            output_tool_description: None,
+            augment_output_preamble: false,
+            unhandled_invalid_tool_call: UnhandledInvalidToolCall::default(),
+        }
+    }
 }
 
 impl RunSpec {
@@ -87,6 +119,10 @@ impl RunSpec {
     /// validation before giving up. The default a run built from a spec
     /// carries; drivers that construct runs by hand pass it explicitly.
     pub const DEFAULT_OUTPUT_RETRIES: usize = 1;
+
+    /// How many consecutive turns may call a tool with arguments that are
+    /// not a JSON object before the unhandled-call policy applies.
+    pub const DEFAULT_MALFORMED_TOOL_CALL_RETRIES: usize = 3;
 }
 
 #[cfg(test)]
