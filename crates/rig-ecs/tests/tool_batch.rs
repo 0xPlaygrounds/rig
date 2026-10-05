@@ -14,6 +14,8 @@
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
 //! | a turn that ends in an error runs none of its calls, fails the run and stays in its history | `a_failed_turn_runs_no_tools_and_fails_the_run` |
 //! | a turn the token limit ended runs its complete call | `a_length_turn_with_a_complete_call_runs_it` |
+//! | an answer that ends in an unknown finish reason fails the run by default | `an_answer_with_an_unknown_finish_reason_fails_the_run` |
+//! | `AcceptUnknownFinishReasons` reaches the request, and an accepted turn runs its call | `an_accepted_unknown_finish_reason_runs_the_call` |
 
 use crate::run_support;
 
@@ -1220,4 +1222,62 @@ fn a_length_turn_with_a_complete_call_runs_it() {
         Some("3")
     );
     assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "the call ran");
+}
+
+#[test]
+fn an_answer_with_an_unknown_finish_reason_fails_the_run() {
+    let (mut app, agent, _, requests) = tooling_replies(vec![
+        reply(vec![AssistantContent::text("answer")]).with_finish_reason(
+            rig_core::completion::FinishReason::Other("weird".to_owned()),
+        ),
+    ]);
+    let run = app.world_mut().spawn_run(agent, &[], "hello", false, None);
+    ended(&mut app, run, "the failed turn ends the run");
+    match app.world().get::<Failed>(run) {
+        Some(Failed(Failure::Provider(report))) => {
+            let report = report.to_string();
+            assert!(report.contains("the provider failed the turn"), "{report}");
+            assert!(report.contains("weird"), "{report}");
+        }
+        other => panic!("the run did not fail on the turn: {other:?}"),
+    }
+    assert!(!requests.lock().unwrap()[0].accept_unknown_finish_reasons);
+}
+
+#[test]
+fn an_accepted_unknown_finish_reason_runs_the_call() {
+    // A scripted reply is no fold, so it carries the acceptance a fold
+    // copies from the request.
+    let (mut app, agent, adder, requests) = tooling_replies(vec![
+        ended_call_reply(
+            rig_core::completion::FinishReason::Other("weird".to_owned()),
+            None,
+        )
+        .with_unknown_finish_reasons_accepted(true),
+        reply(vec![AssistantContent::text("3")]),
+    ]);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(rig_ecs::agent::AcceptUnknownFinishReasons(true));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add once", false, None);
+    ended(&mut app, run, "answered");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
+        Some("3")
+    );
+    assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "the call ran");
+    let requests = requests.lock().unwrap();
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.accept_unknown_finish_reasons)
+    );
+    assert!(
+        requests[1].chat_history.iter().any(
+            |message| matches!(message, Message::Assistant(turn) if turn.tool_calls().count() == 1)
+        ),
+        "the accepted turn replays"
+    );
 }

@@ -54,6 +54,7 @@ pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) ->
         additional_params: params,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 

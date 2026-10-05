@@ -31,10 +31,14 @@ pub(crate) fn provider_error_envelope(data: &str) -> Option<ProviderError> {
 
 /// The finish reasons every Chat dialect shares: OpenAI's, the legacy
 /// `function_call`, and the spellings compatible servers use for the same
-/// endings (`end`, `max_tokens`, Mistral's `model_length`).
+/// endings (`end`, `eos`, `end_turn`, `stop_sequence`, `max_tokens`,
+/// Mistral's `model_length`).
 pub(crate) const CHAT_FINISHES: &[(&str, FinishReason)] = &[
     ("stop", FinishReason::Stop),
     ("end", FinishReason::Stop),
+    ("eos", FinishReason::Stop),
+    ("end_turn", FinishReason::Stop),
+    ("stop_sequence", FinishReason::Stop),
     ("length", FinishReason::Length),
     ("max_tokens", FinishReason::Length),
     ("model_length", FinishReason::Length),

@@ -43,15 +43,16 @@ use rig_core::{
 
 use crate::{
     agent::{
-        AdditionalParams, Advert, Attachment, Batch, Cancelled, Context, Conversation, Cursor,
-        DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
-        InvalidCall, InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, MemoryAppendScheduled,
-        MessageParts, Output, OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs,
-        Preamble, Prompt, ProviderRetried, ProviderRetries, ProviderRetrying, Remembered,
-        Remembering, Remembers, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
-        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunPhase, RunResult,
-        RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
-        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        AcceptUnknownFinishReasons, AdditionalParams, Advert, Attachment, Batch, Cancelled,
+        Context, Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps,
+        DocumentText, Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, MaxTokens,
+        MaxTurns, MemoryAppendScheduled, MessageParts, Output, OutputKind, OutputRetries,
+        OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt, ProviderRetried,
+        ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers, Reprompt,
+        RequestPatch, Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving,
+        Retry, Run, RunCounter, RunOf, RunPhase, RunResult, RunSeq, Settled, StreamRequested,
+        Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn,
+        Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, ServedBy,
@@ -177,6 +178,8 @@ pub struct Settings<'w, 's> {
     pub temperatures: Query<'w, 's, &'static Temperature>,
     /// The token budget.
     pub max_tokens: Query<'w, 's, &'static MaxTokens>,
+    /// Whether unknown finish reasons stop normally.
+    pub unknown_finishes: Query<'w, 's, &'static AcceptUnknownFinishReasons>,
     /// The provider's extra parameters.
     pub params: Query<'w, 's, &'static AdditionalParams>,
     /// The tool choice.
@@ -1381,6 +1384,7 @@ struct Resolved {
     preamble: Option<String>,
     temperature: Option<f64>,
     max_tokens: Option<u64>,
+    accept_unknown_finish_reasons: bool,
     additional_params: Option<serde_json::Value>,
     tool_choice: Option<ToolChoice>,
     output: Output,
@@ -1411,6 +1415,8 @@ impl Settings<'_, '_> {
             max_tokens: patch
                 .and_then(|p| p.max_tokens)
                 .or_else(|| setting(run, agent, &self.max_tokens).and_then(|m| m.0)),
+            accept_unknown_finish_reasons: setting(run, agent, &self.unknown_finishes)
+                .is_some_and(|accept| accept.0),
             additional_params,
             tool_choice: patch
                 .and_then(|p| p.tool_choice.clone())
@@ -1560,6 +1566,7 @@ pub fn fold_turn(
             tools: tools.iter().map(|(_, bound)| &bound.descriptor).collect(),
             temperature: resolved.temperature,
             max_tokens: resolved.max_tokens,
+            accept_unknown_finish_reasons: resolved.accept_unknown_finish_reasons,
             additional_params: resolved.additional_params.as_ref(),
             tool_choice: resolved.tool_choice.as_ref(),
             output: mode,

@@ -985,3 +985,106 @@ async fn a_failed_turn_without_an_answer_fails_the_run() {
         "the run names why the provider failed the turn: {error}"
     );
 }
+
+fn unknown_finish(turn: MockTurn) -> MockTurn {
+    turn.with_finish_reason(FinishReason::Other("weird".to_owned()))
+}
+
+fn replays_assistant_text(request: &CompletionRequest, text: &str) -> bool {
+    request.chat_history.iter().any(|message| {
+        matches!(
+            message,
+            Message::Assistant(turn) if turn.content.iter().any(|block| matches!(
+                block,
+                AssistantContent::Text(t) if t.text == text
+            ))
+        )
+    })
+}
+
+/// By default a text answer that ends in an unknown finish reason fails the
+/// run, naming the reason, as replay would leave the turn out.
+#[tokio::test]
+async fn an_answer_with_an_unknown_finish_reason_fails_the_run_by_default() {
+    let model = MockCompletionModel::from_turns([unknown_finish(MockTurn::text("answer"))]);
+    let agent = AgentBuilder::new(model).build();
+    let error = agent
+        .prompt("hello")
+        .await
+        .expect_err("a failed turn is no answer");
+    assert!(error.to_string().contains("weird"), "{error}");
+}
+
+/// Accepted, the answer succeeds and the next run replays it.
+#[tokio::test]
+async fn an_accepted_unknown_finish_reason_answers_and_replays() {
+    let model = MockCompletionModel::from_turns([
+        unknown_finish(MockTurn::text("answer")),
+        MockTurn::text("again"),
+    ]);
+    let agent = AgentBuilder::new(model.clone())
+        .accept_unknown_finish_reasons(true)
+        .build();
+    let first = agent
+        .prompt("hello")
+        .await
+        .expect("the accepted turn answers");
+    assert_eq!(first.output(), "answer");
+    agent
+        .prompt("and now")
+        .history(first.messages)
+        .await
+        .expect("the follow-up answers");
+    let requests = model.requests();
+    assert!(
+        requests
+            .iter()
+            .all(|request| request.accept_unknown_finish_reasons)
+    );
+    assert!(replays_assistant_text(&requests[1], "answer"));
+}
+
+/// A run can accept unknown reasons where its agent does not.
+#[tokio::test]
+async fn a_run_accepts_unknown_finish_reasons_on_its_own() {
+    let model = MockCompletionModel::from_turns([unknown_finish(MockTurn::text("answer"))]);
+    let agent = AgentBuilder::new(model).build();
+    let answer = agent
+        .prompt("hello")
+        .accept_unknown_finish_reasons(true)
+        .await
+        .expect("the run accepts the reason");
+    assert_eq!(answer.output(), "answer");
+}
+
+/// The tool calls of a turn with an unknown finish reason run only when the
+/// agent accepts the reason.
+#[tokio::test]
+async fn calls_with_an_unknown_finish_reason_run_only_when_accepted() {
+    for accept in [false, true] {
+        let model = MockCompletionModel::from_turns([
+            unknown_finish(MockTurn::tool_call(
+                "call_1",
+                "add",
+                json!({"x": 1, "y": 2}),
+            )),
+            MockTurn::text("3"),
+        ]);
+        let agent = AgentBuilder::new(model.clone())
+            .tool(MockAddTool)
+            .accept_unknown_finish_reasons(accept)
+            .build();
+        let outcome = agent.prompt("add").max_turns(3).await;
+        if accept {
+            assert_eq!(outcome.expect("the call runs").output(), "3");
+            assert_eq!(model.request_count(), 2);
+        } else {
+            let error = outcome.expect_err("the failed turn runs no call");
+            assert!(
+                error.to_string().contains("none of its tool calls ran"),
+                "{error}"
+            );
+            assert_eq!(model.request_count(), 1);
+        }
+    }
+}

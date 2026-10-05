@@ -1457,7 +1457,32 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
             );
             assert_eq!(roles, [Role::User]);
         }
-        Fault::Refusal | Fault::Filtered { with_text: true } => match cell.program.ending {
+        Fault::Filtered { with_text: true } => {
+            let report = provider_report(world, run, cell.name);
+            assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
+            assert!(
+                report.message.contains(
+                    "the provider failed the turn: Provider finish_reason: content_filter"
+                ),
+                "the filtered turn fails although text streamed: {report:?}"
+            );
+            let stream = sole_stream(world).expect("the stream's effect survived the run");
+            assert!(
+                !stream.text.is_empty(),
+                "the text streamed before the filter"
+            );
+            let finish = match &log.records[0].outcome {
+                Ok(Outcome::Completion(response)) => response.finish_reason(),
+                other => panic!("{}: a completion record, not {other:?}", cell.name),
+            };
+            assert_eq!(
+                finish,
+                Some(rig_agent::completion::FinishReason::ContentFilter),
+                "the reason is on the record"
+            );
+            assert_eq!(roles, [Role::User], "nothing is committed");
+        }
+        Fault::Refusal => match cell.program.ending {
             Ending::Answer => {
                 let answer = world
                     .get::<RunResult>(run)
@@ -1471,17 +1496,6 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                     "the answer is the text the stream carried, whole"
                 );
                 assert_eq!(roles, [Role::User, Role::Assistant], "the turn is history");
-                if matches!(fault, Fault::Filtered { .. }) {
-                    let finish = match &log.records[0].outcome {
-                        Ok(Outcome::Completion(response)) => response.finish_reason(),
-                        other => panic!("{}: a completion record, not {other:?}", cell.name),
-                    };
-                    assert_eq!(
-                        finish,
-                        Some(rig_agent::completion::FinishReason::ContentFilter),
-                        "the reason is on the record"
-                    );
-                }
             }
             Ending::Failed(kind) => {
                 let report = provider_report(world, run, cell.name);

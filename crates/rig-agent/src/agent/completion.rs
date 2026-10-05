@@ -135,7 +135,9 @@ pub(crate) async fn build_prepared_completion_request(
     let max_tokens = prepared.max_tokens;
     // The agent records the input itself, so the request the provider sees
     // carries the telemetry flag off: one span, no double recording.
-    let request = prepared.apply(CompletionRequest::new(prompt));
+    let request = prepared
+        .apply(CompletionRequest::new(prompt))
+        .accepting_unknown_finish_reasons(runner.config.accept_unknown_finish_reasons);
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()
     } else {
@@ -248,6 +250,9 @@ pub(crate) struct AgentConfig {
     /// through OpenTelemetry span attributes, which can increase observability
     /// backend storage and query costs.
     pub(crate) record_telemetry_content: bool,
+    /// Whether a finish reason outside the normalized vocabulary ends a turn
+    /// as a normal stop.
+    pub(crate) accept_unknown_finish_reasons: bool,
     /// Maximum number of tokens for the completion
     pub(crate) max_tokens: Option<u64>,
     /// Temperature of the model
@@ -294,6 +299,7 @@ impl AgentConfig {
             static_context: vec![],
             additional_params: None,
             record_telemetry_content: false,
+            accept_unknown_finish_reasons: false,
             max_tokens: None,
             temperature: None,
             tool_choice: None,

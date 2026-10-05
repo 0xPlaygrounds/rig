@@ -100,10 +100,11 @@ pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
 
 /// Why a run fails on a turn, or `None` when it goes on. A turn that will
 /// not replay ([`StopReason::is_failure`], the rule `adapt` skips it by)
-/// runs none of its tool calls, as pi ends its loop on such a turn
-/// (`agent-loop.ts` around 245). A turn that delivered no answer
-/// ([`turn_delivered_no_answer`]) fails when the output budget or a filter
-/// cut it (`finish` is truncating) or the provider failed it. A turn that
+/// runs none of its tool calls. A turn the provider failed
+/// ([`StopReason::Error`]) fails even when it holds an answer, so the caller
+/// never takes as a success a turn the next request leaves out. A turn that
+/// delivered no answer ([`turn_delivered_no_answer`]) also fails when the
+/// output budget or a filter cut it (`finish` is truncating). A turn that
 /// ended at the token limit with a call is finished, so its call runs.
 /// Every runtime reads this one rule.
 pub fn turn_failure(
@@ -122,13 +123,14 @@ pub fn turn_failure(
             "the turn failed, so none of its tool calls ran: {reason}"
         ));
     }
-    if !turn_delivered_no_answer(choice) {
-        return None;
-    }
-    if let Some(finish) = finish.filter(|finish| finish.truncated_output()) {
+    let answered = !turn_delivered_no_answer(choice);
+    if !answered && let Some(finish) = finish.filter(|finish| finish.truncated_output()) {
         return Some(finish.no_answer_message());
     }
     match failed {
+        Some(StopReason::Error(reason)) if answered => {
+            Some(format!("the provider failed the turn: {reason}"))
+        }
         Some(StopReason::Error(reason)) => Some(format!(
             "the provider failed the turn without an answer: {reason}"
         )),

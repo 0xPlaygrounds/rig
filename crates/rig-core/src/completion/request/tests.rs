@@ -328,3 +328,139 @@ fn completion_error_provider_response_helpers_with_http_non_success_body_and_sta
 }
 
 mod additional_params_precedence {}
+
+/// An unknown finish reason fails the turn by default, and replay leaves the
+/// turn out. A request that accepts unknown reasons gets a response that
+/// stops normally, and the turn replays: the response's stop, the run rule
+/// and replay read the one answer.
+mod unknown_finish_reasons {
+    use crate::completion::message::turn_failure;
+    use crate::completion::{CompletionRequest, FinishReason};
+    use crate::message::{AssistantContent, Message, StopReason};
+    use crate::test_utils::{MockCompletionModel, MockTurn};
+
+    fn weird(turn: MockTurn) -> MockTurn {
+        turn.with_finish_reason(FinishReason::Other("weird".to_owned()))
+    }
+
+    async fn turn(accept: bool, turn: MockTurn) -> (Message, Option<String>, bool) {
+        let model = MockCompletionModel::from_turns([turn, MockTurn::text("next")]);
+        let response = model
+            .call(CompletionRequest::new("hi").accepting_unknown_finish_reasons(accept))
+            .await
+            .expect("the reply folds");
+        assert_eq!(response.accepts_unknown_finish_reasons(), accept);
+        let head = response.head();
+        let failure = turn_failure(
+            &response.choice,
+            head.stop.as_ref(),
+            response.finish_reason().as_ref(),
+        );
+        let message = response.message().expect("the turn has content");
+        model
+            .call(CompletionRequest::new("again").messages([Message::user("hi"), message.clone()]))
+            .await
+            .expect("the follow-up folds");
+        let replayed = model.requests()[1]
+            .chat_history
+            .iter()
+            .any(|message| matches!(message, Message::Assistant(_)));
+        (message, failure, replayed)
+    }
+
+    #[tokio::test]
+    async fn a_text_turn_fails_and_is_left_out_by_default() {
+        let (message, failure, replayed) = turn(false, weird(MockTurn::text("answer"))).await;
+        let Message::Assistant(turn) = message else {
+            panic!("an assistant turn");
+        };
+        assert_eq!(
+            turn.stop,
+            Some(StopReason::Error(
+                "Provider finish_reason: weird".to_owned()
+            ))
+        );
+        assert!(failure.is_some_and(|failure| failure.contains("weird")));
+        assert!(!replayed, "replay leaves the failed turn out");
+    }
+
+    #[tokio::test]
+    async fn an_accepted_text_turn_succeeds_and_replays() {
+        let (message, failure, replayed) = turn(true, weird(MockTurn::text("answer"))).await;
+        let Message::Assistant(turn) = message else {
+            panic!("an assistant turn");
+        };
+        assert_eq!(turn.stop, Some(StopReason::Stop));
+        assert_eq!(failure, None);
+        assert!(replayed, "replay keeps the accepted turn");
+    }
+
+    #[tokio::test]
+    async fn a_turn_with_calls_runs_them_only_when_accepted() {
+        let call = || {
+            weird(MockTurn::tool_call(
+                "call_1",
+                "lookup",
+                serde_json::json!({}),
+            ))
+        };
+        let (_, failure, _) = turn(false, call()).await;
+        assert!(failure.is_some_and(|failure| failure.contains("none of its tool calls ran")));
+        let (message, failure, _) = turn(true, call()).await;
+        let Message::Assistant(turn) = message else {
+            panic!("an assistant turn");
+        };
+        assert_eq!(turn.stop, Some(StopReason::ToolUse));
+        assert_eq!(failure, None);
+    }
+
+    /// Accepting unknown reasons never accepts filtered content or a failure
+    /// the provider reported.
+    #[test]
+    fn filtered_content_and_reported_failures_still_fail() {
+        let accepted = |reason: FinishReason| {
+            super::CompletionResponse::new(
+                vec![AssistantContent::text("partial")],
+                super::Usage::default(),
+                crate::message::Origin::new("mock", "mock", "mock"),
+                serde_json::Value::Null,
+            )
+            .with_finish_reason(reason)
+            .with_unknown_finish_reasons_accepted(true)
+        };
+        assert!(accepted(FinishReason::ContentFilter).stop().is_failure());
+        let mut reported = accepted(FinishReason::Other("weird".to_owned()));
+        reported.error = Some("refused".to_owned());
+        assert_eq!(reported.stop(), StopReason::Error("refused".to_owned()));
+        assert_eq!(
+            accepted(FinishReason::Other("weird".to_owned())).stop(),
+            StopReason::Stop
+        );
+    }
+
+    /// The choice travels with the response and the request, and neither
+    /// writes it when it is off.
+    #[test]
+    fn the_choice_round_trips_and_is_omitted_when_off() {
+        let request = CompletionRequest::new("hi").accepting_unknown_finish_reasons(true);
+        let json = serde_json::to_value(&request).expect("serializes");
+        assert_eq!(json["accept_unknown_finish_reasons"], true);
+        let back: CompletionRequest = serde_json::from_value(json).expect("parses");
+        assert!(back.accept_unknown_finish_reasons);
+        let off = serde_json::to_value(CompletionRequest::new("hi")).expect("serializes");
+        assert!(off.get("accept_unknown_finish_reasons").is_none());
+
+        let response = super::CompletionResponse::new(
+            Vec::new(),
+            super::Usage::default(),
+            crate::message::Origin::new("mock", "mock", "mock"),
+            serde_json::Value::Null,
+        );
+        let off = serde_json::to_value(&response).expect("serializes");
+        assert!(off.get("accepts_unknown_finish_reasons").is_none());
+        let on = serde_json::to_value(response.with_unknown_finish_reasons_accepted(true))
+            .expect("serializes");
+        let back: super::CompletionResponse = serde_json::from_value(on).expect("parses");
+        assert!(back.accepts_unknown_finish_reasons());
+    }
+}

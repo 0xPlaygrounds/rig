@@ -185,6 +185,7 @@ fn populated() -> bevy_app::App {
                 rig_ecs::agent::RunPhase::Assembling,
                 rig_ecs::agent::ProviderRetries(2),
                 rig_ecs::agent::ProviderRetrying,
+                rig_ecs::agent::AcceptUnknownFinishReasons(true),
             ),
             rig_ecs::agent::Batch { calls: 2 },
             rig_ecs::bus::InFlight {

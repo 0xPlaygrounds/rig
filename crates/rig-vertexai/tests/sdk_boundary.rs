@@ -68,6 +68,7 @@ fn request(prompt: &str) -> CompletionRequest {
         additional_params: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 

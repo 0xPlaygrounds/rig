@@ -58,6 +58,7 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let request = body_of("gpt-test", core_request).expect("convert request");
@@ -221,6 +222,7 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
             model: None,
             output_schema: None,
             record_telemetry_content: false,
+            accept_unknown_finish_reasons: false,
         };
         body_of("gpt-test", request)
     }));
@@ -251,6 +253,7 @@ fn openai_responses_request_preserves_prompt_cache_parameters() {
         model: None,
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     };
 
     let request_json = body_of("gpt-test", request).expect("convert request");
