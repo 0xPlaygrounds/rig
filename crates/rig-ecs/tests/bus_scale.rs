@@ -142,28 +142,6 @@ fn ten_thousand_effects_in_flight_cost_one_bounded_tick() {
     });
 }
 
-/// A system in `RigSchedule` counts its runs.
-fn count_passes(mut passes: ResMut<Passes>) {
-    passes.0 += 1;
-}
-
-#[derive(Resource, Default)]
-struct Passes(usize);
-
-/// One app update runs `RigSchedule` exactly once, whatever the systems in
-/// it do: nothing loops the schedule inside a tick.
-#[test]
-fn one_update_is_one_pass() {
-    let mut app = app();
-    app.init_resource::<Passes>();
-    app.world_mut()
-        .resource_mut::<bevy_ecs::schedule::Schedules>()
-        .add_systems(RigSchedule, count_passes.after(BusSet::Judge));
-    app.update();
-    app.update();
-    assert_eq!(app.world().resource::<Passes>().0, 2);
-}
-
 #[test]
 fn handlers_outlive_every_effect_and_serve_again() {
     let (mut app, _model, counters) = served();

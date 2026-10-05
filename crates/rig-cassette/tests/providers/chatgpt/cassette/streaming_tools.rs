@@ -1,10 +1,7 @@
 //! ChatGPT cassette coverage for terminal responses that omit `output`.
 
-use futures::StreamExt;
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::chatgpt;
-use rig::streaming::Item;
-use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::super::support::with_chatgpt_cassette;
@@ -76,44 +73,6 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
                 response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should have output tokens"
             );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn stream_tool_call_completed_response_without_output() {
-    with_chatgpt_cassette(
-        "streaming_tools/tool_call_completed_response_without_output",
-        |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
-            let request = CompletionRequest::new(
-                    "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
-                )
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required);
-
-            let mut stream = model.stream(request).expect("stream should start");
-            let mut saw_ping_tool_call = false;
-
-            while let Some(chunk) = stream.next().await {
-                match chunk.expect("stream item should be ok") {
-                    Item::Event(StreamEvent::End { content: AssistantContent::ToolCall(tool_call), .. }) if tool_call.function.name == "ping" => {
-                        assert_eq!(tool_call.function.arguments_value(), json!({}));
-                        saw_ping_tool_call = true;
-                    }
-                    _ => {}
-                }
-            }
-            let response = stream
-                .finish()
-                .await
-                .expect("stream should emit terminal usage");
-
-            assert!(saw_ping_tool_call, "stream should emit the ping tool call");
-            let usage = response.usage;
-            assert!(usage.input_tokens.is_some_and(|n| n > 0), "usae should have input tokens");
-            assert!(usage.output_tokens.is_some_and(|n| n > 0), "usae should have output tokens");
         },
     )
     .await;

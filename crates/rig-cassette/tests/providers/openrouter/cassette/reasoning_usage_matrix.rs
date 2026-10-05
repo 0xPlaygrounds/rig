@@ -10,8 +10,7 @@
 //!           "completion_tokens_details": {"reasoning_tokens": 531}, …}
 //! ```
 //!
-//! (verbatim from this matrix's own
-//! `blocking_anthropic_routed_reports_reasoning_tokens` fixture)
+//! (verbatim from a recorded Anthropic-routed reply)
 //!
 //! `openrouter::Usage` modeled `prompt_tokens`, `completion_tokens`,
 //! `total_tokens`, `cost` and `prompt_tokens_details` — but no
@@ -49,24 +48,8 @@
 //!
 //! | # | cell | transport | level | upstream | status |
 //! |---|------|-----------|-------|----------|--------|
-//! | 1 | `blocking_reasoning_tokens_reach_normalized_usage` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 2 | `streaming_reasoning_tokens_reach_the_terminal_record` | streaming | raw model | OpenAI / o4-mini | recorded |
-//! | 3 | `blocking_agent_reports_reasoning_tokens` | blocking | agent | OpenAI / o4-mini | recorded |
-//! | 4 | `streaming_agent_reports_reasoning_tokens` | streaming | agent | OpenAI / o4-mini | recorded |
-//! | 5 | `blocking_high_effort_reports_reasoning_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 6 | `blocking_gpt_5_reports_reasoning_tokens` | blocking | raw model | OpenAI / gpt-5.2 | recorded |
-//! | 7 | `streaming_gpt_5_reports_reasoning_tokens` | streaming | raw model | OpenAI / gpt-5.2 | recorded |
-//! | 8 | `blocking_anthropic_routed_reports_reasoning_tokens` | blocking | raw model | Anthropic / haiku-4.5 | recorded |
-//! | 9 | `streaming_anthropic_routed_reports_reasoning_tokens` | streaming | raw model | Anthropic / haiku-4.5 | recorded |
-//! | 10 | `blocking_open_weight_route_reports_reasoning_tokens` | blocking | raw model | DeepInfra / deepseek-r1-0528 | recorded |
 //! | 11 | `blocking_excluded_reasoning_still_counts_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 12 | `blocking_reasoning_tokens_stay_within_completion_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 13 | `blocking_reasoning_tokens_with_tools_in_request` | blocking | raw model | OpenAI / o4-mini | recorded |
 //! | 14 | `transports_agree_on_reasoning_tokens` | both | raw model | OpenAI / o4-mini | recorded |
-//! | 15 | `blocking_raw_usage_and_normalized_usage_agree` | blocking | document + normalized | OpenAI / o4-mini | recorded |
-//! | 16 | `blocking_cost_and_cache_details_still_map` | blocking | raw model | OpenAI / o4-mini | recorded |
-//! | 17 | `control_non_reasoning_model_reports_zero_blocking` | blocking | raw model | OpenAI / gpt-4o-mini | recorded |
-//! | 18 | `control_non_reasoning_model_reports_zero_streaming` | streaming | raw model | OpenAI / gpt-4o-mini | recorded |
 //!
 //! Five unit cells — usage payloads the live gateway will not produce on demand
 //! (a real recorded usage object, the breakdown absent / `null` / `{}` /
@@ -83,10 +66,7 @@ use std::sync::{Arc, Mutex};
 
 use super::super::support::with_openrouter_usage_cassette;
 use crate::cassettes;
-use crate::support::{
-    collect_stream_final_response_and_provider_final, collect_text_and_terminal,
-    zero_arg_tool_definition,
-};
+use crate::support::collect_text_and_terminal;
 use rig::completion::CompletionRequest;
 
 /// Small enough to be cheap, hard enough that a reasoning route actually
@@ -94,13 +74,8 @@ use rig::completion::CompletionRequest;
 const REASONING_PROMPT: &str = "A farmer has 17 sheep; all but 9 run away. He then buys 3 times \
                                 as many as remain, sells 5, and splits the rest evenly among 4 \
                                 pens. How many sheep per pen? Answer with the number only.";
-const PLAIN_PROMPT: &str = "Name one common tree species. One word.";
 
 const O4_MINI: &str = "openai/o4-mini";
-const GPT_5: &str = "openai/gpt-5.2";
-const CLAUDE_HAIKU: &str = "anthropic/claude-haiku-4.5";
-const DEEPSEEK_R1: &str = "deepseek/deepseek-r1-0528";
-const PLAIN_MODEL: &str = "openai/gpt-4o-mini";
 const CAP: u64 = 2000;
 
 fn openai_reasoning(effort: &str) -> Value {
@@ -110,367 +85,13 @@ fn openai_reasoning(effort: &str) -> Value {
     })
 }
 
-fn pinned(upstream: &str) -> Value {
-    json!({ "provider": { "order": [upstream], "allow_fallbacks": false } })
-}
-
 // ---------------------------------------------------------------------------
 // The bug: a documented, always-present field with a first-class slot, zeroed.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_reasoning_tokens_reach_normalized_usage() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-    // The contrast for cell 11: with reasoning shown, this route returns both
-    // detail kinds. If that ever stops being true, cell 11's `exclude` claim
-    // stops meaning anything, so both are pinned to their own bytes.
-    assert_recorded_reasoning_detail_types(SCENARIO, &["reasoning.encrypted", "reasoning.summary"]);
-}
-
-#[tokio::test]
-async fn streaming_reasoning_tokens_reach_the_terminal_record() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("terminal record");
-
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-/// The agent surface must report the breakdown too: `prompt()` returns a
-/// `PromptResponse` whose `usage` carries the reasoning tokens, so this cell
-/// fails if the mapping drops them.
-#[tokio::test]
-async fn blocking_agent_reports_reasoning_tokens() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(O4_MINI))
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
-
-            let response = agent
-                .prompt(REASONING_PROMPT)
-                .await
-                .expect("agent reasoning turn");
-
-            assert!(
-                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                response.usage
-            );
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the agent's aggregated usage must report exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn streaming_agent_reports_reasoning_tokens() {
-    const SCENARIO: &str = "reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(O4_MINI))
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"))
-                .build();
-
-            let mut stream = agent.prompt(REASONING_PROMPT).stream();
-            let (_, provider_final) = collect_stream_final_response_and_provider_final(&mut stream)
-                .await
-                .expect("agent stream should succeed");
-
-            assert!(provider_final.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = provider_final.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn blocking_high_effort_reports_reasoning_tokens() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("high"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn blocking_gpt_5_reports_reasoning_tokens() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(GPT_5);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn streaming_gpt_5_reports_reasoning_tokens() {
-    const SCENARIO: &str = "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(GPT_5);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("terminal record");
-
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // A second and third upstream family: the breakdown is not an OpenAI-ism.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_anthropic_routed_reports_reasoning_tokens() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(CLAUDE_HAIKU);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(json!({
-                    "reasoning": { "max_tokens": 1024 },
-                    "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-                }));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "Anthropic");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn streaming_anthropic_routed_reports_reasoning_tokens() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(CLAUDE_HAIKU);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(json!({
-                    "reasoning": { "max_tokens": 1024 },
-                    "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-                }));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("terminal record");
-
-            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "Anthropic");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
-
-#[tokio::test]
-async fn blocking_open_weight_route_reports_reasoning_tokens() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens",
-        |client| async move {
-            let model = client.completion(DEEPSEEK_R1);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(pinned("DeepInfra"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "DeepInfra");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Adjacent shapes on the same code path.
@@ -519,73 +140,6 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     // cannot go stale silently: `exclude` withholds the summary and keeps the
     // encrypted detail.
     assert_recorded_reasoning_detail_types(SCENARIO, &["reasoning.encrypted"]);
-}
-
-/// The breakdown is a *share* of `completion_tokens`, not an addition to it —
-/// the invariant that says the field was mapped rather than invented.
-#[tokio::test]
-async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            let usage = &response.usage;
-
-            assert!(usage.reasoning_tokens.is_some_and(|n| n > 0), "{usage:?}");
-            assert!(usage.reasoning_tokens <= usage.output_tokens, "{usage:?}");
-            assert_eq!(
-                usage.total_tokens,
-                usage
-                    .input_tokens
-                    .zip(usage.output_tokens)
-                    .map(|(input, output)| input + output)
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn blocking_reasoning_tokens_with_tools_in_request() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request";
-
-    let delivered = Arc::new(Mutex::new(None));
-    let recorder = delivered.clone();
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(openai_reasoning("medium"));
-
-            let response = model.call(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
-            *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-    assert_eq!(
-        *delivered.lock().expect("recorder"),
-        Some(recorded_reasoning_tokens(SCENARIO)),
-        "the reported reasoning tokens must be exactly what the wire billed"
-    );
 }
 
 /// One scenario, both transports: the blocking reply and the stream's terminal
@@ -652,148 +206,9 @@ async fn transports_agree_on_reasoning_tokens() {
     );
 }
 
-/// The provider-native escape hatch and the normalized view must agree: the
-/// gateway's own document, which the driver keeps verbatim on `raw`, carries
-/// the breakdown in `openrouter::Usage`, and the decoder's one mapping
-/// reports it.
-#[tokio::test]
-async fn blocking_raw_usage_and_normalized_usage_agree() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let normalized = model.call(request).await.expect("the turn");
-            let document = normalized.raw.clone();
-            let raw_reasoning = document["usage"]["completion_tokens_details"]["reasoning_tokens"]
-                .as_u64()
-                .expect("the document's usage must model the breakdown");
-
-            assert!(raw_reasoning > 0);
-            assert_eq!(normalized.usage.reasoning_tokens, Some(raw_reasoning));
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-/// The fields the mapping already handled must keep working: adding a field to
-/// `Usage` must not disturb cost or the prompt-token breakdown.
-///
-/// Scope note: this route reports `cached_tokens: 0`, so the cached-token
-/// assertion below compares zero against zero and cannot fail on its own. It
-/// is kept as a shape check (the `prompt_tokens_details` object still decodes
-/// and still reaches the normalized field) — the load-bearing assertions here
-/// are `cost > 0` and the presence of *both* detail objects. Proving a
-/// non-zero cache hit needs a prompt-caching turn, which this matrix does not
-/// record.
-#[tokio::test]
-async fn blocking_cost_and_cache_details_still_map() {
-    const SCENARIO: &str = "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map",
-        |client| async move {
-            let model = client.completion(O4_MINI);
-            let request = CompletionRequest::new(REASONING_PROMPT)
-                .max_tokens(CAP)
-                .additional_params(openai_reasoning("medium"));
-
-            let normalized = model.call(request).await.expect("the turn");
-            let usage = normalized.raw["usage"].clone();
-
-            assert!(
-                usage["cost"].as_f64().is_some_and(|cost| cost > 0.0),
-                "{usage}"
-            );
-            assert!(usage["prompt_tokens_details"].is_object(), "{usage}");
-            assert!(usage["completion_tokens_details"].is_object(), "{usage}");
-
-            // Shape check only — see the scope note above.
-            assert_eq!(
-                normalized.usage.cached_input_tokens,
-                usage["prompt_tokens_details"]["cached_tokens"].as_u64()
-            );
-            // These two do carry weight: the new field must not have displaced
-            // the cost mapping, and the reasoning share must still arrive.
-            assert!(
-                normalized.usage.reasoning_tokens.is_some_and(|n| n > 0),
-                "{:?}",
-                normalized.usage
-            );
-            assert_eq!(
-                normalized.usage.output_tokens,
-                usage["completion_tokens"].as_u64()
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
 // ---------------------------------------------------------------------------
 // Controls — a non-reasoning route must still report zero.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn control_non_reasoning_model_reports_zero_blocking() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking",
-        |client| async move {
-            let model = client.completion(PLAIN_MODEL);
-            let request = CompletionRequest::new(PLAIN_PROMPT)
-                .max_tokens(32)
-                .additional_params(pinned("OpenAI"));
-
-            let response = model.call(request).await.expect("plain turn");
-            assert_eq!(response.usage.reasoning_tokens, Some(0));
-            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
-        },
-    )
-    .await;
-
-    assert_recorded_no_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
-
-#[tokio::test]
-async fn control_non_reasoning_model_reports_zero_streaming() {
-    const SCENARIO: &str =
-        "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming";
-
-    with_openrouter_usage_cassette(
-        "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming",
-        |client| async move {
-            let model = client.completion(PLAIN_MODEL);
-            let request = CompletionRequest::new(PLAIN_PROMPT)
-                .max_tokens(32)
-                .additional_params(pinned("OpenAI"));
-
-            let stream = model.stream(request).expect("stream should connect");
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("terminal record");
-
-            assert_eq!(terminal.usage.reasoning_tokens, Some(0));
-            assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
-        },
-    )
-    .await;
-
-    assert_recorded_no_reasoning_tokens(SCENARIO);
-    assert_recorded_provider(SCENARIO, "OpenAI");
-}
 
 // ---------------------------------------------------------------------------
 // Premise assertions — derived from each cell's own recorded bytes.
@@ -912,13 +327,6 @@ fn assert_recorded_reasoning_detail_types(scenario: &str, expected: &[&str]) {
         found, expected,
         "cassette {scenario} records reasoning detail types {found:?}, not {expected:?}; \
          the cell's claim about which kinds this route returns is now stale"
-    );
-}
-
-fn assert_recorded_no_reasoning_tokens(scenario: &str) {
-    assert!(
-        recorded_reasoning_token_counts(scenario).is_empty(),
-        "control cassette {scenario} unexpectedly records non-zero reasoning tokens"
     );
 }
 

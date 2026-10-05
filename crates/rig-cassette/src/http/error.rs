@@ -159,6 +159,70 @@ pub enum CassetteError {
         /// The write failure.
         source: std::io::Error,
     },
+    /// `RIG_CASSETTE_SNAPSHOTS` holds a value other than `off`, `check` or
+    /// `write`.
+    #[error(
+        "RIG_CASSETTE_SNAPSHOTS must be off, check or write; got {value:?} (replaying {})",
+        .path.display()
+    )]
+    InvalidSnapshotMode {
+        /// The fixture path.
+        path: PathBuf,
+        /// The value as set.
+        value: String,
+    },
+    /// `RIG_CASSETTE_MATCHING` holds a value other than `exact` or `shape`.
+    #[error(
+        "RIG_CASSETTE_MATCHING must be exact or shape; got {value:?} (replaying {})",
+        .path.display()
+    )]
+    InvalidMatchingMode {
+        /// The fixture path.
+        path: PathBuf,
+        /// The value as set.
+        value: String,
+    },
+    /// The request snapshot beside the fixture cannot be read, does not
+    /// parse, or does not apply to the fixture's recorded requests.
+    #[error(
+        "request snapshot {} cannot be used: {reason}; rewrite it with RIG_CASSETTE_SNAPSHOTS=write",
+        .snapshot.display()
+    )]
+    InvalidSnapshot {
+        /// The fixture path.
+        path: PathBuf,
+        /// The snapshot file.
+        snapshot: PathBuf,
+        /// What is wrong with it.
+        reason: String,
+    },
+    /// Replay received requests that differ from the fixture's request
+    /// snapshot.
+    #[error(
+        "requests replayed from {} differ from their snapshot {}:\n{}\nif the change is intended, \
+         rewrite the snapshot with RIG_CASSETTE_SNAPSHOTS=write and review its diff",
+        .path.display(),
+        .snapshot.display(),
+        .differences.join("\n")
+    )]
+    SnapshotMismatch {
+        /// The fixture path.
+        path: PathBuf,
+        /// The snapshot file.
+        snapshot: PathBuf,
+        /// One readable difference per differing request, in arrival order.
+        differences: Vec<String>,
+    },
+    /// The request snapshot could not be written or removed.
+    #[error("request snapshot {} should be writable: {source}", .snapshot.display())]
+    WriteSnapshot {
+        /// The fixture path.
+        path: PathBuf,
+        /// The snapshot file.
+        snapshot: PathBuf,
+        /// The write failure.
+        source: std::io::Error,
+    },
     /// The recorded clock readings could not be written beside the fixture.
     #[error("clock readings {} should be writable: {source}", .sidecar.display())]
     ClockWrite {
@@ -188,7 +252,12 @@ impl CassetteError {
             | Self::RecordingRefused { path, .. }
             | Self::UnsafeRecording { path, .. }
             | Self::WriteFixture { path, .. }
-            | Self::ClockWrite { path, .. } => path,
+            | Self::ClockWrite { path, .. }
+            | Self::InvalidSnapshotMode { path, .. }
+            | Self::InvalidMatchingMode { path, .. }
+            | Self::InvalidSnapshot { path, .. }
+            | Self::SnapshotMismatch { path, .. }
+            | Self::WriteSnapshot { path, .. } => path,
         }
     }
 }

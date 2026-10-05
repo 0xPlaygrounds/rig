@@ -15,26 +15,6 @@ fn test_model_default_ndims_lookup() {
     assert_eq!(model_default_ndims("unknown-model"), None);
 }
 
-/// `ndims` is what every document in the batch asks for, so the wire has to
-/// resolve it from the model identifier when the caller named none — the
-/// batch body carries `output_dimensionality` unconditionally.
-#[test]
-fn ndims_defaults_from_the_model_identifier() {
-    let gemini = GeminiConfig::new("test_key");
-
-    assert_eq!(gemini.embedding(EMBEDDING_001, None).ndims, 3072);
-    assert_eq!(gemini.embedding(EMBEDDING_004, None).ndims, 768);
-    // A model this build has never heard of still gets a dimensionality.
-    assert_eq!(gemini.embedding("some-future-model", None).ndims, 768);
-}
-
-#[test]
-fn an_explicit_ndims_outranks_the_models_default() {
-    let gemini = GeminiConfig::new("test_key");
-
-    assert_eq!(gemini.embedding(EMBEDDING_001, Some(256)).ndims, 256);
-}
-
 /// `crates/rig-cassette/fixtures/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s
 /// request body, verbatim.
 const RECORDED_BATCH: &str = r#"{"requests":[{"content":{"parts":[{"text":"Hello, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072},{"content":{"parts":[{"text":"Goodbye, world!"}]},"model":"models/gemini-embedding-001","output_dimensionality":3072}]}"#;

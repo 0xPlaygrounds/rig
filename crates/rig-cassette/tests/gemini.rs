@@ -11,12 +11,13 @@ use rig_test_support::cache_conformance;
 mod cassette_safety;
 use rig_test_support::cassettes;
 use rig_test_support::ecs_agent;
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_extractor.rs"]
 mod ecs_extractor;
-#[path = "common/ecs_lifecycle.rs"]
-mod ecs_lifecycle;
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_observation.rs"]
 mod ecs_observation;
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_termination.rs"]
 mod ecs_termination;
 use rig_test_support::goldens;
@@ -28,9 +29,6 @@ use rig_test_support::support;
 #[path = "providers/gemini/mod.rs"]
 mod gemini;
 
-#[path = "common/ecs_cache.rs"]
-mod ecs_cache;
-
 #[allow(
     dead_code,
     reason = "each provider exercises its own subset of matrix cells"
@@ -41,5 +39,6 @@ mod ecs_matrix;
 use rig_test_support::history_survival;
 use rig_test_support::matrix;
 
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/image_inputs.rs"]
 mod image_inputs;

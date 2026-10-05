@@ -17,8 +17,7 @@ use serde_json::json;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::support::{
-    REQUIRED_ZERO_ARG_TOOL_PROMPT, assert_stream_contains_zero_arg_tool_call_named,
-    collect_raw_stream_observation, zero_arg_tool_definition,
+    REQUIRED_ZERO_ARG_TOOL_PROMPT, collect_raw_stream_observation, zero_arg_tool_definition,
 };
 use rig::completion::CompletionRequest;
 
@@ -154,26 +153,6 @@ fn assert_expected_plan_trip_arguments(arguments: &serde_json::Value) {
 }
 
 #[tokio::test]
-async fn zero_argument_tool_call_streaming() {
-    with_chatgpt_cassette(
-        "codex_tool_args/zero_argument_tool_call_streaming",
-        |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
-            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .preamble("Follow the tool-calling instructions exactly.")
-                .tool(zero_arg_tool_definition("ping"));
-
-            let stream = model
-                .stream(request)
-                .expect("zero-arg streaming request should start");
-
-            assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn zero_argument_tool_call_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_nonstreaming",
@@ -246,39 +225,6 @@ async fn nested_arguments_roundtrip_nonstreaming() {
                 })
                 .expect("chat history should record the plan_trip tool call");
             assert_expected_plan_trip_arguments(&arguments);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn nested_arguments_streaming() {
-    with_chatgpt_cassette(
-        "codex_tool_args/nested_arguments_streaming",
-        |client| async move {
-            let model = client.completion(chatgpt::GPT_5_4);
-            let request = CompletionRequest::new(NESTED_ARGS_PROMPT)
-                .preamble(NESTED_ARGS_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&PlanTrip));
-
-            let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
-                    .expect("nested-args streaming request should start"),
-            )
-            .await;
-
-            assert!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
-            let tool_call = observation
-                .tool_calls
-                .iter()
-                .find(|tool_call| tool_call.function.name == PlanTrip::NAME)
-                .expect("stream should emit the plan_trip tool call");
-            assert_expected_plan_trip_arguments(&tool_call.function.arguments_value());
         },
     )
     .await;

@@ -7,6 +7,7 @@
 )]
 
 use rig_test_support::ecs_agent;
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_extractor.rs"]
 mod ecs_extractor;
 
@@ -21,9 +22,11 @@ use rig_test_support::support;
 #[path = "providers/deepseek/mod.rs"]
 mod deepseek;
 
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_observation.rs"]
 mod ecs_observation;
 
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_session.rs"]
 mod ecs_session;
 

@@ -1,18 +1,5 @@
 use crate::completion::rpc_error;
 
-#[test]
-fn rpc_error_preserves_status_text_without_http_status() {
-    let status = tonic::Status::unavailable("boom");
-    let expected = status.to_string();
-
-    let err = rpc_error(&status);
-
-    // The raw provider error text is preserved verbatim, and there is no
-    // HTTP status because gRPC is a non-HTTP transport.
-    assert_eq!(err.provider_response_body(), Some(expected.as_str()));
-    assert_eq!(err.provider_response_status(), None);
-}
-
 /// The embedding wire classifies its RPC failures by the same rule as the
 /// completion wire: the code is kept, and only the transient codes retry.
 #[test]

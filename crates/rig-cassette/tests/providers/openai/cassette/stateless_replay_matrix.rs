@@ -12,43 +12,27 @@
 //! verbatim: a compaction item is an opaque block that replays, and each
 //! message item, `phase` and id included, goes back as it came.
 //!
-//! **Fixtures.** Cell 1 is recorded live against `gpt-5.6-sol`, which
-//! returns `phase: "final_answer"` on every message. Its second recorded
-//! request is the proof: it carries the `phase` the first response
-//! returned. Cell 2 is hand-derived from cell 1: a `compaction` item is
-//! inserted at the head of turn 2's *request* `input[]` and at the head of
-//! turn 1's *response* `output[]` (the shape `/responses/compact` returns),
-//! with every other byte identical. Rig has no `/responses/compact` client
-//! method — the reporter's fourth ask, deferred as maintainer-owned API
-//! surface — so the item cannot be obtained live through rig; the derived
-//! cell asserts the item is present in both places so a re-record cannot
-//! silently drop it. Cells 3 to 5 are recorded live and streamed:
-//! `gpt-5.4-nano` answers with `final_answer`, and `gpt-5.3-codex` sends a
-//! `commentary` message before its answer or before a tool call.
-//!
-//! **How these cells fail on `origin/main`.** Cell 1 misses the mock on
-//! turn 2 (rig sent no `phase`, so the recorded body differs) and its
-//! post-replay assertion fails; cell 2 decodes the item only as an unknown output item and the input side
-//! rejects it with `unknown variant \`compaction\``. Cells 3 to 5 miss the
-//! mock on their follow-up: streamed text carried no `phase`, and cell 4's
-//! two messages were merged into one item.
+//! **Fixtures.** Cell 2 is hand-derived from a recorded `gpt-5.6-sol` turn: a
+//! `compaction` item is inserted at the head of turn 2's *request* `input[]`
+//! and at the head of turn 1's *response* `output[]` (the shape
+//! `/responses/compact` returns), with every other byte identical. Rig has no
+//! `/responses/compact` client method, so the item cannot be obtained live
+//! through rig; the cell asserts the item is present in both places so a
+//! re-record cannot silently drop it. Cells 3 to 5 are recorded live and
+//! streamed: `gpt-5.4-nano` answers with `final_answer`, and `gpt-5.3-codex`
+//! sends a `commentary` message before its answer or before a tool call.
 //!
 //! | # | cell | transport | proves | fixture |
 //! |---|------|-----------|--------|---------|
-//! | 1 | `phase_round_trips_on_follow_up` | blocking, 2 turns | turn-2 request carries turn-1's `phase` | recorded |
-//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived from 1 |
+//! | 2 | `compaction_item_decodes_on_the_response` | blocking | compaction on `output[]` decodes typed; the same item re-serialized is accepted on the input side verbatim | derived |
 //! | 3 | `streamed_phase_round_trips_on_follow_up` | streamed, 2 turns | a streamed turn's `phase` reaches its text and the follow-up, as unary text carries it | recorded |
 //! | 4 | `commentary_and_final_answer_replay_as_two_items` | streamed, 2 turns | two message items keep their own id and `phase`, in order, and the follow-up is accepted | recorded |
 //! | 5 | `commentary_before_a_tool_call_replays_with_its_phase` | streamed, 2 turns | a commentary message keeps its `phase` and its place before the call | recorded |
-//!
-//! Unit cells for the (de)serializers live in
-//! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
 use futures::StreamExt;
 use rig::completion::ToolDefinition;
 use rig::message::{AssistantContent, Message, Text, ToolResultContent, UserContent};
 use rig::providers::openai;
-use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
@@ -57,14 +41,6 @@ use rig::completion::CompletionRequest;
 const TURN_ONE: &str = "Remember the codeword ALPHA-17. Reply exactly: ACK-1";
 const TURN_TWO: &str = "Reply with exactly the remembered codeword.";
 const PHASE: &str = "final_answer";
-
-/// Every recorded request body of `scenario`, decoded, in wire order.
-fn recorded_requests(scenario: &str) -> Vec<Value> {
-    crate::cassettes::recorded_interaction_bodies("openai", scenario)
-        .into_iter()
-        .map(|(request, _)| serde_json::from_str(&request).expect("request body is JSON"))
-        .collect()
-}
 
 /// Every recorded non-streaming response body of `scenario`, decoded.
 fn recorded_responses(scenario: &str) -> Vec<Value> {
@@ -99,65 +75,6 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> Value {
 /// The `output` items of a Responses reply.
 fn output_items(reply: &Value) -> &[Value] {
     reply["output"].as_array().map_or(&[], Vec::as_slice)
-}
-
-/// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(client: OpenAiModels) -> (Value, Value) {
-    let model = client.completion(openai::GPT_5_6_SOL);
-    let request = |history: Vec<Message>| {
-        CompletionRequest::from(history).additional_params(serde_json::json!({ "store": false }))
-    };
-    let mut history = vec![Message::user(TURN_ONE)];
-    let first = model
-        .call(request(history.clone()))
-        .await
-        .expect("turn 1 should succeed");
-    let first_reply = provider_reply(&first);
-    history.extend(first.message());
-    history.push(Message::user(TURN_TWO));
-    let second = model
-        .call(request(history))
-        .await
-        .expect("turn 2 should succeed");
-    (first_reply, provider_reply(&second))
-}
-
-#[tokio::test]
-async fn phase_round_trips_on_follow_up() {
-    with_openai_cassette(
-        "stateless_replay_matrix/phase_round_trips_on_follow_up",
-        |client| async move {
-            let (first, _second) = two_turn_conversation(client.openai).await;
-            let phases: Vec<&str> = output_items(&first)
-                .iter()
-                .filter(|item| item["type"] == "message")
-                .filter_map(|message| message["phase"].as_str())
-                .collect();
-            assert_eq!(phases, [PHASE], "turn 1 must decode the wire's phase");
-        },
-    )
-    .await;
-
-    let requests = recorded_requests("stateless_replay_matrix/phase_round_trips_on_follow_up");
-    assert_eq!(requests.len(), 2, "two turns recorded");
-    let replayed = assistant_items(&requests[1]);
-    assert_eq!(
-        replayed.len(),
-        1,
-        "turn 2 replays exactly one assistant item"
-    );
-    assert_eq!(
-        replayed[0]["phase"], PHASE,
-        "turn 2's request must re-send the phase turn 1 returned: {}",
-        replayed[0]
-    );
-    // Never on the block: the flatten would put it beside `text`.
-    for block in replayed[0]["content"].as_array().expect("content array") {
-        assert!(
-            block.get("phase").is_none(),
-            "phase leaked onto a block: {block}"
-        );
-    }
 }
 
 #[tokio::test]

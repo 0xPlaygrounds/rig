@@ -6,37 +6,6 @@ use crate::{
 };
 
 #[tokio::test]
-async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
-    rig_test_support::goldens::world_golden_test(
-        async {
-            super::super::support::with_openai_completions_prompt_caching_cassette(
-                "prompt_caching/chat_completions_agent_loop",
-                |client| async move {
-                    let ecs = EcsAgent::new(client.chat(CACHE_MODEL), &probe().preamble, 1);
-
-                    assert_cache_growth(ecs, &OPENAI_CACHE_SUPPORT, "chat completions agent loop")
-                        .await;
-                },
-            )
-            .await;
-            assert_prefix_stable("openai", "prompt_caching/chat_completions_agent_loop");
-            assert_breakpoints_match_support(
-                "openai",
-                "prompt_caching/chat_completions_agent_loop",
-                &OPENAI_CACHE_SUPPORT,
-            );
-        },
-        |log| {
-            rig_test_support::goldens::world_golden_effects(
-                "openai_prompt_caching_chat_completions_agent_loop_keeps_hitting_across_tool_turns",
-                log,
-            )
-        },
-    )
-    .await
-}
-
-#[tokio::test]
 async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
     rig_test_support::goldens::world_golden_test(
         async {

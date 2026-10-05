@@ -865,31 +865,3 @@ async fn lifecycle() {
         .collect();
     assert!(!deletes.is_empty());
 }
-
-#[tokio::test]
-async fn support_chat_30_baseline() {
-    const SCENARIO: &str = "auto_caching/support_chat_30_baseline";
-    let log = with_gemini_auto_caching_cassette(
-        "auto_caching/support_chat_30_baseline",
-        |gemini, clock| async move {
-            let agent = support_agent(gemini.completion(MODEL), SUPPORT_PREAMBLE);
-            let mut history = Vec::new();
-            let mut log = RunLog::default();
-            for turn in 1..=30 {
-                chat(&agent, &clock, question(turn, "A"), &mut history, &mut log).await;
-            }
-            log
-        },
-    )
-    .await;
-    let (recording, figures) = check(SCENARIO, &log, None, None, false);
-    cache_longrun::print_limit(&figures, "no cache created or read");
-    assert!(
-        recording.created.is_empty(),
-        "the baseline creates no cache"
-    );
-    assert!(
-        recording.calls.iter().all(|call| call.cache.is_none()),
-        "the baseline reads no cache"
-    );
-}

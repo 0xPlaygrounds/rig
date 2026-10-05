@@ -26,23 +26,3 @@ fn builds_the_requests_the_typestate_builder_built() {
         .build();
     assert_eq!(request.additional_params, Some(json!({"quality": "low"})));
 }
-
-/// Repeated calls merge and `None` clears, matching the completion and
-/// transcription builders. The replaced builder kept only the last call
-/// (`{"b": 2, "nested": {"y": 2}}` here).
-#[test]
-fn additional_params_merge_and_none_clears() {
-    let request = ImageGenerationRequestBuilder::new("lake")
-        .additional_params(json!({"a": 1, "nested": {"x": 1}}))
-        .additional_params(json!({"b": 2, "nested": {"y": 2}}))
-        .build();
-    assert_eq!(
-        request.additional_params,
-        Some(json!({"a": 1, "b": 2, "nested": {"y": 2}}))
-    );
-    let request = ImageGenerationRequestBuilder::new("lake")
-        .additional_params(json!({"a": 1}))
-        .additional_params(None)
-        .build();
-    assert_eq!(request.additional_params, None);
-}

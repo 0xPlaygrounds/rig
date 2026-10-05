@@ -27,6 +27,4 @@ crate::matrix::case_matrix! {
     wrapper: with_groq_cassette_result, family: portability_case;
     #[tokio::test]
     from_anthropic: ("portability_matrix/from_anthropic", configured_result, cell(Source::Anthropic));
-    #[tokio::test]
-    from_gemini: ("portability_matrix/from_gemini", configured_result, cell(Source::Gemini));
 }

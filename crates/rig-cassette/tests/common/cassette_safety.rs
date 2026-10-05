@@ -596,6 +596,24 @@ fn scan_dir(dir: &Path, failures: &mut Vec<String>) {
             continue;
         }
 
+        if let Some(stem) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".requests.json"))
+        {
+            // A request snapshot describes its fixture's recorded requests.
+            if !path.with_file_name(format!("{stem}.yaml")).is_file() {
+                failures.push(format!(
+                    "{} is a request snapshot with no fixture beside it; run \
+                     `cargo xtask cassette snapshots`",
+                    display_repo_path(&path)
+                ));
+            }
+            let contents = fs::read_to_string(&path).expect("snapshot should be readable as UTF-8");
+            failures.extend(crate::cassettes::artifact_safety_failures(&path, &contents));
+            continue;
+        }
+
         if path.extension().and_then(|ext| ext.to_str()) != Some("yaml") {
             continue;
         }

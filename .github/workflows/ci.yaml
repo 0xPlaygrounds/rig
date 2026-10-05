@@ -28,7 +28,9 @@ concurrency:
 jobs:
   # Formatting, the migration-guide preamble, CWD-independent fixture paths,
   # the browser worker's JavaScript test, sibling-file test layout, the
-  # scenario catalog, and xtask's own tests. Compiles only xtask.
+  # scenario catalog, xtask's own tests, the cassette acceptance index and
+  # the reply bank.
+  # Compiles only xtask.
   guards:
     name: stable / guards
     runs-on: ubuntu-latest
@@ -45,6 +47,10 @@ jobs:
         run: cargo xtask verify --check source-guards
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check tooling
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check acceptance
+      - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check bank
 
   # CHANGELOG.md, crates/*/CHANGELOG.md, MIGRATING.md and docs/migrations/ are
   # written on the release PR only. Release PRs (a `release-plz-*` head or the
@@ -150,6 +156,35 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check derive
+
+  # The coverage gate's cheap parts: line and branch coverage of every
+  # production file, from an instrumented all-features run of the local
+  # nextest profile, and the cassette corpus's request facts and reply
+  # shapes, each against crates/rig-cassette/coverage. Mutation is too slow
+  # for every PR; `cargo xtask coverage --check --mutants` runs it locally.
+  # No warm cache: the instrumented build shares no artifacts with the rest.
+  # A failed run prints the unstable.tsv rows for every lost region and
+  # uploads its measurement, so a race this runner exposes can be adopted.
+  coverage:
+    name: stable / coverage gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          components: llvm-tools
+          nextest: "true"
+          protoc: "true"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo xtask verify --check coverage
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-measurement
+          path: target/coverage/*.tsv
+          if-no-files-found: ignore
 
   # Every interleaving of the bus's wait/wake models under loom.
   loom:

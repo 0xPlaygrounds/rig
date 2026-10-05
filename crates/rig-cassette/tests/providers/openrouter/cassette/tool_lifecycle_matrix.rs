@@ -1,11 +1,12 @@
 //! Live Chat Completions tool-call lifecycle and argument-integrity matrix.
 //!
-//! The complete recorded space is 2 transports × 2 models × 3 call shapes ×
-//! 2 public surfaces = 24 cells. The shapes cover a deliberate zero-argument
-//! call, a nested object containing an array and Unicode, and two parallel
-//! calls. Model cells deserialize the provider-native response and normalize
-//! it; agent cells prove exact-once invocation. Streaming cells additionally
-//! reassemble every id, name, and argument fragment from their fixtures.
+//! The space is 2 transports × 2 models × 3 call shapes × 2
+//! public surfaces = 24 cells, of which the two below are tests. The shapes
+//! cover a deliberate zero-argument call, a nested object containing an array
+//! and Unicode, and two parallel calls. Model cells deserialize the
+//! provider-native response and normalize it; agent cells prove exact-once
+//! invocation. Streaming cells additionally reassemble every id, name, and
+//! argument fragment from their fixtures.
 //!
 //! Auto/none/specific tool-choice controls are assigned to the separate
 //! request-shape matrix; this matrix fixes choice to `required` so call shape
@@ -19,33 +20,27 @@
 //! | call shape | zero arguments, nested Unicode/array object, parallel pair |
 //! | surface | raw/normalized model, one-turn agent |
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
-//! recorded; none is unit-only. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/<test-name>.yaml`.
 //! Both cheap mini routes are pinned to OpenAI with fallbacks disabled, making
 //! the gateway wire stable across model families. Assertions span request
 //! schemas, native blocking/streaming assembly, normalized ids, names,
-//! arguments and order, and agent exact-once dispatch. Synthetic malformed
-//! call objects remain shared unit tests because they cannot be requested live.
+//! arguments and order, and agent exact-once dispatch. Synthetic malformed call
+//! objects remain shared unit tests because they cannot be requested live.
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | 2 of 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/{blocking_gpt41_zero_agent,streaming_gpt4o_nested_agent}.yaml` |
 
-use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
-use futures::StreamExt as _;
-use rig::completion::{AssistantContent, FinishReason};
-use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openrouter_tool_lifecycle_cassette_result;
-use rig::completion::CompletionRequest;
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -70,7 +65,6 @@ enum Shape {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Surface {
-    Model,
     Agent,
 }
 
@@ -84,10 +78,6 @@ struct Cell {
 
 #[derive(Debug, Default)]
 struct Observation {
-    finish_reason: Option<FinishReason>,
-    names: Vec<String>,
-    ids: Vec<String>,
-    arguments: Vec<Value>,
     errors: Vec<String>,
     invocations: Vec<String>,
 }
@@ -152,43 +142,6 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
         description: format!("Matrix tool {name}"),
         parameters,
     }
-}
-
-fn request(cell: Cell) -> rig::completion::CompletionRequest {
-    let mut builder = CompletionRequest::new(prompt(cell.shape))
-        .preamble(PREAMBLE.to_owned())
-        .additional_params(json!({
-            "tool_choice": "required",
-            "parallel_tool_calls": cell.shape == Shape::Parallel,
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }))
-        .max_tokens(128);
-    for name in expected_names(cell.shape) {
-        builder = builder.tool(tool_definition(name));
-    }
-    builder
-}
-
-fn normalized_calls(choice: &[AssistantContent]) -> (Vec<String>, Vec<String>, Vec<Value>) {
-    let calls = choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(call) => Some(call),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    (
-        calls
-            .iter()
-            .map(|call| call.function.name.clone())
-            .map(String::from)
-            .collect(),
-        calls.iter().map(|call| call.id.to_string()).collect(),
-        calls
-            .iter()
-            .map(|call| call.function.arguments_value())
-            .collect(),
-    )
 }
 
 type InvocationLog = Arc<Mutex<Vec<String>>>;
@@ -260,63 +213,6 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_model(client: OpenAiModels, cell: Cell) -> Observation {
-    let model = client.completion(model_name(cell.model));
-    match cell.transport {
-        Transport::Blocking => match model.call(request(cell)).await {
-            Ok(response) => {
-                let (names, ids, arguments) = normalized_calls(&response.choice);
-                Observation {
-                    finish_reason: response.finish_reason(),
-                    names,
-                    ids,
-                    arguments,
-                    ..Default::default()
-                }
-            }
-            Err(error) => Observation {
-                errors: vec![error.to_string()],
-                ..Default::default()
-            },
-        },
-        Transport::Streaming => {
-            let raw = match model.stream(request(cell)) {
-                Ok(raw) => raw,
-                Err(error) => {
-                    return Observation {
-                        errors: vec![error.to_string()],
-                        ..Default::default()
-                    };
-                }
-            };
-            let mut stream = raw;
-            let mut observation = Observation::default();
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(Item::Event(StreamEvent::End {
-                        content: AssistantContent::ToolCall(tool_call),
-                        ..
-                    })) => {
-                        observation
-                            .names
-                            .push(tool_call.function.name.clone().into());
-                        observation.ids.push(tool_call.id.to_string());
-                        observation
-                            .arguments
-                            .push(tool_call.function.arguments_value());
-                    }
-                    Ok(_) => {}
-                    Err(error) => observation.errors.push(error.to_string()),
-                }
-            }
-            if let Ok(terminal) = stream.finish().await {
-                observation.finish_reason = terminal.finish_reason();
-            }
-            observation
-        }
-    }
-}
-
 async fn run_agent(client: OpenAiModels, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = rig::AgentBuilder::new(client.completion(model_name(cell.model)))
@@ -369,13 +265,11 @@ async fn run_agent(client: OpenAiModels, cell: Cell) -> Observation {
     Observation {
         errors,
         invocations: invocations.lock().expect("invocation log poisoned").clone(),
-        ..Default::default()
     }
 }
 
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
-        Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,
     };
     *observed.lock().expect("observation mutex poisoned") = Some(observation);
@@ -592,33 +486,6 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
         .take()
         .expect("cell observation");
     match cell.surface {
-        Surface::Model => {
-            assert!(
-                observation.errors.is_empty(),
-                "{scenario}: {:?}",
-                observation.errors
-            );
-            assert_eq!(
-                observation.finish_reason,
-                Some(FinishReason::ToolCalls),
-                "{scenario}"
-            );
-            assert_eq!(
-                observation
-                    .names
-                    .iter()
-                    .map(String::as_str)
-                    .collect::<Vec<_>>(),
-                expected_names(cell.shape),
-                "{scenario}: normalized call order"
-            );
-            assert_nonempty_distinct_ids(scenario, &observation.ids);
-            assert_eq!(
-                observation.arguments,
-                expected_arguments(cell.shape),
-                "{scenario}: normalized arguments"
-            );
-        }
         Surface::Agent => {
             assert_eq!(
                 observation
@@ -651,51 +518,7 @@ async fn execute(scenario: &'static str, cell: Cell, observed: SharedObservation
 crate::matrix::case_matrix! {
     wrapper: with_openrouter_tool_lifecycle_cassette_result, family: tool_lifecycle_matrix_case;
     # [tokio :: test]
-    blocking_gpt4o_zero_model: ("tool_lifecycle_matrix/blocking_gpt4o_zero_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt4o_zero_agent: ("tool_lifecycle_matrix/blocking_gpt4o_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt4o_nested_model: ("tool_lifecycle_matrix/blocking_gpt4o_nested_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt4o_nested_agent: ("tool_lifecycle_matrix/blocking_gpt4o_nested_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt4o_parallel_model: ("tool_lifecycle_matrix/blocking_gpt4o_parallel_model", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt4o_parallel_agent: ("tool_lifecycle_matrix/blocking_gpt4o_parallel_agent", configured, cell (Transport :: Blocking , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt41_zero_model: ("tool_lifecycle_matrix/blocking_gpt41_zero_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
     blocking_gpt41_zero_agent: ("tool_lifecycle_matrix/blocking_gpt41_zero_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Zero , Surface :: Agent ,));
     # [tokio :: test]
-    blocking_gpt41_nested_model: ("tool_lifecycle_matrix/blocking_gpt41_nested_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt41_nested_agent: ("tool_lifecycle_matrix/blocking_gpt41_nested_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    blocking_gpt41_parallel_model: ("tool_lifecycle_matrix/blocking_gpt41_parallel_model", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    blocking_gpt41_parallel_agent: ("tool_lifecycle_matrix/blocking_gpt41_parallel_agent", configured, cell (Transport :: Blocking , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt4o_zero_model: ("tool_lifecycle_matrix/streaming_gpt4o_zero_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt4o_zero_agent: ("tool_lifecycle_matrix/streaming_gpt4o_zero_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt4o_nested_model: ("tool_lifecycle_matrix/streaming_gpt4o_nested_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
     streaming_gpt4o_nested_agent: ("tool_lifecycle_matrix/streaming_gpt4o_nested_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt4o_parallel_model: ("tool_lifecycle_matrix/streaming_gpt4o_parallel_model", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt4o_parallel_agent: ("tool_lifecycle_matrix/streaming_gpt4o_parallel_agent", configured, cell (Transport :: Streaming , Model :: Gpt4oMini , Shape :: Parallel , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_zero_model: ("tool_lifecycle_matrix/streaming_gpt41_zero_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Zero , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_zero_agent: ("tool_lifecycle_matrix/streaming_gpt41_zero_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Zero , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_nested_model: ("tool_lifecycle_matrix/streaming_gpt41_nested_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Nested , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_nested_agent: ("tool_lifecycle_matrix/streaming_gpt41_nested_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Nested , Surface :: Agent ,));
-    # [tokio :: test]
-    streaming_gpt41_parallel_model: ("tool_lifecycle_matrix/streaming_gpt41_parallel_model", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Model ,));
-    # [tokio :: test]
-    streaming_gpt41_parallel_agent: ("tool_lifecycle_matrix/streaming_gpt41_parallel_agent", configured, cell (Transport :: Streaming , Model :: Gpt41Mini , Shape :: Parallel , Surface :: Agent ,));
 }

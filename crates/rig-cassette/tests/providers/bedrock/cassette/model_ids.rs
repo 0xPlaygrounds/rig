@@ -128,28 +128,3 @@ async fn cross_region_profile_id_completes() {
     )
     .await;
 }
-
-/// Anthropic on Bedrock is the flagship pairing and the crate had no working
-/// constant for it; this pins that the replacement Claude identifier is
-/// invocable end-to-end.
-#[tokio::test]
-async fn claude_profile_constant_completes() {
-    with_bedrock_cassette(
-        "model_ids/claude_profile_constant_completes",
-        |client| async move {
-            let agent = client
-                .agent(bedrock::completion::ANTHROPIC_CLAUDE_HAIKU_4_5)
-                .preamble("You are concise.")
-                .build();
-
-            let response = agent
-                .prompt("Reply with the single word: ready.")
-                .await
-                .expect("Claude completion should succeed")
-                .output();
-
-            assert_nonempty_response(&response);
-        },
-    )
-    .await;
-}

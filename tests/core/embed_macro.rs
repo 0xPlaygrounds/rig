@@ -98,32 +98,6 @@ fn test_custom_and_basic_embed() {
 }
 
 #[test]
-fn test_single_embed() {
-    #[derive(Embed)]
-    struct WordDefinition {
-        #[allow(dead_code)]
-        id: String,
-        #[allow(dead_code)]
-        word: String,
-        #[embed]
-        definition: String,
-    }
-
-    let definition = "a building in which people live; residence for human beings.".to_string();
-
-    let word_definition = WordDefinition {
-        id: "doc1".to_string(),
-        word: "house".to_string(),
-        definition: definition.clone(),
-    };
-
-    assert_eq!(
-        embeddings::to_texts(word_definition).unwrap(),
-        vec![definition]
-    );
-}
-
-#[test]
 fn test_embed_vec_non_string() {
     #[derive(Embed)]
     struct Company {

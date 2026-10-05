@@ -201,10 +201,6 @@ fn text_of(response: &completion::CompletionResponse) -> Option<String> {
 
 // ── what each dialect sends ─────────────────────────────────────────────
 
-fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
-    encoded_body_of(wire, prompt(), mode)
-}
-
 /// One request's body, for a turn other than the bare [`prompt`].
 fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
     let encoded = wire.encode(request, mode).expect("the request encodes");
@@ -231,62 +227,6 @@ fn turn(chat_history: Vec<Message>) -> CompletionRequest {
 
 fn chatgpt() -> Responses {
     OpenAIConfig::with_key(&CHATGPT, "test-token").responses("gpt-5.4")
-}
-
-#[test]
-fn a_streamed_request_asks_for_a_stream_and_a_unary_one_does_not() {
-    let wire = openai();
-    assert_eq!(
-        encoded_body(&wire, Mode::Streaming).get("stream"),
-        Some(&serde_json::Value::Bool(true))
-    );
-    assert_eq!(encoded_body(&wire, Mode::Unary).get("stream"), None);
-    assert_eq!(
-        wire.encode(prompt(), Mode::Unary)
-            .expect("the request encodes")
-            .framing,
-        Framing::Whole
-    );
-}
-
-/// ChatGPT's gateway answers with an event stream whatever was asked for, so
-/// even a unary call asks for one and accepts a reply that names no content
-/// type.
-#[test]
-fn the_chatgpt_dialect_always_streams_and_relaxes_the_content_type() {
-    let wire = chatgpt();
-    let encoded = wire
-        .encode(prompt(), Mode::Unary)
-        .expect("the request encodes");
-
-    assert_eq!(encoded.framing, Framing::Sse);
-    assert!(encoded.relaxed_content_type);
-    assert_eq!(
-        encoded_body(&wire, Mode::Unary).get("stream"),
-        Some(&serde_json::Value::Bool(true))
-    );
-}
-
-/// The codex gateway takes the turn and its tools; the sampling, storage and
-/// structured-output parameters are not its to accept, and the reasoning
-/// payload must be asked for because the gateway stores nothing.
-#[test]
-fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
-    let wire = chatgpt();
-    let body = encoded_body(&wire, Mode::Unary);
-
-    assert_eq!(body.get("temperature"), None);
-    assert_eq!(body.get("max_output_tokens"), None);
-    assert_eq!(body.get("top_p"), None);
-    assert_eq!(body.get("store"), Some(&serde_json::Value::Bool(false)));
-    assert_eq!(
-        body.get("include"),
-        Some(&serde_json::json!(["reasoning.encrypted_content"]))
-    );
-    assert_eq!(
-        body.get("instructions").and_then(serde_json::Value::as_str),
-        Some("You are ChatGPT, a helpful AI assistant.")
-    );
 }
 
 /// The gateway's own instructions lead, the caller's follow: a backend that
@@ -324,84 +264,6 @@ fn the_chatgpt_dialect_does_not_repeat_instructions_the_caller_already_carries()
         body.get("instructions").and_then(serde_json::Value::as_str),
         Some(carried)
     );
-}
-
-/// This gateway rejects the `system` role in `input` outright, so every
-/// system message is lifted — the leading run *and* the mid-conversation
-/// ones — leaving only the non-system turns as input items.
-#[test]
-fn the_chatgpt_dialect_lifts_every_system_message_into_instructions() {
-    let body = encoded_body_of(
-        &chatgpt(),
-        turn(vec![
-            Message::system("System one"),
-            Message::user("hi"),
-            Message::system("Mid-conversation instruction"),
-            Message::user("again"),
-        ]),
-        Mode::Unary,
-    );
-
-    assert_eq!(
-        body.get("instructions").and_then(serde_json::Value::as_str),
-        Some(
-            "You are ChatGPT, a helpful AI assistant.\n\nSystem one\n\nMid-conversation instruction"
-        )
-    );
-    assert_eq!(
-        body.get("input")
-            .and_then(serde_json::Value::as_array)
-            .map(Vec::len),
-        Some(2),
-        "only the two user turns remain as input: {body}"
-    );
-}
-
-/// A turn whose terminal event restates the assembled output.
-const CHATGPT_ASSEMBLED_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
-
-data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[{"type":"message","id":"msg_chatgpt_raw","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"hi"}]}],"tools":[]}}
-
-data: [DONE]"#;
-
-/// The same turn with an empty terminal `output`: the deltas are the only
-/// place the content exists. A recorded shape, not a synthetic one.
-const CHATGPT_EMPTY_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
-
-data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[],"tools":[]}}
-
-data: [DONE]"#;
-
-/// A gateway that answers every request with an event stream sends no reply
-/// document of its own, so the terminal `response.completed` *is* the
-/// document: `raw` must be that object — deserializable back into the wire
-/// type and re-serializing value-equal, carrying the fields rig does not
-/// normalize (`service_tier`) — whether or not its `output` restates the
-/// turn, and the choice comes from the deltas either way.
-#[tokio::test]
-async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
-    for (body, case) in [
-        (CHATGPT_ASSEMBLED_OUTPUT, "assembled output"),
-        (CHATGPT_EMPTY_OUTPUT, "empty output"),
-    ] {
-        let response = folded_unary(chatgpt(), body).await;
-
-        assert_eq!(
-            response.raw["object"], "response",
-            "{case}: the capture is the terminal response object"
-        );
-        assert_eq!(response.raw["service_tier"], "default", "{case}");
-        assert_eq!(response.raw["id"], "resp_chatgpt_raw", "{case}");
-
-        assert_eq!(response.choice.len(), 1, "{case}: one message");
-        assert_eq!(response.text(), "hi", "{case}: the deltas are the content");
-        assert_eq!(response.usage.total_tokens, Some(2), "{case}");
-        assert_eq!(
-            response.identity().response_id.as_deref(),
-            Some("resp_chatgpt_raw"),
-            "{case}"
-        );
-    }
 }
 
 fn xai() -> Responses {
@@ -457,98 +319,6 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
         "the document rides one user item, after the preamble: {body}"
     );
     assert!(input[1].to_string().contains("<file id: doc_1>"), "{body}");
-}
-
-/// A user turn interleaving text and a tool result keeps its order on the
-/// wire: text before the result is one message item, the result is a
-/// `function_call_output` under its call id, text after is another message.
-#[test]
-fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
-    let body = encoded_body_of(
-        &xai(),
-        turn(vec![Message::User {
-            content: vec![
-                message::UserContent::text("before"),
-                message::UserContent::tool_result(
-                    crate::message::CallId::from_wire("call-id"),
-                    crate::message::ToolName::new("tool").expect("tool name"),
-                    vec![message::ToolResultContent::json(
-                        serde_json::json!({ "ok": true }),
-                    )],
-                ),
-                message::UserContent::text("after"),
-            ],
-        }]),
-        Mode::Unary,
-    );
-
-    let input = body["input"].as_array().expect("input is an array");
-    assert_eq!(input.len(), 3, "{body}");
-    assert_eq!(input[0]["type"], "message");
-    assert_eq!(input[0]["role"], "user");
-    assert_eq!(input[0]["content"][0]["text"], "before");
-    assert_eq!(input[1]["type"], "function_call_output");
-    assert_eq!(input[1]["call_id"], "call-id");
-    assert_eq!(input[1]["output"], r#"{"ok":true}"#);
-    assert_eq!(input[2]["type"], "message");
-    assert_eq!(input[2]["content"][0]["text"], "after");
-}
-
-/// An xAI reasoning turn goes back to xAI as xAI stated it: the reasoning
-/// item with its `encrypted_content`, then the call, in their order.
-#[test]
-fn the_xai_dialect_replays_its_own_reasoning_item_verbatim() {
-    let reasoning = serde_json::json!({
-        "id": "rs_1",
-        "summary": [{"text": "explain", "type": "summary_text"}],
-        "type": "reasoning",
-        "status": "completed",
-        "encrypted_content": "opaque",
-    });
-    let call = serde_json::json!({
-        "arguments": "{\"arg\":\"value\"}",
-        "call_id": "call_1",
-        "name": "my_tool",
-        "type": "function_call",
-        "id": "fc_1",
-        "status": "completed",
-    });
-    let turn_of = message::AssistantMessage {
-        content: vec![
-            message::AssistantContent::Reasoning(message::Reasoning::new("explain"))
-                .with_native(reasoning.clone()),
-            message::AssistantContent::tool_call(
-                "call_1",
-                crate::message::ToolName::new("my_tool").expect("tool name"),
-                serde_json::json!({"arg": "value"}),
-            )
-            .with_native(call.clone()),
-        ],
-        origin: Some(message::Origin::new("openai.responses", "xai", xai().model)),
-        stop: Some(message::StopReason::ToolUse),
-    };
-    let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
-        turn(vec![
-            Message::user("Use the tool."),
-            Message::Assistant(turn_of),
-        ])
-        .tools(vec![crate::completion::ToolDefinition {
-            name: crate::message::ToolName::new("my_tool").expect("tool name"),
-            description: "A tool".to_owned(),
-            parameters: serde_json::json!({"type": "object"}),
-        }]),
-        &xai().describe(),
-    )
-    .expect("the history is valid");
-    let body = json_body(
-        &xai()
-            .encode(request, Mode::Unary)
-            .expect("the request encodes")
-            .request,
-    );
-
-    let input = body["input"].as_array().expect("input is an array");
-    assert_eq!(input[1..3], [reasoning, call], "{body}");
 }
 
 /// A success carrying the provider's error envelope instead of a response is

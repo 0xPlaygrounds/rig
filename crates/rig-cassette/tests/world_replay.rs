@@ -23,23 +23,20 @@
 
 #[path = "corpus/fixtures.rs"]
 mod fixtures;
+#[allow(
+    dead_code,
+    reason = "each world-replay target uses one half of the check"
+)]
+#[path = "corpus/replay_check.rs"]
+mod replay_check;
 
-use std::time::{Duration, Instant};
-
-use bevy_app::App;
-use bevy_ecs::schedule::LogLevel;
-use rig_cassette::ecs::EffectLogResource;
-use rig_cassette::ecs::Replay;
-use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
-use rig_core::serve::ServingPolicy;
-use rig_ecs::bus::{BusPlugin, EffectOutcome, Issued, Streamed};
+use replay_check::replay_through_a_world;
+use rig_cassette::effect_log::EffectLog;
 
 /// The goldens the two agent interpreters replay: the same files, the whole
 /// corpus (the contract matrix on five more wires grew it past the original
 /// 207; the failure rows on those wires past 685).
-const EXPECTED_GOLDENS: usize = 836;
-
-const GUARD: Duration = Duration::from_secs(30);
+const EXPECTED_GOLDENS: usize = 206;
 
 fn goldens() -> Vec<(String, EffectLog)> {
     let dir = fixtures::effects_dir();
@@ -61,119 +58,6 @@ fn goldens() -> Vec<(String, EffectLog)> {
             (name, log)
         })
         .collect()
-}
-
-/// A world under the golden's own serving policy (its header's `bus`, or
-/// the default when the golden was recorded on a host's bus), with the
-/// intake bound lifted so one tick takes every record it can.
-fn world(log: &EffectLog) -> App {
-    let mut app = App::new();
-    let policy = ServingPolicy {
-        command_capacity: 10_000,
-        ..log.header.bus.unwrap_or_default()
-    };
-    app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
-    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
-    app.finish();
-    app.cleanup();
-    app
-}
-
-/// Replay one golden through a fresh world and compare, returning the
-/// number of records replayed.
-fn replay_through_a_world(name: &str, log: &EffectLog) -> usize {
-    let mut app = world(log);
-    Replay::default()
-        .register(app.world_mut(), log)
-        .unwrap_or_else(|report| panic!("{name}: the golden registers: {report}"));
-    // The golden's recorder kept events, or it did not: the world's does
-    // the same, so the log it writes is comparable field for field.
-    let recorder = if log.records.iter().any(|record| record.events.is_some()) {
-        EffectLogRecorder::keeping_stream_events()
-    } else {
-        EffectLogRecorder::new()
-    };
-    EffectLogResource::install(app.world_mut(), recorder);
-    let entities = Replay::load(app.world_mut(), log);
-    assert_eq!(
-        entities.len(),
-        log.records.len(),
-        "{name}: one entity per record"
-    );
-
-    let start = Instant::now();
-    loop {
-        app.update();
-        let world = app.world();
-        if entities
-            .iter()
-            .all(|entity| world.get::<EffectOutcome>(*entity).is_some())
-        {
-            break;
-        }
-        assert!(
-            start.elapsed() < GUARD,
-            "{name}: not replayed within {GUARD:?}"
-        );
-        std::thread::yield_now();
-    }
-
-    let world = app.world();
-    let mut records: Vec<_> = log.records.iter().collect();
-    records.sort_by_key(|record| record.id);
-    for (entity, record) in entities.iter().zip(&records) {
-        assert_eq!(
-            world.get::<Issued>(*entity).expect("issued").0,
-            record.id,
-            "{name}: the recorded id"
-        );
-        let outcome = world.get::<EffectOutcome>(*entity).expect("answered");
-        assert_eq!(
-            serde_json::to_value(&outcome.0).expect("serde"),
-            serde_json::to_value(&record.outcome).expect("serde"),
-            "{name}: record {} replays its outcome",
-            record.id
-        );
-        if let Some(events) = &record.events {
-            let streamed = world
-                .get::<Streamed>(*entity)
-                .unwrap_or_else(|| panic!("{name}: record {} streamed", record.id));
-            assert_eq!(
-                serde_json::to_value(&streamed.events).expect("serde"),
-                serde_json::to_value(events).expect("serde"),
-                "{name}: record {} replays its events in order",
-                record.id
-            );
-        }
-    }
-    // The world's log is in begin order, as rig-agent's bus's is; under serial
-    // serving that is not id order in either runtime, so both sides are
-    // compared by id.
-    let mut replayed = world.resource::<EffectLogResource>().log().records;
-    replayed.sort_by_key(|record| record.id);
-    assert_eq!(replayed.len(), records.len(), "{name}: the world's log");
-    for (mine, theirs) in replayed.iter().zip(&records) {
-        assert_eq!(mine.id, theirs.id, "{name}");
-        assert_eq!(mine.key, theirs.key, "{name}");
-        assert_eq!(mine.parent, theirs.parent, "{name}: causality survives");
-        assert_eq!(mine.scope, theirs.scope, "{name}: the scope survives");
-        assert_eq!(
-            serde_json::to_value(&mine.kind).expect("serde"),
-            serde_json::to_value(&theirs.kind).expect("serde"),
-            "{name}: the request is the record's"
-        );
-        assert_eq!(
-            serde_json::to_value(&mine.outcome).expect("serde"),
-            serde_json::to_value(&theirs.outcome).expect("serde"),
-            "{name}"
-        );
-        assert_eq!(
-            serde_json::to_value(&mine.events).expect("serde"),
-            serde_json::to_value(&theirs.events).expect("serde"),
-            "{name}: kept events are kept again"
-        );
-    }
-    records.len()
 }
 
 #[test]

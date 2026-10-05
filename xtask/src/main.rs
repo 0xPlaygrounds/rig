@@ -17,13 +17,17 @@
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
 //! cargo xtask cassette record …   # re-record fixtures by owning test
+//! cargo xtask coverage --check     # fail if coverage, mutants or shapes drop
+//! cargo xtask tests prune --check  # fail if a unit test is subsumed
 //! ```
 
 mod bevy;
 mod cassette;
+mod coverage;
 mod packaging;
 mod support;
 mod test_layout;
+mod test_prune;
 mod verify;
 mod wires;
 
@@ -33,6 +37,20 @@ use std::process::ExitCode;
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let task = args.next();
+    if task.as_deref() == Some("coverage") {
+        let rest: Vec<String> = args.collect();
+        // nextest runs the per-test wrapper directly, never through cargo.
+        if let Some(("--wrap", wrapped)) = rest.split_first().map(|(f, r)| (f.as_str(), r)) {
+            return match coverage::wrap(wrapped) {
+                Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+                Err(error) => {
+                    eprintln!("error: {error}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        return finish(coverage::run(&workspace_root(), &rest).map_err(|e| e.to_string()));
+    }
 
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
@@ -40,13 +58,24 @@ fn main() -> ExitCode {
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some("cassette") => cassette::run(&workspace_root(), args.collect()),
+        Some("tests") => test_prune::run(&workspace_root(), &args.collect::<Vec<_>>()),
         Some(other) => Err(format!(
-            "unknown task {other:?}\n{USAGE}{}",
-            cassette::USAGE
+            "unknown task {other:?}\n{USAGE}{}\n{}{}",
+            cassette::USAGE,
+            coverage::USAGE,
+            test_prune::USAGE
         )),
-        None => Err(format!("no task given\n{USAGE}{}", cassette::USAGE)),
+        None => Err(format!(
+            "no task given\n{USAGE}{}\n{}{}",
+            cassette::USAGE,
+            coverage::USAGE,
+            test_prune::USAGE
+        )),
     };
+    finish(result)
+}
 
+fn finish(result: Result<(), String>) -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {

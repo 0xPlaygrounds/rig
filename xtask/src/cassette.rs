@@ -7,11 +7,15 @@
 //! (`recordings.tsv`), failed recordings, fixtures kept from failed runs and the
 //! created-resource ledger (`ledger.jsonl`).
 
+mod acceptance;
 mod audit;
+pub(crate) mod bank;
 mod goldens;
 mod owner;
+pub(crate) mod prune;
 mod record;
 mod scan;
+mod snapshots;
 mod spend;
 
 use std::path::{Path, PathBuf};
@@ -34,6 +38,20 @@ pub(crate) const USAGE: &str = "\
                               regenerate effect goldens from replay, revert
                               delivery-only churn and keep the base's delivery
                               batches (REF defaults to HEAD)
+  cassette snapshots [--check] [--test TARGET]...
+                              rewrite the request snapshots from replay, or
+                              with --check fail when a request differs from one
+  cassette acceptance [--check]
+                              write the acceptance index, or with --check fail
+                              when a request fact Rig sends has no live
+                              recording or the index is stale
+  cassette bank [--check]    write the reply bank, one real recorded reply per
+                              provider, completion encoder, reply shape and
+                              called tools, or with --check fail when it is stale
+  cassette prune [--check]    delete the cassette tests, fixtures and goldens the
+                              kept tests cover, by a fixed rule, into
+                              crates/rig-cassette/coverage/pruned.tsv, or with
+                              --check fail when the tree or the list disagrees
   cassette cleanup [ledger.jsonl]
                               delete provider state the ledger still holds";
 
@@ -60,6 +78,10 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
         "scan" => scan::run(root, rest),
         "goldens" => goldens::run(root, rest),
         "audit" => audit::run(root, rest),
+        "snapshots" => snapshots::run(root, rest),
+        "acceptance" => acceptance::run(root, rest),
+        "bank" => bank::run(root, rest),
+        "prune" => prune::run(root, rest),
         "cleanup" => cleanup(root, rest),
         other => Err(format!("unknown cassette command {other:?}\n{USAGE}")),
     }

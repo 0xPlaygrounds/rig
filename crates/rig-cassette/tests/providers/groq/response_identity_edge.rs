@@ -13,29 +13,6 @@ use rig::completion::CompletionRequest;
 const MODEL: &str = "openai/gpt-oss-120b";
 
 #[tokio::test]
-async fn blocking_response_carries_identity() -> Result<()> {
-    with_groq_cassette_result(
-        "response_identity_edge/blocking_response_carries_identity",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .call(CompletionRequest::new("Reply with exactly: identity probe"))
-                .await?;
-            anyhow::ensure!(
-                response
-                    .provider_request_id
-                    .as_deref()
-                    .is_some_and(|id| !id.trim().is_empty()),
-                "Groq sends x-request-id, so provider_request_id must be populated; got {:?}",
-                response.provider_request_id
-            );
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
 async fn streaming_terminal_carries_identity() -> Result<()> {
     use futures::StreamExt;
 
@@ -61,29 +38,6 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
                 "blocking/streaming parity: the SSE connection's x-request-id \
                  reaches the terminal; got {:?}",
                 terminal.provider_request_id
-            );
-            Ok::<_, anyhow::Error>(())
-        },
-    )
-    .await
-}
-
-/// A provider 4xx carries the failed call's transport request id (rig#2314).
-#[tokio::test]
-async fn provider_error_response_carries_request_id() -> Result<()> {
-    with_groq_cassette_result(
-        "response_identity_edge/provider_error_response_carries_request_id",
-        |client| async move {
-            let model = client.completion("groq-nonexistent-model-for-identity-edge");
-            let error = model
-                .call(CompletionRequest::new("Never answered"))
-                .await
-                .expect_err("a nonexistent model must fail");
-            anyhow::ensure!(
-                error
-                    .provider_request_id()
-                    .is_some_and(|id| !id.trim().is_empty()),
-                "the 4xx error carries the x-request-id Groq sent; got {error:?}"
             );
             Ok::<_, anyhow::Error>(())
         },

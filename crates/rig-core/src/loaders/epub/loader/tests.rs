@@ -1,29 +1,7 @@
-use crate::loaders::epub::text_processors::XmlProcessingError;
 use crate::loaders::epub::{RawTextProcessor, StripXmlProcessor, TextProcessor};
 use crate::loaders::test_fixtures::{fixture_glob, fixture_path};
 
 use super::EpubFileLoader;
-
-#[test]
-fn test_epub_loader_with_errors() {
-    let glob = fixture_glob("*.epub");
-    let loader = EpubFileLoader::<_, RawTextProcessor>::with_glob(&glob).unwrap();
-    let actual = loader
-        .load_with_path()
-        .ignore_errors()
-        .by_chapter()
-        .into_iter()
-        .collect::<Vec<_>>();
-
-    assert_eq!(actual.len(), 1);
-
-    let (_, chapters) = &actual[0];
-    assert_eq!(chapters.len(), 3);
-
-    for chapter in chapters {
-        assert!(chapter.1.is_ok());
-    }
-}
 
 #[test]
 fn test_epub_loader_with_ignoring_errors() {
@@ -153,61 +131,5 @@ fn stripped_xml_preserves_markup_boundaries() {
         ("<p>A<b> </b>&amp;B</p>", "A&B"),
     ] {
         assert_stripped_xml(xml, expected);
-    }
-}
-
-#[test]
-fn stripped_xml_rejects_unknown_references() {
-    for name in ["unknown", "nbsp", "AMP", ""] {
-        let xml = format!("<p>A&{name};B</p>");
-        let actual = StripXmlProcessor::process(&xml);
-        assert!(
-            matches!(
-                &actual,
-                Err(XmlProcessingError::Xml(quick_xml::Error::Escape(
-                    quick_xml::escape::EscapeError::UnrecognizedEntity(_, entity)
-                ))) if entity == name
-            ),
-            "input {xml:?}: expected an unknown entity error, got {actual:?}"
-        );
-    }
-}
-
-#[test]
-fn stripped_xml_rejects_invalid_character_references() {
-    for reference in [
-        "&#;",
-        "&#x;",
-        "&#xyz;",
-        "&#12z;",
-        "&#+33;",
-        "&#-1;",
-        "&#0;",
-        "&#x0;",
-        "&#55296;",
-        "&#xD800;",
-        "&#1114112;",
-        "&#x110000;",
-        "&#99999999999999999999;",
-    ] {
-        let xml = format!("<p>A{reference}B</p>");
-        let actual = StripXmlProcessor::process(&xml);
-        assert!(
-            matches!(
-                &actual,
-                Err(XmlProcessingError::Xml(quick_xml::Error::Escape(
-                    quick_xml::escape::EscapeError::InvalidCharRef(_)
-                )))
-            ),
-            "input {xml:?}: expected an invalid character reference error, got {actual:?}"
-        );
-    }
-}
-
-#[test]
-fn stripped_xml_rejects_unterminated_references() {
-    for xml in ["<p>A&amp</p>", "A&#33", "A&"] {
-        let actual = StripXmlProcessor::process(xml);
-        assert!(actual.is_err(), "input {xml:?}: got {actual:?}");
     }
 }

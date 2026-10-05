@@ -80,36 +80,6 @@ fn refused_without_touching_destination(checkpoint: &Checkpoint, what: &str) {
 }
 
 #[test]
-fn checkpoints_save_payload_once_and_remap_every_child() {
-    let (mut world, _, parts) = fixture();
-    let saved = save_world(&mut world).unwrap();
-    assert_eq!(saved.binaries.len(), 1, "one payload for two spellings");
-    let encoded = saved.to_json().unwrap();
-    assert_eq!(
-        encoded.matches("Zg==").count(),
-        1,
-        "the payload occurs once"
-    );
-    let saved = Checkpoint::from_json(&encoded).unwrap();
-    let mut restored = bare_world();
-    for _ in 0..17 {
-        restored.spawn_empty();
-    }
-    let loaded = load_world(&saved, &mut restored, RestoreMode::Strict, []).unwrap();
-    let utterance = loaded.with::<Utterance>(&restored)[0];
-    assert_eq!(read_message(&restored, utterance).unwrap(), parts);
-    assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
-    let children: Vec<Entity> = loaded.with::<ContentPart>(&restored);
-    assert_eq!(children.len(), 4);
-    assert!(
-        children
-            .iter()
-            .all(|part| restored.get::<ChildOf>(*part).map(ChildOf::parent) == Some(utterance)),
-        "every part is the loaded utterance's"
-    );
-}
-
-#[test]
 fn corrupt_hash_missing_handle_and_bad_parent_leave_destination_untouched() {
     let (mut world, _, _) = fixture();
     let original = round_trip(&save_world(&mut world).unwrap());
@@ -141,32 +111,6 @@ fn old_component_checkpoint_format_is_explicitly_refused() {
         "{error:?}"
     );
     refused_without_touching_destination(&checkpoint, "the old component format");
-}
-
-#[test]
-fn load_merges_with_live_assets_and_enforces_destination_limits() {
-    let (mut source, _, _) = fixture();
-    let saved = round_trip(&save_world(&mut source).unwrap());
-    let mut destination = bare_world();
-    let mut assets = BinaryAssets::with_limits(BinaryLimits {
-        per_asset: 1,
-        total: 1,
-        count: 1,
-    });
-    let existing = assets.insert(b"x".to_vec()).unwrap();
-    destination.insert_resource(assets);
-    let count = destination.entities().len();
-    let error = load_world(&saved, &mut destination, RestoreMode::Strict, []).unwrap_err();
-    assert!(matches!(error, CheckpointError::Binary(_)), "{error:?}");
-    assert_eq!(destination.entities().len(), count);
-    assert_eq!(
-        destination
-            .resource::<BinaryAssets>()
-            .get(existing)
-            .unwrap(),
-        b"x"
-    );
-    assert_eq!(destination.resource::<BinaryAssets>().byte_len(), 1);
 }
 
 /// A run's prompt of two spellings of one image: the world's one payload

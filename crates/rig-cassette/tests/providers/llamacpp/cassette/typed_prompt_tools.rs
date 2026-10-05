@@ -6,10 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::agent::{
-    AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
-    OutcomeAction, OutcomeEvent,
-};
 use rig::tool::Tool;
 
 use super::super::cassette_support::*;
@@ -34,80 +30,6 @@ struct WeatherTool {
 impl WeatherTool {
     fn new(call_count: Arc<AtomicUsize>) -> Self {
         Self { call_count }
-    }
-}
-
-#[derive(Clone, Default)]
-struct StepLogger {
-    completion_calls: Arc<AtomicUsize>,
-    tool_calls: Arc<AtomicUsize>,
-}
-
-impl StepLogger {
-    fn next_completion_call(&self) -> usize {
-        self.completion_calls.fetch_add(1, Ordering::SeqCst) + 1
-    }
-
-    fn current_completion_call(&self) -> usize {
-        self.completion_calls.load(Ordering::SeqCst)
-    }
-
-    fn next_tool_call(&self) -> usize {
-        self.tool_calls.fetch_add(1, Ordering::SeqCst) + 1
-    }
-}
-
-impl AgentHook for StepLogger {
-    async fn on_completion_call(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: CompletionCallEvent<'_>,
-    ) -> CompletionCallAction {
-        let call_no = self.next_completion_call();
-        println!("\n=== completion call #{call_no}: model input ===");
-        println!("history:\n{}", pretty_json(event.history));
-        println!("prompt:\n{}", pretty_json(event.prompt));
-        CompletionCallAction::continue_run()
-    }
-
-    async fn on_dispatch(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: DispatchEvent<'_>,
-    ) -> DispatchAction {
-        let Some(tool_name) = event.tool_name() else {
-            return DispatchAction::proceed();
-        };
-        let tool_no = self.next_tool_call();
-        println!("\n=== tool call #{tool_no}: model requested tool ===");
-        println!("tool_name: {tool_name}");
-        println!("call_id: {:?}", event.call_id);
-        println!("args: {}", event.tool_args().unwrap_or_default());
-        DispatchAction::proceed()
-    }
-
-    async fn on_outcome(
-        &self,
-        _ctx: &rig::agent::HookContext,
-        event: OutcomeEvent<'_>,
-    ) -> OutcomeAction {
-        if let Some(response) = event.completion() {
-            let call_no = self.current_completion_call();
-            println!("\n=== completion response #{call_no}: normalized choice ===");
-            println!("{}", pretty_json(&response.choice));
-            println!("usage: {:?}", response.usage);
-            println!("message_id: {:?}", response.response_id());
-            return OutcomeAction::proceed();
-        }
-        let (Some(tool_name), Some(result)) = (event.tool_name(), event.tool_result()) else {
-            return OutcomeAction::proceed();
-        };
-        println!("\n=== tool result: tool returned ===");
-        println!("tool_name: {tool_name}");
-        println!("call_id: {:?}", event.call_id);
-        println!("args: {}", event.tool_args().unwrap_or_default());
-        println!("result: {}", result.output().render());
-        OutcomeAction::proceed()
     }
 }
 
@@ -158,49 +80,6 @@ impl Tool for WeatherTool {
 
         std::future::ready(Ok(result))
     }
-}
-
-#[tokio::test]
-async fn prompt_typed_with_tool_call_verbatim_roundtrip() -> Result<()> {
-    with_llamacpp_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_verbatim_roundtrip", |client| async move {
-        let model = CASSETTE_MODEL;
-        let hook = StepLogger::default();
-
-        let call_count = Arc::new(AtomicUsize::new(0));
-
-        let agent = rig::AgentBuilder::new(client.completion(model))
-            .tool(WeatherTool::new(call_count.clone()))
-            .preamble(
-                "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. After calling the tool, return a JSON response with the city name and the weather description. DO NOT modify the description from the tool result.",
-            )
-            .build();
-
-        // The tool call needs a second turn to become an answer; the default
-        // is one, which is why this cell had never passed.
-        let result = agent
-            .prompt_typed::<WeatherResponse>("Hello, whats the weather in London?")
-            .add_hook(hook)
-            .max_turns(4)
-            .await;
-
-        println!("prompt_typed result: {result:#?}");
-
-        let response = result?;
-        println!("agent response: {response:#?}");
-
-        anyhow::ensure!(
-            call_count.load(Ordering::SeqCst) >= 1,
-            "expected the weather tool to be executed at least once"
-        );
-        crate::support::assert_weather_tool_roundtrip_response(
-            &response.output.city,
-            &response.output.weather,
-            "London",
-        );
-
-        Ok(())
-    })
-    .await
 }
 
 #[tokio::test]

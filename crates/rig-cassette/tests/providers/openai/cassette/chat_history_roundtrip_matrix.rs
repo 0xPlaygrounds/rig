@@ -13,12 +13,11 @@
 //! | surface | provider-native raw, normalized Rig response |
 //! | history shape | text, one tool result, two ordered tool results |
 //!
-//! That is 24 recorded cells. Every cell proves the exact serialized history
-//! from its fixture and compares the observed response text to those exact
-//! blocking or SSE bytes.
+//! That is 24 cells, of which the one below is a test. Each test proves the
+//! exact serialized history from its fixture and compares the observed response
+//! text to those exact blocking or SSE bytes.
 //!
-//! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
-//! pruned or assigned to unit-only coverage. Each explicit test maps to
+//! Each test maps to
 //! `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini models are stable history/tool-call controls from
 //! separate families. Assertions cover provider-native and normalized blocking
@@ -27,7 +26,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | 1 of 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool.yaml` |
 
 use rig::streaming::Item;
 use std::sync::{Arc, Mutex};
@@ -44,26 +43,22 @@ use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
-    Blocking,
     Streaming,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
     Gpt4oMini,
-    Gpt41Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Surface {
-    Raw,
     Normalized,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Shape {
     Text,
-    SingleTool,
     ParallelTool,
 }
 
@@ -86,7 +81,6 @@ type SharedObservation = Arc<Mutex<Option<Observation>>>;
 fn prompt(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "Reply with exactly the marker from the prior conversation.",
-        Shape::SingleTool => "Reply with exactly the value returned by lookup_marker.",
         Shape::ParallelTool => {
             "Reply with exactly the alpha and beta tool results joined by one hyphen, in call order."
         }
@@ -96,7 +90,6 @@ fn prompt(shape: Shape) -> &'static str {
 fn expected_text(shape: Shape) -> &'static str {
     match shape {
         Shape::Text => "lantern-42",
-        Shape::SingleTool => "azimuth-47",
         Shape::ParallelTool => "red-blue",
     }
 }
@@ -112,22 +105,6 @@ fn history(shape: Shape) -> Vec<Message> {
             Message::Assistant(rig_core::message::AssistantMessage::new(vec![
                 AssistantContent::text("lantern-42"),
             ])),
-        ],
-        Shape::SingleTool => vec![
-            Message::Assistant(rig_core::message::AssistantMessage::new(vec![
-                AssistantContent::tool_call(
-                    "call_history_single",
-                    rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
-                    json!({ "key": "harbor" }),
-                ),
-            ])),
-            Message::User {
-                content: vec![UserContent::tool_result(
-                    rig_core::message::CallId::from_wire("call_history_single"),
-                    rig_core::message::ToolName::new("lookup_marker").expect("tool name"),
-                    vec![ToolResultContent::text("azimuth-47")],
-                )],
-            },
         ],
         Shape::ParallelTool => vec![
             Message::Assistant(rig_core::message::AssistantMessage::new(vec![
@@ -189,69 +166,15 @@ fn request(cell: Cell) -> rig::completion::CompletionRequest {
     builder
 }
 
-fn normalized_text(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The text the provider's own reply carried, read out of
-/// [`rig::completion::CompletionResponse::raw`] — the value the deleted raw
-/// surface returned, serialized.
-fn provider_text(raw: &Value) -> Result<String> {
-    Ok(crate::raw_capture::chat::native_text(raw))
-}
-
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::Gpt4oMini => "gpt-4o-mini",
-        ModelVariant::Gpt41Mini => "gpt-4.1-mini",
     }
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.openai.chat(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
-        (Transport::Blocking, Surface::Raw) => {
-            // The raw surface is the same reply: the native chat-completions
-            // response rides serialized on `CompletionResponse::raw`, so this
-            // cell reads the text off the provider's own fields where the
-            // normalized cell below reads rig's.
-            let response = model.call(request(cell)).await?;
-            Observation {
-                text: provider_text(&response.raw)?,
-                saw_terminal: true,
-            }
-        }
-        (Transport::Blocking, Surface::Normalized) => {
-            let response = model.call(request(cell)).await?;
-            Observation {
-                text: normalized_text(&response.choice),
-                saw_terminal: true,
-            }
-        }
-        (Transport::Streaming, Surface::Raw) => {
-            // The raw surface is the same event stream; the native terminal
-            // record rides on the response's `raw`, so the raw cell asserts the
-            // terminal decodes back to the chat-completions native type.
-            let mut stream = model.stream(request(cell))?;
-            let mut text = String::new();
-            while let Some(item) = stream.next().await {
-                if let Item::Event(StreamEvent::Text { text: delta, .. }) = item? {
-                    text.push_str(&delta);
-                }
-            }
-            let record = stream.finish().await?;
-            anyhow::ensure!(record.raw.is_object(), "the terminal record is a document");
-            Observation {
-                text,
-                saw_terminal: true,
-            }
-        }
         (Transport::Streaming, Surface::Normalized) => {
             let mut stream = model.stream(request(cell))?;
             let mut text = String::new();
@@ -286,9 +209,6 @@ fn content_text(content: &Value) -> String {
 
 fn recorded_text(scenario: &str, transport: Transport) -> String {
     match transport {
-        Transport::Blocking => {
-            content_text(&recorded_response(scenario)["choices"][0]["message"]["content"])
-        }
         Transport::Streaming => recorded_stream_chunks(scenario)
             .iter()
             .flat_map(|chunk| chunk["choices"].as_array().into_iter().flatten())
@@ -300,10 +220,6 @@ fn recorded_text(scenario: &str, transport: Transport) -> String {
 
 fn recorded_request(scenario: &str) -> Value {
     crate::cassettes::recorded_json_request("openai", scenario)
-}
-
-fn recorded_response(scenario: &str) -> Value {
-    crate::cassettes::recorded_json_response("openai", scenario)
 }
 
 fn recorded_stream_chunks(scenario: &str) -> Vec<Value> {
@@ -342,28 +258,6 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
             );
             assert_eq!(messages[1]["role"], "assistant", "{scenario}");
             assert_eq!(content_text(&messages[1]["content"]), "lantern-42");
-        }
-        Shape::SingleTool => {
-            assert_eq!(messages.len(), 3, "{scenario}: single-tool history length");
-            assert_eq!(messages[0]["role"], "assistant", "{scenario}");
-            let calls = messages[0]["tool_calls"]
-                .as_array()
-                .expect("assistant tool calls");
-            assert_eq!(calls.len(), 1, "{scenario}");
-            assert_eq!(calls[0]["function"]["name"], "lookup_marker", "{scenario}");
-            assert_eq!(
-                serde_json::from_str::<Value>(
-                    calls[0]["function"]["arguments"]
-                        .as_str()
-                        .expect("tool arguments string")
-                )
-                .expect("tool arguments JSON"),
-                json!({ "key": "harbor" }),
-                "{scenario}"
-            );
-            assert_eq!(messages[1]["role"], "tool", "{scenario}");
-            assert_eq!(messages[1]["tool_call_id"], calls[0]["id"], "{scenario}");
-            assert_eq!(content_text(&messages[1]["content"]), "azimuth-47");
         }
         Shape::ParallelTool => {
             assert_eq!(messages.len(), 4, "{scenario}: parallel history length");
@@ -444,51 +338,5 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 crate::matrix::case_matrix! {
     wrapper: with_openai_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
     # [tokio :: test]
-    blocking_gpt_4o_mini_raw_text: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_raw_single_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_raw_parallel_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_text: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_single_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4o_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_text: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_single_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_raw_parallel_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_normalized_text: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_normalized_single_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    blocking_gpt_4_1_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_text: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_single_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_raw_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_normalized_text: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4o_mini_normalized_single_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
     streaming_gpt_4o_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_text: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_single_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_raw_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_normalized_text: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_normalized_single_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
-    # [tokio :: test]
-    streaming_gpt_4_1_mini_normalized_parallel_tool: ("chat_history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
 }

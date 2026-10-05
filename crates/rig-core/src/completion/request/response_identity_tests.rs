@@ -16,26 +16,3 @@ fn completion_response_without_request_id_deserializes() {
     assert_eq!(response.provider_request_id, None);
     assert_eq!(response.identity(), ResponseIdentity::default());
 }
-
-/// The identity accessor mirrors the flat fields exactly.
-#[test]
-fn identity_accessor_mirrors_flat_fields() {
-    let response = {
-        let mut response = CompletionResponse::new(
-            vec![crate::completion::AssistantContent::text("hi")],
-            Usage::default(),
-            crate::message::Origin::new("test.api", "test", ""),
-            serde_json::json!({}),
-        );
-        response.origin.response_id = Some("resp_1".into());
-        response.provider_request_id = Some("req_1".into());
-        response
-    };
-    assert_eq!(
-        response.identity(),
-        ResponseIdentity {
-            response_id: Some("resp_1".into()),
-            provider_request_id: Some("req_1".into()),
-        }
-    );
-}

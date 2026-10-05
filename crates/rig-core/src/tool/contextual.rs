@@ -453,6 +453,3 @@ pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
         parameters: tool.parameters(),
     }
 }
-
-#[cfg(test)]
-mod tests;

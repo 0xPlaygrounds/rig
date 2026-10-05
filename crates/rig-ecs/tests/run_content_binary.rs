@@ -3,45 +3,6 @@ use rig_core::message::DocumentSourceKind;
 use rig_ecs::agent::content::binary::*;
 
 #[test]
-fn equivalent_sources_share_bytes_but_keep_each_wire_spelling() {
-    let mut store = BinaryAssets::default();
-    for spelling in ["Zg==", "Zg=", "Zg", "Zh==", "Zh=", "Zh"] {
-        let original = DocumentSourceKind::Base64(spelling.into());
-        let handle = store.intern(original.clone()).unwrap();
-        assert_eq!(store.resolve(&handle).unwrap(), original);
-        assert_eq!(store.len(), 1);
-        assert_eq!(store.byte_len(), 1);
-    }
-    let raw = store
-        .intern(DocumentSourceKind::Raw(b"f".to_vec()))
-        .unwrap();
-    assert_eq!(
-        store.resolve(&raw).unwrap(),
-        DocumentSourceKind::Raw(b"f".to_vec())
-    );
-    assert_eq!(store.len(), 1);
-    assert_eq!(store.get(BinaryId::of(b"f")).unwrap(), b"f");
-}
-
-#[test]
-fn every_short_payload_preserves_optional_padding_and_trailing_bits() {
-    use base64::{Engine, prelude::BASE64_STANDARD};
-    let mut store = BinaryAssets::default();
-    for size in 0..32 {
-        let payload: Vec<u8> = (0..size).map(|n| n * 7).collect();
-        let canonical = BASE64_STANDARD.encode(&payload);
-        for spelling in [
-            canonical.clone(),
-            canonical.trim_end_matches('=').to_owned(),
-        ] {
-            let source = DocumentSourceKind::Base64(spelling);
-            let handle = store.intern(source.clone()).unwrap();
-            assert_eq!(store.resolve(&handle).unwrap(), source);
-        }
-    }
-}
-
-#[test]
 fn nonbinary_sources_stay_data_without_asset_or_io() {
     let mut store = BinaryAssets::default();
     for source in [

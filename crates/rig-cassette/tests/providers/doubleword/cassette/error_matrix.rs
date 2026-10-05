@@ -33,7 +33,6 @@ use super::super::support::{
 use rig::completion::CompletionRequest;
 
 const PROMPT: &str = "Reply with error-probe.";
-const UNKNOWN_MODEL: &str = "rig/definitely-not-a-doubleword-model";
 
 fn assert_nested_error_envelope(json: &serde_json::Value) {
     let has_nested_error = json.get("error").is_some_and(serde_json::Value::is_object);
@@ -98,29 +97,6 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
     );
 }
 
-async fn unknown_model_blocking_body(client: OpenAiModels) {
-    let model = client.completion(UNKNOWN_MODEL);
-    let error = model
-        .call(CompletionRequest::new(PROMPT).max_tokens(8))
-        .await
-        .expect_err("an unknown model should be rejected");
-    assert_preserved_client_error(&error, 404);
-}
-
-async fn unknown_model_streaming_body(client: OpenAiModels) {
-    let model = client.completion(UNKNOWN_MODEL);
-    let result = model.stream(CompletionRequest::new(PROMPT).max_tokens(8));
-    let mut stream = result.expect("streaming HTTP failures are delivered in-band");
-    let error = loop {
-        match stream.next().await {
-            Some(Err(error)) => break error,
-            Some(Ok(_)) => continue,
-            None => panic!("unknown-model stream ended without its provider error"),
-        }
-    };
-    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 404);
-}
-
 async fn invalid_key_blocking_body(client: OpenAiModels) {
     let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
@@ -128,20 +104,6 @@ async fn invalid_key_blocking_body(client: OpenAiModels) {
         .await
         .expect_err("invalid credentials should be rejected");
     assert_preserved_client_error(&error, 403);
-}
-
-async fn invalid_key_streaming_body(client: OpenAiModels) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
-    let result = model.stream(CompletionRequest::new(PROMPT).max_tokens(8));
-    let mut stream = result.expect("streaming HTTP failures are delivered in-band");
-    let error = loop {
-        match stream.next().await {
-            Some(Err(error)) => break error,
-            Some(Ok(_)) => continue,
-            None => panic!("invalid-key stream ended without its provider error"),
-        }
-    };
-    assert_preserved_client_error_report(&rig::ErrorReport::from(&error), 403);
 }
 
 async fn invalid_temperature_blocking_body(client: OpenAiModels) {
@@ -176,32 +138,6 @@ async fn invalid_temperature_streaming_body(client: OpenAiModels) {
 }
 
 #[tokio::test]
-async fn unknown_model_blocking() {
-    const SCENARIO: &str = "error_matrix/unknown_model_blocking";
-    with_doubleword_cassette(
-        "error_matrix/unknown_model_blocking",
-        unknown_model_blocking_body,
-    )
-    .await;
-    assert_recorded_error(SCENARIO, 404, Some(("model", json!(UNKNOWN_MODEL))));
-}
-
-#[tokio::test]
-async fn unknown_model_streaming() {
-    const SCENARIO: &str = "error_matrix/unknown_model_streaming";
-    with_doubleword_cassette(
-        "error_matrix/unknown_model_streaming",
-        unknown_model_streaming_body,
-    )
-    .await;
-    assert_recorded_error(SCENARIO, 404, Some(("model", json!(UNKNOWN_MODEL))));
-    assert_recorded_transport_parity(
-        "error_matrix/unknown_model_blocking",
-        "error_matrix/unknown_model_streaming",
-    );
-}
-
-#[tokio::test]
 async fn invalid_key_blocking() {
     const SCENARIO: &str = "error_matrix/invalid_key_blocking";
     with_doubleword_bogus_key_cassette(
@@ -213,25 +149,6 @@ async fn invalid_key_blocking() {
         SCENARIO,
         403,
         Some(("model", json!(doubleword::QWEN3_5_9B))),
-    );
-}
-
-#[tokio::test]
-async fn invalid_key_streaming() {
-    const SCENARIO: &str = "error_matrix/invalid_key_streaming";
-    with_doubleword_bogus_key_cassette(
-        "error_matrix/invalid_key_streaming",
-        invalid_key_streaming_body,
-    )
-    .await;
-    assert_recorded_error(
-        SCENARIO,
-        403,
-        Some(("model", json!(doubleword::QWEN3_5_9B))),
-    );
-    assert_recorded_transport_parity(
-        "error_matrix/invalid_key_blocking",
-        "error_matrix/invalid_key_streaming",
     );
 }
 

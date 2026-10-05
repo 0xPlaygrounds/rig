@@ -41,31 +41,43 @@ fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {
     .expect("request should build")
 }
 
-#[test]
-fn a_bare_id_is_rejected_before_the_request_goes_out() {
-    let mut request = request_with(None, false);
-    let error = with_cached_content(&mut request, "abc123").expect_err("a bare id is not a handle");
-    assert!(error.to_string().contains("cachedContents/<id>"), "{error}");
-}
-
-/// Gemini answers this with a 400 after a round trip, and does not say
+/// Gemini answers a conflict with a 400 after a round trip, and does not say
 /// *which* of the three conflicted. Rig should not need the round trip.
 #[test]
-fn a_preamble_alongside_a_cache_handle_is_rejected_locally() {
-    let mut request = request_with(Some("you are a helpful assistant"), false);
-    let error = with_cached_content(&mut request, "cachedContents/abc123")
-        .expect_err("a system instruction conflicts with cached content");
-    let message = error.to_string();
-    assert!(message.contains("system instruction"), "{message}");
-    assert!(message.contains("cachedContents/abc123"), "{message}");
-}
-
-#[test]
-fn tools_alongside_a_cache_handle_are_rejected_locally() {
-    let mut request = request_with(None, true);
-    let error = with_cached_content(&mut request, "cachedContents/abc123")
-        .expect_err("tools conflict with cached content");
-    assert!(error.to_string().contains("tools"), "{error}");
+fn a_bad_handle_or_a_conflict_is_rejected_before_the_request_goes_out() {
+    let cases: [(&str, Option<&str>, bool, &str, &[&str]); 3] = [
+        (
+            "a bare id is not a handle",
+            None,
+            false,
+            "abc123",
+            &["cachedContents/<id>"],
+        ),
+        (
+            "a system instruction conflicts with cached content",
+            Some("you are a helpful assistant"),
+            false,
+            "cachedContents/abc123",
+            &["system instruction", "cachedContents/abc123"],
+        ),
+        (
+            "tools conflict with cached content",
+            None,
+            true,
+            "cachedContents/abc123",
+            &["tools"],
+        ),
+    ];
+    for (case, preamble, tools, handle, expected) in cases {
+        let mut request = request_with(preamble, tools);
+        let Err(error) = with_cached_content(&mut request, handle) else {
+            panic!("{case}: the request was accepted");
+        };
+        let message = error.to_string();
+        for fragment in expected {
+            assert!(message.contains(fragment), "{case}: {message}");
+        }
+    }
 }
 
 /// The remedy differs per conflict, and only the tools arm may say so.
@@ -158,18 +170,6 @@ fn a_smuggled_function_declaration_still_earns_the_caveat() {
     assert!(message.contains("declarations only"), "{message}");
 }
 
-#[test]
-fn a_clean_request_accepts_the_handle_and_puts_it_on_the_wire() {
-    let mut request = request_with(None, false);
-    with_cached_content(&mut request, "cachedContents/abc123")
-        .expect("a request with no system instruction or tools should accept a handle");
-
-    assert_eq!(
-        request.get("cachedContent").and_then(|v| v.as_str()),
-        Some("cachedContents/abc123")
-    );
-}
-
 /// The body of a request with an optional preamble and `additional`
 /// merged in, through the route a caller reaches without the typed API.
 fn build_with(
@@ -206,23 +206,6 @@ fn a_handle_set_only_through_additional_params_is_still_validated() {
     assert!(message.contains("cachedContents/smuggled"), "{message}");
 }
 
-/// The same route with nothing to conflict with puts the handle on the wire.
-#[test]
-fn a_clean_handle_from_additional_params_reaches_the_wire() {
-    let body = build_with(
-        None,
-        Some(serde_json::json!({"cachedContent": "cachedContents/lifted", "topK": 5})),
-    )
-    .expect("a clean request should build");
-
-    assert_eq!(
-        body.get("cachedContent").and_then(|value| value.as_str()),
-        Some("cachedContents/lifted")
-    );
-    // And the unrelated key still flattens through.
-    assert_eq!(body.get("topK").and_then(|value| value.as_u64()), Some(5));
-}
-
 /// Two different handles is an ambiguity, not a precedence puzzle.
 #[test]
 fn setting_the_handle_twice_with_different_values_is_refused() {
@@ -239,81 +222,12 @@ fn setting_the_handle_twice_with_different_values_is_refused() {
     assert!(message.contains("from_builder"), "{message}");
 }
 
-/// Setting the same handle twice is harmless and must not error.
-#[test]
-fn setting_the_same_handle_twice_is_accepted() {
-    let mut request = build_with(
-        None,
-        Some(serde_json::json!({"cachedContent": "cachedContents/same"})),
-    )
-    .expect("a clean request should build");
-    with_cached_content(&mut request, "cachedContents/same")
-        .expect("the same handle twice is not ambiguous");
-}
-
 /// A non-string handle is a caller error, caught before the wire.
 #[test]
 fn a_non_string_handle_in_additional_params_is_refused() {
     let error = build_with(None, Some(serde_json::json!({"cachedContent": 42})))
         .expect_err("a numeric handle should be refused");
     assert!(error.to_string().contains("should be a string"), "{error}");
-}
-
-/// Unrelated `additional_params` keys must still flatten alongside the
-/// typed field.
-#[test]
-fn unrelated_additional_params_coexist_with_the_typed_field() {
-    let mut request = body_of(
-        CompletionRequest::new(Message::User {
-            content: vec![UserContent::text("hi")],
-        })
-        .additional_params(serde_json::json!({"topK": 5})),
-    )
-    .expect("request should build");
-    with_cached_content(&mut request, "cachedContents/typed").expect("handle should be accepted");
-
-    assert_eq!(
-        request.get("cachedContent").and_then(|v| v.as_str()),
-        Some("cachedContents/typed")
-    );
-    assert_eq!(request.get("topK").and_then(|v| v.as_u64()), Some(5));
-}
-
-/// The other two fields a cached content owns, smuggled the same way the
-/// handle was.
-///
-/// The conflict check reads the body, so a `systemInstruction` or
-/// `toolConfig` from `additional_params` conflicts as the typed field does.
-#[test]
-fn a_system_instruction_or_tool_choice_from_additional_params_still_conflicts() {
-    for (label, smuggled) in [
-        (
-            "systemInstruction",
-            serde_json::json!({
-                "systemInstruction": {"parts": [{"text": "you are terse"}], "role": "model"}
-            }),
-        ),
-        (
-            "toolConfig",
-            serde_json::json!({
-                "toolConfig": {"functionCallingConfig": {"mode": "ANY"}}
-            }),
-        ),
-    ] {
-        let mut request = build_with(None, Some(smuggled)).expect("request should build");
-        let message = with_cached_content(&mut request, "cachedContents/abc123")
-            .expect_err(&format!("a smuggled {label} conflicts with a cache handle"))
-            .to_string();
-        let expected = if label == "systemInstruction" {
-            "a system instruction"
-        } else {
-            "a tool choice"
-        };
-        assert!(
-            message.contains(expected),
-            "the {label} route must reach the same conflict as the typed field: {message}"
-        );
-    }
 }
 
 /// Whether or not a cache is involved, one field reached two ways is
@@ -345,111 +259,6 @@ fn setting_a_field_twice_is_refused_rather_than_resolved_by_serialization_order(
     .expect_err("a tool_choice and a smuggled toolConfig are two answers")
     .to_string();
     assert!(message.contains("set the tool choice twice"), "{message}");
-}
-
-/// Whatever the caller put in `additional_params` reaches the wire byte for
-/// byte, including shapes rig does not model. Narrowing them would drop
-/// fields such as `allowedFunctionNames` without an error.
-#[test]
-fn a_smuggled_field_reaches_the_wire_exactly_as_the_caller_wrote_it() {
-    for smuggled in [
-        // Rig spells its own allow-list `allowed_function_names`.
-        serde_json::json!({
-            "toolConfig": {
-                "functionCallingConfig": {
-                    "mode": "ANY",
-                    "allowedFunctionNames": ["get_weather"]
-                }
-            }
-        }),
-        // Modes rig does not enumerate.
-        serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "MODE_UNSPECIFIED"}}}),
-        serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "VALIDATED"}}}),
-        // The proto-original spelling, which proto3 JSON accepts alongside
-        // the lowerCamelCase alias.
-        serde_json::json!({"tool_config": {"function_calling_config": {"mode": "ANY"}}}),
-        // A system instruction carrying a part kind rig does not decode.
-        serde_json::json!({
-            "systemInstruction": {
-                "parts": [{"videoMetadata": {"startOffset": "0s", "endOffset": "5s"}}]
-            }
-        }),
-    ] {
-        let request = build_with(None, Some(smuggled.clone()))
-            .unwrap_or_else(|error| panic!("{smuggled} should build, got {error}"));
-        // The claim is about the bytes, so it reads the serialized body.
-        let body = serde_json::to_string(&request).expect("serialize");
-
-        for (key, expected) in smuggled.as_object().expect("object") {
-            let needle = format!(
-                "\"{key}\":{}",
-                serde_json::to_string(expected).expect("serialize")
-            );
-            assert!(
-                body.contains(&needle),
-                "additional_params must reach the wire byte for byte; expected {needle} in \
-                     {body}"
-            );
-        }
-    }
-}
-
-/// The conflict check has to know both spellings, or it documents its own
-/// bypass.
-#[test]
-fn the_proto_original_spelling_conflicts_too() {
-    for (spelling, expected) in [
-        ("system_instruction", "a system instruction"),
-        ("tool_config", "a tool choice"),
-    ] {
-        let mut request = build_with(
-            None,
-            Some(serde_json::json!({ spelling: {"parts": [{"text": "x"}]} })),
-        )
-        .expect("request should build");
-        let message = with_cached_content(&mut request, "cachedContents/abc123")
-            .expect_err("the proto spelling is the same field")
-            .to_string();
-        assert!(
-            message.contains(expected),
-            "`{spelling}` must reach the same conflict as its camelCase alias: {message}"
-        );
-    }
-}
-
-/// A field reached through the blob replaces the request's own `null` in
-/// place: the body names it once, with the caller's value, where the request
-/// names the field.
-#[test]
-fn a_blob_field_replaces_its_typed_null_in_place() {
-    let request = build_with(
-        None,
-        Some(serde_json::json!({"toolConfig": {"functionCallingConfig": {"mode": "ANY"}}})),
-    )
-    .expect("request should build");
-    let body = serde_json::to_string(&request).expect("serialize");
-
-    assert_eq!(
-        body.matches("\"toolConfig\"").count(),
-        1,
-        "the blob value replaces the null rather than sitting beside it: {body}"
-    );
-    assert_eq!(
-        request.get("toolConfig"),
-        Some(&serde_json::json!({"functionCallingConfig": {"mode": "ANY"}}))
-    );
-    let keys: Vec<&str> = request.keys().map(String::as_str).collect();
-    assert_eq!(
-        keys,
-        [
-            "contents",
-            "generationConfig",
-            "safetySettings",
-            "toolConfig",
-            "systemInstruction"
-        ],
-        "the field keeps the place the request gives it"
-    );
 }
 
 /// The handle's own proto-original spelling gets every check.
@@ -541,17 +350,4 @@ fn a_hand_built_request_conflicts_on_tools_left_in_additional_params() {
             "{label}: the caveat must track whether functions were declared: {message}"
         );
     }
-}
-
-/// An explicit `null` is how serde spells "unset", so it must not be
-/// mistaken for a value the caller set.
-#[test]
-fn an_explicit_null_is_not_a_conflict() {
-    let mut request = build_with(
-        None,
-        Some(serde_json::json!({"systemInstruction": null, "toolConfig": null})),
-    )
-    .expect("request should build");
-    with_cached_content(&mut request, "cachedContents/abc123")
-        .expect("a null is not a value the caller set");
 }

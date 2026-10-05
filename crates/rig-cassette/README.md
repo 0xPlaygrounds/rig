@@ -151,6 +151,29 @@ asks for recording, so a candidate is never implicitly promoted to a fixture.
 While a live run is in progress, `checkpoint_recording` writes the completed,
 scrubbed exchanges to a partial path without finalizing the recording.
 
+`RIG_CASSETTE_SNAPSHOTS` is off unless set. With `check`, a replay session
+also compares each request body with the fixture's request snapshot,
+`<fixture>.requests.json` (`request_snapshot`), and `finish` returns
+`CassetteError::SnapshotMismatch` naming each difference by JSON pointer.
+With `write`, the session rewrites the snapshot from the requests it received.
+A snapshot holds only how a sent body differs from its recording, compared
+after scrubbing as canonical JSON or as multipart parts, so a fixture whose
+requests equal their recordings has none. This repository sets `check` for
+its own cassette tests.
+
+Replay compares request bodies exactly unless `RIG_CASSETTE_MATCHING=shape`
+is set or the spec says `.shape_matched()`; `.exact_matched()` keeps exact
+matching whatever the variable says. Shape matching still compares the
+method, path, query and recorded headers exactly, but compares bodies by a
+coarse key: the field structure, the order of arrays of objects, and the
+values of `model`, `role`, `name` and `stream`, with every other value, the
+types of content, tool schemas and tool arguments erased. A change to how a
+request is written then replays without a new recording, and with snapshots
+on in `check` mode the session fails until the snapshot holds the change.
+Unordered shape matching serves, among the interactions with the request's
+key, the one whose body is closest to the request's. This
+repository sets `shape` for its own cassette tests.
+
 A recording only becomes the fixture when the test passed and the recording is
 clean. A failed test's exchanges, and a recording `finish` refuses, go under
 `attempt_root()` (`RIG_CASSETTE_ATTEMPT_DIR`, default `cassette-attempts` in the

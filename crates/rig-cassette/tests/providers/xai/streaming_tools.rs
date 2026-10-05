@@ -1,5 +1,4 @@
 //! xAI streaming tools smoke test.
-use rig::message::ToolChoice;
 use rig::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig::providers::xai;
 use rig::tool::Tool;
@@ -8,10 +7,9 @@ use serde_json::json;
 
 use super::support::with_xai_cassette;
 use crate::support::{
-    REQUIRED_ZERO_ARG_TOOL_PROMPT, assert_raw_stream_text_contains,
-    assert_raw_stream_tool_call_precedes_text, assert_stream_contains_zero_arg_tool_call_named,
+    assert_raw_stream_text_contains, assert_raw_stream_tool_call_precedes_text,
     assert_tool_call_precedes_later_text, collect_raw_stream_observation,
-    collect_stream_observation, zero_arg_tool_definition,
+    collect_stream_observation,
 };
 use rig::completion::CompletionRequest;
 
@@ -57,23 +55,6 @@ impl Tool for StatusWordTool {
     ) -> Result<Self::Output, Self::Error> {
         Ok(XAI_STATUS_TOOL_OUTPUT.to_string())
     }
-}
-
-#[tokio::test]
-async fn raw_stream_emits_required_zero_arg_tool_call() {
-    with_xai_cassette(
-        "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
-        |client| async move {
-            let model = client.completion(xai::GROK_4);
-            let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
-                .tool(zero_arg_tool_definition("ping"))
-                .tool_choice(ToolChoice::Required);
-            let stream = model.stream(request).expect("stream should start");
-
-            assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
-        },
-    )
-    .await;
 }
 
 #[tokio::test]

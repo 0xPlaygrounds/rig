@@ -13,10 +13,9 @@ use rig_test_support::cassettes;
 use rig_test_support::ecs_agent;
 #[path = "common/ecs_lifecycle.rs"]
 mod ecs_lifecycle;
+#[allow(dead_code, reason = "this target uses part of the shared driver")]
 #[path = "common/ecs_observation.rs"]
 mod ecs_observation;
-#[path = "common/ecs_termination.rs"]
-mod ecs_termination;
 use rig_test_support::goldens;
 use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
@@ -40,6 +39,3 @@ mod ecs_matrix;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;
-
-#[path = "common/request_identity.rs"]
-mod request_identity;

@@ -54,13 +54,30 @@ fn an_await_hidden_in_a_macro_body_is_rejected() {
 /// The token pass is not a text search: a comment is not a token and a
 /// string literal is one, so neither can name an `.await`.
 #[test]
-fn an_await_in_a_comment_or_a_string_is_not_one() {
-    let source = r#"
-        // the driver does the .await
-        /// doc: `x.await`
-        fn name() -> &'static str { ".await" }
-    "#;
-    assert!(offenders("anthropic/wire.rs", source).is_empty());
+fn a_plain_wire_and_an_await_in_a_comment_or_a_string_pass() {
+    for (case, source) in [
+        (
+            "an await in a comment or a string is not one",
+            r#"
+            // the driver does the .await
+            /// doc: `x.await`
+            fn name() -> &'static str { ".await" }
+        "#,
+        ),
+        (
+            "a plain wire passes",
+            r#"
+            pub struct Messages { pub model: String }
+            impl Wire for Messages {
+                fn name(&self) -> &str { "anthropic" }
+                fn decoder(&self, _mode: Mode) -> MessagesDecoder { MessagesDecoder::new("anthropic") }
+            }
+        "#,
+        ),
+    ] {
+        let found = offenders("anthropic/wire.rs", source);
+        assert!(found.is_empty(), "{case}: {found:?}");
+    }
 }
 
 /// The rule is the **bound**, not the letter: what makes a parameter a
@@ -136,18 +153,6 @@ fn a_provider_may_not_implement_transport() {
             .first()
             .is_some_and(|report| report.contains("`driver::http_transport`"))
     );
-}
-
-#[test]
-fn a_plain_wire_passes() {
-    let source = r#"
-        pub struct Messages { pub model: String }
-        impl Wire for Messages {
-            fn name(&self) -> &str { "anthropic" }
-            fn decoder(&self, _mode: Mode) -> MessagesDecoder { MessagesDecoder::new("anthropic") }
-        }
-    "#;
-    assert!(offenders("anthropic/wire.rs", source).is_empty());
 }
 
 #[test]

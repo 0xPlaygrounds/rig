@@ -40,3 +40,32 @@ fn a_raw_frame_carries_no_protocol_payload() {
 
     assert_eq!(from_message(raw), None);
 }
+
+/// Releasing the last command handle ends the actor, so a connection whose
+/// owner is gone never keeps its socket. The owner's drop also aborts the
+/// actor, and that abort can land first, so this drives the actor directly.
+#[tokio::test]
+async fn the_actor_ends_when_its_last_handle_is_released() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind a loopback listener");
+    let address = listener.local_addr().expect("listener address");
+    let (client, accepted) = tokio::join!(TcpStream::connect(address), listener.accept());
+    let client = client.expect("connect to the listener");
+    let _server = accepted.expect("accept the client");
+    let socket = WebSocketStream::from_raw_socket(
+        MaybeTlsStream::Plain(client),
+        tungstenite::protocol::Role::Client,
+        None,
+    )
+    .await;
+    let (commands, requests) = futures::channel::mpsc::channel::<Command>(1);
+    drop(commands);
+
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        run_actor(socket, requests),
+    )
+    .await
+    .expect("the actor should end once no handle remains");
+}

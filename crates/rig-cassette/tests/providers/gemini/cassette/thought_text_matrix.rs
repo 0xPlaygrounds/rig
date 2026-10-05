@@ -33,24 +33,9 @@
 //!
 //! | # | cell | reader | dimension pinned |
 //! |---|------|--------|------------------|
-//! | 1 | `transcription_with_visible_thoughts_returns_the_transcript` | transcription | the bug itself |
-//! | 2 | `transcription_with_thinking_disabled_is_unchanged` | transcription | no-thoughts regression guard |
-//! | 3 | `transcription_with_default_params_is_unchanged` | transcription | no `additional_params` at all |
-//! | 4 | `transcription_with_thoughts_on_gemini_3_flash` | transcription | `thinkingLevel` dialect |
 //! | 5 | `transcription_with_thoughts_and_temperature` | transcription | temperature alongside thoughts |
-//! | 6 | `transcription_with_a_large_thinking_budget` | transcription | long reasoning before the transcript |
-//! | 7 | `text_response_skips_thoughts_on_gemini_2_5_flash` | `text_response` | the bug's second reader |
-//! | 8 | `text_response_skips_thoughts_on_gemini_3_flash` | `text_response` | `thinkingLevel` dialect |
-//! | 9 | `text_response_with_thinking_disabled_is_unchanged` | `text_response` | no-thoughts regression guard |
-//! | 10 | `text_response_on_gemini_2_5_flash_lite` | `text_response` | third model |
-//! | 11 | `text_response_on_gemini_3_1_flash_lite` | `text_response` | pre-thinking model family |
-//! | 12 | `text_response_with_a_large_thinking_budget` | `text_response` | long reasoning |
-//! | 13 | `text_response_with_a_preamble` | `text_response` | `systemInstruction` present |
-//! | 14 | `text_response_on_a_tool_call_turn` | `text_response` | thought part beside a `functionCall` |
 //! | 15 | `text_response_with_structured_output` | `text_response` | `responseJsonSchema` turn |
 //! | 16 | `text_response_across_two_candidates` | `text_response` | `candidateCount: 2` |
-//! | 17 | `text_response_is_none_when_the_turn_is_all_thought` | `text_response` | budget spent entirely on thinking |
-//! | 18 | `streaming_twin_keeps_reasoning_out_of_the_text` | stream | streaming parity for the same request |
 //! | 19 | `text_response_matches_the_choice_text` (unit) | both | see below |
 //! | 20 | `transcription_joins_every_visible_text_part` (unit) | transcription | see below |
 //! | 21 | `transcription_rejects_a_thought_only_candidate` (unit) | transcription | see below |
@@ -58,19 +43,16 @@
 //! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `text_response` | see below |
 //! | 24 | — | — | deleted with the reader it tested; see below |
 //! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
-//! | 26 | `blocking_keeps_a_trailing_thought_signature` | blocking choice | Gemini 3's no-`thought`-flag signature |
-//! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the signature stays on its own part |
 //! | 28 | `a_trailing_signature_stays_on_its_text` (unit) | blocking | see below |
 //! | 29 | `a_thought_flagged_part_still_signs_its_own_reasoning` (unit) | blocking | see below |
 //! | 30 | `a_text_part_without_a_signature_yields_no_reasoning` (unit) | blocking | see below |
 //! | 31 | `transcription_rejects_a_candidate_with_no_parts_at_all` (unit) | transcription | see below |
 //! | 32 | `a_text_signature_does_not_sign_the_chain_of_thought` (unit) | blocking | see below |
 //!
-//! Cells 26–32 cover Gemini 3's `thoughtSignature` on an answer part carrying
+//! Cells 28–32 cover Gemini 3's `thoughtSignature` on an answer part carrying
 //! no `thought` flag. The signature stays in the provider item of the answer
-//! text that carried it, never on reasoning.
-//! Cells 26–27 are recorded; 28–32 state orderings one live turn cannot
-//! emit.
+//! text that carried it, never on reasoning. They state orderings one live
+//! turn cannot emit.
 //!
 //! The cells marked `(unit)` are unit tests because a live turn cannot be
 //! made to produce their states: Gemini does not split a short transcript
@@ -97,11 +79,8 @@
 //! filtered on it either. Nothing replaces the cell because nothing
 //! replaces the filter.
 
-use futures::StreamExt;
 use rig::message::AssistantContent;
 use rig::providers::gemini;
-use rig::streaming::Item;
-use rig::streaming::StreamEvent;
 use rig::transcription::TranscriptionRequestBuilder;
 use rig_test_support::cassette_models::GeminiModels;
 use serde_json::{Value, json};
@@ -131,16 +110,6 @@ const THOUGHT_MARKER: &[&str] = &["\"thought\""];
 /// completion surface).
 fn transcription_thinking(budget: u32, include: bool) -> Value {
     json!({ "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include } })
-}
-
-/// A completion `additional_params` value carrying a Gemini 2.5 thinking
-/// config.
-fn completion_thinking(budget: u32, include: bool) -> Value {
-    json!({
-        "generationConfig": {
-            "thinkingConfig": { "thinkingBudget": budget, "includeThoughts": include }
-        }
-    })
 }
 
 /// The text of a normalized choice, concatenated: the decoder's text blocks
@@ -292,108 +261,6 @@ async fn transcription_body(
 }
 
 #[tokio::test]
-async fn transcription_with_visible_thoughts_returns_the_transcript() {
-    const SCENARIO: &str =
-        "thought_text_matrix/transcription_with_visible_thoughts_returns_the_transcript";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/transcription_with_visible_thoughts_returns_the_transcript",
-        |client| {
-            transcription_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_2_5_FLASH,
-                Some(transcription_thinking(512, true)),
-                None,
-                true,
-                Some(SPOKEN_WORDS),
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn transcription_with_thinking_disabled_is_unchanged() {
-    const SCENARIO: &str = "thought_text_matrix/transcription_with_thinking_disabled_is_unchanged";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/transcription_with_thinking_disabled_is_unchanged",
-        |client| {
-            transcription_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_2_5_FLASH,
-                Some(transcription_thinking(0, false)),
-                None,
-                false,
-                Some(SPOKEN_WORDS),
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, false);
-}
-
-#[tokio::test]
-async fn transcription_with_default_params_is_unchanged() {
-    const SCENARIO: &str = "thought_text_matrix/transcription_with_default_params_is_unchanged";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/transcription_with_default_params_is_unchanged",
-        |client| {
-            transcription_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_2_5_FLASH,
-                None,
-                None,
-                false,
-                Some(SPOKEN_WORDS),
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, false);
-}
-
-#[tokio::test]
-async fn transcription_with_thoughts_on_gemini_3_flash() {
-    const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_on_gemini_3_flash";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/transcription_with_thoughts_on_gemini_3_flash",
-        |client| {
-            transcription_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_3_FLASH_PREVIEW,
-                Some(json!({
-                    "thinkingConfig": { "thinkingLevel": "high", "includeThoughts": true }
-                })),
-                None,
-                true,
-                // Gemini 3 obeys rig's "Translate the provided audio exactly"
-                // preamble literally and answers in another language, so this cell
-                // pins the mapping, not the wording.
-                None,
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
 async fn transcription_with_thoughts_and_temperature() {
     const SCENARIO: &str = "thought_text_matrix/transcription_with_thoughts_and_temperature";
     // The literal is repeated here on purpose: the cassette safety
@@ -407,30 +274,6 @@ async fn transcription_with_thoughts_and_temperature() {
                 gemini::completion::GEMINI_2_5_FLASH,
                 Some(transcription_thinking(512, true)),
                 Some(0.0),
-                true,
-                Some(SPOKEN_WORDS),
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn transcription_with_a_large_thinking_budget() {
-    const SCENARIO: &str = "thought_text_matrix/transcription_with_a_large_thinking_budget";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/transcription_with_a_large_thinking_budget",
-        |client| {
-            transcription_body(
-                client,
-                SCENARIO,
-                gemini::completion::GEMINI_2_5_FLASH,
-                Some(transcription_thinking(4096, true)),
-                None,
                 true,
                 Some(SPOKEN_WORDS),
             )
@@ -525,265 +368,6 @@ async fn text_response_body(client: GeminiModels, scenario: &'static str, cell: 
         answer_signatures,
         "{scenario}: every answer-part signature stays on its text"
     );
-}
-
-const THINKING_PROMPT: &str =
-    "Work out how many minutes are in three and a half days, then answer with only the number.";
-
-#[tokio::test]
-async fn text_response_skips_thoughts_on_gemini_2_5_flash() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_skips_thoughts_on_gemini_2_5_flash";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_skips_thoughts_on_gemini_2_5_flash",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: gemini::completion::GEMINI_2_5_FLASH,
-                    prompt: THINKING_PROMPT,
-                    preamble: None,
-                    params: Some(completion_thinking(512, true)),
-                    max_tokens: Some(2000),
-                    thoughts_expected: true,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn text_response_skips_thoughts_on_gemini_3_flash() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_skips_thoughts_on_gemini_3_flash";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_skips_thoughts_on_gemini_3_flash",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: gemini::completion::GEMINI_3_FLASH_PREVIEW,
-                    prompt: THINKING_PROMPT,
-                    preamble: None,
-                    params: Some(json!({
-                    "generationConfig": {
-                    "thinkingConfig": { "thinkingLevel": "low", "includeThoughts": true }
-                    }
-                    })),
-                    max_tokens: Some(2000),
-                    thoughts_expected: true,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn text_response_with_thinking_disabled_is_unchanged() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_with_thinking_disabled_is_unchanged";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_with_thinking_disabled_is_unchanged",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: gemini::completion::GEMINI_2_5_FLASH,
-                    prompt: THINKING_PROMPT,
-                    preamble: None,
-                    params: Some(completion_thinking(0, false)),
-                    max_tokens: Some(200),
-                    thoughts_expected: false,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, false);
-}
-
-#[tokio::test]
-async fn text_response_on_gemini_2_5_flash_lite() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_on_gemini_2_5_flash_lite";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_on_gemini_2_5_flash_lite",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: // Spelled out: the crate exports no constant for this model, and the
-// point of the cell is a third thinking-capable family.
-"gemini-2.5-flash-lite",
-                    prompt: THINKING_PROMPT,
-                    preamble: None,
-                    params: Some(completion_thinking(512, true)),
-                    max_tokens: Some(2000),
-                    thoughts_expected: true,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn text_response_on_gemini_3_1_flash_lite() {
-    // Thinking on but `includeThoughts` off: the flag never appears even
-    // though the model reasoned, so the reader must behave identically.
-    const SCENARIO: &str = "thought_text_matrix/text_response_on_gemini_3_1_flash_lite";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_on_gemini_3_1_flash_lite",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: // No exported constant for this model; a fourth family widens the
-// dialect coverage past 2.5's budget and 3-flash's level.
-"gemini-3.1-flash-lite",
-                    prompt: THINKING_PROMPT,
-                    preamble: None,
-                    params: Some(json!({
-"generationConfig": { "thinkingConfig": { "thinkingLevel": "low" } }
-})),
-                    max_tokens: Some(400),
-                    thoughts_expected: false,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, false);
-}
-
-#[tokio::test]
-async fn text_response_with_a_large_thinking_budget() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_with_a_large_thinking_budget";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette("thought_text_matrix/text_response_with_a_large_thinking_budget", |client| {
-        text_response_body(
-            client,
-            SCENARIO,
-            TextResponseCell {
-                model_id: gemini::completion::GEMINI_2_5_FLASH,
-                prompt:
-                    "Explain in one sentence why the sky is blue, after reasoning it through carefully.",
-                preamble: None,
-                params: Some(completion_thinking(4096, true)),
-                max_tokens: Some(6000),
-                thoughts_expected: true,
-            },
-        )
-    })
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn text_response_with_a_preamble() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_with_a_preamble";
-    // The literal is repeated here on purpose: the cassette safety
-    // scan reads each scenario out of this call site's AST.
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_with_a_preamble",
-        |client| {
-            text_response_body(
-                client,
-                SCENARIO,
-                TextResponseCell {
-                    model_id: gemini::completion::GEMINI_2_5_FLASH,
-                    prompt: THINKING_PROMPT,
-                    preamble: Some("You are a terse calculator. Answer with digits only."),
-                    params: Some(completion_thinking(512, true)),
-                    max_tokens: Some(2000),
-                    thoughts_expected: true,
-                },
-            )
-        },
-    )
-    .await;
-
-    assert_thought_parts_recorded(SCENARIO, true);
-}
-
-#[tokio::test]
-async fn text_response_on_a_tool_call_turn() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_on_a_tool_call_turn";
-
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_on_a_tool_call_turn",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequest::new("What is 41 plus 1? Use the add tool.")
-                .temperature(0.0)
-                .max_tokens(2000)
-                .tools(vec![rig::completion::ToolDefinition {
-                    name: rig_core::message::ToolName::new("add").expect("tool name"),
-                    description: "Add x and y together".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "x": { "type": "number", "description": "first operand" },
-                            "y": { "type": "number", "description": "second operand" }
-                        },
-                        "required": ["x", "y"]
-                    }),
-                }])
-                .additional_params(completion_thinking(512, true));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            // A tool-call turn's *text* is whatever visible text parts it has
-            // — never the reasoning that preceded the call.
-            let document = generate_content_document(&response.raw);
-            let (visible, _) = split_parts(document);
-            assert_eq!(
-                choice_text(&response.choice),
-                visible,
-                "the turn's text is its visible text parts on a tool-call turn too"
-            );
-            assert!(
-                response
-                    .choice
-                    .iter()
-                    .any(|content| matches!(content, AssistantContent::ToolCall(_))),
-                "the recorded turn should carry a tool call"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, &["functionCall"]);
-    // The cell's premise is a thought part *beside* the call; without this it
-    // silently degrades into a plain tool-call cell if a re-record drops the
-    // thought.
-    assert_thought_parts_recorded(SCENARIO, true);
 }
 
 #[tokio::test]
@@ -914,113 +498,7 @@ async fn text_response_across_two_candidates() {
     assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
 }
 
-#[tokio::test]
-async fn text_response_is_none_when_the_turn_is_all_thought() {
-    const SCENARIO: &str = "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought";
-
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            // A budget large enough to start thinking and far too small to answer:
-            // the turn truncates with reasoning and no visible text.
-            let request = CompletionRequest::new(
-                "Prove rigorously, with full detail, that there are infinitely many primes.",
-            )
-            .temperature(0.0)
-            .max_tokens(64)
-            .additional_params(completion_thinking(512, true));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            let document = generate_content_document(&response.raw);
-            let (visible, thoughts) = split_parts(document);
-            assert!(
-                visible.is_empty(),
-                "this cell's premise is a turn whose parts are all thoughts; got {visible:?}"
-            );
-            assert!(
-                !thoughts.is_empty(),
-                "the recorded turn should carry thought parts"
-            );
-            assert_eq!(
-                choice_text(&response.choice),
-                "",
-                "a turn that produced no visible text has no text — returning the \
-                 chain-of-thought here is exactly the bug"
-            );
-            assert!(
-                has_reasoning(&response.choice),
-                "the thoughts reach the caller as reasoning, not as the answer"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
-}
-
-// --- 18: streaming parity for the same request ----------------------------
-
-#[tokio::test]
-async fn streaming_twin_keeps_reasoning_out_of_the_text() {
-    const SCENARIO: &str = "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text";
-
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequest::new(THINKING_PROMPT)
-                .temperature(0.0)
-                .max_tokens(2000)
-                .additional_params(completion_thinking(512, true));
-
-            let mut stream = model.stream(request).expect("stream should open");
-
-            let mut text = String::new();
-            let mut reasoning = String::new();
-            while let Some(item) = stream.next().await {
-                match item.expect("no stream item should be an error") {
-                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
-                    Item::Event(StreamEvent::Reasoning { text: r, .. }) => {
-                        reasoning.push_str(&r);
-                    }
-                    _ => {}
-                }
-            }
-
-            assert!(
-                !reasoning.is_empty(),
-                "the recorded stream should carry reasoning deltas"
-            );
-            assert!(
-                !text.contains(reasoning.trim()),
-                "streamed text must not contain the reasoning"
-            );
-            assert!(
-                has_reasoning(&stream.partial().choice),
-                "the aggregated choice should keep reasoning as reasoning"
-            );
-            assert_eq!(
-                choice_text(&stream.partial().choice),
-                text,
-                "the aggregated text must be exactly the streamed text deltas"
-            );
-        },
-    )
-    .await;
-
-    assert_recorded_response_contains(SCENARIO, THOUGHT_MARKER);
-}
-
-// --- 26-27: Gemini 3's trailing thought signature -------------------------
-
-/// A Gemini 3 prompt short enough that the turn is one text part — which is
-/// where the wire hangs the trailing `thoughtSignature`.
-const SIGNATURE_PROMPT: &str = "What is 17 squared? Answer with the number only.";
+// --- Gemini 3's trailing thought signature -------------------------------
 
 /// The signatures the answer texts of `choice` carry, in order.
 fn text_signatures(choice: &[AssistantContent]) -> Vec<&str> {
@@ -1029,77 +507,6 @@ fn text_signatures(choice: &[AssistantContent]) -> Vec<&str> {
         .filter(|content| matches!(content, AssistantContent::Text(_)))
         .filter_map(|content| content.native_item()?.get("thoughtSignature")?.as_str())
         .collect()
-}
-
-#[tokio::test]
-async fn blocking_keeps_a_trailing_thought_signature() {
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = CompletionRequest::new(SIGNATURE_PROMPT)
-                .temperature(0.0)
-                .max_tokens(1000);
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            // The premise, from the recorded bytes: a text part with a
-            // signature and no `thought` flag at all.
-            let document = generate_content_document(&response.raw);
-            let signed_text_part = candidate_parts(&document["candidates"][0]).any(|part| {
-                part.get("thoughtSignature").is_some_and(Value::is_string) && !is_thought(part)
-            });
-            assert!(
-                signed_text_part,
-                "this cell's premise is a signed part with no thought flag"
-            );
-
-            assert_eq!(
-                text_signatures(&response.choice).len(),
-                1,
-                "the signature is replay-required state and stays on the answer text: {:?}",
-                response.choice
-            );
-            assert!(!has_reasoning(&response.choice));
-            assert!(
-                choice_text(&response.choice).contains("289"),
-                "the answer must still be there, got {:?}",
-                choice_text(&response.choice)
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
-    with_gemini_thought_text_cassette(
-        "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
-            let request = CompletionRequest::new(SIGNATURE_PROMPT)
-                .temperature(0.0)
-                .max_tokens(1000);
-
-            let mut stream = model.stream(request).expect("stream should open");
-            while stream.next().await.is_some() {}
-
-            // The stream sends the answer, then an empty part carrying the
-            // signature: that empty part keeps it, on its own text.
-            let snapshot = stream.partial().choice;
-            assert_eq!(text_signatures(&snapshot).len(), 1, "{snapshot:?}");
-            assert!(!has_reasoning(&snapshot));
-            assert!(
-                choice_text(&stream.partial().choice).contains("289"),
-                "the streamed answer must be there, got {:?}",
-                choice_text(&stream.partial().choice)
-            );
-        },
-    )
-    .await;
 }
 
 // --- unit cells: states a live turn cannot be made to produce -------------

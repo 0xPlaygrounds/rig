@@ -151,31 +151,3 @@ async fn low_reasoning_effort_produces_a_reasoning_turn() {
         "the recorded premise must contain reasoning_content"
     );
 }
-
-#[tokio::test]
-async fn policy_sensitive_response_content_shape_is_recorded() {
-    const SCENARIO: &str =
-        "followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded";
-    with_deepseek_followup_hunt_cassette_result(
-        "followup_hunt_matrix/policy_sensitive_response_content_shape_is_recorded",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let request = CompletionRequest::new(
-                    "Give a concise, neutral historical summary of the June 1989 Tiananmen Square protests.",
-                )
-                .additional_params(non_thinking(json!({})))
-                .max_tokens(48);
-            // The hunt is about the raw 200 response shape: a documented
-            // nullable `content` may fail Rig's current typed decoder. The
-            // recorded body below is the premise either way.
-            let _ = model.call(request).await;
-            Ok::<(), rig::error::ProviderError>(())
-        },
-    )
-    .await
-    .expect("policy-sensitive content-shape census should replay");
-
-    let choice = first_blocking_choice(SCENARIO);
-    assert!(choice["message"].get("content").is_some());
-    assert!(choice.get("finish_reason").is_some());
-}

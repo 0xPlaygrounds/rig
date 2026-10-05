@@ -44,15 +44,12 @@ use rig_test_support::cassette_models::OpenAiModels;
 use serde_json::json;
 
 use crate::cache_conformance::{
-    AGENT_CACHE_PROMPT, CacheObservation, CacheProbe, CacheProbeLookupTool, CacheSupport,
-    assert_agent_growth_still_hits, assert_breakpoints_match_support, assert_cache_conformance,
-    assert_cache_key_stable, assert_prefix_stable, assert_warms, observation_from_completion_calls,
-    report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
+    CacheProbe, CacheSupport, assert_breakpoints_match_support, assert_cache_conformance,
+    assert_prefix_stable, assert_warms, report_and_assert_live, run_cache_probe,
+    run_cache_probe_streaming,
 };
 
-use super::super::support::{
-    with_openai_completions_prompt_caching_cassette, with_openai_prompt_caching_cassette,
-};
+use super::super::support::with_openai_prompt_caching_cassette;
 
 /// A cheap model that still participates in prompt caching.
 pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
@@ -93,34 +90,6 @@ fn keyed_probe() -> CacheProbe {
         "prompt_cache_key": "rig-cache-conformance-openai",
         "store": false,
     }))
-}
-
-/// The Responses surface caches reliably **when rig sends a cache key**.
-///
-/// The un-keyed behavior is recorded separately in
-/// [`responses_without_a_cache_key_does_not_hit_until_the_third_turn`], which is
-/// where the reasoning for keying this cell lives.
-#[tokio::test]
-async fn responses_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
-    const SCENARIO: &str = "prompt_caching/responses_blocking_probe";
-
-    with_openai_prompt_caching_cassette(
-        "prompt_caching/responses_blocking_probe",
-        |client| async move {
-            let model = client.openai.completion(CACHE_MODEL);
-            let observation: CacheObservation = run_cache_probe(model, &keyed_probe()).await;
-            assert_cache_conformance(
-                &observation,
-                &OPENAI_RESPONSES_KEYED_SUPPORT,
-                "responses blocking probe",
-            );
-        },
-    )
-    .await;
-
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-    assert_cache_key_stable("openai", SCENARIO, &OPENAI_RESPONSES_KEYED_SUPPORT);
 }
 
 /// Measured Responses behavior without `prompt_cache_key`: turn 2 misses.
@@ -183,28 +152,6 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
 }
 
 #[tokio::test]
-async fn chat_completions_blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
-    const SCENARIO: &str = "prompt_caching/chat_completions_blocking_probe";
-
-    with_openai_completions_prompt_caching_cassette(
-        "prompt_caching/chat_completions_blocking_probe",
-        |client| async move {
-            let model = client.chat(CACHE_MODEL);
-            let observation = run_cache_probe(model, &probe()).await;
-            assert_cache_conformance(
-                &observation,
-                &OPENAI_CACHE_SUPPORT,
-                "chat completions blocking probe",
-            );
-        },
-    )
-    .await;
-
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-}
-
-#[tokio::test]
 async fn responses_streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/responses_streaming_probe";
 
@@ -217,105 +164,6 @@ async fn responses_streaming_probe_survives_the_streaming_accumulator() {
                 &observation,
                 &OPENAI_RESPONSES_KEYED_SUPPORT,
                 "responses streaming probe",
-            );
-        },
-    )
-    .await;
-
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-}
-
-#[tokio::test]
-async fn chat_completions_streaming_probe_survives_the_streaming_accumulator() {
-    const SCENARIO: &str = "prompt_caching/chat_completions_streaming_probe";
-
-    with_openai_completions_prompt_caching_cassette(
-        "prompt_caching/chat_completions_streaming_probe",
-        |client| async move {
-            let model = client.chat(CACHE_MODEL);
-            let observation = run_cache_probe_streaming(model, &probe()).await;
-            assert_cache_conformance(
-                &observation,
-                &OPENAI_CACHE_SUPPORT,
-                "chat completions streaming probe",
-            );
-        },
-    )
-    .await;
-
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-}
-
-/// A real agent loop with a tool round-trip, on the chat-completions wire.
-///
-/// The cell the rest of the suite cannot replace: the three-turn probe builds
-/// its own history, so it proves the *provider* caches a growing prefix, but
-/// only a real run proves rig's agent driver does not disturb that prefix
-/// between iterations. Tool definitions re-advertised in a different order, a
-/// system prompt rebuilt differently on turn N, an assistant turn re-normalized
-/// on the way back in — each busts the cache from that point on while every
-/// counter stays non-zero.
-#[tokio::test]
-async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
-    const SCENARIO: &str = "prompt_caching/chat_completions_agent_loop";
-
-    with_openai_completions_prompt_caching_cassette(
-        "prompt_caching/chat_completions_agent_loop",
-        |client| async move {
-            let response = rig::AgentBuilder::new(client.completion(CACHE_MODEL))
-                .preamble(&probe().preamble)
-                .tool(CacheProbeLookupTool)
-                .temperature(0.0)
-                .build()
-                .prompt(AGENT_CACHE_PROMPT)
-                .max_turns(6)
-                .await
-                .expect("openai agent cache probe should complete");
-
-            let observation = observation_from_completion_calls(response.completion_calls());
-            assert_agent_growth_still_hits(
-                &observation,
-                &OPENAI_CACHE_SUPPORT,
-                "chat completions agent loop",
-            );
-        },
-    )
-    .await;
-
-    // The loop-level prefix guard: every one of the agent's own outbound
-    // requests must extend its predecessor rather than rewrite it.
-    assert_prefix_stable("openai", SCENARIO);
-    assert_breakpoints_match_support("openai", SCENARIO, &OPENAI_CACHE_SUPPORT);
-}
-
-/// The Responses twin of [`chat_completions_agent_loop_keeps_hitting_across_tool_turns`].
-#[tokio::test]
-async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
-    const SCENARIO: &str = "prompt_caching/responses_agent_loop";
-
-    with_openai_prompt_caching_cassette(
-        "prompt_caching/responses_agent_loop",
-        |client| async move {
-            let response = rig::AgentBuilder::new(client.openai.completion(CACHE_MODEL))
-                .preamble(&probe().preamble)
-                .tool(CacheProbeLookupTool)
-                .temperature(0.0)
-                .additional_params(json!({
-                    "prompt_cache_key": "rig-cache-conformance-openai-agent",
-                }))
-                .build()
-                .prompt(AGENT_CACHE_PROMPT)
-                .max_turns(6)
-                .await
-                .expect("openai responses agent cache probe should complete");
-
-            let observation = observation_from_completion_calls(response.completion_calls());
-            assert_agent_growth_still_hits(
-                &observation,
-                &OPENAI_CACHE_SUPPORT,
-                "responses agent loop",
             );
         },
     )

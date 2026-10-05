@@ -64,23 +64,6 @@ fn cases() -> Vec<(Message, Vec<Message>, bool, &'static str)> {
 }
 
 #[tokio::test]
-async fn an_awaited_run_rejects_each_empty_piece_before_the_provider() {
-    for (prompt, history, clear, expected) in cases() {
-        let model = MockCompletionModel::text("unreachable");
-        let agent = AgentBuilder::new(model.clone()).build();
-        let runner = agent.prompt(prompt).history(history);
-        let runner = if clear {
-            runner.add_hook(EmptyHistory)
-        } else {
-            runner
-        };
-        let error = runner.await.expect_err("the run fails");
-        assert!(error.to_string().contains(expected), "{error}");
-        assert_eq!(model.request_count(), 0, "{expected}");
-    }
-}
-
-#[tokio::test]
 async fn a_streamed_run_rejects_each_empty_piece_before_the_provider() {
     for (prompt, history, clear, expected) in cases() {
         let model = MockCompletionModel::from_stream_turns([[

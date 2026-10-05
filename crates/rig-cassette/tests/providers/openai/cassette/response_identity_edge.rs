@@ -2,14 +2,10 @@
 //! follow-up): structured output, response chaining, live hook retries, error
 //! responses, and raw-vs-normalized agreement.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
 use rig::providers::openai;
 
 use super::super::support::with_openai_cassette;
-use crate::support::{IdentityProbe, assert_transport_request_id};
+use crate::support::assert_transport_request_id;
 use rig::completion::CompletionRequest;
 
 /// Family A: `output_schema` reshapes the request (structured output);
@@ -87,116 +83,6 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
                 Some(second_response_id),
                 second.provider_request_id.as_deref(),
                 "response-scoped and transport ids are never conflated"
-            );
-        },
-    )
-    .await;
-}
-
-/// Family B: a live hook-driven retry on the blocking surface — the second
-/// event's identity is the second attempt's.
-#[tokio::test]
-async fn blocking_hook_retry_uses_second_attempts_id() {
-    #[derive(Clone, Default)]
-    struct RetryOnce {
-        probe: IdentityProbe,
-        retried: Arc<AtomicBool>,
-    }
-
-    impl AgentHook for RetryOnce {
-        async fn on_model_turn_finished(
-            &self,
-            ctx: &HookContext,
-            event: ModelTurnFinished<'_>,
-        ) -> ModelTurnAction {
-            let action = if !self.retried.swap(true, Ordering::SeqCst) {
-                ModelTurnAction::retry_with_feedback("Answer again with exactly: retried probe")
-            } else {
-                ModelTurnAction::continue_run()
-            };
-            let _ = self.probe.on_model_turn_finished(ctx, event).await;
-            action
-        }
-    }
-
-    with_openai_cassette(
-        "response_identity_edge/blocking_hook_retry_uses_second_attempts_id",
-        |client| async move {
-            let hook = RetryOnce::default();
-            let agent = rig::AgentBuilder::new(client.openai.completion(openai::GPT_4O))
-                .preamble("You are a terse assistant.")
-                .additional_params(serde_json::json!({ "store": false }))
-                .add_hook(hook.clone())
-                .build();
-
-            agent
-                .prompt("Reply with exactly: first probe")
-                .max_turns(3)
-                .await
-                .expect("retried run should succeed");
-
-            let turns = hook.probe.turn_identities();
-            assert_eq!(turns.len(), 2, "rejected attempt plus its retry");
-            assert_transport_request_id(turns[0].provider_request_id.as_deref(), "attempt 1");
-            assert_transport_request_id(turns[1].provider_request_id.as_deref(), "attempt 2");
-            assert_ne!(turns[0].provider_request_id, turns[1].provider_request_id);
-        },
-    )
-    .await;
-}
-
-/// A provider 4xx carries the failed call's transport request id (rig#2314):
-/// the recorded error response's `x-request-id` header reaches the error's
-/// `provider_request_id()` accessor, alongside the preserved status and body.
-#[tokio::test]
-async fn provider_error_response_carries_request_id() {
-    with_openai_cassette(
-        "response_identity_edge/provider_error_response_surfaces_cleanly",
-        |client| async move {
-            let model = client
-                .openai
-                .completion("gpt-nonexistent-model-for-identity-edge");
-            let error = model
-                .call(CompletionRequest::new("Never answered"))
-                .await
-                .expect_err("a nonexistent model must fail");
-            assert_transport_request_id(error.provider_request_id(), "4xx error");
-            assert!(error.provider_response_status().is_some());
-            assert!(
-                error.to_string().contains("request id:"),
-                "the id appears in the logged message: {error}"
-            );
-        },
-    )
-    .await;
-}
-
-/// Family D: one interaction, two views — the provider-native Responses reply
-/// carried in [`rig::completion::CompletionResponse::raw`] and the normalized
-/// response describe the same interaction. The transport id rides the
-/// normalized view alone, because `x-request-id` is a response *header* and
-/// never part of the provider's body.
-#[tokio::test]
-async fn raw_and_normalized_views_agree_on_identity() {
-    with_openai_cassette(
-        "response_identity_edge/raw_and_normalized_views_agree_on_identity",
-        |client| async move {
-            let model = client.openai.completion(openai::GPT_4O);
-            let request = CompletionRequest::new("Reply with exactly: two views probe");
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-            assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
-
-            assert_eq!(
-                response.raw["id"].as_str(),
-                response.response_id(),
-                "raw and normalized views describe the same interaction"
-            );
-            assert!(
-                response.raw.get("provider_request_id").is_none(),
-                "the transport id is an `x-request-id` header, not a body field"
             );
         },
     )

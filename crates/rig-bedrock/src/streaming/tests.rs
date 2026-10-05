@@ -1,8 +1,8 @@
 use super::*;
 use crate::completion::{AMAZON_NOVA_LITE, ANTHROPIC_CLAUDE_SONNET_4_6, Converse};
-use rig_core::completion::{CompletionResponse, Message};
+use rig_core::completion::CompletionResponse;
 use rig_core::message::{AssistantContent, Opaque, StopReason};
-use rig_core::test_utils::history::{assert_restated_agrees, decode};
+use rig_core::test_utils::history::decode;
 use rig_core::wire::Mode;
 
 pub(crate) const CLAUDE: &str = ANTHROPIC_CLAUDE_SONNET_4_6;
@@ -77,47 +77,6 @@ pub(crate) fn streamed(
     decode(&Converse::new(model), Mode::Streaming, frames)
 }
 
-/// The events of a whole reply holding `content`, as Converse streams it.
-pub(crate) fn events(content: &[Value], stop_reason: &str) -> Vec<Value> {
-    let mut events = vec![json!({ "messageStart": { "role": "assistant" } })];
-    for (index, block) in content.iter().enumerate() {
-        let (kind, body) = member(block).expect("a block");
-        let without = |field: &str| {
-            let mut body = body.clone();
-            body.as_object_mut().expect("an object").shift_remove(field);
-            json!({ kind: body })
-        };
-        match kind {
-            "text" => events.push(delta(index, block.clone())),
-            "citationsContent" => {
-                for part in body.arr("content") {
-                    events.push(delta(index, json!({ "text": part["text"] })));
-                }
-                for citation in body.arr("citations") {
-                    events.push(delta(index, json!({ "citation": citation })));
-                }
-            }
-            "reasoningContent" => {
-                let body = body.get("reasoningText").unwrap_or(body);
-                events.push(delta(index, json!({ "reasoningContent": body })));
-            }
-            "toolUse" => {
-                events.push(start(index, without("input")));
-                let input = body["input"].to_string();
-                events.push(delta(index, json!({ "toolUse": { "input": input } })));
-            }
-            "toolResult" => {
-                events.push(start(index, without("content")));
-                events.push(delta(index, json!({ "toolResult": body["content"] })));
-            }
-            _ => events.push(start(index, block.clone())),
-        }
-        events.push(stop(index));
-    }
-    events.extend(ended(stop_reason));
-    events
-}
-
 /// A reply holding every block kind a turn keeps an item for.
 pub(crate) fn rich() -> Vec<Value> {
     let [used, result] = hosted();
@@ -133,60 +92,6 @@ pub(crate) fn rich() -> Vec<Value> {
         json!({ "text": "Calling." }),
         tool_use("tooluse_1", "lookup", json!({ "q": "harbor" })),
     ]
-}
-
-/// Each kept block holds its Converse JSON as Bedrock sent it, and a whole
-/// reply and its restatement as a stream fold into the same turn.
-#[test]
-fn kept_blocks_hold_their_converse_json_in_both_modes() {
-    let content = rich();
-    let response = whole(CLAUDE, content.clone(), "tool_use");
-    let items: Vec<Option<Value>> = response
-        .choice
-        .iter()
-        .map(|block| match block {
-            AssistantContent::Opaque(opaque) => Some(opaque.item.clone()),
-            block => block.native_item().cloned(),
-        })
-        .collect();
-    let mut expected: Vec<Option<Value>> = content.iter().cloned().map(Some).collect();
-    expected[5] = None;
-    assert_eq!(items, expected);
-    assert_restated_agrees(
-        &Converse::new(CLAUDE),
-        [ConverseFrame::Whole(document(content.clone(), "tool_use"))],
-        events(&content, "tool_use")
-            .into_iter()
-            .map(ConverseFrame::Event),
-    );
-}
-
-/// A hosted tool's use is an opaque item that replays, not a call Rig runs.
-#[test]
-fn a_hosted_tool_use_is_not_a_client_call() {
-    let response = whole(NOVA, hosted().to_vec(), "end_turn");
-    assert_eq!(response.tool_calls().count(), 0);
-    assert!(
-        response
-            .choice
-            .iter()
-            .all(|block| matches!(block, AssistantContent::Opaque(Opaque { replay: true, .. })))
-    );
-}
-
-/// A block keeps its item only once it stopped: the end closes the rest
-/// with none.
-#[test]
-fn a_block_keeps_its_item_only_at_its_stop() {
-    let events = vec![
-        delta(0, json!({ "reasoningContent": { "text": "half" } })),
-        delta(0, json!({ "reasoningContent": { "signature": "sig" } })),
-        ended("max_tokens")[0].clone(),
-        ended("max_tokens")[1].clone(),
-    ];
-    let response = streamed(CLAUDE, events).expect("decodes");
-    assert!(response.choice[0].native_item().is_none(), "{response:?}");
-    assert_eq!(response.stop(), StopReason::Length);
 }
 
 /// Streamed signed thinking keeps its text and signature, and signature-only
@@ -249,27 +154,6 @@ fn redacted_reasoning_encodes_its_bytes_once() {
     );
 }
 
-/// Streamed citations make a cited block holding the whole text.
-#[test]
-fn streamed_citations_are_kept() {
-    let mut events = vec![
-        delta(0, json!({ "text": "The harbor " })),
-        delta(0, json!({ "citation": { "title": "hours" } })),
-        delta(0, json!({ "text": "opens at nine." })),
-        stop(0),
-    ];
-    events.extend(ended("end_turn"));
-    let response = streamed(NOVA, events).expect("decodes");
-    assert_eq!(response.text(), "The harbor opens at nine.");
-    assert_eq!(
-        response.choice[0].native_item(),
-        Some(&json!({ "citationsContent": {
-            "content": [{ "text": "The harbor opens at nine." }],
-            "citations": [{ "title": "hours" }],
-        } }))
-    );
-}
-
 /// #2250, #989: streamed client calls are each kept, one with no input at
 /// all, and each keeps its `toolUse` with the input its arguments were
 /// read from. A call that never names its tool is dropped.
@@ -313,35 +197,6 @@ fn streamed_calls_are_all_kept_with_their_items() {
     assert_eq!(response.stop(), StopReason::ToolUse);
 }
 
-/// Input that is not a JSON object keeps the call, with its text, and no
-/// item: the call is rebuilt from its arguments.
-#[test]
-fn malformed_input_keeps_the_call_and_no_item() {
-    let mut events = vec![
-        start(
-            0,
-            json!({ "toolUse": { "toolUseId": "t1", "name": "add" } }),
-        ),
-        delta(0, json!({ "toolUse": { "input": "{\"x\": tru" } })),
-        stop(0),
-    ];
-    events.extend(ended("tool_use"));
-    let response = streamed(CLAUDE, events).expect("decodes");
-    let call = response.tool_calls().next().expect("a call");
-    assert!(call.function.invalid_arguments.is_some());
-    assert!(response.choice[0].native_item().is_none());
-    // A whole reply whose input is `null` sends `{}` back.
-    let response = whole(NOVA, vec![tool_use("t2", "add", Value::Null)], "tool_use");
-    assert_eq!(
-        response
-            .tool_calls()
-            .next()
-            .map(|call| call.function.arguments_value()),
-        Some(json!({}))
-    );
-    assert!(response.choice[0].native_item().is_none());
-}
-
 /// An image arrives with its start and its bytes and is written whole at
 /// its stop; one Converse sent no bytes for does not replay.
 #[test]
@@ -378,31 +233,6 @@ fn image_and_tool_result_deltas_assemble_at_their_stop() {
         &response.choice[2],
         AssistantContent::Opaque(Opaque { replay: false, .. })
     ));
-}
-
-/// Every stop reason Converse documents ends a turn as documented.
-#[test]
-fn every_stop_reason_maps() {
-    for (reason, stop) in [
-        ("end_turn", StopReason::Stop),
-        ("stop_sequence", StopReason::Stop),
-        ("tool_use", StopReason::ToolUse),
-        ("max_tokens", StopReason::Length),
-        ("model_context_window_exceeded", StopReason::Length),
-    ] {
-        let response = whole(NOVA, vec![json!({ "text": "x" })], reason);
-        assert_eq!(response.stop(), stop, "{reason}");
-    }
-    for reason in [
-        "guardrail_intervened",
-        "content_filtered",
-        "malformed_model_output",
-        "malformed_tool_use",
-        "x_rig_invented",
-    ] {
-        let response = whole(NOVA, vec![json!({ "text": "x" })], reason);
-        assert!(response.stop().is_failure(), "{reason}");
-    }
 }
 
 /// A stream that ends at its metadata without `messageStop` names no
@@ -465,30 +295,4 @@ fn usage_counts_cache_reads_and_writes_in_input() {
     assert_eq!(counted.total_tokens, Some(122));
     assert_eq!(counted.cached_input_tokens, Some(100));
     assert_eq!(counted.cache_creation_input_tokens, Some(7));
-}
-
-/// A field of an unexpected type never fails a reply, and an invented block
-/// replays to the model that sent it.
-#[test]
-fn a_reply_reads_leniently() {
-    let response = whole(
-        CLAUDE,
-        vec![
-            json!({ "text": 7 }),
-            json!({ "reasoningContent": { "reasoningText": { "text": "t", "signature": 7 } } }),
-            json!({ "x_rig_invented": { "a": 1 } }),
-        ],
-        "end_turn",
-    );
-    assert_eq!(response.choice.len(), 2, "{:?}", response.choice);
-    assert!(response.choice[0].native_item().is_none());
-    assert_eq!(
-        response.choice[1],
-        AssistantContent::Opaque(Opaque {
-            item: json!({ "x_rig_invented": { "a": 1 } }),
-            replay: true
-        })
-    );
-    let turn = response.message();
-    assert!(matches!(turn, Some(Message::Assistant(_))));
 }

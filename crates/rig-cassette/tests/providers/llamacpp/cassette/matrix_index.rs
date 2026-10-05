@@ -32,21 +32,16 @@ use std::path::{Path, PathBuf};
 /// "Surface" and "Dimension" tables are where they are accounted for.
 const NOT_TABULATED: &[&str] = &[
     "agent",
-    "context",
     "embeddings",
-    "extractor",
     "extractor_usage",
     "image_tool_result",
-    "loaders",
     "matrix_index",
     "models",
     "multi_extract",
     "permission_control",
-    "request_hook",
     "streaming",
     "streaming_tools",
     "structured_output",
-    "tools",
     "typed_prompt_tools",
 ];
 

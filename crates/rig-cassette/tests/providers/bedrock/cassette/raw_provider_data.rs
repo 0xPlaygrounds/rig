@@ -106,37 +106,3 @@ async fn request_id_survives_into_streamed_terminal() {
     )
     .await;
 }
-
-/// The AWS request id rides an HTTP header, so it is present on every call,
-/// including the ordinary ones, and it is what AWS support asks for.
-#[tokio::test]
-async fn request_id_survives_into_the_response() {
-    with_bedrock_cassette(
-        "raw_provider_data/request_id_survives_into_raw_completion",
-        |client| async move {
-            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let request =
-                CompletionRequest::new("Reply with the single word: ready.").max_tokens(16);
-
-            let response = model
-                .call(request)
-                .await
-                .expect("completion should succeed");
-
-            assert!(
-                response
-                    .provider_request_id
-                    .as_deref()
-                    .is_some_and(|id| !id.trim().is_empty()),
-                "the AWS request id must reach the response, got {:?}",
-                response.provider_request_id
-            );
-            assert!(
-                response.raw.pointer("/output/message").is_some(),
-                "raw is the body Bedrock sent: {}",
-                response.raw
-            );
-        },
-    )
-    .await;
-}

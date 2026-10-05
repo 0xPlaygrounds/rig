@@ -1,0 +1,707 @@
+# The reply bank, written by `cargo xtask cassette bank`. One real recorded
+# reply per provider, completion encoder, reply shape and called tools, the
+# smallest the corpus holds, with the interaction it came from. Never edit
+# an entry by hand (see tests/README.md).
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 1129b06aeaf85b47
+calls: []
+ends:
+- length
+source: mistral/terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"c"},"finish_reason":"length","index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":"c"},"finish_reason":"length","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc","usage":{"completion_tokens":2,"prompt_tokens":30,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":32}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 1da6e59c3fb3ece4
+calls: []
+ends: []
+source: mistral/logprobs_rejection_matrix/blocking_ministral_3b.yaml#0
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"3051","message":"Logprobs are not enabled for this model","object":"error","param":null,"raw_status_code":400,"type":"invalid_request_invalid_args"}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 487ce6c58e19093e
+calls: []
+ends:
+- stop
+source: mistral/raw_stream_capture_matrix/stream_raw_round_trips_terminal_type.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"P"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv"}
+
+    data: {"choices":[{"delta":{"content":"ong"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc","usage":{"completion_tokens":3,"prompt_tokens":23,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":26}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 5b5738492f604cf8
+calls: []
+ends:
+- length
+source: mistral/terminal_metadata_matrix/blocking_ministral_3b_tiny_tool.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":1,"prompt_tokens":116,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":117}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 5fc1919bd3c8120e
+calls: []
+ends: []
+source: mistral/response_identity_edge/blocking_unauthorized_carries_the_correlation_id.yaml#0
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"detail":"Invalid API Key"}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 6c85b0d686bb0dae
+calls:
+- file_report
+ends:
+- length
+source: mistral/tool_truncation_matrix/streaming_ministral_3b_low_model.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a1030b-9169-7594-a108-83ebd9c26435
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"112ceb9c68b54ab4ae4ff26489777dd9","model":"ministral-3b-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"","name":"file_report"},"id":"28MDcpEFf","index":0,"type":"function"}]},"finish_reason":"length","index":0}],"created":0,"id":"112ceb9c68b54ab4ae4ff26489777dd9","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"a","usage":{"completion_tokens":4,"prompt_tokens":125,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":129}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: 8314867d055ae798
+calls: []
+ends:
+- stop
+source: mistral/multimodal_content/blocking_agent_sends_audio.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The sun was setting slowly, casting long shadows across the empty field.","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion","usage":{"completion_tokens":15,"prompt_audio_seconds":5,"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":375,"cached_tokens":9},"service_tier":"standard","total_tokens":401}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- add
+ends:
+- tool_calls
+source: mistral/request_shape_matrix/blocking_ministral_3b_plain_any.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":18,"prompt_tokens":92,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":110}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- alpha
+- beta
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/blocking_ministral_3b_parallel_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a10309-3bca-727d-98ca-563e5d68ad3a
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": \"red\"}","name":"alpha"},"id":"kIPgvTQFG","index":0,"type":"function"},{"function":{"arguments":"{\"value\": \"blue\"}","name":"beta"},"id":"wOnOxPtoF","index":1,"type":"function"}]}}],"created":0,"id":"d1c4b778dcd0448e8c809077bca62aab","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":19,"prompt_tokens":148,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":167}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- file_report
+ends:
+- tool_calls
+source: mistral/tool_truncation_matrix/blocking_ministral_3b_complete_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1030a-9bc4-7fa9-8582-06ebc9dcaebb
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\": \"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.\"}","name":"file_report"},"id":"iDEqTHUEW","index":0,"type":"function"}]}}],"created":0,"id":"02d016ae853a412194a32c9dca18926a","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":47,"prompt_tokens":125,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":172}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- lookup_city
+ends:
+- tool_calls
+source: mistral/raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1032b-9aab-7aa4-a7fd-0d5d5ec0faab
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"Paris\"}","name":"lookup_city"},"id":"EZZHNxqTS","index":0,"type":"function"}]}}],"created":0,"id":"999dc9cb90cc4a85994bd86506fa54d2","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":11,"prompt_tokens":101,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":112}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- lookup_harbor_label
+ends:
+- tool_calls
+source: mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1032a-aea7-74ce-a91f-7191fefcbcfd
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"k02ydZM8w","index":0,"type":"function"}]}}],"created":0,"id":"0a3c72db1eea4672ac8497847e54f0e7","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":9,"prompt_tokens":79,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":88}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- lookup_orchard_label
+ends:
+- tool_calls
+source: mistral/agent_tool_sessions/tool_choice_auto_any_specific_and_none.yaml#2
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1032a-b244-76af-944a-4877599dff54
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"hNXZjkVQj","index":0,"type":"function"}]}}],"created":0,"id":"ff0ca38e8ef144ed850b635f6a3657ad","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":8,"prompt_tokens":91,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":99}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- lookup_record
+ends:
+- tool_calls
+source: mistral/history_survival_matrix/unary.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a10308-bb36-7f71-ad9c-dbd978d3d885
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_record"},"id":"CJNok0vNZ","index":0,"type":"function"},{"function":{"arguments":"{\"record\": \"beta\"}","name":"lookup_record"},"id":"qzSmnZw5s","index":1,"type":"function"}]}}],"created":0,"id":"9d3a01573cbe424aba2b757da1f4f97d","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":21,"prompt_tokens":224,"prompt_tokens_details":{"cached_tokens":192},"service_tier":"standard","total_tokens":245}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- ping
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/blocking_ministral_3b_zero_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a10309-5df3-7017-b0ff-8be314a7634e
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"jGRWgIDZG","index":0,"type":"function"}]}}],"created":0,"id":"0a235c0fc56145eda21d038934c46cb1","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":74,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":79}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- record_payload
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/blocking_ministral_3b_nested_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a10309-19db-7de1-8514-af5ba5081c26
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"label\": \"café 東京\", \"values\": [3, 5, 8], \"meta\": {\"active\": true}}","name":"record_payload"},"id":"eGB8ECA9m","index":0,"type":"function"}]}}],"created":0,"id":"ed3bda3c6ed84ec0bee5d9490d93014d","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":35,"prompt_tokens":159,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":194}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: a058d541203620c2
+calls:
+- verify_code
+ends:
+- tool_calls
+source: mistral/history_survival_matrix/unary.yaml#2
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a10308-bfd5-7334-8226-b15cea31bc92
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"code\": \"beta-code-2286\"}","name":"verify_code"},"id":"9msgcr2Oh","index":0,"type":"function"}]}}],"created":0,"id":"ec161ae3abe34848a4dc945fca553c0b","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":17,"prompt_tokens":319,"prompt_tokens_details":{"cached_tokens":288},"service_tier":"standard","total_tokens":336}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: ab32ad417d439cd4
+calls: []
+ends:
+- stop
+source: mistral/multimodal_content/blocking_raw_model_sends_a_base64_image.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Red.","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":3,"prompt_tokens":38,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":41}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- add
+ends:
+- tool_calls
+source: mistral/request_shape_matrix/streaming_mistral_small_plain_any.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"x\": 17, \"y\": 25}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijk","usage":{"completion_tokens":18,"prompt_tokens":104,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":122}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- alpha
+- beta
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/streaming_mistral_small_parallel_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a1030a-5f6e-7584-9dc1-0bdc124d796e
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"8d3646b904774a49acd633f81e376fbb","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"value\": \"red\"}","name":"alpha"},"id":"wTY8FX36i","index":0,"type":"function"},{"function":{"arguments":"{\"value\": \"blue\"}","name":"beta"},"id":"K5uBL2yTd","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"8d3646b904774a49acd633f81e376fbb","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmn","usage":{"completion_tokens":19,"prompt_tokens":160,"prompt_tokens_details":{"cached_tokens":128},"service_tier":"standard","total_tokens":179}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- file_report
+ends:
+- tool_calls
+source: mistral/tool_truncation_matrix/streaming_ministral_3b_complete_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a1030b-5b42-7856-a241-e0383655e032
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"9ed4092dc1454bf2acddd9cfc04edcc5","model":"ministral-3b-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"summary\": \"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.\"}","name":"file_report"},"id":"q8MyslkuP","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"9ed4092dc1454bf2acddd9cfc04edcc5","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefghijk","usage":{"completion_tokens":47,"prompt_tokens":125,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":172}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- inspect_manifest
+ends:
+- tool_calls
+source: mistral/agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a10308-8b16-77db-8d8a-125dd8477fea
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"5cb898a0b1ab4bc9bcab6ba0be5702a2","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"project\": \"rig-mistral\", \"flags\": {\"critical\": true, \"retries\": 2}, \"steps\": [{\"name\": \"plan\", \"weight\": 1}, {\"name\": \"verify\", \"weight\": 2}], \"note\": \"streamed nested JSON\"}","name":"inspect_manifest"},"id":"nuMBlkJsK","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"5cb898a0b1ab4bc9bcab6ba0be5702a2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrst","usage":{"completion_tokens":69,"prompt_tokens":261,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":330}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- lookup_city
+ends:
+- tool_calls
+source: mistral/raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a10309-0a71-7c09-8433-53f1cd9cd694
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"5af4b38c57d84842ad80bd33a4536797","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"city\": \"Paris\"}","name":"lookup_city"},"id":"4D2fscyGZ","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"5af4b38c57d84842ad80bd33a4536797","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0","usage":{"completion_tokens":11,"prompt_tokens":101,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":112}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- lookup_record
+ends:
+- tool_calls
+source: mistral/history_survival_matrix/streaming.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a10308-9d36-7024-80e0-60e23972d73e
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"8c43202b44ad47e38d084326c849ae5c","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"record\": \"alpha\"}","name":"lookup_record"},"id":"25I0btFeP","index":0,"type":"function"},{"function":{"arguments":"{\"record\": \"beta\"}","name":"lookup_record"},"id":"F3E2DhcYk","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"8c43202b44ad47e38d084326c849ae5c","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz","usage":{"completion_tokens":21,"prompt_tokens":224,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":245}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- ping
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/streaming_ministral_3b_zero_model.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a1030a-1fac-7867-baf6-37e12afa3cf5
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"5d999299b9b042f495d44a04714fee35","model":"ministral-3b-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{}","name":"ping"},"id":"FUVL570tC","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"5d999299b9b042f495d44a04714fee35","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"ab","usage":{"completion_tokens":5,"prompt_tokens":74,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":79}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- record_payload
+ends:
+- tool_calls
+source: mistral/tool_lifecycle_matrix/streaming_mistral_small_nested_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a1030a-3b4e-7151-a2ac-9829ab4f1486
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"451cc12e5a8c4390b89a843ffaed4fd7","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"label\": \"café 東京\", \"values\": [3, 5, 8], \"meta\": {\"active\": true}}","name":"record_payload"},"id":"QkNzsTC5s","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"451cc12e5a8c4390b89a843ffaed4fd7","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop","usage":{"completion_tokens":35,"prompt_tokens":171,"prompt_tokens_details":{"cached_tokens":144},"service_tier":"standard","total_tokens":206}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: b4e24c1c2bc3845a
+calls:
+- verify_code
+ends:
+- tool_calls
+source: mistral/history_survival_matrix/streaming.yaml#4
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: 01a10308-a4df-7ed7-b5e6-01027f7fb755
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"2b244bc2e0ab4f2bb663dc5f948d8559","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"code\": \"alpha-code-7431\"}","name":"verify_code"},"id":"XP0JeWaIu","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"2b244bc2e0ab4f2bb663dc5f948d8559","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abc","usage":{"completion_tokens":17,"prompt_tokens":381,"prompt_tokens_details":{"cached_tokens":320},"service_tier":"standard","total_tokens":398}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: c28734ec7bb3e6c3
+calls:
+- add
+ends:
+- tool_calls
+source: mistral/request_shape_matrix/streaming_mistral_small_json_any.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"{\""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":"total\": 4"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":"2}"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"x\": 20, \"y\": 22}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789","usage":{"completion_tokens":25,"prompt_tokens":88,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":113}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: cb9aa8bb301eb61a
+calls: []
+ends:
+- stop
+source: mistral/terminal_metadata_matrix/streaming_mistral_small_roomy_plain_two.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"c"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"content":"c"},"finish_reason":null,"index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":"obalt"},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a"}
+
+    data: {"choices":[{"delta":{"content":"obalt"},"finish_reason":"stop","index":1}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef","usage":{"completion_tokens":8,"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":28}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: d59505c2a783de4e
+calls:
+- add
+ends:
+- length
+source: mistral/capability_edges/a_forced_tool_choice_beside_a_response_format_is_accepted.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1032a-c237-794e-8fd7-7f0de9132c5e
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"{\"total\": 5} {\"type\": \"object\", \"properties\": {\"total\": {\"type\": \"integer\", \"format\": \"int64\"}}, \"required\": [\"total\"], \"title\": \"SumReport\", \"additionalProperties\": false}","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\":","name":"add"},"id":"aVbxHpPgC","index":0,"type":"function"}]}}],"created":0,"id":"5d7ad8cb497e4737b5e72042cb5239af","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":64,"prompt_tokens":114,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":178}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: d59505c2a783de4e
+calls:
+- file_report
+ends:
+- length
+source: mistral/tool_truncation_matrix/blocking_ministral_3b_low_agent.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: 01a1030a-bc69-74d8-a87c-fb926ab6d3c6
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"","name":"file_report"},"id":"CoaCO3F7q","index":0,"type":"function"}]}}],"created":0,"id":"aedabfb9cced494c96b733fceddac309","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":4,"prompt_tokens":125,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":129}}'
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: dc0b82b5495e5d5a
+calls: []
+ends:
+- stop
+source: mistral/multimodal_content/streaming_agent_sends_audio.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"The"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopq"}
+
+    data: {"choices":[{"delta":{"content":" sun"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijkl"}
+
+    data: {"choices":[{"delta":{"content":" was"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"content":" setting"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":" slowly"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvw"}
+
+    data: {"choices":[{"delta":{"content":","},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567"}
+
+    data: {"choices":[{"delta":{"content":" casting"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxy"}
+
+    data: {"choices":[{"delta":{"content":" long"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0"}
+
+    data: {"choices":[{"delta":{"content":" shadows"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012345678"}
+
+    data: {"choices":[{"delta":{"content":" across"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789"}
+
+    data: {"choices":[{"delta":{"content":" the"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":" empty"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":" field"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"content":"."},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"voxtral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567","usage":{"completion_tokens":15,"prompt_audio_seconds":5,"prompt_tokens":11,"prompt_tokens_details":{"audio_tokens":375,"cached_tokens":9},"service_tier":"standard","total_tokens":401}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: dd80b9217858cb27
+calls: []
+ends:
+- length
+source: mistral/terminal_metadata_matrix/streaming_ministral_3b_tiny_tool.yaml#0
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"length","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"ab","usage":{"completion_tokens":1,"prompt_tokens":116,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":117}}
+
+    data: [DONE]
+
+---
+provider: mistral
+encoder: POST /v1/chat/completions
+shape: fc17dc6e29263fc6
+calls: []
+ends: []
+source: mistral/response_identity_edge/blocking_error_carries_the_correlation_id.yaml#0
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"1500","message":"Invalid model: definitely-not-a-model","object":"error","param":null,"raw_status_code":400,"type":"invalid_model"}'

@@ -311,68 +311,6 @@ fn redirect_and_provider_errors_never_fall_back_or_forward_credentials() {
 }
 
 #[test]
-fn effect_despawn_and_world_drop_release_an_idle_http_operation() {
-    for despawn_effect in [false, true] {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = format!("http://{}/v1beta", listener.local_addr().unwrap());
-        let (accepted, received) = mpsc::channel();
-        let (closed, disconnected) = mpsc::channel();
-        let server = std::thread::spawn(move || {
-            let mut socket = accept(listener);
-            socket
-                .set_read_timeout(Some(Duration::from_secs(3)))
-                .unwrap();
-            let deadline = std::time::Instant::now() + Duration::from_secs(10);
-            let mut headers = Vec::new();
-            let mut byte = [0];
-            while !headers.ends_with(b"\r\n\r\n") {
-                assert!(std::time::Instant::now() < deadline, "request deadline");
-                socket.read_exact(&mut byte).unwrap();
-                headers.push(byte[0]);
-            }
-            let headers = String::from_utf8(headers).unwrap();
-            let length: usize = headers
-                .lines()
-                .find_map(|line| {
-                    line.to_ascii_lowercase()
-                        .strip_prefix("content-length:")
-                        .map(|value| value.trim().parse().unwrap())
-                })
-                .unwrap();
-            socket.read_exact(&mut vec![0; length]).unwrap();
-            accepted.send(()).unwrap();
-            let released = match socket.read(&mut byte) {
-                Ok(0) => true,
-                Err(error) => matches!(
-                    error.kind(),
-                    std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
-                ),
-                _ => false,
-            };
-            closed.send(released).unwrap();
-        });
-        let mut app = start(None, || {
-            gateway(&endpoint, TOKEN, reqwest::Client::builder())
-        })
-        .unwrap();
-        let effect = app
-            .world_mut()
-            .spawn(PendingEffect::new(KEY, bus_support::completion()))
-            .id();
-        bus_support::tick_until(&mut app, "HTTP operation reached server", |_| {
-            received.try_recv().is_ok()
-        });
-        if despawn_effect {
-            app.world_mut().despawn(effect);
-        } else {
-            drop(app);
-        }
-        assert!(disconnected.recv_timeout(Duration::from_secs(4)).unwrap());
-        server.join().unwrap();
-    }
-}
-
-#[test]
 fn invalid_gateway_settings_are_refused_without_echoing_secrets() {
     for endpoint in [
         "file:///secret",

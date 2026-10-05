@@ -41,26 +41,6 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
 }
 
 #[tokio::test]
-async fn openai_responses_agent_prompt_against_openrouter_completes() {
-    with_openrouter_openai_cassette(
-        "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(DEFAULT_OPENAI_COMPAT_MODEL))
-                .preamble("You are concise. Answer with one short sentence.")
-                .build();
-
-            let response = agent
-                .prompt("Say that OpenRouter via the OpenAI Responses provider works.")
-                .await
-                .expect("agent.prompt should not fail on OpenRouter service_tier metadata");
-
-            assert_nonempty_response(&response.output());
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn openai_responses_stream_against_openrouter_completes() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",

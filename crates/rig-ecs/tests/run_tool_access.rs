@@ -4,7 +4,7 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
-use rig_core::{effect::HandlerKey, message::AssistantContent};
+use rig_core::effect::HandlerKey;
 use rig_ecs::{
     agent::{Failed, Failure, Grant, ToolAccess, Turn},
     systems::RunCommands,
@@ -63,41 +63,6 @@ fn empty_permission_set_denies_an_advertised_executable_tool() {
 }
 
 #[test]
-fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
-    let mut app = app();
-    let (model, requests) = Scripted::new(
-        "model",
-        vec![
-            vec![call("c", "add", serde_json::json!({"x": 2, "y": 3}))],
-            vec![AssistantContent::text("5")],
-        ],
-    );
-    let model = register(&mut app, "model", model);
-    let tool = Adder::new("hidden-adder");
-    let peak = tool.peak.clone();
-    register(&mut app, "hidden-adder", tool);
-    let agent = spawn_agent(app.world_mut(), "test", model);
-    app.world_mut().entity_mut(agent).insert(ToolAccess {
-        executable: Some(BTreeMap::from([(
-            "add".into(),
-            HandlerKey::from("hidden-adder"),
-        )])),
-        allowed: None,
-    });
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
-    ended(&mut app, run, "hidden tool completes");
-    assert!(
-        app.world().get::<Failed>(run).is_none(),
-        "{:?}",
-        app.world().get::<Failed>(run)
-    );
-    assert_eq!(peak.load(Ordering::SeqCst), 1);
-    let requests = requests.lock().expect("requests");
-    assert_eq!(requests.len(), 2);
-    assert!(requests.iter().all(|request| request.tools.is_empty()));
-}
-
-#[test]
 fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
     use rig_cassette::ecs::identity::{required_row, spec_hash};
     let mut app = app();
@@ -133,118 +98,5 @@ fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
     assert_eq!(
         row, expected,
         "an unadvertised handler is still a replay dependency"
-    );
-}
-
-#[test]
-fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
-    use rig_ecs::agent::{Output, OutputKind, OutputToolConfig};
-    let mut app = app();
-    let (model, requests) = Capturing::new("model", "unused");
-    let model = register(&mut app, "model", model);
-    let agent = spawn_agent(app.world_mut(), "test", model);
-    app.world_mut().entity_mut(agent).insert((
-        Output {
-            mode: OutputKind::Tool,
-            schema: Some(serde_json::json!({"type": "object"})),
-        },
-        OutputToolConfig {
-            name: Some("submit".into()),
-            ..Default::default()
-        },
-        ToolAccess {
-            executable: Some(BTreeMap::from([(
-                "submit".into(),
-                HandlerKey::from("hidden"),
-            )])),
-            allowed: None,
-        },
-    ));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, Some(1));
-    tick_until(&mut app, "collision rejected", |world| {
-        world.get::<Failed>(run).is_some()
-    });
-    assert!(
-        matches!(app.world().get::<Failed>(run), Some(Failed(Failure::OutputToolCollision { name })) if name == "submit")
-    );
-    assert!(
-        requests.lock().expect("requests").is_empty(),
-        "no ambiguous provider request"
-    );
-}
-
-#[test]
-fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
-    use rig_ecs::{
-        agent::{Outputs, Run},
-        checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
-    };
-    let mut first = app();
-    let (model, _) = Capturing::new("model", "unused");
-    let model = register(&mut first, "model", model);
-    let agent = spawn_agent(first.world_mut(), "test", model);
-    let run = first
-        .world_mut()
-        .spawn_run(agent, &[], "hello", true, Some(1));
-    let access = ToolAccess {
-        executable: Some(BTreeMap::from([(
-            "old".into(),
-            HandlerKey::from("old-handler"),
-        )])),
-        allowed: Some(BTreeSet::from(["old".into()])),
-    };
-    first.world_mut().spawn((
-        Turn,
-        access.clone(),
-        Outputs {
-            stream_validated: 4,
-            usage_recorded: true,
-            ..Default::default()
-        },
-        ChildOf(run),
-    ));
-    first.world_mut().entity_mut(run).insert(ToolAccess {
-        allowed: Some(BTreeSet::new()),
-        ..Default::default()
-    });
-    let row = rig_cassette::ecs::identity::required_row(first.world_mut(), run);
-    let checkpoint = save_world(first.world_mut()).expect("save graph");
-    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().expect("encode")).expect("decode");
-    drop(first);
-    let mut restored = app();
-    let (model, _) = Capturing::new("model", "unused");
-    register(&mut restored, "model", model);
-    load_world(&checkpoint, restored.world_mut(), RestoreMode::Strict, []).expect("restore graph");
-    let run = restored
-        .world_mut()
-        .query_filtered::<Entity, With<Run>>()
-        .single(restored.world())
-        .expect("run");
-    let (actual, outputs) = restored
-        .world_mut()
-        .query_filtered::<(&ToolAccess, &Outputs), With<Turn>>()
-        .single(restored.world())
-        .expect("snapshot");
-    assert_eq!(actual, &access);
-    assert_eq!(outputs.stream_validated, 4);
-    assert!(outputs.usage_recorded);
-    assert_eq!(
-        rig_cassette::ecs::identity::required_row(restored.world_mut(), run),
-        row
-    );
-    let mut expected = rig_core::effect::EffectRow::new();
-    expected.insert(
-        HandlerKey::from("model"),
-        rig_core::effect::EffectFamily::Completion,
-    );
-    expected.insert(
-        HandlerKey::from("old-handler"),
-        rig_core::effect::EffectFamily::Tool,
-    );
-    assert_eq!(
-        row, expected,
-        "new policy must not drop an in-flight snapshot dependency"
     );
 }

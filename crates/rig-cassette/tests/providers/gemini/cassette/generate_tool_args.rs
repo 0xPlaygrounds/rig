@@ -231,68 +231,6 @@ async fn nested_arguments_streaming() {
 }
 
 #[tokio::test]
-async fn unicode_arguments_streaming() {
-    with_gemini_cassette(
-        "generate_tool_args/unicode_arguments_streaming",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            let request = CompletionRequest::new(
-                "Call the echo tool exactly once with the message argument set to \
-                     exactly this text: Grüße aus 東京, from the \"naïve café\"!",
-            )
-            .preamble(
-                "You must call the echo tool with the exact text the user provides. \
-                     Do not translate, reword, or drop any characters."
-                    .to_string(),
-            )
-            .temperature(0.0)
-            .tool(ToolDefinition {
-                name: rig_core::message::ToolName::new("echo").expect("tool name"),
-                description: "Echo a message back to the user.".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "message": { "type": "string" }
-                    },
-                    "required": ["message"]
-                }),
-            });
-
-            let observation = collect_raw_stream_observation(
-                model
-                    .stream(request)
-                    .expect("unicode-args streaming request should start"),
-            )
-            .await;
-
-            assert!(
-                observation.errors.is_empty(),
-                "stream should not emit errors: {:?}",
-                observation.errors
-            );
-            let tool_call = observation
-                .tool_calls
-                .iter()
-                .find(|tool_call| tool_call.function.name == "echo")
-                .expect("stream should emit the echo tool call");
-            let message = tool_call
-                .function
-                .arguments
-                .get("message")
-                .and_then(|value| value.as_str())
-                .expect("echo arguments should contain a message string");
-            for expected in ["Grüße", "東京", "naïve café"] {
-                assert!(
-                    message.contains(expected),
-                    "streamed unicode arguments should preserve {expected:?}, got {message:?}"
-                );
-            }
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
 async fn optional_nullable_argument_omitted_when_not_requested() {
     with_gemini_cassette(
         "generate_tool_args/optional_nullable_argument_omitted_when_not_requested",

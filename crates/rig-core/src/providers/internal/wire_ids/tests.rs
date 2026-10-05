@@ -61,10 +61,3 @@ fn a_rig_issued_id_is_one_alias_that_no_provider_id_takes() {
     assert_eq!(ids.of(&issued), Some("tool-1"));
     assert_eq!(ids.of(&later), Some("tool-2"));
 }
-
-#[test]
-fn a_provider_result_without_its_call_keeps_the_providers_id() {
-    let history = vec![result(CallId::from_wire("real"))];
-    let ids = WireIds::for_target(&history, &Target, "model");
-    assert_eq!(ids.of(&CallId::from_wire("real")), Some("real"));
-}

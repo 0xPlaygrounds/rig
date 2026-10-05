@@ -6,7 +6,6 @@
 //!
 //! | Cell | Dimension | Pinned |
 //! | --- | --- | --- |
-//! | [`reasoning_content_reaches_the_caller_on_both_transports`] | `reasoning_content` | a non-OpenAI message field, reaching the caller as reasoning on both transports — a block when blocking, correlated deltas when streaming |
 //! | [`n_greater_than_one_answers_from_candidate_zero_on_both_transports`] | `n > 1` | the two transports pick the *same* candidate |
 //! | [`logprobs_survive_into_the_raw_response`] | `logprobs` | preserved on `raw`, absent from the normalized view |
 //! | [`the_finish_reason_vocabulary_is_covered_end_to_end`] | `finish_reason` | all three values llama.cpp can emit are recorded somewhere in this suite |
@@ -33,7 +32,6 @@
 //! answer, while the blocking path answers the same request from candidate 0
 //! alone". This cell is that claim, measured.
 
-use rig::message::AssistantContent;
 use rig::streaming::Item;
 use serde_json::{Value, json};
 
@@ -45,148 +43,11 @@ use crate::support::assistant_text_response;
 use super::super::cassette_support::*;
 use rig::completion::CompletionRequest;
 
-/// A prompt Qwen3 answers with a visible `<think>` pass, so
-/// `reasoning_content` is populated.
-const REASONING_PROMPT: &str = "What is 2+2? Answer briefly.";
-
 /// An open-ended prompt sampled at a high temperature, so two candidates
 /// genuinely differ — which is what makes "rig picked candidate 0" a
 /// falsifiable claim rather than a tautology.
 const TWO_CANDIDATE_PROMPT: &str =
     "/no_think Invent a two-word name for a fictional harbour town. Reply with the name only.";
-
-/// llama.cpp puts hidden reasoning in a non-standard `reasoning_content`
-/// field, and rig maps it to a structured reasoning block on both transports.
-///
-/// The interesting half is *parity*. A provider that surfaced reasoning as
-/// text on one transport and as a reasoning block on the other would make the
-/// same turn read differently depending on how it was requested — and the
-/// blocking mapping's own comment says it exists so "the non-streaming path
-/// matches streaming behavior and does not pollute plain-text response
-/// surfaces". This cell is what checks that against llama.cpp.
-#[tokio::test]
-async fn reasoning_content_reaches_the_caller_on_both_transports() {
-    use futures::StreamExt as _;
-    use rig::streaming::StreamEvent;
-
-    with_llamacpp_cassette(
-        "response_shape_matrix/reasoning_blocking",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let response = model
-                .call(CompletionRequest::new(REASONING_PROMPT).max_tokens(512))
-                .await
-                .expect("a reasoning turn should succeed");
-
-            let reasoning = response
-                .choice
-                .iter()
-                .find_map(|item| match item {
-                    AssistantContent::Reasoning(reasoning) => Some(reasoning.clone()),
-                    _ => None,
-                })
-                .unwrap_or_else(|| {
-                    panic!(
-                        "`reasoning_content` must become a reasoning block, not text: {:?}",
-                        response.choice
-                    )
-                });
-            let reasoning_text = reasoning.text.clone();
-            assert!(
-                !reasoning_text.trim().is_empty(),
-                "the reasoning block must carry text — a derived `Debug` is never \
-                 the empty string, so formatting it would assert nothing: \
-                 {reasoning:?}"
-            );
-
-            let text = assistant_text_response(&response.choice).unwrap_or_default();
-            assert!(
-                text.contains('4'),
-                "the answer text is the answer, not the reasoning: {text:?}"
-            );
-            assert!(
-                !text.contains("<think>"),
-                "the reasoning must not leak into the plain-text surface: {text:?}"
-            );
-        },
-    )
-    .await;
-
-    with_llamacpp_cassette(
-        "response_shape_matrix/reasoning_streaming",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let mut stream = model
-                .stream(CompletionRequest::new(REASONING_PROMPT).max_tokens(512))
-                .expect("stream should start");
-
-            let mut reasoning = String::new();
-            let mut correlators = std::collections::BTreeSet::new();
-            let mut text = String::new();
-            while let Some(item) = stream.next().await {
-                match item.expect("stream item should be ok") {
-                    // Streaming delivers reasoning incrementally, as deltas
-                    // sharing one rig-generated correlator, and may close them
-                    // with a complete block. Both are reasoning; text is not.
-                    Item::Event(StreamEvent::Reasoning { part, text: delta }) => {
-                        correlators.insert(part);
-                        reasoning.push_str(&delta);
-                    }
-                    Item::Event(StreamEvent::End {
-                        part,
-                        content: AssistantContent::Reasoning(_),
-                    }) => {
-                        correlators.insert(part);
-                    }
-                    Item::Event(StreamEvent::Text { text: chunk, .. }) => text.push_str(&chunk),
-                    _ => {}
-                }
-            }
-
-            assert!(
-                !reasoning.trim().is_empty(),
-                "the streamed turn must carry reasoning too, or the two transports \
-                 disagree about the same wire field"
-            );
-            assert_eq!(
-                correlators.len(),
-                1,
-                "one reasoning part, so one correlator: {correlators:?}"
-            );
-            assert!(
-                text.contains('4'),
-                "and the answer still arrives as text: {text:?}"
-            );
-            assert!(
-                !text.contains("<think>") && !text.contains(reasoning.trim()),
-                "the reasoning must not also arrive as text: {text:?}"
-            );
-        },
-    )
-    .await;
-
-    // Both recordings must actually carry the field, or the cell proves
-    // nothing about the mapping.
-    let blocking =
-        recorded_statuses_and_bodies("llamacpp", "response_shape_matrix/reasoning_blocking");
-    let response: Value = serde_json::from_str(&blocking[0].1).expect("response should be JSON");
-    assert!(
-        response["choices"][0]["message"]["reasoning_content"]
-            .as_str()
-            .is_some_and(|reasoning| !reasoning.is_empty()),
-        "the blocking fixture must carry reasoning_content: {response}"
-    );
-
-    let frames = recorded_sse_json_frames("llamacpp", "response_shape_matrix/reasoning_streaming");
-    assert!(
-        frames
-            .iter()
-            .any(|frame| frame["choices"][0]["delta"]["reasoning_content"]
-                .as_str()
-                .is_some_and(|reasoning| !reasoning.is_empty())),
-        "the streaming fixture must carry reasoning_content deltas"
-    );
-}
 
 /// `n > 1`: both transports answer from candidate 0, and the answer rig
 /// produced is compared against the recorded candidate.

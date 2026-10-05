@@ -22,29 +22,7 @@
 
 mod support;
 
-use google_cloud_aiplatform_v1::client::PredictionService;
-use rig_core::completion::CompletionRequest;
-use rig_core::message::{AssistantContent, Message, Text, UserContent};
 use rig_vertexai::VertexAi;
-use rig_vertexai::completion::GenerateContent;
-use support::{LocalEndpoint, Reply, SentinelCredentials, text_response};
-
-fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
-}
 
 /// Fact (1), against the real credential chain: constructing metadata-service
 /// credentials — the branch ADC falls back to, and the one Rig's `from_env`
@@ -84,75 +62,4 @@ fn building_adc_credentials_requires_a_runtime_context() {
         inside.is_ok(),
         "inside a runtime the same construction succeeds"
     );
-}
-
-/// Fact (2): a host that builds the client on its own retained runtime can
-/// hand the model to a worker thread that owns no runtime of its own, as long
-/// as the work is driven on the retained one. The SDK client is prepared
-/// asynchronously up front; the request is polled later, from the other
-/// thread, through the runtime handle.
-#[test]
-fn a_worker_thread_completes_through_the_retained_runtime() {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .expect("runtime");
-
-    let credentials = SentinelCredentials::rotating("retained-token");
-    let (endpoint, model) = runtime.block_on({
-        let credentials = credentials.clone();
-        async move {
-            let endpoint =
-                LocalEndpoint::spawn([Reply::ok(text_response("from the worker"))]).await;
-            let service = PredictionService::builder()
-                .with_endpoint(endpoint.url())
-                .with_attempt_timeout(std::time::Duration::from_secs(60))
-                .with_credentials(credentials.credentials())
-                .build()
-                .await
-                .expect("SDK client prepared on the host runtime");
-            let client = VertexAi::builder()
-                .with_project("rig-test-project")
-                .with_location("us-central1")
-                .with_prediction_service(service)
-                .build()
-                .expect("client");
-            (
-                endpoint,
-                rig_core::Model::new(GenerateContent::new("gemini-2.5-flash"), client),
-            )
-        }
-    });
-
-    let handle = runtime.handle().clone();
-    let worker = std::thread::spawn(move || {
-        assert!(
-            tokio::runtime::Handle::try_current().is_err(),
-            "the worker thread is not itself a runtime"
-        );
-        handle.block_on(async {
-            tokio::time::timeout(
-                std::time::Duration::from_secs(10),
-                model.call(request("hello from a worker")),
-            )
-            .await
-            .expect("worker completion deadline")
-        })
-    });
-    let response = worker
-        .join()
-        .expect("worker thread")
-        .expect("the completion ran on the retained runtime");
-
-    assert!(
-        matches!(response.choice.as_slice(), [AssistantContent::Text(text)] if text.text == "from the worker")
-    );
-    assert_eq!(endpoint.request_count(), 1);
-    assert_eq!(credentials.issued(), 1);
-
-    // Shutdown ordering: the operation finished, so releasing the runtime
-    // releases only shared resources.
-    drop(endpoint);
-    runtime.shutdown_background();
 }

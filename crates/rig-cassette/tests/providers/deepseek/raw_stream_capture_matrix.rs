@@ -19,8 +19,6 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | record shape | terminal `raw` is the chat terminal record and agrees with the normalized terminal; the normalized terminal reproduces the recorded terminal frame | recorded |
-//! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | the terminal record's `usage` carries `prompt_cache_miss_tokens` and `prompt_cache_hit_tokens`, and the normalized usage keeps only the hit half | recorded |
 //! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` is the same record and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -44,24 +42,17 @@ use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use super::support::with_deepseek_cassette_result;
-use crate::raw_capture::{assert_no_request_id, capture_terminal, capture_text_and_terminal, chat};
+use crate::raw_capture::{assert_no_request_id, chat};
 use crate::support::Observed;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
-const PROMPT: &str = "Reply with the single word: pong";
 /// A question small enough that a thinking-mode turn reasons briefly and
 /// still answers within the budget.
 const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the number.";
 /// A thinking-mode turn spends most of its budget on reasoning tokens before
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
-
-fn request() -> CompletionRequest {
-    CompletionRequest::new(PROMPT)
-        .additional_params(json!({ "thinking": { "type": "disabled" } }))
-        .max_tokens(16)
-}
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
 fn reasoning_request() -> CompletionRequest {
@@ -129,74 +120,9 @@ fn recorded_reasoning(scenario: &str) -> String {
 // 1. raw is the terminal record
 // ================================================================
 
-#[tokio::test]
-async fn stream_raw_round_trips_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let sink = Observed::default();
-    with_deepseek_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| capture_text_and_terminal(client.completion(MODEL), request(), sink.clone()),
-    )
-    .await
-    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
-
-    let (text, terminal) = sink.take();
-    assert!(!text.is_empty());
-    chat::assert_terminal_round_trips(&terminal);
-
-    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
-    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-}
-
 // ================================================================
 // 2. A terminal-only field the normalized record lacks
 // ================================================================
-
-#[tokio::test]
-async fn stream_raw_exposes_terminal_cache_miss_tokens() {
-    const SCENARIO: &str =
-        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens";
-    let sink = Observed::default();
-    with_deepseek_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
-        |client| capture_terminal(client.completion(MODEL), request(), sink.clone()),
-    )
-    .await
-    .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
-
-    let terminal = sink.take();
-    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
-    let recorded_miss = frame["usage"]["prompt_cache_miss_tokens"]
-        .as_u64()
-        .expect("DeepSeek's terminal usage reports prompt_cache_miss_tokens");
-    let recorded_hit = frame["usage"]["prompt_cache_hit_tokens"]
-        .as_u64()
-        .expect("DeepSeek's terminal usage reports prompt_cache_hit_tokens");
-
-    let raw = &terminal.raw;
-    // The record's `usage` is the wire's own accounting object, so
-    // DeepSeek's split rides beside the OpenAI-compatible counters.
-    let usage = &raw["usage"];
-    assert_eq!(
-        usage.get("prompt_cache_miss_tokens"),
-        Some(&json!(recorded_miss))
-    );
-    assert_eq!(
-        usage.get("prompt_cache_hit_tokens"),
-        Some(&json!(recorded_hit))
-    );
-    // The normalized terminal keeps the hit count (as cached input) and has
-    // no slot for the miss count: exactly half of the split crosses over.
-    assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
-    let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
-    assert!(
-        normalized_usage.get("prompt_cache_miss_tokens").is_none(),
-        "the normalized usage has no miss-count slot: {normalized_usage}"
-    );
-}
 
 // ================================================================
 // 3. A thinking-mode stream: raw is the terminal record, reasoning stays on

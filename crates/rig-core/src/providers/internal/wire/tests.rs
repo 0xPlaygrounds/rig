@@ -4,7 +4,10 @@ use super::{WireEvent, classify_chat_completions_frame, classify_tagged_frame};
 #[serde(tag = "type")]
 enum TestEvent {
     #[serde(rename = "text.delta")]
-    TextDelta { delta: String },
+    TextDelta {
+        #[allow(dead_code)]
+        delta: String,
+    },
 }
 
 fn known(event_type: &str) -> bool {
@@ -18,87 +21,9 @@ struct TestChunk {
 }
 
 #[test]
-fn tagged_known_frame_decodes() {
-    let event =
-        classify_tagged_frame::<TestEvent>(r#"{"type":"text.delta","delta":"hi"}"#, "type", known);
-    assert!(matches!(event, WireEvent::Known(TestEvent::TextDelta { delta }) if delta == "hi"));
-}
-
-#[test]
-fn tagged_unknown_type_is_unknown() {
-    let event = classify_tagged_frame::<TestEvent>(r#"{"type":"future.event"}"#, "type", known);
-    assert!(matches!(
-        event,
-        WireEvent::Unknown { event_type, .. } if event_type == "future.event"
-    ));
-}
-
-#[test]
-fn tagged_invalid_json_is_corrupt() {
-    let event = classify_tagged_frame::<TestEvent>("{not json", "type", known);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn tagged_known_type_with_defective_payload_is_corrupt() {
-    let event =
-        classify_tagged_frame::<TestEvent>(r#"{"type":"text.delta","delta":42}"#, "type", known);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn tagged_typeless_frame_is_corrupt() {
-    let event = classify_tagged_frame::<TestEvent>("{}", "type", known);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-/// #2258 review probe: `serde_json::Value` keeps the last duplicate key,
-/// so without the duplicate-discriminator rejection this frame would
-/// dispatch on `future.event` and demote a defective known frame to a
-/// skippable `Unknown`.
-#[test]
-fn tagged_duplicate_discriminator_is_corrupt() {
-    let event = classify_tagged_frame::<TestEvent>(
-        r#"{"type":"text.delta","type":"future.event","delta":"hi"}"#,
-        "type",
-        known,
-    );
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-/// #2258 review probe (second-pass extension): the chat classifier's
-/// `object` recognizability key is equally spoofable via duplication.
-#[test]
-fn chat_duplicate_object_discriminator_is_corrupt() {
-    let event = classify_chat_completions_frame::<TestChunk>(
-        r#"{"object":"chat.completion.chunk","object":"future.thing","data":1}"#,
-    );
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
 fn chat_duplicate_choices_key_is_corrupt() {
     let event = classify_chat_completions_frame::<TestChunk>(r#"{"choices":[],"choices":42}"#);
     assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn tagged_duplicate_non_discriminator_key_still_classifies() {
-    // Only discriminator duplication is rejected by the scanner; other
-    // duplicate keys stay with the typed decode's own policy (an ignored
-    // key duplicated is harmless).
-    let event = classify_tagged_frame::<TestEvent>(
-        r#"{"type":"text.delta","ignored":1,"ignored":2,"delta":"hi"}"#,
-        "type",
-        known,
-    );
-    assert!(matches!(event, WireEvent::Known(TestEvent::TextDelta { delta }) if delta == "hi"));
-}
-
-#[test]
-fn chat_recognizable_chunk_decodes() {
-    let event = classify_chat_completions_frame::<TestChunk>(r#"{"choices":[]}"#);
-    assert!(matches!(event, WireEvent::Known(_)));
 }
 
 #[test]
@@ -108,18 +33,6 @@ fn chat_unrecognizable_json_is_unknown() {
         event,
         WireEvent::Unknown { event_type, .. } if event_type == "ping"
     ));
-}
-
-#[test]
-fn chat_recognizable_chunk_with_defective_payload_is_corrupt() {
-    let event = classify_chat_completions_frame::<TestChunk>(r#"{"choices":42}"#);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn chat_invalid_json_is_corrupt() {
-    let event = classify_chat_completions_frame::<TestChunk>("{not json");
-    assert!(matches!(event, WireEvent::Corrupt(_)));
 }
 
 /// Valid JSON that is not an object — a gateway keep-alive `null`, a
@@ -140,77 +53,4 @@ fn non_object_json_is_unknown_never_corrupt() {
             "tagged classifier must skip {frame}, got {event:?}"
         );
     }
-}
-
-#[test]
-fn tagged_dispatch_honors_a_non_type_tag_name() {
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(tag = "event_type")]
-    enum EventTypeTagged {
-        #[serde(rename = "step.delta")]
-        StepDelta { delta: String },
-    }
-
-    let event = classify_tagged_frame::<EventTypeTagged>(
-        r#"{"event_type":"step.delta","delta":"hi"}"#,
-        "event_type",
-        |event_type| event_type == "step.delta",
-    );
-    assert!(matches!(
-        event,
-        WireEvent::Known(EventTypeTagged::StepDelta { delta }) if delta == "hi"
-    ));
-
-    let event = classify_tagged_frame::<EventTypeTagged>(
-        r#"{"event_type":"future.event"}"#,
-        "event_type",
-        |event_type| event_type == "step.delta",
-    );
-    assert!(matches!(
-        event,
-        WireEvent::Unknown { event_type, .. } if event_type == "future.event"
-    ));
-}
-
-#[test]
-fn marker_keyed_recognizable_chunk_decodes() {
-    let event =
-        super::classify_marker_keyed_frame::<TestChunk>(r#"{"choices":[]}"#, &["choices", "usage"]);
-    assert!(matches!(event, WireEvent::Known(_)));
-}
-
-#[test]
-fn marker_keyed_unrecognizable_json_is_unknown() {
-    let event = super::classify_marker_keyed_frame::<TestChunk>(
-        r#"{"noise":true,"other":1}"#,
-        &["choices", "usage"],
-    );
-    assert!(matches!(
-        event,
-        WireEvent::Unknown { event_type, .. } if event_type == "noise,other"
-    ));
-}
-
-#[test]
-fn marker_keyed_recognizable_chunk_with_defective_payload_is_corrupt() {
-    let event = super::classify_marker_keyed_frame::<TestChunk>(r#"{"choices":42}"#, &["choices"]);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn marker_keyed_invalid_json_is_corrupt() {
-    let event = super::classify_marker_keyed_frame::<TestChunk>("{not json", &["choices"]);
-    assert!(matches!(event, WireEvent::Corrupt(_)));
-}
-
-#[test]
-fn untyped_line_is_known_or_corrupt() {
-    assert!(matches!(
-        super::classify_untyped_line::<TestChunk>(br#"{"choices":[]}"#),
-        WireEvent::Known(_)
-    ));
-    assert!(matches!(
-        super::classify_untyped_line::<TestChunk>(b"{not json"),
-        WireEvent::Corrupt(_)
-    ));
 }

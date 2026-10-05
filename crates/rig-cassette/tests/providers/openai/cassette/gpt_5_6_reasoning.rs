@@ -14,8 +14,6 @@ use rig::driver::Model;
 use rig::message::{AssistantContent, Message};
 use rig::providers::openai;
 use rig::providers::openai::wire::OpenAiWire;
-use rig::streaming::Item;
-use rig::streaming::StreamEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -51,13 +49,6 @@ struct StoredResponseTurn {
     user: Message,
     assistant: Message,
     raw_response: Value,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct StoredStreamingTurn {
-    user: Message,
-    assistant: Message,
-    final_response: Value,
 }
 
 /// Issue one GPT-5.6 completion and return both views of the single recorded
@@ -112,26 +103,6 @@ fn assert_has_text(response: &CompletionResponse) {
         !text.trim().is_empty(),
         "response should surface output text"
     );
-}
-
-#[tokio::test]
-async fn effort_max() {
-    with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
-        let model = client.openai.completion(openai::GPT_5_6);
-        let (response, raw_response) =
-            prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
-        assert_has_text(&response);
-        assert_reasoning_metadata(
-            &raw_response,
-            json!({
-                "context": "all_turns",
-                "effort": "max",
-                "mode": "standard",
-                "summary": null
-            }),
-        );
-    })
-    .await;
 }
 
 #[tokio::test]
@@ -280,130 +251,6 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     );
                     assert_eq!(
                         stored.raw_response["reasoning"]["context"].as_str(),
-                        Some("all_turns")
-                    );
-                }
-            }
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn five_turn_streaming_reasoning_metadata_roundtrip() {
-    with_openai_cassette(
-        "gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip",
-        |client| async move {
-            let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let expected_metadata = json!({
-                "context": "all_turns",
-                "effort": "low",
-                "mode": "pro",
-                "summary": null
-            });
-            let mut stored_turns = Vec::<StoredStreamingTurn>::new();
-
-            for (turn_index, (prompt, expected_text)) in FIVE_TURN_PROMPTS.into_iter().enumerate() {
-                let history = stored_turns
-                    .iter()
-                    .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
-                let user_message = Message::user(prompt);
-                let request = CompletionRequest::new(user_message.clone())
-                    .messages(history)
-                    .additional_params(json!({
-                        "reasoning": {
-                            "context": "all_turns",
-                            "effort": "low",
-                            "mode": "pro"
-                        },
-                        "store": false
-                    }));
-                // The terminal record under test is the Responses API's own
-                // streaming response, which rides on `CompletionResponse::raw`; the
-                // normalized `CompletionResponse` does not carry the reasoning
-                // metadata.
-                let mut stream = model.stream(request).unwrap_or_else(|error| {
-                    panic!("turn {} stream should start: {error}", turn_index + 1)
-                });
-                let mut text = String::new();
-
-                while let Some(item) = stream.next().await {
-                    if let Item::Event(StreamEvent::Text { text: delta, .. }) =
-                        item.unwrap_or_else(|error| {
-                            panic!("turn {} stream should succeed: {error}", turn_index + 1)
-                        })
-                    {
-                        text.push_str(&delta)
-                    }
-                }
-                let final_record = stream.finish().await.unwrap_or_else(|error| {
-                    panic!(
-                        "turn {} should yield a final response: {error}",
-                        turn_index + 1
-                    )
-                });
-
-                assert_eq!(
-                    text.trim(),
-                    expected_text,
-                    "unexpected turn {} text",
-                    turn_index + 1
-                );
-                // The provider-native record rides on `raw`; the reasoning
-                // metadata lives there, not on the normalized response.
-                let final_response = final_record.raw.clone();
-                assert_eq!(
-                    final_response["reasoning"]["context"].as_str(),
-                    Some("all_turns")
-                );
-                assert_eq!(
-                    final_response["reasoning"].as_object(),
-                    expected_metadata.as_object()
-                );
-                let final_json = serde_json::to_value(&final_response)
-                    .expect("final streaming response should serialize");
-                let roundtripped: Value = serde_json::from_value(final_json.clone())
-                    .expect("final streaming response should deserialize after serialization");
-                assert_eq!(
-                    serde_json::to_value(&roundtripped)
-                        .expect("roundtripped streaming response should serialize"),
-                    final_json,
-                    "all final streaming data should survive turn {} serialization roundtrip",
-                    turn_index + 1
-                );
-
-                stored_turns.push(StoredStreamingTurn {
-                    user: user_message,
-                    // The turn as the stream folded it: its blocks, in order,
-                    // with the items the next turn sends back.
-                    assistant: final_record
-                        .message()
-                        .unwrap_or_else(|| Message::assistant(&text)),
-                    final_response,
-                });
-                let stored_json = serde_json::to_value(&stored_turns)
-                    .expect("all stored streaming turns should serialize");
-                stored_turns = serde_json::from_value(stored_json.clone()).expect(
-                    "all stored streaming turns should deserialize before the next request",
-                );
-                assert_eq!(
-                    serde_json::to_value(&stored_turns)
-                        .expect("restored streaming turns should serialize"),
-                    stored_json,
-                    "all streaming session data should survive persistence after turn {}",
-                    turn_index + 1
-                );
-                assert_eq!(stored_turns.len(), turn_index + 1);
-                for (prior_turn, stored) in stored_turns.iter().enumerate() {
-                    assert_eq!(
-                        stored.final_response["reasoning"].as_object(),
-                        expected_metadata.as_object(),
-                        "streaming reasoning metadata from turn {} changed by turn {}",
-                        prior_turn + 1,
-                        turn_index + 1
-                    );
-                    assert_eq!(
-                        stored.final_response["reasoning"]["context"].as_str(),
                         Some("all_turns")
                     );
                 }

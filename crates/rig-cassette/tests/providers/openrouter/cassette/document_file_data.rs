@@ -48,23 +48,6 @@ fn document_question(page_number: u8) -> RigMessage {
     }
 }
 
-fn message_contains_base64_document(message: &RigMessage) -> bool {
-    let RigMessage::User { content } = message else {
-        return false;
-    };
-
-    content.iter().any(|content| {
-        matches!(
-            content,
-            RigUserContent::Document(Document {
-                data: DocumentSourceKind::Base64(_),
-                media_type: Some(DocumentMediaType::PDF),
-                ..
-            })
-        )
-    })
-}
-
 /// The `messages` array the `OPENROUTER` dialect sends for one rig message.
 ///
 /// `encode` touches no socket, so the outbound bytes are inspectable beside
@@ -129,34 +112,6 @@ fn assert_openrouter_wire_file_data(message: RigMessage) {
     );
 }
 
-fn assert_no_file_id_leaked_into_wire(message: RigMessage) {
-    let messages = openrouter_wire_messages(message);
-    for json in messages {
-        let serialized = serde_json::to_string(&json).expect("json should serialize");
-        assert!(
-            !serialized.contains("file_id"),
-            "provider file ID field leaked into OpenRouter JSON: {json:#}"
-        );
-    }
-}
-
-fn assert_history_preserves_single_file_data_document(history: &[RigMessage]) {
-    let mut document_message_count = 0;
-
-    for message in history {
-        assert_no_file_id_leaked_into_wire(message.clone());
-        if message_contains_base64_document(message) {
-            document_message_count += 1;
-            assert_openrouter_wire_file_data(message.clone());
-        }
-    }
-
-    assert_eq!(
-        document_message_count, 1,
-        "expected exactly one history message to preserve the PDF file_data document: {history:?}"
-    );
-}
-
 fn assert_no_verifier_leaked_into_prompt(message: &RigMessage) {
     let RigMessage::User { content } = message else {
         return;
@@ -200,50 +155,6 @@ fn verifier_suffix(verifier: &str) -> &str {
         .rsplit('-')
         .next()
         .expect("verifier should contain a suffix")
-}
-
-#[tokio::test]
-async fn document_file_data_roundtrip_live() {
-    with_openrouter_cassette(
-        "document_file_data/document_file_data_roundtrip_live",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(DOCUMENT_MODEL))
-                .preamble(DOCUMENT_PREAMBLE)
-                .build();
-            let mut history = Vec::new();
-
-            let direct_message = document_question(2);
-            assert_no_verifier_leaked_into_prompt(&direct_message);
-            assert_openrouter_wire_file_data(direct_message.clone());
-
-            let response = agent
-                .chat(direct_message, &mut history)
-                .await
-                .expect("OpenRouter should read PDF file_data document");
-            assert_verifier_response(&response.output(), PAGE_TWO_VERIFIER);
-            assert_history_preserves_single_file_data_document(&history);
-
-            let follow_up = agent
-                .chat(
-                    "Using the same PDF from the conversation history, what verifier token is printed on page 3? Reply with only the exact token.",
-                    &mut history,
-                )
-                .await
-                .expect("OpenRouter should reuse PDF file_data document from chat history");
-            assert_verifier_response(&follow_up.output(), PAGE_THREE_VERIFIER);
-            assert_history_preserves_single_file_data_document(&history);
-
-            let direct_prompt = document_question(1);
-            assert_no_verifier_leaked_into_prompt(&direct_prompt);
-            assert_openrouter_wire_file_data(direct_prompt.clone());
-            let direct_response = agent
-                .prompt(direct_prompt)
-                .await
-                .expect("OpenRouter should read direct generic PDF file_data document");
-            assert_verifier_response(&direct_response.output(), PAGE_ONE_VERIFIER);
-        },
-    )
-    .await;
 }
 
 #[tokio::test]

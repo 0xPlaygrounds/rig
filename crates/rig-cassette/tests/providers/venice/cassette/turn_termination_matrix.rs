@@ -28,21 +28,8 @@
 //!
 //! | # | cell | surface | asserts |
 //! |---|------|---------|---------|
-//! | 1 | `blocking_truncated_turn_reports_length_and_cap` | blocking | `Length` + the cap this attempt ran under |
-//! | 2 | `streaming_truncated_turn_reports_length_and_cap` | streaming | the same, on the other surface |
-//! | 3 | `blocking_completed_turn_reports_stop_and_cap` | blocking | `Stop`, and that it fails `truncated_output()` |
-//! | 4 | `streaming_completed_turn_reports_stop_and_cap` | streaming | the same |
 //! | 5 | `blocking_tool_turn_reports_tool_calls` | blocking | `ToolCalls` |
 //! | 6 | `streaming_tool_turn_reports_tool_calls` | streaming | `ToolCalls` |
-//! | 7 | `blocking_escalating_retry_reports_each_attempts_own_cap` | blocking | two attempts, two caps, two reasons |
-//! | 8 | `streaming_escalating_retry_reports_each_attempts_own_cap` | streaming | the same |
-//!
-//! Cells 7 and 8 are #2184's acceptance criterion against a live provider: the
-//! first attempt truncates under a deliberately tiny cap, a provider-neutral
-//! hook reads `FinishReason::Length` off the event and asks for a repeat with
-//! a larger cap, and the second attempt reports *its own* cap rather than the
-//! agent's baseline. Both attempts live in one cassette, so the escalation is
-//! replayed rather than re-derived.
 //!
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! carrying the wire reason the cell is about — otherwise a provider changing
@@ -63,9 +50,7 @@ use serde_json::Value;
 
 use super::super::support::with_venice_cassette;
 use crate::cassettes;
-use crate::support::{
-    Adder, EscalateCapOnTruncation, TurnTerminationProbe, collect_stream_final_response,
-};
+use crate::support::{Adder, TurnTerminationProbe, collect_stream_final_response};
 
 pub(super) const MODEL: &str = rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 pub(super) const TINY_CAP: u64 = 16;
@@ -73,53 +58,24 @@ pub(super) const TINY_CAP: u64 = 16;
 pub(super) const ROOMY_CAP: u64 = 512;
 /// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
 pub(super) const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
-pub(super) const RETRY_PROMPT: &str = "Write two sentences about maple trees.";
-pub(super) const SHORT_PROMPT: &str = "Reply with exactly the word: cedar.";
 pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
 pub(super) const CONCISE_PREAMBLE: &str =
     "You are a concise assistant. Answer directly in plain text.";
 pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 // ---------------------------------------------------------------------------
-// Length — the provider cut the turn short at the cap we set.
+// ToolCalls: the reason a portable hook must never mistake for retryable.
 // ---------------------------------------------------------------------------
 
 crate::matrix::case_matrix! {
     wrapper: with_venice_cassette, family: turn_termination_matrix_case;
-    # [tokio :: test]
-    blocking_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap", blocking_truncated_turn_reports_length_and_cap_15);
-    # [tokio :: test]
-    streaming_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap", streaming_truncated_turn_reports_length_and_cap_16);
-    # [tokio :: test]
-    blocking_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap", blocking_completed_turn_reports_stop_and_cap_17);
-    # [tokio :: test]
-    streaming_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap", streaming_completed_turn_reports_stop_and_cap_18);
     # [ignore = "Venice mistral-small-3-2-24b-instruct answered without calling add in attempts 1, 2 and 3 (2026-09-13, record-venice-termination-blocking-attempt-{1,2,3}.log); exhausted the reasoning-matrix prompt's three-attempt limit"]
     # [tokio :: test]
     blocking_tool_turn_reports_tool_calls: ("turn_termination_matrix/blocking_tool_turn_reports_tool_calls", blocking_tool_turn_reports_tool_calls_19);
     # [ignore = "Venice mistral-small-3-2-24b-instruct answered without calling add in attempts 1, 2 and 3 (2026-09-13, record-venice-termination-streaming-attempt-{1,2,3}.log); exhausted the reasoning-matrix prompt's three-attempt limit"]
     # [tokio :: test]
     streaming_tool_turn_reports_tool_calls: ("turn_termination_matrix/streaming_tool_turn_reports_tool_calls", streaming_tool_turn_reports_tool_calls_20);
-    # [tokio :: test]
-    blocking_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap", blocking_escalating_retry_reports_each_attempts_own_cap_21);
-    # [tokio :: test]
-    streaming_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap", streaming_escalating_retry_reports_each_attempts_own_cap_22);
 }
-
-// ---------------------------------------------------------------------------
-// Stop — the control. A completed turn must not read as truncated.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// ToolCalls — the reason a portable hook must never mistake for retryable.
-// OpenAI reports a distinct `tool_calls` wire value, so this maps directly
-// rather than through `reconcile_with_output`.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// The acceptance criterion: escalate the cap on truncation, against the real
-// provider, and report each attempt's own cap.
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell

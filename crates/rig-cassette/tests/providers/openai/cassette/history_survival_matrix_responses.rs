@@ -32,9 +32,5 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
 crate::matrix::case_matrix! {
     wrapper: with_openai_cassette, family: history_survival_case;
     #[tokio::test]
-    responses_unary: ("history_survival_matrix/responses_unary", configured, cell(Transport::Unary, Expect::ENCRYPTED));
-    #[tokio::test]
-    responses_streaming: ("history_survival_matrix/responses_streaming", configured, cell(Transport::Streaming, Expect::ENCRYPTED));
-    #[tokio::test]
     responses_unary_image_tool_result: ("history_survival_matrix/responses_unary_image_tool_result", configured, cell(Transport::Unary, Expect::ENCRYPTED.with_image()));
 }

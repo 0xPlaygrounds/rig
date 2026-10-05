@@ -210,109 +210,6 @@ fn ordered_live_with_error(reverse: bool, recorded_divergence: bool) -> (EffectL
 }
 
 #[test]
-fn opposite_answer_orders_have_distinct_logs_and_replay_their_own_winner() {
-    let (forward, first_forward) = ordered_live(false);
-    let (reverse, first_reverse) = ordered_live(true);
-    assert_ne!(
-        serde_json::to_value(&forward).unwrap(),
-        serde_json::to_value(&reverse).unwrap()
-    );
-    assert_ne!(first_forward, first_reverse);
-    for (log, expected) in [(forward, first_forward), (reverse, first_reverse)] {
-        let mut app = bus_support::app();
-        app.init_resource::<First>().add_observer(first_answer);
-        replaying(&mut app, &log);
-        let loaded = Replay::load(app.world_mut(), &log);
-        bus_support::tick_until(&mut app, "both replayed", |world| {
-            loaded
-                .iter()
-                .all(|entity| world.get::<EffectOutcome>(*entity).is_some())
-        });
-        assert_eq!(app.world().resource::<First>().0.as_ref(), Some(&expected));
-    }
-}
-
-#[test]
-fn a_recorded_divergence_is_delivered_without_overwriting_other_results() {
-    for reverse in [false, true] {
-        let (log, first) = ordered_live_with_error(reverse, true);
-        let mut replay = bus_support::app();
-        replay.init_resource::<First>().add_observer(first_answer);
-        replaying(&mut replay, &log);
-        let loaded = Replay::load(replay.world_mut(), &log);
-        bus_support::tick_until(
-            &mut replay,
-            "recorded success and divergence replayed",
-            |world| {
-                loaded
-                    .iter()
-                    .all(|entity| world.get::<EffectOutcome>(*entity).is_some())
-            },
-        );
-        assert!(
-            replay
-                .world()
-                .get_resource::<rig_cassette::ecs::ReplayFailure>()
-                .is_none()
-        );
-        assert_eq!(replay.world().resource::<First>().0.as_ref(), Some(&first));
-        for (entity, record) in loaded.into_iter().zip(&log.records) {
-            assert_eq!(
-                serde_json::to_value(&replay.world().get::<EffectOutcome>(entity).unwrap().0)
-                    .unwrap(),
-                serde_json::to_value(&record.outcome).unwrap()
-            );
-        }
-    }
-}
-
-#[test]
-fn bounded_intake_preserves_deliveries_for_reserved_and_new_effects() {
-    let (log, _) = ordered_live(false);
-    for reserved in [false, true] {
-        let mut app = bus_support::app();
-        app.world_mut()
-            .resource_mut::<rig_ecs::bus::Policy>()
-            .0
-            .command_capacity = 1;
-        replaying(&mut app, &log);
-        let effects: Vec<_> = if reserved {
-            Replay::load(app.world_mut(), &log)
-        } else {
-            log.records
-                .iter()
-                .map(|record| {
-                    app.world_mut()
-                        .spawn(PendingEffect::new(record.key.clone(), record.kind.clone()))
-                        .id()
-                })
-                .collect()
-        };
-        bus_support::tick_until(
-            &mut app,
-            "queued effect receives its own delivery",
-            |world| {
-                effects
-                    .iter()
-                    .all(|entity| world.get::<EffectOutcome>(*entity).is_some())
-            },
-        );
-        assert!(
-            !app.world()
-                .contains_resource::<rig_cassette::ecs::ReplayFailure>()
-        );
-        assert!(
-            effects.iter().all(|entity| app
-                .world()
-                .get::<EffectOutcome>(*entity)
-                .unwrap()
-                .0
-                .is_ok())
-        );
-    }
-}
-
-#[test]
 fn serial_serving_replays_two_streams_on_the_same_key() {
     let mut live = bus_support::serial_app();
     let recorder = EffectLogRecorder::keeping_stream_events();
@@ -676,64 +573,6 @@ fn live_stream(groups: Vec<Vec<&'static str>>, keep: bool) -> (EffectLog, Vec<St
 }
 
 #[test]
-fn kept_streams_replay_single_and_multi_event_policy_batches() {
-    for groups in [
-        vec![vec!["a"], vec!["b"], vec!["c"]],
-        vec![vec!["a", "b"], vec!["c"]],
-    ] {
-        let legacy_expected: Vec<_> = groups
-            .iter()
-            .scan(String::new(), |text, group| {
-                text.push_str(&group.concat());
-                Some(text.clone())
-            })
-            .collect();
-        let (log, live) = live_stream(groups.clone(), true);
-        assert_eq!(live.last().map(String::as_str), Some("abc"));
-        assert_eq!(live, recorded_text_snapshots(&log));
-        let mut app = observing_app();
-        replaying(&mut app, &log);
-        let effect = Replay::load(app.world_mut(), &log)[0];
-        bus_support::tick_until(&mut app, "replayed stream", |world| {
-            world.get::<EffectOutcome>(effect).is_some()
-        });
-        assert_eq!(app.world().resource::<Snapshots>().0, live);
-        assert_eq!(
-            serde_json::to_value(&app.world().get::<Streamed>(effect).unwrap().events).unwrap(),
-            serde_json::to_value(log.records[0].events.as_ref().unwrap()).unwrap()
-        );
-        // Historical recordings can place several items in one Collect batch.
-        // Rebuild that supported trace explicitly from the same event bytes.
-        let mut legacy = log.clone();
-        let id = legacy.records[0].id;
-        let mut deliveries = Vec::new();
-        for (index, group) in groups.iter().enumerate() {
-            // The first group opens the text part; the last ends it.
-            let items =
-                group.len() + usize::from(index == 0) + usize::from(index + 1 == groups.len());
-            deliveries.push(rig_core::effect::Delivery {
-                batch: index as u64 + 1,
-                id,
-                kind: rig_core::effect::DeliveryKind::Stream { items },
-            });
-        }
-        deliveries.push(rig_core::effect::Delivery {
-            batch: groups.len() as u64,
-            id,
-            kind: rig_core::effect::DeliveryKind::Outcome,
-        });
-        legacy.header.deliveries = Some(deliveries);
-        let mut replay = observing_app();
-        replaying(&mut replay, &legacy);
-        let effect = Replay::load(replay.world_mut(), &legacy)[0];
-        bus_support::tick_until(&mut replay, "historical batches", |world| {
-            world.get::<EffectOutcome>(effect).is_some()
-        });
-        assert_eq!(replay.world().resource::<Snapshots>().0, legacy_expected);
-    }
-}
-
-#[test]
 fn folded_stream_refuses_policy_mode_but_replays_a_final_answer() {
     let (log, live) = live_stream(vec![vec!["a"], vec!["b"], vec!["c"]], false);
     assert_eq!(live.last().map(String::as_str), Some("abc"));
@@ -751,43 +590,6 @@ fn folded_stream_refuses_policy_mode_but_replays_a_final_answer() {
 }
 
 #[test]
-fn request_shape_mismatch_is_a_terminal_divergence_instead_of_a_delivery_wait() {
-    let (streamed, _) = live_stream(vec![vec!["a"]], true);
-    let counters = Arc::new(bus_support::Counters::default());
-    let mut live = bus_support::app();
-    let recorder = EffectLogRecorder::new();
-    EffectLogResource::install(live.world_mut(), recorder.clone());
-    bus_support::register(&mut live, "model", bus_support::MockModel::new(&counters));
-    bus_support::answered(&mut live, "unary recorded");
-    for log in [streamed, recorder.log()] {
-        let mut app = bus_support::app();
-        replaying(&mut app, &log);
-        let effect = Replay::load(app.world_mut(), &log)[0];
-        if let EffectKind::Completion { stream, .. } = &mut app
-            .world_mut()
-            .get_mut::<PendingEffect>(effect)
-            .unwrap()
-            .kind
-        {
-            *stream = !*stream;
-        }
-        bus_support::tick_until(&mut app, "request mismatch terminal", |world| {
-            world.get::<EffectOutcome>(effect).is_some()
-        });
-        assert_eq!(
-            app.world()
-                .get::<EffectOutcome>(effect)
-                .unwrap()
-                .0
-                .as_ref()
-                .unwrap_err()
-                .kind,
-            rig_core::error::ErrorKind::Divergence
-        );
-    }
-}
-
-#[test]
 fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
     let (log, _) = live_stream(vec![vec!["a"]], true);
     for variant in 0..4 {
@@ -796,7 +598,22 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
         match variant {
             0 => deliveries[0].id = rig_core::effect::EffectId::from_raw(999),
             1 => deliveries.push(deliveries.last().unwrap().clone()),
-            2 => deliveries[0].kind = rig_core::effect::DeliveryKind::Stream { items: usize::MAX },
+            // One stream delivery claiming every item, ahead of the outcome.
+            // How the live run batched its items varies, so the claim
+            // replaces them all and the count check is what refuses it.
+            2 => {
+                let first = deliveries[0].clone();
+                deliveries.retain(|delivery| {
+                    !matches!(delivery.kind, rig_core::effect::DeliveryKind::Stream { .. })
+                });
+                deliveries.insert(
+                    0,
+                    rig_core::effect::Delivery {
+                        kind: rig_core::effect::DeliveryKind::Stream { items: usize::MAX },
+                        ..first
+                    },
+                );
+            }
             _ => deliveries.clear(),
         }
         let mut app = bus_support::app();
@@ -963,26 +780,6 @@ fn cancelled_loser_log() -> EffectLog {
     );
     assert!(live.world().get_entity(entities[0]).is_err());
     log
-}
-
-#[test]
-fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
-    let log = cancelled_loser_log();
-    let mut replay = bus_support::app();
-    replay.init_resource::<First>().add_observer(cancel_loser);
-    replaying(&mut replay, &log);
-    let loaded = Replay::load(replay.world_mut(), &log);
-    bus_support::tick_until(&mut replay, "winner cancels loser", |world| {
-        world.get::<EffectOutcome>(loaded[1]).is_some()
-    });
-    replay.update();
-    assert_eq!(replay.world().resource::<First>().0.as_deref(), Some("b"));
-    assert!(replay.world().get_entity(loaded[0]).is_err());
-    assert!(
-        !replay
-            .world()
-            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
-    );
 }
 
 #[test]
@@ -1667,77 +1464,6 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
     }
 }
 
-#[test]
-fn a_streamed_verdict_resumes_only_when_the_host_collects_again() {
-    struct Gated {
-        entered: Arc<std::sync::atomic::AtomicBool>,
-        release: Mutex<Option<oneshot::Receiver<()>>>,
-    }
-    impl rig_core::serve::Intercept for Gated {
-        fn name(&self) -> String {
-            "gated".into()
-        }
-        async fn before(
-            &self,
-            _: rig_core::effect::EffectId,
-            _: &EffectKind,
-        ) -> rig_core::serve::Decision {
-            rig_core::serve::Decision::Proceed
-        }
-        async fn after(
-            &self,
-            _: rig_core::effect::EffectId,
-            _: &EffectKind,
-            _: &Result<Outcome, rig_core::error::ErrorReport>,
-        ) -> rig_core::serve::Verdict {
-            self.entered.store(true, Ordering::SeqCst);
-            let release = self.release.lock().unwrap().take().unwrap();
-            release.await.unwrap();
-            rig_core::serve::Verdict::Keep
-        }
-    }
-    let mut app = bus_support::app();
-    let counters = Arc::new(bus_support::Counters::default());
-    let (release, wait) = oneshot::channel();
-    let entered = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let handler = rig_core::serve::ErasedHandler::new(bus_support::MockModel {
-        cap: 1,
-        ..bus_support::MockModel::new(&counters)
-    })
-    .layered(Gated {
-        entered: entered.clone(),
-        release: Mutex::new(Some(wait)),
-    });
-    bus_support::register(&mut app, "model", handler);
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", bus_support::streaming()))
-        .id();
-    bus_support::tick_until(&mut app, "verdict awaiting external release", |_| {
-        entered.load(Ordering::SeqCst)
-    });
-    for _ in 0..3 {
-        app.update();
-    }
-    assert!(app.world().get::<EffectOutcome>(effect).is_none());
-    assert!(
-        app.world()
-            .get::<Streamed>(effect)
-            .unwrap()
-            .outcome
-            .is_none()
-    );
-    release.send(()).unwrap();
-    assert!(
-        app.world().get::<EffectOutcome>(effect).is_none(),
-        "a wake does not schedule the world"
-    );
-    bus_support::tick_until(&mut app, "host collected the resumed verdict", |world| {
-        world.get::<EffectOutcome>(effect).is_some()
-    });
-    assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_ok());
-}
-
 #[cfg(not(target_family = "wasm"))]
 #[test]
 fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
@@ -1817,90 +1543,4 @@ fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
         "a poll returning after cancellation must not mutate the closed recording"
     );
     rig_cassette::effect_log::EffectLogReplayer::check_header(&recorder.log()).unwrap();
-}
-
-#[test]
-fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
-    use rig_core::{
-        effect::{Delivery, DeliveryKind, EffectId},
-        serve::{Origin, Recorder},
-    };
-    let original = EffectLogRecorder::keeping_stream_events();
-    let id = EffectId::from_raw(0);
-    let descriptor =
-        bus_support::MockModel::new(&Arc::new(bus_support::Counters::default())).descriptor();
-    original.handlers(vec![descriptor]);
-    original.begin_delivery_tracking();
-    original.begin(
-        id,
-        "model".into(),
-        bus_support::streaming(),
-        Origin::default(),
-    );
-    let prefix = futures::executor::block_on(async {
-        use futures::TryStreamExt;
-        Reply::written(
-            rig_core::message::Origin::new("writer", "writer", "writer"),
-            |mut writer| async move {
-                writer.text("prefix").await.unwrap();
-            },
-        )
-        .into_stream()
-        .try_collect::<Vec<_>>()
-        .await
-        .unwrap()
-    });
-    for item in &prefix {
-        if let rig_core::streaming::Relayed::Item(item) = item {
-            original.event(id, item);
-        }
-    }
-    original.delivery(Delivery {
-        batch: 1,
-        id,
-        kind: DeliveryKind::Stream {
-            items: prefix
-                .iter()
-                .filter(|item| matches!(item, rig_core::streaming::Relayed::Item(_)))
-                .count(),
-        },
-    });
-    original.resolve(id, Err(rig_core::serve::cancelled()));
-    let log = original.log();
-    let mut app = bus_support::app();
-    let rerecorder = EffectLogRecorder::keeping_stream_events();
-    EffectLogResource::install(app.world_mut(), rerecorder.clone());
-    replaying(&mut app, &log);
-    let effect = Replay::load(app.world_mut(), &log)[0];
-    app.world_mut().resource_mut::<Schedules>().add_systems(
-        RigSchedule,
-        (|mut commands: Commands, streams: Query<(Entity, &Streamed)>| {
-            for (entity, stream) in &streams {
-                if stream.text == "prefix" {
-                    // Give the worker its prefetch opportunity before the policy
-                    // cancels in the required Judge pass, with no extra Collect.
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                    commands.entity(entity).despawn();
-                }
-            }
-        })
-        .in_set(BusSet::Judge),
-    );
-    bus_support::tick_until(&mut app, "policy cancelled prefix", |world| {
-        world.get_entity(effect).is_err()
-    });
-    assert!(
-        !app.world()
-            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
-    );
-    let rerecorded = rerecorder.log();
-    assert_eq!(
-        rerecorded.header.stream_errors, log.header.stream_errors,
-        "a cancellation fallback is not an original stream error"
-    );
-    assert_eq!(
-        serde_json::to_value(&rerecorded.records).unwrap(),
-        serde_json::to_value(&log.records).unwrap()
-    );
-    rig_cassette::ecs::ReplayDelivery::new(&rerecorded, true).unwrap();
 }

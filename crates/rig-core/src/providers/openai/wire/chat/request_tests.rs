@@ -4,10 +4,10 @@
 use serde_json::{Value, json};
 
 use super::Chat;
-use crate::completion::{CompletionRequest, Document, Message, ToolDefinition};
+use crate::completion::{CompletionRequest, Message, ToolDefinition};
 use crate::message::{
     AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind, Image,
-    ImageMediaType, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
+    ImageMediaType, ToolName, ToolResult, ToolResultContent, UserContent,
 };
 use crate::providers::openai::wire::{GROQ, OpenAIConfig};
 use crate::test_utils::json_body;
@@ -62,114 +62,6 @@ fn with_tool(history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
     request.tools = vec![tool("tool")];
     request
-}
-
-#[test]
-fn the_request_model_overrides_the_wire_model() {
-    let request = CompletionRequest::new("Hello").model("gpt-4.1".to_owned());
-    assert_eq!(body(request)["model"], "gpt-4.1");
-    assert_eq!(
-        body(CompletionRequest::new("Hello"))["model"],
-        "gpt-4o-mini"
-    );
-}
-
-/// The wire refuses a `tool_choice` beside an empty `tools`: a turn that
-/// advertises none carries no choice.
-#[test]
-fn tool_choice_is_dropped_when_no_tool_is_advertised() {
-    let request = |tools: Vec<ToolDefinition>| {
-        CompletionRequest::new("Hello")
-            .tool_choice(crate::message::ToolChoice::None)
-            .tools(tools)
-    };
-    assert!(body(request(vec![])).get("tool_choice").is_none());
-    assert_eq!(body(request(vec![tool("add")]))["tool_choice"], "none");
-}
-
-/// `ToolChoice::None` keeps the history's calls and results as tool
-/// messages beside `tool_choice: "none"`, so switching the choice never
-/// rewrites the prompt prefix.
-#[test]
-fn tool_choice_none_keeps_tool_history() {
-    let mut request = with_tool(vec![
-        Message::user("q"),
-        calling(&["call_1"]),
-        Message::User {
-            content: vec![result("call_1", vec![ToolResultContent::text("R")])],
-        },
-        Message::user("next"),
-    ]);
-    request.tool_choice = Some(crate::message::ToolChoice::None);
-    let body = body(request);
-    assert_eq!(body["tool_choice"], "none");
-    let messages = body["messages"].as_array().expect("messages");
-    assert_eq!(messages[1]["tool_calls"][0]["id"], "call_1", "{body}");
-    assert_eq!(messages[2]["role"], "tool", "{body}");
-    assert_eq!(messages[2]["tool_call_id"], "call_1", "{body}");
-}
-
-/// The documents open the first user message after the leading system
-/// messages, so roles keep alternating.
-#[test]
-fn documents_open_the_first_user_message() {
-    let request = CompletionRequest::new("Prompt")
-        .message(Message::system("System prompt"))
-        .message(Message::user("Earlier user turn"))
-        .message(Message::assistant("Earlier assistant turn"))
-        .document(Document {
-            id: "doc1".to_owned(),
-            text: "Document text.".to_owned(),
-            additional_props: Default::default(),
-        });
-    let body = body(request);
-    let messages = body["messages"].as_array().expect("messages");
-    let roles: Vec<&str> = messages
-        .iter()
-        .filter_map(|message| message["role"].as_str())
-        .collect();
-    assert_eq!(roles, ["system", "user", "assistant", "user"], "{body}");
-    let first = messages[1].to_string();
-    assert!(
-        first.find("<file id: doc1>") < first.find("Earlier user turn"),
-        "{body}"
-    );
-}
-
-/// A system message's content is one text part; a lone user text is a
-/// plain string; a user message keeps its parts in order around results.
-#[test]
-fn messages_take_their_wire_shapes() {
-    let history = vec![
-        Message::system("Be brief."),
-        Message::user("q"),
-        calling(&["call-id"]),
-        Message::User {
-            content: vec![
-                UserContent::text("before"),
-                result("call-id", vec![ToolResultContent::text("tool output")]),
-                UserContent::text("after"),
-            ],
-        },
-    ];
-    let body = body(with_tool(history));
-    assert_eq!(
-        body["messages"][0],
-        json!({"role": "system", "content": [{"type": "text", "text": "Be brief."}]})
-    );
-    assert_eq!(body["messages"][1], json!({"role": "user", "content": "q"}));
-    let roles: Vec<&str> = body["messages"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|message| message["role"].as_str())
-        .collect();
-    assert_eq!(
-        roles,
-        ["system", "user", "assistant", "tool", "user"],
-        "{body}"
-    );
-    assert_eq!(body["messages"][3]["content"], "tool output");
 }
 
 /// A result's parts are one string, joined, unless the wire asks for arrays
@@ -392,99 +284,5 @@ fn the_response_format_waits_for_a_tool_result() {
     assert_eq!(
         later["response_format"]["json_schema"]["name"],
         "WeatherResponse"
-    );
-}
-
-/// Calls rig issued ids for replay as `tool-<n>` aliases no provider id
-/// takes, each result naming its own call, across turns and around a user
-/// text split.
-#[test]
-fn rig_issued_ids_are_spelled_once_per_request() {
-    let issued = || {
-        ToolCall::new(
-            CallId::from_wire(""),
-            ToolFunction::new(name("tool"), json!({})),
-        )
-    };
-    let (generated, later) = (issued(), issued());
-    let real = ToolCall::from_wire("tool-0", generated.function.clone());
-    let answer = |call: &ToolCall| result(&call.id.wire(), vec![ToolResultContent::text("r")]);
-    let mut first_result = answer(&generated);
-    if let UserContent::ToolResult(result) = &mut first_result {
-        result.call = generated.id.clone();
-    }
-    let mut later_result = answer(&later);
-    if let UserContent::ToolResult(result) = &mut later_result {
-        result.call = later.id.clone();
-    }
-    let history = vec![
-        Message::user("q"),
-        Message::Assistant(AssistantMessage::new(vec![
-            AssistantContent::ToolCall(generated.clone()),
-            AssistantContent::ToolCall(real.clone()),
-        ])),
-        Message::User {
-            content: vec![
-                answer(&real),
-                UserContent::text("between results"),
-                first_result,
-            ],
-        },
-        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
-            later.clone(),
-        )])),
-        Message::User {
-            content: vec![later_result],
-        },
-    ];
-    let body = body(with_tool(history));
-    let messages = body["messages"].as_array().expect("messages");
-    let first = &messages[1]["tool_calls"][0]["id"];
-    let genuine = &messages[1]["tool_calls"][1]["id"];
-    let later = &messages[5]["tool_calls"][0]["id"];
-    assert_eq!(genuine, "tool-0", "{body}");
-    assert_ne!(first, genuine);
-    assert_ne!(later, first);
-    assert_ne!(later, genuine);
-    assert_eq!(&messages[2]["tool_call_id"], genuine, "{body}");
-    assert_eq!(&messages[3]["tool_call_id"], first, "{body}");
-    assert_eq!(&messages[6]["tool_call_id"], later, "{body}");
-}
-
-/// A reasoning-only turn is no message (pi skips one with neither content
-/// nor calls), so the user messages around it become one, and an unedited
-/// block's own field replays beside the text.
-#[test]
-fn reasoning_replays_under_its_own_field() {
-    let origin = crate::message::Origin::new("openai.chat", "openai", "gpt-4o-mini");
-    let turn = |content| {
-        Message::Assistant(AssistantMessage {
-            content,
-            origin: Some(origin.clone()),
-            stop: Some(crate::message::StopReason::Stop),
-        })
-    };
-    let reasoning =
-        AssistantContent::reasoning("hidden").with_native(json!({"reasoning_content": "hidden"}));
-    let alone = body(CompletionRequest::from(vec![
-        Message::user("q"),
-        turn(vec![reasoning.clone()]),
-        Message::user("again"),
-    ]));
-    assert_eq!(
-        alone["messages"],
-        json!([{"role": "user", "content": [
-            {"type": "text", "text": "q"},
-            {"type": "text", "text": "again"}
-        ]}])
-    );
-    let beside = body(CompletionRequest::from(vec![
-        Message::user("q"),
-        turn(vec![reasoning, AssistantContent::text("visible")]),
-        Message::user("again"),
-    ]));
-    assert_eq!(
-        beside["messages"][1],
-        json!({"role": "assistant", "reasoning_content": "hidden", "content": "visible"})
     );
 }

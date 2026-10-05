@@ -113,37 +113,6 @@ pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
-/// Bogus-key variant for recording real 401s: the shared model-listing fetch
-/// must classify a rejected listing with provider, path and status context
-/// (rig#2079), and only a real rejection proves it.
-pub(super) async fn with_openrouter_cassette_bogus_key_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openrouter",
-        spec,
-        OPENROUTER_BASE_URL,
-    )
-    .await;
-    // The rejected credential is this wrapper's subject.
-    cassette.expect_account_failure(crate::cassettes::AccountFailure::Auth);
-    let bound = OpenAIConfig::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
-        .with_base_url(cassette.base_url());
-    let result = AssertUnwindSafe(test_body(OpenAiModels::new(
-        bound,
-        rig_test_support::cassettes::local_http(),
-    )))
-    .catch_unwind()
-    .await;
-    cassette.finish_after_test_result(result).await
-}
-
 /// Refusal edge matrix (`refusal_matrix/*`): a structured-output refusal
 /// arrives as a sibling of `content`, and the chat decoder must not drop it.
 /// Its own wrapper keeps the matrix auditable as one unit.
@@ -172,18 +141,6 @@ pub(super) async fn with_openrouter_usage_cassette<F, Fut>(
 
 /// Live-recorded native OpenRouter log-probability transport matrix.
 pub(super) async fn with_openrouter_stream_logprobs_cassette_result<F, Fut, E>(
-    spec: impl Into<CassetteSpec>,
-    test_body: F,
-) -> Result<(), E>
-where
-    F: FnOnce(OpenAiModels) -> Fut,
-    Fut: Future<Output = Result<(), E>>,
-{
-    with_openrouter_cassette_result(spec, test_body).await
-}
-
-/// Live-recorded malformed/truncated tool-call contract matrix.
-pub(super) async fn with_openrouter_tool_truncation_cassette_result<F, Fut, E>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) -> Result<(), E>

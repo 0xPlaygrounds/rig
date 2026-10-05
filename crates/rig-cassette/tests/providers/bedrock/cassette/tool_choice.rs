@@ -1,51 +1,17 @@
 //! AWS Bedrock tool-choice cassette coverage ported from Gemini tests.
 
 use rig::bedrock;
-use rig::completion::{AssistantContent, Message};
+use rig::completion::AssistantContent;
 use rig::message::ToolChoice;
 use rig::tool::Tool;
 
 use super::super::support::with_bedrock_cassette;
-use crate::support::{
-    Adder, Subtract, assert_mentions_expected_number, collect_raw_stream_observation,
-    collect_stream_observation,
-};
+use crate::support::{Adder, Subtract, collect_raw_stream_observation};
 use rig::completion::CompletionRequest;
 
 fn specific_add_choice() -> ToolChoice {
     ToolChoice::Specific {
         function_names: vec![rig_core::message::ToolName::new(Adder::NAME).expect("tool name")],
-    }
-}
-
-fn assert_history_tool_calls(history: &[Message], expected: &[&str], forbidden: &[&str]) {
-    let tool_names = history
-        .iter()
-        .filter_map(|message| match message {
-            Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
-                Some(content)
-            }
-            _ => None,
-        })
-        .flat_map(|content| content.iter())
-        .filter_map(|content| match content {
-            AssistantContent::ToolCall(tool_call) => Some(tool_call.function.name.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    for expected_tool in expected {
-        assert!(
-            tool_names.iter().any(|name| name == expected_tool),
-            "expected tool call {expected_tool}, saw {tool_names:?}"
-        );
-    }
-
-    for forbidden_tool in forbidden {
-        assert!(
-            !tool_names.iter().any(|name| name == forbidden_tool),
-            "did not expect tool call {forbidden_tool}, saw {tool_names:?}"
-        );
     }
 }
 
@@ -191,79 +157,5 @@ async fn specific_add_raw_streaming_allows_only_add() {
             );
         },
     )
-    .await;
-}
-
-#[tokio::test]
-async fn none_nonstreaming_does_not_emit_tool_calls() {
-    with_bedrock_cassette(
-        "tool_choice/none_nonstreaming_no_tools",
-        |client| async move {
-            let agent = client
-                .agent(bedrock::completion::AMAZON_NOVA_LITE)
-                .preamble("You are a deterministic calculator test. Answer directly in text.")
-                .temperature(0.0)
-                .tool(Adder)
-                .tool(Subtract)
-                .tool_choice(ToolChoice::None)
-                .build();
-
-            let mut chat_history = Vec::<Message>::new();
-            let response = agent
-                .chat(
-                    "Calculate 20 + 22 directly in text. Do not call tools.",
-                    &mut chat_history,
-                )
-                .await
-                .expect("ToolChoice::None prompt should succeed")
-                .output();
-
-            assert_mentions_expected_number(&response, 42);
-            assert_history_tool_calls(&chat_history, &[], &[Adder::NAME, Subtract::NAME]);
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn none_streaming_does_not_emit_tool_calls() {
-    with_bedrock_cassette("tool_choice/none_streaming_no_tools", |client| async move {
-        let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .preamble("You are a deterministic calculator test. Answer directly in text.")
-            .temperature(0.0)
-            .tool(Adder)
-            .tool(Subtract)
-            .tool_choice(ToolChoice::None)
-            .build();
-
-        let mut stream = agent
-            .prompt("Calculate 20 + 22 directly in text. Do not call tools.")
-            .stream();
-        let observation = collect_stream_observation(&mut stream).await;
-
-        assert!(
-            observation.errors.is_empty(),
-            "stream should not emit errors: {:?}",
-            observation.errors
-        );
-        assert!(
-            observation.got_final_response,
-            "stream should emit a final response"
-        );
-        assert!(
-            observation.tool_calls.is_empty(),
-            "expected no tool calls, saw {:?}",
-            observation.tool_calls
-        );
-        assert_eq!(observation.tool_results, 0, "expected no tool results");
-        assert_mentions_expected_number(
-            observation
-                .final_response_text
-                .as_deref()
-                .expect("stream should produce a final response"),
-            42,
-        );
-    })
     .await;
 }

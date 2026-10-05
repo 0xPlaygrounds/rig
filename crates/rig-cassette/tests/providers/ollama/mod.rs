@@ -12,7 +12,6 @@ const CASSETTE_MODEL: &str = "qwen3:4b";
 mod cassette {
     mod agent;
     mod agentic;
-    mod ecs_completion;
     mod history_survival_matrix;
     mod models;
     mod portability_matrix;
@@ -23,7 +22,6 @@ mod cassette {
     mod reasoning_tool_roundtrip;
     mod streaming;
     mod streaming_grammar;
-    mod streaming_tools;
     mod structured_output;
     mod tools;
 }

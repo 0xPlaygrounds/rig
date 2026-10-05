@@ -17,7 +17,6 @@
 //! | 3 | `changed_system_with_drop_block` | The same as 1 when only the system prompt changes |
 //! | 4 | `changed_system_without_drop_block` | The same as 2 when only the system prompt changes: the refusal names the system prompt |
 //! | 5 | `between_tools_after_tool_change` | Under `between_tools`, which takes no binding, Rig's request (the turn as text) is accepted, and the same request with the signed thinking verbatim is refused |
-//! | 6 | `thinkingless_tool_loop` | A tool loop opened by a turn with text and a call but no thinking block is accepted under adaptive thinking |
 //!
 //! The counterfactual requests (2, 4 and 5) are Rig's own encoded requests,
 //! changed only where the fact needs, and sent raw through the session's
@@ -27,10 +26,7 @@
 use std::path::Path;
 
 use rig::completion::{CompletionRequest, CompletionResponse, Message, ToolDefinition};
-use rig::message::{
-    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
-    ToolResultContent, UserContent,
-};
+use rig::message::{ToolName, ToolResultContent, UserContent};
 use rig::providers::anthropic::completion::{CLAUDE_OPUS_5_5, CLAUDE_SONNET_5_5};
 use rig::wire::{Body, Mode, Operation, Wire};
 use rig_core::operation::Completion;
@@ -416,72 +412,6 @@ async fn between_tools_after_tool_change() {
                 message.contains("bound to a different conversation"),
                 "{scenario}: the refusal is the binding's: {message}"
             );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn thinkingless_tool_loop() {
-    with_anthropic_checked_cassette(
-        "thinking/thinkingless_tool_loop",
-        |models| async move {
-            // A turn another model made: text, then a call, and no thinking.
-            let call = ToolCall::new(
-                CallId::from_wire("toolu_x1"),
-                ToolFunction::new(
-                    ToolName::new("calc").expect("a tool name"),
-                    json!({"q": "17*23"}),
-                ),
-            );
-            let turn = AssistantMessage::new(vec![
-                AssistantContent::text("Let me compute."),
-                AssistantContent::ToolCall(call.clone()),
-            ]);
-            let request = CompletionRequest::new(Message::User {
-                content: vec![UserContent::ToolResult(
-                    call.result(vec![ToolResultContent::text("391")]),
-                )],
-            })
-            .messages([
-                Message::user("What is 17*23? Use calc."),
-                Message::Assistant(turn),
-            ])
-            .max_tokens(3000)
-            .tool(tool("calc"))
-            .additional_params(json!({"thinking": {"type": "adaptive"}}));
-            let reply = models
-                .completion(CLAUDE_OPUS_5_5)
-                .call(request)
-                .await
-                .expect("a tool loop opened without thinking is accepted under adaptive thinking");
-            assert!(!reply.choice.is_empty(), "the model answers");
-        },
-        |root, scenario| {
-            let (bodies, replies) = recorded(root, scenario);
-            assert_eq!(bodies.len(), 1, "{scenario}: one request is recorded");
-            let body = &bodies[0];
-            assert_eq!(body["thinking"]["type"], "adaptive", "thinking is on");
-            let turn = body["messages"][1]["content"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-            let kinds: Vec<&str> = turn
-                .iter()
-                .filter_map(|block| block["type"].as_str())
-                .collect();
-            assert_eq!(
-                kinds,
-                ["text", "tool_use"],
-                "{scenario}: the open loop's turn is text and a call, with no thinking"
-            );
-            assert_eq!(turn[1]["id"], "toolu_x1");
-            assert_eq!(
-                body["messages"][2]["content"][0]["type"], "tool_result",
-                "{scenario}: the loop is open: the next message answers the call"
-            );
-            assert_eq!(body["messages"][2]["content"][0]["tool_use_id"], "toolu_x1");
-            assert_eq!(replies[0].0, 200, "{scenario}: Anthropic accepts it");
         },
     )
     .await;

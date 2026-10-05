@@ -11,7 +11,7 @@ use rig_ecs::{
     checkpoint::Checkpoint,
 };
 
-type Programs = BTreeMap<String, (ServingPolicy, Checkpoint)>;
+pub(super) type Programs = BTreeMap<String, (ServingPolicy, Checkpoint)>;
 
 tokio::task_local! {
     static PROGRAMS: RefCell<Programs>;
@@ -85,6 +85,21 @@ pub fn capture_world_program(world: &mut World, run: Entity, log: &EffectLog) {
             programs.insert(scope, (policy, scene));
         }
     });
+}
+
+/// The program scenes captured for `log`'s scopes, exactly those.
+pub(super) fn captured(log: &EffectLog) -> Programs {
+    let scenes = PROGRAMS.with(|programs| programs.borrow().clone());
+    assert_eq!(
+        scenes.keys().collect::<Vec<_>>(),
+        log.header.programs.keys().collect::<Vec<_>>(),
+        "capture exactly the log's program scopes"
+    );
+    assert!(
+        !scenes.is_empty(),
+        "a native golden declares at least one program"
+    );
+    scenes
 }
 
 pub(super) fn programs(path: &Path, log: &EffectLog, regenerate: bool) {

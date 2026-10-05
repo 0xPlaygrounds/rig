@@ -324,10 +324,13 @@ fn reporting_only_selection_skips_work_but_other_docs_keep_executable_checks() {
 }
 
 #[test]
-fn verification_commands_force_replay_and_preserve_retry_contracts() {
+fn verification_commands_force_replay_shape_matching_and_snapshot_checks_and_preserve_retry_contracts()
+ {
     let step = Step::new("cargo", &["test"])
         .env("RIG_PROVIDER_TEST_MODE", "record")
+        .env("RIG_CASSETTE_MATCHING", "exact")
         .env("RIG_REGENERATE_GOLDEN", "1")
+        .env("RIG_CASSETTE_SNAPSHOTS", "write")
         .env("NEXTEST_RETRIES", "5");
     let command = execute::command(Path::new("/repo"), &step, Path::new("/repo/target"));
     let env: BTreeMap<_, _> = command.get_envs().collect();
@@ -336,6 +339,14 @@ fn verification_commands_force_replay_and_preserve_retry_contracts() {
         Some(std::ffi::OsStr::new("replay"))
     );
     assert_eq!(env[std::ffi::OsStr::new("RIG_REGENERATE_GOLDEN")], None);
+    assert_eq!(
+        env[std::ffi::OsStr::new("RIG_CASSETTE_SNAPSHOTS")],
+        Some(std::ffi::OsStr::new("check"))
+    );
+    assert_eq!(
+        env[std::ffi::OsStr::new("RIG_CASSETTE_MATCHING")],
+        Some(std::ffi::OsStr::new("shape"))
+    );
     assert_eq!(env[std::ffi::OsStr::new("NEXTEST_RETRIES")], None);
 }
 
@@ -892,4 +903,60 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
+}
+
+#[test]
+fn the_coverage_check_runs_the_cheap_gate_without_mutation() {
+    let all = checks::all();
+    let c = all.iter().find(|c| c.id == "coverage").unwrap();
+    assert_eq!(
+        c.steps,
+        vec![Step::new("cargo", &["xtask", "coverage", "--check"])]
+    );
+}
+
+#[test]
+fn cassettes_snapshots_and_the_index_select_the_acceptance_check() {
+    for path in [
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.requests.json",
+        "crates/rig-cassette/fixtures/acceptance.toml",
+    ] {
+        assert!(ids("--changed", &[path]).contains("acceptance"), "{path}");
+    }
+    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("acceptance"));
+}
+
+#[test]
+fn cassettes_and_the_bank_select_the_bank_check() {
+    for path in [
+        "crates/rig-cassette/fixtures/cassettes/openai/chat.yaml",
+        "crates/rig-cassette/fixtures/bank/openai.yaml",
+        "crates/rig-cassette/fixtures/bank/scripts.tsv",
+    ] {
+        assert!(ids("--changed", &[path]).contains("bank"), "{path}");
+    }
+    let bank = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/bank/pinned.txt"],
+    );
+    assert!(bank.contains("provider-runtime"), "{bank:?}");
+    assert!(bank.contains("coverage"), "{bank:?}");
+    assert!(!bank.contains("full-tests"), "{bank:?}");
+    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("bank"));
+}
+
+#[test]
+fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
+    for path in [
+        "crates/rig-ecs/src/lib.rs",
+        "crates/rig-cassette/tests/corpus_hooks.rs",
+        "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
+        "crates/rig-cassette/coverage/lines.tsv",
+    ] {
+        assert!(ids("--changed", &[path]).contains("coverage"), "{path}");
+    }
+    let baseline = ids("--changed", &["crates/rig-cassette/coverage/shapes.tsv"]);
+    assert!(!baseline.contains("full-tests"), "{baseline:?}");
+    assert!(!ids("--changed", &["README.md"]).contains("coverage"));
 }

@@ -4,15 +4,6 @@ use crate::providers::openai::wire::{OPENAI, TOGETHER};
 use bytes::Bytes;
 
 #[test]
-fn truncated_output_covers_only_the_cut_short_reasons() {
-    assert!(FinishReason::Length.truncated_output());
-    assert!(FinishReason::ContentFilter.truncated_output());
-    assert!(!FinishReason::Stop.truncated_output());
-    assert!(!FinishReason::ToolCalls.truncated_output());
-    assert!(!FinishReason::Other("whatever".to_owned()).truncated_output());
-}
-
-#[test]
 fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
     use super::provider_error_envelope as detect;
 
@@ -55,44 +46,6 @@ fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
     assert!(
         detect(r#"{"error":{"message":"rate limited"},"choices":null}"#).is_some(),
         "a null choices value must not mask the error"
-    );
-}
-
-/// Mistral truncates at its context ceiling with `model_length`, which is
-/// the same truncation class as `length` — only the limit differs.
-///
-/// Not a cassette test: forcing the state needs a prompt padded to the
-/// model's full context window, which would commit a ~145 KB fixture of
-/// repeated filler to exercise one mapping arm. The shape below is the
-/// live response recorded while confirming the bug against
-/// `voxtral-small-latest` (`max_context_length` 32768):
-/// `finish_reason: "model_length"` with
-/// `usage {prompt_tokens: 32424, completion_tokens: 344, total_tokens: 32768}`
-/// — generation stopped dead on the ceiling with 4096 output tokens still
-/// budgeted.
-#[test]
-fn model_length_is_truncation_not_a_natural_stop() {
-    assert_eq!(
-        finish_reason("model_length", &OPENAI.quirks),
-        FinishReason::Length,
-        "a turn cut off by the context window must be distinguishable from one that \
-             simply had nothing more to say"
-    );
-
-    // The vocabulary it joins, and the fallback that still preserves an
-    // unrecognized spelling verbatim.
-    assert_eq!(
-        finish_reason("length", &OPENAI.quirks),
-        FinishReason::Length
-    );
-    assert_eq!(
-        finish_reason("max_tokens", &OPENAI.quirks),
-        FinishReason::Length
-    );
-    assert_eq!(finish_reason("stop", &OPENAI.quirks), FinishReason::Stop);
-    assert_eq!(
-        finish_reason("some_new_reason", &OPENAI.quirks),
-        FinishReason::Other("some_new_reason".to_owned())
     );
 }
 

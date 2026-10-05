@@ -1,26 +1,7 @@
 //! Copilot streaming coverage, including the migrated example path.
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
-use crate::support::{
-    STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
-};
-
-#[tokio::test]
-async fn streaming_smoke() {
-    with_copilot_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
-            .preamble(STREAMING_PREAMBLE)
-            .build();
-
-        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
-
-        assert_nonempty_response(&response);
-    })
-    .await;
-}
+use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
 #[tokio::test]
 async fn example_streaming_prompt() {

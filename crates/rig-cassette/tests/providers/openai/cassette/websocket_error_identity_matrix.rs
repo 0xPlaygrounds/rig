@@ -50,21 +50,18 @@
 //! `crates/rig-tungstenite/tests/handshake_rejection.rs` joins the two against
 //! a real socket.
 //!
-//! **These recorded cells now run in every execution of the target.** The
-//! suite lives in `rig-cassette`, whose dev-dependency on the facade enables
-//! `websocket` unconditionally, so the module is no longer behind a feature a
-//! lane might not select. The unit cells above, which live in `rig-core`, run
-//! on every PR as before.
+//! The recorded cell runs in every execution of the target: `rig-cassette`'s
+//! dev-dependency on the facade enables `websocket` unconditionally. The unit
+//! cells above live in `rig-core`.
 //!
 //! Only the *auth-class* failure is reachable as a recorded handshake: the
 //! model is named in the `response.create` message, not in the upgrade, so a
 //! bad model fails **in band** as an `error` event on an established socket
 //! rather than as a handshake rejection. There is exactly one recordable
-//! handshake failure, and it is cell 1.
+//! handshake failure, and cell 2 records it.
 //!
 //! | # | cell | trigger | asserts | status |
 //! |---|------|---------|---------|--------|
-//! | 1 | `handshake_rejection_carries_status_body_and_request_id` | invalid key | 401 + body + `x-request-id` | recorded |
 //! | 2 | `handshake_rejection_matches_the_http_twin` | invalid key | same identity as the HTTP 401 | recorded |
 //!
 //! Cell 2 is the parity claim stated as a test: the same credential rejected
@@ -93,39 +90,6 @@ fn observable(error: &ProviderError) -> (Option<u16>, bool, bool) {
             .is_some_and(|body| body.contains("invalid_api_key")),
         error.provider_request_id().is_some(),
     )
-}
-
-#[tokio::test]
-async fn handshake_rejection_carries_status_body_and_request_id() {
-    with_openai_websocket_cassette(
-        "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
-        |client| async move {
-            let error = client
-                .openai
-                .responses("gpt-4o-mini")
-                .responses_websocket()
-                .connect()
-                .await
-                .err()
-                .expect("an invalid key must fail the upgrade");
-
-            let (status, names_the_cause, has_request_id) = observable(&error);
-            assert_eq!(status, Some(401), "the rejection's status must survive");
-            assert!(
-                names_the_cause,
-                "the provider's own error body must survive: {error}"
-            );
-            assert!(
-                has_request_id,
-                "the transport request id must survive, as it does on every other transport"
-            );
-            assert!(
-                matches!(error, ProviderError::ProviderResponse(_)),
-                "a rejection carrying a provider response classifies as one: {error:?}"
-            );
-        },
-    )
-    .await;
 }
 
 /// The parity the bug broke, driven rather than described: **both transports

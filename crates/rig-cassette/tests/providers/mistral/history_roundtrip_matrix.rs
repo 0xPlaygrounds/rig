@@ -12,17 +12,14 @@
 //! | model | `mistral-small-latest`, `ministral-3b-latest` |
 //! | surface | provider-native raw, normalized Rig response |
 //!
-//! That is 8 recorded cells. Every cell proves the exact serialized history
-//! from its fixture and compares the observed response text to those exact
-//! blocking or SSE bytes.
+//! That is 8 cells. Each proves the exact serialized history from its fixture
+//! and compares the observed response text to those exact blocking or SSE
+//! bytes. Tool-history shapes are covered on OpenAI Chat and OpenRouter by the
+//! same matrix.
 //!
-//! Coverage ledger: tool-history shapes are covered on OpenAI Chat and
-//! OpenRouter by the same matrix. Each explicit test maps to
+//! The four `mistral-small-latest` cells are ignored until they are
+//! re-recorded, and no cell holds a fixture; a re-recorded cell maps to
 //! `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
-//!
-//! | recorded cells | exact fixture set |
-//! |---|---|
-//! | all 8 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_text.yaml` |
 
 use rig::streaming::Item;
 use rig_test_support::cassette_models::OpenAiModels;
@@ -47,7 +44,6 @@ enum Transport {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ModelVariant {
     MistralSmall,
-    Ministral3b,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -125,7 +121,6 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::MistralSmall => "mistral-small-latest",
-        ModelVariant::Ministral3b => "ministral-3b-latest",
     }
 }
 
@@ -299,17 +294,9 @@ crate::matrix::case_matrix! {
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     blocking_mistral_small_normalized_text: ("history_roundtrip_matrix/blocking_mistral_small_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
     # [tokio :: test]
-    blocking_ministral_3b_raw_text: ("history_roundtrip_matrix/blocking_ministral_3b_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    blocking_ministral_3b_normalized_text: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     streaming_mistral_small_raw_text: ("history_roundtrip_matrix/streaming_mistral_small_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
     # [tokio :: test]
     # [ignore = "stale cassette: its request predates item-shaped history, and Mistral rate-limited the re-record"]
     streaming_mistral_small_normalized_text: ("history_roundtrip_matrix/streaming_mistral_small_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_ministral_3b_raw_text: ("history_roundtrip_matrix/streaming_ministral_3b_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
-    # [tokio :: test]
-    streaming_ministral_3b_normalized_text: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
 }

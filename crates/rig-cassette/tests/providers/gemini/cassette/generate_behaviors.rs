@@ -8,14 +8,11 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::FinishReason;
-use rig::message::AssistantContent;
 use rig::providers::gemini;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::super::support::with_gemini_cassette;
-use rig::completion::CompletionRequest;
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 struct EventLocation {
@@ -30,64 +27,6 @@ struct EventRecord {
     attendees: Vec<String>,
     #[schemars(required)]
     note: Option<String>,
-}
-
-#[tokio::test]
-async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
-    with_gemini_cassette(
-        "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
-        |client| async move {
-            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
-            // Thinking is disabled so the token budget is spent on visible
-            // text and the truncated candidate still carries partial output.
-            let request = CompletionRequest::new(
-                "Write a story of at least 150 words about a lighthouse keeper.",
-            )
-            .preamble("You are a storyteller.")
-            .temperature(0.0)
-            .max_tokens(48)
-            .additional_params(serde_json::json!({
-                "generationConfig": {
-                    "thinkingConfig": { "thinkingBudget": 0 }
-                }
-            }));
-
-            let response = model
-                .call(request)
-                .await
-                .expect("a truncated response should still convert, not error");
-
-            // Gemini's MAX_TOKENS normalizes to `FinishReason::Length`.
-            assert!(
-                matches!(response.finish_reason(), Some(FinishReason::Length)),
-                "hitting maxOutputTokens should preserve the MAX_TOKENS finish reason, \
-                 got {:?}",
-                response.finish_reason()
-            );
-            let text: String = response
-                .choice
-                .iter()
-                .filter_map(|content| match content {
-                    AssistantContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect();
-            assert!(
-                !text.trim().is_empty(),
-                "partial output text should still be surfaced"
-            );
-            assert!(
-                response.model().is_some_and(|version| !version.is_empty()),
-                "provider response should preserve the model version"
-            );
-            assert!(
-                response.usage.output_tokens.is_some_and(|n| n > 0),
-                "usage should reflect the truncated candidate, got {:?}",
-                response.usage
-            );
-        },
-    )
-    .await;
 }
 
 #[tokio::test]

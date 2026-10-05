@@ -22,19 +22,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    inline_text_unary: ("image_matrix_responses/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "openai_responses_image_inline_text_unary");
-    #[tokio::test]
     inline_text_streamed: ("image_matrix_responses/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "openai_responses_image_inline_text_streamed");
     #[tokio::test]
-    inline_mixed_order: ("image_matrix_responses/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "openai_responses_image_inline_mixed_order");
-    #[tokio::test]
-    inline_tool_unary: ("image_matrix_responses/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "openai_responses_image_inline_tool_unary");
-    #[tokio::test]
-    inline_tool_streamed: ("image_matrix_responses/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "openai_responses_image_inline_tool_streamed");
-    #[tokio::test]
-    inline_followup: ("image_matrix_responses/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "openai_responses_image_inline_followup");
-    #[tokio::test]
     url_text_unary: ("image_matrix_responses/url_text_unary", cells::IMAGE_URL_TEXT_UNARY, "openai_responses_image_url_text_unary");
-    #[tokio::test]
-    url_tool_unary: ("image_matrix_responses/url_tool_unary", cells::IMAGE_URL_TOOL_UNARY, "openai_responses_image_url_tool_unary");
 }

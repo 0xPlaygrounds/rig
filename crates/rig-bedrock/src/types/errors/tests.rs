@@ -27,25 +27,6 @@ fn throttled(message: Option<&str>) -> ConverseError {
     )
 }
 
-/// A modeled exception keeps its message, type, status and request id, and
-/// its message wins over the raw body.
-#[test]
-fn a_modeled_exception_is_the_provider_reply() {
-    let error = sdk_error(SdkError::service_error(
-        throttled(Some("slow down")),
-        raw(StatusCode::TOO_MANY_REQUESTS, r#"{"message":"ignored"}"#),
-    ));
-
-    assert_eq!(error.provider_response_body(), Some("slow down"));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(StatusCode::TOO_MANY_REQUESTS)
-    );
-    assert_eq!(error.provider_request_id(), Some("aws-req-1"));
-    assert_eq!(error.report().code.as_deref(), Some("ThrottlingException"));
-    assert!(error.is_retryable());
-}
-
 /// Recorded, then replayed: a Bedrock 404 whose exception this SDK version
 /// does not model has no message in its metadata. The raw body carries the
 /// service's diagnostic, so it becomes the reply rather than Rig prose.
@@ -100,19 +81,6 @@ fn failures_without_a_reply_are_transport_errors_or_rig_prose() {
     assert!(matches!(&unbuilt, ProviderError::Provider(message) if message == UNEXPECTED));
     assert_eq!(unbuilt.provider_response_body(), None);
     assert!(!unbuilt.is_retryable());
-}
-
-#[test]
-fn a_stream_exception_with_a_message_is_the_provider_reply() {
-    let error = exception(
-        "throttlingException",
-        &serde_json::json!({ "message": "slow down" }),
-    );
-
-    assert_eq!(error.provider_response_body(), Some("slow down"));
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.report().code.as_deref(), Some("ThrottlingException"));
-    assert!(error.is_retryable());
 }
 
 /// A message-less stream exception is a diagnostic naming its type, not a

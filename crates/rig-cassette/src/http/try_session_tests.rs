@@ -87,12 +87,17 @@ fn answer(index: usize) -> CassetteInteraction {
 
 /// Post `{"input": input}` to a replay session and return the status.
 async fn post(cassette: &ProviderCassette, input: usize) -> StatusCode {
+    post_body(cassette, json!({ "input": input })).await
+}
+
+/// Post `body` to the session and return the status the replay answered with.
+async fn post_body(cassette: &ProviderCassette, body: serde_json::Value) -> StatusCode {
     reqwest::Client::builder()
         .no_proxy()
         .build()
         .expect("HTTP client")
         .post(format!("{}/answer", cassette.base_url()))
-        .json(&json!({ "input": input }))
+        .json(&body)
         .send()
         .await
         .expect("local replay response")
@@ -287,7 +292,11 @@ async fn a_refused_request_is_an_error() {
         .try_start(CassetteMode::Replay)
         .await
         .expect("the fixture replays");
-    assert_eq!(post(&cassette, 7).await, StatusCode::NOT_FOUND);
+    // Its field is unrecorded, so exact and shape matching both refuse it.
+    assert_eq!(
+        post_body(&cassette, json!({ "unrecorded": 7 })).await,
+        StatusCode::NOT_FOUND
+    );
     assert_eq!(post(&cassette, 0).await, StatusCode::OK);
 
     let error = cassette

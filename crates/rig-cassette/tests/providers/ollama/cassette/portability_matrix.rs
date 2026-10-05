@@ -27,9 +27,5 @@ const fn cell(source: Source) -> Cell {
 crate::matrix::case_matrix! {
     wrapper: with_ollama_cassette, family: portability_case;
     #[tokio::test]
-    from_anthropic: ("portability_matrix/from_anthropic", configured, cell(Source::Anthropic));
-    #[tokio::test]
     from_openai_responses: ("portability_matrix/from_openai_responses", configured, cell(Source::OpenAiResponses));
-    #[tokio::test]
-    from_gemini: ("portability_matrix/from_gemini", configured, cell(Source::Gemini));
 }

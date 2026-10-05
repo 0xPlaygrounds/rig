@@ -59,11 +59,16 @@ use tokio::task::JoinHandle;
 mod account;
 mod clock;
 pub use clock::{CassetteClock, MAX_PAUSE, clock_sidecar};
+pub use snapshot::request_snapshot;
+use snapshot::{RequestSnapshots, SnapshotMode};
 mod error;
 pub use error::CassetteError;
 pub mod ledger;
 mod relay;
+mod shape;
+mod snapshot;
 pub use account::{AccountFailure, account_failure, reply_account_failure};
+use shape::BodyMatching;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const ATTEMPT_DIR_ENV: &str = "RIG_CASSETTE_ATTEMPT_DIR";
@@ -79,11 +84,14 @@ enum ReplayMatching {
     Unordered,
 }
 
-/// The fixture scenario and its ordered or unordered replay matching policy.
+/// The fixture scenario and its replay matching policy: ordered or
+/// unordered, and exact or shape-matched request bodies.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CassetteSpec {
     scenario: &'static str,
     replay_matching: ReplayMatching,
+    /// `None` takes `RIG_CASSETTE_MATCHING`.
+    body_matching: Option<BodyMatching>,
     expected_failures: u8,
 }
 
@@ -93,6 +101,7 @@ impl CassetteSpec {
         Self {
             scenario,
             replay_matching: ReplayMatching::Ordered,
+            body_matching: None,
             expected_failures: 0,
         }
     }
@@ -105,6 +114,28 @@ impl CassetteSpec {
     /// Allow matching an unused interaction in any order.
     pub const fn unordered(mut self) -> Self {
         self.replay_matching = ReplayMatching::Unordered;
+        self
+    }
+
+    /// Match request bodies by their coarse shape instead of exactly, as
+    /// `RIG_CASSETTE_MATCHING=shape` does for a spec that chooses neither.
+    /// The method, path, query and recorded headers still match exactly.
+    /// The key keeps the body's field structure, the order of its arrays of
+    /// objects, and the values of `model`, `role`, `name` and `stream`; it
+    /// erases other values, the types of content, tool schemas and tool
+    /// arguments. Unordered replay serves, among the interactions with the
+    /// request's key, the one its body is closest to. Pair it with
+    /// `RIG_CASSETTE_SNAPSHOTS=check`, which pins the bytes.
+    pub const fn shape_matched(mut self) -> Self {
+        self.body_matching = Some(BodyMatching::Shape);
+        self
+    }
+
+    /// Match request bodies exactly whatever `RIG_CASSETTE_MATCHING` says,
+    /// for a cell whose subject is the exact matcher. Exact is also what a
+    /// spec that chooses neither gets when the variable is unset.
+    pub const fn exact_matched(mut self) -> Self {
+        self.body_matching = Some(BodyMatching::Exact);
         self
     }
 
@@ -132,10 +163,12 @@ struct CassettePolicy {
     response_header_allowlist: &'static [&'static str],
     forbidden_patterns: &'static [&'static str],
     replay_matching: ReplayMatching,
+    body_matching: BodyMatching,
 }
 
 impl CassettePolicy {
-    fn for_scenario(provider: &str, scenario: &str, replay_matching: ReplayMatching) -> Self {
+    fn for_scenario(provider: &str, spec: CassetteSpec) -> Self {
+        let scenario = spec.scenario;
         let required_request_headers = match provider {
             "openai" | "doubleword" | "venice" => OPENAI_REQUIRED_REQUEST_HEADERS,
             "chatgpt" => CHATGPT_REQUIRED_REQUEST_HEADERS,
@@ -148,7 +181,8 @@ impl CassettePolicy {
 
         Self {
             required_request_headers,
-            replay_matching,
+            replay_matching: spec.replay_matching,
+            body_matching: spec.body_matching.unwrap_or(BodyMatching::Exact),
             ..Self::default()
         }
     }
@@ -180,6 +214,7 @@ impl Default for CassettePolicy {
             response_header_allowlist: RESPONSE_HEADER_ALLOWLIST,
             forbidden_patterns: FORBIDDEN_CASSETTE_PATTERNS,
             replay_matching: ReplayMatching::Ordered,
+            body_matching: BodyMatching::Exact,
         }
     }
 }
@@ -573,9 +608,51 @@ impl ProviderCassette {
         cassette_path: PathBuf,
         attempt_root: PathBuf,
     ) -> Result<Self, CassetteError> {
+        let (snapshots, spec) = if mode.records() {
+            (SnapshotMode::Off, spec)
+        } else {
+            let spec = match spec.body_matching {
+                Some(_) => spec,
+                None => CassetteSpec {
+                    body_matching: Some(BodyMatching::current(&cassette_path)?),
+                    ..spec
+                },
+            };
+            (SnapshotMode::current(&cassette_path)?, spec)
+        };
+        Self::try_start_session(
+            transport,
+            provider,
+            spec,
+            real_base_url,
+            mode,
+            cassette_path,
+            attempt_root,
+            snapshots,
+        )
+        .await
+    }
+
+    /// [`Self::try_start_with_attempts`] with an explicit request snapshot
+    /// mode instead of the ambient `RIG_CASSETTE_SNAPSHOTS`, and the body
+    /// matching `spec` names instead of the ambient `RIG_CASSETTE_MATCHING`.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the session inputs, each from a distinct public entry point"
+    )]
+    async fn try_start_session(
+        transport: RecordVia,
+        provider: &'static str,
+        spec: CassetteSpec,
+        real_base_url: &str,
+        mode: CassetteMode,
+        cassette_path: PathBuf,
+        attempt_root: PathBuf,
+        snapshots: SnapshotMode,
+    ) -> Result<Self, CassetteError> {
         let scenario = spec.scenario;
         let ledger_path = attempt_root.join(ledger::LEDGER_FILE);
-        let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
+        let policy = CassettePolicy::for_scenario(provider, spec);
         let upstream = UpstreamBase::parse(real_base_url, &cassette_path)?;
         // Everything that can fail runs before the replay server exists, so
         // an error never drops an unplayed server and trips its guard.
@@ -587,11 +664,24 @@ impl ProviderCassette {
                     path: cassette_path,
                 });
             }
-            Some(load_replay_interactions(&cassette_path).await?)
+            let interactions = load_replay_interactions(&cassette_path).await?;
+            let recorded: Vec<Value> = interactions
+                .iter()
+                .map(|interaction| recorded_body_view(policy, &interaction.when))
+                .collect();
+            let shapes = (policy.body_matching == BodyMatching::Shape).then(|| ReplayShapes {
+                keys: recorded.iter().map(shape::shape_key).collect(),
+                views: recorded.clone(),
+            });
+            let snapshots = RequestSnapshots::load(snapshots, &cassette_path, recorded)?;
+            Some((interactions, snapshots, shapes))
         };
         let clock = CassetteClock::start(mode, &cassette_path)?;
-        let server = if let Some(interactions) = replay {
-            CassetteServer::Replay(ReplayServer::start(&cassette_path, interactions, policy).await?)
+        let server = if let Some((interactions, snapshots, shapes)) = replay {
+            CassetteServer::Replay(
+                ReplayServer::start(&cassette_path, interactions, policy, snapshots, shapes)
+                    .await?,
+            )
         } else {
             match transport {
                 RecordVia::Direct => CassetteServer::DirectRecording(DirectRecordingServer {
@@ -915,6 +1005,8 @@ impl ReplayServer {
         cassette_path: &Path,
         interactions: Vec<ReplayInteraction>,
         policy: CassettePolicy,
+        snapshots: Option<RequestSnapshots>,
+        shapes: Option<ReplayShapes>,
     ) -> Result<Self, CassetteError> {
         let bind_error = |source| CassetteError::Bind {
             path: cassette_path.to_path_buf(),
@@ -927,6 +1019,8 @@ impl ReplayServer {
             interactions,
             misses: Vec::new(),
             policy,
+            snapshots,
+            shapes,
         }));
         let app = Router::new()
             .fallback(any(replay_request))
@@ -959,15 +1053,19 @@ impl ReplayServer {
         format!("http://{}", self.addr)
     }
 
-    /// Check that replay played every interaction and refused nothing. This
-    /// disarms the drop guard whatever the outcome.
+    /// Check that replay played every interaction and refused nothing, then
+    /// check or write the request snapshot. This disarms the drop guard
+    /// whatever the outcome.
     async fn check_consumed(&mut self, cassette_path: &Path) -> Result<(), CassetteError> {
         self.checked = true;
         let state = self.state.lock().await;
-        match replay_mismatch(cassette_path, &state.interactions, &state.misses) {
-            Some(error) => Err(error),
-            None => Ok(()),
+        if let Some(error) = replay_mismatch(cassette_path, &state.interactions, &state.misses) {
+            return Err(error);
         }
+        state
+            .snapshots
+            .as_ref()
+            .map_or(Ok(()), RequestSnapshots::finish)
     }
 
     async fn shutdown(&mut self) {
@@ -994,11 +1092,19 @@ impl Drop for ReplayServer {
         let Ok(state) = self.state.try_lock() else {
             return;
         };
-        if let Some(message) = replay_completion_failure_message(
+        let failure = replay_completion_failure_message(
             &state.cassette_path,
             &state.interactions,
             &state.misses,
-        ) {
+        )
+        .or_else(|| {
+            state
+                .snapshots
+                .as_ref()
+                .and_then(|snapshots| snapshots.finish().err())
+                .map(|error| error.to_string())
+        });
+        if let Some(message) = failure {
             panic!("{message}\n(the replay session was dropped without `finish`)");
         }
     }
@@ -1009,6 +1115,17 @@ struct ReplayState {
     interactions: Vec<ReplayInteraction>,
     misses: Vec<ReplayMiss>,
     policy: CassettePolicy,
+    snapshots: Option<RequestSnapshots>,
+    /// Each interaction's coarse shape key and body, under shape matching.
+    shapes: Option<ReplayShapes>,
+}
+
+/// What shape matching keeps of each recorded interaction.
+struct ReplayShapes {
+    /// The coarse shape key of each recorded body.
+    keys: Vec<Value>,
+    /// Each recorded body as [`snapshot::body_view`] reads it.
+    views: Vec<Value>,
 }
 
 #[derive(Clone, Debug)]
@@ -1223,12 +1340,65 @@ async fn replay_request(
         body,
     };
     let policy = state.policy;
-
-    let Some(index) = matching_interaction_index(policy, &state.interactions, &request) else {
-        let message = replay_miss_message(policy, &request, &state.interactions);
-        state.misses.push(ReplayMiss {
-            diagnostic: message.clone(),
+    let sent = (state.snapshots.is_some() || state.shapes.is_some())
+        .then(|| incoming_body_view(policy, &request));
+    let sent_shape = state
+        .shapes
+        .as_ref()
+        .zip(sent.as_ref())
+        .map(|(_, sent)| shape::shape_key(sent));
+    let shapes = state
+        .shapes
+        .as_ref()
+        .zip(sent_shape.as_ref())
+        .map(|(shapes, sent)| ShapeKeys {
+            recorded: &shapes.keys,
+            sent,
         });
+    // Unordered shape matching serves the interaction the request is
+    // closest to: its snapshot's expected body when snapshots check, else
+    // the recording.
+    let distance = |index: usize| match (&state.snapshots, &state.shapes, &sent) {
+        (Some(snapshots), _, Some(sent)) => snapshots.distance(index, sent),
+        (None, Some(shapes), Some(sent)) => shapes
+            .views
+            .get(index)
+            .map_or(usize::MAX, |view| snapshot::diff(view, sent).len()),
+        _ => usize::MAX,
+    };
+
+    let Some(index) =
+        matching_interaction_index(policy, &state.interactions, &request, shapes, distance)
+    else {
+        // The interaction the request was most likely meant for, compared
+        // with what its snapshot expects.
+        let snapshot_diff =
+            state
+                .snapshots
+                .as_ref()
+                .zip(sent.as_ref())
+                .and_then(|(snapshots, sent)| {
+                    let candidate = miss_candidate_index(policy, &state.interactions, &request)?;
+                    snapshots.difference(candidate, sent)
+                });
+        if let Some(difference) = &snapshot_diff {
+            eprintln!(
+                "replay of {} refused a request that differs from its snapshot at {difference}",
+                state.cassette_path.display()
+            );
+        }
+        let message = replay_miss_message(
+            policy,
+            &request,
+            &state.interactions,
+            shapes,
+            snapshot_diff.as_deref(),
+        );
+        let diagnostic = match &snapshot_diff {
+            Some(difference) => format!("{message}\nsnapshot difference at {difference}"),
+            None => message.clone(),
+        };
+        state.misses.push(ReplayMiss { diagnostic });
         return Response::builder()
             .status(StatusCode::NOT_FOUND)
             .header("content-type", "application/json")
@@ -1236,27 +1406,109 @@ async fn replay_request(
             .expect("replay miss response should build");
     };
 
+    if let (Some(snapshots), Some(sent)) = (state.snapshots.as_mut(), sent) {
+        snapshots.observe(index, sent);
+    }
     let cassette_path = state.cassette_path.clone();
     let interaction = &mut state.interactions[index];
     interaction.consumed = true;
     cassette_response(&interaction.then, &cassette_path)
 }
 
-fn matching_interaction_index(
+/// The unplayed interaction a refused request was most likely meant for:
+/// the next one in order, or for unordered replay the first unplayed one on
+/// the request's method and path.
+fn miss_candidate_index(
     policy: CassettePolicy,
     interactions: &[ReplayInteraction],
     request: &IncomingRequest,
 ) -> Option<usize> {
+    let mut unplayed = interactions
+        .iter()
+        .enumerate()
+        .filter(|(_, interaction)| !interaction.consumed);
+    match policy.replay_matching {
+        ReplayMatching::Ordered => unplayed.next().map(|(index, _)| index),
+        ReplayMatching::Unordered => unplayed
+            .find(|(_, interaction)| {
+                request
+                    .method
+                    .as_str()
+                    .eq_ignore_ascii_case(&interaction.when.method)
+                    && request.uri.path() == interaction.when.path
+            })
+            .map(|(index, _)| index),
+    }
+}
+
+/// A recorded request's body as request snapshots compare it.
+fn recorded_body_view(policy: CassettePolicy, request: &CassetteRequest) -> Value {
+    let content_type = request
+        .header
+        .iter()
+        .find(|header| header.name.eq_ignore_ascii_case("content-type"))
+        .map(|header| header.value.as_str());
+    // `load_replay_interactions` refuses a body that does not decode.
+    let body = request
+        .body
+        .as_deref()
+        .and_then(|body| decode_body(body, request.body_encoding).ok())
+        .unwrap_or_default();
+    snapshot::body_view(policy, content_type, &body)
+}
+
+/// An incoming request's body as request snapshots compare it.
+fn incoming_body_view(policy: CassettePolicy, request: &IncomingRequest) -> Value {
+    let content_type = request
+        .headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+    snapshot::body_view(policy, content_type, &request.body)
+}
+
+/// Under shape matching, the coarse shape key of every interaction's
+/// recorded body and of the request's body.
+#[derive(Clone, Copy)]
+struct ShapeKeys<'a> {
+    recorded: &'a [Value],
+    sent: &'a Value,
+}
+
+/// The interaction replay serves `request` from. Ordered replay serves the
+/// next unplayed interaction when it matches; unordered replay the first
+/// unplayed one that matches, and under shape matching the one of those at
+/// the least `distance` from the request (the first on a tie), so requests
+/// that share a shape still find their own recordings.
+fn matching_interaction_index(
+    policy: CassettePolicy,
+    interactions: &[ReplayInteraction],
+    request: &IncomingRequest,
+    shapes: Option<ShapeKeys<'_>>,
+    distance: impl Fn(usize) -> usize,
+) -> Option<usize> {
+    let matches = |index: usize, interaction: &ReplayInteraction| match shapes {
+        Some(keys) => shape_request_matches(policy, request, &interaction.when, keys, index),
+        None => request_matches(policy, request, &interaction.when),
+    };
+    let mut unplayed = interactions
+        .iter()
+        .enumerate()
+        .filter(|(_, interaction)| !interaction.consumed);
     match policy.replay_matching {
         ReplayMatching::Ordered => {
-            let index = interactions
-                .iter()
-                .position(|interaction| !interaction.consumed)?;
-            request_matches(policy, request, &interactions[index].when).then_some(index)
+            let (index, interaction) = unplayed.next()?;
+            matches(index, interaction).then_some(index)
         }
-        ReplayMatching::Unordered => interactions.iter().position(|interaction| {
-            !interaction.consumed && request_matches(policy, request, &interaction.when)
-        }),
+        ReplayMatching::Unordered => {
+            let candidates: Vec<usize> = unplayed
+                .filter(|(index, interaction)| matches(*index, interaction))
+                .map(|(index, _)| index)
+                .collect();
+            match shapes {
+                Some(_) => candidates.into_iter().min_by_key(|index| distance(*index)),
+                None => candidates.first().copied(),
+            }
+        }
     }
 }
 
@@ -1264,6 +1516,8 @@ fn replay_miss_message(
     policy: CassettePolicy,
     request: &IncomingRequest,
     interactions: &[ReplayInteraction],
+    shapes: Option<ShapeKeys<'_>>,
+    snapshot_diff: Option<&str>,
 ) -> String {
     let candidates = interactions
         .iter()
@@ -1285,6 +1539,8 @@ fn replay_miss_message(
                 interaction.when.body.as_deref(),
                 interaction.when.body_encoding,
             );
+            let shape_matches = shapes
+                .map(|keys| body_shape_matches(request, &interaction.when, keys, index));
 
             json!({
                 "index": index,
@@ -1296,6 +1552,7 @@ fn replay_miss_message(
                 "headers_match": headers_match,
                 "required_headers_match": required_headers_match,
                 "body_matches": body_matches,
+                "shape_matches": shape_matches,
                 "expected_method": interaction.when.method,
                 "expected_path": interaction.when.path,
                 "expected_body_preview": interaction.when.body.as_deref().map(|body| body_preview_for_diagnostics(policy, body)),
@@ -1303,7 +1560,7 @@ fn replay_miss_message(
         })
         .collect::<Vec<_>>();
 
-    json!({
+    let mut message = json!({
         "message": "Request did not match any route or mock",
         "actual_method": request.method.as_str(),
         "actual_path": request.uri.path(),
@@ -1313,8 +1570,11 @@ fn replay_miss_message(
         "missing_required_headers": missing_required_headers(policy, &request.headers),
         "actual_body_preview": body_preview_bytes_for_diagnostics(policy, &request.body),
         "candidates": candidates,
-    })
-    .to_string()
+    });
+    if let (Some(difference), Value::Object(fields)) = (snapshot_diff, &mut message) {
+        fields.insert("snapshot_diff".to_owned(), Value::from(difference));
+    }
+    message.to_string()
 }
 
 struct IncomingRequest {
@@ -1324,7 +1584,9 @@ struct IncomingRequest {
     body: Bytes,
 }
 
-fn request_matches(
+/// Whether everything but the body matches: method, path, query, the
+/// recorded headers and the policy's required headers.
+fn request_line_matches(
     policy: CassettePolicy,
     request: &IncomingRequest,
     expected: &CassetteRequest,
@@ -1337,6 +1599,42 @@ fn request_matches(
         && query_matches(request.uri.query(), &expected.query_param)
         && headers_match(&request.headers, &expected.header)
         && required_headers_present(policy, &request.headers)
+}
+
+/// [`request_line_matches`] with the body compared by its coarse shape key
+/// against interaction `index`.
+fn shape_request_matches(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    expected: &CassetteRequest,
+    keys: ShapeKeys<'_>,
+    index: usize,
+) -> bool {
+    request_line_matches(policy, request, expected)
+        && body_shape_matches(request, expected, keys, index)
+}
+
+/// Whether the request body has interaction `index`'s coarse shape. A
+/// recording without a body accepts an empty body or, as exact matching
+/// does, any multipart body.
+fn body_shape_matches(
+    request: &IncomingRequest,
+    expected: &CassetteRequest,
+    keys: ShapeKeys<'_>,
+    index: usize,
+) -> bool {
+    if expected.body.is_none() {
+        return request.body.is_empty() || is_multipart_request(&request.headers, &expected.header);
+    }
+    keys.recorded.get(index) == Some(keys.sent)
+}
+
+fn request_matches(
+    policy: CassettePolicy,
+    request: &IncomingRequest,
+    expected: &CassetteRequest,
+) -> bool {
+    request_line_matches(policy, request, expected)
         && body_matches(
             policy,
             &request.headers,

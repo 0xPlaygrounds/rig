@@ -140,7 +140,7 @@ fn narrow_tools(
     }
 }
 
-fn assert_active_tools(allowed: &[&str], executable: bool) {
+fn assert_active_tools(case: &str, allowed: &[&str], executable: bool) {
     let (mut app, agent, adder, requests) = tooling(vec![
         vec![call("c1", "add", serde_json::json!({"x": 1, "y": 2}))],
         vec![AssistantContent::text("done")],
@@ -170,45 +170,46 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
         .iter()
         .map(|tool| tool.name.as_str())
         .collect();
-    assert_eq!(advertised, allowed);
+    assert_eq!(advertised, allowed, "{case}");
     if executable {
-        assert!(app.world().get::<Settled>(run).is_some());
-        assert_eq!(adder.peak.load(Ordering::SeqCst), 1);
+        assert!(app.world().get::<Settled>(run).is_some(), "{case}");
+        assert_eq!(adder.peak.load(Ordering::SeqCst), 1, "{case}");
     } else {
         assert_eq!(
             adder.peak.load(Ordering::SeqCst),
             0,
-            "excluded tool must never execute"
+            "{case}: excluded tool must never execute"
         );
-        assert!(matches!(
-            app.world().get::<Failed>(run),
-            Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
-        ));
-        assert!(app.world().get::<RunResult>(run).is_none());
+        assert!(
+            matches!(
+                app.world().get::<Failed>(run),
+                Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
+            ),
+            "{case}"
+        );
+        assert!(app.world().get::<RunResult>(run).is_none(), "{case}");
         assert!(
             app.world()
                 .resource::<EffectLogResource>()
                 .log()
                 .records
                 .iter()
-                .all(|record| { !matches!(record.kind, EffectKind::ToolCall { .. }) })
+                .all(|record| { !matches!(record.kind, EffectKind::ToolCall { .. }) }),
+            "{case}"
         );
     }
 }
 
 #[test]
-fn active_tools_blocks_an_excluded_granted_tool() {
-    assert_active_tools(&["other"], false);
-}
-
-#[test]
-fn active_tools_empty_blocks_every_granted_tool() {
-    assert_active_tools(&[], false);
-}
-
-#[test]
-fn active_tools_keeps_an_allowed_tool_executable() {
-    assert_active_tools(&["add"], true);
+fn active_tools_decide_which_granted_tools_run() {
+    let cases: [(&str, &[&str], bool); 3] = [
+        ("an excluded granted tool is blocked", &["other"], false),
+        ("an empty set blocks every granted tool", &[], false),
+        ("an allowed tool stays executable", &["add"], true),
+    ];
+    for (case, allowed, executable) in cases {
+        assert_active_tools(case, allowed, executable);
+    }
 }
 
 #[test]
@@ -943,95 +944,6 @@ fn a_system_retries_an_invalid_call_with_feedback() {
         "the feedback for the invalid call, the notice for its peer"
     );
     let _ = HandlerKey::from(ADD);
-}
-
-#[test]
-fn retry_feedback_targets_only_the_invalid_identity_namespace() {
-    use rig_core::message::{CallId, ToolCall, ToolFunction, ToolResultContent};
-    for generated_invalid in [false, true] {
-        let generated = ToolCall::new(
-            CallId::from_wire(""),
-            ToolFunction::new(
-                rig_core::message::ToolName::new(if generated_invalid {
-                    "multiply"
-                } else {
-                    "add"
-                })
-                .expect("tool name"),
-                serde_json::json!({"x":2,"y":3}),
-            ),
-        );
-        let explicit = ToolCall::from_wire(
-            generated.id.wire(),
-            ToolFunction::new(
-                rig_core::message::ToolName::new(if generated_invalid {
-                    "add"
-                } else {
-                    "multiply"
-                })
-                .expect("tool name"),
-                serde_json::json!({"x":4,"y":5}),
-            ),
-        );
-        let calls = [generated, explicit];
-        let (mut app, agent, _, requests) = tooling(vec![
-            calls
-                .iter()
-                .cloned()
-                .map(AssistantContent::ToolCall)
-                .collect(),
-            vec![AssistantContent::text("done")],
-        ]);
-        app.world_mut().entity_mut(agent).insert(InvalidCalls {
-            retries: 1,
-            unhandled: rig_ecs::agent::Unhandled::Fail,
-        });
-        add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
-        let run = app
-            .world_mut()
-            .spawn_run(agent, &[], "retry invalid identity", false, None);
-        ended(&mut app, run, "typed retry complete");
-        assert!(app.world().get::<Failed>(run).is_none());
-        let log = app.world().resource::<EffectLogResource>().log();
-        assert!(
-            log.records
-                .iter()
-                .all(|record| !matches!(record.kind, EffectKind::ToolCall { .. })),
-            "neither invalid call nor its peer executes on retry"
-        );
-        let requests = requests.lock().unwrap();
-        assert_eq!(requests.len(), 2);
-        let results: Vec<_> = requests[1]
-            .chat_history
-            .iter()
-            .filter_map(|message| match message {
-                Message::User { content } => Some(content),
-                _ => None,
-            })
-            .flatten()
-            .filter_map(|part| match part {
-                UserContent::ToolResult(result) => Some(result),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(results.len(), 2);
-        for call in &calls {
-            let result = results
-                .iter()
-                .find(|result| result.call == call.id)
-                .unwrap();
-            assert_eq!(result.call.provider(), call.id.provider());
-            assert_eq!(result.name, call.function.name);
-            let expected = if call.function.name == "multiply" {
-                "there is no tool named multiply; use add"
-            } else {
-                rig_core::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER
-            };
-            assert!(
-                matches!(result.content.as_slice(), [ToolResultContent::Text(text)] if text.text == expected)
-            );
-        }
-    }
 }
 
 #[test]

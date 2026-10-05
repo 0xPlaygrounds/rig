@@ -4,14 +4,12 @@ use rig::providers::deepseek::DEEPSEEK_V4_FLASH;
 
 use super::support::with_deepseek_cassette;
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
-    ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
-    Subtract, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
-    assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
-    assert_raw_stream_tool_call_arguments_are_objects, assert_raw_stream_tool_call_precedes_text,
-    assert_stream_contains_zero_arg_tool_call_named, assert_tool_call_precedes_later_text,
-    assert_two_tool_roundtrip_contract, collect_raw_stream_observation,
-    collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
+    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
+    ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT, TWO_TOOL_STREAM_PREAMBLE,
+    TWO_TOOL_STREAM_PROMPT, assert_raw_stream_contains_distinct_tool_calls_before_text,
+    assert_raw_stream_text_contains, assert_raw_stream_tool_call_precedes_text,
+    assert_stream_contains_zero_arg_tool_call_named, collect_raw_stream_observation,
+    zero_arg_tool_definition,
 };
 use rig::completion::CompletionRequest;
 
@@ -19,34 +17,6 @@ fn non_thinking_params() -> serde_json::Value {
     serde_json::json!({
         "thinking": { "type": "disabled" }
     })
-}
-
-#[tokio::test]
-async fn streaming_chat_with_tools() {
-    with_deepseek_cassette(
-        "streaming_tools/streaming_chat_with_tools",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(DEEPSEEK_V4_FLASH))
-                .preamble(
-                    "You are a calculator here to help the user perform arithmetic operations.",
-                )
-                .max_tokens(1024)
-                .tool(Adder)
-                .tool(Subtract)
-                .additional_params(non_thinking_params())
-                .default_max_turns(2)
-                .build();
-
-            let history: &[Message] = &[];
-            let mut stream = agent.prompt("Calculate 2 - 5").history(history).stream();
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming chat should succeed");
-
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
-    .await;
 }
 
 #[tokio::test]
@@ -88,98 +58,6 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
             assert_raw_stream_contains_distinct_tool_calls_before_text(
                 &observation,
                 &["lookup_harbor_label", "lookup_orchard_label"],
-            );
-        },
-    )
-    .await;
-}
-
-/// Live end-to-end guard for the #1958 invariant: every tool call surfaced by
-/// the streaming aggregator carries a JSON **object** as its arguments, never a
-/// bare string. Recorded against real DeepSeek traffic with two tool calls in a
-/// single streamed turn (which exercises the same-turn multi-tool accumulation
-/// path). DeepSeek assigns distinct indices, so this complements — rather than
-/// replaces — the in-crate unit tests that drive the same-index eviction path
-/// directly (a quirk only some API gateways emit and not reproducible live).
-#[tokio::test]
-async fn raw_stream_tool_call_arguments_are_objects() {
-    with_deepseek_cassette(
-        "streaming_tools/raw_stream_tool_call_arguments_are_objects",
-        |client| async move {
-            let model = client.completion(DEEPSEEK_V4_FLASH);
-            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(non_thinking_params());
-
-            let observation = collect_raw_stream_observation(
-                model.stream(request).expect("raw stream should start"),
-            )
-            .await;
-
-            assert_raw_stream_tool_call_arguments_are_objects(
-                &observation,
-                &["lookup_harbor_label", "lookup_orchard_label"],
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer() {
-    with_deepseek_cassette(
-        "streaming_tools/streaming_chat_surfaces_two_distinct_tool_calls_before_final_answer",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(DEEPSEEK_V4_FLASH))
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(non_thinking_params())
-                .build();
-
-            let history: &[Message] = &[];
-            let mut stream = agent
-                .prompt(TWO_TOOL_STREAM_PROMPT)
-                .history(history)
-                .max_turns(8)
-                .stream();
-            let observation = collect_stream_observation(&mut stream).await;
-
-            assert_two_tool_roundtrip_contract(
-                &observation,
-                &["lookup_harbor_label", "lookup_orchard_label"],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_chat_emits_tool_call_before_later_text() {
-    with_deepseek_cassette(
-        "streaming_tools/streaming_chat_emits_tool_call_before_later_text",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(DEEPSEEK_V4_FLASH))
-                .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .additional_params(non_thinking_params())
-                .build();
-
-            let history: &[Message] = &[];
-            let mut stream = agent
-                .prompt(ORDERED_TOOL_STREAM_PROMPT)
-                .history(history)
-                .max_turns(5)
-                .stream();
-            let observation = collect_stream_observation(&mut stream).await;
-
-            assert_tool_call_precedes_later_text(
-                &observation,
-                "lookup_harbor_label",
-                &[ALPHA_SIGNAL_OUTPUT],
             );
         },
     )

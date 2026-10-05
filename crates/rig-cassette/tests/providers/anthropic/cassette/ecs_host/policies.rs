@@ -41,9 +41,6 @@ pub(super) fn twice(event: On<Add, Run>, mut commands: Commands) {
     note(&mut commands, run, "first", false, false);
     note(&mut commands, run, "second", false, false);
 }
-pub(super) fn unserved(event: On<Add, Run>, mut commands: Commands) {
-    note(&mut commands, event.event().entity, "unserved", false, true);
-}
 #[derive(Component)]
 pub(super) struct NotedCompletion;
 type UnnotedTurns<'w, 's> =

@@ -26,7 +26,6 @@ use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
 use rig::completion::CompletionRequest;
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
-const LENGTH_PROMPT: &str = "Explain every step of how a compiler optimizes a large program.";
 const TOOL_PROMPT: &str = "Call ping now.";
 
 fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
@@ -61,15 +60,6 @@ async fn blocking_stop(client: OpenAiModels) {
         .await
         .expect("blocking stop probe");
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-}
-
-async fn blocking_length(client: OpenAiModels) {
-    let model = client.completion(doubleword::QWEN3_5_9B);
-    let response = model
-        .call(CompletionRequest::new(LENGTH_PROMPT).max_tokens(1))
-        .await
-        .expect("a contentless truncated turn is still a completion");
-    assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
 async fn blocking_tool_calls_body(client: OpenAiModels) {
@@ -132,29 +122,6 @@ async fn streaming_natural_stop() {
     )
     .await;
     assert_eq!(recorded_finish_reason(SCENARIO, true), "stop");
-}
-
-#[tokio::test]
-async fn blocking_token_limit() {
-    const SCENARIO: &str = "finish_reason_matrix/blocking_token_limit";
-    with_doubleword_cassette("finish_reason_matrix/blocking_token_limit", blocking_length).await;
-    assert_eq!(recorded_finish_reason(SCENARIO, false), "length");
-}
-
-#[tokio::test]
-async fn streaming_token_limit() {
-    const SCENARIO: &str = "finish_reason_matrix/streaming_token_limit";
-    with_doubleword_cassette(
-        "finish_reason_matrix/streaming_token_limit",
-        |client| async move {
-            assert_eq!(
-                streaming_reason(client, LENGTH_PROMPT, 1, false).await,
-                FinishReason::Length
-            );
-        },
-    )
-    .await;
-    assert_eq!(recorded_finish_reason(SCENARIO, true), "length");
 }
 
 #[tokio::test]

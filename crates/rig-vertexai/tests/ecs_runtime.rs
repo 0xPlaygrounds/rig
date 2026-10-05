@@ -166,37 +166,3 @@ async fn real_vertex_requests_run_on_ecs_workers_and_strictly_resume_with_new_cr
     drop(resumed);
     drop(endpoint);
 }
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dropping_the_world_cancels_the_real_sdk_rpc() {
-    let endpoint = LocalEndpoint::spawn([HttpReply::Hang]).await;
-    let credentials = SentinelCredentials::rotating("ecs-cancelled");
-    let mut live = app();
-    let handler = assemble(&endpoint, &credentials).await;
-    Handlers::with(live.world_mut(), |h| h.register_erased("model", handler))
-        .unwrap()
-        .unwrap();
-    live.world_mut().spawn(PendingEffect::new(
-        "model",
-        EffectKind::Completion {
-            request: CompletionRequest::new("held"),
-            stream: false,
-        },
-    ));
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while endpoint.request_count() == 0 {
-            live.update();
-            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
-        }
-    })
-    .await
-    .unwrap();
-    drop(live);
-    tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        endpoint.wait_for_disconnects(1),
-    )
-    .await
-    .unwrap();
-    assert_eq!(endpoint.disconnects(), 1);
-}

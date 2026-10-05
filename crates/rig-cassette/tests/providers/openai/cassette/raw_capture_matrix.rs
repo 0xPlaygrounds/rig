@@ -23,15 +23,12 @@
 //! no such key.
 //!
 //! Text turns are the easy case. The wire shapes most likely to break the
-//! reading are the ones the routes rewrite on the way in: a Responses
-//! reasoning turn (an `output[]` item of `type: "reasoning"` with
-//! `encrypted_content` and `summary`, which the normalized response carries
-//! as content blocks instead), a Chat tool call (whose
-//! `function.arguments` is a JSON *string* on the wire and stays one on
+//! reading are the ones the routes rewrite on the way in: a Chat tool call
+//! (whose `function.arguments` is a JSON *string* on the wire and stays one on
 //! `raw`, while the normalized `finish_reason()` is `ToolCalls` and the raw
 //! spelling is OpenAI's own `"tool_calls"`), and a Chat structured-output
 //! turn (`response_format: json_schema`, whose message carries a `refusal`
-//! sibling and whose body carries `system_fingerprint`). Cells 5–7 record
+//! sibling and whose body carries `system_fingerprint`). Cells 6 and 7 record
 //! each of those and hold the same two-views bar.
 //!
 //! # Matrix
@@ -39,18 +36,14 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_raw_round_trips_typed` | chat, unary | `raw` is the chat reply document; its fields ≡ the normalized response's | recorded |
-//! | 2 | `chat_raw_exposes_service_tier` | chat, provider-only field | `raw["service_tier"]` = fixture | recorded |
-//! | 3 | `responses_raw_round_trips_typed` | Responses, unary | `raw` is the Responses response object; its fields ≡ the normalized response's | recorded |
 //! | 4 | `responses_raw_exposes_service_tier_and_store` | Responses, provider-only fields | `raw["service_tier"]`, `raw["store"]` = fixture | recorded |
-//! | 5 | `responses_reasoning_raw_round_trips_typed` | Responses, reasoning turn (`reasoning: { effort, summary }`) | reads back; `raw["output"][i].type == "reasoning"` with `encrypted_content` + `summary` = fixture; `raw["reasoning"]` = fixture | recorded |
 //! | 6 | `chat_tool_call_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the reply document; `tool_calls[0].function.arguments` is a JSON string = fixture; `finish_reason() == ToolCalls` while `raw` spells `"tool_calls"` | recorded |
 //! | 7 | `chat_structured_output_raw_exposes_system_fingerprint` | chat, `response_format: json_schema` | `raw` is the reply document; `raw["system_fingerprint"]` = fixture; message carries `refusal`; content parses under the schema | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Each cell re-derives its premise
 //! from its own fixture after the wrapper returns: the recorded response is a
-//! completed turn whose body carries the field the cell reads — for cell 5 a
-//! `reasoning` output item with a string `encrypted_content` (and the recorded
-//! request asked for it via `include`), for cell 6 a `tool_calls` entry with
+//! completed turn whose body carries the field the cell reads: for cell 6 a
+//! `tool_calls` entry with
 //! `finish_reason: "tool_calls"`, for cell 7 a request carrying
 //! `response_format.type == "json_schema"` and a body with a string
 //! `system_fingerprint`.
@@ -69,16 +62,7 @@ use crate::support::{Observed, assert_matches_recorded_token, normalized_without
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
-/// The reasoning cell needs a model that emits `reasoning` output items; the
-/// same one the `reasoning_roundtrip` module records against.
-const REASONING_MODEL: &str = openai::GPT_5_2;
 const PROMPT: &str = "Reply with exactly the single word: pong";
-/// A problem small enough to answer in a few tokens but not so trivial that
-/// the model skips reasoning: at `effort: "low"` a one-step multiplication
-/// came back with no `reasoning` output item at all, and a cell that cannot
-/// find one fails on its premise.
-const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60 km/h. \
-     At what time does it arrive? Reply with only the time in HH:MM.";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 const STRUCTURED_PROMPT: &str = "Put the single word pong in the `word` field.";
 
@@ -86,16 +70,6 @@ fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
         .temperature(0.0)
         .max_tokens(16)
-}
-
-/// The reasoning request shape the `reasoning_roundtrip` module uses
-/// (`effort: "medium"`), with a summary asked for so the reasoning item
-/// carries `summary` as well as the `encrypted_content` the provider adds to
-/// `include` on every reasoning request.
-fn reasoning_request() -> CompletionRequest {
-    CompletionRequest::new(REASONING_PROMPT).additional_params(json!({
-        "reasoning": { "effort": "medium", "summary": "auto" }
-    }))
 }
 
 fn ping_tool() -> ToolDefinition {
@@ -287,91 +261,9 @@ async fn chat_raw_round_trips_typed() {
     assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
-#[tokio::test]
-async fn chat_raw_exposes_service_tier() {
-    const SCENARIO: &str = "raw_capture_matrix/chat_raw_exposes_service_tier";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_capture_matrix/chat_raw_exposes_service_tier",
-        |client| capture_completion(client.openai.chat(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("chat_raw_exposes_service_tier should replay from its cassette");
-    let response = observed.take();
-    let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
-    assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
-    // Premise: the recorded body reports a service tier at all.
-    let recorded_tier = body["service_tier"].as_str().unwrap_or_else(|| {
-        panic!("{SCENARIO}: the recorded chat body must carry a string `service_tier`")
-    });
-
-    let raw = captured_raw(SCENARIO, &response);
-    assert_eq!(
-        raw["service_tier"].as_str(),
-        Some(recorded_tier),
-        "{SCENARIO}: `service_tier` is readable off raw and equals the fixture"
-    );
-    assert_matches_recorded_token(
-        raw["system_fingerprint"].as_str(),
-        body["system_fingerprint"].as_str(),
-        &format!("{SCENARIO}: `system_fingerprint` off raw vs the fixture"),
-    );
-    assert_normalized_lacks(
-        &normalized_without_raw(response.clone()),
-        &["service_tier", "system_fingerprint"],
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Responses
 // ---------------------------------------------------------------------------
-
-/// The Responses body is the shape the route rewrites most on the way in:
-/// an `output[]` array of typed items. `raw` is that document as the
-/// provider sent it, and its fields agree with the normalized response.
-#[tokio::test]
-async fn responses_raw_round_trips_typed() {
-    const SCENARIO: &str = "raw_capture_matrix/responses_raw_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_capture_matrix/responses_raw_round_trips_typed",
-        |client| capture_completion(client.openai.completion(MODEL), request(), observed.clone()),
-    )
-    .await
-    .expect("responses_raw_round_trips_typed should replay from its cassette");
-    let response = observed.take();
-    let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
-    assert_responses_fixture_premise(SCENARIO, &response, &body);
-
-    let raw = captured_raw(SCENARIO, &response);
-    let typed = raw;
-    assert_matches_recorded_token(
-        typed["id"].as_str(),
-        body["id"].as_str(),
-        &format!("{SCENARIO}: raw id"),
-    );
-    assert_eq!(typed["model"].as_str(), body["model"].as_str());
-    assert_eq!(raw["status"], body["status"]);
-    assert_eq!(raw["usage"]["input_tokens"], body["usage"]["input_tokens"]);
-    assert_eq!(
-        raw["usage"]["output_tokens"],
-        body["usage"]["output_tokens"]
-    );
-    // The transport id is not part of the wire body, so the captured value —
-    // which mirrors the wire body — must not carry it, while the normalized
-    // response does.
-    assert!(
-        raw.get("provider_request_id").is_none(),
-        "{SCENARIO}: the Responses raw value mirrors the wire body"
-    );
-    assert!(
-        response.provider_request_id.is_some(),
-        "{SCENARIO}: the normalized response still reports the transport id"
-    );
-    // Two views of one reply: the provider's field names, then rig's.
-    responses::assert_native_matches_normalized(&response, typed, SCENARIO);
-    assert_transport_id_is_header_only(SCENARIO, &response);
-}
 
 #[tokio::test]
 async fn responses_raw_exposes_service_tier_and_store() {
@@ -413,124 +305,6 @@ async fn responses_raw_exposes_service_tier_and_store() {
 // ---------------------------------------------------------------------------
 // Reasoning, tool-call and structured-output turns
 // ---------------------------------------------------------------------------
-
-/// The `output[]` item of `type: "reasoning"` in a Responses body, with the
-/// premise that it exists and carries a string `encrypted_content`.
-fn reasoning_output_item<'a>(scenario: &str, body: &'a Value, what: &str) -> &'a Value {
-    let item = body["output"]
-        .as_array()
-        .and_then(|items| items.iter().find(|item| item["type"] == "reasoning"))
-        .unwrap_or_else(|| panic!("{scenario}: {what} must carry a `reasoning` output item"));
-    assert!(
-        item["encrypted_content"].is_string(),
-        "{scenario}: {what}'s reasoning item must carry a string `encrypted_content`"
-    );
-    let summary = item["summary"].as_array().unwrap_or_else(|| {
-        panic!("{scenario}: {what}'s reasoning item must carry a `summary` array")
-    });
-    assert!(
-        summary
-            .iter()
-            .any(|entry| entry["type"] == "summary_text" && entry["text"].is_string()),
-        "{scenario}: {what}'s reasoning item must carry a `summary_text` entry — that is \
-         what `summary: \"auto\"` asked for"
-    );
-    item
-}
-
-/// A Responses reasoning turn: the wire's `reasoning` output item — the one
-/// shape the route rewrites most on the way in — is on `raw` verbatim (its
-/// `encrypted_content`, its `summary`), the top-level `reasoning` echo
-/// equals the fixture's, and the normalized response carries the same
-/// reasoning as content blocks, not as an `output` array.
-#[tokio::test]
-async fn responses_reasoning_raw_round_trips_typed() {
-    const SCENARIO: &str = "raw_capture_matrix/responses_reasoning_raw_round_trips_typed";
-    let observed = Observed::default();
-    with_openai_cassette_result(
-        "raw_capture_matrix/responses_reasoning_raw_round_trips_typed",
-        |client| {
-            capture_completion(
-                client.openai.completion(REASONING_MODEL),
-                reasoning_request(),
-                observed.clone(),
-            )
-        },
-    )
-    .await
-    .expect("responses_reasoning_raw_round_trips_typed should replay from its cassette");
-    let response = observed.take();
-    let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
-    assert_responses_fixture_premise(SCENARIO, &response, &body);
-    // Premise: the recorded request was a reasoning request that asked for
-    // the encrypted content and a summary, and the recorded body answered
-    // with a reasoning item carrying both.
-    let request = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(
-        request["reasoning"],
-        json!({ "effort": "medium", "summary": "auto" }),
-        "{SCENARIO}: the recorded request carries the reasoning shape"
-    );
-    assert_eq!(
-        request["include"],
-        json!(["reasoning.encrypted_content"]),
-        "{SCENARIO}: the provider asks for encrypted reasoning on every reasoning request"
-    );
-    let recorded_item = reasoning_output_item(SCENARIO, &body, "the recorded body");
-    assert!(
-        body["reasoning"].is_object(),
-        "{SCENARIO}: the recorded body echoes the reasoning configuration as an object"
-    );
-
-    let raw = captured_raw(SCENARIO, &response);
-    let typed = raw;
-    // The reasoning item is on raw as the wire item.
-    let raw_item = reasoning_output_item(SCENARIO, raw, "raw");
-    assert_matches_recorded_token(
-        raw_item["encrypted_content"].as_str(),
-        recorded_item["encrypted_content"].as_str(),
-        &format!("{SCENARIO}: `encrypted_content` off raw vs the fixture"),
-    );
-    assert_matches_recorded_token(
-        raw_item["id"].as_str(),
-        recorded_item["id"].as_str(),
-        &format!("{SCENARIO}: reasoning item id off raw vs the fixture"),
-    );
-    assert_eq!(
-        raw_item["summary"], recorded_item["summary"],
-        "{SCENARIO}: `summary` off raw equals the fixture's"
-    );
-    assert_eq!(
-        raw["reasoning"], body["reasoning"],
-        "{SCENARIO}: the top-level `reasoning` echo is the fixture's object"
-    );
-    assert_eq!(
-        raw["usage"]["output_tokens_details"]["reasoning_tokens"],
-        body["usage"]["output_tokens_details"]["reasoning_tokens"],
-        "{SCENARIO}: reasoning token usage off raw equals the fixture's"
-    );
-    // The normalized response has no `output` array; its reasoning is a
-    // content block carrying the same encrypted payload.
-    assert_normalized_lacks(&normalized_without_raw(response.clone()), &["output"]);
-    let encrypted_blocks: Vec<&str> = response
-        .choice
-        .iter()
-        .filter(|content| matches!(content, AssistantContent::Reasoning(_)))
-        .filter_map(|content| content.native_item()?["encrypted_content"].as_str())
-        .collect();
-    assert_eq!(
-        encrypted_blocks,
-        vec![
-            raw_item["encrypted_content"]
-                .as_str()
-                .expect("premise: string")
-        ],
-        "{SCENARIO}: the normalized reasoning block carries raw's encrypted content"
-    );
-    // Two views of one reply: the provider's field names, then rig's.
-    responses::assert_native_matches_normalized(&response, typed, SCENARIO);
-    assert_transport_id_is_header_only(SCENARIO, &response);
-}
 
 /// A forced Chat tool call: `raw` keeps the wire's representation — a
 /// `tool_calls` entry whose `function.arguments` is a JSON *string* and a

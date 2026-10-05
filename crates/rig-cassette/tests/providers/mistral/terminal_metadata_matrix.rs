@@ -15,18 +15,15 @@
 //! | output budget | roomy, one-token tiny |
 //! | response shape | one text candidate, two text candidates, forced tool |
 //!
-//! That is 24 recorded cells. Each cell proves its request and terminal premise
-//! from the fixture, then compares the native raw response/terminal metadata
-//! with those exact bytes. The `n = 2` cells additionally prove that the shared
-//! streaming adapter selects candidate zero without concatenating candidate
-//! one into it.
+//! That is 24 cells, of which the five below are tests. Each proves its
+//! request and terminal premise from the fixture, then compares the native raw
+//! response/terminal metadata with those exact bytes. The `n = 2` cells
+//! additionally prove that the shared streaming adapter selects candidate zero
+//! without concatenating candidate one into it.
 //!
-//! Coverage ledger: the proposed 24-cell logprobs product was pruned in full
-//! after both models rejected live blocking and streaming probes with code
-//! 3051; it was replaced, not counted, by this unpruned 24-cell terminal
-//! product. Each explicit test maps to
-//! `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/<test-name>.yaml`; none of
-//! these cells is unit-only. `mistral-small-latest` and
+//! Each test maps to
+//! `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/<test-name>.yaml`.
+//! `mistral-small-latest` and
 //! `ministral-3b-latest` are the two inexpensive, currently served chat/tool
 //! families. Assertions cover requests, native terminals, ids, models, finish
 //! reasons, usage including `service_tier`, primary-choice behavior, and every
@@ -34,7 +31,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 replacement cells | `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | 5 of 24 | `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/{blocking_ministral_3b_roomy_plain_one,blocking_ministral_3b_roomy_plain_two,blocking_ministral_3b_tiny_tool,streaming_ministral_3b_tiny_plain_one,streaming_mistral_small_tiny_plain_two}.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{Arc, Mutex};
@@ -359,51 +356,13 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 crate::matrix::case_matrix! {
     wrapper: with_mistral_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
     # [tokio :: test]
-    blocking_mistral_small_roomy_plain_one: ("terminal_metadata_matrix/blocking_mistral_small_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_mistral_small_roomy_plain_two: ("terminal_metadata_matrix/blocking_mistral_small_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    blocking_mistral_small_roomy_tool: ("terminal_metadata_matrix/blocking_mistral_small_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    blocking_mistral_small_tiny_plain_one: ("terminal_metadata_matrix/blocking_mistral_small_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_mistral_small_tiny_plain_two: ("terminal_metadata_matrix/blocking_mistral_small_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    blocking_mistral_small_tiny_tool: ("terminal_metadata_matrix/blocking_mistral_small_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: Tool ,));
-    # [tokio :: test]
     blocking_ministral_3b_roomy_plain_one: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainOne ,));
     # [tokio :: test]
     blocking_ministral_3b_roomy_plain_two: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainTwo ,));
     # [tokio :: test]
-    blocking_ministral_3b_roomy_tool: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    blocking_ministral_3b_tiny_plain_one: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
-    blocking_ministral_3b_tiny_plain_two: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
     blocking_ministral_3b_tiny_tool: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_mistral_small_roomy_plain_one: ("terminal_metadata_matrix/streaming_mistral_small_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_mistral_small_roomy_plain_two: ("terminal_metadata_matrix/streaming_mistral_small_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_mistral_small_roomy_tool: ("terminal_metadata_matrix/streaming_mistral_small_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_mistral_small_tiny_plain_one: ("terminal_metadata_matrix/streaming_mistral_small_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainOne ,));
     # [tokio :: test]
     streaming_mistral_small_tiny_plain_two: ("terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainTwo ,));
     # [tokio :: test]
-    streaming_mistral_small_tiny_tool: ("terminal_metadata_matrix/streaming_mistral_small_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: Tool ,));
-    # [tokio :: test]
-    streaming_ministral_3b_roomy_plain_one: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_ministral_3b_roomy_plain_two: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_ministral_3b_roomy_tool: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: Tool ,));
-    # [tokio :: test]
     streaming_ministral_3b_tiny_plain_one: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainOne ,));
-    # [tokio :: test]
-    streaming_ministral_3b_tiny_plain_two: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainTwo ,));
-    # [tokio :: test]
-    streaming_ministral_3b_tiny_tool: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: Tool ,));
 }

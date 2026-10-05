@@ -4,28 +4,9 @@ use rig::bedrock;
 
 use super::super::support::with_bedrock_cassette;
 use crate::support::{
-    STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
-    Subtract, assert_mentions_expected_number, assert_nonempty_response,
+    STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract, assert_mentions_expected_number,
     collect_stream_final_response,
 };
-
-#[tokio::test]
-async fn streaming_smoke() {
-    with_bedrock_cassette("streaming/streaming_smoke", |client| async move {
-        let agent = client
-            .agent(bedrock::completion::AMAZON_NOVA_LITE)
-            .preamble(STREAMING_PREAMBLE)
-            .build();
-
-        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-        let response = collect_stream_final_response(&mut stream)
-            .await
-            .expect("streaming prompt should succeed");
-
-        assert_nonempty_response(&response);
-    })
-    .await;
-}
 
 #[tokio::test]
 async fn streaming_tools_smoke() {

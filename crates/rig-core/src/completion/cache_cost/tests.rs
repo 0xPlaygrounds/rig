@@ -21,23 +21,6 @@ fn usage(input: u64, cached: Option<u64>, written: Option<u64>) -> Usage {
     }
 }
 
-/// Reads and writes are part of input and are taken out of the uncached
-/// part. Pure arithmetic, so not a cassette test.
-#[test]
-fn takes_reads_and_writes_out_of_input() {
-    let cost = CacheCost::from_usage(&usage(1_000, Some(900), Some(90)));
-    assert_eq!(
-        cost,
-        CacheCost {
-            uncached_input: 10,
-            cache_reads: 900,
-            cache_writes: 90,
-            storage_token_hours: 0.0,
-        }
-    );
-    assert_eq!(cost.prompt_tokens(), 1_000);
-}
-
 /// Absent counters are zero, and counters above input never underflow. Pure
 /// arithmetic, so not a cassette test.
 #[test]

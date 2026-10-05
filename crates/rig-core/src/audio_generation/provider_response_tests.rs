@@ -45,12 +45,3 @@ fn audio_generation_error_provider_error_is_not_a_provider_response() {
     assert_eq!(error.provider_response_status(), None);
     assert_eq!(error.provider_response_json().expect("no body"), None);
 }
-
-#[test]
-fn audio_generation_error_provider_response_helpers_with_unrelated_variant() {
-    let error = ProviderError::Response("parse failed".to_string());
-
-    assert_eq!(error.provider_response_body(), None);
-    assert_eq!(error.provider_response_status(), None);
-    assert_eq!(error.provider_response_json().expect("no body"), None);
-}

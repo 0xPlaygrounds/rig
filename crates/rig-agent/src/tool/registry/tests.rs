@@ -1,13 +1,3 @@
-use std::{
-    future::{Future, pending, poll_fn},
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    task::Poll,
-    time::Duration,
-};
-
 use super::*;
 use rig_core::message::{ImageMediaType, ToolResultContent};
 use rig_core::tool::{ContextValue, ToolErrorKind, ToolOutput};
@@ -69,88 +59,6 @@ impl Tool for Echo {
         context.insert_result(Note("result-metadata".to_string()))?;
         Ok(args)
     }
-}
-
-#[tokio::test]
-async fn toolset_dispatch_snapshot_is_canonical_and_returns_result_metadata() {
-    let mut set = ToolSet::default();
-    set.add_tool(Echo);
-    let definitions = set.tool_definitions();
-    assert_eq!(definitions[0].name, "echo");
-
-    let mut context = ToolContext::new();
-    context.insert(Counter(7)).unwrap();
-    let result = set.execute("echo", r#"{"value":1}"#, &mut context).await;
-    assert!(result.is_success());
-    assert_eq!(
-        result.output(),
-        &ToolOutput::json(serde_json::json!({"value": 1}))
-    );
-    assert_eq!(
-        context.get::<Counter>().unwrap(),
-        Some(Counter(7)),
-        "tool-local inbound mutations must not change the caller's context"
-    );
-    assert_eq!(
-        context.result::<Note>().unwrap(),
-        Some(Note("result-metadata".to_string()))
-    );
-}
-
-struct PendingTool(Arc<AtomicBool>);
-
-impl Tool for PendingTool {
-    const NAME: &'static str = "pending";
-    type Error = rig::tool::ToolExecutionError;
-    type Args = ();
-    type Output = ();
-
-    fn description(&self) -> String {
-        "never completes".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        context.insert_result(Note("unpublished".to_string()))?;
-        self.0.store(true, Ordering::SeqCst);
-        pending().await
-    }
-}
-
-#[tokio::test]
-async fn cancelled_toolset_dispatch_does_not_retain_stale_result_metadata() {
-    let mut set = ToolSet::default();
-    let started = Arc::new(AtomicBool::new(false));
-    set.add_tool(PendingTool(started.clone()));
-    let mut context = ToolContext::new();
-    context.insert_result(Note("stale".to_string())).unwrap();
-
-    let mut execution = Box::pin(set.execute(PendingTool::NAME, "null", &mut context));
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        poll_fn(|cx| {
-            assert!(execution.as_mut().poll(cx).is_pending());
-            started.load(Ordering::SeqCst).then_some(()).map_or_else(
-                || {
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                },
-                Poll::Ready,
-            )
-        }),
-    )
-    .await
-    .expect("pending tool did not start");
-    drop(execution);
-
-    assert_eq!(context.result::<Note>().unwrap(), None);
 }
 
 /// A tool-family handler that is not a tool adapter: it answers without
@@ -257,38 +165,6 @@ async fn registered_tool_execute_keeps_inbound_values_on_every_ending() {
     assert_eq!(context.result::<Note>().unwrap(), None);
 }
 
-/// Dropping an inline execution mid-call leaves the caller's context exactly
-/// as it was: nothing is moved out of it, nothing partial is published.
-#[tokio::test]
-async fn registered_tool_execute_dropped_mid_call_leaves_the_context_unchanged() {
-    let started = Arc::new(AtomicBool::new(false));
-    let tool = RegisteredTool::from_tool(PendingTool(started.clone()));
-    let mut context = ToolContext::new();
-    context.insert(Counter(7)).unwrap();
-    context.insert_result(Note("stale".to_string())).unwrap();
-    let before = context.clone();
-
-    let mut execution = Box::pin(tool.execute("null".into(), &mut context));
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        poll_fn(|cx| {
-            assert!(execution.as_mut().poll(cx).is_pending());
-            started.load(Ordering::SeqCst).then_some(()).map_or_else(
-                || {
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                },
-                Poll::Ready,
-            )
-        }),
-    )
-    .await
-    .expect("pending tool did not start");
-    drop(execution);
-
-    assert_eq!(context, before);
-}
-
 #[tokio::test]
 async fn framework_argument_errors_remain_actionable_to_the_model() {
     let mut set = ToolSet::default();
@@ -356,70 +232,6 @@ async fn typed_foreign_errors_normalize_only_at_dispatch() {
     assert!(error.is::<std::io::Error>());
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("domain timeout")]
-struct DomainTimeout;
-
-struct ClassifiedErrorTool;
-
-impl Tool for ClassifiedErrorTool {
-    const NAME: &'static str = "classified_error";
-    type Error = DomainTimeout;
-    type Args = ();
-    type Output = ();
-
-    fn description(&self) -> String {
-        "classifies a domain error".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
-    }
-
-    fn map_error(&self, error: Self::Error) -> ToolExecutionError {
-        ToolExecutionError::timeout("safe timeout feedback").with_source(error)
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        Err(DomainTimeout)
-    }
-}
-
-#[tokio::test]
-async fn tools_can_classify_typed_errors_at_the_erased_boundary() {
-    let mut set = ToolSet::default();
-    set.add_tool(ClassifiedErrorTool);
-    let result = set
-        .execute(ClassifiedErrorTool::NAME, "null", &mut ToolContext::new())
-        .await;
-    let error = result.error().expect("dispatch should normalize the error");
-    assert_eq!(error.kind(), ToolErrorKind::Timeout);
-    assert_eq!(error.retryable(), Some(true));
-    assert_eq!(error.model_feedback(), Some("safe timeout feedback"));
-    assert!(error.is::<DomainTimeout>());
-}
-
-#[tokio::test]
-async fn dynamic_tool_preserves_concrete_error() {
-    #[derive(Debug, thiserror::Error)]
-    #[error("boom")]
-    struct Boom;
-
-    let tool = DynamicTool::new(
-        rig_core::message::ToolName::new("dynamic").expect("tool name"),
-        "fails",
-        serde_json::json!({"type":"object"}),
-        |_args| Box::pin(async { Err(ToolExecutionError::provider("upstream").with_source(Boom)) }),
-    );
-    let set = ToolSet::from_dynamic_tools(vec![tool]);
-    let result = set.execute("dynamic", "{}", &mut ToolContext::new()).await;
-    assert!(result.error().is_some_and(|error| error.is::<Boom>()));
-}
-
 struct DirectRichOutput;
 
 impl Tool for DirectRichOutput {
@@ -464,54 +276,6 @@ async fn direct_rich_typed_output_is_not_serialized_as_json() {
         Some(ToolResultContent::Image(_))
     ));
     assert_eq!(result.output().as_json(), None);
-}
-
-struct TypedRichError {
-    refuse: bool,
-}
-
-impl Tool for TypedRichError {
-    const NAME: &'static str = "typed_rich_error";
-    type Error = rig::tool::ToolExecutionError;
-    type Args = serde_json::Value;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "returns rich failure feedback".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, ToolExecutionError> {
-        let error = if self.refuse {
-            ToolExecutionError::refused("typed refusal")
-        } else {
-            ToolExecutionError::provider("typed failure")
-        };
-        Err(error.with_model_output(rich_error_output("typed feedback")))
-    }
-}
-
-#[tokio::test]
-async fn typed_failures_and_refusals_preserve_rich_model_output() {
-    for refuse in [false, true] {
-        let mut set = ToolSet::default();
-        set.add_tool(TypedRichError { refuse });
-
-        let result = set
-            .execute(TypedRichError::NAME, "{}", &mut ToolContext::new())
-            .await;
-
-        assert_eq!(result.is_refused(), refuse);
-        assert_eq!(result.is_error(), !refuse);
-        assert_rich_error_output(&result, "typed feedback");
-    }
 }
 
 #[tokio::test]

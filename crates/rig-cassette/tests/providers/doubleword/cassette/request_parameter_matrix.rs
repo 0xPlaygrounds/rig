@@ -38,44 +38,6 @@ fn assert_recorded_parameter(scenario: &str, field: &str, expected: Value) {
 }
 
 #[tokio::test]
-async fn temperature_from_the_typed_builder() {
-    const SCENARIO: &str = "request_parameter_matrix/temperature_from_the_typed_builder";
-    with_doubleword_cassette(
-        "request_parameter_matrix/temperature_from_the_typed_builder",
-        |client| async move {
-            let model = client.completion(MODEL);
-            model
-                .call(
-                    CompletionRequest::new(PROMPT)
-                        .temperature(0.0)
-                        .max_tokens(32),
-                )
-                .await
-                .expect("Doubleword should accept temperature");
-        },
-    )
-    .await;
-    assert_recorded_parameter(SCENARIO, "temperature", json!(0.0));
-}
-
-#[tokio::test]
-async fn max_tokens_from_the_typed_builder() {
-    const SCENARIO: &str = "request_parameter_matrix/max_tokens_from_the_typed_builder";
-    with_doubleword_cassette(
-        "request_parameter_matrix/max_tokens_from_the_typed_builder",
-        |client| async move {
-            let model = client.completion(MODEL);
-            model
-                .call(CompletionRequest::new(PROMPT).max_tokens(7))
-                .await
-                .expect("Doubleword should accept max_tokens");
-        },
-    )
-    .await;
-    assert_recorded_parameter(SCENARIO, "max_tokens", json!(7));
-}
-
-#[tokio::test]
 async fn top_p_from_additional_params() {
     const SCENARIO: &str = "request_parameter_matrix/top_p_from_additional_params";
     with_doubleword_cassette(

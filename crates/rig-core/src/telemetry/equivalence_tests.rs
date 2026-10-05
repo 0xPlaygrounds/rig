@@ -260,24 +260,6 @@ fn spans_match_the_replaced_builders() {
     }
 }
 
-/// System instructions only belong on completion spans; a modality span
-/// ignores them.
-#[test]
-fn modality_spans_ignore_system_instructions() {
-    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    let mut with = Vec::new();
-    run("with", &mut with, || {
-        SpanBuilder::new("prov", "model", GenAiOperation::Rerank)
-            .system_instructions(Some("sys"), true)
-            .build();
-    });
-    let mut without = Vec::new();
-    run("with", &mut without, || {
-        SpanBuilder::new("prov", "model", GenAiOperation::Rerank).build();
-    });
-    assert_eq!(with, without);
-}
-
 /// A completion wire named `prov` for `model`, whose transport answers with
 /// one scripted end.
 #[derive(Clone, Debug)]

@@ -29,22 +29,6 @@ fn wire(
     }
 }
 
-crate::matrix::native_matrix! {
-    wrapper: with_gemini_cassette, wire: wire, run: run_world;
-    #[tokio::test]
-    inline_text_unary: ("image_matrix/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "gemini_inline_text_unary");
-    #[tokio::test]
-    inline_text_streamed: ("image_matrix/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "gemini_inline_text_streamed");
-    #[tokio::test]
-    inline_mixed_order: ("image_matrix/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "gemini_inline_mixed_order");
-    #[tokio::test]
-    inline_tool_unary: ("image_matrix/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "gemini_inline_tool_unary");
-    #[tokio::test]
-    inline_tool_streamed: ("image_matrix/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "gemini_inline_tool_streamed");
-    #[tokio::test]
-    inline_followup: ("image_matrix/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "gemini_inline_followup");
-}
-
 #[tokio::test]
 #[ignore = "Gemini's `fileData.fileUri` takes Files API and Cloud Storage URIs, not an arbitrary HTTPS image (image-understanding docs, retrieved 2026-09-13); rig renders `DocumentSourceKind::Url` as `fileData`, so the HTTPS row is documented-unsupported on this wire and unrecorded"]
 async fn url_text_unary() {

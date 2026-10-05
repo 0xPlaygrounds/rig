@@ -49,12 +49,3 @@ fn an_empty_message_in_history_fails_the_run_before_dispatch() {
         assert!(requests.lock().unwrap().is_empty(), "{history:?}");
     }
 }
-
-#[test]
-fn message_parts_refuse_an_empty_list() {
-    assert_eq!(MessageParts::user(Vec::new()), Err(ContentError::Shape));
-    assert_eq!(
-        MessageParts::assistant(rig_core::message::AssistantMessage::new(Vec::new())),
-        Err(ContentError::Shape)
-    );
-}

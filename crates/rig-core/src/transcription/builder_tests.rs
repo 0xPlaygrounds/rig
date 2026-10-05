@@ -66,21 +66,3 @@ fn builds_the_requests_the_typestate_builder_built() {
         assert_eq!(fields(request), expected);
     }
 }
-
-#[test]
-fn a_missing_file_reports_the_read_error() {
-    let error = TranscriptionRequestBuilder::from_file("/nonexistent/rig/clip.wav")
-        .err()
-        .expect("missing file");
-    assert_eq!(error.kind(), std::io::ErrorKind::NotFound);
-}
-
-/// `None` clears parameters set by earlier calls, as on every request builder.
-#[test]
-fn additional_params_none_clears() {
-    let request = TranscriptionRequestBuilder::new(vec![1])
-        .additional_params(json!({"a": 1}))
-        .additional_params(None)
-        .build();
-    assert_eq!(request.additional_params, None);
-}

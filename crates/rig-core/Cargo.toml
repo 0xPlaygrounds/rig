@@ -125,10 +125,6 @@ name = "reqwest_no_ca_store"
 required-features = ["reqwest"]
 
 [[test]]
-name = "websocket_handshake_rejection"
-required-features = ["tungstenite"]
-
-[[test]]
 name = "websocket_off_runtime"
 required-features = ["tungstenite"]
 

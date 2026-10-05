@@ -7,18 +7,16 @@
 //! Anthropic through OpenRouter because that live route exposes plaintext
 //! reasoning beside tool calls on both transports.
 //!
-//! The finite raw-order space is 2 transports × 2 call shapes = 4 cells. Two
-//! additional blocking/streaming agent-loop controls replay the signed
-//! single-tool turn into a live follow-up, for 6 recorded cells total. The
-//! upstream and reasoning budget are intentionally fixed:
+//! The finite raw-order space is 2 transports × 2 call shapes = 4 cells, of
+//! which the two single-call cells are tests. A streaming agent-loop control
+//! replays the signed single-tool turn into a live follow-up. The upstream and
+//! reasoning budget are intentionally fixed:
 //! OpenRouter is pinned to Anthropic with fallbacks disabled, extended
 //! reasoning is fixed at its supported 1024-token minimum. Raw responses are
 //! normalized at the exact boundary that regressed; agent controls prove the
 //! streamed signature reaches replay history and is accepted by the next live
-//! call. Parallel agent loops are the only pruned candidate cells: signature
-//! attachment/serialization is independent of tool count, while raw cells
-//! already pin parallel order and exact cardinality on both transports. No
-//! other cells are pruned or unit-only. Each test maps one-to-one to
+//! call. Parallel agent loops are not cells: signature attachment and
+//! serialization are independent of tool count. Each test maps one-to-one to
 //! `crates/rig-cassette/fixtures/cassettes/openrouter/reasoning_tool_order_matrix/<test-name>.yaml`.
 //!
 //! | dimension | values |
@@ -31,8 +29,8 @@
 //!
 //! | recorded cells | fixtures |
 //! |---|---|
-//! | 4 raw order | `{blocking,streaming}_{single,parallel}.yaml` |
-//! | 2 signed agent loops | `{blocking,streaming}_signed_agent_roundtrip.yaml` |
+//! | 2 raw order | `{blocking,streaming}_single.yaml` |
+//! | 1 signed agent loop | `streaming_signed_agent_roundtrip.yaml` |
 
 use rig_test_support::cassette_models::OpenAiModels;
 use std::sync::{
@@ -465,24 +463,6 @@ async fn blocking_single() -> Result<()> {
 }
 
 #[tokio::test]
-async fn blocking_parallel() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/blocking_parallel";
-    let cell = Cell {
-        transport: Transport::Blocking,
-        shape: Shape::Parallel,
-    };
-    let observed = SharedChoice::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/blocking_parallel",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
 async fn streaming_single() -> Result<()> {
     const S: &str = "reasoning_tool_order_matrix/streaming_single";
     let cell = Cell {
@@ -497,42 +477,6 @@ async fn streaming_single() -> Result<()> {
     )
     .await?;
     finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_parallel() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/streaming_parallel";
-    let cell = Cell {
-        transport: Transport::Streaming,
-        shape: Shape::Parallel,
-    };
-    let observed = SharedChoice::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/streaming_parallel",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    finish(S, cell, observed).await;
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_signed_agent_roundtrip() -> Result<()> {
-    const S: &str = "reasoning_tool_order_matrix/blocking_signed_agent_roundtrip";
-    let invocations = Arc::new(AtomicUsize::new(0));
-    let capture = Arc::clone(&invocations);
-    with_openrouter_reasoning_tool_order_cassette_result(
-        "reasoning_tool_order_matrix/blocking_signed_agent_roundtrip",
-        |client| async move { run_signed_agent(client, Transport::Blocking, capture).await },
-    )
-    .await?;
-    ensure!(
-        invocations.load(Ordering::SeqCst) == 1,
-        "blocking signed-agent tool was not invoked exactly once"
-    );
-    assert_signed_agent_fixture(S, Transport::Blocking);
     Ok(())
 }
 

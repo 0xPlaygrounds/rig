@@ -24,12 +24,8 @@
 //!
 //! | # | cell | model | params | asserts | status |
 //! |---|------|-------|--------|---------|--------|
-//! | 1 | `default_body_returns_mp3` | tts-1 | none | MP3 magic | recorded |
-//! | 2 | `response_format_wav_changes_the_container` | tts-1 | response_format | RIFF magic | recorded |
 //! | 3 | `response_format_flac_changes_the_container` | tts-1 | response_format | fLaC magic | recorded |
 //! | 4 | `instructions_reach_the_tts_model` | gpt-4o-mini-tts | instructions | 200 + audio | recorded |
-//! | 5 | `completions_client_shares_the_fixed_body` | tts-1 | response_format | RIFF magic | recorded |
-//! | 6 | `additional_params_can_override_voice` | tts-1 | voice | 200 + audio | recorded |
 //! | 7 | `non_object_additional_params_are_a_no_op` | tts-1 | `"not-an-object"` | MP3 magic | recorded |
 //!
 //! **Two cells were designed and dropped**, with reasons, rather than left as
@@ -40,7 +36,7 @@
 //!   matrix uses throughout. It cannot be recorded here: these scenarios need
 //!   the direct recorder (binary response bodies), and that path captures no
 //!   interaction for a non-success response, so the cassette comes out empty.
-//!   Cells 2, 3 and 5 prove the same thing more strongly anyway — the returned
+//!   Cell 3 proves the same thing more strongly anyway: the returned
 //!   *container* changes — and the error path itself is covered beside the
 //!   provider by `audio_generation_non_success_preserves_status_and_body`.
 //! * *`instructions` rejected by a model that does not take it* — `tts-1`
@@ -71,50 +67,6 @@ fn container(audio: &[u8]) -> &'static str {
         [b'O', b'g', b'g', b'S', ..] => "ogg",
         _ => "unknown",
     }
-}
-
-#[tokio::test]
-async fn default_body_returns_mp3() {
-    with_openai_audio_cassette(
-        "audio_params_matrix/default_body_returns_mp3",
-        |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .call(AudioGenerationRequestBuilder::new(TEXT, VOICE).build())
-                .await
-                .expect("speech synthesis should succeed");
-
-            assert_eq!(container(&response.audio), "mp3");
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn response_format_wav_changes_the_container() {
-    with_openai_audio_cassette(
-        "audio_params_matrix/response_format_wav_changes_the_container",
-        |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .call(
-                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
-                        .additional_params(json!({ "response_format": "wav" }))
-                        .build(),
-                )
-                .await
-                .expect("speech synthesis should succeed");
-
-            assert_eq!(
-                container(&response.audio),
-                "wav",
-                "the caller's response_format must reach the endpoint"
-            );
-        },
-    )
-    .await;
 }
 
 #[tokio::test]
@@ -153,57 +105,6 @@ async fn instructions_reach_the_tts_model() {
                 .call(
                     AudioGenerationRequestBuilder::new(TEXT, VOICE)
                         .additional_params(json!({ "instructions": "Speak slowly and warmly." }))
-                        .build(),
-                )
-                .await
-                .expect("speech synthesis should succeed");
-
-            assert!(!response.audio.is_empty());
-        },
-    )
-    .await;
-}
-
-/// Recorded through the other public completion surface of the same
-/// credential, back when speech was reachable from two client markers. Speech
-/// is one wire now — [`OpenAI`]'s — so replaying this second fixture proves
-/// that wire sends exactly the bytes the other surface recorded.
-///
-/// [`OpenAI`]: rig::providers::openai::wire::OpenAI
-#[tokio::test]
-async fn completions_client_shares_the_fixed_body() {
-    with_openai_audio_cassette(
-        "audio_params_matrix/completions_client_shares_the_fixed_body",
-        |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .call(
-                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
-                        .additional_params(json!({ "response_format": "wav" }))
-                        .build(),
-                )
-                .await
-                .expect("speech synthesis should succeed");
-
-            assert_eq!(container(&response.audio), "wav");
-        },
-    )
-    .await;
-}
-
-/// Merged last, so a caller can override a key the builder derives.
-#[tokio::test]
-async fn additional_params_can_override_voice() {
-    with_openai_audio_cassette(
-        "audio_params_matrix/additional_params_can_override_voice",
-        |client| async move {
-            let response = client
-                .openai
-                .audio_generation(openai::TTS_1)
-                .call(
-                    AudioGenerationRequestBuilder::new(TEXT, VOICE)
-                        .additional_params(json!({ "voice": "nova" }))
                         .build(),
                 )
                 .await

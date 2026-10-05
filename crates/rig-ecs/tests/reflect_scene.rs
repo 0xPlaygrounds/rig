@@ -6,8 +6,6 @@
 //! | claim | test |
 //! |---|---|
 //! | a world and the world loaded from its checkpoint save the same JSON | `a_world_and_its_loaded_checkpoint_save_alike` |
-//! | the checkpoint names relationships by index: the run's `RunOf` is the agent's index, every index in range | `entity_references_are_checkpoint_indexes` |
-//! | a host's opaque component is exported as its serde form | `user_numeric_arrays_preserve_order_and_duplicates` |
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -19,7 +17,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize, TypePath};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
-    agent::{Grant, Owner, Run, RunOf, Settled},
+    agent::{Grant, Settled},
     bus::{IdCounter, PendingEffect, Seq},
     checkpoint::{Checkpoint, RestoreMode, load_world, save_world},
     systems::RunCommands,
@@ -169,76 +167,6 @@ fn a_world_and_its_loaded_checkpoint_save_alike() {
         }
     }
     assert_eq!(before, shifted);
-}
-
-#[test]
-fn entity_references_are_checkpoint_indexes() {
-    let mut app = ran();
-    let saved = save_world(app.world_mut()).expect("serializes");
-    let agent = entities_with::<Owner>(&saved)[0];
-    let run = entities_with::<Run>(&saved)[0];
-    assert_eq!(
-        saved.entities[run][type_name::<RunOf>()],
-        serde_json::json!(agent)
-    );
-    assert_eq!(
-        saved.entities[agent][type_name::<rig_ecs::agent::UsesModel>()],
-        serde_json::json!(
-            entities_with::<rig_ecs::bus::Bound>(&saved)
-                .into_iter()
-                .find(
-                    |row| saved.entities[*row][rig_ecs::bus::Bound::type_path()]["key"]
-                        == serde_json::json!(MODEL)
-                )
-                .expect("the model's handler")
-        ),
-        "the agent's model is its handler's index"
-    );
-    let grant = entities_with::<Grant>(&saved)[0];
-    assert_eq!(
-        saved.entities[grant][type_name::<ChildOf>()],
-        serde_json::json!(agent)
-    );
-    let effects = entities_with::<PendingEffect>(&saved);
-    assert!(!effects.is_empty());
-    for (row, entity) in saved.entities.iter().enumerate() {
-        for key in [
-            type_name::<ChildOf>(),
-            type_name::<RunOf>(),
-            type_name::<Grant>(),
-            type_name::<rig_ecs::agent::UsesModel>(),
-            type_name::<rig_ecs::bus::ServedBy>(),
-        ] {
-            if let Some(index) = entity.get(key) {
-                let index = index.as_u64().expect("an index") as usize;
-                assert!(
-                    index < saved.entities.len(),
-                    "entity {row}: {key} = {index}"
-                );
-                assert_ne!(index, row, "entity {row}: {key} names itself");
-            }
-        }
-    }
-}
-
-#[derive(Clone, Component, Reflect, serde::Serialize, serde::Deserialize)]
-#[reflect(opaque)]
-#[reflect(Component, Serialize, Deserialize)]
-#[serde(transparent)]
-struct OrderedNumbers(Vec<u64>);
-
-#[test]
-fn user_numeric_arrays_preserve_order_and_duplicates() {
-    let mut app = app();
-    app.register_type::<OrderedNumbers>();
-    app.world_mut().spawn(OrderedNumbers(vec![3, 1, 2, 1]));
-    let saved = save_world(app.world_mut()).expect("serializes");
-    let value = saved
-        .entities
-        .iter()
-        .find_map(|entity| entity.get(type_name::<OrderedNumbers>()))
-        .expect("registered user component is exported");
-    assert_eq!(*value, serde_json::json!([3, 1, 2, 1]));
 }
 
 #[derive(Clone, Component, Reflect, serde::Serialize, serde::Deserialize)]

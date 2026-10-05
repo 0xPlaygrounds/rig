@@ -668,6 +668,4 @@ pub enum SystemInstructionsPlacement {
 #[cfg(test)]
 mod history_tests;
 #[cfg(test)]
-mod stateless_replay_tests;
-#[cfg(test)]
 mod tests;

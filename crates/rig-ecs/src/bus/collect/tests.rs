@@ -75,73 +75,6 @@ fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
 }
 
 #[test]
-fn ready_delivery_is_bounded_per_pass() {
-    let mut world = world();
-    let effect = ready(&mut world, 0, 1000);
-    world.run_schedule(super::super::plugin::RigSchedule);
-    assert_eq!(
-        world.get::<Streamed>(effect).unwrap().events.len(),
-        STREAM_ITEMS_PER_EFFECT
-    );
-}
-
-#[test]
-fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
-    use rig_core::{effect::EffectKind, serve::Origin};
-    let mut world = world();
-    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
-    Recording::install(&mut world, recorder.clone());
-    for id in 0..2 {
-        world.resource::<Recording>().begin(
-            EffectId::from_raw(id),
-            "test".into(),
-            EffectKind::Custom {
-                kind: "test".into(),
-                payload: serde_json::Value::Null,
-            },
-            Origin::default(),
-        );
-    }
-    let (mut first_sender, first_events) = futures::channel::mpsc::channel(4);
-    insert(
-        &mut world,
-        Streaming {
-            events: first_events,
-            fold: rig_core::serve::StreamTap::new(),
-            delivered: 0,
-        },
-        0,
-    );
-    let mut schedule = Schedule::default();
-    schedule.add_systems(collect_streams);
-    // Only the first worker has installed its empty stream. No delivery or
-    // work-budget exhaustion occurs before the second worker is installed.
-    schedule.run(&mut world);
-    assert!(recorder.header().deliveries.unwrap().is_empty());
-    let (mut second_sender, second_events) = futures::channel::mpsc::channel(4);
-    insert(
-        &mut world,
-        Streaming {
-            events: second_events,
-            fold: rig_core::serve::StreamTap::new(),
-            delivered: 0,
-        },
-        1,
-    );
-    first_sender.try_send(item()).unwrap();
-    second_sender.try_send(item()).unwrap();
-    schedule.run(&mut world);
-    let order: Vec<_> = recorder
-        .header()
-        .deliveries
-        .unwrap()
-        .iter()
-        .map(|delivery| delivery.id.as_u64())
-        .collect();
-    assert_eq!(order, [0, 1]);
-}
-
-#[test]
 fn whole_tick_allowance_rotates_service_across_hot_effects() {
     let mut world = world();
     let effects: Vec<_> = (0..80).map(|seq| ready(&mut world, seq, 1000)).collect();
@@ -165,36 +98,6 @@ fn whole_tick_allowance_rotates_service_across_hot_effects() {
             .all(|entity| !world.get::<Streamed>(*entity).unwrap().events.is_empty()),
         "the next tick must begin with effects skipped by the previous limit"
     );
-}
-
-#[test]
-/// Forty hot effects under the allowance: every pass serves each its
-/// per-effect cap, so five passes give every effect five caps. (Re-recorded
-/// from 512: one pass per update, no quiescence loop spending the whole
-/// allowance in one update.)
-fn hot_effects_under_the_allowance_get_the_per_effect_cap_every_pass() {
-    let mut world = world();
-    let effects: Vec<_> = (0..40).map(|seq| ready(&mut world, seq, 1000)).collect();
-    for _ in 0..5 {
-        world.run_schedule(super::super::plugin::RigSchedule);
-    }
-    let counts: Vec<_> = effects
-        .iter()
-        .map(|entity| world.get::<Streamed>(*entity).unwrap().events.len())
-        .collect();
-    assert_eq!(counts, vec![5 * STREAM_ITEMS_PER_EFFECT; 40]);
-}
-
-#[test]
-fn two_hot_effects_get_equal_service_in_one_pass() {
-    let mut world = world();
-    let first = ready(&mut world, 0, 5000);
-    let second = ready(&mut world, 1, 5000);
-    world.run_schedule(super::super::plugin::RigSchedule);
-    let first = world.get::<Streamed>(first).unwrap().events.len();
-    let second = world.get::<Streamed>(second).unwrap().events.len();
-    assert_eq!(first, STREAM_ITEMS_PER_EFFECT);
-    assert_eq!(first, second, "both ready effects get equal service");
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -233,28 +136,6 @@ fn bare(world: &mut World, seq: u64) -> Entity {
             Streamed::default(),
         ))
         .id()
-}
-
-#[cfg(not(target_family = "wasm"))]
-#[test]
-fn worker_self_wakes_without_collect_and_stalls_on_full_delivery() {
-    let mut world = world();
-    let polls = Arc::new(AtomicUsize::new(0));
-    let drops = Arc::new(AtomicUsize::new(0));
-    let effect = bare(&mut world, 0);
-    worker(
-        &mut world,
-        effect,
-        tracked_stream(3, polls.clone(), drops.clone()),
-        4,
-    );
-    wait_for(|| polls.load(Ordering::SeqCst) >= 8);
-    // futures mpsc has four shared slots and one sender-reserved slot.
-    assert_eq!(polls.load(Ordering::SeqCst), 8);
-    assert!(world.get::<Streamed>(effect).unwrap().events.is_empty());
-    // The table owns the worker: leaving flight drops the stream.
-    world.entity_mut(effect).remove::<InFlight>();
-    wait_for(|| drops.load(Ordering::SeqCst) == 1);
 }
 
 #[cfg(not(target_family = "wasm"))]

@@ -4,7 +4,7 @@
 //! value is written out here.
 
 use super::*;
-use crate::message::{Reasoning, ToolChoice, ToolFunction};
+use crate::message::{Reasoning, ToolChoice};
 
 /// A request with every field empty but the conversation: what the builder
 /// built before any setter.
@@ -235,30 +235,6 @@ fn every_prompt_form_converts_to_the_same_request() {
     );
 }
 
-#[test]
-fn a_conversation_is_sent_as_given_and_an_empty_one_is_rejected() {
-    let history = vec![
-        Message::system("s"),
-        Message::user("q"),
-        Message::assistant("a"),
-        Message::user("q2"),
-    ];
-    let conversation = history.clone();
-    assert_same(&CompletionRequest::from(conversation), &bare(history));
-    let empty = CompletionRequest::from(Vec::<Message>::new());
-    assert!(empty.validate_message_content().is_err());
-}
-
-fn call(id: &str, name: &str) -> ToolCall {
-    ToolCall::from_wire(
-        id,
-        ToolFunction::new(
-            crate::message::ToolName::new(name.to_owned()).expect("tool name"),
-            serde_json::json!({"q": id}),
-        ),
-    )
-}
-
 fn response(choice: Vec<AssistantContent>) -> CompletionResponse {
     CompletionResponse::new(
         choice,
@@ -266,17 +242,6 @@ fn response(choice: Vec<AssistantContent>) -> CompletionResponse {
         crate::message::Origin::new("test.api", "test", ""),
         serde_json::Value::Null,
     )
-}
-
-#[test]
-fn text_concatenates_the_text_parts_in_order() {
-    let response = response(vec![
-        AssistantContent::text("Par"),
-        AssistantContent::Reasoning(Reasoning::new("not text")),
-        AssistantContent::ToolCall(call("c1", "lookup")),
-        AssistantContent::text("is"),
-    ]);
-    assert_eq!(response.text(), "Paris");
 }
 
 #[test]
@@ -292,45 +257,4 @@ fn reasoning_concatenates_reasoning_text_and_summaries_in_order() {
     ]);
     assert_eq!(response.reasoning(), "first, then done");
     assert_eq!(response.text(), "answer");
-}
-
-#[test]
-fn tool_calls_are_the_calls_in_order() {
-    let response = response(vec![
-        AssistantContent::ToolCall(call("c1", "a")),
-        AssistantContent::text("between"),
-        AssistantContent::ToolCall(call("c2", "b")),
-    ]);
-    let names: Vec<&str> = response
-        .tool_calls()
-        .map(|call| call.function.name.as_str())
-        .collect();
-    assert_eq!(names, ["a", "b"]);
-}
-
-#[test]
-fn a_response_is_the_assistant_turn() {
-    let choice = vec![
-        AssistantContent::Reasoning(Reasoning::new("hmm")),
-        AssistantContent::text("hi"),
-        AssistantContent::ToolCall(call("c1", "a")),
-    ];
-    let response = response(choice.clone());
-    assert_eq!(
-        response.message().expect("a non-empty choice"),
-        Message::Assistant(crate::message::AssistantMessage {
-            content: choice,
-            origin: Some(crate::message::Origin::new("test.api", "test", "")),
-            stop: Some(crate::message::StopReason::ToolUse),
-        })
-    );
-}
-
-#[test]
-fn an_empty_response_reads_empty() {
-    let response = response(Vec::new());
-    assert_eq!(response.message(), None, "an empty choice is no turn");
-    assert_eq!(response.text(), "");
-    assert_eq!(response.reasoning(), "");
-    assert_eq!(response.tool_calls().count(), 0);
 }

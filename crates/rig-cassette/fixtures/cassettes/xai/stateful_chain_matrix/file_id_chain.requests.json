@@ -1,0 +1,33 @@
+{
+  "interactions": [
+    {
+      "index": 0,
+      "changes": [
+        {
+          "path": "",
+          "recorded": null,
+          "sent": {
+            "multipart": [
+              {
+                "headers": {
+                  "content-disposition": "form-data; name=\"purpose\""
+                },
+                "body": "assistants"
+              },
+              {
+                "headers": {
+                  "content-disposition": "form-data; name=\"file\"; filename=\"rig-pages.pdf\"",
+                  "content-type": "application/pdf"
+                },
+                "body": {
+                  "bytes": 12414,
+                  "fnv1a64": "859c0c11f005d8c3"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

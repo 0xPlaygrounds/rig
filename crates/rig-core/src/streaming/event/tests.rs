@@ -68,21 +68,3 @@ fn an_open_part_is_a_prefix_but_not_a_transcript() {
     let prefix = Transcript::parse_prefix(value).expect("a stream cut short");
     assert_eq!(prefix.events().count(), 2);
 }
-
-#[test]
-fn push_checks_each_item_against_the_items_before_it() {
-    let mut transcript = Transcript::parse_prefix(json!([
-        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
-    ]))
-    .expect("a prefix");
-    let end = Transcript::parse_prefix(json!([
-        {"item": "event", "value": {"event": "start", "part": 0, "kind": "text"}},
-        text_end(0, "hi"),
-    ]))
-    .expect("a prefix")
-    .into_items()
-    .pop()
-    .expect("the end");
-    transcript.push(end.clone()).expect("the part ends once");
-    assert_eq!(transcript.push(end), Err(SequenceError::EndedTwice(2)));
-}

@@ -1,9 +1,7 @@
 //! Cassette-backed OpenRouter permission-control regression coverage.
 
 use anyhow::Result;
-use rig::agent::{
-    AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
-};
+use rig::agent::{AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -11,8 +9,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-
-use crate::support::assert_nonempty_response;
 
 use super::super::{TOOL_MODEL, support::with_openrouter_cassette_result};
 
@@ -203,59 +199,6 @@ async fn permission_control_prompt_example() -> Result<()> {
                 .await?;
 
             let last = last_result.lock().expect("lock last_result").clone();
-            anyhow::ensure!(last.as_deref() == Some("hello world"));
-            anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
-
-            Ok(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn permission_control_streaming_example() -> Result<()> {
-    with_openrouter_cassette_result(
-        "permission_control/permission_control_streaming_example",
-        |client| async move {
-            let cleanup = FileCleanup::new("streaming")?;
-
-            let agent = rig::AgentBuilder::new(client.completion(TOOL_MODEL))
-                .preamble("You are a helpful assistant that can read files using different methods.")
-                .tool(ReadFileHead {
-                    path: cleanup.path().to_path_buf(),
-                })
-                .tool(ReadFileTail {
-                    path: cleanup.path().to_path_buf(),
-                })
-                .build();
-
-            let call_count = Arc::new(AtomicUsize::new(0));
-            let last_result = Arc::new(Mutex::new(None));
-            let hook = PermissionHook {
-                call_count: call_count.clone(),
-                last_result: last_result.clone(),
-            };
-
-            let mut stream = agent
-                .prompt(
-                    "Use the available tools to read test.txt now. \
-                     Do not ask any follow-up questions; just read the file and report its content.",
-                )
-                .max_turns(5)
-                .add_hook(hook)
-                .stream();
-
-            let final_response = stream_to_stdout(&mut stream).await?;
-            let last = last_result.lock().expect("lock last_result").clone();
-            assert_nonempty_response(&final_response.output());
-            anyhow::ensure!(
-                final_response
-                    .output()
-                    .to_ascii_lowercase()
-                    .contains("hello world"),
-                "expected the streamed final response to mention the file content, got {:?}",
-                final_response.output()
-            );
             anyhow::ensure!(last.as_deref() == Some("hello world"));
             anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
 

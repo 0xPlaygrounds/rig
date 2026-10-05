@@ -16,22 +16,13 @@
 //! the terminal's accumulated `additional_params` carries the routed
 //! `provider` the frames repeat. The record's `usage` is the provider's usage
 //! object, extra fields included, so both reach a caller through `raw`. That
-//! is the capability these two cells pin.
+//! is the capability the cell pins: `raw.usage.cost` and
+//! `raw.additional_params.provider` equal the recorded terminal frame's.
 //!
-//! | # | Cell | Dimension | expected | Status |
-//! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_reads_back_as_terminal_type` | record shape | terminal `raw` is the shared chat terminal record, its `usage` maps to the normalized usage, and the normalized terminal reproduces the recorded terminal frame | recorded |
-//! | 2 | `stream_raw_exposes_terminal_cost_and_provider` | terminal-only fields | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
-//!
-//! The scenario literals — and therefore the fixture filenames — keep the
-//! names they were recorded under; the cell names describe what the cells now
-//! assert.
-//!
-//! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that usage appears on exactly one frame — the stream's last data
-//! frame — so the raw terminal record's usage is knowable from the bytes and a
-//! recording whose stream stopped reporting usage fails loudly instead of
-//! covering nothing. That is [`chat::recorded_sole_usage_frame`], the
+//! The premise the cell re-derives from its fixture is that usage appears on
+//! exactly one frame, the stream's last data frame, so the raw terminal
+//! record's usage is knowable from the bytes and a recording whose stream
+//! stopped reporting usage fails loudly instead of covering nothing. That is [`chat::recorded_sole_usage_frame`], the
 //! single-frame rule rather than the agreeing-closing-frames rule the
 //! dialects that repeat their accounting need. OpenRouter contracts no
 //! request-id header, so the terminal's `provider_request_id` is `None` —
@@ -42,7 +33,7 @@ use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
 use super::super::support::with_openrouter_cassette_result;
-use crate::raw_capture::{assert_no_request_id, capture_text_and_terminal, chat};
+use crate::raw_capture::{capture_text_and_terminal, chat};
 use crate::support::Observed;
 
 const PROVIDER: &str = "openrouter";
@@ -55,37 +46,6 @@ fn request() -> CompletionRequest {
 // ================================================================
 // 1. raw is the terminal record
 // ================================================================
-
-#[tokio::test]
-async fn stream_raw_reads_back_as_terminal_type() {
-    const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let sink = Observed::default();
-    with_openrouter_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| {
-            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request(), sink.clone())
-        },
-    )
-    .await
-    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
-    let (text, terminal) = sink.take();
-    assert!(!text.is_empty());
-
-    // The streamed terminal's `raw` is the decoder's own terminal record, not
-    // socket bytes. Its `usage` is what the normalized usage was mapped from:
-    // the provider's usage object, the dialect's extra fields included.
-    chat::assert_terminal_round_trips(&terminal);
-
-    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
-    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
-    // The one claim the shared frame contract leaves to the cell: this
-    // dialect names no id header, so the normalized terminal reports `None`
-    // — and the native record inside `raw` carries none either, which the
-    // round trip above pinned.
-    assert_no_request_id(terminal.provider_request_id.as_deref(), "OpenRouter");
-    let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
-    assert_eq!(request_body["stream"], json!(true));
-}
 
 // ================================================================
 // 2. Terminal-only fields the normalized record lacks

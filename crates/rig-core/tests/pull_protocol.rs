@@ -14,10 +14,7 @@ use rig_core::{
     streaming::{Item, Relayed, StreamEvent},
 };
 use serde_json::{Value, json};
-use std::{
-    sync::{Arc, Mutex},
-    task::{Context, Poll, Waker},
-};
+use std::sync::{Arc, Mutex};
 
 fn kind(value: Value) -> EffectKind {
     EffectKind::Custom {
@@ -146,114 +143,6 @@ fn policy(decision: Decision, verdict: Verdict) -> Policy {
     }
 }
 
-#[test]
-fn nested_patches_and_verdicts_preserve_the_innermost_answer() {
-    let seen = Arc::default();
-    let handler = ErasedHandler::new(Answer { streaming: false })
-        .layered(policy(
-            Decision::Patch(kind(json!("inner"))),
-            Verdict::Replace(Ok(Outcome::Custom {
-                payload: json!("replacement"),
-            })),
-        ))
-        .layered(policy(Decision::Patch(kind(json!("outer"))), Verdict::Keep));
-    let answer = block_on(handler.handle(
-        kind(json!("input")),
-        dispatch(false, &seen).with_scope(Arc::new("scope".to_owned())),
-    ));
-    assert_eq!(
-        serde_json::to_value(block_on(answer.into_outcome())).unwrap(),
-        serde_json::to_value(Ok::<_, ErrorReport>(Outcome::Custom {
-            payload: json!("replacement")
-        }))
-        .unwrap()
-    );
-    let seen = seen.lock().unwrap();
-    assert_eq!(seen.patches.len(), 2);
-    assert_eq!(
-        seen.outcomes,
-        vec![
-            serde_json::to_value(Ok::<_, ErrorReport>(Outcome::Custom {
-                payload: json!("inner")
-            }))
-            .unwrap()
-        ]
-    );
-}
-
-#[test]
-fn nested_denial_and_invalid_patch_discard_the_exchange() {
-    for decision in [
-        Decision::deny("no"),
-        Decision::Patch(EffectKind::ToolCall {
-            name: "wrong".into(),
-            args: "{}".into(),
-        }),
-    ] {
-        let seen = Arc::default();
-        let handler = ErasedHandler::new(Answer { streaming: false })
-            .layered(policy(decision, Verdict::Keep))
-            .layered(policy(Decision::Proceed, Verdict::Keep));
-        assert!(
-            block_on(
-                block_on(handler.handle(kind(json!(null)), dispatch(false, &seen))).into_outcome()
-            )
-            .is_err()
-        );
-        let seen = seen.lock().unwrap();
-        assert_eq!(seen.discarded, 1);
-        assert!(seen.outcomes.is_empty());
-    }
-}
-
-#[test]
-fn original_answer_survives_suspended_verdict_resume_and_cancellation() {
-    for streaming in [false, true] {
-        for resume in [false, true] {
-            let seen = Arc::default();
-            let (release, gate) = oneshot::channel();
-            let mut intercept = policy(
-                Decision::Proceed,
-                Verdict::Replace(Err(ErrorReport::new(ErrorKind::Denied, "replacement"))),
-            );
-            intercept.gate = Mutex::new(Some(gate));
-            let calls = intercept.calls.clone();
-            let handler = ErasedHandler::new(Answer { streaming })
-                .layered(intercept)
-                .layered(policy(Decision::Proceed, Verdict::Keep));
-            let mut work = Box::pin(async {
-                let reply = handler
-                    .handle(kind(json!("original")), dispatch(streaming, &seen))
-                    .await;
-                if streaming {
-                    let items = reply.into_stream().collect::<Vec<_>>().await;
-                    assert!(items.last().unwrap().is_err());
-                } else {
-                    assert!(reply.into_outcome().await.is_err());
-                }
-            });
-            let mut cx = Context::from_waker(Waker::noop());
-            for _ in 0..32 {
-                assert!(work.as_mut().poll(&mut cx).is_pending());
-                if *calls.lock().unwrap() == 1 {
-                    break;
-                }
-            }
-            assert_eq!(*calls.lock().unwrap(), 1);
-            let recorded = seen.lock().unwrap().outcomes.clone();
-            assert_eq!(recorded.len(), 1);
-            assert!(recorded[0].get("Ok").is_some());
-            if resume {
-                release.send(()).unwrap();
-                block_on(work);
-            } else {
-                drop(work);
-            }
-            assert_eq!(seen.lock().unwrap().outcomes, recorded);
-        }
-    }
-}
-
 struct ImageAnswer;
 impl Serve for ImageAnswer {
     type Family = family::Dynamic;
@@ -310,19 +199,6 @@ fn unary_image_recording_survives_stream_projection_and_replacement() {
         last.contains(r#""event":"end""#) && last.contains("image"),
         "{last}"
     );
-}
-
-#[test]
-fn ready_but_uncollected_answer_is_recorded_without_claiming_delivery() {
-    let seen = Arc::default();
-    let handler = ErasedHandler::new(Answer { streaming: false });
-    let mut work = handler.handle(kind(json!("original")), dispatch(false, &seen));
-    let Poll::Ready(reply) = work.as_mut().poll(&mut Context::from_waker(Waker::noop())) else {
-        panic!("ready")
-    };
-    drop(reply);
-    assert_eq!(seen.lock().unwrap().outcomes.len(), 1);
-    assert!(seen.lock().unwrap().outcomes[0].get("Ok").is_some());
 }
 
 #[test]

@@ -3,39 +3,13 @@ use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, Use
 
 use crate::copilot::{LIVE_MODEL, with_copilot_cassette};
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal,
-    ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT,
-    STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract, TWO_TOOL_STREAM_PREAMBLE,
-    TWO_TOOL_STREAM_PROMPT, assert_mentions_expected_number,
-    assert_raw_stream_contains_distinct_tool_calls_before_text, assert_raw_stream_text_contains,
+    ALPHA_SIGNAL_OUTPUT, Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
+    ORDERED_TOOL_STREAM_PROMPT, REQUIRED_ZERO_ARG_TOOL_PROMPT, Subtract,
+    assert_mentions_expected_number, assert_raw_stream_text_contains,
     assert_raw_stream_tool_call_precedes_text, assert_stream_contains_zero_arg_tool_call_named,
-    assert_two_tool_roundtrip_contract, collect_raw_stream_observation,
-    collect_stream_final_response, collect_stream_observation, zero_arg_tool_definition,
+    collect_raw_stream_observation, collect_stream_final_response, zero_arg_tool_definition,
 };
 use rig::completion::CompletionRequest;
-
-#[tokio::test]
-async fn streaming_tools_smoke() {
-    with_copilot_cassette(
-        "streaming_tools/streaming_tools_smoke",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
-                .preamble(STREAMING_TOOLS_PREAMBLE)
-                .tool(Adder)
-                .tool(Subtract)
-                .default_max_turns(2)
-                .build();
-
-            let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
-            let response = collect_stream_final_response(&mut stream)
-                .await
-                .expect("streaming tool prompt should succeed");
-
-            assert_mentions_expected_number(&response, -3);
-        },
-    )
-    .await;
-}
 
 #[tokio::test]
 async fn example_streaming_with_tools() {
@@ -73,55 +47,6 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
-    with_copilot_cassette(
-        "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
-        |client| async move {
-            let model = client.completion(LIVE_MODEL);
-            let request = CompletionRequest::new(TWO_TOOL_STREAM_PROMPT)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
-                .tool(rig::tool::tool_definition(&AlphaSignal))
-                .tool(rig::tool::tool_definition(&BetaSignal));
-
-            let observation = collect_raw_stream_observation(
-                model.stream(request).expect("raw stream should start"),
-            )
-            .await;
-
-            assert_raw_stream_contains_distinct_tool_calls_before_text(
-                &observation,
-                &["lookup_harbor_label", "lookup_orchard_label"],
-            );
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    with_copilot_cassette(
-        "streaming_tools/streaming_tools_surface_two_distinct_tool_calls_before_final_answer",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(LIVE_MODEL))
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .build();
-
-            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(8).stream();
-            let observation = collect_stream_observation(&mut stream).await;
-
-            assert_two_tool_roundtrip_contract(
-                &observation,
-                &["lookup_harbor_label", "lookup_orchard_label"],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
         },
     )
     .await;

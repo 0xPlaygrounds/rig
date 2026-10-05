@@ -69,45 +69,6 @@ fn request_body_allows_additional_params_to_override_image_config() {
 }
 
 #[test]
-fn response_parsing_returns_first_non_thought_inline_image() {
-    let reply = json!({
-        "candidates": [{
-            "content": {
-                "role": "model",
-                "parts": [
-                    { "thought": false, "text": "Here you go" },
-                    {
-                        "thought": true,
-                        "inlineData": {
-                            "mimeType": "image/png",
-                            "data": BASE64_STANDARD.encode("thought image"),
-                        },
-                    },
-                    {
-                        "thought": false,
-                        "inlineData": {
-                            "mimeType": "image/png",
-                            "data": BASE64_STANDARD.encode("final image"),
-                        },
-                    },
-                ],
-            },
-            "finishReason": "STOP",
-        }],
-        "usageMetadata": { "promptTokenCount": 1, "candidatesTokenCount": 1, "totalTokenCount": 2 },
-        "modelVersion": GEMINI_2_5_FLASH_IMAGE,
-        "responseId": "response-id",
-    });
-
-    let parsed = image_of(&reply).expect("response should contain an image");
-
-    assert_eq!(parsed.image, b"final image");
-    assert_eq!(parsed.usage.input_tokens, Some(1));
-    assert_eq!(parsed.usage.output_tokens, Some(1));
-    assert_eq!(parsed.response_id.as_deref(), Some("response-id"));
-}
-
-#[test]
 fn response_parsing_rejects_text_only_response() {
     let reply = json!({
         "candidates": [{

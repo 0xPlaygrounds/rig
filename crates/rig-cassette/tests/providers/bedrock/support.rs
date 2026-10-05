@@ -72,6 +72,10 @@ async fn replay_bedrock_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCass
             "rig-bedrock-cassette",
         ))
         .endpoint_url(cassette.base_url())
+        // The replay server is plain HTTP on loopback. The SDK's default
+        // client would load the platform trust store, which on macOS can stall
+        // or fail under a fully parallel run.
+        .http_client(aws_smithy_http_client::Builder::new().build_http())
         .load()
         .await;
     let aws_client = aws_sdk_bedrockruntime::Client::new(&sdk_config);

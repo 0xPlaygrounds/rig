@@ -303,6 +303,24 @@ pub(super) fn all() -> Vec<Check> {
                 "binary(streaming_conformance) + binary(streaming_conformance_websocket) + binary(driver_adoption) + binary(history_conformance)",
             ])],
         ),
+        // The coverage gate's cheap parts: line and branch coverage per
+        // production file and the cassette shapes, against the baseline in
+        // crates/rig-cassette/coverage. Mutation (`--mutants`) takes hours and
+        // runs locally only, in PRs that delete tests.
+        check("coverage", vec![cargo(&["xtask", "coverage", "--check"])]),
+        // Every request fact Rig sends has a live recording: the corpus
+        // and its request snapshots against crates/rig-cassette/fixtures/
+        // acceptance.toml. Reads files only.
+        check(
+            "acceptance",
+            vec![cargo(&["xtask", "cassette", "acceptance", "--check"])],
+        ),
+        // The reply bank is what the corpus gives: crates/rig-cassette/
+        // fixtures/bank against the cassettes. Reads files only.
+        check(
+            "bank",
+            vec![cargo(&["xtask", "cassette", "bank", "--check"])],
+        ),
         check(
             "derive",
             vec![cargo(&["test", "--locked", "-p", "rig-derive"])],

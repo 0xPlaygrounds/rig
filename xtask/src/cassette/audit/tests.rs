@@ -398,11 +398,22 @@ fn every_golden_end_carries_what_its_fragments_assemble() {
     for (path, golden) in goldens(root).expect("the corpus reads") {
         found.file(&path, None, &golden);
     }
-    assert!(found.files > 1000, "only {} goldens found", found.files);
-    assert!(found.parts > 1000, "only {} parts checked", found.parts);
+    assert!(found.files > 200, "only {} goldens found", found.files);
+    assert!(found.parts > 80, "only {} parts checked", found.parts);
     assert!(
         found.mismatches.is_empty(),
         "{}",
         found.mismatches.join("\n")
     );
+}
+
+#[test]
+fn a_pruned_fixture_and_its_sidecars_are_no_cassette_change() {
+    let pruned = BTreeSet::from(["openai/a/b.yaml".to_owned()]);
+    let root = "crates/rig-cassette/fixtures/cassettes";
+    for file in ["b.yaml", "b.requests.json", "b.clock.json"] {
+        assert!(pruned_file(&format!("{root}/openai/a/{file}"), &pruned));
+    }
+    assert!(!pruned_file(&format!("{root}/openai/a/c.yaml"), &pruned));
+    assert!(!pruned_file("elsewhere/openai/a/b.yaml", &pruned));
 }

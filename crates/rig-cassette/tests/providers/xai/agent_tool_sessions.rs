@@ -8,20 +8,18 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::Message;
-use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
+use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::support::{
-    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, IMAGE_FIXTURE_PATH,
-    TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive,
-    assert_nonempty_response, assert_raw_stream_tool_call_arguments_are_objects,
-    assert_two_tool_roundtrip_contract, assistant_text_response, collect_raw_stream_observation,
-    collect_stream_observation,
+    ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, TWO_TOOL_STREAM_PREAMBLE,
+    TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive, assert_nonempty_response,
+    assert_raw_stream_tool_call_arguments_are_objects, assistant_text_response,
+    collect_raw_stream_observation, collect_stream_observation,
 };
 
 use super::support::with_xai_cassette_result;
@@ -30,7 +28,6 @@ use rig::completion::CompletionRequest;
 pub(super) const SESSION_MODEL: &str = "grok-4.3";
 const SESSION_MAX_TOKENS: Option<u64> = None;
 const REASONING_MODEL: &str = xai::GROK_3_MINI;
-pub(super) const VISION_MODEL: &str = "grok-4.3";
 
 pub(super) const COMPLEX_SESSION_PREAMBLE: &str = "\
 You are a deterministic xAI tool orchestration test harness. Use the tools instead of inventing values. \
@@ -433,15 +430,6 @@ fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
     );
 }
 
-pub(super) fn image_content() -> UserContent {
-    let bytes = std::fs::read(IMAGE_FIXTURE_PATH).expect("fixture image should be readable");
-    UserContent::image_base64(
-        BASE64_STANDARD.encode(bytes),
-        Some(ImageMediaType::JPEG),
-        None,
-    )
-}
-
 crate::matrix::case_matrix! {
     wrapper: with_xai_cassette_result, family: agent_tool_sessions_case;
     # [tokio :: test]
@@ -450,30 +438,6 @@ crate::matrix::case_matrix! {
     # [tokio :: test]
     # [ignore = "stale cassette: the shared session cell sends no `store: false`, so xAI stores its responses and the recorder refuses the re-record"]
     parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
-}
-
-#[tokio::test]
-async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(SESSION_MODEL))
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json!({ "parallel_tool_calls": true, "store": false }))
-                .build();
-            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
-            let observation = collect_stream_observation(&mut stream).await;
-            assert_two_tool_roundtrip_contract(
-                &observation,
-                &[AlphaSignal::NAME, BetaSignal::NAME],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            Ok(())
-        },
-    )
-    .await
 }
 
 #[tokio::test]
@@ -818,35 +782,6 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 "structured output should include replay=true"
             );
             assert_response_metadata(&response);
-
-            Ok(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
-        |client| async move {
-            let agent = rig::AgentBuilder::new(client.completion(VISION_MODEL))
-                .preamble("You answer image questions concisely and directly.")
-                .build();
-
-            let response = agent
-                .prompt(Message::User {
-                    content: vec![
-                        UserContent::text("First, note this is an image-analysis cassette test."),
-                        image_content(),
-                        UserContent::text(
-                            "Then answer in one short sentence naming the main visible subject.",
-                        ),
-                    ],
-                })
-                .await?;
-
-            assert_nonempty_response(&response.output());
 
             Ok(())
         },

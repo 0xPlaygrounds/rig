@@ -6,25 +6,6 @@ use rig_cassette::agent::AgentReplayExt;
 use super::super::support::with_anthropic_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
-#[tokio::test]
-async fn completion_smoke() {
-    with_anthropic_cassette("agent/completion_smoke", |client| async move {
-        let agent =
-            rig::AgentBuilder::new(client.completion(anthropic::completion::CLAUDE_SONNET_4_6))
-                .preamble(BASIC_PREAMBLE)
-                .build();
-
-        let response = agent
-            .prompt(BASIC_PROMPT)
-            .await
-            .expect("completion should succeed")
-            .output();
-
-        assert_nonempty_response(&response);
-    })
-    .await;
-}
-
 /// The golden effect log: `completion_smoke` recorded as effects. The
 /// committed file (`crates/rig-cassette/fixtures/effects/anthropic_completion_smoke.effects.json`)
 /// is what `rig-cassette`'s two interpreters must both reproduce, kind for

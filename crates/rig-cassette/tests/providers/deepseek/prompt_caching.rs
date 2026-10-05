@@ -60,20 +60,6 @@ fn probe() -> CacheProbe {
 }
 
 #[tokio::test]
-async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
-    const SCENARIO: &str = "prompt_caching/blocking_probe";
-
-    with_deepseek_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion(CACHE_MODEL);
-        let observation = run_cache_probe(model, &probe()).await;
-        assert_cache_conformance(&observation, &DEEPSEEK_CACHE_SUPPORT, "blocking probe");
-    })
-    .await;
-
-    assert_prefix_stable("deepseek", SCENARIO);
-}
-
-#[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 

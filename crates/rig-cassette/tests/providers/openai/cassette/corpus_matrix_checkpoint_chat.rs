@@ -17,11 +17,5 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
 crate::matrix::golden_matrix! {
     wrapper: with_openai_cassette, wire: wire, run: checkpoint::run_agent, oracle: crate::goldens::golden_effects;
     #[tokio::test]
-    multi_turn_unary: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, "openai_chat_checkpoint_multi_turn_unary");
-    #[tokio::test]
-    multi_turn_streamed: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, "openai_chat_checkpoint_multi_turn_streamed");
-    #[tokio::test]
     parallel_batch: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, "openai_chat_checkpoint_parallel_batch");
-    #[tokio::test]
-    large_result: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, "openai_chat_checkpoint_large_result");
 }

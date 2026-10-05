@@ -630,33 +630,6 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     .await
 }
 
-#[tokio::test]
-async fn json_object_response_format_roundtrip() -> Result<()> {
-    with_mistral_cassette_result(
-        "agent_tool_sessions/json_object_response_format_roundtrip",
-        |client| async move {
-            let model = client.completion(STRUCTURED_MODEL);
-            let request = CompletionRequest::new(
-                    "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
-                )
-                .preamble("Return only valid JSON. No markdown.")
-                .additional_params(json!({"response_format": { "type": "json_object" }}));
-
-            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
-            let text = assistant_text_response(&response.choice)
-                .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
-            let plan: serde_json::Value = serde_json::from_str(&text)?;
-
-            let serialized = plan.to_string();
-            assert_contains_all_case_insensitive(&serialized, &["canary", "low", "compile", "replay"]);
-            assert_response_metadata(&response, &raw);
-
-            Ok(())
-        },
-    )
-    .await
-}
-
 #[derive(Debug, Deserialize, JsonSchema)]
 struct StructuredReleasePlan {
     lane: String,

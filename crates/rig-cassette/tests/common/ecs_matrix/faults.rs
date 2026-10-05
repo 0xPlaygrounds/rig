@@ -400,6 +400,16 @@ pub(crate) const SCENE_TOOL_IN_FLIGHT: Cell = Cell {
     ..CELL
 };
 
+/// Where a wire's scripted rows read the replies they cut or rewrite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Frames {
+    /// The wire's own cassettes.
+    Cassette,
+    /// The reply bank's replies of the shapes those cassettes recorded
+    /// (`rig_test_support::bank::script`).
+    Bank,
+}
+
 /// A wire's scripted rows: the faults served by the sequenced transport
 /// over labelled frames cut or rewritten from the wire's own recordings,
 /// each run by the rig-agent runner and the world over the same frames.
@@ -418,6 +428,8 @@ pub(crate) struct Scripted<M> {
     /// The wire over a scripted transport. The client's key must never reach
     /// a recording or a trace.
     pub(crate) wire: fn(DynHttpClient) -> Wire<M>,
+    /// Where the recordings above are read.
+    pub(crate) frames: Frames,
 }
 
 impl<W, T> Scripted<rig::driver::Model<W, T>>
@@ -427,7 +439,16 @@ where
 {
     /// The frames of `scenario`'s first interaction.
     pub(crate) fn recorded(&self, scenario: &str) -> Vec<String> {
-        recorded_sse_frames(self.provider, scenario, 0)
+        match self.frames {
+            Frames::Cassette => recorded_sse_frames(self.provider, scenario, 0),
+            Frames::Bank => {
+                let reply = rig_test_support::bank::script(self.provider, scenario)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| panic!("{scenario} recorded no reply"));
+                rig_test_support::stream_faults::sse_frames(&String::from_utf8_lossy(&reply.body()))
+            }
+        }
     }
 
     /// The wire over a transport that answers one streaming request with
@@ -454,7 +475,27 @@ where
     }
 
     fn reply(&self, status: u16, retry_after: bool) -> MockHttpResponse {
-        status_reply(self.provider, self.setup_reply, status, retry_after)
+        match self.frames {
+            Frames::Cassette => status_reply(self.provider, self.setup_reply, status, retry_after),
+            Frames::Bank => {
+                let recorded = rig_test_support::bank::script(self.provider, self.setup_reply)
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| panic!("{} recorded no reply", self.setup_reply));
+                let mut headers = rig_core::http_client::HeaderMap::new();
+                if retry_after {
+                    headers.insert(
+                        "retry-after",
+                        rig_core::http_client::HeaderValue::from_static("1"),
+                    );
+                }
+                MockHttpResponse::ErrorWithHeaders(
+                    rig_core::http_client::StatusCode::from_u16(status).expect("a status"),
+                    String::from_utf8_lossy(&recorded.body()).into_owned(),
+                    headers,
+                )
+            }
+        }
     }
 
     async fn stream_row(&self, cell: &Cell, frames: Vec<String>, golden: impl FnOnce(&EffectLog)) {

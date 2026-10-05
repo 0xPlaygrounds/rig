@@ -36,17 +36,6 @@ fn the_family_is_the_provider_the_id_names() {
     assert!(wire.accepts(PROFILE).user_images);
 }
 
-#[test]
-fn text_only_models_take_no_images() {
-    let accepts = |model: &str| Converse::new(model).accepts(model);
-    assert!(!accepts(AMAZON_NOVA_MICRO).user_images);
-    assert!(!accepts("us.deepseek.r1-v1:0").user_images);
-    assert!(accepts(AMAZON_NOVA_LITE).user_images);
-    assert!(accepts(ANTHROPIC_CLAUDE_SONNET_4_6).user_images);
-    let claude = accepts(ANTHROPIC_CLAUDE_SONNET_4_6);
-    assert!(claude.tool_result_images && !claude.assistant_images && claude.tools);
-}
-
 /// Converse carries inline images, documents in the formats it lists, and
 /// S3 objects and video to Nova, which reads them; never URLs, file ids,
 /// string documents (its text source is rejected) or audio.

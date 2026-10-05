@@ -14,8 +14,6 @@
 mod bus_support;
 #[path = "../memory_graph.rs"]
 mod memory_graph;
-#[path = "../memory_resume.rs"]
-mod memory_resume;
 #[path = "../run_binding.rs"]
 mod run_binding;
 #[path = "../run_checkpoint.rs"]

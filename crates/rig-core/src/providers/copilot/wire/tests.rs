@@ -67,27 +67,6 @@ fn encoded(
         .request
 }
 
-#[test]
-fn dedicated_and_catalog_construction_encode_identical_requests() {
-    use crate::providers::registry::{ProviderConfig, ProviderId};
-    let token = "tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2";
-    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        let dedicated = CopilotConfig::new(token).completion(model);
-        let ProviderConfig::OpenAi(preset) = ProviderId::resolve("copilot").unwrap().config(token)
-        else {
-            panic!("Copilot is an OpenAI-family preset")
-        };
-        let generic = preset.completion(model);
-        assert_eq!(dedicated.wire, generic);
-        assert_same_requests(encoded(&dedicated), encoded(&generic));
-        let explicit = match &generic {
-            OpenAiWire::Chat(_) => encoded(&preset.chat(model)),
-            OpenAiWire::Responses(_) => encoded(&preset.responses(model)),
-        };
-        assert_same_requests(encoded(&generic), explicit);
-    }
-}
-
 fn assert_same_requests(mut direct: http::Request<Body>, mut catalog: http::Request<Body>) {
     assert_eq!(direct.uri(), catalog.uri());
     // Each encode creates its own transport request id.
@@ -106,28 +85,6 @@ fn assert_same_requests(mut direct: http::Request<Body>, mut catalog: http::Requ
         panic!("JSON request bodies")
     };
     assert_eq!(direct, catalog);
-}
-
-#[test]
-fn explicit_routes_keep_the_session_envelope_and_configuration() {
-    use crate::providers::openai::Route;
-    for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
-        for route in [Route::Chat, Route::Responses] {
-            let provider = OpenAIConfig::with_key(&DIALECT, "session-token")
-                .with_base_url("https://gateway.invalid/copilot")
-                .with_route(route)
-                .with_system_instructions_placement(SystemInstructionsPlacement::Instructions);
-            let selected = provider.completion(model);
-            let explicit = match route {
-                Route::Chat => encoded(&provider.chat(model)),
-                Route::Responses => {
-                    assert!(provider.responses(model).strict_tools);
-                    encoded(&provider.responses(model))
-                }
-            };
-            assert_same_requests(encoded(&selected), explicit);
-        }
-    }
 }
 
 #[test]
@@ -168,96 +125,6 @@ fn a_manual_copilot_wrapper_keeps_its_envelope_after_deserialization() {
 }
 
 // ── routing ─────────────────────────────────────────────────────────────
-
-/// The route is a property of the model, and the choice is made in one
-/// place. `crates/rig-cassette/fixtures/cassettes/copilot/routing/` records both halves: a Codex
-/// model answered by `/responses`, every other model by `/chat/completions`.
-#[test]
-fn the_model_chooses_the_route() {
-    let copilot = copilot();
-    for model in [
-        super::super::GPT_5_3_CODEX,
-        super::super::GPT_5_1_CODEX,
-        // The predicate is the identifier, not a table: an unannounced
-        // Codex model still routes correctly, in any casing.
-        "GPT-6-CODEX-PREVIEW",
-    ] {
-        assert!(
-            matches!(copilot.completion(model).wire, OpenAiWire::Responses(_)),
-            "{model} is served by /responses"
-        );
-    }
-    for model in [
-        super::super::GPT_4O,
-        super::super::CLAUDE_SONNET_4_6,
-        super::super::GEMINI_3_FLASH,
-        super::super::O3_MINI,
-    ] {
-        assert!(
-            matches!(copilot.completion(model).wire, OpenAiWire::Chat(_)),
-            "{model} is served by /chat/completions"
-        );
-    }
-}
-
-/// Each route posts to its own path, and both carry Copilot's editor
-/// envelope: without it the API answers 400 regardless of the body.
-#[test]
-fn both_routes_carry_copilots_editor_envelope() {
-    let copilot = copilot();
-    for (wire, path) in [
-        (
-            copilot.completion(super::super::GPT_4O),
-            "/chat/completions",
-        ),
-        (
-            copilot.completion(super::super::GPT_5_3_CODEX),
-            "/responses",
-        ),
-    ] {
-        let request = encoded(&wire);
-        assert_eq!(
-            request.uri().path(),
-            path,
-            "{:?} posts to {path}",
-            wire.describe().model
-        );
-        let headers = request.headers();
-        assert_eq!(
-            headers.get_all(http::header::AUTHORIZATION).iter().count(),
-            1,
-            "the delegated wire's credential header is replaced, not duplicated"
-        );
-        assert_eq!(
-            headers
-                .get(http::header::AUTHORIZATION)
-                .and_then(|value| value.to_str().ok()),
-            Some("Bearer tid=copilot-session-token")
-        );
-        assert_eq!(
-            headers.get("copilot-integration-id").map(|v| v.as_bytes()),
-            Some(&b"vscode-chat"[..])
-        );
-        assert_eq!(
-            headers.get("editor-version").map(|v| v.as_bytes()),
-            Some(super::super::EDITOR_VERSION.as_bytes())
-        );
-        assert_eq!(
-            headers.get("openai-intent").map(|v| v.as_bytes()),
-            Some(&b"conversation-panel"[..])
-        );
-        // A first user turn is the user's; `X-Initiator` is lowercased by
-        // `HeaderName`, as it is on the wire.
-        assert_eq!(
-            headers.get("x-initiator").map(|v| v.as_bytes()),
-            Some(&b"user"[..])
-        );
-        assert!(
-            headers.get("copilot-vision-request").is_none(),
-            "a text-only turn does not claim vision"
-        );
-    }
-}
 
 /// The intent is a per-turn header, so it lives on the wire and survives
 /// whichever route was chosen.
@@ -529,48 +396,6 @@ fn the_embeddings_request_sends_the_resolved_width() {
     assert!(body.get("dimensions").is_none(), "{body}");
 }
 
-/// The embeddings route carries the same editor envelope the completion
-/// routes do. It is the shared embeddings wire under Copilot's headers, so
-/// the stamp is the only thing standing between it and the 400 the API
-/// answers a request without the envelope, regardless of the body.
-#[test]
-fn the_embeddings_route_carries_copilots_editor_envelope() {
-    let wire = copilot().embedding(super::super::TEXT_EMBEDDING_3_SMALL, None);
-    let encoded = wire
-        .encode(vec!["one".to_owned()], Mode::Unary)
-        .expect("the request encodes");
-    let request = encoded.request;
-    assert_eq!(request.uri().path(), "/embeddings");
-    let headers = request.headers();
-    assert_eq!(
-        headers.get_all(http::header::AUTHORIZATION).iter().count(),
-        1,
-        "the shared wire's credential header is replaced, not duplicated"
-    );
-    assert_eq!(
-        headers
-            .get(http::header::AUTHORIZATION)
-            .and_then(|value| value.to_str().ok()),
-        Some("Bearer tid=copilot-session-token")
-    );
-    assert_eq!(
-        headers.get("copilot-integration-id").map(|v| v.as_bytes()),
-        Some(&b"vscode-chat"[..])
-    );
-    assert_eq!(
-        headers.get("editor-version").map(|v| v.as_bytes()),
-        Some(super::super::EDITOR_VERSION.as_bytes())
-    );
-    assert_eq!(
-        headers.get("openai-intent").map(|v| v.as_bytes()),
-        Some(&b"conversation-panel"[..])
-    );
-    assert_eq!(
-        headers.get("x-initiator").map(|v| v.as_bytes()),
-        Some(&b"user"[..])
-    );
-}
-
 /// Copilot's catalogue names the vendor behind each model and nests the
 /// modality under `capabilities.type`, which is what distinguishes it from
 /// the OpenAI-shaped listing.
@@ -612,72 +437,6 @@ fn a_serialized_config_carries_no_credential() {
         )
         .expect("the wire serializes");
         assert!(!json.contains("super-secret"), "{model}: {json}");
-    }
-}
-
-/// A session token names the REST endpoint it was minted for; nothing else
-/// knows it, so the configuration reads it off the credential — and an
-/// explicit base URL still wins.
-#[test]
-fn the_base_url_comes_from_the_token_unless_overridden() {
-    assert_eq!(
-        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;").base_url,
-        "https://api.individual.githubcopilot.com"
-    );
-    assert_eq!(
-        CopilotConfig::new("tid=abc").base_url,
-        "https://api.githubcopilot.com"
-    );
-    assert_eq!(
-        CopilotConfig::new("tid=abc;proxy-ep=proxy.individual.githubcopilot.com;")
-            .with_base_url("https://gateway.invalid")
-            .base_url,
-        "https://gateway.invalid"
-    );
-    // A non-GitHub host in a credential is not a routing instruction.
-    assert_eq!(
-        CopilotConfig::new("tid=abc;proxy-ep=evil.invalid;").base_url,
-        "https://api.githubcopilot.com"
-    );
-}
-
-/// A rejecting synthetic hook proves single envelope ownership before transport.
-#[test]
-fn wrapper_owns_the_envelope_even_when_the_shared_dialect_has_a_hook() {
-    static OTHER_HOOKS: DialectHooks = DialectHooks {
-        default_endpoint: None,
-        model_route: None,
-        completion_envelope: Some(|_, _, _| panic!("the wrapper must replace this envelope")),
-        modality_envelope: None,
-    };
-    let dialect = Dialect {
-        quirks: Quirks {
-            hooks: Some(&OTHER_HOOKS),
-            ..Quirks::openai()
-        },
-        ..Dialect::gateway("custom", "https://explicit.invalid", "UNUSED_KEY")
-    };
-    let provider = OpenAIConfig::with_key(&dialect, "manual-token");
-    for shared in [
-        provider.chat("model").into(),
-        provider.responses("model").into(),
-    ] {
-        let wire = CopilotWire {
-            wire: shared,
-            intent: CopilotIntent::Edits,
-        };
-        for mode in [Mode::Unary, Mode::Streaming] {
-            let encoded = wire.encode(prompt(), mode).unwrap();
-            let request = &encoded.request;
-            assert_eq!(request.uri().host(), Some("explicit.invalid"));
-            assert_eq!(request.headers()["openai-intent"], "conversation-edits");
-            assert_eq!(request.headers()["copilot-integration-id"], "vscode-chat");
-            assert_eq!(
-                request.headers()[http::header::AUTHORIZATION],
-                "Bearer manual-token"
-            );
-            assert_eq!(request.headers().get_all("x-request-id").iter().count(), 1);
-        }
     }
 }
 

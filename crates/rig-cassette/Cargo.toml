@@ -19,8 +19,10 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # enforced server-side and so never surfaces in `cargo publish --dry-run`.
 # Cargo drops every `[[test]]` target below from the normalized manifest
 # because their sources are excluded; the engine's own unit tests live in
-# `src/` and stay published.
+# `src/` and stay published. `coverage/` is the repository's coverage-gate
+# baseline (`cargo xtask coverage`), read by no published code.
 exclude = [
+    "coverage/**",
     "fixtures/**",
     "tests/**",
 ]
@@ -104,6 +106,8 @@ async-stream = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-bedrockruntime = { workspace = true }
 aws-smithy-eventstream = { workspace = true }
+# Bedrock replay talks plain HTTP to the local replay server; no TLS stack.
+aws-smithy-http-client = { workspace = true, features = ["default-client"] }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
 # The world interpreter (`tests/world_replay.rs`) builds its own App; the ECS
@@ -138,6 +142,10 @@ tracing = { workspace = true }
 name = "verify"
 path = "tests/verify/main.rs"
 required-features = ["agent", "ecs"]
+
+[[test]]
+name = "runtime"
+required-features = ["http", "agent", "ecs"]
 
 [[test]]
 name = "world_replay"

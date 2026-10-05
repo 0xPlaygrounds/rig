@@ -8,6 +8,7 @@
     clippy::unreachable
 )]
 
+pub mod bank;
 pub mod cache_conformance;
 pub mod cache_longrun;
 pub mod cache_prefix;

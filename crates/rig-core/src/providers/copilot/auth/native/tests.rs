@@ -92,19 +92,6 @@ fn poll_interval_defaults_and_clamps() {
 }
 
 #[test]
-fn poll_interval_handles_pending_and_slow_down() {
-    assert_eq!(
-        next_poll_interval_seconds(5, Some("authorization_pending"), None)
-            .expect("authorization pending interval"),
-        5
-    );
-    assert_eq!(
-        next_poll_interval_seconds(5, Some("slow_down"), None).expect("slow_down interval"),
-        10
-    );
-}
-
-#[test]
 fn poll_interval_rejects_terminal_errors() {
     let denied = next_poll_interval_seconds(5, Some("access_denied"), None)
         .expect_err("access denied should fail");

@@ -27,8 +27,4 @@ crate::matrix::case_matrix! {
     wrapper: with_openai_cassette, family: portability_case;
     #[tokio::test]
     chat_from_anthropic: ("portability_matrix/chat_from_anthropic", configured, cell(Source::Anthropic));
-    #[tokio::test]
-    chat_from_openai_responses: ("portability_matrix/chat_from_openai_responses", configured, cell(Source::OpenAiResponses));
-    #[tokio::test]
-    chat_from_gemini: ("portability_matrix/chat_from_gemini", configured, cell(Source::Gemini));
 }

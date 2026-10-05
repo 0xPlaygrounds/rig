@@ -428,10 +428,11 @@ async fn assert_request_body_rejected(
     );
     serde_json::from_str::<serde_json::Value>(&changed).expect("mutation preserves JSON syntax");
 
+    // The exact matcher is this cell's subject, whatever the ambient mode.
     let cassette = crate::cassettes::ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         provider,
-        scenario,
+        crate::cassettes::CassetteSpec::new(scenario).exact_matched(),
         "https://checkpoint.invalid",
     )
     .await;

@@ -3,11 +3,7 @@
 //! Events are never filtered: releasing the gate resumes the same stream.
 
 use futures::StreamExt;
-use rig::{
-    effect::{EffectKind, HandlerDescriptor},
-    serve::{Dispatch, Reply, Serve},
-    streaming::{Item, Relayed, StreamEvent, StreamEvents},
-};
+use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
@@ -18,49 +14,6 @@ mod tests;
 enum DeltaBoundary {
     Tool,
     Text,
-}
-
-/// A model handler whose stream pauses after the selected first delta.
-pub(in super::super) struct FirstDelta<S> {
-    inner: S,
-    boundary: DeltaBoundary,
-}
-
-impl<S> FirstDelta<S> {
-    /// Pause after the first tool-name or tool-arguments delta.
-    pub(in super::super) fn tool(inner: S) -> Self {
-        Self {
-            inner,
-            boundary: DeltaBoundary::Tool,
-        }
-    }
-
-    /// Pause after the first text delta.
-    pub(in super::super) fn text(inner: S) -> Self {
-        Self {
-            inner,
-            boundary: DeltaBoundary::Text,
-        }
-    }
-}
-
-impl<S: Serve + 'static> Serve for FirstDelta<S> {
-    type Family = S::Family;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        self.inner.descriptor()
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match self.inner.serve(kind, dispatch).await {
-            Reply::Stream(stream) => Reply::Stream(gate_events(
-                stream,
-                self.boundary,
-                Arc::new(Semaphore::new(0)),
-            )),
-            outcome => outcome,
-        }
-    }
 }
 
 fn gate_events(

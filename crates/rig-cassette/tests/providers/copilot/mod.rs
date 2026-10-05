@@ -1,14 +1,11 @@
 use rig_test_support::cassette_models::CopilotModels;
 mod agent;
 mod auth;
-#[path = "cassette/ecs_completion.rs"]
-mod ecs_completion;
 #[path = "cassette/ecs_extractor.rs"]
 mod ecs_extractor;
 #[path = "cassette/ecs_extractor_usage.rs"]
 mod ecs_extractor_usage;
 mod embeddings;
-mod extractor;
 mod extractor_usage;
 mod models;
 mod multi_extract;
@@ -19,7 +16,6 @@ mod raw_completion_parity_matrix;
 mod raw_stream_capture_matrix;
 mod reasoning_roundtrip;
 mod reasoning_tool_roundtrip;
-mod request_hook;
 mod routing;
 mod streaming;
 mod streaming_tools;
