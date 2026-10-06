@@ -1057,6 +1057,49 @@ async fn a_run_accepts_unknown_finish_reasons_on_its_own() {
     assert_eq!(answer.output(), "answer");
 }
 
+/// A host driving the run itself from the agent's spec keeps the setting:
+/// the prepared request accepts the reason and the run answers.
+#[tokio::test]
+async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, prepare_request};
+
+    let model = MockCompletionModel::from_turns([unknown_finish(MockTurn::text("answer"))]);
+    let agent = AgentBuilder::new(model.clone())
+        .accept_unknown_finish_reasons(true)
+        .build();
+    let spec = agent.run_spec();
+    assert!(spec.accept_unknown_finish_reasons);
+    let mut run = AgentRun::from_spec(&spec, "hello", None);
+    let output = loop {
+        match run.next_step().expect("a step") {
+            AgentRunStep::CallModel {
+                prompt, history, ..
+            } => {
+                let prepared =
+                    prepare_request(&spec, &Default::default(), &history, Vec::new(), None, None)
+                        .expect("prepared");
+                let executable = prepared.executable_tool_names.clone();
+                let allowed = prepared.allowed_tool_names.clone();
+                let request = prepared.apply(CompletionRequest::new(prompt));
+                assert!(request.accept_unknown_finish_reasons);
+                let response = model.call(request).await.expect("the reply folds");
+                run.model_response(ModelTurn::new(
+                    response.head(),
+                    response.choice,
+                    response.usage,
+                    executable,
+                    allowed,
+                    response.raw,
+                ))
+                .expect("the accepted turn is no failure");
+            }
+            AgentRunStep::CallTools { .. } => panic!("no tools were called"),
+            AgentRunStep::Done(response) => break response.output().to_owned(),
+        }
+    };
+    assert_eq!(output, "answer");
+}
+
 /// The tool calls of a turn with an unknown finish reason run only when the
 /// agent accepts the reason.
 #[tokio::test]

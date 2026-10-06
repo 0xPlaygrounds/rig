@@ -59,7 +59,7 @@ pub struct AgentRunner<O = ()> {
     pub(crate) origin: RunOrigin,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_invalid_tool_call_retries: usize,
-    pub(crate) max_malformed_tool_call_retries: Option<usize>,
+    pub(crate) max_consecutive_malformed_tool_calls: Option<usize>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
@@ -107,7 +107,7 @@ impl AgentRunner {
             origin,
             chat_history: None,
             max_invalid_tool_call_retries: 0,
-            max_malformed_tool_call_retries: None,
+            max_consecutive_malformed_tool_calls: None,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             output_tool_name: None,
@@ -376,10 +376,10 @@ impl<O> AgentRunner<O> {
     /// Set how many consecutive turns may call a tool with arguments that are
     /// not a JSON object. Each such call is answered with feedback, or as the
     /// invalid-call hook decides; a turn whose calls all parse resets the
-    /// count. Past the limit the run fails. Without it there is no limit. A
-    /// resumed run keeps the limit it persisted.
-    pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_malformed_tool_call_retries = Some(retries);
+    /// count. Past the limit the run fails. `None`, the default, sets no
+    /// limit. A resumed run keeps the limit it persisted.
+    pub fn max_consecutive_malformed_tool_calls(mut self, limit: impl Into<Option<usize>>) -> Self {
+        self.max_consecutive_malformed_tool_calls = limit.into();
         self
     }
 
@@ -390,7 +390,7 @@ impl<O> AgentRunner<O> {
             origin,
             chat_history,
             max_invalid_tool_call_retries,
-            max_malformed_tool_call_retries,
+            max_consecutive_malformed_tool_calls,
             tool_server_handle,
             tool_context,
             output_tool_name,
@@ -406,7 +406,7 @@ impl<O> AgentRunner<O> {
             origin,
             chat_history,
             max_invalid_tool_call_retries,
-            max_malformed_tool_call_retries,
+            max_consecutive_malformed_tool_calls,
             tool_server_handle,
             tool_context,
             output_tool_name,
@@ -437,7 +437,7 @@ impl<O> AgentRunner<O> {
         let spec = crate::run::spec::RunSpec {
             max_turns: Some(self.config.max_turns),
             max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
-            max_malformed_tool_call_retries: self.max_malformed_tool_call_retries,
+            max_consecutive_malformed_tool_calls: self.max_consecutive_malformed_tool_calls,
             unhandled_invalid_tool_call: self.unhandled_invalid_tool_call,
             output_schema: self
                 .config
