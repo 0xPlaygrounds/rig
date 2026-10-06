@@ -15,6 +15,7 @@
 
 pub mod completion;
 pub mod modality;
+mod options;
 pub mod streaming;
 pub mod wire;
 

@@ -224,6 +224,21 @@ pub enum Effort {
     Max,
 }
 
+impl Effort {
+    /// The level's lower-case wire word, as its serde name spells it:
+    /// `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"` or `"max"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Minimal => "minimal",
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::XHigh => "xhigh",
+            Self::Max => "max",
+        }
+    }
+}
+
 /// How long the provider keeps the prompt prefix cached.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -263,6 +278,17 @@ pub enum Verbosity {
     Medium,
     /// Detailed.
     High,
+}
+
+impl Verbosity {
+    /// The level's lower-case wire word: `"low"`, `"medium"` or `"high"`.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+        }
+    }
 }
 
 /// What happens to an option the wire or model cannot honour.

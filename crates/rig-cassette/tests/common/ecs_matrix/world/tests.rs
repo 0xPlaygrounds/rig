@@ -26,10 +26,7 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
         "default model options fit the recipe"
     );
     let cached = Wire {
-        model: rig::Model::new(
-            wire.model.wire.with_automatic_caching(),
-            wire.model.transport,
-        ),
+        model: rig::Model::new(wire.model.wire.with_prompt_caching(), wire.model.transport),
         ..wire
     };
     assert!(

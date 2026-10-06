@@ -493,10 +493,10 @@ impl wire::Responses {
             set(&mut body, "store", json!(false));
         }
         // Reasoning replays without stored state only with its ciphertext.
-        if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
-            if let Some(fields) = body.as_object_mut() {
-                include_ciphertext(fields);
-            }
+        if (codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)))
+            && let Some(fields) = body.as_object_mut()
+        {
+            include_ciphertext(fields);
         }
         Ok(body)
     }

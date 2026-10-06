@@ -28,17 +28,19 @@ fn task_wire(
     }
 }
 
+/// The harness carries per-cell request parameters only as raw JSON, so the
+/// one-hour automatic marker (`CacheRetention::Long`'s body) is sent raw.
 fn automatic_task_wire(
     client: &AnthropicModels,
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
     Wire {
         thinking: THINKING,
-        model: client
-            .completion("claude-haiku-4-5-20251001")
-            .map_wire(|wire| wire.with_automatic_caching_1h()),
+        model: client.completion("claude-haiku-4-5-20251001"),
         route: None,
         temperature: Some(0.0),
-        additional_params: None,
+        additional_params: Some(
+            || serde_json::json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}),
+        ),
     }
 }
 
@@ -50,13 +52,13 @@ fn mixed_task_wire(
         model: client
             .completion("claude-haiku-4-5-20251001")
             .map_wire(|wire| {
-                wire.with_automatic_caching().with_static_prefix_cache_ttl(
+                wire.with_static_prefix_cache_ttl(
                     rig::providers::anthropic::completion::CacheTtl::OneHour,
                 )
             }),
         route: None,
         temperature: Some(0.0),
-        additional_params: None,
+        additional_params: Some(|| serde_json::json!({"cache_control": {"type": "ephemeral"}})),
     }
 }
 

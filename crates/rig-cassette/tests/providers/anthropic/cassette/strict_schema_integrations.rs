@@ -1,6 +1,6 @@
 //! Live-recorded integration coverage for strict tools and adjacent Anthropic features.
 
-use rig::completion::ToolDefinition;
+use rig::completion::{CacheRetention, GenerationOptions, ToolDefinition};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::MapWire;
@@ -54,11 +54,10 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
                 .map_wire(|wire| {
-                    wire.with_automatic_caching()
-                        .with_static_prefix_cache_ttl(
-                            rig::providers::anthropic::completion::CacheTtl::OneHour,
-                        )
-                        .with_strict_tools()
+                    wire.with_static_prefix_cache_ttl(
+                        rig::providers::anthropic::completion::CacheTtl::OneHour,
+                    )
+                    .with_strict_tools()
                 });
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
@@ -68,6 +67,7 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
                            and deterministic replay behavior. "
                 .repeat(60);
             let request = CompletionRequest::new("Call cached_strict with value = static-prefix.")
+                .options(GenerationOptions::default().cache(CacheRetention::Short))
                 .preamble(format!("Use the strict tool exactly once.\n{padding}"))
                 .max_tokens(1024)
                 .tool_choice(ToolChoice::Required)
@@ -94,8 +94,9 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_automatic_caching_1h().with_strict_tools());
+                .map_wire(|wire| wire.with_strict_tools());
             let request = CompletionRequest::new("Call cached_strict with value = one-hour.")
+                .options(GenerationOptions::default().cache(CacheRetention::Long))
                 .max_tokens(1024)
                 .tool_choice(ToolChoice::Required)
                 .tool(strict_value_tool("cached_strict"));

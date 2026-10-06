@@ -344,7 +344,23 @@ fn main_agent(
     params: Option<Value>,
     max_tokens: u64,
 ) -> Agent {
+    main_agent_with(
+        model,
+        params,
+        max_tokens,
+        rig_core::completion::GenerationOptions::default(),
+    )
+}
+
+/// [`main_agent`], whose requests carry `options`.
+fn main_agent_with(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    params: Option<Value>,
+    max_tokens: u64,
+    options: rig_core::completion::GenerationOptions,
+) -> Agent {
     let builder = AgentBuilder::new(model)
+        .options(options)
         .preamble(format!("{SUPPORT_PREAMBLE}{SESSION_RULES}"))
         .tool(LookupOrder)
         .tool(WarehouseTime)
@@ -679,12 +695,12 @@ pub async fn anthropic(
     let configure = |builder: AgentBuilder| without_temperature(builder);
 
     if !profile.fixes_only {
-        let agent = main_agent(
-            models
-                .completion(profile.model)
-                .map_wire(anthropic::Messages::with_automatic_caching),
+        let agent = main_agent_with(
+            models.completion(profile.model),
             None,
             4096,
+            rig_core::completion::GenerationOptions::default()
+                .cache(rig_core::completion::CacheRetention::Short),
         );
         // Enabling citations changes the rendered system prompt, so the
         // conversation carries a citations document from its first request

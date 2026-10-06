@@ -13,7 +13,10 @@ use base64::{Engine as _, prelude::BASE64_STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+#[doc(hidden)]
+pub use super::options::{ClaudeClass, claude_class};
 use super::wire::Messages;
+use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{self, CompletionRequest, Replay};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
@@ -181,18 +184,21 @@ pub(crate) fn drop_unbound_thinking(body: &mut Map<String, Value>) {
     }
 }
 
-/// The Messages request body for `request`, already prepared, on `wire`.
+/// The Messages request body for `request`, already prepared, on `wire`:
+/// the wire's encoding of the request, then the mapped options, then
+/// `additional_params`, merged by [`request_params`].
 ///
 /// # Errors
 ///
-/// When no `max_tokens` applies, `additional_params` is not an object or
-/// carries malformed `tools` or `cache_control`, the caching settings
-/// conflict, or a part has a form the wire's `encodes` refuses.
+/// When no `max_tokens` applies, an option is refused, `additional_params`
+/// is not an object or carries malformed `tools` or `cache_control`, the
+/// caching settings conflict, or a part has a form the wire's `encodes`
+/// refuses.
 pub(super) fn body(
     wire: &Messages,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     mode: Mode,
-) -> Result<Value, EncodeError> {
+) -> Result<FinalBody, EncodeError> {
     let model = request.model.clone().unwrap_or_else(|| wire.model.clone());
     // A request that addresses another model gets that model's default; the
     // wire's own model keeps the one it was built with.
@@ -206,37 +212,67 @@ pub(super) fn body(
             .or(wire.default_max_tokens),
     }
     .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
-    let mut params = match request.additional_params {
-        None | Some(Value::Null) => Map::new(),
-        Some(Value::Object(params)) => params,
-        Some(_) => {
-            return Err(EncodeError::request(
-                "Anthropic `additional_params` must be a JSON object",
-            ));
-        }
-    };
-    let top = top_level_cache_control(wire, &mut params)?;
+    let mut rewrites = Vec::new();
+    if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&model) {
+        rewrites.push(Rewrite::DropUnboundThinking);
+    }
+    if mode == Mode::Streaming {
+        rewrites.push(Rewrite::Stream(true));
+        // Anthropic rejects tool_choice without tools.
+        rewrites.push(Rewrite::ToolChoiceNeedsTools);
+    }
+    request_params(
+        wire,
+        request,
+        |input| base(wire, request, &model, max_tokens, input),
+        RawAt::Top,
+        &rewrites,
+    )
+}
+
+/// The wire's own encoding of `request`: messages, tools, the typed fields
+/// and the cache markers placed inside them.
+fn base(
+    wire: &Messages,
+    request: &CompletionRequest,
+    model: &str,
+    max_tokens: u64,
+    input: &mut BaseInput<'_>,
+) -> Result<Map<String, Value>, EncodeError> {
+    let top = top_level_cache_control(input.param("cache_control"))?;
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
     let eager = wire.tool_input_streaming == super::wire::ToolInputStreaming::Eager;
-    let mut tools = tools(request.tools, &mut params, strict, eager)?;
+    let mut tools = tools(request.tools.clone(), input.raw_tools()?, strict, eager);
     let (mut system, history) =
-        split_system(&request.chat_history, takes_mid_conversation_system(&model));
-    let ids = WireIds::for_target(&history, wire, &model);
+        split_system(&request.chat_history, takes_mid_conversation_system(model));
+    let ids = WireIds::for_target(&history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
     for message in &history {
         messages.extend(message_json(message, wire, &ids)?);
     }
-    apply_cache_control(wire, top.as_ref(), &mut system, &mut messages, &mut tools)?;
+    // MiniMax honours a cache through block markers the manual placement
+    // writes.
+    let placed = input.cache().is_some() && wire.provider.dialect.name == super::wire::MINIMAX.name;
+    apply_cache_control(
+        wire,
+        placed,
+        top.as_ref(),
+        &mut system,
+        &mut messages,
+        &mut tools,
+    )?;
     let has_tools = !tools.is_empty();
-    let output_config = request.output_schema.map(|schema| {
+    let output_config = request.output_schema.clone().map(|schema| {
         let mut schema = schema.to_value();
         sanitize_schema(&mut schema);
         json!({ "format": { "type": "json_schema", "schema": schema } })
     });
-    let container = (!params.contains_key("container"))
+    let container = input
+        .param("container")
+        .is_none()
         .then(|| container(&history))
         .flatten();
-    let mut body = object([
+    Ok(object([
         ("model", Some(json!(model))),
         ("messages", Some(Value::Array(messages))),
         ("max_tokens", Some(json!(max_tokens))),
@@ -247,30 +283,12 @@ pub(super) fn body(
         ),
         (
             "tool_choice",
-            request.tool_choice.map(tool_choice).transpose()?,
+            request.tool_choice.clone().map(tool_choice).transpose()?,
         ),
         ("tools", has_tools.then(|| Value::Array(tools))),
         ("output_config", output_config),
         ("container", container.map(Value::String)),
-    ]);
-    body.extend(params);
-    if drops_unbound_thinking(wire, &model, body.get("thinking")) {
-        drop_unbound_thinking(&mut body);
-    }
-    if let Some(top) = top {
-        body.insert("cache_control".into(), top);
-    }
-    if mode == Mode::Streaming {
-        body.insert("stream".into(), Value::Bool(true));
-        // Anthropic rejects tool_choice without tools.
-        if has_tools {
-            body.entry("tool_choice")
-                .or_insert_with(|| json!({ "type": "auto" }));
-        } else {
-            body.shift_remove("tool_choice");
-        }
-    }
-    Ok(Value::Object(body))
+    ]))
 }
 
 /// A text content block.
@@ -490,23 +508,14 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 }
 
 /// The request's tools: Rig's, strict when `strict` and asking for their
-/// input as it is written when `eager`, then those
-/// `additional_params.tools` names, verbatim.
+/// input as it is written when `eager`, then `extra`, the tools
+/// `additional_params` names, verbatim.
 fn tools(
     tools: Vec<completion::ToolDefinition>,
-    params: &mut Map<String, Value>,
+    extra: Vec<Value>,
     strict: bool,
     eager: bool,
-) -> Result<Vec<Value>, EncodeError> {
-    let extra = match params.shift_remove("tools") {
-        None => Vec::new(),
-        Some(Value::Array(tools)) => tools,
-        Some(_) => {
-            return Err(EncodeError::request(
-                "Invalid Anthropic `additional_params.tools` payload: expected an array",
-            ));
-        }
-    };
+) -> Vec<Value> {
     let rig = tools.into_iter().map(|tool| {
         let mut schema = tool.parameters;
         if strict {
@@ -520,7 +529,7 @@ fn tools(
             ("eager_input_streaming", eager.then_some(Value::Bool(true))),
         ]))
     });
-    Ok(rig.chain(extra).collect())
+    rig.chain(extra).collect()
 }
 
 /// Split `history` into the top-level `system` blocks and the messages.
@@ -656,49 +665,33 @@ fn is_1h(marker: &Value) -> bool {
 /// The most `cache_control` markers Anthropic takes in one request.
 const MAX_CACHE_CONTROL_MARKERS: usize = 4;
 
-/// The request's top-level `cache_control`: the one `additional_params`
-/// names, taken out of them, or the automatic caching setting's.
-fn top_level_cache_control(
-    wire: &Messages,
-    params: &mut Map<String, Value>,
-) -> Result<Option<Value>, EncodeError> {
-    let raw = match params.shift_remove("cache_control") {
-        None | Some(Value::Null) => None,
-        Some(raw) => {
-            match Option::<CacheTtl>::deserialize(raw.get("ttl").unwrap_or(&Value::Null)) {
-                Ok(ttl) if raw.str("type") == Some("ephemeral") => Some(ephemeral(ttl.as_ref())),
-                _ => {
-                    return Err(EncodeError::request(format!(
-                        "Invalid Anthropic `additional_params.cache_control` payload: {raw}"
-                    )));
-                }
+/// The request's top-level `cache_control`, as the layers above the base
+/// set it: the mapped cache retention, or a raw one over it. `null` is no
+/// marker. The value is checked, never rebuilt, so it is sent as written.
+fn top_level_cache_control(marker: Option<&Value>) -> Result<Option<Value>, EncodeError> {
+    match marker {
+        None | Some(Value::Null) => Ok(None),
+        Some(marker) => {
+            match Option::<CacheTtl>::deserialize(marker.get("ttl").unwrap_or(&Value::Null)) {
+                Ok(_) if marker.str("type") == Some("ephemeral") => Ok(Some(marker.clone())),
+                _ => Err(EncodeError::request(format!(
+                    "Invalid Anthropic `additional_params.cache_control` payload: {marker}"
+                ))),
             }
         }
-    };
-    let typed = wire
-        .automatic_caching
-        .then(|| ephemeral(wire.automatic_caching_ttl.as_ref()));
-    match (typed, raw) {
-        (Some(typed), Some(raw))
-            if wire.automatic_caching_ttl.is_some() && is_1h(&typed) != is_1h(&raw) =>
-        {
-            Err(EncodeError::request(
-                "Anthropic `additional_params.cache_control` conflicts with the typed \
-                 automatic caching TTL",
-            ))
-        }
-        (typed, raw) => Ok(raw.or(typed)),
     }
 }
 
 /// Place the request's cache breakpoints within Anthropic's budget of four,
-/// one fewer with a top-level marker. Manual prompt caching marks the final
-/// non-deferred tool, the system prompt and the last block of the last user
-/// or system message; a static-prefix TTL alone marks only the first two.
+/// one fewer with a top-level marker. Manual prompt caching, or a cache the
+/// mapping `placed`, marks the final non-deferred tool, the system prompt
+/// and the last block of the last user or system message; a static-prefix
+/// TTL alone marks only the first two.
 /// Markers a tool already carries are kept and count toward the budget, and
 /// every one-hour marker must precede the five-minute ones.
 fn apply_cache_control(
     wire: &Messages,
+    placed: bool,
     top: Option<&Value>,
     system: &mut [Value],
     messages: &mut [Value],
@@ -726,12 +719,13 @@ fn apply_cache_control(
     {
         return Err(EncodeError::request(
             "`with_static_prefix_cache_ttl(CacheTtl::FiveMinutes)` conflicts with the 1-hour \
-             top-level cache TTL (`with_automatic_caching_1h` or a raw top-level \
-             `cache_control`): Anthropic requires 1h markers to precede 5-minute ones, and the \
-             static prefix precedes the conversation tail",
+             top-level cache TTL (`CacheRetention::Long` or a raw top-level `cache_control`): \
+             Anthropic requires 1h markers to precede 5-minute ones, and the static prefix \
+             precedes the conversation tail",
         ));
     }
-    if wire.prompt_caching || wire.static_prefix_cache_ttl.is_some() {
+    let manual = wire.prompt_caching || placed;
+    if manual || wire.static_prefix_cache_ttl.is_some() {
         let marker = ephemeral(wire.static_prefix_cache_ttl.as_ref().or(top_ttl.as_ref()));
         let last_tool = tools
             .iter_mut()
@@ -758,7 +752,7 @@ fn apply_cache_control(
             remaining -= 1;
         }
     }
-    if wire.prompt_caching && top.is_none() && remaining > 0 {
+    if manual && top.is_none() && remaining > 0 {
         let block = messages
             .last_mut()
             .filter(|message| message.str("role") != Some("assistant"))

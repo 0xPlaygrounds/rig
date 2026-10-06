@@ -516,7 +516,12 @@ fn apply(
             }
         }
         Rewrite::DropUnboundThinking => {
-            crate::providers::anthropic::completion::drop_unbound_thinking(body);
+            let adaptive = body.get("thinking").is_none_or(|thinking| {
+                thinking.get("type").and_then(Value::as_str) == Some("adaptive")
+            });
+            if adaptive {
+                crate::providers::anthropic::completion::drop_unbound_thinking(body);
+            }
         }
         Rewrite::ToolChoiceNeedsTools => {
             let has_tools = body

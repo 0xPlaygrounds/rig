@@ -16,7 +16,9 @@ use rig_test_support::cache_longrun::{
 use serde_json::Value;
 
 use super::super::support::with_anthropic_long_run_cassette;
-use super::long_run_workloads::{OPUS_5_5_OUTPUT, OPUS_5_5_RATES, cached, check, support_agent};
+use super::long_run_workloads::{
+    OPUS_5_5_OUTPUT, OPUS_5_5_RATES, automatic, cached, check, support_agent,
+};
 
 /// The system-role entries of a request's `messages` and the texts of its
 /// top-level `system` blocks.
@@ -103,6 +105,7 @@ fn dynamic_agent(
     schedule: ToolSchedule,
 ) -> Agent {
     AgentBuilder::new(model)
+        .options(automatic())
         .preamble(SUPPORT_PREAMBLE)
         .tool(LookupOrder)
         .tool(OrderHistory)

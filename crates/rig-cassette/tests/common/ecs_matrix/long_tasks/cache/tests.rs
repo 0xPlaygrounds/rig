@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn anthropic_cache_oracle_checks_actual_encoded_modes() {
     use rig_core::{
-        completion::{CompletionRequest, ToolDefinition},
+        completion::{CacheRetention, CompletionRequest, GenerationOptions, ToolDefinition},
         message::Message,
         providers::anthropic::{completion::CacheTtl, wire::AnthropicConfig},
         wire::{Body, Mode, Wire as _},
@@ -14,24 +14,23 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
         (
             "repair",
             provider.completion("model").wire.with_prompt_caching(),
+            None,
         ),
         (
             "repair_streamed",
-            provider
-                .completion("model")
-                .wire
-                .with_automatic_caching_1h(),
+            provider.completion("model").wire,
+            Some(CacheRetention::Long),
         ),
         (
             "inventory",
             provider
                 .completion("model")
                 .wire
-                .with_automatic_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour),
+            Some(CacheRetention::Short),
         ),
     ];
-    for (scenario, model) in cases {
+    for (scenario, model, cache) in cases {
         for extra_turns in 0..3 {
             let mut history = vec![
                 Message::system("Stable task contracts"),
@@ -48,6 +47,9 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
                 parameters: json!({"type":"object","properties":{}}),
             }];
             request.max_tokens = Some(32);
+            if let Some(cache) = cache {
+                request.options = GenerationOptions::default().cache(cache);
+            }
             let encoded = model
                 .encode(request, Mode::Unary)
                 .expect("encode Anthropic request");

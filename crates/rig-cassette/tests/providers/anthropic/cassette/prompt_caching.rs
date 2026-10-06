@@ -2,7 +2,8 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CompletionResponse as RigCompletionResponse, ToolDefinition, Usage,
+    AssistantContent, CacheRetention, CompletionResponse as RigCompletionResponse,
+    GenerationOptions, ToolDefinition, Usage,
 };
 use rig::driver::Model;
 use rig::message::ToolChoice;
@@ -47,30 +48,54 @@ impl CachingMode {
     }
 }
 
+/// A matrix configuration: the wire's placement knobs, and the cache
+/// retention every request asks for.
+struct Matrix {
+    model: Model<Messages>,
+    cache: CacheRetention,
+}
+
+impl Matrix {
+    fn request(&self, request: CompletionRequest) -> CompletionRequest {
+        request.options(GenerationOptions::default().cache(self.cache))
+    }
+
+    async fn call(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<RigCompletionResponse, rig::error::ProviderError> {
+        self.model.call(self.request(request)).await
+    }
+
+    fn stream(
+        &self,
+        request: CompletionRequest,
+    ) -> Result<rig::streaming::Streamed<rig::operation::Completion>, rig::error::ProviderError>
+    {
+        self.model.stream(self.request(request))
+    }
+}
+
 fn matrix_model(
     client: &AnthropicModels,
     mode: CachingMode,
     prefix_ttl: Option<CacheTtl>,
-) -> Model<Messages> {
+) -> Matrix {
     let mut model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
     if mode.manual() {
         model = rig::Model::new(model.wire.with_prompt_caching(), model.transport);
     }
-    model = match mode {
-        CachingMode::Automatic => {
-            rig::Model::new(model.wire.with_automatic_caching(), model.transport)
-        }
-        CachingMode::Automatic1h | CachingMode::ManualAutomatic1h => {
-            rig::Model::new(model.wire.with_automatic_caching_1h(), model.transport)
-        }
-    };
     if let Some(ttl) = prefix_ttl {
         model = rig::Model::new(
             model.wire.with_static_prefix_cache_ttl(ttl),
             model.transport,
         );
     }
-    model
+    let cache = match mode {
+        CachingMode::Automatic => CacheRetention::Short,
+        CachingMode::Automatic1h | CachingMode::ManualAutomatic1h => CacheRetention::Long,
+    };
+    Matrix { model, cache }
 }
 
 /// Which cache-write buckets this configuration's markers can legally touch.
@@ -184,7 +209,7 @@ fn unreachable_anthropic_client() -> AnthropicModels {
 }
 
 async fn send_matrix_raw_probe(
-    model: &Model<Messages>,
+    model: &Matrix,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> serde_json::Value {
@@ -220,7 +245,7 @@ fn assert_matrix_raw_response(
 }
 
 async fn send_matrix_streaming_probe(
-    model: &Model<Messages>,
+    model: &Matrix,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
 ) -> StreamingCacheProbeResponse {
@@ -335,8 +360,8 @@ async fn static_prefix_5m_with_automatic_1h_errors_client_side() {
     let message = error.to_string();
     assert!(
         message.contains("with_static_prefix_cache_ttl")
-            && message.contains("with_automatic_caching_1h"),
-        "error should name both knobs, got: {message}"
+            && message.contains("CacheRetention::Long"),
+        "error should name the knob and the option, got: {message}"
     );
 }
 

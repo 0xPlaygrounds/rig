@@ -1,6 +1,6 @@
 //! Live-recorded streaming coverage for Anthropic strict tools.
 
-use rig::completion::ToolDefinition;
+use rig::completion::{CacheRetention, GenerationOptions, ToolDefinition};
 use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
@@ -45,7 +45,33 @@ async fn assert_model_streaming_tool_call(
     expected_arguments: Value,
     output_schema: Option<schemars::Schema>,
 ) {
+    assert_model_streaming_tool_call_with(
+        GenerationOptions::default(),
+        model,
+        tool_name,
+        prompt,
+        parameters,
+        tool_choice,
+        expected_arguments,
+        output_schema,
+    )
+    .await;
+}
+
+/// [`assert_model_streaming_tool_call`], with `options` on the request.
+#[allow(clippy::too_many_arguments)]
+async fn assert_model_streaming_tool_call_with(
+    options: GenerationOptions,
+    model: Model<Messages>,
+    tool_name: &str,
+    prompt: &str,
+    parameters: Value,
+    tool_choice: ToolChoice,
+    expected_arguments: Value,
+    output_schema: Option<schemars::Schema>,
+) {
     let request = CompletionRequest::new(prompt)
+        .options(options)
         .preamble("Call the requested tool exactly once with the requested values.")
         .max_tokens(1024)
         .tool_choice(tool_choice)
@@ -171,8 +197,9 @@ async fn automatic_prompt_caching_and_strict_tools_stream_together() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_automatic_caching().with_strict_tools());
-            assert_model_streaming_tool_call(
+                .map_wire(|wire| wire.with_strict_tools());
+            assert_model_streaming_tool_call_with(
+                GenerationOptions::default().cache(CacheRetention::Short),
                 model,
                 "stream_cached",
                 "Call stream_cached with value = automatic-stream.",
