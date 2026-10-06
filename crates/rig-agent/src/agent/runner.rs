@@ -290,6 +290,17 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Overlay `options` on the agent's generation options for this run:
+    /// each field `options` sets wins, every other field keeps the agent's
+    /// ([`GenerationOptions::overlay`](rig_core::completion::GenerationOptions::overlay)).
+    /// The policy cannot go back to
+    /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error)
+    /// over an agent's `Ignore`; set it on the agent.
+    pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.config.options = self.config.options.clone().overlay(&options);
+        self
+    }
+
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);

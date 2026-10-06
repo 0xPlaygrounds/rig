@@ -70,6 +70,7 @@ fn populated() -> bevy_app::App {
         ToolPolicy { concurrency: 2 },
         rig_ecs::agent::content::parts::ToolResultLimit::new(4096),
         rig_ecs::agent::AdditionalParams(Some(serde_json::json!({"k": 1}))),
+        rig_ecs::agent::Options(rig_core::completion::GenerationOptions::default().seed(1)),
         rig_ecs::agent::DocumentProps(std::collections::HashMap::from([(
             "a".to_owned(),
             "b".to_owned(),

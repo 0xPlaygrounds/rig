@@ -243,6 +243,8 @@ pub(crate) struct AgentConfig {
     pub(crate) static_context: Vec<Document>,
     /// Additional parameters to be passed to the model
     pub(crate) additional_params: Option<serde_json::Value>,
+    /// Portable generation options every request carries.
+    pub(crate) options: rig_core::completion::GenerationOptions,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
@@ -298,6 +300,7 @@ impl AgentConfig {
             preamble: None,
             static_context: vec![],
             additional_params: None,
+            options: rig_core::completion::GenerationOptions::default(),
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
             max_tokens: None,
@@ -373,6 +376,7 @@ impl AgentConfig {
             preamble: self.preamble.clone(),
             static_context: self.static_context.clone(),
             additional_params: self.additional_params.clone(),
+            options: self.options.clone(),
             max_tokens: self.max_tokens,
             temperature: self.temperature,
             tool_choice: self.tool_choice.clone(),

@@ -46,7 +46,7 @@ use crate::{
         AcceptUnknownFinishReasons, AdditionalParams, Advert, Attachment, Batch, Cancelled,
         Context, Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps,
         DocumentText, Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, MaxTokens,
-        MaxTurns, MemoryAppendScheduled, MessageParts, Output, OutputKind, OutputRetries,
+        MaxTurns, MemoryAppendScheduled, MessageParts, Options, Output, OutputKind, OutputRetries,
         OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt, ProviderRetried,
         ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers, Reprompt,
         RequestPatch, Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving,
@@ -182,6 +182,8 @@ pub struct Settings<'w, 's> {
     pub unknown_finishes: Query<'w, 's, &'static AcceptUnknownFinishReasons>,
     /// The provider's extra parameters.
     pub params: Query<'w, 's, &'static AdditionalParams>,
+    /// The portable generation options.
+    pub options: Query<'w, 's, &'static Options>,
     /// The tool choice.
     pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
     /// The output mode.
@@ -1383,6 +1385,7 @@ struct Resolved {
     max_tokens: Option<u64>,
     accept_unknown_finish_reasons: bool,
     additional_params: Option<serde_json::Value>,
+    options: rig_core::completion::GenerationOptions,
     tool_choice: Option<ToolChoice>,
     output: Output,
     output_tool_config: Option<OutputToolConfig>,
@@ -1417,6 +1420,17 @@ impl Settings<'_, '_> {
                 .unwrap_or_default()
                 .0,
             additional_params,
+            options: {
+                let base = self
+                    .options
+                    .get(agent)
+                    .map(|options| options.0.clone())
+                    .unwrap_or_default();
+                match self.options.get(run) {
+                    Ok(over) if run != agent => base.overlay(&over.0),
+                    _ => base,
+                }
+            },
             tool_choice: patch
                 .and_then(|p| p.tool_choice.clone())
                 .or_else(|| setting(run, agent, &self.choices).and_then(|c| c.0.clone())),
@@ -1567,6 +1581,7 @@ pub fn fold_turn(
             max_tokens: resolved.max_tokens,
             accept_unknown_finish_reasons: resolved.accept_unknown_finish_reasons,
             additional_params: resolved.additional_params.as_ref(),
+            options: &resolved.options,
             tool_choice: resolved.tool_choice.as_ref(),
             output: mode,
             schema: resolved.output.schema.as_ref(),

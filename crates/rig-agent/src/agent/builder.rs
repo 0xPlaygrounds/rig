@@ -269,6 +269,14 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Set the portable generation options every request of this agent
+    /// carries. A run's [`AgentRunner::options`](crate::agent::AgentRunner::options)
+    /// overlays them field by field.
+    pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.config.options = options;
+        self
+    }
+
     /// Enable or disable sensitive message content on telemetry spans.
     /// Disabled by default; enabling may expose prompts, responses, and tool data.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {

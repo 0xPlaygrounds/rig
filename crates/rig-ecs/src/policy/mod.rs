@@ -81,6 +81,8 @@ pub struct RequestGraph<'a> {
     pub accept_unknown_finish_reasons: bool,
     /// Provider parameters.
     pub additional_params: Option<&'a serde_json::Value>,
+    /// Portable generation options, the run's overlaid on the agent's.
+    pub options: &'a rig_core::completion::GenerationOptions,
     /// The program's tool choice.
     pub tool_choice: Option<&'a ToolChoice>,
     /// The output mode, resolved, and its schema.
@@ -148,6 +150,7 @@ pub fn fold_request(
     request.max_tokens = graph.max_tokens;
     request.tool_choice = graph.tool_choice.cloned();
     request.additional_params = graph.additional_params.cloned();
+    request.options = graph.options.clone();
     request.output_schema = output_schema;
     request.accept_unknown_finish_reasons = graph.accept_unknown_finish_reasons;
     Ok(request)

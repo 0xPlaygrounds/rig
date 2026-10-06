@@ -123,6 +123,7 @@ pub fn install_reflect(world: &mut World) {
             agent::MaxTokens,
             agent::AcceptUnknownFinishReasons,
             agent::AdditionalParams,
+            agent::Options,
             agent::ToolChoiceSpec,
             agent::Output,
             agent::OutputToolConfig,

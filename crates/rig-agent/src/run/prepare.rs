@@ -11,7 +11,7 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionRequest, Document, Message, ProviderCapabilities, ToolDefinition,
+    CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ToolDefinition,
 };
 use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, ToolName};
@@ -72,6 +72,9 @@ pub struct PreparedRequest {
     pub additional_params: Option<serde_json::Value>,
     /// Effective tool choice (patch over spec).
     pub tool_choice: Option<ToolChoice>,
+    /// The spec's portable generation options.
+    #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
+    pub options: GenerationOptions,
     /// The provider-native structured-output constraint, set only when the
     /// resolved mode is [`OutputMode::Native`].
     pub output_schema: Option<rig_core::schemars::Schema>,
@@ -104,6 +107,7 @@ impl PreparedRequest {
             .temperature(self.temperature)
             .max_tokens(self.max_tokens)
             .additional_params(self.additional_params)
+            .options(self.options)
             .documents(self.documents)
             .tools(self.tools)
             .output_schema(self.output_schema);
@@ -314,6 +318,7 @@ pub fn prepare_request(
         max_tokens,
         additional_params,
         tool_choice: tool_choice.cloned(),
+        options: spec.options.clone(),
         output_schema: native_schema,
         output_mode: resolved_mode,
         executable_tool_names,

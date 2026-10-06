@@ -71,6 +71,14 @@ pub struct AdditionalParams(
     #[reflect(remote = crate::agent::reflect::OptionalJsonReflect)] pub Option<serde_json::Value>,
 );
 
+/// Portable generation options the request carries. A run's overlay the
+/// agent's field by field
+/// ([`GenerationOptions::overlay`](rig_core::completion::GenerationOptions::overlay)):
+/// each field the run sets wins, every other keeps the agent's.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Options(pub rig_core::completion::GenerationOptions);
+
 /// The program's tool choice: what the request's `tool_choice` starts
 /// from before the output mode has its say.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]

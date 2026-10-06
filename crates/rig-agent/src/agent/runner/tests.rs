@@ -160,6 +160,46 @@ async fn runner_can_merge_additional_params_into_the_baseline() {
 }
 
 #[tokio::test]
+async fn the_agents_options_reach_the_request_and_a_runs_options_overlay_them() {
+    use rig_core::completion::{CacheRetention, Effort, GenerationOptions, Reasoning};
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone())
+        .options(GenerationOptions::default().reasoning(Effort::High).seed(7))
+        .build();
+    agent
+        .prompt("go")
+        .run()
+        .await
+        .expect("the agent's request succeeds");
+    agent
+        .prompt("again")
+        .options(
+            GenerationOptions::default()
+                .cache(CacheRetention::Long)
+                .seed(9),
+        )
+        .run()
+        .await
+        .expect("the run's request succeeds");
+
+    let requests = model.requests();
+    let [first, second] = requests.as_slice() else {
+        panic!("two requests: {requests:?}");
+    };
+    assert_eq!(
+        first.options,
+        GenerationOptions::default().reasoning(Effort::High).seed(7)
+    );
+    assert_eq!(
+        second.options.reasoning,
+        Some(Reasoning::Effort(Effort::High))
+    );
+    assert_eq!(second.options.cache, Some(CacheRetention::Long));
+    assert_eq!(second.options.seed, Some(9));
+}
+
+#[tokio::test]
 async fn runner_can_clear_configured_request_defaults() {
     let model = MockCompletionModel::text("done");
     AgentBuilder::new(model.clone())
