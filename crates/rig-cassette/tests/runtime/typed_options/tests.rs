@@ -676,10 +676,12 @@ mod precedence {
 
     #[test]
     fn raw_tools_are_appended_to_rig_tools() {
+        // `claude-opus-4-8` (A3) refuses `top_p`, so this half sets no option.
         let server_tool = json!({"type": "web_search_20250305", "name": "web_search"});
         let sent = encode(
             &anthropic(),
-            request()
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(16)
                 .tool(lookup())
                 .additional_params(json!({"tools": [server_tool]})),
         )

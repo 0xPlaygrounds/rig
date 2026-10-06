@@ -40,14 +40,17 @@ it is confirmed. The `option_matrix` golden expects a refusal for it.
 
 ## 1. The five guarantees
 
-Each guarantee has a type-level core: a compiler error, or a private
-constructor that only one function can call. A guard or a test backs the
-core where the compiler cannot reach, and is never the guarantee on its own.
-Each phase shows the attempted code and the error in its PR body. What
-in-crate code can still do despite the core is listed in section 1.1, not
-hidden in the mechanism.
+Guarantees 1, 2 and 5 have a type-level core: a compiler error, or a
+private constructor that only one function can call. A guard or a test
+backs that core where the compiler cannot reach. Guarantees 3 and 4 have no
+type-level core. Each is a guard and nothing more: guarantee 3 the
+`extras-off-decode-path` source guard, guarantee 4 a guard test, which are
+the mechanisms the prompt specifies for them. Each phase shows the attempted
+code and the error, or the failing guard, in its PR body. What in-crate
+code can still do despite the mechanism is listed in section 1.1, not
+hidden in it.
 
-| # | guarantee | type-level core | backed by | phase | attempted code and the error |
+| # | guarantee | mechanism (type-level core where there is one) | backed by | phase | attempted code and the error |
 |---|---|---|---|---|---|
 | 1 | No wire can silently drop an option. | Every completion wire's `ReplayTarget` must implement `fn map_options(&self, request: &CompletionRequest, fields: OptionFields<'_>) -> OptionMap`, which has no default, so a missing one is E0046. `Completion::prepare`, which the driver runs before every completion encode and which already refuses a wire that names no replay target, calls it on the routed target and reports each `Unsupported` slot through `on_unsupported` and fails a set option whose slot is `Nothing`, before `encode` runs. This holds for every wire, SDK-backed and local ones included, whatever its `encode` does. `map_options` destructures `OptionFields` with no `..` and returns an `OptionMap` struct literal with one `Mapping` per option (section 2.1). `GenerationOptions::fields` destructures `GenerationOptions` with no `..` inside rig-core. A new option breaks `fields` (E0027), then every wire's pattern (E0027) and every wire's `OptionMap` literal (E0063). The result is typed per field, so a wire cannot answer for one option in another option's slot. | The `options-mapping` guard rejects `..`, `_` and `_`-prefixed bindings in an `OptionFields` pattern, and a `..base` in an `OptionMap` literal. The `option_matrix` golden checks each slot against its section 6 cell and the body the wire sends, so `Omit` passes only where the cell says "omit", and a `Send` the wire never writes into its request fails. | P2 | Add `pub logprobs: Option<bool>` to `GenerationOptions`: `fields` fails with `error[E0027]: pattern does not mention field 'logprobs'`. Then add it to `OptionFields` and `OptionMap`: every wire fails with `error[E0027]` and `error[E0063]: missing field 'logprobs' in initializer of 'OptionMap'`. `impl ReplayTarget for Converse` without `map_options`: `error[E0046]: not all trait items implemented, missing: 'map_options'`. `OptionFields { reasoning, .. }`: `source-guards` fails `options-mapping: crates/rig-core/src/providers/openai/wire/chat.rs:<line>: an OptionFields pattern uses '..'`. `seed: Mapping::Omit("default")` on OpenRouter, whose cell sends `"seed":n`: `option_matrix` fails `openrouter: seed: expected {"seed":7}, the body did not change`. |
 | 2 | Precedence lives in one place. | `options::request_params` is the one merge: base body, mapped options, provider options (P4) and `additional_params`, in that order. It returns a `FinalBody`, whose field is private to `completion::options`, so no wire can construct one. `FinalBody` has no `&mut` access, and `FinalBody::into_body` is how a completion wire gets its request bytes. | The `options-precedence` guard, over the completion-wire files (section 2.1), rejects reading `additional_params` as a field, the `Body::Bytes` and `Body::Multipart` constructors, any `.body(..)` call whose argument is not `FinalBody::into_body()` or `Body::empty()`, and `FinalBody::deserialize` turbofished to `Value` or `Map`. It sees only the listed files, so it does not stop every copy of a `FinalBody` into JSON, nor a `Body` built by a helper in an unlisted file (section 1.1). | P2 (merge, `FinalBody`, guard), P4 (provider layer) | `body.insert("cache_control".into(), top)` on a `FinalBody`: `error[E0599]: no method named 'insert' found for struct 'FinalBody'`. `FinalBody(map)` in a wire: `error[E0423]: cannot initialize a tuple struct which contains private fields`. `let raw = request.additional_params.clone();` in `anthropic/completion.rs`: `options-precedence: crates/rig-core/src/providers/anthropic/completion.rs:<line>: reads additional_params outside request_params`. `Body::Bytes(serde_json::to_vec(&body)?)` in a completion wire: `options-precedence: <file>:<line>: builds a request body without FinalBody::into_body`. |
@@ -61,8 +64,8 @@ E0616 on hand-written spans and citation lists.
 
 ### 1.1 Known limits
 
-These are the bypasses the type-level cores leave open inside a crate. Each
-is listed with what covers it.
+These are the bypasses the mechanisms leave open inside a crate. Each is
+listed with what covers it.
 
 - **Guarantee 1.** The compiler checks that every wire answers for every
   option, and `prepare` reports every refusal, but not that the answer is
@@ -500,7 +503,21 @@ target `route` names, the one `prepare` and the fold already use.
   `additional_params` override them, a behaviour change. So the list stays,
   as data. Anthropic's top-level `cache_control`, inserted after the
   merge today (`completion.rs:260`), becomes a mapped option instead, so a
-  raw `additional_params.cache_control` beats it by rank.
+  raw `additional_params.cache_control` beats it by rank. The base builder
+  still does what `top_level_cache_control` does with that raw key today
+  (`crates/rig-core/src/providers/anthropic/completion.rs:661-692`): it
+  reads the top marker through `BaseInput::param("cache_control")`, which
+  is the raw value when one is set and the mapped `cache` otherwise, and
+  leaves it in the merge. It validates it with today's check and error (an
+  `EncodeError` unless `type` is `"ephemeral"` and `ttl` is absent, `"5m"`
+  or `"1h"`), and treats `null` as no marker, as today. It places the
+  markers from it as `apply_cache_control` does today (`:700-789`): the
+  marker suppresses `with_prompt_caching()`'s last-message marker, takes
+  one of the four slots, gives the tool and system markers its TTL, and
+  meets the `with_static_prefix_cache_ttl(FiveMinutes)` conflict check. The
+  1 h-before-5 min order check reads the final body's top-level
+  `cache_control`, so a raw marker enters it as today. Two edge cases move,
+  because the raw value is now sent as written (section 12.0).
 - **Checks on the final body.** A wire may read the `FinalBody` and return an
   error, never write. The Anthropic 1 h-before-5 min and budget-of-4 checks,
   Gemini's cached-content conflicts, and Candle's refusal of hosted `tools`
@@ -845,8 +862,23 @@ reads both paths.
   A completion decoder has no way to write `raw`. Other operations keep it,
   and their wires name `type Reassembler = Unreassembled`, which records
   nothing.
-- On the unary path nothing changes: the transport's whole body is `raw`
-  (`crates/rig-core/src/wire.rs:346-357`).
+- On the unary path `raw` is the document the transport reports, as today
+  (`crates/rig-core/src/wire.rs:346-357`): the HTTP wires' whole body, and
+  Bedrock's `Opened::with_document` (`crates/rig-bedrock/src/completion.rs:440`).
+  Three completion wires report none on unary today and get their unary
+  `raw` from the decoder: Candle (`out.raw` on the `CandleFrame::Whole`
+  record, `crates/rig-candle/src/model.rs:450`, `:508-511`), Vertex
+  (`keep_raw` on its one frame, `crates/rig-vertexai/src/types/completion_response.rs:34`,
+  `crates/rig-vertexai/src/completion.rs:231`) and Gemini gRPC (`keep_raw`,
+  `crates/rig-gemini-grpc/src/streaming.rs:52`, `crates/rig-gemini-grpc/src/completion.rs:139-140`).
+  P5 moves that value, unchanged, into each unary transport through
+  `Opened::with_document`: Candle attaches `serde_json::to_value` of the
+  response record, Vertex `rest_chunk` of the response and gRPC `to_rest`
+  of it, the conversions their decoders apply today. So these wires keep
+  today's unary `raw` byte for byte, and the driver feeds the reassembler
+  in stream mode only. A completion transport that reports no unary
+  document records `Null`; P5 leaves none, and a unit test per wire pins
+  its unary `raw`.
 - Reassemblers are plain JSON folds with no typed provider structs, so they
   name no `Extras` type. They live in provider modules, where the
   `extras-off-decode-path` guard applies.
@@ -884,7 +916,8 @@ One reassembler per API: `openai::wire::chat::document::ChatCompletion`
 (shared by Vertex and gRPC), `gemini::interactions_api::document::Interaction`,
 `cohere::document::ChatResponse`, `ollama::document::ChatResponse`,
 `rig_bedrock::document::ConverseOutput` and an identity reassembler for Candle.
-`GenerateContentDecoder::keep_raw` is deleted. P5 is breaking because every
+`GenerateContentDecoder::keep_raw` is deleted; the unary values it and
+Candle's `out.raw` carried move to the transports, as above. P5 is breaking because every
 `Wire` impl, companion crates included, must name its `Reassembler`.
 
 **Evidence (spike, uncommitted worktree at `7dfd8a422`).** The Chat
@@ -1739,6 +1772,7 @@ row below).
 | P2 | Ollama native `/api/chat`: the `think` validation is deleted (`crates/rig-core/src/providers/ollama/chat.rs:46-47`, `:117-126`, `:257-269`), so a raw `additional_params.think` is sent as written under `RawAt::Split`: `"HIGH"` is no longer lowercased, and `"bogus"` is the daemon's error, not a local `EncodeError`. The warning on a raw `reasoning_effort` goes; the key still lands in `options` | native callers who set `think` in `additional_params` | "On Ollama's native route, set `GenerationOptions::reasoning` instead of `additional_params.think`, which is now sent as written; use a lower-case level." |
 | P2 | Gemini Interactions: a raw `additional_params.tools` that is not an array is an `EncodeError` through `BaseInput::raw_tools`, where it is discarded today (`crates/rig-core/src/providers/gemini/interactions_api/mod.rs:380`) | Interactions callers whose `additional_params.tools` is not an array | "On Gemini Interactions, `additional_params.tools` must be an array, as on every other wire." |
 | P2 | Gemini Interactions resume: a set option is refused through `on_unsupported`, and `additional_params` or provider options are an `EncodeError`, where `InteractionResume::encode` ignores the whole request today (`crates/rig-core/src/providers/gemini/interactions_api/mod.rs:247-274`) | callers who reuse a request with options or `additional_params` to resume an interaction | "`InteractionResume` now refuses a request that sets options or `additional_params`; resume with a request that sets neither." |
+| P2 | Anthropic: a raw `additional_params.cache_control` is sent as written. Today `top_level_cache_control` (`crates/rig-core/src/providers/anthropic/completion.rs:664-675`) sends a rebuilt `{"type":"ephemeral"}` plus `ttl`, so keys beyond `type` and `ttl` are now sent, and a raw `null` is sent as `null` (section 2.1, "`null` is a value") where today it is dropped. Validation, placement, the budget of four and the order check are unchanged (section 12.1) | Anthropic callers whose raw `cache_control` holds extra keys or is `null` | "On Anthropic, `additional_params.cache_control` is sent as written: remove keys other than `type` and `ttl`, and remove the key rather than setting it to `null`." |
 | P4 | Bedrock: the guardrail is sent on streams as well as unary requests (`crates/rig-bedrock/src/request.rs:135` filters it to unary today) | streaming callers of `with_guardrail` | "A Bedrock guardrail now also applies to streamed requests." |
 
 ### 12.1 P2: options
@@ -1747,7 +1781,7 @@ row below).
 |---|---|---|
 | Anthropic `automatic_caching`, `with_automatic_caching`, `with_automatic_caching_1h`, `automatic_caching_ttl` | `crates/rig-core/src/providers/anthropic/wire.rs:367-369`, `:410-413`, `:429-433` | `CacheRetention::Short`, `Long` |
 | Anthropic `CacheTtl` as the automatic-caching TTL | `crates/rig-core/src/providers/anthropic/completion.rs:63-73` | `CacheRetention`; `CacheTtl` stays public as the type of `with_static_prefix_cache_ttl` |
-| Anthropic `top_level_cache_control` (a wire-local precedence merge) | `crates/rig-core/src/providers/anthropic/completion.rs:661-692` | `request_params`; the 1 h-before-5 min and budget-of-4 checks run after it |
+| Anthropic `top_level_cache_control` (a wire-local precedence merge) | `crates/rig-core/src/providers/anthropic/completion.rs:661-692` | `request_params` merges the top marker (raw beats mapped). The base builder reads it through `BaseInput::param("cache_control")`, keeps today's payload validation and error, and uses it for placement and the budget of four as today: with `with_prompt_caching()` a raw marker still suppresses the last-message marker (`:761`) and sets the tool and system markers' TTL (section 2.1). The 1 h-before-5 min check reads the final body. The typed-versus-raw TTL conflict error (`:681-688`) goes with the deleted automatic-caching knobs: a raw marker beats `cache` by rank |
 | Anthropic `body.extend(params)` | `crates/rig-core/src/providers/anthropic/completion.rs:256` | `request_params` (deep merge of `output_config`, `thinking`, `tool_choice`) |
 | Anthropic `drops_unbound_thinking` reading raw JSON; `drops_unbound_items` reading `additional_params["thinking"]` | `crates/rig-core/src/providers/anthropic/completion.rs:157-182`, `:257-259`; `crates/rig-core/src/providers/anthropic/wire.rs:523-530`, `:646-653` | `drops_unbound_thinking` and `Rewrite::DropUnboundThinking` read the merged `FinalBody`'s `thinking`, as today. `drops_unbound_items` runs in `prepare`, before any body exists, and reads `options::mapped_param(target, request, "thinking")`: the mapped `reasoning` with the provider and raw layers on top. So with `reasoning(Off)` replay sees the `disabled` the body sends, and a raw `thinking` still wins, so replay and encoding agree |
 | Chat `prompt_caching` field and `with_prompt_caching` (a no-op on every dialect but OpenRouter) | `crates/rig-core/src/providers/openai/wire/chat.rs:49-51`, `:248`, `:265-269` | `cache`; `UnsupportedOption` where a dialect cannot cache on request |
@@ -1826,7 +1860,17 @@ The terminal records in section 9: `crates/rig-core/src/providers/openai/wire/ch
 completions goes away (`crates/rig-core/src/wire.rs:600`). The generic JSON
 decoder that calls `out.raw(document)` for every `Op`
 (`crates/rig-core/src/wire.rs:736`) stops doing so for completions, whose
-`raw` the driver now records from the wire's `Reassembler` (section 4).
+streamed `raw` the driver now records from the wire's `Reassembler` (section 4).
+Three completion decoders also write today's unary `raw`, because their
+unary transport reports no document: Candle (`out.raw` on the
+`CandleFrame::Whole` record, `crates/rig-candle/src/model.rs:450`, sent at
+`:508-511`), Vertex (`keep_raw`, `crates/rig-vertexai/src/types/completion_response.rs:34`,
+unary frame at `crates/rig-vertexai/src/completion.rs:231`) and Gemini gRPC
+(`keep_raw`, `crates/rig-gemini-grpc/src/streaming.rs:52`, unary at
+`crates/rig-gemini-grpc/src/completion.rs:139-140`). P5 moves each value
+unchanged into the unary transport with `Opened::with_document`, as Bedrock
+does today (`crates/rig-bedrock/src/completion.rs:440`), so their unary
+`raw` does not move; a unit test per wire pins it.
 
 ### 12.5 P6: citations and cost
 
