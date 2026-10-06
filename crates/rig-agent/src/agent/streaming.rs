@@ -228,9 +228,14 @@ impl AgentRunner {
     fn stream_under(self, ambient: tracing::Span) -> StreamingResult {
         let run_under = ambient.clone();
         let stream = async_stream::stream! {
-            let mut inner = self.start_stream(run_under).await;
-            while let Some(item) = inner.next().await {
-                yield item;
+            match self.checked_options() {
+                Ok(runner) => {
+                    let mut inner = runner.start_stream(run_under).await;
+                    while let Some(item) = inner.next().await {
+                        yield item;
+                    }
+                }
+                Err(err) => yield Err(err),
             }
         };
         Box::pin(stream.instrument(ambient))

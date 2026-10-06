@@ -277,6 +277,17 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Check every run's generation options against `spec`, the catalog
+    /// entry of the agent's model, before the run starts. Under
+    /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error) an
+    /// option the model does not take fails the run with
+    /// [`ProviderError::UnsupportedOption`](rig_core::error::ProviderError::UnsupportedOption)
+    /// before anything is sent; under `Ignore` it is dropped with a warning.
+    pub fn model_spec(mut self, spec: rig_core::catalog::ModelSpec) -> Self {
+        self.config.model_spec = Some(spec);
+        self
+    }
+
     /// Enable or disable sensitive message content on telemetry spans.
     /// Disabled by default; enabling may expose prompts, responses, and tool data.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {

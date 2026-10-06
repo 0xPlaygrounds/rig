@@ -594,7 +594,37 @@ impl AgentRunner {
         // not to whichever task first polls the future.
         let ambient = tracing::Span::current();
         let run_under = ambient.clone();
-        async move { self.run_under(run_under).await }.instrument(ambient)
+        async move { self.checked_options()?.run_under(run_under).await }.instrument(ambient)
+    }
+
+    /// This runner with its options checked against the agent's model spec:
+    /// a refused option fails under `OnUnsupported::Error`, and is dropped
+    /// with a warning under `Ignore`.
+    pub(crate) fn checked_options(mut self) -> Result<Self, PromptError> {
+        use rig_core::completion::OnUnsupported;
+        let Some(spec) = self.config.model_spec.as_ref() else {
+            return Ok(self);
+        };
+        while let Err(refused) = spec.validate(&self.config.options) {
+            match self.config.options.on_unsupported {
+                OnUnsupported::Ignore => {
+                    tracing::warn!(
+                        option = refused.option,
+                        provider = %refused.provider,
+                        model = %refused.model,
+                        reason = %refused.reason,
+                        "unsupported option ignored"
+                    );
+                    match refused.option {
+                        "reasoning" => self.config.options.reasoning = None,
+                        "cache" => self.config.options.cache = None,
+                        _ => return Err(ProviderError::UnsupportedOption(refused).into()),
+                    }
+                }
+                _ => return Err(ProviderError::UnsupportedOption(refused).into()),
+            }
+        }
+        Ok(self)
     }
 
     async fn run_under(self, ambient: tracing::Span) -> Result<PromptResponse, PromptError> {

@@ -245,6 +245,9 @@ pub(crate) struct AgentConfig {
     pub(crate) additional_params: Option<serde_json::Value>,
     /// Portable generation options every request carries.
     pub(crate) options: rig_core::completion::GenerationOptions,
+    /// The catalog entry of the agent's model, which each run's options
+    /// are checked against before it starts.
+    pub(crate) model_spec: Option<rig_core::catalog::ModelSpec>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
@@ -301,6 +304,7 @@ impl AgentConfig {
             static_context: vec![],
             additional_params: None,
             options: rig_core::completion::GenerationOptions::default(),
+            model_spec: None,
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
             max_tokens: None,

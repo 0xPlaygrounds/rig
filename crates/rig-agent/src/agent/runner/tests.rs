@@ -321,3 +321,65 @@ fn a_runner_overrides_content_telemetry_for_its_run() {
             .record_telemetry_content
     );
 }
+
+/// An agent with its model's catalog entry checks each run's options before
+/// the run starts: a refused option fails it with nothing sent, unless the
+/// options ignore what the model cannot take.
+#[tokio::test]
+async fn a_model_spec_checks_every_runs_options_before_it_starts() {
+    use rig_core::catalog::Catalog;
+    use rig_core::completion::{Effort, GenerationOptions, OnUnsupported, Reasoning};
+    use rig_core::error::ProviderError;
+
+    let haiku = Catalog::builtin()
+        .resolve("anthropic/claude-haiku-4-5")
+        .expect("listed")
+        .clone();
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone())
+        .model_spec(haiku)
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .build();
+
+    let refused = agent.prompt("go").run().await.expect_err("refused");
+    let crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(option)) =
+        &refused
+    else {
+        panic!("an unsupported option: {refused:?}");
+    };
+    assert_eq!(option.option, "reasoning");
+    assert_eq!(option.provider, "anthropic");
+    let mut stream = agent.prompt("go").stream();
+    assert!(matches!(
+        stream.next().await,
+        Some(Err(crate::completion::PromptError::Provider(
+            ProviderError::UnsupportedOption(_)
+        )))
+    ));
+    assert!(model.requests().is_empty(), "nothing was sent");
+
+    agent
+        .prompt("go")
+        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 2048 }))
+        .run()
+        .await
+        .expect("a budget Haiku 4.5 takes");
+    agent
+        .prompt("again")
+        .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore))
+        .run()
+        .await
+        .expect("ignored, with a warning");
+    let requests = model.requests();
+    let [budget, ignored] = requests.as_slice() else {
+        panic!("two requests: {requests:?}");
+    };
+    assert_eq!(
+        budget.options.reasoning,
+        Some(Reasoning::Budget { tokens: 2048 })
+    );
+    assert_eq!(
+        ignored.options.reasoning, None,
+        "the refused effort was dropped"
+    );
+}
