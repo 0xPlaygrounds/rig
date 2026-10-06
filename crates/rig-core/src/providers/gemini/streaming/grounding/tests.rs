@@ -306,3 +306,55 @@ fn a_cited_turn_replays_its_parts_unchanged() {
     assert_eq!(replayed(&cited), replayed(&plain));
     assert_eq!(replayed(&cited)["contents"][1]["parts"], parts);
 }
+
+/// A segment and a recitation source the answer cannot hold: a reversed
+/// range, and offsets so large their sums overflow.
+fn malformed_ranges(text: &str) -> Vec<(Value, Value)> {
+    let huge = u64::MAX - 1;
+    vec![
+        (
+            json!({"partIndex": 0, "startIndex": 10, "endIndex": 5, "text": text}),
+            json!({"startIndex": 10, "endIndex": 5, "uri": "https://example.com/final"}),
+        ),
+        (
+            json!({"partIndex": 0, "startIndex": huge, "endIndex": u64::MAX, "text": text}),
+            json!({"startIndex": 3, "endIndex": u64::MAX, "uri": "https://example.com/final"}),
+        ),
+        (
+            json!({"partIndex": 0, "startIndex": 3, "endIndex": u64::MAX, "text": text}),
+            json!({"startIndex": 0, "endIndex": u64::MAX, "uri": "https://example.com/final"}),
+        ),
+    ]
+}
+
+/// A reversed range or one whose offsets overflow drops its citation; the
+/// reply decodes and the rest of the answer stays uncited by it.
+#[test]
+fn a_reversed_or_huge_range_is_dropped_without_panicking() {
+    for (segment, recitation) in malformed_ranges("Nico") {
+        for quoted in [true, false] {
+            let mut segment = segment.clone();
+            if !quoted {
+                segment
+                    .as_object_mut()
+                    .expect("a segment object")
+                    .shift_remove("text");
+            }
+            let metadata = json!({
+                "groundingMetadata": {
+                    "groundingChunks": [{"web": {"uri": "https://example.com/final"}}],
+                    "groundingSupports": [{"segment": segment, "groundingChunkIndices": [0]}],
+                },
+                "citationMetadata": {"citationSources": [recitation]},
+            });
+            for mode in [Mode::Unary, Mode::Streaming] {
+                let reply = finished(chunk(json!([{"text": ANSWER}]), metadata.clone()));
+                let response = decode(&wire(), mode, [frame(reply)]).expect("the reply decodes");
+                for citation in texts(&response)[0].citations() {
+                    let span = citation.span.as_ref().expect("a span");
+                    assert!(span.range().end <= ANSWER.len(), "{segment} {span:?}");
+                }
+            }
+        }
+    }
+}

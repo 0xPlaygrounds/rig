@@ -46,10 +46,10 @@ impl AnswerText {
 
     /// The position in the whole answer text of `offset` in block `index`.
     fn absolute(&self, index: usize, offset: usize) -> Option<usize> {
-        let mut start = 0;
+        let mut start: usize = 0;
         for (at, text) in &self.blocks {
             if *at == index {
-                return Some(start + offset);
+                return start.checked_add(offset);
             }
             start += text.len();
         }
@@ -130,9 +130,12 @@ fn segment(
 ) -> Option<(usize, WireSpan)> {
     let offset = |key: &str| usize::try_from(segment.u64(key).unwrap_or(0)).ok();
     let (start, end) = (offset("startIndex")?, offset("endIndex")?);
+    // Provider bytes: a reversed or overflowing range drops the citation
+    // rather than panic.
+    let len = end.checked_sub(start)?;
     let in_part = offset("partIndex")
         .and_then(|part| placed.get(part).copied().flatten())
-        .map(|(index, at)| (index, at + start));
+        .and_then(|(index, at)| Some((index, at.checked_add(start)?)));
     let in_answer = answer.locate(start);
     let quoted = segment.str("text").filter(|text| !text.is_empty());
     let (index, at) = match quoted {
@@ -140,7 +143,10 @@ fn segment(
         Some(quoted) => [in_part, in_answer]
             .into_iter()
             .flatten()
-            .find(|(index, at)| answer.holds(*index, *at..*at + (end - start), quoted))
+            .find(|(index, at)| {
+                at.checked_add(len)
+                    .is_some_and(|stop| answer.holds(*index, *at..stop, quoted))
+            })
             .or_else(|| {
                 let near = in_part
                     .and_then(|(index, at)| answer.absolute(index, at))
@@ -150,11 +156,7 @@ fn segment(
             .or(in_part)
             .or(in_answer)?,
     };
-    let span = WireSpan::new(
-        at as u64,
-        (at + end.checked_sub(start)?) as u64,
-        SpanUnit::Bytes,
-    );
+    let span = WireSpan::new(at as u64, at.checked_add(len)? as u64, SpanUnit::Bytes);
     Some((
         index,
         match quoted {
@@ -213,12 +215,9 @@ pub(super) fn recitations(metadata: &Value, answer: &AnswerText) -> Vec<(usize, 
         .filter_map(|citation| {
             let start = usize::try_from(citation.u64("startIndex").unwrap_or(0)).ok()?;
             let end = usize::try_from(citation.u64("endIndex")?).ok()?;
+            let len = end.checked_sub(start)?;
             let (index, at) = answer.locate(start)?;
-            let span = WireSpan::new(
-                at as u64,
-                (at + end.checked_sub(start)?) as u64,
-                SpanUnit::Bytes,
-            );
+            let span = WireSpan::new(at as u64, at.checked_add(len)? as u64, SpanUnit::Bytes);
             Some((
                 index,
                 WireCitation::new(Some(span), vec![source(citation)?]),

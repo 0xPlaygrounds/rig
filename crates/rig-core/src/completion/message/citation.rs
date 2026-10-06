@@ -248,7 +248,12 @@ impl Text {
         self.citations = None;
     }
 
-    /// The text `citation` covers: its span, or the whole block.
+    /// The text `citation` covers: its span, or the whole block. It reads
+    /// any citation against the current text and does not check that the
+    /// citation belongs to it, so a citation kept from before an edit gives
+    /// whatever text now sits at its span, or `None` past the end. Read
+    /// citations through [`Text::citations`], which hides them once the
+    /// text changes.
     pub fn cited(&self, citation: &Citation) -> Option<&str> {
         match citation.span {
             Some(span) => self.text.get(span.range()),
