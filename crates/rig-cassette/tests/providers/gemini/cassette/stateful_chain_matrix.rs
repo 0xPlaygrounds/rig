@@ -62,37 +62,19 @@ const FILE_TEXT: &str =
     "Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.";
 
 fn ask_with(history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.max_tokens = Some(1024);
+    request
 }
 
 fn ask(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user(prompt)],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.0),
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(vec![Message::user(prompt)]);
+    request.temperature = Some(0.0);
+    request.max_tokens = Some(64);
+    request.additional_params = Some(json!({
+        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+    }));
+    request
 }
 
 /// One cache through its whole life: create, generate against it, extend its
@@ -491,10 +473,7 @@ async fn file_uri_chain() {
                 );
                 let history = vec![
                     document,
-                    Message::Assistant(rig_core::message::AssistantMessage {
-            content: first.choice.clone(),
-            ..first.head()
-        }),
+                    Message::Assistant(first.head().with_content(first.choice.clone())),
                     Message::user(
                         "What is the shelf code in the same attached file? Reply with the code only.",
                     ),

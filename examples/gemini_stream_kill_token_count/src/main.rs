@@ -268,12 +268,10 @@ where
             let input_tokens = count_tokens(http, api_key, prompt_text).await?;
             let output_tokens = count_tokens(http, api_key, &output).await?;
 
-            let usage = Usage {
-                input_tokens: Some(input_tokens),
-                output_tokens: Some(output_tokens),
-                total_tokens: Some(input_tokens + output_tokens),
-                ..Default::default()
-            };
+            let usage = Usage::new()
+                .input_tokens(input_tokens)
+                .output_tokens(output_tokens)
+                .total_tokens(input_tokens + output_tokens);
 
             Outcome::Estimated {
                 usage,

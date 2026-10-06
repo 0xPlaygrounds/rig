@@ -55,21 +55,9 @@ async fn hosted_model(
 }
 
 fn request(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::User {
-            content: vec![UserContent::Text(Text::new(prompt.to_string()))],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    CompletionRequest::from(vec![Message::User {
+        content: vec![UserContent::Text(Text::new(prompt.to_string()))],
+    }])
 }
 
 /// The whole unary path: Rig's request conversion, the SDK's URL and query

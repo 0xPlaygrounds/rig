@@ -44,19 +44,10 @@ fn params(cell: Cell) -> Value {
 }
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(2048),
-        tool_choice: None,
-        additional_params: Some(params(cell)),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.max_tokens = Some(2048);
+    request.additional_params = Some(params(cell));
+    request
 }
 
 async fn turn<W, T>(
@@ -78,10 +69,7 @@ where
     } else {
         model.call(request).await.expect("the turn completes")
     };
-    rig::message::AssistantMessage {
-        content: response.choice.clone(),
-        ..response.head()
-    }
+    response.head().with_content(response.choice.clone())
 }
 
 fn answer(choice: &[AssistantContent]) -> String {

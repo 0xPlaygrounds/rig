@@ -105,6 +105,7 @@ pub fn usage_of(usage: &Value) -> Usage {
             .zip(output_tokens)
             .map(|(input, output)| input + output),
         cache_creation_input_tokens: None,
+        cost: None,
     }
 }
 

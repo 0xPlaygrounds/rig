@@ -130,7 +130,7 @@ fn every_inline_part_keeps_its_part_and_replays_it() {
             AssistantContent::Text(_) => "text",
             AssistantContent::Opaque(_) => "opaque",
             AssistantContent::Image(_) => "image",
-            AssistantContent::Reasoning(_) | AssistantContent::ToolCall(_) => "other",
+            _ => "other",
         })
         .collect();
     assert_eq!(kinds, ["text", "opaque", "opaque", "image", "text"]);

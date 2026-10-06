@@ -643,25 +643,17 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     .completion(CACHE_MODEL)
                     .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
 
-                let request = rig::completion::CompletionRequest {
-                    chat_history: vec![rig::message::Message::User {
+                let mut request =
+                    rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
                         content: vec![rig::message::UserContent::text(
                             "Reply with exactly: streamed",
                         )],
-                    }],
-                    documents: vec![],
-                    tools: vec![],
-                    temperature: Some(0.0),
-                    max_tokens: Some(16),
-                    tool_choice: None,
-                    additional_params: Some(serde_json::json!({
-                        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-                    })),
-                    model: None,
-                    output_schema: None,
-                    record_telemetry_content: false,
-                    accept_unknown_finish_reasons: false,
-                };
+                    }]);
+                request.temperature = Some(0.0);
+                request.max_tokens = Some(16);
+                request.additional_params = Some(serde_json::json!({
+                    "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
+                }));
 
                 let mut stream = model
                     .stream(request)
