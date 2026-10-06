@@ -24,8 +24,11 @@ pub enum Message {
     Assistant(AssistantMessage),
 }
 
+pub mod citation;
 mod identity;
 mod native;
+
+pub use citation::{Citation, DocumentRange, Source, SourceLocation, Span};
 
 pub use identity::{CallId, EmptyCallId, EmptyToolName, LocalCallId, ProviderCallId, ToolName};
 pub use native::{Api, Fingerprint, Native, Opaque, Origin, StopReason};
@@ -583,12 +586,18 @@ impl<'de> Deserialize<'de> for ToolFunction {
 }
 
 /// Text. On an assistant turn, `native` holds the provider item the block
-/// was decoded from; user and tool-result text leave it `None`.
+/// was decoded from, and [`Text::citations`] what the provider says supports
+/// it; user and tool-result text leave both empty.
 #[non_exhaustive]
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(from = "TextRepr")]
 pub struct Text {
     /// Text content.
     pub text: String,
+    /// The citations and the fingerprint of the text they fit; read through
+    /// [`Text::citations`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    citations: Option<citation::Citations>,
     /// The provider item this block was decoded from.
     #[serde(
         default,
@@ -598,11 +607,39 @@ pub struct Text {
     pub native: Option<Native>,
 }
 
+/// A stored [`Text`], read leniently: unreadable citations or native load
+/// as none.
+#[derive(Deserialize)]
+struct TextRepr {
+    text: String,
+    #[serde(default, deserialize_with = "citation::lenient")]
+    citations: Option<citation::Citations>,
+    #[serde(default, deserialize_with = "native::lenient")]
+    native: Option<Native>,
+}
+
+impl From<TextRepr> for Text {
+    fn from(repr: TextRepr) -> Self {
+        let TextRepr {
+            text,
+            citations,
+            native,
+        } = repr;
+        Self {
+            text,
+            citations,
+            native,
+        }
+        .checked()
+    }
+}
+
 impl Text {
-    /// Text with no provider item.
+    /// Text with no provider item and no citations.
     pub fn new(text: impl Into<String>) -> Self {
         Self {
             text: text.into(),
+            citations: None,
             native: None,
         }
     }

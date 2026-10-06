@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rig_cassette::effect_log::EffectLog;
 use rig_core::{
-    completion::Usage,
+    completion::{Cost, Usage},
     effect::{EffectKind, Outcome},
 };
 use serde_json::{Value, json};
@@ -64,7 +64,33 @@ pub(crate) fn assert_usage(thinking: ThinkingWire, log: &EffectLog) -> Value {
 }
 
 pub(crate) fn assert_totals(usages: &[Usage], actual: Usage) {
-    assert_eq!(actual, reported_totals(usages), "cumulative reported usage");
+    let expected = reported_totals(usages);
+    assert_eq!(
+        actual.cost(None),
+        expected.cost(None),
+        "cumulative reported usage"
+    );
+    // Turns may be summed in another order, which moves the last bits.
+    let parts = |cost: Cost| {
+        [
+            cost.input,
+            cost.output,
+            cost.cache_read,
+            cost.cache_write,
+            cost.total,
+        ]
+    };
+    match (actual.cost, expected.cost) {
+        (Some(actual), Some(expected)) => {
+            for (actual, expected) in parts(actual).into_iter().zip(parts(expected)) {
+                assert!(
+                    (actual - expected).abs() <= expected.abs() * 1e-9,
+                    "cumulative cost: {actual} against {expected}"
+                );
+            }
+        }
+        (actual, expected) => assert_eq!(actual, expected, "cumulative cost"),
+    }
 }
 
 pub(crate) fn reported_totals(usages: &[Usage]) -> Usage {
@@ -88,6 +114,14 @@ pub(crate) fn reported_totals(usages: &[Usage]) -> Usage {
         .cache_creation_input_tokens(sum(usages, |u| u.cache_creation_input_tokens))
         .reasoning_tokens(sum(usages, |u| u.reasoning_tokens))
         .tool_use_prompt_tokens(sum(usages, |u| u.tool_use_prompt_tokens))
+        // A turn with no cost makes the total unknown.
+        .cost(
+            usages
+                .iter()
+                .map(|u| u.cost)
+                .reduce(|total, cost| total.zip(cost).map(|(total, cost)| total + cost))
+                .flatten(),
+        )
 }
 
 fn assert_unique(seen: &mut BTreeSet<String>, identity: String) {

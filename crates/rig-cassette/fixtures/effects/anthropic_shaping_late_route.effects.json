@@ -159,7 +159,14 @@
             "output_tokens": 69,
             "total_tokens": 701,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.000632,
+              "output": 0.000345,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000977
+            }
           },
           "origin": {
             "api": "anthropic.messages",
@@ -369,7 +376,14 @@
             "output_tokens": 4,
             "total_tokens": 718,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.000714,
+              "output": 0.00002,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0007340000000000001
+            }
           },
           "origin": {
             "api": "anthropic.messages",

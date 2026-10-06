@@ -6271,7 +6271,14 @@
             "input_tokens": 19,
             "output_tokens": 16,
             "total_tokens": 35,
-            "reasoning_tokens": 15
+            "reasoning_tokens": 15,
+            "cost": {
+              "input": 5.7000000000000005e-6,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000045700000000000006
+            }
           },
           "origin": {
             "api": "gemini.generate_content",

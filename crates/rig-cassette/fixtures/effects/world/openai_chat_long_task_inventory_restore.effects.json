@@ -563,7 +563,14 @@
             "output_tokens": 22,
             "total_tokens": 337,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000126,
+              "output": 0.0000352,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00016120000000000002
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -839,7 +846,14 @@
             "output_tokens": 25,
             "total_tokens": 408,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0001532,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0001932
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -1173,7 +1187,14 @@
             "output_tokens": 25,
             "total_tokens": 472,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0001788,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0002188
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -1594,7 +1615,14 @@
             "output_tokens": 66,
             "total_tokens": 577,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0002044,
+              "output": 0.0001056,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00031
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -2123,7 +2151,14 @@
             "output_tokens": 25,
             "total_tokens": 643,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0002472,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0002872
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -2681,7 +2716,14 @@
             "output_tokens": 25,
             "total_tokens": 707,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0002728,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0003128
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -3326,7 +3368,14 @@
             "output_tokens": 66,
             "total_tokens": 812,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00029840000000000004,
+              "output": 0.0001056,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00040400000000000006
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -4079,7 +4128,14 @@
             "output_tokens": 25,
             "total_tokens": 878,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00034120000000000005,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00038120000000000005
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -4861,7 +4917,14 @@
             "output_tokens": 25,
             "total_tokens": 942,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0003668,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0004068
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -5730,7 +5793,14 @@
             "output_tokens": 66,
             "total_tokens": 1047,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00039240000000000005,
+              "output": 0.0001056,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0004980000000000001
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -6707,7 +6777,14 @@
             "output_tokens": 22,
             "total_tokens": 1110,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00043520000000000006,
+              "output": 0.0000352,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00047040000000000005
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -7688,7 +7765,14 @@
             "output_tokens": 2,
             "total_tokens": 1133,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00045240000000000005,
+              "output": 3.2000000000000003e-6,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00045560000000000007
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -8677,7 +8761,14 @@
             "output_tokens": 23,
             "total_tokens": 1249,
             "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00008080000000000001,
+              "output": 0.00003680000000000001,
+              "cache_read": 0.00010240000000000001,
+              "cache_write": 0.0,
+              "total": 0.00022000000000000003
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -9761,7 +9852,14 @@
             "output_tokens": 25,
             "total_tokens": 1324,
             "cached_input_tokens": 1152,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000058800000000000006,
+              "output": 0.00004,
+              "cache_read": 0.00011520000000000001,
+              "cache_write": 0.0,
+              "total": 0.00021400000000000002
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -10911,7 +11009,14 @@
             "output_tokens": 25,
             "total_tokens": 1388,
             "cached_input_tokens": 1152,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0000844,
+              "output": 0.00004,
+              "cache_read": 0.00011520000000000001,
+              "cache_write": 0.0,
+              "total": 0.00023960000000000002
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -12148,7 +12253,14 @@
             "output_tokens": 66,
             "total_tokens": 1493,
             "cached_input_tokens": 1280,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000058800000000000006,
+              "output": 0.0001056,
+              "cache_read": 0.000128,
+              "cache_write": 0.0,
+              "total": 0.0002924
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -13493,7 +13605,14 @@
             "output_tokens": 25,
             "total_tokens": 1559,
             "cached_input_tokens": 1408,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000050400000000000005,
+              "output": 0.00004,
+              "cache_read": 0.0001408,
+              "cache_write": 0.0,
+              "total": 0.0002312
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -14867,7 +14986,14 @@
             "output_tokens": 25,
             "total_tokens": 1623,
             "cached_input_tokens": 1024,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00022960000000000002,
+              "output": 0.00004,
+              "cache_read": 0.00010240000000000001,
+              "cache_write": 0.0,
+              "total": 0.00037200000000000004
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -16328,7 +16454,14 @@
             "output_tokens": 66,
             "total_tokens": 1728,
             "cached_input_tokens": 1536,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000050400000000000005,
+              "output": 0.0001056,
+              "cache_read": 0.00015360000000000002,
+              "cache_write": 0.0,
+              "total": 0.00030960000000000004
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -17897,7 +18030,14 @@
             "output_tokens": 25,
             "total_tokens": 1794,
             "cached_input_tokens": 1664,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000042,
+              "output": 0.00004,
+              "cache_read": 0.0001664,
+              "cache_write": 0.0,
+              "total": 0.0002484
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -19495,7 +19635,14 @@
             "output_tokens": 25,
             "total_tokens": 1858,
             "cached_input_tokens": 1664,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0000676,
+              "output": 0.00004,
+              "cache_read": 0.0001664,
+              "cache_write": 0.0,
+              "total": 0.00027400000000000005
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -21180,7 +21327,14 @@
             "output_tokens": 66,
             "total_tokens": 1963,
             "cached_input_tokens": 1792,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000042,
+              "output": 0.0001056,
+              "cache_read": 0.00017920000000000002,
+              "cache_write": 0.0,
+              "total": 0.00032680000000000003
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -22973,7 +23127,14 @@
             "output_tokens": 22,
             "total_tokens": 2026,
             "cached_input_tokens": 1792,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00008480000000000001,
+              "output": 0.0000352,
+              "cache_read": 0.00017920000000000002,
+              "cache_write": 0.0,
+              "total": 0.0002992
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -24770,7 +24931,14 @@
             "output_tokens": 2,
             "total_tokens": 2049,
             "cached_input_tokens": 1920,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0000508,
+              "output": 3.2000000000000003e-6,
+              "cache_read": 0.000192,
+              "cache_write": 0.0,
+              "total": 0.000246
+            }
           },
           "origin": {
             "api": "openai.chat",

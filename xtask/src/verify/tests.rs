@@ -1287,6 +1287,44 @@ fn a_decoder_names_no_extension_trait_in_any_import_form() {
 }
 
 #[test]
+fn a_decoder_writes_no_citation_past_the_fold() {
+    for source in [
+        "use crate::message::Citation;
+         fn cite() -> Citation { Citation { span: None, sources: Vec::new() } }",
+        "use crate::message::{citation::Span as S};
+         fn span() -> S { S { start: 0, end: 4 } }",
+        "use crate::message::Text;
+         fn cite(text: Text) -> Text { Text::with_citations(text, []) }",
+        "use crate::message::Text as T;
+         fn span(text: &T) { let _ = T::span(text, 0..4); }",
+        "fn spans(texts: &[crate::message::Text]) { texts.iter().map(crate::message::Text::span); }",
+        "fn cite(text: Text) -> Text { text.with_citations([]) }",
+        "fn span(text: &Text) { let _ = text.span(0..4); }",
+        "use crate::completion::message::citation;
+         fn cite(text: &mut Text) { citation::attach(text, Vec::new(), Vec::new(), \"p\", 0); }",
+    ] {
+        let findings = decoding(CHAT, source);
+        assert!(!findings.is_empty(), "{source}");
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.starts_with("extras-off-decode-path: ")),
+            "{findings:?}"
+        );
+    }
+    // Handing a citation to the fold, or a tracing span, passes.
+    for source in [
+        "use crate::wire::{SpanUnit, WireCitation, WireSpan};
+         fn cite(out: &mut Out<'_, Completion>) {
+             out.cite(0, WireCitation::new(Some(WireSpan::new(0, 4, SpanUnit::Chars)), Vec::new()));
+         }",
+        "fn trace() { let span = tracing::Span::current(); let _ = span.id(); }",
+    ] {
+        assert_eq!(decoding(CHAT, source), Vec::<String>::new(), "{source}");
+    }
+}
+
+#[test]
 fn a_companion_crates_extension_is_off_its_decode_path_too() {
     let findings = decoding(
         "crates/rig-bedrock/src/completion.rs",

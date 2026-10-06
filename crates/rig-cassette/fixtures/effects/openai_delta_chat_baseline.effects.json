@@ -143,7 +143,14 @@
             "output_tokens": 17,
             "total_tokens": 118,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0002525,
+              "output": 0.00017,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0004225
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -469,7 +476,14 @@
             "output_tokens": 2,
             "total_tokens": 128,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000315,
+              "output": 0.00002,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000335
+            }
           },
           "origin": {
             "api": "openai.chat",

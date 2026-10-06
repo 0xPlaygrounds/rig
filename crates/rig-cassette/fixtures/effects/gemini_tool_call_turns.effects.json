@@ -192,7 +192,14 @@
             "input_tokens": 199,
             "output_tokens": 101,
             "total_tokens": 300,
-            "reasoning_tokens": 82
+            "reasoning_tokens": 82,
+            "cost": {
+              "input": 0.000059699999999999994,
+              "output": 0.0002525,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0003122
+            }
           },
           "origin": {
             "api": "gemini.generate_content",
@@ -436,7 +443,14 @@
             "input_tokens": 314,
             "output_tokens": 74,
             "total_tokens": 388,
-            "reasoning_tokens": 55
+            "reasoning_tokens": 55,
+            "cost": {
+              "input": 0.0000942,
+              "output": 0.000185,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0002792
+            }
           },
           "origin": {
             "api": "gemini.generate_content",
@@ -722,7 +736,14 @@
             "input_tokens": 402,
             "output_tokens": 16,
             "total_tokens": 418,
-            "reasoning_tokens": 14
+            "reasoning_tokens": 14,
+            "cost": {
+              "input": 0.00012059999999999999,
+              "output": 0.00004,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0001606
+            }
           },
           "origin": {
             "api": "gemini.generate_content",

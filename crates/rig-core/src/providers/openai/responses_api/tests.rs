@@ -694,7 +694,13 @@ mod raw_capture {
         assert_eq!(response.identity(), refolded.identity());
         assert_eq!(response.finish_reason(), refolded.finish_reason());
         assert_eq!(response.model(), refolded.model());
-        assert_eq!(response.usage, refolded.usage);
+        // The cost prices the counters for each fold's request model, and
+        // the re-fold requested another one.
+        assert_eq!(response.usage.cost(None), refolded.usage.cost(None));
+        assert!(
+            response.usage.cost.is_some(),
+            "the catalog prices gpt-4o-mini"
+        );
         assert_eq!(response.choice, refolded.choice);
         assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
     }

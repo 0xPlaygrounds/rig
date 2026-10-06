@@ -213,7 +213,14 @@
             "total_tokens": 96,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000195,
+              "output": 0.00018,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000375
+            }
           },
           "origin": {
             "api": "openai.responses",
@@ -646,7 +653,14 @@
             "total_tokens": 107,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00026,
+              "output": 0.00003,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00029
+            }
           },
           "origin": {
             "api": "openai.responses",

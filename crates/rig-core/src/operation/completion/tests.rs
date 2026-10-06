@@ -1,12 +1,14 @@
 use serde_json::{Value, json};
 
 use super::{Block, CallFragment, Completion, Finish, Turn, events_of};
-use crate::completion::CompletionResponse;
+use crate::completion::{CompletionResponse, Cost, Usage};
 use crate::driver::{Decoded, decode_with};
 use crate::error::ProviderError;
-use crate::message::{AssistantContent, CallId, Reasoning, ToolCall, ToolName};
+use crate::message::{
+    AssistantContent, CallId, Reasoning, Source, SourceLocation, ToolCall, ToolName,
+};
 use crate::streaming::{Item, StreamEvent, Transcript};
-use crate::wire::Out;
+use crate::wire::{Out, SpanUnit, WireCitation, WireSpan};
 
 /// One reply written by `write`, then ended.
 fn write(
@@ -794,5 +796,291 @@ fn every_item_the_writer_emits_reads_back_on_its_own() {
             serde_json::from_value(value.clone()).expect("an item reads back");
         assert_eq!(back, item);
         assert_eq!(serde_json::to_value(&back).expect("serializes"), value);
+    }
+}
+
+/// One reply from `origin` written by `write`, then ended with `end`.
+fn write_from(
+    origin: crate::message::Origin,
+    end: Finish,
+    write: impl for<'id> FnOnce(&mut Out<'id, Completion>) -> Result<(), ProviderError>,
+) -> CompletionResponse {
+    response(decode_with(Turn::new(origin), "test", |reply| {
+        let mut out = reply.out();
+        write(&mut out)?;
+        let _ = out.end(end);
+        Ok(())
+    }))
+}
+
+fn url_source(url: &str) -> Source {
+    Source::new(SourceLocation::Url {
+        url: url.to_owned(),
+    })
+}
+
+fn cited(response: &CompletionResponse) -> Vec<(Option<String>, Vec<Source>)> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some(text),
+            _ => None,
+        })
+        .flat_map(|text| {
+            text.citations().iter().map(|citation| {
+                (
+                    text.cited(citation).map(str::to_owned),
+                    citation.sources.clone(),
+                )
+            })
+        })
+        .collect()
+}
+
+/// A citation that arrives before the text it covers resolves when the
+/// block closes, against the whole text.
+#[test]
+fn a_citation_resolves_when_its_text_closes() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, json!({"type": "text", "text": ""}))?;
+        out.push(0, "Le quai ")?;
+        out.cite(
+            0,
+            WireCitation::new(
+                Some(WireSpan::new(8, 19, SpanUnit::Chars).quoted("numéro sept")),
+                vec![url_source("https://a.example")],
+            ),
+        );
+        out.cite(
+            0,
+            WireCitation::new(None, vec![url_source("https://b.example")]),
+        );
+        out.push(0, "numéro sept est ouvert.")?;
+        out.finish(0)
+    });
+    let response = response(decoded);
+    assert_eq!(
+        cited(&response),
+        [
+            (
+                Some("numéro sept".to_owned()),
+                vec![url_source("https://a.example")]
+            ),
+            (
+                Some("Le quai numéro sept est ouvert.".to_owned()),
+                vec![url_source("https://b.example")]
+            ),
+        ]
+    );
+    // The provider item stays current: citations are not in the fingerprint.
+    assert!(response.choice[0].native_item().is_some());
+}
+
+/// A citation whose span does not fit, or covers other text than quoted,
+/// is dropped and the reply decodes as without it.
+#[test]
+fn a_citation_that_does_not_resolve_never_fails_the_reply() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, Value::Null)?;
+        out.push(0, "Dock Seven")?;
+        for span in [
+            WireSpan::new(0, 99, SpanUnit::Bytes),
+            WireSpan::new(0, 4, SpanUnit::Bytes).quoted("Pier"),
+        ] {
+            out.cite(
+                0,
+                WireCitation::new(Some(span), vec![url_source("https://a.example")]),
+            );
+        }
+        out.open(1, Block::Reasoning { redacted: false }, Value::Null)?;
+        out.push(1, "think")?;
+        out.cite(
+            1,
+            WireCitation::new(None, vec![url_source("https://b.example")]),
+        );
+        out.cite(
+            7,
+            WireCitation::new(None, vec![url_source("https://c.example")]),
+        );
+        out.finish(1)?;
+        out.finish(0)
+    });
+    let response = response(decoded);
+    assert!(cited(&response).is_empty());
+    assert_eq!(response.choice.len(), 2);
+}
+
+/// A provider that cites after the text closed, or restates its citations,
+/// reaches the block whether its end event is still queued or the fold
+/// already holds it.
+#[test]
+fn late_citations_land_on_the_closed_text() {
+    let decoded = write(|out| {
+        out.open(0, Block::Text, Value::Null)?;
+        out.push(0, "Dock Seven")?;
+        out.finish(0)?;
+        out.cite(
+            0,
+            WireCitation::new(
+                Some(WireSpan::new(5, 10, SpanUnit::Utf16).quoted("Seven")),
+                vec![url_source("https://a.example")],
+            ),
+        );
+        Ok(())
+    });
+    assert_eq!(
+        cited(&response(decoded)),
+        [(
+            Some("Seven".to_owned()),
+            vec![url_source("https://a.example")]
+        )]
+    );
+
+    // The consumer took the block before the provider cited it.
+    let mut turn = Turn::relayed("test");
+    let mut items = super::Items::new();
+    turn.open_item(&mut items, 0, Block::Text, Value::Null)
+        .expect("opens");
+    turn.push_item(&mut items, 0, "Dock Seven").expect("writes");
+    turn.close_item(&mut items, 0, super::Closing::Complete)
+        .expect("closes");
+    for item in items.drain(..) {
+        if let Ok(Item::Event(event)) = item {
+            crate::wire::Fold::<Completion>::absorb(&mut turn, &event).expect("absorbs");
+        }
+    }
+    let whole = |url: &str| WireCitation::new(None, vec![url_source(url)]);
+    turn.cite_item(&mut items, 0, vec![whole("https://a.example")], false);
+    turn.cite_item(&mut items, 0, vec![whole("https://b.example")], false);
+    let response = turn.response(Finish::default(), reply());
+    assert_eq!(cited(&response).len(), 2);
+    turn.cite_item(&mut items, 0, vec![whole("https://c.example")], true);
+    let response = turn.response(Finish::default(), reply());
+    assert_eq!(
+        cited(&response),
+        [(
+            Some("Dock Seven".to_owned()),
+            vec![url_source("https://c.example")]
+        )]
+    );
+}
+
+fn reply() -> crate::wire::Reply {
+    crate::wire::Reply {
+        provider: "test".to_owned(),
+        raw: Value::Null,
+        provider_request_id: None,
+    }
+}
+
+fn origin(provider: &str, model: &str) -> crate::message::Origin {
+    crate::message::Origin::new("test", provider, model)
+}
+
+fn tokens(input: u64, output: u64) -> Usage {
+    Usage::new()
+        .input_tokens(input)
+        .output_tokens(output)
+        .total_tokens(input + output)
+}
+
+fn close(left: f64, right: f64) -> bool {
+    (left - right).abs() <= 1e-12
+}
+
+/// A cost the provider reported is kept, whatever the catalog says.
+#[test]
+fn a_reported_cost_wins_over_the_catalog() {
+    let end = Finish {
+        usage: tokens(1_000, 100).cost(Cost::from_total(0.5)),
+        ..Finish::default()
+    };
+    let response = write_from(origin("anthropic", "claude-sonnet-4-6"), end, |_| Ok(()));
+    assert_eq!(response.usage.cost, Some(Cost::from_total(0.5)));
+}
+
+/// Without a reported cost the counters are priced at the catalog's
+/// prices for the requested model: cache reads and writes at their own
+/// prices, the rest of the input at the input price.
+#[test]
+fn an_unreported_cost_comes_from_the_catalog() {
+    // Claude Sonnet 4.6: 3, 15, 0.3 and 3.75 USD per million tokens.
+    let end = Finish {
+        usage: tokens(1_000_000, 100_000)
+            .cached_input_tokens(200_000)
+            .cache_creation_input_tokens(100_000),
+        ..Finish::default()
+    };
+    let response = write_from(origin("anthropic", "claude-sonnet-4-6"), end, |_| Ok(()));
+    let cost = response.usage.cost.expect("the catalog prices the model");
+    assert!(close(cost.input, 2.1), "{cost:?}");
+    assert!(close(cost.output, 1.5), "{cost:?}");
+    assert!(close(cost.cache_read, 0.06), "{cost:?}");
+    assert!(close(cost.cache_write, 0.375), "{cost:?}");
+    assert!(close(cost.total, 4.035), "{cost:?}");
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(1_000_000),
+        "tokens unchanged"
+    );
+
+    // A dated snapshot of a listed model has its price.
+    let end = Finish {
+        usage: tokens(1_000_000, 0),
+        ..Finish::default()
+    };
+    let response = write_from(
+        origin("anthropic", "claude-sonnet-4-6-20260101"),
+        end,
+        |_| Ok(()),
+    );
+    assert!(
+        response
+            .usage
+            .cost
+            .is_some_and(|cost| close(cost.total, 3.0))
+    );
+
+    // A cache read with no price of its own is charged as input.
+    let end = Finish {
+        usage: tokens(1_000_000, 0).cached_input_tokens(1_000_000),
+        ..Finish::default()
+    };
+    let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
+    let cost = response.usage.cost.expect("the catalog prices the model");
+    assert!(close(cost.cache_read, 0.003), "{cost:?}");
+    let end = Finish {
+        usage: tokens(1_000_000, 0).cache_creation_input_tokens(1_000_000),
+        ..Finish::default()
+    };
+    let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
+    let cost = response.usage.cost.expect("the catalog prices the model");
+    assert!(close(cost.cache_write, 0.15), "{cost:?}");
+}
+
+/// No cost is made up: an unlisted model, a model with no price, or a
+/// reply missing its input or output count has none.
+#[test]
+fn a_cost_is_none_without_a_price_or_counters() {
+    for (origin, usage) in [
+        (origin("anthropic", "not-in-the-catalog"), tokens(10, 10)),
+        (origin("test", "claude-sonnet-4-6"), tokens(10, 10)),
+        (origin("anthropic", "claude-sonnet-4-6"), Usage::new()),
+        (
+            origin("anthropic", "claude-sonnet-4-6"),
+            Usage::new().input_tokens(10),
+        ),
+        (
+            origin("anthropic", "claude-sonnet-4-6"),
+            Usage::new().output_tokens(10),
+        ),
+    ] {
+        let end = Finish {
+            usage,
+            ..Finish::default()
+        };
+        let response = write_from(origin.clone(), end, |_| Ok(()));
+        assert_eq!(response.usage.cost, None, "{origin:?}");
     }
 }

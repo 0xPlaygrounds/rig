@@ -5,7 +5,9 @@ use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{CacheRetention, Effort, GenerationOptions, Reasoning, UnsupportedOption};
+use crate::completion::{
+    CacheRetention, Cost, Effort, GenerationOptions, Reasoning, UnsupportedOption, Usage,
+};
 use crate::providers::registry::ProviderId;
 
 /// One model's facts: limits, input modalities, the reasoning and caching it
@@ -102,6 +104,30 @@ pub struct Pricing {
     pub cache_read: Option<f64>,
     /// Input written to the cache, or `None` when unknown.
     pub cache_write: Option<f64>,
+}
+
+impl Pricing {
+    /// What `usage` costs at these prices, or `None` unless it reports both
+    /// its input and output tokens. Uncached input is the input tokens less
+    /// those read from and written to the cache; cache reads and writes
+    /// with no price of their own are charged at [`Self::input`]. Every
+    /// cache write is charged at one price, so a provider that bills longer
+    /// retention higher costs more than this says.
+    pub fn cost(&self, usage: &Usage) -> Option<Cost> {
+        let input = usage.input_tokens?;
+        let output = usage.output_tokens?;
+        let read = usage.cached_input_tokens.unwrap_or(0);
+        let written = usage.cache_creation_input_tokens.unwrap_or(0);
+        let uncached = input.saturating_sub(read).saturating_sub(written);
+        // Token counts stay far below 2^53, so the conversion is exact.
+        let price = |tokens: u64, per_million: f64| tokens as f64 * per_million / 1_000_000.0;
+        Some(Cost::from_parts(
+            price(uncached, self.input),
+            price(output, self.output),
+            price(read, self.cache_read.unwrap_or(self.input)),
+            price(written, self.cache_write.unwrap_or(self.input)),
+        ))
+    }
 }
 
 /// When a model takes sampling parameters.

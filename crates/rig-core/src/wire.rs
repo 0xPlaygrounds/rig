@@ -22,9 +22,11 @@ pub use crate::observe::{
     AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink,
 };
 
+mod citation;
 pub mod document;
 pub(crate) mod secret;
 
+pub use citation::{SpanUnit, WireCitation, WireSpan};
 pub use secret::Secret;
 
 /// The request a wire sends, and how its reply is framed.

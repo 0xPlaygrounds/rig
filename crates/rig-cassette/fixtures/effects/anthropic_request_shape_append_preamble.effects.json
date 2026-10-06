@@ -81,7 +81,14 @@
             "output_tokens": 78,
             "total_tokens": 126,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.000144,
+              "output": 0.00117,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.001314
+            }
           },
           "origin": {
             "api": "anthropic.messages",

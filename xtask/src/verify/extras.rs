@@ -10,6 +10,12 @@
 //! facade, no `pub use` or `pub type` re-exports an extension item. Files are
 //! parsed with `syn`, and `use` trees (grouped, renamed, `self`, `super`,
 //! glob) and `type` aliases resolve names before they are matched.
+//!
+//! The same files may not write a citation past the completion fold: no
+//! `Citation` or `Span` struct expression, no call of `Text::with_citations`,
+//! `Text::span` or the fold's `citation::attach`, and no method call
+//! `.with_citations(..)` or `.span(x)`, whose receiver the guard cannot type.
+//! Decoders hand citations to `Out::cite`, which resolves their spans.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -26,6 +32,12 @@ const EXTENSION: &str = "extension";
 
 /// The names only extension modules may use.
 const EXTENSION_TRAITS: &[&str] = &["ReplyExtras", "ProviderExtension"];
+
+/// The types whose values only the completion fold and `Text` build.
+const CITATION_TYPES: &[&str] = &["Citation", "Span"];
+
+/// The `Text` methods that attach a citation or make a span.
+const CITATION_METHODS: &[&str] = &["with_citations", "span"];
 
 /// Where an extension item may not be re-exported, besides the decode
 /// roots: the facade and the rest of rig-core.
@@ -130,6 +142,24 @@ impl Guard<'_> {
         })
     }
 
+    /// What a resolved call path names that writes a citation past the fold.
+    fn citation_call(&self, segments: Vec<String>) -> Option<String> {
+        let resolved = read_through(&self.imports, segments.clone(), 0);
+        [segments, resolved]
+            .into_iter()
+            .find_map(|path| match path.as_slice() {
+                [.., owner, method]
+                    if (owner == "Text" && CITATION_METHODS.contains(&method.as_str()))
+                        || (owner == "citation" && method == "attach") =>
+                {
+                    Some(format!(
+                        "calls {owner}::{method}, which writes a citation past the fold"
+                    ))
+                }
+                _ => None,
+            })
+    }
+
     fn check_segments(
         &mut self,
         segments: Vec<String>,
@@ -173,7 +203,53 @@ fn is_pub(visibility: &syn::Visibility) -> bool {
     !matches!(visibility, syn::Visibility::Inherited)
 }
 
+fn segments(path: &syn::Path) -> Vec<String> {
+    path.segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect()
+}
+
 impl<'ast> Visit<'ast> for Guard<'_> {
+    fn visit_expr_struct(&mut self, expr: &'ast syn::ExprStruct) {
+        if self.decode {
+            let resolved = read_through(&self.imports, segments(&expr.path), 0);
+            if let Some(name) = resolved
+                .last()
+                .filter(|name| CITATION_TYPES.contains(&name.as_str()))
+            {
+                self.report(
+                    expr.span(),
+                    &format!("builds a {name} past the fold; hand a WireCitation to Out::cite"),
+                );
+            }
+        }
+        visit::visit_expr_struct(self, expr);
+    }
+
+    // A call's callee is a path expression, and so is the function passed
+    // as a value (`.map(Text::span)`).
+    fn visit_expr_path(&mut self, expr: &'ast syn::ExprPath) {
+        if self.decode
+            && let Some(what) = self.citation_call(segments(&expr.path))
+        {
+            self.report(expr.span(), &what);
+        }
+        visit::visit_expr_path(self, expr);
+    }
+
+    fn visit_expr_method_call(&mut self, expr: &'ast syn::ExprMethodCall) {
+        let method = expr.method.to_string();
+        let writes = method == "with_citations" || (method == "span" && expr.args.len() == 1);
+        if self.decode && writes {
+            self.report(
+                expr.span(),
+                &format!(".{method}(..) writes a citation past the fold"),
+            );
+        }
+        visit::visit_expr_method_call(self, expr);
+    }
+
     fn visit_item(&mut self, item: &'ast syn::Item) {
         if !is_cfg_test(item_attrs(item)) {
             visit::visit_item(self, item);

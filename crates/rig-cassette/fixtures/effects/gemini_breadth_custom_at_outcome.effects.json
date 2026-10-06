@@ -149,7 +149,14 @@
             "input_tokens": 102,
             "output_tokens": 95,
             "total_tokens": 197,
-            "reasoning_tokens": 75
+            "reasoning_tokens": 75,
+            "cost": {
+              "input": 0.0000306,
+              "output": 0.0002375,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0002681
+            }
           },
           "origin": {
             "api": "gemini.generate_content",
@@ -376,7 +383,14 @@
           "usage": {
             "input_tokens": 136,
             "output_tokens": 2,
-            "total_tokens": 138
+            "total_tokens": 138,
+            "cost": {
+              "input": 0.000040799999999999996,
+              "output": 5e-6,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000045799999999999995
+            }
           },
           "origin": {
             "api": "gemini.generate_content",
