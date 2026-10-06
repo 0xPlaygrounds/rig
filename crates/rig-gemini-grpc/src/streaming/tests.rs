@@ -116,34 +116,38 @@ async fn normalized_terminal(events: Vec<proto::GenerateContentResponse>) -> Com
     stream.finish().await.expect("the stream must end")
 }
 
-/// The load-bearing streaming capture property at the seam
-/// `Model::stream` routes through: the terminal's `raw` is
-/// Gemini's own terminal `GenerateContentResponse` — it deserializes back
-/// into that prost message and re-serializes identically — and
-/// re-normalizing that capture reproduces every normalized field. The
-/// raw `finish_reason` number and the last frame's text are only readable
-/// off the capture.
+/// A streamed reply's `raw` is the unary message its chunks add up to:
+/// the text parts joined, the terminal chunk's finish, usage and ids. It
+/// reads back into that prost message, equals the `raw` of the same reply
+/// served unary, and re-normalizing it reproduces every normalized field.
 #[tokio::test]
-async fn terminal_raw_round_trips_into_the_terminal_type() {
+async fn streamed_raw_is_the_unary_message_the_chunks_add_up_to() {
     let terminal =
         normalized_terminal(vec![response(vec![text_part("hi")], 0), terminal_frame()]).await;
+    let mut whole = terminal_frame();
+    for candidate in &mut whole.candidates {
+        candidate.content = Some(proto::Content {
+            parts: vec![text_part("hi!")],
+            role: "model".to_string(),
+        });
+    }
 
     let raw = &terminal.raw;
     let typed: proto::GenerateContentResponse =
         crate::rest::from_rest(raw.clone()).expect("raw must read back");
+    assert_eq!(typed, whole);
     assert_eq!(
-        crate::rest::to_rest(&typed).expect("transcodes"),
         *raw,
-        "the capture is exactly the terminal message's REST JSON"
+        complete(whole.clone())
+            .expect("the unary reply decodes")
+            .raw,
+        "the streamed raw is the unary raw of the same reply"
     );
-    assert_eq!(typed, terminal_frame());
     assert_eq!(
         raw.pointer("/candidates/0/finishReason"),
         Some(&serde_json::json!("STOP"))
     );
 
-    // Feeding the capture back through the same pipeline tells the same
-    // story as the terminal the stream produced.
     let renormalized = normalized_terminal(vec![typed]).await;
     assert_eq!(terminal.identity(), renormalized.identity());
     assert_eq!(terminal.finish_reason(), renormalized.finish_reason());

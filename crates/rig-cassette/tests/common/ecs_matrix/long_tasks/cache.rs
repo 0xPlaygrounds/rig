@@ -26,11 +26,7 @@ pub(crate) fn assert_usage(thinking: ThinkingWire, log: &EffectLog) -> Value {
         let raw = long_loop::raw_usage(thinking, record);
         assert_prompt_usage(&usage, raw);
         let raw_usage = match thinking {
-            ThinkingWire::Gemini => response
-                .raw
-                .get("usageMetadata")
-                .or_else(|| response.raw.get("usage_metadata"))
-                .expect("Gemini usage"),
+            ThinkingWire::Gemini => response.raw.get("usageMetadata").expect("Gemini usage"),
             _ => response.raw.get("usage").expect("wire usage"),
         };
         let count = |field: &str| raw_usage.get(field).and_then(Value::as_u64);

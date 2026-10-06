@@ -51,7 +51,7 @@ impl Wire for GenerateContent {
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
     type Decoder<'id> = crate::streaming::GrpcAdapter;
-    type Reassembler = crate::streaming::document::TerminalRecord;
+    type Reassembler = rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)

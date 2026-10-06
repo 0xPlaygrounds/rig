@@ -502,7 +502,7 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
     }
 }
 
-pub(crate) mod document;
+pub mod document;
 
 #[cfg(test)]
 mod tests;

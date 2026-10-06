@@ -389,7 +389,7 @@ fn merge_part(item: &mut Value, part: &Value) {
     }
 }
 
-pub(crate) mod document;
+pub mod document;
 
 #[cfg(test)]
 mod tests;

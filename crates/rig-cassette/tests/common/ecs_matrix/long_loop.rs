@@ -886,11 +886,7 @@ pub(crate) fn raw_usage(
             )
         }
         ThinkingWire::Gemini => {
-            let usage = if raw["usageMetadata"].is_object() {
-                &raw["usageMetadata"]
-            } else {
-                &raw["usage_metadata"]
-            };
+            let usage = &raw["usageMetadata"];
             assert!(
                 usage.is_object(),
                 "the Gemini record keeps its usage: {raw}"

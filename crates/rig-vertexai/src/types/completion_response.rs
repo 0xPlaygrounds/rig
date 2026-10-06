@@ -1,6 +1,7 @@
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
 use rig_core::operation::Completion;
+use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
 use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 use serde_json::{Map, Value};
@@ -8,23 +9,24 @@ use serde_json::{Map, Value};
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
-/// A Vertex AI reply's document: the REST JSON of its one response, which
-/// the transport also reports, since a streamed call re-emits the unary
-/// reply.
+/// A Vertex AI reply's document: its responses' REST JSON, rebuilt by the
+/// Gemini API's [`GenerateContentResponse`] fold. The transport reports the
+/// one response a call returns, so this is fed only by a reply that
+/// arrives without it.
 #[derive(Debug, Default)]
-pub struct VertexDocument(Option<Value>);
+pub struct VertexDocument(GenerateContentResponse);
 
 impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentResponse>
     for VertexDocument
 {
     fn absorb(&mut self, frame: &vertexai::model::GenerateContentResponse) {
         if let Ok(chunk) = rest_chunk(frame) {
-            self.0 = Some(Value::Object(chunk));
+            self.0.chunk(chunk);
         }
     }
 
     fn finish(self) -> Value {
-        self.0.unwrap_or(Value::Null)
+        self.0.document()
     }
 }
 

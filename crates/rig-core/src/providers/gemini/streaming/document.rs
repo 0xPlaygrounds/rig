@@ -1,135 +1,251 @@
-//! The GenerateContent reassembler.
+//! The GenerateContent reassembler: a `streamGenerateContent` reply's chunks
+//! rebuilt into the `generateContent` body the same turn has unary. The
+//! REST, Vertex AI and gRPC wires share it, each over its chunks' REST JSON.
 //!
-//! Interim: [`TerminalRecord`] rebuilds the streamed `raw` this wire wrote
-//! before replies were reassembled, so no recorded value moves with the
-//! mechanism. The Gemini family replaces it with the
-//! `GenerateContentResponse` reassembler of TYPED_OPTIONS.md section 9.
+//! ```
+//! use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
+//! use serde_json::json;
+//!
+//! let mut document = GenerateContentResponse::default();
+//! for text in ["Hel", "lo"] {
+//!     let chunk = json!({"candidates": [{"content": {"parts": [{"text": text}], "role": "model"}, "index": 0}]});
+//!     document.chunk(chunk.as_object().cloned().unwrap_or_default());
+//! }
+//! assert_eq!(document.document()["candidates"][0]["content"]["parts"], json!([{"text": "Hello"}]));
+//! ```
 
-use serde_json::{Map, Value, json};
+use serde_json::{Map, Value};
 
-use super::super::completion::blocked_prompt_error;
-use super::{GenerateContentChunk, GenerateContentDecoder};
+use super::{GenerateContentChunk, GenerateContentDecoder, merge_part};
 use crate::json_utils::Lenient;
 use crate::wire::document::Reassemble;
 use crate::wire::{Decoder, WireEvent, WireFrame};
 
-/// Interim GenerateContent reassembler: the summary record of a reply
-/// (`usage_metadata`, the Gemini `finish_reason`, `finish_message`,
-/// `model_version` and `response_id`), with the latest value of each. A
-/// reply with no finish reason, or one that failed in band, rebuilds
-/// nothing.
+/// The `generateContent` body a stream of chunks adds up to.
+///
+/// Candidates are kept by their `index`. Their parts append, and a text
+/// part continues the text part before it while `thought` stays the same,
+/// as the unary body states a run of text as one part: its text appends,
+/// a signature joins it unless both carry one, and its other fields
+/// replace. An empty text part with no signature carries nothing. A part
+/// that holds only a signature joins the part before it.
+/// `citationMetadata.citationSources` append. `promptFeedback` keeps its
+/// first value; every other field keeps its last non-null one, and a
+/// `null` only fills an absent field. A reply with no chunk has no
+/// document.
 #[derive(Debug, Default)]
-pub struct TerminalRecord {
+pub struct GenerateContentResponse {
     /// The decoder's classifier.
     classifier: GenerateContentDecoder,
-    finish: Option<String>,
-    finish_message: Option<String>,
-    usage: Option<Value>,
-    model_version: Option<String>,
-    response_id: Option<String>,
-    /// Whether the decoder ended the reply at a finish reason that is not
-    /// a stop, or failed.
-    closed: bool,
-    failed: bool,
+    document: Map<String, Value>,
+    /// The `index` of each candidate held, in order.
+    indices: Vec<u64>,
+    /// Signatures that arrived alone before any part of their candidate,
+    /// which the candidate's next part takes.
+    signatures: Vec<(u64, String)>,
 }
 
-impl TerminalRecord {
-    /// One chunk, as the decoder reads its metadata.
-    fn chunk(&mut self, data: &Value) {
-        if let Some(id) = data.str("responseId").filter(|id| !id.is_empty()) {
-            self.response_id = Some(id.to_owned());
+impl GenerateContentResponse {
+    /// Absorb one chunk, in REST JSON.
+    pub fn chunk(&mut self, chunk: Map<String, Value>) {
+        for (key, value) in chunk {
+            match (key.as_str(), value) {
+                ("candidates", Value::Array(candidates)) => {
+                    for (position, candidate) in candidates.into_iter().enumerate() {
+                        self.candidate(position, candidate);
+                    }
+                }
+                // Candidates of another type fail the decoder; the document
+                // keeps the ones it holds.
+                ("candidates", _) => {}
+                ("promptFeedback", value) => {
+                    if self.document.get(&key).is_none_or(Value::is_null) {
+                        self.document.insert(key, value);
+                    }
+                }
+                (_, value) => set(&mut self.document, key, value),
+            }
         }
-        if let Some(model) = data.str("modelVersion").filter(|model| !model.is_empty()) {
-            self.model_version = Some(model.to_owned());
+    }
+
+    /// The document the chunks add up to; `Null` when there were none.
+    pub fn document(self) -> Value {
+        if self.document.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(self.document)
         }
-        if let Some(usage) = data.get("usageMetadata") {
-            self.usage = Some(usage.clone());
-        }
-        if data.at("/error").is_some()
-            || data
-                .get("promptFeedback")
-                .and_then(blocked_prompt_error)
-                .is_some()
-        {
-            self.failed = true;
+    }
+
+    /// Fold one streamed candidate into the candidate of its `index`.
+    fn candidate(&mut self, position: usize, candidate: Value) {
+        let Value::Object(candidate) = candidate else {
             return;
-        }
-        let candidate = match data
-            .get("candidates")
-            .map(|candidates| (candidates, candidates.get(0)))
-        {
-            None | Some((Value::Null, _) | (Value::Array(_), None)) => return,
-            Some((Value::Array(_), Some(candidate @ Value::Object(_)))) => candidate,
-            Some(_) => {
-                self.failed = true;
-                return;
+        };
+        let index = candidate
+            .get("index")
+            .and_then(Value::as_u64)
+            .unwrap_or(position as u64);
+        let candidates = slot(&mut self.document, "candidates", Value::Array);
+        let Value::Array(candidates) = candidates else {
+            return;
+        };
+        let at = match self.indices.iter().position(|held| *held == index) {
+            Some(at) => at,
+            None => {
+                self.indices.push(index);
+                candidates.push(Value::Object(Map::new()));
+                candidates.len() - 1
             }
         };
-        match candidate.get("finishReason") {
-            Some(Value::String(name)) => self.finish = Some(name.clone()),
-            Some(Value::Number(number)) => self.finish = Some(format!("FINISH_REASON_{number}")),
-            _ => {}
-        }
-        if let Some(message) = candidate.str("finishMessage") {
-            self.finish_message = Some(message.to_owned());
-        }
-        let parts = match candidate.get("content") {
-            None | Some(Value::Null) => None,
-            Some(content @ Value::Object(_)) => content.get("parts"),
-            Some(_) => {
-                self.failed = true;
-                return;
-            }
-        };
-        if !matches!(parts, None | Some(Value::Null | Value::Array(_))) {
-            self.failed = true;
+        let Some(Value::Object(held)) = candidates.get_mut(at) else {
             return;
+        };
+        for (key, value) in candidate {
+            match (key.as_str(), value) {
+                ("content", Value::Object(content)) => {
+                    if let Value::Object(held) = slot(held, "content", Value::Object) {
+                        content_into(held, content, index, &mut self.signatures);
+                    }
+                }
+                ("citationMetadata", Value::Object(citations)) => {
+                    if let Value::Object(held) = slot(held, "citationMetadata", Value::Object) {
+                        for (key, value) in citations {
+                            match (key.as_str(), held.get_mut(&key), value) {
+                                (
+                                    "citationSources",
+                                    Some(Value::Array(sources)),
+                                    Value::Array(more),
+                                ) => {
+                                    sources.extend(more);
+                                }
+                                (_, _, value) => set(held, key, value),
+                            }
+                        }
+                    }
+                }
+                (_, value) => set(held, key, value),
+            }
         }
-        // The decoder ends the reply at once on a finish reason that is
-        // neither a stop nor the token limit.
-        use crate::completion::FinishReason::{Length, Stop};
-        let reason = self
-            .finish
-            .as_deref()
-            .map(super::super::completion::map_google_finish_reason);
-        self.closed = !matches!(
-            (reason, candidate.get("finishReason")),
-            (None | Some(Stop | Length), _) | (_, None)
-        );
     }
 }
 
-impl Reassemble<WireFrame> for TerminalRecord {
-    fn absorb(&mut self, frame: &WireFrame) {
-        if self.closed || self.failed {
+/// Fold a streamed candidate's `content` into the content held so far.
+fn content_into(
+    held: &mut Map<String, Value>,
+    content: Map<String, Value>,
+    index: u64,
+    signatures: &mut Vec<(u64, String)>,
+) {
+    for (key, value) in content {
+        let Value::Array(more) = value else {
+            set(held, key, value);
+            continue;
+        };
+        if key != "parts" {
+            set(held, key, Value::Array(more));
+            continue;
+        }
+        let Value::Array(parts) = slot(held, "parts", Value::Array) else {
+            return;
+        };
+        for part in more {
+            part_into(parts, part, index, signatures);
+        }
+    }
+}
+
+/// Append one streamed part to a candidate's parts, joining the part before
+/// it where the unary body states them as one.
+fn part_into(
+    parts: &mut Vec<Value>,
+    mut part: Value,
+    index: u64,
+    signatures: &mut Vec<(u64, String)>,
+) {
+    let signature = part
+        .str("thoughtSignature")
+        .filter(|signature| !signature.is_empty())
+        .map(str::to_owned);
+    if let Some(text) = part.str("text") {
+        if text.is_empty() && signature.is_none() {
             return;
         }
+        let thought = part.bool("thought") == Some(true);
+        if let Some(last) = parts.last_mut()
+            && last.str("text").is_some()
+            && (last.bool("thought") == Some(true)) == thought
+            && !(signed(last) && signature.is_some())
+        {
+            merge_part(last, &part);
+            return;
+        }
+    } else if let Value::Object(fields) = &part {
+        let bare = ["thought", "thoughtSignature", "partMetadata"];
+        let data = fields.keys().any(|key| !bare.contains(&key.as_str()));
+        if !data && let Some(signature) = signature {
+            match parts.last_mut().and_then(Value::as_object_mut) {
+                Some(last) => {
+                    last.insert("thoughtSignature".to_owned(), Value::String(signature));
+                }
+                None => signatures.push((index, signature)),
+            }
+            return;
+        }
+    }
+    if let Some(at) = signatures.iter().position(|(held, _)| *held == index)
+        && let Some(fields) = part.as_object_mut()
+    {
+        let (_, signature) = signatures.remove(at);
+        fields
+            .entry("thoughtSignature")
+            .or_insert(Value::String(signature));
+    }
+    parts.push(part);
+}
+
+/// Whether `part` holds a non-empty signature.
+fn signed(part: &Value) -> bool {
+    part.str("thoughtSignature")
+        .is_some_and(|signature| !signature.is_empty())
+}
+
+/// Set `key` to `value`: a non-null value replaces, and `null` only fills
+/// an absent key.
+fn set(map: &mut Map<String, Value>, key: String, value: Value) {
+    if !value.is_null() || !map.contains_key(&key) {
+        map.insert(key, value);
+    }
+}
+
+/// The value at `key`, made an empty `kind` (a list or an object) when it is
+/// absent or of another type.
+fn slot<'a, T: Default>(
+    map: &'a mut Map<String, Value>,
+    key: &str,
+    kind: fn(T) -> Value,
+) -> &'a mut Value {
+    let slot = map.entry(key).or_insert(Value::Null);
+    if std::mem::discriminant(slot) != std::mem::discriminant(&kind(T::default())) {
+        *slot = kind(T::default());
+    }
+    slot
+}
+
+impl Reassemble<WireFrame> for GenerateContentResponse {
+    fn absorb(&mut self, frame: &WireFrame) {
         // The driver reports what does not classify.
-        if let WireEvent::Known(GenerateContentChunk(data)) =
+        if let WireEvent::Known(GenerateContentChunk(chunk)) =
             self.classifier.classify(frame.clone())
         {
-            self.chunk(&Value::Object(data));
+            self.chunk(chunk);
         }
     }
 
     fn finish(self) -> Value {
-        if self.failed {
-            return Value::Null;
-        }
-        let Some(reason) = self.finish else {
-            return Value::Null;
-        };
-        let summary = json!({
-            "usage_metadata": self.usage.unwrap_or_else(|| Value::Object(Map::new())),
-            "finish_reason": reason,
-            "finish_message": self.finish_message,
-            "model_version": self.model_version,
-            "response_id": self.response_id,
-        });
-        let Value::Object(mut summary) = summary else {
-            return Value::Null;
-        };
-        summary.retain(|_, value| !value.is_null());
-        Value::Object(summary)
+        self.document()
     }
 }
+
+#[cfg(test)]
+mod tests;

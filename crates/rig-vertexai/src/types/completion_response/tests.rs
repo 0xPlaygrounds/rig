@@ -220,3 +220,32 @@ fn vertex_generate_content_output_round_trips_through_serde_json_value() {
         Some("resp-vertex-1")
     );
 }
+
+/// A reply that arrives in several responses rebuilds the one response
+/// Vertex AI would have sent whole, and a single response is its own REST
+/// JSON. A unit test: no Vertex AI recording exists.
+#[test]
+fn several_responses_rebuild_the_whole_one() {
+    use rig_core::wire::document::Reassemble;
+
+    let mut first = create_text_response("Hel");
+    for candidate in &mut first.candidates {
+        candidate.finish_reason = vertexai::model::candidate::FinishReason::Unspecified;
+    }
+    let rest = create_text_response("lo").set_model_version("gemini-2.5-flash-001");
+    let mut document = VertexDocument::default();
+    document.absorb(&first);
+    document.absorb(&rest);
+    let whole = create_text_response("Hello").set_model_version("gemini-2.5-flash-001");
+    assert_eq!(
+        document.finish(),
+        Value::Object(rest_chunk(&whole).expect("the response transcodes"))
+    );
+
+    let mut single = VertexDocument::default();
+    single.absorb(&whole);
+    assert_eq!(
+        single.finish(),
+        complete(whole).expect("the reply decodes").raw
+    );
+}

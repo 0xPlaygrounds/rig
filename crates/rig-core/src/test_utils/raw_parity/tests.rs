@@ -123,7 +123,65 @@ const PAIRS: &[Pair] = &[
         unary: "raw_capture_matrix/raw_exposes_forced_function_call.yaml",
         streamed: "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call.yaml",
         minted: &["/responseId"],
-        rebuilt: false,
+        rebuilt: true,
+    },
+    Pair {
+        provider: "gemini",
+        unary: "generate_tool_args/nested_arguments_roundtrip_nonstreaming.yaml",
+        streamed: "generate_tool_args/nested_arguments_streaming.yaml",
+        minted: &[
+            "/responseId",
+            "/candidates/0/content/parts/0/thoughtSignature",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "gemini",
+        unary: "corpus_breadth/output_tool_unary.yaml",
+        streamed: "corpus_breadth/output_tool_streamed.yaml",
+        minted: &[
+            "/responseId",
+            "/candidates/0/content/parts/0/thoughtSignature",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "gemini",
+        unary: "corpus_matrix/causal_completion_concurrent.yaml",
+        streamed: "corpus_matrix/causal_completion_streamed.yaml",
+        // Gemini 3 states no `finishMessage` on a streamed call turn.
+        minted: &[
+            "/responseId",
+            "/candidates/0/content/parts/0/thoughtSignature",
+            "/candidates/0/finishMessage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "gemini",
+        unary: "regression/structured_output_without_max_tokens.yaml",
+        streamed: "regression/streaming_structured_output_without_max_tokens.yaml",
+        // The two answers word the summary differently.
+        minted: &[
+            "/responseId",
+            "/candidates/0/content/parts/0/text",
+            "/candidates/0/content/parts/0/thoughtSignature",
+            "/usageMetadata",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "gemini",
+        unary: "auto_caching/support_chat_100_current_turn.yaml",
+        streamed: "auto_caching/support_chat_100_streamed.yaml",
+        // Gemini 3 states no `finishMessage` on a streamed call turn.
+        minted: &[
+            "/responseId",
+            "/candidates/0/content/parts/0/thoughtSignature",
+            "/candidates/0/finishMessage",
+            "/usageMetadata",
+        ],
+        rebuilt: true,
     },
     Pair {
         provider: "ollama",
@@ -517,6 +575,55 @@ async fn every_recorded_pair_agrees_once_its_api_is_rebuilt() {
         }
     }
     assert!(wrong.is_empty(), "{}", wrong.join("\n"));
+}
+
+/// Interactions has no recorded pair: the recorded unary interaction
+/// against the stream the same turn sends, hand-built in the event grammar
+/// `gemini/corpus_delta/interactions_baseline.yaml` records, whose
+/// `interaction.completed` is the resource without its steps.
+#[tokio::test]
+async fn interactions_rebuilds_the_recorded_unary_interaction() {
+    let unary = recorded("gemini/interactions_raw_capture_matrix/raw_roundtrips_interaction.yaml");
+    let mut interaction: Value =
+        serde_json::from_str(&unary).unwrap_or_else(|error| panic!("{error}"));
+    if let Some(interaction) = interaction.as_object_mut() {
+        interaction.shift_remove("steps");
+    }
+    let events = [
+        json!({"event_type": "interaction.created", "interaction": {
+            "id": interaction["id"], "model": interaction["model"],
+            "object": "interaction", "status": "in_progress",
+        }}),
+        json!({"event_type": "step.start", "index": 0, "step": {"type": "thought"}}),
+        json!({"event_type": "step.delta", "index": 0,
+            "delta": {"type": "thought_signature", "signature": "streamed"}}),
+        json!({"event_type": "step.stop", "index": 0}),
+        json!({"event_type": "step.start", "index": 1, "step": {"type": "model_output"}}),
+        json!({"event_type": "step.delta", "index": 1, "delta": {"type": "text", "text": "capt"}}),
+        json!({"event_type": "step.delta", "index": 1, "delta": {"type": "text", "text": "ured"}}),
+        json!({"event_type": "step.stop", "index": 1}),
+        json!({"event_type": "interaction.completed", "interaction": interaction}),
+    ];
+    let streamed: String = events
+        .iter()
+        .map(|event| {
+            format!(
+                "event: {}\ndata: {event}\n\n",
+                event["event_type"].as_str().unwrap_or_default()
+            )
+        })
+        .chain(["event: done\ndata: [DONE]\n\n".to_owned()])
+        .collect();
+    let wire = crate::providers::gemini::interactions_api::Interactions::new(
+        GeminiConfig::new("test-key"),
+        "gemini-3-flash-preview",
+    );
+    let (unary, streamed) = raw_pair(wire, unary, streamed)
+        .await
+        .unwrap_or_else(|error| panic!("the interaction decodes: {error}"));
+    let minted = ["/steps/0/signature"];
+    assert_eq!(comparable(&unary, &minted), comparable(&streamed, &minted));
+    assert_eq!(streamed["steps"][0]["signature"], "streamed");
 }
 
 /// A provider that recorded both a unary and a streamed capture matrix has

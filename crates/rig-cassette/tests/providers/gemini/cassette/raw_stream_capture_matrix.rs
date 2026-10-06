@@ -3,13 +3,11 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: the GenerateContent decoder builds its terminal
-//! record at EOF — a JSON object assembled from the stream's last
-//! `finishReason`, usage and metadata — and puts it onto the terminal
-//! [`rig::completion::CompletionResponse::raw`]. There is no opt-in and nothing
-//! about it reaches the wire; `raw` is `Value::Null` only on a terminal
-//! constructed without a provider stream behind it, never because capture
-//! "was not requested".
+//! Raw capture is always on: the GenerateContent reassembler rebuilds the
+//! `generateContent` body the same turn has unary from the stream's chunks
+//! (parts joined, the last finish, usage and ids) and the driver puts it
+//! onto the terminal [`rig::completion::CompletionResponse::raw`]. There is
+//! no opt-in and nothing about it reaches the wire.
 //!
 //! # Matrix
 //!
@@ -21,14 +19,13 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` is the record; raw `finish_reason` spelled `"STOP"` and `finish_message` == wire while the normalized terminal reports `ToolCalls`; the recorded frames carry `functionCall` | recorded |
+//! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` is the unary document; raw `finishReason` spelled `"STOP"` and `finishMessage` == wire while the normalized terminal reports `ToolCalls`; raw carries the streamed `functionCall`; the typed extras equal the unary recording's | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
 //! test is the plain `streamGenerateContent` route.
 //!
-//! Gemini's terminal record is assembled by the decoder from the stream's
-//! frames (usage is cumulative per chunk; `finishReason` arrives on the last
-//! content frame), so the "wire" side of each premise is the last frame that
+//! Usage is cumulative per chunk and `finishReason` arrives on the last
+//! content frame, so the "wire" side of each premise is the last frame that
 //! carries `usageMetadata`, read with the same `data:` framing the streaming
 //! tests use.
 //!
@@ -41,6 +38,7 @@
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
+use rig::providers::gemini::extension::Gemini;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
@@ -152,58 +150,6 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: the terminal record is recoverable
-// ---------------------------------------------------------------------------
-
-/// The fields of the terminal record the decoder builds at EOF.
-const TERMINAL_RECORD_FIELDS: &[&str] = &[
-    "usage_metadata",
-    "finish_reason",
-    "finish_message",
-    "model_version",
-    "response_id",
-];
-
-/// Assert `raw` is the decoder's terminal record: an object holding its
-/// usage and only the record's fields. Return its total token count.
-fn terminal_record_total_tokens(raw: &Value) -> Option<u64> {
-    let record = raw
-        .as_object()
-        .expect("raw must be Gemini's streaming terminal record");
-    for key in record.keys() {
-        assert!(
-            TERMINAL_RECORD_FIELDS.contains(&key.as_str()),
-            "the terminal record carries only its own fields, found `{key}` in {raw}"
-        );
-    }
-    for key in [
-        "finish_message",
-        "model_version",
-        "response_id",
-        "finish_reason",
-    ] {
-        assert!(
-            record.get(key).is_none_or(Value::is_string),
-            "the terminal record's `{key}` is a string: {raw}"
-        );
-    }
-    let usage = record
-        .get("usage_metadata")
-        .and_then(Value::as_object)
-        .expect("the terminal record carries its usage_metadata");
-    Some(
-        usage
-            .get("totalTokenCount")
-            .and_then(Value::as_u64)
-            .unwrap_or_default(),
-    )
-}
-
-// ---------------------------------------------------------------------------
-// 2: terminal-only fields are readable and match the wire
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // 3: a forced tool call keeps the wire's STOP while the terminal says ToolCalls
 // ---------------------------------------------------------------------------
 
@@ -237,38 +183,48 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
 
     let terminal = &drained.terminal;
     let raw = &terminal.raw;
-
-    // The record shape holds for a tool turn's terminal too.
-    let total_tokens = terminal_record_total_tokens(raw);
+    let candidate = raw
+        .pointer("/candidates/0")
+        .expect("raw is the unary document, with its candidate");
+    let called: Vec<&Value> = candidate
+        .pointer("/content/parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|part| part.get("functionCall"))
+        .collect();
     assert_eq!(
-        raw.get("response_id").and_then(Value::as_str),
+        called,
+        [&serde_json::json!({ "name": "add", "args": { "x": 2, "y": 3 } })],
+        "raw carries the streamed call part"
+    );
+    assert_eq!(
+        raw.get("responseId").and_then(Value::as_str),
         terminal.response_id()
     );
-    assert_eq!(total_tokens, terminal.usage.total_tokens);
 
     // The normalized terminal reports the reconciled ToolCalls …
     assert_eq!(terminal.finish_reason(), Some(FinishReason::ToolCalls));
     // … while raw keeps Gemini's own STOP.
     assert_eq!(
-        raw.get("finish_reason"),
+        candidate.get("finishReason"),
         Some(&Value::String("STOP".to_string())),
         "raw keeps Gemini's finishReason spelling on a call-only turn"
     );
 
     let last = last_usage_frame_of_function_call_stream(SCENARIO);
     assert_eq!(
-        raw.pointer("/usage_metadata/totalTokenCount"),
-        last.pointer("/usageMetadata/totalTokenCount"),
-        "{SCENARIO}: the captured terminal usage must be the last frame's total"
+        raw.get("usageMetadata"),
+        last.get("usageMetadata"),
+        "{SCENARIO}: the captured usage must be the last frame's"
     );
     assert_eq!(
-        raw.pointer("/usage_metadata/promptTokensDetails"),
-        last.pointer("/usageMetadata/promptTokensDetails"),
-        "raw must carry the terminal frame's promptTokensDetails on the tool turn too"
+        raw.pointer("/usageMetadata/totalTokenCount")
+            .and_then(Value::as_u64),
+        terminal.usage.total_tokens
     );
-    // Gemini annotates a call-only STOP with a `finishMessage`; the terminal
-    // record keeps it as `finish_message`, and the normalized terminal has no
-    // home for it.
+    // Gemini annotates a call-only STOP with a `finishMessage`, which the
+    // normalized terminal has no home for.
     assert!(
         last.pointer("/candidates/0/finishMessage")
             .and_then(Value::as_str)
@@ -276,8 +232,32 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         "{SCENARIO}: the recorded call-only turn should carry Gemini's finishMessage"
     );
     assert_eq!(
-        raw.get("finish_message"),
+        candidate.get("finishMessage"),
         last.pointer("/candidates/0/finishMessage"),
         "raw must carry the wire's finishMessage untouched"
     );
+
+    // The typed extras read the streamed document as they read the unary
+    // recording of the same prompt; only the minted response id differs.
+    let extras = |raw: Value| {
+        let mut response = terminal.clone();
+        response.raw = raw;
+        response
+            .extras::<Gemini>()
+            .expect("a Gemini API reply has Gemini extras")
+            .expect("the document holds the extras' shape")
+    };
+    let streamed = extras(raw.clone());
+    let mut unary = extras(crate::cassettes::recorded_json_response(
+        PROVIDER,
+        "raw_capture_matrix/raw_exposes_forced_function_call",
+    ));
+    assert_eq!(streamed.response_id.as_deref(), terminal.response_id());
+    assert_eq!(
+        streamed.finish_message.as_deref(),
+        Some("Model generated function call(s).")
+    );
+    assert_eq!(streamed.service_tier.as_deref(), Some("standard"));
+    unary.response_id = streamed.response_id.clone();
+    assert_eq!(streamed, unary);
 }
