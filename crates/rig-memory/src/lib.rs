@@ -338,6 +338,9 @@ impl HeuristicTokenCounter {
             AssistantContent::Image(_) => self.per_attachment_tokens,
             // A provider-only item is sent back to the model that made it.
             AssistantContent::Opaque(opaque) => self.bytes_to_tokens(opaque.item.to_string().len()),
+            other => self.bytes_to_tokens(
+                rig_core::serde_json::to_string(other).map_or(0, |json| json.len()),
+            ),
         }
     }
 }

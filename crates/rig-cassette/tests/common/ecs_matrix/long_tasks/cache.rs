@@ -84,15 +84,14 @@ pub(crate) fn reported_totals(usages: &[Usage]) -> Usage {
                 .expect("bounded reported total"),
         )
     }
-    Usage {
-        input_tokens: sum(usages, |u| u.input_tokens),
-        output_tokens: sum(usages, |u| u.output_tokens),
-        total_tokens: sum(usages, |u| u.total_tokens),
-        cached_input_tokens: sum(usages, |u| u.cached_input_tokens),
-        cache_creation_input_tokens: sum(usages, |u| u.cache_creation_input_tokens),
-        reasoning_tokens: sum(usages, |u| u.reasoning_tokens),
-        tool_use_prompt_tokens: sum(usages, |u| u.tool_use_prompt_tokens),
-    }
+    Usage::new()
+        .input_tokens(sum(usages, |u| u.input_tokens))
+        .output_tokens(sum(usages, |u| u.output_tokens))
+        .total_tokens(sum(usages, |u| u.total_tokens))
+        .cached_input_tokens(sum(usages, |u| u.cached_input_tokens))
+        .cache_creation_input_tokens(sum(usages, |u| u.cache_creation_input_tokens))
+        .reasoning_tokens(sum(usages, |u| u.reasoning_tokens))
+        .tool_use_prompt_tokens(sum(usages, |u| u.tool_use_prompt_tokens))
 }
 
 fn assert_unique(seen: &mut BTreeSet<String>, identity: String) {

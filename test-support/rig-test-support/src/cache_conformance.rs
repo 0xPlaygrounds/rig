@@ -261,21 +261,16 @@ impl CacheProbe {
     /// order because a reordered tool set is itself one of the prefix moves this
     /// harness exists to catch.
     fn request(&self, chat_history: Vec<Message>) -> CompletionRequest {
-        CompletionRequest {
-            chat_history: std::iter::once(Message::system(self.preamble.clone()))
+        let mut request = CompletionRequest::from(
+            std::iter::once(Message::system(self.preamble.clone()))
                 .chain(chat_history)
                 .collect::<Vec<_>>(),
-            documents: vec![],
-            tools: self.tools.clone(),
-            temperature: Some(0.0),
-            max_tokens: Some(self.max_tokens),
-            tool_choice: None,
-            additional_params: self.additional_params.clone(),
-            model: None,
-            output_schema: None,
-            record_telemetry_content: false,
-            accept_unknown_finish_reasons: false,
-        }
+        );
+        request.tools = self.tools.clone();
+        request.temperature = Some(0.0);
+        request.max_tokens = Some(self.max_tokens);
+        request.additional_params = self.additional_params.clone();
+        request
     }
 }
 
@@ -399,10 +394,7 @@ pub async fn run_cache_probe(
     let first = send(&model, probe, vec![opening.clone()], "turn 1 (warm)").await;
     let second = send(&model, probe, vec![opening.clone()], "turn 2 (hit)").await;
 
-    let assistant = Message::Assistant(rig_core::message::AssistantMessage {
-        content: second.choice.clone(),
-        ..second.head()
-    });
+    let assistant = Message::Assistant(second.head().with_content(second.choice.clone()));
     let follow_up = Message::User {
         content: vec![UserContent::text(probe.follow_up)],
     };

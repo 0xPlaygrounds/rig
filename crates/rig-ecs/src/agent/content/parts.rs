@@ -104,11 +104,10 @@ impl AssistantHead {
 
     /// The assistant message of `content` under this head.
     pub fn message(&self, content: Vec<AssistantContent>) -> AssistantMessage {
-        AssistantMessage {
-            content,
-            origin: self.origin.clone(),
-            stop: self.stop.clone(),
-        }
+        AssistantMessage::default()
+            .with_origin(self.origin.clone())
+            .with_stop(self.stop.clone())
+            .with_content(content)
     }
 }
 
@@ -314,6 +313,7 @@ fn prepare(
                         AssistantContent::ToolCall(value) => ContentPart::ToolCall(value),
                         AssistantContent::Reasoning(value) => ContentPart::Reasoning(value),
                         AssistantContent::Opaque(value) => ContentPart::Opaque(value),
+                        _ => return Err(ContentError::Shape),
                     };
                     Ok((part, Vec::new()))
                 })

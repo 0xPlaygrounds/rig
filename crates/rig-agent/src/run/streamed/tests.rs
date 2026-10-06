@@ -317,12 +317,10 @@ fn streamed_run_completes_a_tool_roundtrip() {
     let add = tool_call("tc_1", "add");
     let mut asm = assembler();
     ingest_all(&mut asm, &items([call(0, &add)]));
-    let usage = Usage {
-        input_tokens: Some(5),
-        output_tokens: Some(7),
-        total_tokens: Some(12),
-        ..Usage::default()
-    };
+    let usage = Usage::new()
+        .input_tokens(5)
+        .output_tokens(7)
+        .total_tokens(12);
     run.record_streamed_completion_call(
         usage,
         rig_core::completion::ResponseIdentity::default(),

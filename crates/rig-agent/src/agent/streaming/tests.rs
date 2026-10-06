@@ -366,12 +366,10 @@ fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
-    Usage {
-        input_tokens: Some(input_tokens),
-        output_tokens: Some(output_tokens),
-        total_tokens: Some(input_tokens + output_tokens),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input_tokens)
+        .output_tokens(output_tokens)
+        .total_tokens(input_tokens + output_tokens)
 }
 
 #[tokio::test]
@@ -1605,14 +1603,8 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
 
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let first_usage = Usage {
-        total_tokens: Some(4),
-        ..Default::default()
-    };
-    let second_usage = Usage {
-        total_tokens: Some(6),
-        ..Default::default()
-    };
+    let first_usage = Usage::new().total_tokens(4);
+    let second_usage = Usage::new().total_tokens(6);
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
@@ -1938,14 +1930,8 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         delta_hook.observed()
     );
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let first_usage = Usage {
-        total_tokens: Some(4),
-        ..Default::default()
-    };
-    let second_usage = Usage {
-        total_tokens: Some(6),
-        ..Default::default()
-    };
+    let first_usage = Usage::new().total_tokens(4);
+    let second_usage = Usage::new().total_tokens(6);
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),

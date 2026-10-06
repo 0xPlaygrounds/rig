@@ -52,10 +52,7 @@ pub fn assistant_message(head: AssistantMessage, choice: Vec<AssistantContent>) 
     if choice.is_empty() {
         return None;
     }
-    Some(Message::Assistant(AssistantMessage {
-        content: choice,
-        ..head
-    }))
+    Some(Message::Assistant(head.with_content(choice)))
 }
 
 /// The assistant message for a generated turn, or `None` for an empty turn

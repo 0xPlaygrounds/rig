@@ -112,12 +112,10 @@ fn tool_names(names: &[&str]) -> BTreeSet<String> {
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
-    Usage {
-        input_tokens: Some(input_tokens),
-        output_tokens: Some(output_tokens),
-        total_tokens: Some(input_tokens + output_tokens),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input_tokens)
+        .output_tokens(output_tokens)
+        .total_tokens(input_tokens + output_tokens)
 }
 
 /// The provider document of a turn these tests build by hand: there is no
@@ -326,10 +324,7 @@ fn tool_roundtrip_threads_history_and_usage() {
 /// A turn that calls `add` and ends with `stop` at `finish`.
 fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
     ModelTurn::new(
-        rig_core::message::AssistantMessage {
-            stop: Some(stop),
-            ..Default::default()
-        },
+        AssistantMessage::default().with_stop(stop),
         vec![
             AssistantContent::text("checking"),
             tool_call("call_1", "add"),

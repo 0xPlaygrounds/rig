@@ -257,22 +257,11 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
-    let request = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: agent.additional_params.clone(),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let mut request = completion::CompletionRequest::from(vec![
+        Message::system(agent.preamble.clone()),
+        turn1_prompt.clone(),
+    ]);
+    request.additional_params = agent.additional_params.clone();
 
     let mut stream = agent.model.stream(request).expect("Turn 1 stream");
 
@@ -310,23 +299,15 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
-    let request2 = completion::CompletionRequest {
-        chat_history: vec![
+    let request2 = {
+        let mut request = completion::CompletionRequest::from(vec![
             Message::system(agent.preamble.clone()),
             turn1_prompt,
             turn1_assistant,
             turn2_prompt,
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: agent.additional_params.clone(),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
+        ]);
+        request.additional_params = agent.additional_params.clone();
+        request
     };
 
     let mut stream2 = agent.model.stream(request2).expect("Turn 2 stream");
@@ -362,22 +343,11 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
     };
 
-    let request = completion::CompletionRequest {
-        chat_history: vec![
-            Message::system(agent.preamble.clone()),
-            turn1_prompt.clone(),
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: agent.additional_params.clone(),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let mut request = completion::CompletionRequest::from(vec![
+        Message::system(agent.preamble.clone()),
+        turn1_prompt.clone(),
+    ]);
+    request.additional_params = agent.additional_params.clone();
 
     let response = agent.model.call(request).await.expect("Turn 1 completion");
 
@@ -404,23 +374,15 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
     };
 
-    let request2 = completion::CompletionRequest {
-        chat_history: vec![
+    let request2 = {
+        let mut request = completion::CompletionRequest::from(vec![
             Message::system(agent.preamble.clone()),
             turn1_prompt,
             turn1_assistant,
             turn2_prompt,
-        ],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: agent.additional_params.clone(),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
+        ]);
+        request.additional_params = agent.additional_params.clone();
+        request
     };
 
     let response2 = agent

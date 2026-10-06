@@ -193,10 +193,7 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
                 rig_core::message::AssistantContent::ToolCall(call) => {
                     Some(call.function.arguments_value().to_string())
                 }
-                rig_core::message::AssistantContent::Text(_)
-                | rig_core::message::AssistantContent::Reasoning(_)
-                | rig_core::message::AssistantContent::Image(_)
-                | rig_core::message::AssistantContent::Opaque(_) => None,
+                _ => None,
             })
             .expect("the output tool's call"),
         other => panic!("a completion: {other:?}"),

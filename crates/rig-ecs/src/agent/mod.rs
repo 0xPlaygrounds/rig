@@ -758,9 +758,7 @@ pub enum Failure {
 pub struct RunResult(pub String);
 
 /// The run's token usage, summed over its completions.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Usage(#[reflect(remote = crate::agent::reflect::UsageReflect)] pub WireUsage);
 

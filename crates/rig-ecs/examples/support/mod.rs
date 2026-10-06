@@ -87,21 +87,18 @@ impl Serve for Scripted {
                                         }
                                     }
                                 }
-                                AssistantContent::ToolCall(call) => {
+                                AssistantContent::ToolCall(call)
                                     if writer
                                         .tool_call(
                                             call.function.name.clone(),
                                             call.function.arguments_value(),
                                         )
                                         .await
-                                        .is_err()
-                                    {
-                                        return;
-                                    }
+                                        .is_err() =>
+                                {
+                                    return;
                                 }
-                                AssistantContent::Reasoning(_)
-                                | AssistantContent::Image(_)
-                                | AssistantContent::Opaque(_) => {}
+                                _ => {}
                             }
                         }
                         writer.raw(serde_json::json!({ "provider": "scripted" }));

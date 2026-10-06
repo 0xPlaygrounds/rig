@@ -1220,8 +1220,6 @@ mod citations_and_cost {
     }
 }
 
-// P1 removes this gate.
-#[cfg(any())]
 mod usage_cost_sum {
     //! Summing usage sums cost only when every summed turn has one: a turn
     //! with an unknown cost makes the total unknown rather than too low. The

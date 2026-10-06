@@ -174,10 +174,7 @@ impl Source {
         );
         vec![
             Message::user(TOOL_USER_PROMPT),
-            Message::Assistant(rig_core::message::AssistantMessage {
-                content: reply.choice.clone(),
-                ..reply.head()
-            }),
+            Message::Assistant(reply.head().with_content(reply.choice.clone())),
             Message::User { content: results },
         ]
     }

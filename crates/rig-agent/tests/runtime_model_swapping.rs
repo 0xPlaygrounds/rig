@@ -51,10 +51,7 @@ where
 }
 
 fn usage(total_tokens: u64) -> Usage {
-    Usage {
-        total_tokens: Some(total_tokens),
-        ..Usage::default()
-    }
+    Usage::new().total_tokens(total_tokens)
 }
 
 #[derive(Clone)]

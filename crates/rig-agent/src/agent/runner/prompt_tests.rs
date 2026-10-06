@@ -164,24 +164,20 @@ impl AgentHook for RetryDefaultApiHook {
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
-    Usage {
-        input_tokens: Some(input_tokens),
-        output_tokens: Some(output_tokens),
-        total_tokens: Some(input_tokens + output_tokens),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input_tokens)
+        .output_tokens(output_tokens)
+        .total_tokens(input_tokens + output_tokens)
 }
 
 #[test]
 fn typed_prompt_response_serializes_with_serialize_only_output() {
     let response = TypedPromptResponse::new(
         SerializeOnly { value: "ok" },
-        Usage {
-            input_tokens: Some(1),
-            output_tokens: Some(2),
-            total_tokens: Some(3),
-            ..Usage::default()
-        },
+        Usage::new()
+            .input_tokens(1)
+            .output_tokens(2)
+            .total_tokens(3),
     );
 
     let json = serde_json::to_string(&response).expect("serialize typed prompt response");
@@ -404,12 +400,10 @@ fn prompt_response_serialize_and_deserialize_agree_on_wire_shape() {
 
 #[tokio::test]
 async fn typed_prompt_response_preserves_completion_calls() {
-    let call_usage = Usage {
-        input_tokens: Some(4),
-        output_tokens: Some(6),
-        total_tokens: Some(10),
-        ..Usage::default()
-    };
+    let call_usage = Usage::new()
+        .input_tokens(4)
+        .output_tokens(6)
+        .total_tokens(10);
     let turn = MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage);
     let raw = turn.raw().expect("a scripted turn has a document");
     let model = MockCompletionModel::from_turns([turn]);
@@ -730,18 +724,14 @@ async fn invalid_specific_tool_choice_fails_before_non_streaming_provider_reques
 
 #[tokio::test]
 async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
-    let first_call_usage = Usage {
-        input_tokens: Some(1),
-        output_tokens: Some(1),
-        total_tokens: Some(2),
-        ..Usage::default()
-    };
-    let second_call_usage = Usage {
-        input_tokens: Some(1),
-        output_tokens: Some(1),
-        total_tokens: Some(2),
-        ..Usage::default()
-    };
+    let first_call_usage = Usage::new()
+        .input_tokens(1)
+        .output_tokens(1)
+        .total_tokens(2);
+    let second_call_usage = Usage::new()
+        .input_tokens(1)
+        .output_tokens(1)
+        .total_tokens(2);
     let first_turn = MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
         .with_call_id("call_1")
         .with_usage(first_call_usage);
@@ -760,12 +750,10 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     assert!(response.output().is_empty());
     assert_eq!(
         response.usage,
-        Usage {
-            input_tokens: Some(2),
-            output_tokens: Some(2),
-            total_tokens: Some(4),
-            ..Usage::default()
-        }
+        Usage::new()
+            .input_tokens(2)
+            .output_tokens(2)
+            .total_tokens(4)
     );
     assert_eq!(
         response.completion_calls(),

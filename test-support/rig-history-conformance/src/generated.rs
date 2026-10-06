@@ -223,11 +223,9 @@ fn other_turn(rng: &mut Rng) -> AssistantMessage {
         4 => StopReason::Stop,
         _ => StopReason::ToolUse,
     };
-    AssistantMessage {
-        content,
-        origin: Some(Origin::new("other.api", "other", "other-model")),
-        stop: Some(stop),
-    }
+    AssistantMessage::new(content)
+        .with_origin(Origin::new("other.api", "other", "other-model"))
+        .with_stop(stop)
 }
 
 /// `turn`, one of the model's own, edited as a hook or repair edits one:
@@ -246,7 +244,7 @@ fn edited(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
                     serde_json::json!({"q": "edited"}),
                 );
             }
-            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
+            _ => {}
         }
     }
     turn
@@ -256,15 +254,13 @@ fn edited(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
 /// aborted, as a reply mid-history that never finished.
 fn cut(rng: &mut Rng, turn: &AssistantMessage) -> AssistantMessage {
     let keep = 1 + rng.below(turn.content.len().max(1));
-    AssistantMessage {
-        content: turn.content.iter().take(keep).cloned().collect(),
-        stop: Some(if rng.chance(50) {
+    turn.clone()
+        .with_content(turn.content.iter().take(keep).cloned().collect())
+        .with_stop(if rng.chance(50) {
             StopReason::Length
         } else {
             StopReason::Aborted("the run stopped".to_owned())
-        }),
-        ..turn.clone()
-    }
+        })
 }
 
 /// Results for some of `turn`'s calls, some repeated and one orphan; a
@@ -359,15 +355,13 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
                         .iter()
                         .any(|block| matches!(block, AssistantContent::Reasoning(_))) =>
             {
-                AssistantMessage {
-                    content: turn
-                        .content
+                turn.clone().with_content(
+                    turn.content
                         .iter()
                         .filter(|block| matches!(block, AssistantContent::Reasoning(_)))
                         .cloned()
                         .collect(),
-                    ..turn.clone()
-                }
+                )
             }
             Some(turn) if rng.chance(15) => edited(rng, turn),
             Some(turn) if rng.chance(10) => cut(rng, turn),
@@ -765,6 +759,7 @@ pub(crate) fn render(history: &[Message]) -> String {
                         AssistantContent::Reasoning(_) => "reasoning".to_owned(),
                         AssistantContent::Image(_) => "image".to_owned(),
                         AssistantContent::Opaque(_) => "opaque".to_owned(),
+                        _ => "other".to_owned(),
                     })
                     .collect::<Vec<_>>()
                     .join(", ")

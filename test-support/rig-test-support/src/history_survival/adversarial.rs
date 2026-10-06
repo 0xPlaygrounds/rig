@@ -43,19 +43,11 @@ fn lookup() -> ToolDefinition {
 
 /// A request over `history` with the lookup tool and `params`.
 pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![lookup()],
-        temperature: None,
-        max_tokens: Some(max_tokens),
-        tool_choice: None,
-        additional_params: params,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = vec![lookup()];
+    request.max_tokens = Some(max_tokens);
+    request.additional_params = params;
+    request
 }
 
 fn text(choice: &[AssistantContent]) -> String {
@@ -80,10 +72,7 @@ fn result(call: CallId, record: &str) -> UserContent {
 }
 
 fn assistant(reply: &CompletionResponse) -> Message {
-    Message::Assistant(rig_core::message::AssistantMessage {
-        content: reply.choice.clone(),
-        ..reply.head()
-    })
+    Message::Assistant(reply.head().with_content(reply.choice.clone()))
 }
 
 /// Two completed lookups that both used the call id `id`, then a question

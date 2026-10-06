@@ -42,19 +42,11 @@ fn request(
     tools: Vec<ToolDefinition>,
     params: Option<Value>,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools,
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: params,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = tools;
+    request.max_tokens = Some(1024);
+    request.additional_params = params;
+    request
 }
 
 /// Generate the swatch, `side` pixels square when given, and return its bytes.
@@ -137,10 +129,7 @@ pub async fn as_tool_result<W, T>(
         .expect("the model calls render_swatch");
     let history = vec![
         prompt,
-        Message::Assistant(rig_core::message::AssistantMessage {
-            content: first.choice.clone(),
-            ..first.head()
-        }),
+        Message::Assistant(first.head().with_content(first.choice.clone())),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),

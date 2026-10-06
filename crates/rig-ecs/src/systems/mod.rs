@@ -293,10 +293,7 @@ impl TurnRead {
     fn calls(&self) -> impl Iterator<Item = &rig_core::completion::message::ToolCall> {
         self.content.iter().filter_map(|part| match part {
             AssistantContent::ToolCall(call) => Some(call),
-            AssistantContent::Text(_)
-            | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_)
-            | AssistantContent::Opaque(_) => None,
+            _ => None,
         })
     }
 }
@@ -1867,11 +1864,7 @@ pub fn land_batch(
                 AssistantContent::ToolCall(call) if call.function.name == name => {
                     Some(call.function.arguments_value().to_string())
                 }
-                AssistantContent::ToolCall(_)
-                | AssistantContent::Text(_)
-                | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_)
-                | AssistantContent::Opaque(_) => None,
+                _ => None,
             })
         });
         match output_call {
@@ -2033,10 +2026,7 @@ fn edited_content(
             Resolution::Ignore => {
                 content.retain(|part| match part {
                     AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
-                    AssistantContent::Text(_)
-                    | AssistantContent::Reasoning(_)
-                    | AssistantContent::Image(_)
-                    | AssistantContent::Opaque(_) => true,
+                    _ => true,
                 });
             }
             Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}

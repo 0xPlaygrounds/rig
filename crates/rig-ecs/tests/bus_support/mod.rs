@@ -294,10 +294,7 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
             .iter()
             .filter_map(|content| match content {
                 AssistantContent::Text(text) => Some(text.text.clone()),
-                AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_)
-                | AssistantContent::Opaque(_)
-                | AssistantContent::ToolCall(_) => None,
+                _ => None,
             })
             .collect(),
         other => panic!("not a completion: {other:?}"),

@@ -11,12 +11,12 @@ use rig_agent::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
 // ---------------------------------------------------------------------------
 
 fn simple_text_turn() -> MockTurn {
-    MockTurn::text("hello from mock").with_usage(Usage {
-        input_tokens: Some(10),
-        output_tokens: Some(5),
-        total_tokens: Some(15),
-        ..Default::default()
-    })
+    MockTurn::text("hello from mock").with_usage(
+        Usage::new()
+            .input_tokens(10)
+            .output_tokens(5)
+            .total_tokens(15),
+    )
 }
 
 fn simple_text_model(turns: usize) -> MockCompletionModel {
@@ -25,18 +25,18 @@ fn simple_text_model(turns: usize) -> MockCompletionModel {
 
 fn tool_then_text_model() -> MockCompletionModel {
     MockCompletionModel::from_turns([
-        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3})).with_usage(Usage {
-            input_tokens: Some(15),
-            output_tokens: Some(8),
-            total_tokens: Some(23),
-            ..Default::default()
-        }),
-        MockTurn::text("The answer is 5").with_usage(Usage {
-            input_tokens: Some(20),
-            output_tokens: Some(4),
-            total_tokens: Some(24),
-            ..Default::default()
-        }),
+        MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3})).with_usage(
+            Usage::new()
+                .input_tokens(15)
+                .output_tokens(8)
+                .total_tokens(23),
+        ),
+        MockTurn::text("The answer is 5").with_usage(
+            Usage::new()
+                .input_tokens(20)
+                .output_tokens(4)
+                .total_tokens(24),
+        ),
     ])
 }
 

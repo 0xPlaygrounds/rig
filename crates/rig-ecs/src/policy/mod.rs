@@ -139,19 +139,18 @@ pub fn fold_request(
     if chat_history.is_empty() {
         return Err(crate::agent::content::parts::ContentError::Missing);
     }
-    Ok(CompletionRequest {
-        model: None,
-        chat_history,
-        documents: graph.documents.clone(),
-        tools,
-        temperature: graph.temperature,
-        max_tokens: graph.max_tokens,
-        tool_choice: graph.tool_choice.cloned(),
-        additional_params: graph.additional_params.cloned(),
-        output_schema,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: graph.accept_unknown_finish_reasons,
-    })
+    // Fields are assigned, not set through the builder, whose setters log
+    // shadowed `additional_params` keys the program already declared.
+    let mut request = CompletionRequest::from(chat_history);
+    request.documents = graph.documents.clone();
+    request.tools = tools;
+    request.temperature = graph.temperature;
+    request.max_tokens = graph.max_tokens;
+    request.tool_choice = graph.tool_choice.cloned();
+    request.additional_params = graph.additional_params.cloned();
+    request.output_schema = output_schema;
+    request.accept_unknown_finish_reasons = graph.accept_unknown_finish_reasons;
+    Ok(request)
 }
 
 /// The system message: the preamble with the output mode's augmentation,

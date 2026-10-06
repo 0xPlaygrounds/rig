@@ -590,10 +590,7 @@ fn judge_turn(
             .iter()
             .filter_map(|part| match part {
                 AssistantContent::Text(text) => Some(text.text.as_str()),
-                AssistantContent::ToolCall(_)
-                | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_)
-                | AssistantContent::Opaque(_) => None,
+                _ => None,
             })
             .collect();
         for hook in hooks.hooks {
