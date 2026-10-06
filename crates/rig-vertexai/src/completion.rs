@@ -56,24 +56,27 @@ impl Wire for GenerateContent {
     }
 
     /// The REST wire's request, read into the SDK's types: every field the
-    /// shared encoder builds reaches Vertex AI.
+    /// shared encoder builds reaches Vertex AI. The SDK's spellings of the
+    /// contents and its `model` key are part of the wire's own encoding, so
+    /// `additional_params` merges over them.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
     ) -> Result<vertexai::model::GenerateContentRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let mut body = rest::request_body(request, self, &model)?;
-        let contents = body
-            .get_mut("contents")
-            .and_then(serde_json::Value::as_array_mut);
-        let mut images = 0;
-        for content in contents.into_iter().flatten() {
-            standard_signatures(content);
-            referenced_media(content, &mut images);
-        }
-        body.insert("model".to_owned(), model.into());
-        Ok(serde_json::from_value(serde_json::Value::Object(body))?)
+        let body = rest::request_body(&request, self, &model, None, |body| {
+            let contents = body
+                .get_mut("contents")
+                .and_then(serde_json::Value::as_array_mut);
+            let mut images = 0;
+            for content in contents.into_iter().flatten() {
+                standard_signatures(content);
+                referenced_media(content, &mut images);
+            }
+            body.insert("model".to_owned(), model.clone().into());
+        })?;
+        Ok(body.deserialize()?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -149,12 +152,14 @@ fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
 }
 
 impl rig_core::completion::ReplayTarget for GenerateContent {
+    /// The GenerateContent mapping, for Vertex AI's tiers.
     fn map_options(
         &self,
-        _request: &rig_core::completion::CompletionRequest,
+        request: &rig_core::completion::CompletionRequest,
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
-        rig_core::completion::options::unmapped(fields)
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        rest::generate_content_options(model, rest::Route::Vertex, fields)
     }
 
     fn api(&self) -> rig_core::message::Api {
@@ -202,7 +207,7 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
     /// Tools in `additional_params` or a cached content count, as on the
     /// REST wire.
     fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
-        rest::declares_tools(request)
+        rest::declares_tools(self, request)
     }
 }
 

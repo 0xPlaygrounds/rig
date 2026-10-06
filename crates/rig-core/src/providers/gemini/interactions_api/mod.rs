@@ -75,7 +75,7 @@ impl crate::wire::Wire for Interactions {
         // `stream` is part of the request body on this wire, so the mode is
         // in the bytes as well as in the path.
         let streaming = matches!(mode, Mode::Streaming);
-        let body = create_request_body(self, request, Some(streaming))?;
+        let body = create_request_body(self, &request, Some(streaming))?;
         let (path, framing, target) = match streaming {
             true => (
                 "/v1beta/interactions?alt=sse",
@@ -99,7 +99,7 @@ impl crate::wire::Wire for Interactions {
                 crate::providers::gemini::GeminiConfig::INTERACTIONS_KEY_HEADER,
                 self.provider.api_key.expose(),
             )
-            .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))?;
+            .body(body.into_body())?;
         // Gemini supplies no transport request-id response header.
         Ok(crate::wire::Encoded::new(request, framing))
     }
@@ -110,12 +110,14 @@ impl crate::wire::Wire for Interactions {
 }
 
 impl ReplayTarget for Interactions {
+    /// Section 6.4 of the typed-options design, for Interactions.
     fn map_options(
         &self,
-        _request: &crate::completion::CompletionRequest,
+        request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        crate::completion::options::unmapped(fields)
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        super::options::interactions(model, fields)
     }
 
     fn api(&self) -> crate::message::Api {
@@ -142,10 +144,7 @@ impl ReplayTarget for Interactions {
     /// A request naming `previous_interaction_id` continues an interaction
     /// the API stored, which holds the calls its first results answer.
     fn continues_stored(&self, request: &CompletionRequest) -> bool {
-        request
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.get("previous_interaction_id"))
+        crate::completion::options::param(self, request, "previous_interaction_id")
             .is_some_and(|id| !id.is_null())
     }
 
@@ -249,14 +248,26 @@ impl crate::wire::Wire for InteractionResume {
             .replay(self)
     }
 
-    /// Reads an existing interaction, so the request carries no body and the
-    /// [`CompletionRequest`] contributes nothing: what to read is the wire's
-    /// own data.
+    /// Reads an existing interaction, so the request carries no body: what
+    /// to read is the wire's own data. A request that sets options or
+    /// `additional_params` is refused, since nothing would send them.
     fn encode(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
         mode: Mode,
     ) -> Result<crate::wire::Encoded, EncodeError> {
+        let params = crate::completion::options::request_params(
+            self,
+            &request,
+            |_| Ok(Map::new()),
+            crate::completion::options::RawAt::Top,
+            &[],
+        )?;
+        if !params.is_empty() {
+            return Err(EncodeError::request(
+                "a resumed interaction takes no `additional_params`: it is read, not created",
+            ));
+        }
         let id = &self.interaction_id;
         let (path, framing) = match mode {
             Mode::Unary => (
@@ -288,12 +299,41 @@ impl crate::wire::Wire for InteractionResume {
 }
 
 impl ReplayTarget for InteractionResume {
+    /// A resumed interaction is read, not created, so every set option is
+    /// refused.
     fn map_options(
         &self,
-        _request: &crate::completion::CompletionRequest,
+        _request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        crate::completion::options::unmapped(fields)
+        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        let refuse = |set: bool| match set {
+            true => Mapping::unsupported(
+                "a resumed interaction is read, not created; its options were fixed when it was \
+                 created",
+            ),
+            false => Mapping::Nothing,
+        };
+        OptionMap {
+            reasoning: refuse(reasoning.is_some()),
+            cache: refuse(cache.is_some()),
+            service_tier: refuse(service_tier.is_some()),
+            verbosity: refuse(verbosity.is_some()),
+            parallel_tool_calls: refuse(parallel_tool_calls.is_some()),
+            top_p: refuse(top_p.is_some()),
+            seed: refuse(seed.is_some()),
+            stop: refuse(!stop.is_empty()),
+        }
     }
 
     fn api(&self) -> crate::message::Api {
@@ -332,44 +372,53 @@ impl ReplayTarget for InteractionResume {
     }
 }
 
-/// The create-interaction body `request` sends on `wire`. `additional_params`
-/// is merged into the body as the API names its fields: its
-/// `generation_config` is the base the typed fields override, its `tools`
-/// add to the request's, and an `agent` replaces the model. System messages
-/// become the system instruction. `stream`, when set, overrides the one the
-/// parameters name.
+/// The create-interaction body `request` sends on `wire`: the wire's own
+/// encoding, then the mapped options, then `additional_params`, merged by
+/// [`request_params`](crate::completion::options::request_params). Its
+/// `generation_config` merges over the typed fields key by key, its `tools`
+/// add to the request's, and an `agent` takes the place of the model.
+/// System messages become the system instruction. `stream`, when set,
+/// overrides the one the parameters name.
 ///
 /// # Errors
 ///
-/// When `additional_params` is not an object, or sets `response_format`
-/// without `response_mime_type`.
+/// When an option is refused, `additional_params` is not an object, its
+/// `tools` are not an array, or it sets `response_format` without
+/// `response_mime_type`.
 pub(crate) fn create_request_body(
     wire: &Interactions,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     stream: Option<bool>,
-) -> Result<Value, EncodeError> {
+) -> Result<crate::completion::options::FinalBody, EncodeError> {
+    let rewrites: Vec<_> = stream
+        .map(crate::completion::options::Rewrite::Stream)
+        .into_iter()
+        .collect();
+    crate::completion::options::request_params(
+        wire,
+        request,
+        |input| create_base(wire, request, input),
+        crate::completion::options::RawAt::Top,
+        &rewrites,
+    )
+}
+
+/// The wire's own encoding of `request`: model, input steps, system
+/// instruction, tools and the typed fields in `generation_config`.
+fn create_base(
+    wire: &Interactions,
+    request: &CompletionRequest,
+    input: &mut crate::completion::options::BaseInput<'_>,
+) -> Result<Map<String, Value>, EncodeError> {
     let model = request.model.clone().unwrap_or_else(|| wire.model.clone());
-    let mut body = match request.additional_params {
-        None | Some(Value::Null) => Map::new(),
-        Some(Value::Object(params)) => params,
-        Some(_) => {
-            return Err(EncodeError::request(
-                "Gemini Interactions `additional_params` should be an object",
-            ));
-        }
-    };
-    let set = |key: &str| body.get(key).is_some_and(|value| !value.is_null());
+    let set = |key: &str| input.param(key).is_some_and(|value| !value.is_null());
     let agent = set("agent");
     if set("response_format") && !set("response_mime_type") {
         return Err(EncodeError::request(
             "response_mime_type is required when response_format is set",
         ));
     }
-    let mut config = match body.shift_remove("generation_config") {
-        Some(Value::Object(config)) => config,
-        _ => Map::new(),
-    };
-    let choice = request.tool_choice.map(|choice| match choice {
+    let choice = request.tool_choice.clone().map(|choice| match choice {
         Choice::Auto => json!("auto"),
         Choice::None => json!("none"),
         Choice::Required => json!("any"),
@@ -377,51 +426,45 @@ pub(crate) fn create_request_body(
             json!({ "allowed_tools": { "mode": "validated", "tools": function_names } })
         }
     });
-    let temperature = ("temperature", request.temperature.map(Value::from));
-    let max_tokens = ("max_output_tokens", request.max_tokens.map(Value::from));
-    for (key, value) in [temperature, max_tokens, ("tool_choice", choice)] {
-        if let Some(value) = value {
-            config.insert(key.to_owned(), value);
+    let config: Map<String, Value> = [
+        ("temperature", request.temperature.map(Value::from)),
+        ("max_output_tokens", request.max_tokens.map(Value::from)),
+        ("tool_choice", choice),
+    ]
+    .into_iter()
+    .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+    .collect();
+    let mut tools: Vec<Value> = request
+        .tools
+        .iter()
+        .map(|tool| json!({ "type": "function", "name": tool.name, "description": tool.description, "parameters": tool.parameters }))
+        .collect();
+    tools.extend(input.raw_tools()?);
+    let (mut system, mut history) = (Vec::new(), Vec::new());
+    for message in &request.chat_history {
+        match message {
+            Message::System { content } => system.push(content.clone()),
+            message => history.push(message.clone()),
         }
     }
-    config.retain(|_, value| !value.is_null());
+    let mut body = Map::new();
     if !config.is_empty() {
         body.insert("generation_config".to_owned(), Value::Object(config));
     }
-    let mut tools: Vec<Value> = request
-        .tools
-        .into_iter()
-        .map(|tool| json!({ "type": "function", "name": tool.name, "description": tool.description, "parameters": tool.parameters }))
-        .collect();
-    if let Some(Value::Array(extra)) = body.shift_remove("tools") {
-        tools.extend(extra);
-    }
     if !tools.is_empty() {
         body.insert("tools".to_owned(), Value::Array(tools));
-    }
-    let (mut system, mut history) = (Vec::new(), Vec::new());
-    for message in request.chat_history {
-        match message {
-            Message::System { content } => system.push(content),
-            message => history.push(message),
-        }
     }
     if !system.is_empty() {
         body.insert("system_instruction".to_owned(), json!(system.join("\n\n")));
     }
     if !agent {
-        body.shift_remove("agent_config");
         body.insert("model".to_owned(), json!(model));
-    }
-    if let Some(stream) = stream {
-        body.insert("stream".to_owned(), json!(stream));
     }
     body.insert(
         "input".to_owned(),
         Value::Array(steps(history, wire, &model)?),
     );
-    body.retain(|_, value| !value.is_null());
-    Ok(Value::Object(body))
+    Ok(body)
 }
 
 /// The steps `history` sends: a user message's content grouped into

@@ -23,7 +23,9 @@ fn contents_for(history: Vec<message::Message>, model: &str) -> Result<Vec<Value
 
 /// The request body the REST wire builds for `request` to `model`.
 fn body_for(request: CompletionRequest, model: &str) -> Map<String, Value> {
-    request_body(request, &wire(model), model).expect("the request encodes")
+    request_body(&request, &wire(model), model, None, |_| {})
+        .and_then(|body| Ok(body.deserialize()?))
+        .expect("the request encodes")
 }
 
 /// The parts of `content`.

@@ -42,6 +42,8 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use serde_json::{Map, Value, json};
 
 pub use super::cached_content::with_cached_content;
+pub use super::options::{Route, generate_content_options};
+use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -52,7 +54,7 @@ use crate::message::{
 use crate::operation::Completion;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
-use crate::wire::{Body, Descriptor, Encoded, Framing, Mode, Wire};
+use crate::wire::{Descriptor, Encoded, Framing, Mode, Wire};
 
 /// Provider name used in normalized responses, streams, and telemetry.
 pub const PROVIDER_NAME: &str = "gcp.gemini";
@@ -170,15 +172,20 @@ impl Wire for GenerateContent {
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
         // The request may name a model of its own; the wire's is the default.
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let mut body = request_body(request, self, &model)?;
-        if let Some(name) = self.cached_content.as_deref() {
-            with_cached_content(&mut body, name)?;
-        }
-        if let (ThoughtReplay::CurrentTurn, Some(Value::Array(contents))) =
-            (self.thought_replay, body.get_mut("contents"))
-        {
-            drop_finished_signatures(contents);
-        }
+        let replay = self.thought_replay;
+        let body = request_body(
+            &request,
+            self,
+            &model,
+            self.cached_content.as_deref(),
+            |body| {
+                if let (ThoughtReplay::CurrentTurn, Some(Value::Array(contents))) =
+                    (replay, body.get_mut("contents"))
+                {
+                    drop_finished_signatures(contents);
+                }
+            },
+        )?;
         use crate::providers::internal::LogTarget;
         // `alt=sse` is what makes the streamed reply an event stream rather
         // than a JSON array of the same chunks.
@@ -194,7 +201,7 @@ impl Wire for GenerateContent {
         let uri = self.provider.uri(&format!("/v1beta/models/{model}:{verb}"));
         let request = http::Request::post(uri)
             .header("Content-Type", "application/json")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+            .body(body.into_body())?;
         // Gemini supplies no transport request-id response header.
         Ok(Encoded::new(request, framing)
             .with_projection(super::streaming::GenerateContentDecoder::project)
@@ -207,14 +214,6 @@ impl Wire for GenerateContent {
 }
 
 impl ReplayTarget for GenerateContent {
-    fn map_options(
-        &self,
-        _request: &crate::completion::CompletionRequest,
-        fields: crate::completion::options::OptionFields<'_>,
-    ) -> crate::completion::options::OptionMap {
-        crate::completion::options::unmapped(fields)
-    }
-
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("gemini.generate_content")
     }
@@ -255,20 +254,34 @@ impl ReplayTarget for GenerateContent {
     }
 
     fn declares_tools(&self, request: &crate::completion::CompletionRequest) -> bool {
-        self.cached_content.is_some() || declares_tools(request)
+        self.cached_content.is_some() || declares_tools(self, request)
+    }
+
+    /// Section 6.4 of the typed-options design, for the Gemini API.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        generate_content_options(model, Route::Rest, fields)
     }
 }
 
-/// Whether `request` declares tools on a GenerateContent wire: in `tools`,
-/// in the `tools` of its `additional_params`, or through a `cachedContent`
-/// handle there, since a cache holds its function declarations.
-pub fn declares_tools(request: &crate::completion::CompletionRequest) -> bool {
-    let params = request.additional_params.as_ref();
+/// Whether `request` declares tools on `target`, a GenerateContent wire: in
+/// `tools`, in the `tools` of its `additional_params`, or through a
+/// `cachedContent` handle there, since a cache holds its function
+/// declarations.
+pub fn declares_tools(
+    target: &dyn ReplayTarget,
+    request: &crate::completion::CompletionRequest,
+) -> bool {
+    let param = |key: &str| crate::completion::options::param(target, request, key);
     !request.tools.is_empty()
-        || params.is_some_and(|params| !params.arr("tools").is_empty())
-        || params
-            .and_then(Value::as_object)
-            .is_some_and(|params| present(params, &CACHED_CONTENT).is_some())
+        || param("tools").is_some_and(|tools| !tools.as_array().is_none_or(Vec::is_empty))
+        || CACHED_CONTENT
+            .iter()
+            .any(|spelling| param(spelling).is_some_and(|value| !value.is_null()))
 }
 
 /// Where a GenerateContent part holds its call's id, on every wire that
@@ -280,7 +293,7 @@ pub const CALL_ID_SLOT: Option<&str> = Some("/functionCall/id");
 /// not Gemini's. A Gemini id that names no version, such as the alias
 /// `gemini-flash-latest`, is the current generation (`u32::MAX`), so every
 /// rule reads an alias as the newest model.
-fn gemini_major(model: &str) -> Option<u32> {
+pub(super) fn gemini_major(model: &str) -> Option<u32> {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
     let rest = model.strip_prefix("gemini-")?;
@@ -379,55 +392,57 @@ pub fn normalize_tool_call_id(model: &str, id: &str) -> String {
 
 /// The REST `GenerateContentRequest` body `request` sends to `model` on
 /// `target`, a GenerateContent wire. The REST wire sends it; the Vertex AI
-/// and gRPC wires transcode it into their SDK and protobuf requests.
+/// and gRPC wires read it into their SDK and protobuf requests.
 ///
 /// System messages become the system instruction, and the rest the
-/// contents. `additional_params` is merged into the body: its `tools` add
-/// to the request's, its `generationConfig` is the base the typed fields
-/// override, and a `cachedContent` handle is checked as
-/// [`GenerateContent::with_cached_content`] checks one. The fields Gemini's
-/// request shape leaves unset are sent as `null`, as recorded requests
-/// spell them.
+/// contents. `adjust` finishes the wire's own encoding (a transport's
+/// spellings of `contents`, a `model` key) before [`request_params`] merges
+/// the mapped options and then `additional_params` over it: its `tools`
+/// add to the request's, its `generationConfig` merges over the typed
+/// fields key by key, and a `cachedContent` handle, like `cached_content`,
+/// is checked as [`GenerateContent::with_cached_content`] checks one. The
+/// fields Gemini's request shape leaves unset are sent as `null`, as
+/// recorded requests spell them.
 ///
 /// # Errors
 ///
-/// When `additional_params` is malformed, a tool's parameters are no
-/// schema Gemini reads, or a field is set two ways.
+/// When an option is refused, `additional_params` is malformed, a tool's
+/// parameters are no schema Gemini reads, or a field is set two ways.
 pub fn request_body(
-    request: CompletionRequest,
+    request: &CompletionRequest,
     target: &dyn ReplayTarget,
     model: &str,
+    cached_content: Option<&str>,
+    adjust: impl FnOnce(&mut Map<String, Value>),
+) -> Result<FinalBody, EncodeError> {
+    request_params(
+        target,
+        request,
+        |input| {
+            let mut body = base(request, target, model, input)?;
+            adjust(&mut body);
+            Ok(body)
+        },
+        RawAt::Top,
+        &[Rewrite::GeminiCachedContent(
+            cached_content.map(str::to_owned),
+        )],
+    )
+}
+
+/// The wire's own encoding of `request`: contents, system instruction,
+/// tools, tool choice and the typed fields in `generationConfig`.
+fn base(
+    request: &CompletionRequest,
+    target: &dyn ReplayTarget,
+    model: &str,
+    input: &mut BaseInput<'_>,
 ) -> Result<Map<String, Value>, EncodeError> {
-    let mut params = match request.additional_params {
-        None | Some(Value::Null) => Map::new(),
-        Some(Value::Object(params)) => params,
-        Some(other) => return Err(invalid("additional_params", "an object", &other)),
-    };
-    let extra_tools = match params.shift_remove("tools") {
-        None => Vec::new(),
-        Some(Value::Array(tools)) => tools,
-        Some(other) => return Err(invalid("additional_params.tools", "a list", &other)),
-    };
-    let mut handles = Vec::new();
-    for spelling in CACHED_CONTENT {
-        match params.shift_remove(spelling) {
-            None => {}
-            Some(Value::String(name)) => handles.push(name),
-            Some(other) => {
-                return Err(invalid(
-                    &format!("additional_params.{spelling}"),
-                    "a string",
-                    &other,
-                ));
-            }
-        }
-    }
-    let mut config = match params.shift_remove("generationConfig") {
-        None | Some(Value::Null) => None,
-        Some(Value::Object(config)) => Some(config),
-        Some(other) => return Err(invalid("generationConfig", "an object", &other)),
-    };
-    let schema = request.output_schema.map(|schema| schema.to_value());
+    let extra_tools = input.raw_tools()?;
+    let schema = request
+        .output_schema
+        .clone()
+        .map(|schema| schema.to_value());
     let mime = schema.as_ref().map(|_| json!("application/json"));
     let (temperature, max_tokens) = (
         request.temperature.map(Value::from),
@@ -437,18 +452,18 @@ pub fn request_body(
         ("responseMimeType", mime),
         ("responseJsonSchema", schema),
         ("temperature", temperature),
+        ("maxOutputTokens", max_tokens),
     ];
-    for (key, value) in typed.into_iter().chain([("maxOutputTokens", max_tokens)]) {
-        if let Some(value) = value {
-            config.get_or_insert_default().insert(key.to_owned(), value);
-        }
-    }
+    let config: Map<String, Value> = typed
+        .into_iter()
+        .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+        .collect();
     let (mut system, mut history) = (Vec::new(), Vec::new());
-    for message in request.chat_history {
+    for message in &request.chat_history {
         match message {
             Message::System { content } if content.is_empty() => {}
-            Message::System { content } => system.push(text_part(content)),
-            message => history.push(message),
+            Message::System { content } => system.push(text_part(content.clone())),
+            message => history.push(message.clone()),
         }
     }
     // Gemini rejects a field set twice, and merges a tool choice set twice,
@@ -460,7 +475,10 @@ pub fn request_body(
         (request.tool_choice.is_some(), &TOOL_CONFIG, choice),
     ];
     for (set, spellings, what) in twice {
-        if let (true, Some(spelling)) = (set, present(&params, spellings)) {
+        let raw = spellings
+            .iter()
+            .find(|spelling| input.param(spelling).is_some_and(|value| !value.is_null()));
+        if let (true, Some(spelling)) = (set, raw) {
             return Err(EncodeError::request(format!(
                 "a Gemini request set the {what} and as `additional_params.{spelling}`. Set it \
                  one way or the other"
@@ -469,7 +487,8 @@ pub fn request_body(
     }
     let declared = request
         .tools
-        .into_iter()
+        .iter()
+        .cloned()
         .map(declaration)
         .collect::<Vec<_>>();
     let declared = (!declared.is_empty())
@@ -477,23 +496,25 @@ pub fn request_body(
     let tools: Vec<Value> = declared.into_iter().chain(extra_tools).collect();
     let contents = Value::Array(contents(history, target, model)?);
     let system = (!system.is_empty()).then(|| json!({ "parts": system, "role": "model" }));
-    let tool_config = request.tool_choice.map_or(Value::Null, calling_config);
-    let mut body = object([
+    let tool_config = request
+        .tool_choice
+        .clone()
+        .map_or(Value::Null, calling_config);
+    Ok(object([
         ("contents", Some(contents)),
         (
             "generationConfig",
-            Some(config.map_or(Value::Null, Value::Object)),
+            Some(if config.is_empty() {
+                Value::Null
+            } else {
+                Value::Object(config)
+            }),
         ),
         ("safetySettings", Some(Value::Null)),
         ("toolConfig", Some(tool_config)),
         ("systemInstruction", Some(system.unwrap_or(Value::Null))),
         ("tools", (!tools.is_empty()).then_some(Value::Array(tools))),
-    ]);
-    body.extend(params);
-    for name in handles {
-        with_cached_content(&mut body, &name)?;
-    }
-    Ok(body)
+    ]))
 }
 
 /// A tool as its function declaration: its JSON Schema goes as
@@ -514,10 +535,6 @@ fn object<const N: usize>(entries: [(&str, Option<Value>); N]) -> Map<String, Va
     entries
         .filter_map(|(key, value)| Some((key.to_owned(), value?)))
         .collect()
-}
-
-fn invalid(field: &str, expected: &str, got: &Value) -> EncodeError {
-    EncodeError::request(format!("Gemini `{field}` should be {expected}, got {got}"))
 }
 
 /// Proto3 JSON accepts both lowerCamelCase and original proto field names.

@@ -67,9 +67,10 @@ impl Wire for GenerateContent {
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let mut body = rest::request_body(request, self, &model)?;
-        body.insert("model".to_owned(), format!("models/{model}").into());
-        Ok(crate::rest::from_rest(serde_json::Value::Object(body))?)
+        let body = rest::request_body(&request, self, &model, None, |body| {
+            body.insert("model".to_owned(), format!("models/{model}").into());
+        })?;
+        Ok(crate::rest::from_rest(serde_json::to_value(&body)?)?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -130,7 +131,7 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
     /// Tools in `additional_params` or a cached content count, as on the
     /// REST wire.
     fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
-        rest::declares_tools(request)
+        rest::declares_tools(self, request)
     }
 }
 

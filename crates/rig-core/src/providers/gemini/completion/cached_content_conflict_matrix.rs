@@ -18,7 +18,7 @@ const MODEL: &str = "gemini-2.5-flash";
 
 fn build(system: bool, tools: bool, tool_choice: bool) -> Map<String, Value> {
     request_body(
-        CompletionRequest {
+        &CompletionRequest {
             tool_choice: tool_choice.then_some(ToolChoice::Auto),
             ..CompletionRequest::from(
                 system
@@ -41,7 +41,10 @@ fn build(system: bool, tools: bool, tool_choice: bool) -> Map<String, Value> {
         },
         &GenerateContent::new(GeminiConfig::new("k"), MODEL),
         MODEL,
+        None,
+        |_| {},
     )
+    .and_then(|body| Ok(body.deserialize()?))
     .expect("request should build")
 }
 

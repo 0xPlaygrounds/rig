@@ -63,8 +63,12 @@ fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json:
         &crate::wire::Wire::describe(&wire()),
     )
     .expect("the request is valid");
-    let body = create_request_body(&wire(), request, None).expect("the request builds");
-    let mut steps = body["input"].as_array().cloned().unwrap_or_default();
+    let body = create_request_body(&wire(), &request, None).expect("the request builds");
+    let mut steps = body
+        .get("input")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     steps.remove(0);
     steps.retain(|step| step["type"] != "function_result");
     steps
