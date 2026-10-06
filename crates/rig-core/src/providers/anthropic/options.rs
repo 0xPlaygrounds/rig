@@ -146,12 +146,13 @@ fn claude_top_p(class: Option<ClaudeClass>, top_p: f64, temperature: bool) -> Ma
 
 /// `parallel_tool_calls` on the Messages API: `false` sets
 /// `disable_parallel_tool_use` on the request's tool choice, the default
-/// `auto` when it names none.
-fn parallel_tool_calls(request: &CompletionRequest, parallel: bool) -> Mapping {
+/// `auto` when it names none. `has_tools` counts the request's tools and the
+/// raw `additional_params.tools` the base appends to them.
+fn parallel_tool_calls(request: &CompletionRequest, has_tools: bool, parallel: bool) -> Mapping {
     if parallel {
         return Mapping::Omit("parallel tool use is the default");
     }
-    if request.tools.is_empty() {
+    if !has_tools {
         return Mapping::Omit("the request declares no tools to call in parallel");
     }
     match &request.tool_choice {
@@ -184,10 +185,16 @@ pub(super) fn map_options(
             wire.provider.dialect.default_max_tokens(model)
         }
     });
+    let has_tools = !request.tools.is_empty()
+        || crate::completion::options::param(wire, request, "tools")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|tools| !tools.is_empty());
     match wire.provider.dialect.name {
-        name if name == ANTHROPIC.name => anthropic(wire, request, model, max_tokens, fields),
+        name if name == ANTHROPIC.name => {
+            anthropic(wire, request, model, max_tokens, has_tools, fields)
+        }
         name if name == MINIMAX.name => minimax(model, fields),
-        name if name == XIAOMIMIMO.name => xiaomimimo(request, fields),
+        name if name == XIAOMIMIMO.name => xiaomimimo(request, has_tools, fields),
         name if name == ZAI.name || name == MOONSHOT.name => implicit_cache_gateway(fields),
         _ => unknown(fields),
     }
@@ -199,6 +206,7 @@ fn anthropic(
     request: &CompletionRequest,
     model: &str,
     max_tokens: Option<u64>,
+    has_tools: bool,
     fields: OptionFields<'_>,
 ) -> OptionMap {
     let OptionFields {
@@ -241,7 +249,7 @@ fn anthropic(
             Mapping::unsupported("Anthropic has no verbosity setting")
         }),
         parallel_tool_calls: Mapping::of(parallel, |parallel| {
-            parallel_tool_calls(request, parallel)
+            parallel_tool_calls(request, has_tools, parallel)
         }),
         top_p: Mapping::of(top_p, |top_p| {
             claude_top_p(class, top_p, request.temperature.is_some())
@@ -314,7 +322,7 @@ fn minimax(model: &str, fields: OptionFields<'_>) -> OptionMap {
 }
 
 /// Xiaomi MiMo's Messages endpoint: thinking on or off, implicit caching.
-fn xiaomimimo(request: &CompletionRequest, fields: OptionFields<'_>) -> OptionMap {
+fn xiaomimimo(request: &CompletionRequest, has_tools: bool, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -338,7 +346,7 @@ fn xiaomimimo(request: &CompletionRequest, fields: OptionFields<'_>) -> OptionMa
             Mapping::unsupported("unverified for xiaomimimo")
         }),
         parallel_tool_calls: Mapping::of(parallel, |parallel| {
-            parallel_tool_calls(request, parallel)
+            parallel_tool_calls(request, has_tools, parallel)
         }),
         top_p: Mapping::of(top_p, |top_p| {
             if (0.01..=1.0).contains(&top_p) {

@@ -465,3 +465,34 @@ fn a_cache_none_is_refused_when_the_wire_places_markers() {
     .expect("skipped");
     assert!(body.get("cache_control").is_none(), "{body}");
 }
+
+/// Tools that only arrive through `additional_params.tools` still count:
+/// `parallel_tool_calls(false)` sets the flag rather than being dropped.
+#[test]
+fn raw_tools_count_for_parallel_tool_calls() {
+    let raw =
+        json!({"tools": [{"name": "t", "description": "d", "input_schema": {"type": "object"}}]});
+    let body = sent(
+        &wire(CLAUDE_OPUS_4_6),
+        request(GenerationOptions::default().parallel_tool_calls(false))
+            .additional_params(raw.clone()),
+        Mode::Unary,
+    )
+    .expect("raw tools can be called in parallel");
+    assert_eq!(
+        body["tool_choice"],
+        json!({"type": "auto", "disable_parallel_tool_use": true})
+    );
+    assert_eq!(body["tools"].as_array().map(Vec::len), Some(1));
+
+    let body = sent(
+        &gateway(&XIAOMIMIMO, "mimo-v2-flash"),
+        request(GenerationOptions::default().parallel_tool_calls(false)).additional_params(raw),
+        Mode::Unary,
+    )
+    .expect("MiMo takes the flag for raw tools too");
+    assert_eq!(
+        body["tool_choice"],
+        json!({"type": "auto", "disable_parallel_tool_use": true})
+    );
+}
