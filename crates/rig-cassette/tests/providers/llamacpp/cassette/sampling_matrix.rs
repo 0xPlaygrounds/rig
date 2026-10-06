@@ -123,21 +123,12 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
 fn additional_params_wins_over_the_typed_field_it_collides_with() {
     // `encode` needs no socket, so this stays a plain unit test.
 
-    let request = rig::completion::CompletionRequest {
-        model: None,
-        chat_history: vec![rig::message::Message::User {
-            content: vec![rig::message::UserContent::text("hi")],
-        }],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.0),
-        max_tokens: Some(7),
-        tool_choice: None,
-        additional_params: Some(json!({ "max_tokens": 99, "top_k": 3 })),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let mut request = rig::completion::CompletionRequest::from(vec![rig::message::Message::User {
+        content: vec![rig::message::UserContent::text("hi")],
+    }]);
+    request.temperature = Some(0.0);
+    request.max_tokens = Some(7);
+    request.additional_params = Some(json!({ "max_tokens": 99, "top_k": 3 }));
 
     let encoded = Chat::new(OpenAIConfig::with_key(&LLAMACPP, ""), "m")
         .encode(request, Mode::Unary)

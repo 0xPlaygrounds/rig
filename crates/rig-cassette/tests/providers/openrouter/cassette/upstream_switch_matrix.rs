@@ -38,23 +38,15 @@ fn lookup() -> ToolDefinition {
 }
 
 fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![lookup()],
-        temperature: None,
-        max_tokens: Some(4096),
-        tool_choice: None,
-        // The Responses route takes an effort, not a token budget.
-        additional_params: Some(match route {
-            Route::Chat => json!({ "reasoning": { "max_tokens": 1024 } }),
-            Route::Responses => json!({ "reasoning": { "effort": "low" } }),
-        }),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = vec![lookup()];
+    request.max_tokens = Some(4096);
+    // The Responses route takes an effort, not a token budget.
+    request.additional_params = Some(match route {
+        Route::Chat => json!({ "reasoning": { "max_tokens": 1024 } }),
+        Route::Responses => json!({ "reasoning": { "effort": "low" } }),
+    });
+    request
 }
 
 /// Which OpenRouter endpoint a cell drives.
@@ -97,10 +89,7 @@ where
     } else {
         model.call(request).await.expect("the turn completes")
     };
-    AssistantMessage {
-        content: response.choice.clone(),
-        ..response.head()
-    }
+    response.head().with_content(response.choice.clone())
 }
 
 fn text(turn: &AssistantMessage) -> String {
