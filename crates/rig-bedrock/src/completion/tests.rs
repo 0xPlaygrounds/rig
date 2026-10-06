@@ -163,3 +163,30 @@ fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
     assert!(sonnet.compat.binds_context);
     assert!(super::spec("jp.amazon.nova-unlisted-v1:0").is_none());
 }
+
+/// A region profile the catalog does not list reads images as the base
+/// model it routes to, so a text-only model's profile keeps P2's
+/// placeholder; an unlisted model without a listed base is sent images.
+#[test]
+fn an_unlisted_region_profile_reads_images_as_its_base_model() {
+    for model in [
+        "eu.meta.llama3-3-70b-instruct-v1:0",
+        "us.deepseek.v3-v1:0",
+        "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/eu.meta.llama3-3-70b-instruct-v1:0",
+    ] {
+        assert!(spec(model).is_none(), "{model} is listed");
+        let accepts = Converse::new(model).accepts(model);
+        assert!(!accepts.user_images, "{model}");
+        assert!(!accepts.tool_result_images, "{model}");
+    }
+    assert!(
+        Converse::new("eu.amazon.nova-lite-v1:0")
+            .accepts("eu.amazon.nova-lite-v1:0")
+            .user_images
+    );
+    assert!(
+        Converse::new("eu.acme.unlisted-v1:0")
+            .accepts("eu.acme.unlisted-v1:0")
+            .user_images
+    );
+}

@@ -290,6 +290,22 @@ fn claude_model(id: &str) -> Option<String> {
     Some(model.replace('.', "-"))
 }
 
+/// The catalog entry of the base model a region inference profile routes
+/// to: `eu.meta.llama3-3-70b-instruct-v1:0` as
+/// `meta.llama3-3-70b-instruct-v1:0`. `None` when the id has no region
+/// prefix or the base model is not listed.
+fn base_model_spec(model: &str) -> Option<&'static ModelSpec> {
+    let id = model.rsplit('/').next().unwrap_or(model);
+    let (region, base) = id.split_once('.')?;
+    const REGIONS: [&str; 9] = [
+        "us", "eu", "apac", "global", "jp", "au", "ca", "in", "us-gov",
+    ];
+    if !REGIONS.contains(&region) {
+        return None;
+    }
+    Catalog::builtin().get(ProviderId::catalog(PROVIDER_NAME)?, base)
+}
+
 /// `model` without a trailing `-YYYYMMDD` snapshot date.
 fn undated(model: &str) -> Option<&str> {
     let (rest, date) = model.rsplit_once('-')?;
@@ -322,10 +338,14 @@ impl ReplayTarget for Converse {
 
     /// Converse reads images in user turns and tool results, never in
     /// assistant turns. Claude reads them; so does every other model but
-    /// those the catalog lists as reading no images.
+    /// those the catalog lists as reading no images. A region profile the
+    /// catalog does not list (`eu.meta.llama3-3-70b-instruct-v1:0`) is
+    /// read as the base model it routes to.
     fn accepts(&self, model: &str) -> Accepts {
-        let images =
-            self.family(model) == Family::Claude || spec(model).is_none_or(|spec| spec.input.image);
+        let images = self.family(model) == Family::Claude
+            || spec(model)
+                .or_else(|| base_model_spec(model))
+                .is_none_or(|spec| spec.input.image);
         Accepts {
             user_images: images,
             assistant_images: false,
