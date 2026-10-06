@@ -294,8 +294,9 @@ impl BaseInput<'_> {
     /// A marker the base cannot place (Bedrock after a reasoning turn):
     /// reported through `on_unsupported` under the name `cache`.
     pub fn refuse_cache(&mut self, reason: impl Into<String>) -> Result<(), EncodeError>;
-    /// The value `key` gets from the layers above the base, read only:
-    /// `param(target, request, key)` below.
+    /// The value top-level `key` gets from the layers above the base (the
+    /// mapped options, then the provider options and `additional_params`
+    /// as the body merges them), read only.
     pub fn param(&self, key: &str) -> Option<&Value>;
     /// `additional_params.tools`, taken out of the raw layer for the base to
     /// append after rig's own tools. An error when it is not an array.
@@ -313,6 +314,9 @@ pub enum RawAt {
     /// `rest` names merge at the top level, every other key under `rest`
     /// (`"options"`), as the wire splits them today.
     Split { top: &'static [&'static str], rest: &'static str },
+    /// Mira: a non-empty raw layer is dropped with this warning, because
+    /// the gateway rejects pass-through parameters.
+    Ignored(&'static str),
 }
 
 /// The merged body. Its field is private to this module, so only
@@ -340,8 +344,17 @@ pub enum Rewrite {
     OutputCapRename,
     DropUnboundThinking,
     ToolChoiceNeedsTools,
-    StreamFlag(Mode),
-    ReasoningCiphertext,
+    /// `stream` set to this value (Anthropic, Chat and Responses streams;
+    /// Interactions in either mode).
+    Stream(bool),
+    /// `stream` removed (a unary Responses request, a WebSocket session).
+    NoStream,
+    /// `background` removed (a Responses WebSocket session).
+    NoBackground,
+    /// Chat's `stream_options.include_usage`, unless the body states it.
+    StreamUsage,
+    /// The ciphertext `include`; `true` asks for it always (Codex).
+    ReasoningCiphertext(bool),
     CodexStore,
     /// The arms of `Chat::rewrite` that survive P2, for this dialect.
     ChatDialect(BodyRewrite),
@@ -473,8 +486,12 @@ target `route` names, the one `prepare` and the fold already use.
     (`crates/rig-core/src/providers/openai/wire/chat.rs:391-396`);
   - `DropUnboundThinking`: Anthropic (`crates/rig-core/src/providers/anthropic/completion.rs:257-259`);
   - `ToolChoiceNeedsTools`: Anthropic drops `tool_choice` without tools;
-  - `StreamFlag`: `stream: true` and Chat's `stream_options`
-    (`crates/rig-core/src/providers/openai/wire/chat.rs:190-198`);
+  - `Stream`, `NoStream`, `NoBackground` and `StreamUsage`: `stream`, and
+    Chat's `stream_options` (`crates/rig-core/src/providers/openai/wire/chat.rs:190-198`),
+    as each wire sets them today: a unary Chat request keeps a raw
+    `stream`, a unary Responses request drops it, Interactions states it
+    in both modes, and a Responses WebSocket session drops `stream` and
+    `background` (`crates/rig-core/src/providers/openai/responses_api/websocket.rs:521-533`);
   - `ReasoningCiphertext`: Responses `include`
     (`crates/rig-core/src/providers/openai/responses_api/mod.rs:491-494`);
   - `CodexStore`: `store: false`;
@@ -691,7 +708,7 @@ renamed (`x as y`), glob (`x::*`), `self` and `super` forms. A guard skips
 | check | phase | files | rejects |
 |---|---|---|---|
 | `options-mapping` | P2 | the completion-wire files (section 2.1) | in a pattern of type `OptionFields`: `..`, a `_` binding, a binding whose name starts with `_`; in an `OptionMap` struct expression: a `..base`; a `CompletionRequest` struct expression, a call that resolves to `CompletionRequest::new`, a method call `.options(..)`, an assignment to a field `options`; a field access `.options`; a call that resolves to `options::param` inside a function that destructures `OptionFields` |
-| `options-precedence` | P2 | the completion-wire files | a field access `.additional_params`, but for the one allowlisted site in `responses_api/websocket.rs`; any path that resolves to `Body::Bytes` or `Body::Multipart` (`Body` has no `From` impl, so these and `Body::empty` are its only constructors); a method call `.body(x)` with one argument, whatever its receiver (`http::Request::builder(..)`, `http::Request::get(..)`, `post(..)` or a stored `http::request::Builder`; the guard cannot type it), unless `x` is a `FinalBody::into_body()` call or the constant `Body::empty()` (a body-less request such as Interactions resume); `FinalBody::deserialize` turbofished to `Value` or `Map`; `serde_json::to_value`, `to_vec` or `to_string` applied to a binding of type `CompletionRequest` |
+| `options-precedence` | P2 | the completion-wire files | a field access `.additional_params`, but for the allowlisted sites: the WebSocket session's write in `responses_api/websocket.rs`, and a document or video part's own `additional_params` in `anthropic/completion.rs` and `gemini/completion.rs` (another field, which the guard cannot type); any path that resolves to `Body::Bytes` or `Body::Multipart` (`Body` has no `From` impl, so these and `Body::empty` are its only constructors); a method call `.body(x)` with one argument, whatever its receiver (`http::Request::builder(..)`, `http::Request::get(..)`, `post(..)` or a stored `http::request::Builder`; the guard cannot type it), unless `x` is a `FinalBody::into_body()` call, the constant `Body::empty()` (a body-less request such as Interactions resume), or the WebSocket handshake's `NoBody`; `FinalBody::deserialize` turbofished to `Value` or `Map`; `serde_json::to_value`, `to_vec` or `to_string` applied to a binding of type `CompletionRequest` |
 | `extras-off-decode-path` | P4 | every non-test file under `crates/rig-core/src/providers/` and the `src` of each companion provider crate, outside `providers::<p>::extension` modules | any resolved path through a module named `extension`; the names `ReplyExtras` and `ProviderExtension`; `pub use` or `pub type` of an extension item; a call that resolves to `Text::with_citations` or `Text::span`, and a `Citation` or `Span` struct expression (decision E); `macro_rules!` whose body names `extension` |
 
 The guards have unit tests in `xtask/src/verify/tests.rs`, one per form,
@@ -1333,6 +1350,9 @@ P2 answers each `Unsupported` until a recording confirms it.
 lists their parameters. `top_p`, `seed`, `stop` as OpenAI [unverified];
 every other cell unsupported [unverified].
 **Mira** (`"mira"`): every cell unsupported.
+**A gateway rig does not ship** (`Dialect::gateway(..)`, and a Messages-format
+`compatible(..)` dialect): every cell unsupported, with the reason that no
+mapping is known for it; its fields go through `additional_params`.
 
 ### 6.3 OpenAI Responses and its dialects
 
@@ -1893,7 +1913,7 @@ gated by `#[cfg(any())]` with a comment naming its phase.
 | `no_silent_drop::caching_on_a_dialect_that_cannot_cache_is_refused` | P2 | `Short` on Cohere's Compatibility route and `Long` on DeepSeek return `UnsupportedOption` naming `cache` and the provider |
 | `no_silent_drop::under_ignore_the_option_is_skipped_with_a_warning` | P2 | the same under `Ignore`: the body has no cache field and one warning names `cache` and the provider |
 | `no_silent_drop::the_driver_refuses_an_option_before_any_wire_encodes` | P2 | on Bedrock Converse, an SDK-backed wire, `Completion::prepare` alone refuses `seed` with `UnsupportedOption` naming `seed` and `aws_bedrock`; under `Ignore` it warns once and clears the option |
-| `option_matrix::every_option_alone_gives_its_section_6_cell` | P2 | a table-driven golden: each `GenerationOptions` field set alone on Anthropic, Responses, Gemini, Bedrock, OpenRouter, Cohere and DeepSeek gives exactly its section 6 cell for that wire, field and value: the body equals the baseline body with the cell's object deep-merged in (or a marker pushed onto an array), equals the baseline for an "omit" cell, or fails with `UnsupportedOption` naming that field and provider. So `Omit` passes only where the cell says "omit", and a set option answered `Nothing` fails it. P2 extends the table to every completion wire and dialect, `InteractionResume` included |
+| `option_matrix::every_option_alone_gives_its_section_6_cell` | P2 | a table-driven golden: each `GenerationOptions` field set alone on Anthropic, Responses, Gemini, Bedrock, OpenRouter, Cohere and DeepSeek gives exactly its section 6 cell for that wire, field and value: the body equals the baseline body with the cell's object deep-merged in (or a marker pushed onto an array), equals the baseline for an "omit" cell, or fails with `UnsupportedOption` naming that field and provider. So `Omit` passes only where the cell says "omit", and a set option answered `Nothing` fails it. P2 extends the table to every rig-core completion wire and dialect, `InteractionResume` included, and Bedrock; the runtime target does not build Vertex AI, gRPC or Candle, whose cells are pinned in their own crates' tests |
 | `option_layers::a_run_field_beats_the_agent_field_and_leaves_the_rest` | P2 | `GenerationOptions::overlay`, the one merge rig-agent and rig-ecs use: an agent's `reasoning(High)` survives a run that sets only `cache(Long)`; the run's `seed` and `stop` win; an empty run changes nothing |
 | `precedence::raw_tools_are_appended_to_rig_tools` | P2 | a function tool plus a raw server tool in `additional_params.tools` both reach the Anthropic body, rig's first; a raw function tool joins rig's on OpenRouter Chat. The merge never replaces rig's tools |
 | `precedence::null_is_sent` | P2 | a `null` in `additional_params` over a mapped `top_p` is sent as `"top_p": null`, as `body.extend` sends it today; on OpenAI Responses a raw `"user": null`, skipped today, is sent (section 12.0) |
