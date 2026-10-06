@@ -346,16 +346,18 @@ pub struct FloatEmbeddings {
 }
 
 impl BilledUnits {
-    /// Maps the billed token counters straight through; `total_tokens` is
-    /// the sum of whichever counters Cohere sent (an embed bills input only,
-    /// so it reports `input_tokens` and `total_tokens`, no `output_tokens`).
+    /// Maps the billed token counters through. An embed bills input only,
+    /// so billed input without billed output reports zero output, and
+    /// `total_tokens` is input plus output when both are known.
     pub(super) fn to_usage(&self) -> crate::completion::Usage {
         let input_tokens = self.input_tokens.map(u64::from);
-        let output_tokens = self.output_tokens.map(u64::from);
-        let total_tokens = match (input_tokens, output_tokens) {
-            (None, None) => None,
-            (input, output) => Some(input.unwrap_or(0) + output.unwrap_or(0)),
-        };
+        let output_tokens = self
+            .output_tokens
+            .map(u64::from)
+            .or(input_tokens.map(|_| 0));
+        let total_tokens = input_tokens
+            .zip(output_tokens)
+            .map(|(input, output)| input + output);
         crate::completion::Usage {
             input_tokens,
             output_tokens,

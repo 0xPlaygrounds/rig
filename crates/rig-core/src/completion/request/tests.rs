@@ -464,3 +464,37 @@ mod unknown_finish_reasons {
         assert!(back.accepts_unknown_finish_reasons());
     }
 }
+
+/// A sum's total is its summed input plus its summed output, never the sum
+/// of totals: a side that reported only a total does not inflate it.
+#[test]
+fn adding_usage_recomputes_the_total_from_input_and_output() {
+    let mut usage = Usage {
+        input_tokens: Some(2),
+        output_tokens: Some(1),
+        total_tokens: Some(3),
+        ..Usage::default()
+    };
+    usage += Usage {
+        total_tokens: Some(10),
+        ..Usage::default()
+    };
+    assert_eq!(usage.input_tokens, Some(2));
+    assert_eq!(usage.output_tokens, Some(1));
+    assert_eq!(usage.total_tokens, Some(3));
+
+    let embedded = Usage {
+        input_tokens: Some(4),
+        output_tokens: Some(0),
+        total_tokens: Some(4),
+        ..Usage::default()
+    };
+    assert_eq!((usage + embedded).total_tokens, Some(7));
+
+    let input_only = Usage {
+        input_tokens: Some(4),
+        total_tokens: Some(4),
+        ..Usage::default()
+    };
+    assert_eq!((Usage::default() + input_only).total_tokens, None);
+}

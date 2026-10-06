@@ -193,8 +193,10 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
             }
         };
         let tokens = response.input_text_token_count as u64;
+        // An embedding bills input only, so output is zero.
         self.usage += rig_core::completion::Usage {
             input_tokens: Some(tokens),
+            output_tokens: Some(0),
             total_tokens: Some(tokens),
             ..Default::default()
         };
@@ -220,3 +222,6 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
         }))
     }
 }
+
+#[cfg(test)]
+mod tests;

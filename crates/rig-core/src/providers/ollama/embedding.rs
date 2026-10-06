@@ -127,10 +127,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, Embedding>,
     ) -> Result<Flow, ProviderError> {
-        // Ollama counts the prompt it embedded and nothing else: every token
-        // of an embedding is input.
+        // Ollama counts the prompt it embedded and nothing else: an
+        // embedding bills input only, so output is zero.
         let usage = crate::completion::Usage {
             input_tokens: reply.prompt_eval_count,
+            output_tokens: reply.prompt_eval_count.map(|_| 0),
             total_tokens: reply.prompt_eval_count,
             ..Default::default()
         };

@@ -1425,11 +1425,14 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
         event: Self::Event,
         out: Out<'id, RerankOp>,
     ) -> Result<Flow, ProviderError> {
+        // A rerank bills input only, so output is zero and the total is
+        // the input.
         let usage = event
             .usage
             .map(|usage| crate::completion::Usage {
                 input_tokens: Some(usage.prompt_tokens),
-                total_tokens: Some(usage.total_tokens),
+                output_tokens: Some(0),
+                total_tokens: Some(usage.prompt_tokens),
                 ..Default::default()
             })
             .unwrap_or_default();

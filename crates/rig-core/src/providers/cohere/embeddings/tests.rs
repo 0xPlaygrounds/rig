@@ -116,6 +116,15 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
     );
     assert_eq!(response.usage.input_tokens, Some(7));
     assert_eq!(response.usage.total_tokens, Some(7));
+    assert_eq!(response.usage.output_tokens, Some(0));
+    assert_eq!(
+        response.usage.total_tokens,
+        response
+            .usage
+            .input_tokens
+            .zip(response.usage.output_tokens)
+            .map(|(input, output)| input + output)
+    );
     assert_eq!(
         response.response_id.as_deref(),
         Some("b2e4b0f7-0000-0000-0000-000000000000")

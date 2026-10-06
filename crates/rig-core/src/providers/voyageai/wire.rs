@@ -211,9 +211,11 @@ impl<'id> Decoder<'id, Embedding> for EmbeddingsDecoder {
         reply: Self::Event,
         out: Out<'id, Embedding>,
     ) -> Result<Flow, ProviderError> {
-        // Voyage reports one count; every token of an embedding is input.
+        // Voyage reports one count: an embedding bills input only, so output is
+        // zero.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
+            output_tokens: Some(0),
             total_tokens: Some(reply.usage.total_tokens as u64),
             ..Default::default()
         };
@@ -322,9 +324,11 @@ impl<'id> Decoder<'id, RerankOp> for RerankDecoder {
         out: Out<'id, RerankOp>,
     ) -> Result<Flow, ProviderError> {
         let reply = reply.map_err(ProviderError::from_provider_body)?;
-        // Voyage reports one count; every token of a rerank is input.
+        // Voyage reports one count: a rerank bills input only, so output is
+        // zero.
         let usage = crate::completion::Usage {
             input_tokens: Some(reply.usage.total_tokens as u64),
+            output_tokens: Some(0),
             total_tokens: Some(reply.usage.total_tokens as u64),
             ..Default::default()
         };

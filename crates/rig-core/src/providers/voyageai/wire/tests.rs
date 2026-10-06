@@ -33,10 +33,18 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
         ]
     );
     assert_eq!(response.model.as_deref(), Some("voyage-3.5"));
-    // Voyage reports one counter; every token of an embedding is input.
+    // Voyage reports one counter; an embedding bills input only.
     assert_eq!(response.usage.input_tokens, Some(9));
     assert_eq!(response.usage.total_tokens, Some(9));
-    assert_eq!(response.usage.output_tokens, None);
+    assert_eq!(response.usage.output_tokens, Some(0));
+    assert_eq!(
+        response.usage.total_tokens,
+        response
+            .usage
+            .input_tokens
+            .zip(response.usage.output_tokens)
+            .map(|(input, output)| input + output)
+    );
 }
 
 /// Voyage's server defaults are "field absent", so an unset option must not
@@ -122,6 +130,15 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
     assert_eq!(response.model.as_deref(), Some("rerank-2.5"));
     assert_eq!(response.usage.input_tokens, Some(26));
     assert_eq!(response.usage.total_tokens, Some(26));
+    assert_eq!(response.usage.output_tokens, Some(0));
+    assert_eq!(
+        response.usage.total_tokens,
+        response
+            .usage
+            .input_tokens
+            .zip(response.usage.output_tokens)
+            .map(|(input, output)| input + output)
+    );
 }
 
 #[test]

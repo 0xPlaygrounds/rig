@@ -23,6 +23,8 @@ struct Person {
 
 fn usage(total_tokens: u64) -> Usage {
     Usage {
+        input_tokens: Some(total_tokens),
+        output_tokens: Some(0),
         total_tokens: Some(total_tokens),
         ..Usage::default()
     }

@@ -407,6 +407,15 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
     assert_eq!(response.model.as_deref(), Some("bge-reranker-v2-m3"));
     assert_eq!(response.usage.input_tokens, Some(37));
     assert_eq!(response.usage.total_tokens, Some(37));
+    assert_eq!(response.usage.output_tokens, Some(0));
+    assert_eq!(
+        response.usage.total_tokens,
+        response
+            .usage
+            .input_tokens
+            .zip(response.usage.output_tokens)
+            .map(|(input, output)| input + output)
+    );
     // llama.cpp never echoes the document text on this path.
     assert!(
         response

@@ -44,6 +44,8 @@ impl Serve for FinishingName {
             return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("done")],
                 ProviderUsage {
+                    input_tokens: Some(2),
+                    output_tokens: Some(1),
                     total_tokens: Some(3),
                     ..ProviderUsage::default()
                 },
@@ -63,6 +65,8 @@ impl Serve for FinishingName {
                 writer
                     .finish(rig_core::operation::Finish {
                         usage: ProviderUsage {
+                            input_tokens: Some(5),
+                            output_tokens: Some(2),
                             total_tokens: Some(7),
                             ..ProviderUsage::default()
                         },

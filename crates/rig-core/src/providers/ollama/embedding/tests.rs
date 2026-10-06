@@ -27,10 +27,18 @@ async fn an_embedding_reply_pairs_its_vectors_with_the_texts_that_were_sent() {
         ]
     );
     assert_eq!(response.model.as_deref(), Some("all-minilm"));
-    // Every token of an embedding is input; Ollama reports one counter.
+    // An embedding bills input only; Ollama reports one counter.
     assert_eq!(response.usage.input_tokens, Some(6));
     assert_eq!(response.usage.total_tokens, Some(6));
-    assert_eq!(response.usage.output_tokens, None);
+    assert_eq!(response.usage.output_tokens, Some(0));
+    assert_eq!(
+        response.usage.total_tokens,
+        response
+            .usage
+            .input_tokens
+            .zip(response.usage.output_tokens)
+            .map(|(input, output)| input + output)
+    );
 }
 
 #[test]

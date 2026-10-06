@@ -476,6 +476,10 @@ impl From<CompletionResponseRepr> for CompletionResponse {
 /// - `total_tokens == input_tokens + output_tokens`, absent unless both are
 ///   reported.
 ///
+/// An embedding or rerank reply bills input only, so it reports
+/// `output_tokens: Some(0)` and a total equal to its input. Adding two
+/// `Usage`s sums each counter and recomputes the total from the sums.
+///
 /// A counter the provider did not send is `None`; a reported zero is
 /// `Some(0)`. Serialized as the same keys, absent when `None`.
 #[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
@@ -534,7 +538,10 @@ impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
         self.input_tokens = add_counter(self.input_tokens, other.input_tokens);
         self.output_tokens = add_counter(self.output_tokens, other.output_tokens);
-        self.total_tokens = add_counter(self.total_tokens, other.total_tokens);
+        self.total_tokens = self
+            .input_tokens
+            .zip(self.output_tokens)
+            .map(|(input, output)| input + output);
         self.cached_input_tokens = add_counter(self.cached_input_tokens, other.cached_input_tokens);
         self.cache_creation_input_tokens = add_counter(
             self.cache_creation_input_tokens,

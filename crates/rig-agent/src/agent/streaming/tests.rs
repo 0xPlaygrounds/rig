@@ -1561,11 +1561,11 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
                 serde_json::json!({"x": 4, "y": 5}),
             )
             .with_call_id("call_2"),
-            MockStreamEvent::final_response_with_total_tokens(4),
+            MockStreamEvent::final_response(usage(3, 1)),
         ],
         vec![
             MockStreamEvent::text("retried"),
-            MockStreamEvent::final_response_with_total_tokens(6),
+            MockStreamEvent::final_response(usage(4, 2)),
         ],
     ]);
     let recorded = model.clone();
@@ -1605,14 +1605,8 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
 
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let first_usage = Usage {
-        total_tokens: Some(4),
-        ..Default::default()
-    };
-    let second_usage = Usage {
-        total_tokens: Some(6),
-        ..Default::default()
-    };
+    let first_usage = usage(3, 1);
+    let second_usage = usage(4, 2);
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
@@ -1877,11 +1871,11 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
                 .with_call_id("call_0"),
             MockStreamEvent::tool_call_arguments_delta("tool_call_1", r#"{"x":2,"y":3}"#),
             MockStreamEvent::tool_call_name_delta("tool_call_1", "default_api"),
-            MockStreamEvent::final_response_with_total_tokens(4),
+            MockStreamEvent::final_response(usage(3, 1)),
         ],
         vec![
             MockStreamEvent::text("retried"),
-            MockStreamEvent::final_response_with_total_tokens(6),
+            MockStreamEvent::final_response(usage(4, 2)),
         ],
     ]);
     let recorded = model.clone();
@@ -1938,14 +1932,8 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         delta_hook.observed()
     );
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let first_usage = Usage {
-        total_tokens: Some(4),
-        ..Default::default()
-    };
-    let second_usage = Usage {
-        total_tokens: Some(6),
-        ..Default::default()
-    };
+    let first_usage = usage(3, 1);
+    let second_usage = usage(4, 2);
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
