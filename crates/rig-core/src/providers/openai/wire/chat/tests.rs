@@ -217,6 +217,103 @@ async fn the_done_sentinel_without_a_finish_fails() {
     assert!(matches!(error, ProviderError::Truncated), "{error:?}");
 }
 
+/// Drive `body` through a gateway whose quirks end a `[DONE]` stream that
+/// names no finish reason.
+async fn lenient_stream(
+    body: &'static str,
+) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    use crate::providers::openai::wire::{Dialect, Quirks};
+
+    // Built at run time: the quirk is a `const fn` callers use in constants.
+    let dialect = Dialect::gateway("acme", "https://api.acme.test/v1", "ACME_API_KEY")
+        .with_quirks(Quirks::openai().done_without_finish_reason());
+    let bound = crate::driver::Model::new(
+        OpenAIConfig::new("k").with_dialect(&dialect).chat("m"),
+        MockStreamingClient {
+            sse_bytes: Bytes::from_static(body.as_bytes()),
+        },
+    );
+    let mut response = bound.stream(prompt("hi")).expect("the stream opens");
+    while response.next().await.is_some() {}
+    response.finish().await
+}
+
+/// With the quirk, `[DONE]` ends a text turn that named no reason as a
+/// stop, as pi's `compat.supportsFinishReason: false` does.
+#[tokio::test]
+async fn the_done_quirk_ends_a_text_turn_as_a_stop() {
+    const BODY: &str = concat!(
+        "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",",
+        "\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"complete answer\"},",
+        "\"finish_reason\":null}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let response = lenient_stream(BODY)
+        .await
+        .expect("the quirk ends the turn at the sentinel");
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(
+        canonical(&response.choice),
+        vec![AssistantContent::text("complete answer")]
+    );
+}
+
+/// With the quirk, a turn holding a tool call ends as a tool call, and the
+/// call is delivered whole.
+#[tokio::test]
+async fn the_done_quirk_ends_a_tool_call_turn_as_tool_calls() {
+    const BODY: &str = concat!(
+        "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",\"model\":\"m\",",
+        "\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",",
+        "\"type\":\"function\",\"function\":{\"name\":\"read\",\"arguments\":\"{\\\"path\\\"\"}}]}}]}\n\n",
+        "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",\"model\":\"m\",",
+        "\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,",
+        "\"function\":{\"arguments\":\":\\\"README.md\\\"}\"}}]}}]}\n\n",
+        "data: [DONE]\n\n",
+    );
+    let response = lenient_stream(BODY)
+        .await
+        .expect("the quirk ends the turn at the sentinel");
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    let [AssistantContent::ToolCall(call)] = response.choice.as_slice() else {
+        panic!("the turn is one tool call: {:?}", response.choice);
+    };
+    assert_eq!(call.function.name, "read");
+    assert_eq!(
+        call.function.arguments_value(),
+        serde_json::json!({"path": "README.md"})
+    );
+}
+
+/// The quirk never turns an empty stream into an answer: `[DONE]` with no
+/// chunk before it, or only frames the wire does not model, is truncated.
+#[tokio::test]
+async fn the_done_quirk_still_fails_a_stream_with_no_chunk() {
+    for body in ["data: [DONE]\n\n", "data: \"noise\"\n\ndata: [DONE]\n\n"] {
+        let error = lenient_stream(body)
+            .await
+            .expect_err("a stream with no chunk has no response");
+        assert!(
+            matches!(error, ProviderError::Truncated),
+            "{body}: {error:?}"
+        );
+    }
+}
+
+/// The quirk reads only the sentinel: a stream that stops without `[DONE]`
+/// or a finish reason was still cut short.
+#[tokio::test]
+async fn the_done_quirk_does_not_end_a_stream_without_the_sentinel() {
+    const BODY: &str = concat!(
+        "data: {\"object\":\"chat.completion.chunk\",\"id\":\"chatcmpl-1\",",
+        "\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"}}]}\n\n",
+    );
+    let error = lenient_stream(BODY)
+        .await
+        .expect_err("a stream cut before the sentinel has no response");
+    assert!(matches!(error, ProviderError::Truncated), "{error:?}");
+}
+
 /// The wire's in-band error envelope arrives with a 200 status, so only the
 /// decoder can see it: it must fail the turn rather than read as a chunk.
 #[tokio::test]

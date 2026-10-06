@@ -138,6 +138,10 @@ macro_rules! with_model {
                 let $model = $crate::decode::cohere_model(http);
                 Some($body)
             }
+            "ollama" if encoder.ends_with("/api/chat") => {
+                let $model = $crate::decode::ollama_native_model(http);
+                Some($body)
+            }
             "ollama" => {
                 let $model = $crate::decode::ollama_model(http);
                 Some($body)
@@ -179,7 +183,7 @@ pub(crate) fn gemini_model(http: rig::http_client::DynHttpClient) -> GeminiModel
 
 pub(crate) fn cohere_model(
     http: rig::http_client::DynHttpClient,
-) -> rig::Model<rig::providers::openai::wire::Chat> {
+) -> rig::Model<rig::providers::cohere::CohereChat> {
     CohereModels::new(CohereConfig::new(KEY).with_base_url(BASE_URL), http)
         .completion("command-a-03-2025")
 }
@@ -188,6 +192,13 @@ pub(crate) fn ollama_model(
     http: rig::http_client::DynHttpClient,
 ) -> rig::Model<rig::providers::openai::wire::Chat> {
     OllamaModels::new(OllamaConfig::new().with_base_url(BASE_URL), http).completion("qwen3:4b")
+}
+
+pub(crate) fn ollama_native_model(
+    http: rig::http_client::DynHttpClient,
+) -> rig::Model<rig::providers::ollama::Chat> {
+    OllamaModels::new(OllamaConfig::new().with_base_url(BASE_URL), http)
+        .native_completion("qwen3:4b")
 }
 
 pub(crate) fn copilot_model(

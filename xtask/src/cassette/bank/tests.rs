@@ -51,6 +51,20 @@ fn a_reply_names_the_tools_it_calls_and_how_it_ended() {
     );
     assert!(responses.calls.is_empty(), "a tool definition is no call");
     assert_eq!(responses.ends, ["incomplete", "max_output_tokens"]);
+
+    let ollama = entry(
+        "ollama",
+        "POST /api/chat",
+        &reply(
+            "application/x-ndjson",
+            "{\"message\":{\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"add\",\"arguments\":{}}}]},\"done\":false}\n\
+             {\"message\":{\"content\":\"\"},\"done\":true,\"done_reason\":\"stop\"}\n",
+        ),
+        "d.yaml#0".into(),
+    );
+    assert!(is_completion("POST /api/chat"));
+    assert_eq!(ollama.calls, ["add"]);
+    assert_eq!(ollama.ends, ["stop"]);
 }
 
 #[test]
@@ -112,6 +126,7 @@ fn only_completion_encoders_are_banked() {
         "POST /v1beta/models/{model}:streamGenerateContent"
     ));
     assert!(is_completion("POST /model/{model}/converse-stream"));
+    assert!(is_completion("POST /v2/chat"));
     assert!(!is_completion("POST /v1/embeddings"));
     assert!(!is_completion("GET /v1/responses"));
     assert!(!is_completion("DELETE /v1/responses/{id}"));

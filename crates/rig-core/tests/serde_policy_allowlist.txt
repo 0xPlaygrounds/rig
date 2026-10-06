@@ -37,7 +37,9 @@ providers/openai/wire/chat.rs | serde_json::from_str::<serde_json::Value>(&data)
 # three parses (four sites) moved here when the `observation.rs` modules
 # were folded into the decoders that were their only callers.
 providers/anthropic/streaming.rs | serde_json::from_slice::<Value>(payload) | `MessagesDecoder::project` reads the stop reason, model, message id, usage and error envelope off a payload the driver already framed and classified, through the decoder's own lenient usage reader; a failed parse emits no observation and leaves the frame's verdict exactly as `classify` set it.
+providers/cohere/streaming.rs | serde_json::from_slice::<Value>(payload) | `ChatDecoder::project` reads the finish reason, reply id and usage off a payload the driver already framed and classified; a failed parse emits no observation and leaves the frame's verdict exactly as `classify` set it.
 providers/gemini/streaming.rs | let Ok(reply) = serde_json::from_slice::<Value>(payload) else { | `GenerateContentDecoder::project` reads the already framed and classified payload as `Value` for the observation projection; every field is read leniently and a payload that is not JSON emits nothing, so the frame keeps the fate `classify` gave it.
+providers/ollama/streaming.rs | let Ok(record) = serde_json::from_slice::<Value>(payload) else { | `ChatDecoder::project` reads the already framed and classified record as `Value` for the observation projection; every field is read leniently and a payload that is not JSON emits nothing, so the frame keeps the fate `classify` gave it.
 providers/openai/wire/chat.rs | serde_json::from_slice::<Value>(payload) | `ChatDecoder::project` reads the verdict, model, response id, usage and error envelope off an already-framed, already-classified payload — `[DONE]` is not JSON and simply projects nothing — so a failed decode emits no observation and triages no frame.
 
 # --- openai modality wire: whole replies that have no frames ----------------
@@ -73,3 +75,6 @@ rig-bedrock/src/streaming.rs | let input = serde_json::from_str::<Value>(input) 
 # --- item-shaped decoders: typed views of classified frames ----------------
 # Each decoder keeps a classified frame as JSON so the provider's item survives
 # verbatim, then reads one field of it through its typed form.
+
+# --- cohere chat: one decoder for two APIs ---------------------------------
+providers/cohere/wire.rs | serde_json::from_str(data) | `CohereDecoder::classify` peeks at a frame's top-level keys only to choose which API's classifier triages it; the chosen classifier then decodes the frame in full, so a frame that does not parse here still reaches the Compatibility API's classifier and is reported as it reports it.

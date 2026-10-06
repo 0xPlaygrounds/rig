@@ -37,6 +37,7 @@ pub(crate) const HEADER: &str = "provider\tencoder\tkind\tshape\trecordings\texa
 /// Keys whose string values request facts and reply shapes keep: bounded
 /// enums that select an encoder or decoder branch.
 pub(crate) const DISCRIMINATORS: &[&str] = &[
+    "done_reason",
     "finishReason",
     "finish_reason",
     "object",
@@ -398,6 +399,8 @@ pub(crate) fn reply_shape(reply: &Exchange) -> String {
         "binary".to_owned()
     } else if content_type.starts_with("text/event-stream") {
         format!("sse{}", set(sse_events(body)))
+    } else if content_type.starts_with("application/x-ndjson") {
+        format!("ndjson{}", set(ndjson_records(body)))
     } else {
         match serde_json::from_str::<Value>(body) {
             Ok(value) => format!("json{}", skeleton(&value, DISCRIMINATORS)),
@@ -419,6 +422,17 @@ fn sse_events(body: &str) -> Vec<String> {
                     .map_or_else(|_| "text".to_owned(), |v| skeleton(&v, DISCRIMINATORS))
             };
             format!("{name}={data}")
+        })
+        .collect()
+}
+
+/// The skeleton of every newline-delimited JSON record in `body`.
+fn ndjson_records(body: &str) -> Vec<String> {
+    body.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<Value>(line)
+                .map_or_else(|_| "text".to_owned(), |v| skeleton(&v, DISCRIMINATORS))
         })
         .collect()
 }
@@ -510,6 +524,12 @@ pub(crate) fn reply_documents(reply: &Exchange) -> Vec<Value> {
         return sse_payloads(&body.replace("\r\n", "\n"))
             .into_iter()
             .filter_map(|(_, data)| serde_json::from_str(&data).ok())
+            .collect();
+    }
+    if content_type.starts_with("application/x-ndjson") {
+        return body
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
             .collect();
     }
     serde_json::from_str(body).into_iter().collect()

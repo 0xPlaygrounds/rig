@@ -609,6 +609,7 @@ impl Chat {
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
             BodyRewrite::Mistral => finalize_mistral(map),
+            BodyRewrite::Ollama => finalize_ollama(map)?,
             BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
             BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
         }
@@ -682,6 +683,42 @@ fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, Encode
             json!({"type": "function", "function": {"name": name}})
         }
     })
+}
+
+/// Ollama's OpenAI-compatible body. `keep_alive` passes as it is, and
+/// `think` becomes `reasoning_effort`: `true` is `medium`, `false` is
+/// `none`, and a level passes through. `num_ctx` and `options` are refused:
+/// this API ignores them, and only the native route sends them.
+fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
+    if let Some(key) = ["num_ctx", "options"]
+        .into_iter()
+        .find(|key| map.contains_key(*key))
+    {
+        return Err(EncodeError::request(format!(
+            "Ollama's OpenAI-compatible API ignores `{key}`; send it through the native \
+             route (`Ollama::native_completion`)"
+        )));
+    }
+    let Some(think) = map.shift_remove("think") else {
+        return Ok(());
+    };
+    if map.contains_key("reasoning_effort") {
+        return Err(EncodeError::request(
+            "Ollama takes one of `think` and `reasoning_effort`, not both",
+        ));
+    }
+    let effort = match think {
+        Value::Bool(true) => Value::from("medium"),
+        Value::Bool(false) => Value::from("none"),
+        level @ Value::String(_) => level,
+        _ => {
+            return Err(EncodeError::request(
+                "Ollama `think` must be a boolean or a thinking level",
+            ));
+        }
+    };
+    map.insert("reasoning_effort".to_owned(), effort);
+    Ok(())
 }
 
 /// The body's messages, each as its object.
@@ -1186,6 +1223,8 @@ pub struct ChatDecoder {
     fields: Map<String, Value>,
     /// Whether a finish reason or a whole reply ended the turn.
     ended: bool,
+    /// Whether a stream chunk arrived.
+    chunked: bool,
 }
 
 impl ChatDecoder {
@@ -1685,6 +1724,21 @@ impl ChatDecoder {
         self.close_calls(&mut out, true)?;
         self.end(out, true)
     }
+
+    /// The `[DONE]` sentinel. A dialect whose streams omit the finish reason
+    /// ends a turn that streamed a chunk as pi does without
+    /// `supportsFinishReason`: a tool call when it holds one, else a stop.
+    fn done(&mut self, out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
+        if !self.ended && self.chunked && self.quirks.done_without_finish_reason {
+            self.finish = Some(if self.calls.is_empty() {
+                FinishReason::Stop
+            } else {
+                FinishReason::ToolCalls
+            });
+            self.ended = true;
+        }
+        self.finish(out)
+    }
 }
 
 /// Append streamed reasoning details to the block's, by pi's merge: a
@@ -1773,11 +1827,12 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
     ) -> Result<Flow, ProviderError> {
         match event {
             ChatEvent::Chunk(frame) => {
+                self.chunked = true;
                 self.chunk(&frame, &mut out)?;
                 Ok(Flow::More)
             }
             ChatEvent::Whole(frame) => self.whole(&frame, out),
-            ChatEvent::Done => self.finish(out),
+            ChatEvent::Done => self.done(out),
             // A bare string is the whole answer, ended: pi's stop for a
             // reply that names no reason.
             ChatEvent::BareText(text) => {

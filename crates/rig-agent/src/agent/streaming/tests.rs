@@ -528,7 +528,7 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         .expect("outer span should be captured");
     let chat_spans = span_snapshot
         .iter()
-        .filter(|span| span.name == "chat_streaming")
+        .filter(|span| span.target == "rig::agent_chat")
         .collect::<Vec<_>>();
 
     assert_eq!(chat_spans.len(), expected_usages.len());
@@ -543,7 +543,12 @@ async fn assert_stream_usage_recorded_on_chat_spans(
         // records its own operation onto it.
         assert_eq!(
             chat_span.text("gen_ai.operation.name").as_deref(),
-            Some("chat_streaming")
+            Some("chat")
+        );
+        assert_eq!(chat_span.name, "chat");
+        assert_eq!(
+            chat_span.value("gen_ai.request.stream"),
+            Some(&serde_json::json!(true))
         );
         // A counter the provider did not report leaves its span field unset.
         let field = |name: &str| chat_span.u64(name);
@@ -641,8 +646,8 @@ async fn capture_stream_message_telemetry(
     let span = spans
         .spans()
         .into_iter()
-        .find(|span| span.name == "chat_streaming")
-        .expect("chat_streaming span should be captured");
+        .find(|span| span.target == "rig::agent_chat")
+        .expect("the agent chat span should be captured");
     (span, recorded_model.requests())
 }
 
@@ -842,8 +847,8 @@ async fn streaming_rejected_message_telemetry_does_not_record_output() {
     let chat_span = spans
         .spans()
         .into_iter()
-        .find(|span| span.name == "chat_streaming")
-        .expect("chat_streaming span should be captured");
+        .find(|span| span.target == "rig::agent_chat")
+        .expect("the agent chat span should be captured");
     assert!(
         chat_span.record_count("gen_ai.input.messages") > 0,
         "opt-in rejected stream should still record input messages"
@@ -3719,4 +3724,46 @@ async fn a_repaired_call_streams_its_held_fragments_under_the_repaired_name() {
             (0, "add".to_string(), "\"y\":2}".to_string()),
         ]
     );
+}
+
+/// A streamed answer that ends in an unknown finish reason fails the run by
+/// default, after its text streamed; accepted, it is the run's answer.
+#[tokio::test]
+async fn a_streamed_answer_with_an_unknown_finish_reason_needs_acceptance() {
+    for accept in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([[
+            MockStreamEvent::text("answer"),
+            MockStreamEvent::FinalResponse(Finish {
+                reason: Some(FinishReason::Other("weird".to_string())),
+                ..mock_final(Usage::default())
+            }),
+        ]]);
+        let agent = AgentBuilder::new(model)
+            .accept_unknown_finish_reasons(accept)
+            .build();
+        let mut stream = agent.prompt("hello").stream();
+        let mut outcome = None;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(MultiTurnStreamItem::FinalResponse(res)) => {
+                    outcome = Some(Ok(res.output().to_owned()));
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    outcome = Some(Err(err.to_string()));
+                    break;
+                }
+            }
+        }
+        match outcome.expect("the run ends") {
+            Ok(answer) => {
+                assert!(accept, "only an accepted reason answers");
+                assert_eq!(answer, "answer");
+            }
+            Err(error) => {
+                assert!(!accept, "an accepted reason does not fail: {error}");
+                assert!(error.contains("weird"), "{error}");
+            }
+        }
+    }
 }

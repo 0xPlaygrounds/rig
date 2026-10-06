@@ -135,6 +135,17 @@ data: [DONE]\n\n";
 }
 
 #[test]
+fn ollama_records_deliver_their_tool_ids() {
+    assert_eq!(Dialect::from_path("/api/chat"), Dialect::ChatCompletions);
+    let ollama = "{\"message\":{\"role\":\"assistant\",\"tool_calls\":[{\"id\":\"call_o\",\"function\":{\"name\":\"f\",\"arguments\":{}}}]},\"done\":false}\n\
+{\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true}\n";
+    assert_eq!(
+        kinds(&response_tokens(Dialect::ChatCompletions, ollama)),
+        [("tool_call_id", "call_o")]
+    );
+}
+
+#[test]
 fn gemini_records_deliver_their_opaque_fields() {
     let gemini = json!({ "candidates": [{ "content": { "parts": [
         { "text": "t", "thoughtSignature": "ts-1" },

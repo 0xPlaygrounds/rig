@@ -67,7 +67,7 @@ impl CohereConfig {
     }
 
     /// One request, authenticated and typed as JSON.
-    fn post(&self, path: &str) -> http::request::Builder {
+    pub(super) fn post(&self, path: &str) -> http::request::Builder {
         http::Request::post(format!("{}{path}", self.base_url))
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(

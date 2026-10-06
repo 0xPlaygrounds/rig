@@ -627,6 +627,52 @@ async fn a_trailing_thought_signature_joins_the_text_it_follows() {
     assert_eq!(replayed["parts"], json!([signed]));
 }
 
+/// Streaming is how a `generateContent` turn is delivered, not a different
+/// operation: the unary and streamed twins report the same
+/// `gen_ai.operation.name` and differ only in `gen_ai.request.stream`, as the
+/// OpenTelemetry GenAI semantic conventions define them.
+#[tokio::test]
+async fn unary_and_streamed_twins_report_one_genai_operation() {
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let capture = crate::test_utils::TraceCapture::default();
+    let _default = tracing::subscriber::set_default(capture.subscriber());
+    unary("gemini-3-flash-preview", SIGNED_UNARY).await;
+    streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
+    tracing::callsite::rebuild_interest_cache();
+    capture.clear();
+
+    unary("gemini-3-flash-preview", SIGNED_UNARY).await;
+    streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
+
+    let spans = capture
+        .spans()
+        .into_iter()
+        .filter(|span| span.target == "rig::completions")
+        .map(|span| {
+            (
+                span.name,
+                span.value("gen_ai.operation.name").cloned(),
+                span.value("gen_ai.request.stream").cloned(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        spans,
+        [
+            (
+                "generate_content",
+                Some(json!("generate_content")),
+                Some(json!(false))
+            ),
+            (
+                "generate_content",
+                Some(json!("generate_content")),
+                Some(json!(true))
+            ),
+        ]
+    );
+}
+
 /// Gemini repeats `responseId` and `modelVersion` on every streamed chunk.
 /// Each `Span::record` is one more attribute update, and OpenTelemetry SDKs
 /// cap updates per span (128 by default), so re-recording unchanged values

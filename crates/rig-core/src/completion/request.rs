@@ -206,6 +206,10 @@ pub struct CompletionResponse {
     /// Read through [`Self::finish_reason`].
     #[serde(default)]
     finish_reason: Option<FinishReason>,
+    /// Whether [`FinishReason::Other`] ends the turn as a normal stop. Read
+    /// through [`Self::accepts_unknown_finish_reasons`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    accepts_unknown_finish_reasons: bool,
     /// Provider response document for typed inspection through deserialization.
     /// Parsed wire types may omit unmodeled fields. This data does not override
     /// normalized fields; callers constructing responses must supply it.
@@ -242,6 +246,7 @@ impl CompletionResponse {
             aborted: None,
             provider_request_id: None,
             finish_reason: None,
+            accepts_unknown_finish_reasons: false,
             raw,
         }
     }
@@ -266,11 +271,27 @@ impl CompletionResponse {
         self.finish_reason.clone()
     }
 
+    /// Whether a finish reason outside the normalized vocabulary ends the
+    /// turn as a normal stop, as the request asked
+    /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
+    pub fn accepts_unknown_finish_reasons(&self) -> bool {
+        self.accepts_unknown_finish_reasons
+    }
+
+    /// Accept, or refuse, [`FinishReason::Other`] as a normal stop in
+    /// [`Self::stop`]. Filtered content and a reported failure still fail.
+    pub fn with_unknown_finish_reasons_accepted(mut self, accept: bool) -> Self {
+        self.accepts_unknown_finish_reasons = accept;
+        self
+    }
+
     /// How the turn ended, for history. It fails closed: only a natural
     /// stop, the token limit and a stop to call tools are successes. A
     /// reported failure, filtered content and any finish reason outside
-    /// that set are [`StopReason::Error`]; a reply the caller stopped
-    /// reading is [`StopReason::Aborted`].
+    /// that set are [`StopReason::Error`], unless the response accepts
+    /// unknown reasons ([`Self::accepts_unknown_finish_reasons`]), which then
+    /// stop like [`FinishReason::Stop`]. A reply the caller stopped reading
+    /// is [`StopReason::Aborted`].
     pub fn stop(&self) -> StopReason {
         if let Some(error) = &self.error {
             return StopReason::Error(error.clone());
@@ -284,13 +305,15 @@ impl CompletionResponse {
             Some(FinishReason::ContentFilter) => {
                 StopReason::Error("Provider finish_reason: content_filter".to_owned())
             }
-            Some(FinishReason::Other(reason)) => {
+            Some(FinishReason::Other(reason)) if !self.accepts_unknown_finish_reasons => {
                 StopReason::Error(format!("Provider finish_reason: {reason}"))
             }
-            Some(FinishReason::Stop) | None if self.tool_calls().next().is_some() => {
+            Some(FinishReason::Stop | FinishReason::Other(_)) | None
+                if self.tool_calls().next().is_some() =>
+            {
                 StopReason::ToolUse
             }
-            Some(FinishReason::Stop) | None => StopReason::Stop,
+            Some(FinishReason::Stop | FinishReason::Other(_)) | None => StopReason::Stop,
         }
     }
 
@@ -410,6 +433,8 @@ struct CompletionResponseRepr {
     provider_request_id: Option<String>,
     #[serde(default)]
     finish_reason: Option<FinishReason>,
+    #[serde(default)]
+    accepts_unknown_finish_reasons: bool,
     raw: serde_json::Value,
 }
 
@@ -423,6 +448,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             aborted,
             provider_request_id,
             finish_reason,
+            accepts_unknown_finish_reasons,
             raw,
         } = repr;
         use crate::provider_response::reported;
@@ -433,6 +459,7 @@ impl From<CompletionResponseRepr> for CompletionResponse {
         response.error = error;
         response.aborted = aborted;
         response.provider_request_id = reported(provider_request_id);
+        response.accepts_unknown_finish_reasons = accepts_unknown_finish_reasons;
         response
     }
 }
@@ -591,6 +618,15 @@ pub struct CompletionRequest {
     /// especially for streams consumed after the provider returns.
     #[serde(skip)]
     pub record_telemetry_content: bool,
+    /// Whether a finish reason outside the normalized vocabulary
+    /// ([`FinishReason::Other`]) ends the turn as a normal stop instead of a
+    /// failure. Defaults to `false`. The response carries the choice, so its
+    /// [`CompletionResponse::stop`], the runtimes and history replay agree.
+    /// `Other` also holds genuine failures, such as a malformed tool call or a
+    /// recitation block, so with this set the tool calls of such a reply run.
+    /// [`FinishReason::ContentFilter`] still fails the turn.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub accept_unknown_finish_reasons: bool,
 }
 
 impl CompletionRequest {
@@ -792,6 +828,7 @@ impl CompletionRequest {
             additional_params: None,
             output_schema: None,
             record_telemetry_content: false,
+            accept_unknown_finish_reasons: false,
         }
     }
 
@@ -926,6 +963,14 @@ impl CompletionRequest {
     /// [`Self::record_telemetry_content`] for what that exposes.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
         self.record_telemetry_content = enabled;
+        self
+    }
+
+    /// Accept, or with `false` refuse, finish reasons outside the normalized
+    /// vocabulary as a normal stop. See
+    /// [`Self::accept_unknown_finish_reasons`] for what that lets through.
+    pub fn accepting_unknown_finish_reasons(mut self, accept: bool) -> Self {
+        self.accept_unknown_finish_reasons = accept;
         self
     }
 

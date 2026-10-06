@@ -1,0 +1,16 @@
+when:
+  path: /compatibility/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"<file id: harbor-record-1>\n<metadata source: \"harbor-registry\" />\nBeacon code amber-73 is assigned to Dock Seven.\n</file>\n","type":"text"},{"text":"<file id: harbor-record-2>\nDock Seven closes for repairs every Tuesday.\n</file>\n","type":"text"},{"text":"Which dock has beacon amber-73? Answer with the dock''s name only.","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Dock Seven","role":"assistant"}}],"created":0,"id":"1488b589-6ed1-4eee-9f4c-9d886ae4d2e2","model":"command-a-03-2025","object":"chat.completion","usage":{"completion_tokens":2,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":83,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":85}}'

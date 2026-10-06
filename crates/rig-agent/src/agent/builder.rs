@@ -276,6 +276,21 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Accept finish reasons outside the normalized vocabulary
+    /// ([`FinishReason::Other`](rig_core::completion::FinishReason::Other))
+    /// as a normal stop. Off by default: such a turn fails the run,
+    /// and history replay leaves it out. When on, the turn succeeds, its
+    /// tool calls run, and it replays.
+    ///
+    /// `Other` also holds genuine failures, such as Gemini's
+    /// `MALFORMED_FUNCTION_CALL` and `RECITATION` or Bedrock's
+    /// `malformed_tool_use`, so tool calls from a malformed reply may run.
+    /// Filtered content still fails the turn.
+    pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
+        self.config.accept_unknown_finish_reasons = accept;
+        self
+    }
+
     /// Constrain the output to `T`'s JSON schema.
     pub fn output_schema<T>(mut self) -> Self
     where

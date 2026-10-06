@@ -22,6 +22,14 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
         "http://ollama.internal:11434/v1"
     );
 
+    let native = OllamaConfig::new()
+        .with_base_url("http://ollama.internal:11434")
+        .native_completion("qwen3:4b");
+    let serialized = serde_json::to_string(&native).expect("the wire serializes");
+    let restored: crate::providers::ollama::Chat =
+        serde_json::from_str(&serialized).expect("the wire deserializes");
+    assert_eq!(restored, native);
+
     // A proxied daemon does take a credential, and that one never travels.
     a_config_reloads_without_its_credential(
         &OllamaConfig::new().with_api_key("ollama-proxy-key"),
@@ -38,6 +46,14 @@ fn a_local_daemon_sends_no_authorization_header() {
         .expect("the request encodes");
     let request = &encoded.request;
     assert_eq!(request.uri(), "http://localhost:11434/v1/chat/completions");
+    assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
+
+    let encoded = OllamaConfig::new()
+        .native_completion("qwen3:4b")
+        .encode(CompletionRequest::new("hi"), Mode::Unary)
+        .expect("the request encodes");
+    let request = &encoded.request;
+    assert_eq!(request.uri(), "http://localhost:11434/api/chat");
     assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
 
     let encoded = OllamaConfig::new()

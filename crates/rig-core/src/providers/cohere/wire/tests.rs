@@ -1,7 +1,9 @@
 use super::*;
+use crate::completion::CompletionRequest;
+use crate::error::ProviderError;
 use crate::test_utils::json_body;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
-use crate::wire::{Mode, Wire};
+use crate::wire::{Mode, Wire, WireFrame};
 
 fn cohere() -> CohereConfig {
     CohereConfig::new("cohere-test-key")
@@ -38,4 +40,76 @@ fn a_serialized_config_carries_no_key_material() {
         !serialized.contains("cohere-test-key"),
         "a wire a host may persist must not carry the credential: {serialized}"
     );
+}
+
+/// The response `frames` fold into on the routing wire, streamed.
+fn streamed(frames: &[&str]) -> Result<crate::completion::CompletionResponse, ProviderError> {
+    let wire = cohere().completion("command-a-03-2025");
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hi"),
+        Mode::Streaming,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text((*frame).to_owned())),
+        serde_json::Value::Null,
+    )
+}
+
+/// The routing decoder reads each frame by its shape: Compatibility API
+/// chunks and its `[DONE]`, and native events.
+#[test]
+fn the_decoder_reads_either_api_by_its_frames() {
+    let compatibility = streamed(&[
+        r#"{"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"hi"}}]}"#,
+        r#"{"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}"#,
+        "[DONE]",
+    ])
+    .expect("the Compatibility API stream folds");
+    assert_eq!(
+        compatibility.choice,
+        vec![crate::message::AssistantContent::text("hi")]
+    );
+    let native = streamed(&[
+        r#"{"id":"n1","type":"message-start","delta":{"message":{"role":"assistant"}}}"#,
+        r#"{"type":"content-start","index":0,"delta":{"message":{"content":{"type":"text","text":""}}}}"#,
+        r#"{"type":"content-delta","index":0,"delta":{"message":{"content":{"text":"hi"}}}}"#,
+        r#"{"type":"content-end","index":0}"#,
+        r#"{"type":"message-end","delta":{"finish_reason":"COMPLETE"}}"#,
+    ])
+    .expect("the native stream folds");
+    assert_eq!(native.choice.len(), 1);
+    assert_eq!(native.response_id(), Some("n1"));
+}
+
+/// Frames that run out before either API ends its reply are truncated.
+#[test]
+fn a_reply_cut_short_on_either_api_is_truncated() {
+    for frames in [
+        vec![r#"{"id":"n1","type":"message-start","delta":{"message":{"role":"assistant"}}}"#],
+        vec![
+            r#"{"id":"c1","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"hi"}}]}"#,
+        ],
+        vec!["not json"],
+    ] {
+        assert!(streamed(&frames).is_err(), "{frames:?}");
+    }
+}
+
+/// Cohere's error body, a `message` string, sent with a success status fails
+/// the turn with its text on either mode, and is not read as a native reply.
+#[test]
+fn an_error_body_with_a_success_status_fails_the_turn() {
+    let body = r#"{"id":"x","message":"internal error"}"#;
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let error = crate::test_utils::decode_reply(
+            &cohere().completion("command-a-03-2025"),
+            &CompletionRequest::new("hi"),
+            mode,
+            [WireFrame::Text(body.to_owned())],
+            serde_json::Value::Null,
+        )
+        .expect_err("an error body fails the turn");
+        assert!(error.to_string().contains("internal error"), "{error}");
+    }
 }

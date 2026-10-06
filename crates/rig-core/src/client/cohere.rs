@@ -4,8 +4,7 @@
 use crate::client::macros::http_client;
 use crate::driver::Model;
 
-use crate::providers::cohere::{CohereConfig, Embeddings, ImageEmbeddings};
-use crate::providers::openai::wire::Chat;
+use crate::providers::cohere::{CohereChat, CohereConfig, Embeddings, ImageEmbeddings};
 
 http_client!(
     /// Cohere: its [`CohereConfig`] on a transport. Every model it builds
@@ -30,8 +29,10 @@ impl Cohere {
         Ok(CohereConfig::from_env()?.client())
     }
 
-    /// The chat model for `model`, on Cohere's OpenAI Compatibility API.
-    pub fn completion(&self, model: impl Into<String>) -> Model<Chat> {
+    /// The chat model for `model`, on Cohere's OpenAI Compatibility API
+    /// until its wire opts in to the native chat API
+    /// ([`ChatRoute`](crate::providers::cohere::ChatRoute)).
+    pub fn completion(&self, model: impl Into<String>) -> Model<CohereChat> {
         self.model(self.config.completion(model))
     }
 

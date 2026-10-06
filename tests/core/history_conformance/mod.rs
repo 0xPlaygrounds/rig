@@ -14,6 +14,7 @@ pub mod azure;
 pub mod chat;
 pub mod chatgpt;
 pub mod cohere;
+pub mod cohere_native;
 pub mod copilot;
 pub mod deepseek;
 pub mod doubleword;
@@ -29,6 +30,7 @@ pub mod mistral;
 pub mod mock;
 pub mod moonshot;
 pub mod ollama;
+pub mod ollama_native;
 pub mod openai_chat;
 pub mod openai_responses;
 pub mod openrouter;
@@ -49,6 +51,7 @@ pub const SUITE_WIRES: &[&str] = &[
     anthropic_xiaomimimo::HISTORY_WIRE,
     chatgpt::HISTORY_WIRE,
     cohere::HISTORY_WIRE,
+    cohere_native::HISTORY_WIRE,
     copilot::HISTORY_WIRE,
     deepseek::HISTORY_WIRE,
     gemini_interactions::HISTORY_WIRE,
@@ -56,6 +59,7 @@ pub const SUITE_WIRES: &[&str] = &[
     groq::HISTORY_WIRE,
     mistral::HISTORY_WIRE,
     ollama::HISTORY_WIRE,
+    ollama_native::HISTORY_WIRE,
     openai_chat::HISTORY_WIRE,
     openai_responses::HISTORY_WIRE,
     openrouter::HISTORY_WIRE,

@@ -1,0 +1,119 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"8b46a216-c727-4419-adde-65721087b399","type":"message-start"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" will"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" use"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" the"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" subtract"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" tool"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" to"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" calculate"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" 2"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" -"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" 5"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
+
+    event: tool-call-start
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"subtract_d41p5xnhmncp","type":"function"}}},"index":0,"type":"tool-call-start"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"x"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"2"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":","}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" \""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"y"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"5"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"}"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-end
+    data: {"index":0,"type":"tool-call-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":77,"output_tokens":24},"cached_tokens":112,"tokens":{"input_tokens":1518,"output_tokens":56}}},"type":"message-end"}
+
+    data: [DONE]
+
+---
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"subtract_d41p5xnhmncp","type":"function"}],"tool_plan":"I will use the subtract tool to calculate 2 - 5."},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"subtract_d41p5xnhmncp"}],"model":"command-a-03-2025","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"c66737c9-0dc4-4ed3-b0db-5bc941a40984","message":{"citations":[{"end":2,"sources":[{"id":"subtract_d41p5xnhmncp:0","tool_output":{"content":"-3"},"type":"tool"}],"start":0,"text":"-3","type":"TEXT_CONTENT"}],"content":[{"text":"-3","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":95,"output_tokens":2},"cached_tokens":704,"tokens":{"input_tokens":1623,"output_tokens":15}}}'

@@ -9,15 +9,67 @@
 use rig_core::message::{Message, ToolChoice};
 use serde::{Deserialize, Serialize};
 
+/// Why a model-emitted tool call cannot be dispatched as written.
+///
+/// Not every [`InvalidToolCallAction`] fits every reason: a name can be
+/// repaired, argument text cannot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum InvalidToolCallReason {
+    /// The name is not an executable tool for this turn.
+    UnknownTool,
+    /// The tool exists, but the active tool choice does not allow it.
+    DisallowedByToolChoice,
+    /// The arguments are not a JSON object. The raw text is in
+    /// [`InvalidToolCallContext::args`].
+    MalformedArguments {
+        /// What the JSON parser rejected.
+        error: String,
+    },
+}
+
+impl InvalidToolCallReason {
+    /// The reason for arguments `raw` that are not a JSON object, with the
+    /// parser's description of what it rejected.
+    pub fn malformed_arguments(raw: &str) -> Self {
+        Self::MalformedArguments {
+            error: arguments_parse_error(raw),
+        }
+    }
+}
+
+/// What the JSON parser rejects in arguments `raw` that are not an object.
+pub(crate) fn arguments_parse_error(raw: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Err(error) => error.to_string(),
+        Ok(value) => format!("expected a JSON object, found {}", json_kind(&value)),
+    }
+}
+
+fn json_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "a boolean",
+        serde_json::Value::Number(_) => "a number",
+        serde_json::Value::String(_) => "a string",
+        serde_json::Value::Array(_) => "an array",
+        serde_json::Value::Object(_) => "an object",
+    }
+}
+
 /// Diagnostics for an invalid model-emitted tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct InvalidToolCallContext {
     /// Name emitted by the model.
     pub tool_name: String,
     /// Durable tool-call id: the provider's when it issued one, else rig's
     /// minted handle. Absent only when no call object exists at all.
     pub tool_call_id: Option<rig_core::message::CallId>,
-    /// Emitted JSON arguments, when present.
+    /// Emitted JSON arguments, when present. For
+    /// [`InvalidToolCallReason::MalformedArguments`] this is the raw text the
+    /// model sent.
     pub args: Option<String>,
     /// Executable tools advertised for the turn.
     pub available_tools: Vec<String>,
@@ -29,6 +81,8 @@ pub struct InvalidToolCallContext {
     pub chat_history: Vec<Message>,
     /// Whether the call came from the streaming path.
     pub is_streaming: bool,
+    /// Why the call cannot be dispatched as written.
+    pub reason: InvalidToolCallReason,
 }
 
 /// How an accepted, tool-free model turn should be retried.

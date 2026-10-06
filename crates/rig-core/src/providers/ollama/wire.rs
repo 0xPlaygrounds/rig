@@ -4,6 +4,7 @@
 //! use rig_core::providers::ollama::OllamaConfig;
 //! let ollama = OllamaConfig::new().client();
 //! assert_eq!(ollama.completion("qwen3").wire.model, "qwen3");
+//! assert_eq!(ollama.native_completion("qwen3").wire.model, "qwen3");
 //! ```
 
 use crate::client::env::{self, EnvError};
@@ -82,6 +83,12 @@ impl OllamaConfig {
         OpenAIConfig::with_key(&OLLAMA, self.api_key.clone())
             .with_base_url(format!("{}{OPENAI_COMPATIBLE_PATH}", self.base_url))
             .chat(model)
+    }
+
+    /// The native chat wire for `model`, on `/api/chat`. The credential is
+    /// sent only when there is one.
+    pub(crate) fn native_completion(&self, model: impl Into<String>) -> super::Chat {
+        super::Chat::new(self.clone(), model)
     }
 
     /// One request to `path`, with the credential only when there is one.

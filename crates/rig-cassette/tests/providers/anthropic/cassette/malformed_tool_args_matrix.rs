@@ -9,10 +9,11 @@
 //! **Contract.** A malformed call never fails the reply. It is kept with
 //! the arguments its text still states and the text itself in
 //! `invalid_arguments`, and with no provider item, so it replays from its
-//! canonical fields. The agent never runs the tool and never consults the
-//! invalid-call hook: it answers the call with an `is_error` tool result
-//! saying "The arguments for tool `X` are not a JSON object: ...", and the
-//! run continues, as pi does.
+//! canonical fields. The agent never runs the tool. It offers the call to the
+//! invalid-call hook with a `MalformedArguments` reason and the raw text,
+//! and, when the hook leaves the decision, answers the call with an
+//! `is_error` tool result saying "The arguments for tool `X` are not a JSON
+//! object: ...", and the run continues, as pi does.
 //!
 //! **Fixtures.** Every cell is recorded live. Cell 3 caps its first request
 //! at [`CUT_AT`] output tokens, which cuts Sonnet 4.6's `subtract` call
@@ -38,10 +39,12 @@
 //! the model sees on the next request) and the history conformance row
 //! `h06_malformed_arguments`.
 
+use std::sync::{Arc, Mutex};
+
 use futures::StreamExt;
 use rig::agent::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, InvalidToolCallAction,
-    InvalidToolCallContext, MultiTurnStreamItem, RequestPatch,
+    InvalidToolCallContext, InvalidToolCallReason, MultiTurnStreamItem, RequestPatch,
 };
 use rig::providers::anthropic;
 use rig_test_support::cassette_models::AnthropicModels;
@@ -130,18 +133,31 @@ impl AgentHook for CutFirstCall {
     }
 }
 
-/// A hook that fails the cell if consulted: malformed arguments are not an
-/// invalid call to resolve.
-#[derive(Clone)]
-struct NeverConsulted;
+/// Records every invalid call it is offered and leaves the decision to the
+/// default, so the follow-up request is the one the cassette recorded.
+#[derive(Clone, Default)]
+struct Consulted(Arc<Mutex<Vec<InvalidToolCallContext>>>);
 
-impl AgentHook for NeverConsulted {
+impl Consulted {
+    fn seen(&self) -> Vec<InvalidToolCallContext> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl AgentHook for Consulted {
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
         context: &InvalidToolCallContext,
     ) -> Option<InvalidToolCallAction> {
-        panic!("malformed arguments reached the invalid-call hook: {context:?}");
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(context.clone());
+        None
     }
 }
 
@@ -191,11 +207,12 @@ async fn streaming_malformed_call_is_answered_with_an_error() {
     with_anthropic_cassette(
         "malformed_tool_args_matrix/streaming_malformed_call_is_answered_with_an_error",
         |client| async move {
+            let consulted = Consulted::default();
             // Room for the call the model makes again after the error result.
             let mut stream = agent(client, 4)
                 .prompt(STREAMING_TOOLS_PROMPT)
                 .add_hook(CutFirstCall)
-                .add_hook(NeverConsulted)
+                .add_hook(consulted.clone())
                 .stream();
             let mut executed = false;
             let mut text = String::new();
@@ -212,6 +229,28 @@ async fn streaming_malformed_call_is_answered_with_an_error() {
             }
             assert!(!executed, "a malformed call must never be executed");
             assert_mentions_expected_number(&text, -3);
+            let seen = consulted.seen();
+            let [context] = seen.as_slice() else {
+                panic!("the hook is offered the malformed call once: {seen:?}");
+            };
+            assert_eq!(context.tool_name, "subtract");
+            assert!(context.is_streaming);
+            assert!(
+                matches!(
+                    &context.reason,
+                    InvalidToolCallReason::MalformedArguments { .. }
+                ),
+                "{:?}",
+                context.reason
+            );
+            assert!(
+                context
+                    .args
+                    .as_deref()
+                    .is_some_and(|raw| serde_json::from_str::<Value>(raw).is_err()),
+                "the hook sees the cut text: {:?}",
+                context.args
+            );
         },
     )
     .await;

@@ -44,6 +44,7 @@ fn request(history: Vec<Message>, tools: Vec<ToolDefinition>, params: Value) -> 
         additional_params: Some(params),
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 

@@ -184,9 +184,44 @@ fn an_unanswered_turn_fails_its_run_only_when_cut_or_failed() {
         None
     );
     assert_eq!(
-        turn_failure(&answered, Some(&failed), Some(&FinishReason::Length)),
+        turn_failure(
+            &answered,
+            Some(&StopReason::Length),
+            Some(&FinishReason::Length)
+        ),
         None
     );
+}
+
+/// A turn the provider failed fails its run even when it holds an answer:
+/// replay leaves it out, so the caller must not take it as a success.
+#[test]
+fn a_failed_turn_with_an_answer_fails_its_run() {
+    use super::{AssistantContent, StopReason, turn_failure};
+    use crate::completion::FinishReason;
+    let answered = vec![AssistantContent::text("hi")];
+    let failed = StopReason::Error("Provider finish_reason: weird".into());
+    let message = turn_failure(
+        &answered,
+        Some(&failed),
+        Some(&FinishReason::Other("weird".into())),
+    )
+    .expect("the run fails");
+    assert_eq!(
+        message,
+        "the provider failed the turn: Provider finish_reason: weird"
+    );
+    let filtered = StopReason::Error("Provider finish_reason: content_filter".into());
+    assert!(
+        turn_failure(
+            &answered,
+            Some(&filtered),
+            Some(&FinishReason::ContentFilter)
+        )
+        .is_some_and(|message| message.contains("content_filter"))
+    );
+    let aborted = StopReason::Aborted("the caller stopped".into());
+    assert_eq!(turn_failure(&answered, Some(&aborted), None), None);
 }
 
 /// A turn that will not replay runs none of its tool calls, whatever else

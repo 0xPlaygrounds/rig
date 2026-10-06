@@ -36,10 +36,10 @@ pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHa
 pub use completion::{Agent, AgentParts};
 pub use hook::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
-    InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
-    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
-    RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
-    SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, ModelSelection,
+    ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
+    RequestPatch, RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction,
+    Scratchpad, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;

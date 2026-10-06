@@ -44,50 +44,45 @@ impl Operation for Completion {
     /// The call's span names the model the request overrides to, when it
     /// names one: every wire honours the override on encode.
     fn fold(request: &Self::Request, call: &mut Call<'_>) -> Self::Fold {
-        let telemetry = call.wire.telemetry.map_or_else(
-            || match call.mode {
-                Mode::Unary => GenAiOperation::Chat,
-                Mode::Streaming => GenAiOperation::ChatStreaming,
-            },
-            |telemetry| telemetry(call.mode),
-        );
+        let telemetry = call
+            .wire
+            .telemetry
+            .map_or(GenAiOperation::Chat, |telemetry| telemetry(call.mode));
         debug_assert!(telemetry.is_completion());
+        // A wire that picks its API per request records the one it used.
+        let replay = call
+            .wire
+            .replay
+            .map(|target| target.route(request).unwrap_or(target));
         let model = request
             .model
             .as_deref()
             .or(call.wire.model)
-            .or_else(|| call.wire.replay.map(|target| target.model()))
+            .or_else(|| replay.map(|target| target.model()))
             .unwrap_or_default();
         let span = SpanBuilder::new(call.wire.name, model, telemetry)
+            .streaming(matches!(call.mode, Mode::Streaming))
             .system_instructions(
                 request.system_instructions(),
                 request.record_telemetry_content,
             )
             .build();
         call.instrument(span.clone());
-        let api = call.wire.replay.map_or_else(
+        let api = replay.map_or_else(
             || Api::from(call.wire.name.to_owned()),
             |target| target.api(),
         );
         let mut origin = Origin::new(api, call.wire.name, model);
         // Only a wire that binds items to the context needs it recorded.
-        if call
-            .wire
-            .replay
-            .is_some_and(|target| target.binds_context(model))
-        {
-            origin.context = call
-                .wire
-                .replay
-                .map(|target| crate::completion::history::context_of(request, target, model));
+        if replay.is_some_and(|target| target.binds_context(model)) {
+            origin.context =
+                replay.map(|target| crate::completion::history::context_of(request, target, model));
         }
         Turn {
             span,
-            wire: call
-                .wire
-                .replay
-                .is_some_and(|target| target.states_finish_reason()),
-            call_id_slot: call.wire.replay.and_then(|target| target.call_id_slot()),
+            wire: replay.is_some_and(|target| target.states_finish_reason()),
+            call_id_slot: replay.and_then(|target| target.call_id_slot()),
+            accept_unknown_finish: request.accept_unknown_finish_reasons,
             ..Turn::new(origin)
         }
     }
@@ -118,10 +113,13 @@ impl Operation for Completion {
             .take()
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
+        let target = target.route(&request).unwrap_or(target);
         // Documents join the history before it is adapted, so the adapter's
-        // rules apply to them and no encoder places them.
-        request.chat_history = request.chat_history_with_documents();
-        request.documents.clear();
+        // rules apply to them, unless the encoder sends them itself.
+        if !target.takes_documents() {
+            request.chat_history = request.chat_history_with_documents();
+            request.documents.clear();
+        }
         let stored = target.continues_stored(&request);
         let shape = crate::completion::history::Request {
             model: request.model.as_deref(),
@@ -223,6 +221,9 @@ pub struct Turn {
     ///
     /// [`ReplayTarget::call_id_slot`]: crate::completion::ReplayTarget::call_id_slot
     call_id_slot: Option<&'static str>,
+    /// Whether the request accepts an unknown finish reason as a normal stop
+    /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
+    accept_unknown_finish: bool,
     /// The first position whose item closed without the provider stating it
     /// complete. An item there may be the partner a later one needs, so
     /// blocks from it on replay from their canonical fields.
@@ -448,6 +449,7 @@ impl Turn {
             call_ids: HashSet::new(),
             wire: false,
             call_id_slot: None,
+            accept_unknown_finish: false,
             first_incomplete: None,
             unfinished_call: false,
             last_call: None,
@@ -1011,7 +1013,8 @@ impl Turn {
             }
         });
         let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
-            .with_optional_finish_reason(reason);
+            .with_optional_finish_reason(reason)
+            .with_unknown_finish_reasons_accepted(self.accept_unknown_finish);
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response
@@ -1137,6 +1140,14 @@ impl Fold<Completion> for Turn {
     }
 
     fn finish(self, end: Finish, reply: Reply) -> Result<CompletionResponse, ProviderError> {
+        if let Some(FinishReason::Other(reason)) = &end.reason {
+            tracing::warn!(
+                provider = %self.origin.provider,
+                reason = %reason,
+                accepted = self.accept_unknown_finish,
+                "the provider ended the reply with an unknown finish reason"
+            );
+        }
         let response = self.response(end, reply);
         self.span
             .record_response(response.response_id(), response.model(), &response.usage);

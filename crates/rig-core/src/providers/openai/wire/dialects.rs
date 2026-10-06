@@ -159,8 +159,6 @@ pub const TOGETHER: Dialect = Dialect {
         // Structured-output support is per model on Together, so the schema
         // is dropped with a warning rather than sent and rejected.
         supports_response_format: false,
-        // Its API reference lists `eos` for a model that ended its answer.
-        finishes: &[("eos", FinishReason::Stop)],
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",
@@ -347,6 +345,13 @@ pub const DOUBLEWORD: Dialect = Dialect {
 /// Z.AI's OpenAI-compatible half. Its Anthropic half is a separate wire.
 pub const ZAI: Dialect = Dialect {
     base_url_env: Some("ZAI_API_BASE"),
+    quirks: Quirks {
+        finishes: &[
+            ("model_context_window_exceeded", FinishReason::Length),
+            ("sensitive", FinishReason::ContentFilter),
+        ],
+        ..Quirks::openai()
+    },
     ..Dialect::gateway("zai", "https://api.z.ai/api/paas/v4", "ZAI_API_KEY")
 };
 
@@ -416,6 +421,7 @@ pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
+        rewrite: BodyRewrite::Ollama,
         ..Quirks::openai()
     },
     ..Dialect::gateway("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY")

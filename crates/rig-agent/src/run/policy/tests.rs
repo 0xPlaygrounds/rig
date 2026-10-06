@@ -24,3 +24,46 @@ fn decision_types_round_trip_through_serde() {
         retry
     );
 }
+
+/// The malformed-arguments reason carries the parser's error, or names the
+/// JSON value that is not an object.
+#[test]
+fn malformed_arguments_name_what_the_parser_rejected() {
+    let InvalidToolCallReason::MalformedArguments { error } =
+        InvalidToolCallReason::malformed_arguments("{\"x\":")
+    else {
+        panic!("a malformed-arguments reason");
+    };
+    assert!(error.contains("line 1 column"), "{error}");
+    for (raw, kind) in [
+        ("null", "null"),
+        ("true", "a boolean"),
+        ("1", "a number"),
+        ("\"x\"", "a string"),
+        ("[1]", "an array"),
+    ] {
+        assert_eq!(
+            InvalidToolCallReason::malformed_arguments(raw),
+            InvalidToolCallReason::MalformedArguments {
+                error: format!("expected a JSON object, found {kind}")
+            }
+        );
+    }
+    assert_eq!(json_kind(&serde_json::json!({})), "an object");
+}
+
+#[test]
+fn reasons_round_trip_through_serde() {
+    for reason in [
+        InvalidToolCallReason::UnknownTool,
+        InvalidToolCallReason::DisallowedByToolChoice,
+        InvalidToolCallReason::malformed_arguments("{"),
+    ] {
+        let json = serde_json::to_value(&reason).expect("serialize reason");
+        assert!(json["reason"].is_string(), "{json}");
+        assert_eq!(
+            serde_json::from_value::<InvalidToolCallReason>(json).expect("deserialize reason"),
+            reason
+        );
+    }
+}

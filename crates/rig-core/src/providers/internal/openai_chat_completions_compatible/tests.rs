@@ -1,6 +1,6 @@
 use super::finish_reason;
 use crate::completion::FinishReason;
-use crate::providers::openai::wire::{OPENAI, TOGETHER};
+use crate::providers::openai::wire::{OPENAI, TOGETHER, ZAI};
 use bytes::Bytes;
 
 #[test]
@@ -49,14 +49,40 @@ fn sse_error_detector_handles_null_empty_and_object_or_string_errors() {
     );
 }
 
-/// NEW-4 (chat): Together ends a successful turn with `eos`, in its
-/// documented vocabulary; another dialect never named it, so it fails there.
+/// A dialect states its own vocabulary on top of the shared one: Z.AI's
+/// context-window stop is a length stop there and unknown elsewhere.
 #[test]
 fn a_dialect_states_its_own_finish_vocabulary() {
-    assert_eq!(finish_reason("eos", &TOGETHER.quirks), FinishReason::Stop);
     assert_eq!(
-        finish_reason("eos", &OPENAI.quirks),
-        FinishReason::Other("eos".to_owned())
+        finish_reason("model_context_window_exceeded", &ZAI.quirks),
+        FinishReason::Length
+    );
+    assert_eq!(
+        finish_reason("sensitive", &ZAI.quirks),
+        FinishReason::ContentFilter
+    );
+    assert_eq!(
+        finish_reason("model_context_window_exceeded", &OPENAI.quirks),
+        FinishReason::Other("model_context_window_exceeded".to_owned())
+    );
+}
+
+/// Every dialect shares the stop spellings compatible servers use for a
+/// natural end, Together's `eos` among them.
+#[test]
+fn compatible_servers_stop_spellings_are_shared() {
+    for reason in ["stop", "end", "eos", "end_turn", "stop_sequence"] {
+        for quirks in [&OPENAI.quirks, &TOGETHER.quirks, &ZAI.quirks] {
+            assert_eq!(
+                finish_reason(reason, quirks),
+                FinishReason::Stop,
+                "{reason}"
+            );
+        }
+    }
+    assert_eq!(
+        finish_reason("MALFORMED", &OPENAI.quirks),
+        FinishReason::Other("MALFORMED".to_owned())
     );
 }
 

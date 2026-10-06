@@ -11,6 +11,7 @@
 //! | a checkpoint with `ready` or `prompt` on a non-run is refused before the destination changes | `a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads` |
 //! | a run assembled by hand from `Run`, `RunOf` and `Prompt` is not read until `Ready`: no utterance, no phase, no request; `Ready` opens it, history first | `a_run_assembled_by_hand_starts_on_ready_with_its_history_first` |
 //! | a `Ready` run saved before it opened loads with its `Prompt` and `Ready`, opens in the second world and answers | `a_ready_run_saved_before_it_opened_starts_after_the_load` |
+//! | `Prompt` from text, a `String`, one part or many parts is that user content | `every_prompt_form_is_its_user_content` |
 use crate::run_support;
 
 use std::any::type_name;
@@ -384,4 +385,14 @@ fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
         texts(&requests[0]),
         vec!["system:You are terse.".to_owned(), "user:saved".to_owned()]
     );
+}
+
+/// Every prompt form is the one user message it names.
+#[test]
+fn every_prompt_form_is_its_user_content() {
+    let text = rig_core::message::UserContent::text("hi");
+    assert_eq!(Prompt::from("hi"), Prompt(vec![text.clone()]));
+    assert_eq!(Prompt::from("hi".to_owned()), Prompt(vec![text.clone()]));
+    assert_eq!(Prompt::from(text.clone()), Prompt(vec![text.clone()]));
+    assert_eq!(Prompt::from(vec![text.clone()]), Prompt(vec![text]));
 }

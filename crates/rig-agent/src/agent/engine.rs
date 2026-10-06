@@ -27,10 +27,10 @@ use super::{
     completion::{PreparedCompletionRequest, build_prepared_completion_request},
     hook::{
         AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
-        HookContext, HookStack, InvalidToolCallAction, ModelSelection, ModelSelectionAction,
-        ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction, OutcomeEvent,
-        ReasoningDelta, RequestPatch, RunSettled, RunStart, RunStartAction, SettledOutcome,
-        StepEventKind, TextDelta, ToolCallDelta,
+        HookContext, HookStack, InvalidToolCallAction, InvalidToolCallContext, ModelSelection,
+        ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction,
+        OutcomeEvent, ReasoningDelta, RequestPatch, RunSettled, RunStart, RunStartAction,
+        SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
     },
     run::{
         AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall,
@@ -493,6 +493,9 @@ where
     struct PreparedToolCall {
         tool_call: rig_core::message::ToolCall,
         preresolved_result: Option<UserContent>,
+        /// The invalid-call context of a call whose arguments are not a JSON
+        /// object, offered to the invalid-call hook before the call is answered.
+        malformed: Option<InvalidToolCallContext>,
         span: tracing::Span,
     }
     // How a settled tool call is surfaced on the stream once the batch succeeds:
@@ -537,9 +540,14 @@ where
                     (chain_tool_span(new_execute_tool_span()), None)
                 }
             };
+            let malformed = match preresolved_result {
+                Some(_) => None,
+                None => run.malformed_tool_call_context(&pending.tool_call, forward_items),
+            };
             prepared.push(PreparedToolCall {
                 tool_call: pending.tool_call,
                 preresolved_result,
+                malformed,
                 span,
             });
         }
@@ -562,7 +570,7 @@ where
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
             let unordered = stream::iter(prepared.into_iter().enumerate())
                 .map(|(index, call)| {
-                    let PreparedToolCall { tool_call, preresolved_result, span } = call;
+                    let PreparedToolCall { tool_call, preresolved_result, malformed, span } = call;
                     let tool_snapshot = &tool_snapshot;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
@@ -585,6 +593,7 @@ where
                             hook_ctx,
                             tool_snapshot,
                             &tool_call,
+                            malformed.as_ref(),
                             full_history_for_errors,
                         )
                         .await;
@@ -760,7 +769,7 @@ impl TurnSource for StreamingTurnSource {
         runner: &AgentRunner,
         effective_preamble: Option<&str>,
     ) -> tracing::Span {
-        build_chat_span!(runner, effective_preamble, "chat_streaming", "chat")
+        build_chat_span!(runner, effective_preamble, "chat", "chat")
     }
 
     fn run_model_turn<'a>(
@@ -1276,7 +1285,8 @@ pub(crate) async fn settle_model_turn(
         response.origin.clone(),
         response.raw.clone(),
     )
-    .with_optional_finish_reason(finish_reason.clone());
+    .with_optional_finish_reason(finish_reason.clone())
+    .with_unknown_finish_reasons_accepted(response.accepts_unknown_finish_reasons());
     folded.error = response.error.clone();
     folded.provider_request_id = identity.provider_request_id.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
@@ -1511,28 +1521,24 @@ pub(crate) struct ToolCallOutcome {
 /// the current span; `error_history` builds a cancellation error if a hook
 /// terminates the run. Returns whether the tool body executed via
 /// [`ToolCallOutcome::execution`].
+///
+/// A call whose arguments are not a JSON object never reaches the tool. Its
+/// `malformed` context goes to the invalid-call hook first; see
+/// [`answer_malformed_tool_call`].
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
+    malformed: Option<&InvalidToolCallContext>,
     error_history: &[Message],
 ) -> Result<ToolCallOutcome, PromptError> {
     let tool_context = &runner.tool_context;
     let record_content = runner.config.record_telemetry_content;
     let tool_name = tool_call.function.name.as_str();
-    // Arguments the model sent that are not a JSON object never reach the
-    // tool: the model reads why, and calls again.
     if let Some(raw) = &tool_call.function.invalid_arguments {
-        let content = tool_result_message(
-            tool_call.id.clone(),
-            tool_call.function.name.clone(),
-            rig_core::transcript::invalid_arguments_feedback(tool_name, raw),
-        );
-        return Ok(ToolCallOutcome {
-            content,
-            execution: ToolExecution::Skipped,
-        });
+        return answer_malformed_tool_call(runner, ctx, tool_call, raw, malformed, error_history)
+            .await;
     }
     let args = tool_call.function.arguments_value().to_string();
 
@@ -1601,6 +1607,56 @@ pub(crate) async fn run_single_tool(
     }
     let content = tool_result_output(tool_call.id.clone(), tool_call.function.name.clone(), &exec);
     Ok(ToolCallOutcome { content, execution })
+}
+
+/// Answer a call whose arguments `raw` are not a JSON object, after offering
+/// `context` to the invalid-call hook. No action answers with
+/// [`invalid_arguments_feedback`](rig_core::transcript::invalid_arguments_feedback)
+/// and `Retry` with its feedback, both as error results; `Skip` answers with a
+/// skipped result. `Stop` cancels the run, and `Fail` fails it naming the tool
+/// and the parse error. `Repair` fails the same way: renaming the tool cannot
+/// fix its arguments.
+async fn answer_malformed_tool_call(
+    runner: &AgentRunner,
+    ctx: &HookContext,
+    tool_call: &ToolCall,
+    raw: &str,
+    context: Option<&InvalidToolCallContext>,
+    error_history: &[Message],
+) -> Result<ToolCallOutcome, PromptError> {
+    let action = futures::future::OptionFuture::from(
+        context.map(|context| runner.config.hooks.on_invalid_tool_call(ctx, context)),
+    )
+    .await
+    .flatten();
+    let id = tool_call.id.clone();
+    let name = tool_call.function.name.clone();
+    let content = match action {
+        None => tool_result_message(
+            id,
+            name,
+            rig_core::transcript::invalid_arguments_feedback(tool_call.function.name.as_str(), raw),
+        ),
+        Some(InvalidToolCallAction::Retry { feedback }) => tool_result_message(id, name, feedback),
+        Some(InvalidToolCallAction::Skip { reason }) => {
+            tool_result_output(id, name, &ToolResult::skipped(reason))
+        }
+        Some(InvalidToolCallAction::Stop { reason }) => {
+            return Err(PromptError::cancelled(error_history.to_vec(), reason));
+        }
+        Some(InvalidToolCallAction::Fail | InvalidToolCallAction::Repair { .. }) => {
+            return Err(ProviderError::Response(format!(
+                "tool `{}` was called with arguments that are not a JSON object: {}",
+                tool_call.function.name,
+                crate::run::policy::arguments_parse_error(raw)
+            ))
+            .into());
+        }
+    };
+    Ok(ToolCallOutcome {
+        content,
+        execution: ToolExecution::Skipped,
+    })
 }
 
 fn record_tool_result(span: &tracing::Span, result: &ToolResult) {

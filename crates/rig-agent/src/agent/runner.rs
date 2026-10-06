@@ -59,6 +59,7 @@ pub struct AgentRunner<O = ()> {
     pub(crate) origin: RunOrigin,
     pub(crate) chat_history: Option<Vec<Message>>,
     pub(crate) max_invalid_tool_call_retries: usize,
+    pub(crate) max_malformed_tool_call_retries: Option<usize>,
     pub(crate) tool_server_handle: ToolServerHandle,
     /// Typed context cloned freshly for every tool dispatch.
     pub(crate) tool_context: ToolContext,
@@ -106,6 +107,7 @@ impl AgentRunner {
             origin,
             chat_history: None,
             max_invalid_tool_call_retries: 0,
+            max_malformed_tool_call_retries: None,
             tool_server_handle: agent.tool_server_handle.clone(),
             tool_context: ToolContext::new(),
             output_tool_name: None,
@@ -314,6 +316,21 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Accept finish reasons outside the normalized vocabulary
+    /// ([`FinishReason::Other`](rig_core::completion::FinishReason::Other))
+    /// as a normal stop, for this run. Off by default: such a turn fails the run,
+    /// and history replay leaves it out. When on, the turn succeeds, its
+    /// tool calls run, and it replays.
+    ///
+    /// `Other` also holds genuine failures, such as Gemini's
+    /// `MALFORMED_FUNCTION_CALL` and `RECITATION` or Bedrock's
+    /// `malformed_tool_use`, so tool calls from a malformed reply may run.
+    /// Filtered content still fails the turn.
+    pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
+        self.config.accept_unknown_finish_reasons = accept;
+        self
+    }
+
     /// Limit concurrent tool calls in awaited and streamed runs. Defaults to one;
     /// zero is clamped to one. Sequential execution follows call order and stops
     /// at the first terminating error; concurrent hooks and side effects may interleave.
@@ -356,6 +373,16 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Set how many consecutive turns may call a tool with arguments that are
+    /// not a JSON object. Each such call is answered with feedback, or as the
+    /// invalid-call hook decides; a turn whose calls all parse resets the
+    /// count. Past the limit the run fails. Without it there is no limit. A
+    /// resumed run keeps the limit it persisted.
+    pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
+        self.max_malformed_tool_call_retries = Some(retries);
+        self
+    }
+
     /// This runner recovering `output` instead, and the output it replaced.
     pub(crate) fn replace_output<P>(self, output: P) -> (AgentRunner<P>, O) {
         let Self {
@@ -363,6 +390,7 @@ impl<O> AgentRunner<O> {
             origin,
             chat_history,
             max_invalid_tool_call_retries,
+            max_malformed_tool_call_retries,
             tool_server_handle,
             tool_context,
             output_tool_name,
@@ -378,6 +406,7 @@ impl<O> AgentRunner<O> {
             origin,
             chat_history,
             max_invalid_tool_call_retries,
+            max_malformed_tool_call_retries,
             tool_server_handle,
             tool_context,
             output_tool_name,
@@ -398,51 +427,36 @@ impl<O> AgentRunner<O> {
     /// The [`AgentRun`] this runner drives: the persisted run it continues,
     /// or a fresh one from its prompt and configuration. `history_override`
     /// replaces the configured chat history (e.g. with memory-loaded
-    /// history) and applies only to a fresh run. Delegates to
-    /// [`build_agent_run`], the construction site shared with the
-    /// streaming driver.
+    /// history) and applies only to a fresh run. The one construction site,
+    /// so the blocking and streaming drivers configure runs identically.
     pub(crate) fn build_run(&self, history_override: Option<Vec<Message>>) -> AgentRun {
         let prompt = match &self.origin {
             RunOrigin::Resume(run) => return run.clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
         };
-        let run = build_agent_run(
+        let spec = crate::run::spec::RunSpec {
+            max_turns: Some(self.config.max_turns),
+            max_invalid_tool_call_retries: self.max_invalid_tool_call_retries,
+            max_malformed_tool_call_retries: self.max_malformed_tool_call_retries,
+            unhandled_invalid_tool_call: self.unhandled_invalid_tool_call,
+            output_schema: self
+                .config
+                .output_schema
+                .as_ref()
+                .map(|schema| schema.as_value().clone()),
+            tool_choice: self.config.tool_choice.clone(),
+            ..crate::run::spec::RunSpec::new()
+        };
+        let run = AgentRun::from_spec(
+            &spec,
             prompt,
-            self.config.max_turns,
-            self.max_invalid_tool_call_retries,
-            self.unhandled_invalid_tool_call,
-            self.config.output_schema.as_ref(),
             history_override.or_else(|| self.chat_history.clone()),
-            self.config.tool_choice.clone(),
         );
         match &self.output_tool_name {
             Some(name) => run.with_output_tool_name(name.clone()),
             None => run,
         }
     }
-}
-
-/// Construct an [`AgentRun`] from explicit run configuration. The single place a
-/// run is built, so the blocking and streaming drivers configure runs
-/// identically.
-pub(crate) fn build_agent_run(
-    prompt: Message,
-    max_turns: usize,
-    max_invalid_tool_call_retries: usize,
-    unhandled_invalid_tool_call: UnhandledInvalidToolCall,
-    output_schema: Option<&schemars::Schema>,
-    history: Option<Vec<Message>>,
-    tool_choice: Option<ToolChoice>,
-) -> AgentRun {
-    let spec = crate::run::spec::RunSpec {
-        max_turns: Some(max_turns),
-        max_invalid_tool_call_retries,
-        unhandled_invalid_tool_call,
-        output_schema: output_schema.map(|schema| schema.as_value().clone()),
-        tool_choice,
-        ..crate::run::spec::RunSpec::new()
-    };
-    AgentRun::from_spec(&spec, prompt, history)
 }
 
 impl AgentRunner {

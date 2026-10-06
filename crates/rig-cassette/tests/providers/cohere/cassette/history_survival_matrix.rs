@@ -8,7 +8,7 @@ fn params() -> Option<serde_json::Value> {
     None
 }
 
-fn model(client: CohereModels, cell: Cell) -> rig::Model<rig::providers::openai::wire::Chat> {
+fn model(client: CohereModels, cell: Cell) -> rig::Model<rig::providers::cohere::CohereChat> {
     client.completion(cell.model)
 }
 

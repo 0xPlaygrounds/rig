@@ -265,3 +265,19 @@ async fn blocking_and_streaming_preserve_raw_failure_while_rewriting_presentatio
     assert!(history.contains("rewritten for model"));
     assert!(!history.contains("raw timeout failure"));
 }
+
+/// A runner's content-telemetry opt-in overrides the agent's, for that run
+/// only.
+#[test]
+fn a_runner_overrides_content_telemetry_for_its_run() {
+    let agent = AgentBuilder::new(MockCompletionModel::text("ok")).build();
+    let runner = agent.prompt("go").record_content_telemetry(true);
+    assert!(runner.config.record_telemetry_content);
+    assert!(!agent.config.record_telemetry_content);
+    assert!(
+        !runner
+            .record_content_telemetry(false)
+            .config
+            .record_telemetry_content
+    );
+}

@@ -77,6 +77,8 @@ pub struct RequestGraph<'a> {
     pub temperature: Option<f64>,
     /// The token budget.
     pub max_tokens: Option<u64>,
+    /// Whether unknown finish reasons stop normally.
+    pub accept_unknown_finish_reasons: bool,
     /// Provider parameters.
     pub additional_params: Option<&'a serde_json::Value>,
     /// The program's tool choice.
@@ -148,6 +150,7 @@ pub fn fold_request(
         additional_params: graph.additional_params.cloned(),
         output_schema,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: graph.accept_unknown_finish_reasons,
     })
 }
 

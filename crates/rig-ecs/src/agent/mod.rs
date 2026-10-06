@@ -52,6 +52,18 @@ pub struct Temperature(pub Option<f64>);
 #[reflect(Component)]
 pub struct MaxTokens(pub Option<u64>);
 
+/// Whether a finish reason outside the normalized vocabulary
+/// ([`FinishReason::Other`](rig_core::completion::FinishReason::Other)) ends
+/// a turn as a normal stop, on the agent or the run (the run's wins). Absent
+/// or `false`, such a turn fails the run. `Other` also holds genuine failures,
+/// such as a malformed tool call, so with this set their tool calls run.
+/// Filtered content still fails the turn.
+#[derive(
+    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
+)]
+#[reflect(Component)]
+pub struct AcceptUnknownFinishReasons(pub bool);
+
 /// Provider-specific parameters the request carries verbatim.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]

@@ -53,6 +53,7 @@ fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
         }),
         output_schema: None,
         record_telemetry_content: false,
+        accept_unknown_finish_reasons: false,
     }
 }
 

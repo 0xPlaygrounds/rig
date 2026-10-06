@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"What is 2 + 2? Answer with one number.","role":"user"}],"model":"qwen3:4b","options":{"seed":7,"temperature":0.0},"stream":false,"think":"low"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"stop","eval_count":254,"eval_duration":7076389000,"load_duration":1123675,"message":{"content":"4","role":"assistant","thinking":"Okay, the user asked \"What is 2 + 2? Answer with one number.\" Hmm, this seems straightforward but let me think carefully. \n\nFirst, I recall basic arithmetic: 2 plus 2 equals 4. That''s elementary math, no tricks here. The user specifically said \"answer with one number,\" so I shouldn''t write anything else—just the number 4. \n\nWait, is there any context I''m missing? Like, could this be a trick question? Maybe in some programming language or modulo arithmetic? But the question doesn''t specify any special context, so I should assume standard integer addition. \n\nAlso, the user seems to be testing if I''ll overcomplicate it. They want a simple answer. I remember in math education, 2+2 is a fundamental example for kids. \n\n*Double-checking*: 2 + 2 = 4. Yep, that''s solid. No ambiguity here. \n\nSo the response has to be just \"4\". No explanations, no extra text—strictly one number as requested. \n\n...Though part of me wonders if the user is being playful or testing AI responses. But the instruction is clear: one number. I''ll stick to it.\n"},"model":"qwen3:4b","prompt_eval_cached_count":1,"prompt_eval_count":23,"prompt_eval_duration":91091000,"total_duration":7212505777}'

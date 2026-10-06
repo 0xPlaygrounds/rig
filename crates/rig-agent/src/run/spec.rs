@@ -34,6 +34,11 @@ pub struct RunSpec {
     pub max_turns: Option<usize>,
     /// How many times an invalid model tool call may be retried with feedback.
     pub max_invalid_tool_call_retries: usize,
+    /// How many consecutive turns may call a tool with arguments that are not
+    /// a JSON object. Each such call is answered with feedback; a turn whose
+    /// calls all parse resets the count. Past `Some(n)`, the run fails. `None`,
+    /// the default, sets no limit.
+    pub max_malformed_tool_call_retries: Option<usize>,
     /// JSON schema the final answer must satisfy, when structured output is
     /// requested.
     pub output_schema: Option<serde_json::Value>,
@@ -53,7 +58,8 @@ pub struct RunSpec {
 }
 
 /// Policy applied when every [`on_invalid_tool_call`] hook declines to resolve
-/// an invalid call. Defaults to failure; ignoring drops the call and continues.
+/// a call to an unknown or disallowed tool. Defaults to failure; ignoring drops
+/// the call and continues.
 ///
 /// [`on_invalid_tool_call`]: crate::agent::AgentHook::on_invalid_tool_call
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

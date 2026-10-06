@@ -551,6 +551,10 @@ cohere/context/context_documents_are_accepted.yaml	POST /compatibility/v1/chat/c
 cohere/context/document_metadata_and_multiple_documents_are_accepted.yaml	POST /compatibility/v1/chat/completions;7d90ab41974819c3;
 cohere/errors/completion_error_preserves_status_and_body.yaml	POST /compatibility/v1/chat/completions;e2122e534523c795;
 cohere/history_survival_matrix/streaming.yaml	POST /compatibility/v1/chat/completions;16df08104336f4f8;lookup_record	POST /compatibility/v1/chat/completions;16df08104336f4f8;verify_code	POST /compatibility/v1/chat/completions;16df08104336f4f8;verify_code	POST /compatibility/v1/chat/completions;654fa36ea9d6dad7;	POST /compatibility/v1/chat/completions;16df08104336f4f8;verify_code	POST /compatibility/v1/chat/completions;654fa36ea9d6dad7;	POST /compatibility/v1/chat/completions;654fa36ea9d6dad7;
+cohere/native/a_conversation_switching_routes_replays.yaml	POST /v2/chat;609de2c1349c2fc3;	POST /compatibility/v1/chat/completions;fffb1b56de34809f;	POST /v2/chat;4ffde215ae556b95;
+cohere/native/a_streamed_tool_plan_and_call_replay_natively.yaml	POST /v2/chat;bfcabca3d721c68d;subtract	POST /v2/chat;c9614e18316b0255;
+cohere/native/documents_ground_a_streamed_answer_with_citations.yaml	POST /v2/chat;b5be025e44afcb68;
+cohere/native/the_compatibility_route_sends_documents_as_text.yaml	POST /compatibility/v1/chat/completions;fffb1b56de34809f;
 cohere/prompt_caching/agent_loop.yaml	POST /compatibility/v1/chat/completions;cdb5722a1e2ab3b6;lookup_cache_policy	POST /compatibility/v1/chat/completions;fffb1b56de34809f;
 cohere/raw_capture_matrix/raw_exposes_envelope_fields.yaml	POST /compatibility/v1/chat/completions;fffb1b56de34809f;
 cohere/raw_capture_matrix/raw_is_the_reply_document.yaml	POST /compatibility/v1/chat/completions;fffb1b56de34809f;
@@ -1709,6 +1713,11 @@ ollama/agentic/streaming_structured_output_with_tools.yaml	POST /v1/chat/complet
 ollama/agentic/structured_output_with_tools.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;get_weather	POST /v1/chat/completions;22f6c59516ace485;
 ollama/history_survival_matrix/streaming.yaml	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;b9fbdfee0b00af54;
 ollama/history_survival_matrix/unary.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;22f6c59516ace485;
+ollama/native/inline_think_streamed.yaml	POST /api/chat;db3c060e1ab5040c;
+ollama/native/inline_think_whole.yaml	POST /api/chat;f28a1de54878a342;
+ollama/native/options_and_keep_alive.yaml	POST /api/chat;67ff536ee85477a6;
+ollama/native/streamed_tool_call.yaml	POST /api/chat;38fa26a1af4ed7df;add
+ollama/native/think_level.yaml	POST /api/chat;ca566cb30a835bc5;
 ollama/portability_matrix/from_anthropic.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_gemini.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_openai_responses.yaml	POST /v1/chat/completions;c388bd63f494e85e;
