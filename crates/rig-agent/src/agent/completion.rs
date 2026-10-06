@@ -378,7 +378,7 @@ impl AgentConfig {
             tool_choice: self.tool_choice.clone(),
             max_turns: Some(self.max_turns),
             max_invalid_tool_call_retries: 0,
-            max_malformed_tool_call_retries: None,
+            max_consecutive_malformed_tool_calls: None,
             output_schema: self
                 .output_schema
                 .as_ref()
@@ -388,6 +388,7 @@ impl AgentConfig {
             output_tool_description: None,
             augment_output_preamble: true,
             unhandled_invalid_tool_call: crate::run::spec::UnhandledInvalidToolCall::Fail,
+            accept_unknown_finish_reasons: self.accept_unknown_finish_reasons,
         }
     }
 }

@@ -85,15 +85,20 @@ pub struct PreparedRequest {
     /// In Tool output mode, the synthetic output tool's name (allowed but never
     /// executable); reuse it as `committed_output_tool` on later turns.
     pub output_tool_name: Option<String>,
+    /// The spec's [`RunSpec::accept_unknown_finish_reasons`].
+    #[serde(default)]
+    pub accept_unknown_finish_reasons: bool,
 }
 
 impl PreparedRequest {
     /// Apply every prepared field to `request`, in the protocol's canonical
     /// order. The request keeps its prompt last; the prepared sampling fields
-    /// (`temperature`, `max_tokens`, `output_schema`) overwrite whatever the
-    /// driver set on it, while messages, documents, tools and additional
-    /// parameters accumulate.
-    pub fn apply(self, request: CompletionRequest) -> CompletionRequest {
+    /// (`temperature`, `max_tokens`, `output_schema`) and
+    /// `accept_unknown_finish_reasons` overwrite whatever the driver set on
+    /// it, while messages, documents, tools and additional parameters
+    /// accumulate.
+    pub fn apply(self, mut request: CompletionRequest) -> CompletionRequest {
+        request.accept_unknown_finish_reasons = self.accept_unknown_finish_reasons;
         let request = request
             .messages(self.chat_history)
             .temperature(self.temperature)
@@ -314,6 +319,7 @@ pub fn prepare_request(
         executable_tool_names,
         allowed_tool_names,
         output_tool_name,
+        accept_unknown_finish_reasons: spec.accept_unknown_finish_reasons,
     })
 }
 

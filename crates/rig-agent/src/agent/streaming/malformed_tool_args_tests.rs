@@ -2,7 +2,7 @@
 //! The tool step offers it to the invalid-call hook, then answers it with a
 //! tool result so the model can call again. A model that keeps sending
 //! malformed arguments is answered until `max_turns`, or stopped after
-//! `max_malformed_tool_call_retries` consecutive turns when that is set.
+//! `max_consecutive_malformed_tool_calls` consecutive turns when that is set.
 //! Every case runs on the blocking and the streamed
 //! surface, which share the tool step, and asserts what the model sees on
 //! its next request.
@@ -367,7 +367,8 @@ async fn a_model_that_keeps_sending_malformed_arguments_stops_after_the_limit() 
     for surface in SURFACES {
         let hook = Decide::new(Some(InvalidToolCallAction::retry("again")));
         let (outcome, requests) = run(surface, &script, |r| {
-            r.max_malformed_tool_call_retries(3).add_hook(hook.clone())
+            r.max_consecutive_malformed_tool_calls(3)
+                .add_hook(hook.clone())
         })
         .await;
         let error = outcome.expect_err("the limit ends the run");
@@ -389,7 +390,7 @@ async fn a_model_that_keeps_sending_malformed_arguments_stops_after_the_limit() 
 async fn the_limit_is_configurable() {
     for surface in SURFACES {
         let (outcome, requests) = run(surface, &[Turn::Malformed; 3], |r| {
-            r.max_malformed_tool_call_retries(1)
+            r.max_consecutive_malformed_tool_calls(1)
         })
         .await;
         let error = outcome.expect_err("the limit ends the run");
@@ -401,6 +402,31 @@ async fn the_limit_is_configurable() {
     }
 }
 
+/// `None` clears a limit set earlier, on the runner and on the run.
+#[tokio::test]
+async fn none_clears_the_limit() {
+    let script = [
+        Turn::Malformed,
+        Turn::Malformed,
+        Turn::Malformed,
+        Turn::Answer,
+    ];
+    for surface in SURFACES {
+        let (outcome, requests) = run(surface, &script, |r| {
+            r.max_consecutive_malformed_tool_calls(1)
+                .max_consecutive_malformed_tool_calls(None)
+        })
+        .await;
+        assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
+        assert_eq!(requests.len(), 4, "{surface:?}");
+    }
+    let run = AgentRun::new("add")
+        .max_consecutive_malformed_tool_calls(1)
+        .max_consecutive_malformed_tool_calls(None);
+    let json = serde_json::to_value(&run).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(json["max_consecutive_malformed_tool_calls"], json!(null));
+}
+
 #[tokio::test]
 async fn a_well_formed_call_between_malformed_ones_resets_the_count() {
     use Turn::{Answer, Malformed, WellFormed};
@@ -408,8 +434,10 @@ async fn a_well_formed_call_between_malformed_ones_resets_the_count() {
         Malformed, Malformed, Malformed, WellFormed, Malformed, Malformed, Malformed, Answer,
     ];
     for surface in SURFACES {
-        let (outcome, requests) =
-            run(surface, &script, |r| r.max_malformed_tool_call_retries(3)).await;
+        let (outcome, requests) = run(surface, &script, |r| {
+            r.max_consecutive_malformed_tool_calls(3)
+        })
+        .await;
         assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
         assert_eq!(requests.len(), 8, "{surface:?}");
         assert!(!answer(&requests[4].chat_history, 4).is_some_and(|result| result.is_error));
@@ -424,7 +452,7 @@ async fn ignore_does_not_lift_the_limit() {
     script.push(Turn::Answer);
     for surface in SURFACES {
         let (outcome, requests) = run(surface, &script, |r| {
-            r.max_malformed_tool_call_retries(3)
+            r.max_consecutive_malformed_tool_calls(3)
                 .unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore)
         })
         .await;
@@ -443,7 +471,7 @@ async fn ignore_does_not_lift_the_limit() {
 async fn the_count_survives_a_serialize_and_resume() {
     let mut run = AgentRun::new("add 2 and something")
         .max_turns(10)
-        .max_malformed_tool_call_retries(3);
+        .max_consecutive_malformed_tool_calls(3);
     for turn in 1..=2 {
         assert!(matches!(
             run.next_step(),
@@ -533,7 +561,7 @@ async fn the_structured_output_path_is_unchanged() {
         let runner = agent
             .prompt("answer")
             .max_turns(3)
-            .max_malformed_tool_call_retries(0)
+            .max_consecutive_malformed_tool_calls(0)
             .add_hook(hook.clone());
         let output = drive(surface, runner)
             .await

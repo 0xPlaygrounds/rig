@@ -373,8 +373,8 @@ pub struct AgentRun {
     format: u32,
     max_turns: usize,
     max_invalid_tool_call_retries: usize,
-    /// See [`RunSpec::max_malformed_tool_call_retries`].
-    max_malformed_tool_call_retries: Option<usize>,
+    /// See [`RunSpec::max_consecutive_malformed_tool_calls`].
+    max_consecutive_malformed_tool_calls: Option<usize>,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
     tool_choice: Option<ToolChoice>,
@@ -480,7 +480,7 @@ impl AgentRun {
             format: RUN_FORMAT,
             max_turns: 1,
             max_invalid_tool_call_retries: 0,
-            max_malformed_tool_call_retries: None,
+            max_consecutive_malformed_tool_calls: None,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
             tool_choice: None,
             output_tool_name: None,
@@ -637,10 +637,10 @@ impl AgentRun {
     }
 
     /// Set how many consecutive turns may answer a tool call whose arguments
-    /// are not a JSON object before the run fails. Without it there is no
-    /// limit. See [`RunSpec::max_malformed_tool_call_retries`].
-    pub fn max_malformed_tool_call_retries(mut self, retries: usize) -> Self {
-        self.max_malformed_tool_call_retries = Some(retries);
+    /// are not a JSON object before the run fails. `None`, the default, sets
+    /// no limit. See [`RunSpec::max_consecutive_malformed_tool_calls`].
+    pub fn max_consecutive_malformed_tool_calls(mut self, limit: impl Into<Option<usize>>) -> Self {
+        self.max_consecutive_malformed_tool_calls = limit.into();
         self
     }
 
@@ -1181,7 +1181,7 @@ impl AgentRun {
 
     /// Count a tool step that answers a call whose arguments are not a JSON
     /// object, or reset the count when every executed call parsed. Past
-    /// [`RunSpec::max_malformed_tool_call_retries`] consecutive steps, when
+    /// [`RunSpec::max_consecutive_malformed_tool_calls`] consecutive steps, when
     /// set, fails the run naming the tool and the parse error.
     fn count_malformed_tool_calls(&mut self, calls: &[PendingToolCall]) -> Result<(), PromptError> {
         let malformed = calls.iter().find_map(|call| {
@@ -1202,7 +1202,7 @@ impl AgentRun {
         };
         self.malformed_tool_call_retries = self.malformed_tool_call_retries.saturating_add(1);
         let Some(limit) = self
-            .max_malformed_tool_call_retries
+            .max_consecutive_malformed_tool_calls
             .filter(|limit| self.malformed_tool_call_retries > *limit)
         else {
             return Ok(());
@@ -1799,7 +1799,7 @@ impl AgentRun {
             .max_invalid_tool_call_retries(spec.max_invalid_tool_call_retries)
             .with_unhandled_invalid_tool_call(spec.unhandled_invalid_tool_call)
             .with_output_validation(spec.output_schema.clone(), RunSpec::DEFAULT_OUTPUT_RETRIES);
-        run.max_malformed_tool_call_retries = spec.max_malformed_tool_call_retries;
+        run.max_consecutive_malformed_tool_calls = spec.max_consecutive_malformed_tool_calls;
         if let Some(history) = history {
             run = run.with_history(history);
         }

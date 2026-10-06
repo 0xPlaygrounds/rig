@@ -1126,7 +1126,7 @@ fn tool_step(run: &mut AgentRun, turn: ModelTurn) -> Result<(), PromptError> {
 fn malformed_turns_past_the_limit_fail_the_run() {
     let mut run = AgentRun::new("go")
         .max_turns(10)
-        .max_malformed_tool_call_retries(2);
+        .max_consecutive_malformed_tool_calls(2);
     tool_step(&mut run, malformed_call_turn("c1")).expect("first malformed turn");
     tool_step(&mut run, malformed_call_turn("c2")).expect("second malformed turn");
     let error = tool_step(&mut run, malformed_call_turn("c3")).expect_err("past the limit");
@@ -1142,7 +1142,7 @@ fn malformed_turns_past_the_limit_fail_the_run() {
 fn a_well_formed_tool_step_resets_the_malformed_count() {
     let mut run = AgentRun::new("go")
         .max_turns(10)
-        .max_malformed_tool_call_retries(1);
+        .max_consecutive_malformed_tool_calls(1);
     tool_step(&mut run, malformed_call_turn("c1")).expect("malformed");
     tool_step(&mut run, tool_call_turn("c2", "add")).expect("well formed");
     tool_step(&mut run, malformed_call_turn("c3")).expect("malformed after the reset");
@@ -1165,7 +1165,7 @@ fn without_a_limit_malformed_turns_are_answered_until_max_turns() {
 fn ignore_does_not_lift_the_malformed_limit() {
     let mut run = AgentRun::new("go")
         .max_turns(10)
-        .max_malformed_tool_call_retries(0)
+        .max_consecutive_malformed_tool_calls(0)
         .with_unhandled_invalid_tool_call(UnhandledInvalidToolCall::Ignore);
     let error = tool_step(&mut run, malformed_call_turn("c1")).expect_err("past the limit");
     assert!(
@@ -1180,7 +1180,7 @@ fn ignore_does_not_lift_the_malformed_limit() {
 fn the_malformed_count_survives_serde() {
     let mut run = AgentRun::new("go")
         .max_turns(10)
-        .max_malformed_tool_call_retries(1);
+        .max_consecutive_malformed_tool_calls(1);
     tool_step(&mut run, malformed_call_turn("c1")).expect("malformed");
     let saved = serde_json::to_string(&run).expect("serialize");
     let mut restored: AgentRun = serde_json::from_str(&saved).expect("deserialize");
