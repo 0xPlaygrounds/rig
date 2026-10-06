@@ -3,6 +3,7 @@ mod support;
 mod cassette {
     mod adversarial_matrix;
     mod agent;
+    mod citations;
     mod context_binding;
     mod corpus_causal;
     mod corpus_endings;
