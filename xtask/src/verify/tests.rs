@@ -960,3 +960,146 @@ fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
     assert!(!baseline.contains("full-tests"), "{baseline:?}");
     assert!(!ids("--changed", &["README.md"]).contains("coverage"));
 }
+
+/// The findings of the typed-options guards in `source`, as a listed
+/// completion-wire file.
+fn guarded(source: &str) -> Vec<String> {
+    super::guards::offenders("crates/rig-core/src/providers/openai/wire/chat.rs", source)
+        .unwrap_or_else(|error| panic!("the source parses: {error}"))
+}
+
+#[test]
+fn an_option_fields_pattern_must_name_every_field() {
+    for source in [
+        "use crate::completion::options::OptionFields;
+         fn map(fields: OptionFields<'_>) { let OptionFields { reasoning, .. } = fields; }",
+        "use crate::completion::options::{OptionFields as F};
+         fn map(fields: F<'_>) { let F { reasoning, .. } = fields; }",
+        "use crate::completion::options::OptionFields;
+         fn map(fields: OptionFields<'_>) { let OptionFields { stop: _stop, reasoning } = fields; }",
+        "use crate::completion::options::OptionFields;
+         fn map(fields: OptionFields<'_>) { let OptionFields { stop: _, reasoning } = fields; }",
+    ] {
+        let findings = guarded(source);
+        assert_eq!(findings.len(), 1, "{source}: {findings:?}");
+        assert!(findings[0].starts_with("options-mapping: "), "{findings:?}");
+    }
+    assert!(
+        guarded(
+            "use crate::completion::options::OptionFields;
+             fn map(fields: OptionFields<'_>) { let OptionFields { reasoning, stop } = fields; }"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn an_option_map_literal_takes_no_base() {
+    let findings = guarded(
+        "use crate::completion::options::OptionMap as Answers;
+         fn map(base: Answers) -> Answers { Answers { seed: Mapping::Nothing, ..base } }",
+    );
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(findings[0].contains("'..'"), "{findings:?}");
+}
+
+#[test]
+fn a_wire_neither_builds_nor_rewrites_a_requests_options() {
+    for source in [
+        "fn encode(request: CompletionRequest) { let copy = CompletionRequest::new(\"hi\"); }",
+        "fn encode(request: CompletionRequest) { let copy = request.options(GenerationOptions::default()); }",
+        "fn encode(mut request: CompletionRequest) { request.options = GenerationOptions::default(); }",
+        "fn encode(request: &CompletionRequest) -> bool { request.options.seed.is_some() }",
+    ] {
+        let findings = guarded(source);
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.starts_with("options-mapping: ")),
+            "{source}: {findings:?}"
+        );
+        assert!(!findings.is_empty(), "{source}");
+    }
+}
+
+#[test]
+fn a_mapping_cannot_defer_to_a_raw_key() {
+    let findings = guarded(
+        "use crate::completion::options::{self, OptionFields};
+         fn map(request: &CompletionRequest, fields: OptionFields<'_>) {
+             let OptionFields { reasoning, stop } = fields;
+             let raw = options::param(self, request, \"thinking\");
+         }",
+    );
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(findings[0].contains("options::param"), "{findings:?}");
+    assert!(
+        guarded(
+            "use crate::completion::options;
+             fn continues_stored(request: &CompletionRequest) -> bool {
+                 options::param(self, request, \"store\").is_some()
+             }"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn a_wire_reads_no_raw_params_and_builds_no_body_of_its_own() {
+    for source in [
+        "fn encode(request: CompletionRequest) { let raw = request.additional_params.clone(); }",
+        "use crate::wire::Body;
+         fn encode(body: Value) -> Body { Body::Bytes(serde_json::to_vec(&body).unwrap_or_default()) }",
+        "use crate::wire::{Body as B};
+         fn encode(form: Form) -> B { B::Multipart(form) }",
+        "fn encode(builder: Builder, body: Vec<u8>) { builder.body(body); }",
+        "fn encode(body: FinalBody) { let copy = body.deserialize::<serde_json::Value>(); }",
+        "fn encode(request: &CompletionRequest) { let bytes = serde_json::to_vec(request); }",
+    ] {
+        let findings = guarded(source);
+        assert!(
+            findings.iter().any(|finding| finding.starts_with("options-precedence: ")),
+            "{source}: {findings:?}"
+        );
+    }
+    for source in [
+        "fn encode(builder: Builder, body: FinalBody) { builder.body(body.into_body()); }",
+        "fn encode(builder: Builder) { builder.body(crate::wire::Body::empty()); }",
+    ] {
+        assert!(guarded(source).is_empty(), "{source}");
+    }
+    // A document part's own `additional_params` is another field, allowed
+    // where a wire reads it.
+    let document =
+        "fn part(document: &Document) { let params = document.additional_params.as_ref(); }";
+    let anthropic = super::guards::offenders(
+        "crates/rig-core/src/providers/anthropic/completion.rs",
+        document,
+    );
+    assert_eq!(anthropic, Ok(Vec::new()));
+    assert_eq!(guarded(document).len(), 1);
+}
+
+#[test]
+fn test_items_are_not_guarded() {
+    assert!(
+        guarded(
+            "#[cfg(test)]
+             mod tests { fn build() { let raw = request.additional_params.clone(); } }"
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn a_file_with_a_completion_wire_is_found() {
+    use super::guards::holds_a_completion_wire;
+    let wire = "impl Wire for Chat { type Op = crate::operation::Completion; }";
+    assert_eq!(holds_a_completion_wire(wire), Ok(true));
+    let target = "impl crate::completion::ReplayTarget for Chat {}";
+    assert_eq!(holds_a_completion_wire(target), Ok(true));
+    let embeddings = "impl Wire for Embeddings { type Op = crate::operation::Embed; }";
+    assert_eq!(holds_a_completion_wire(embeddings), Ok(false));
+    let tested = "#[cfg(test)] impl ReplayTarget for Fake {}";
+    assert_eq!(holds_a_completion_wire(tested), Ok(false));
+}
