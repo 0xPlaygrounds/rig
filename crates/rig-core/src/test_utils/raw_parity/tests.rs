@@ -155,8 +155,9 @@ const PAIRS: &[Pair] = &[
         provider: "openai",
         unary: "raw_capture_matrix/responses_raw_exposes_service_tier_and_store.yaml",
         streamed: "raw_stream_capture_matrix/responses_stream_raw_exposes_status.yaml",
-        minted: &[],
-        rebuilt: false,
+        // `billing` is in unary bodies only.
+        minted: &["/billing"],
+        rebuilt: true,
     },
     Pair {
         provider: "openrouter",

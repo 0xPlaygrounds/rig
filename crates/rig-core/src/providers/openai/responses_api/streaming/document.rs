@@ -1,61 +1,123 @@
-//! The Responses reassembler.
-//!
-//! Interim: [`TerminalRecord`] rebuilds the streamed `raw` this wire wrote
-//! before replies were reassembled, so no recorded value moves with the
-//! mechanism. The Responses family replaces it with the `Response`
-//! reassembler of TYPED_OPTIONS.md section 9.
+//! The Responses reassembler: a streamed reply's `raw` is the `Response`
+//! object a unary reply's body is.
+
+use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
 use super::{ResponsesEvent, classify_responses_payload};
-use crate::wire::WireFrame;
+use crate::json_utils::Lenient;
 use crate::wire::document::Reassemble;
+use crate::wire::{WireEvent, WireFrame};
 
-/// Interim Responses reassembler: the response a `response.completed` or
-/// `response.incomplete` event carries (marked `incomplete` for the
-/// latter), or a whole response body. A reply that failed in band first
-/// rebuilds nothing.
+/// Rebuilds the `Response` of a Responses reply from its events. The
+/// response the latest lifecycle event carries is the document, and a
+/// terminal one (`response.completed`, `.incomplete` or `.failed`) is
+/// final, with the status its event names. When that response states no
+/// `output`, as the ChatGPT backend's terminal does, the output is the
+/// items `response.output_item.done` stated, by output index. A whole
+/// response body, as a WebSocket `response.done` carries, is the document
+/// as it stands.
 #[derive(Debug, Default)]
-pub struct TerminalRecord {
-    record: Option<Value>,
-    failed: bool,
+pub struct Response {
+    /// The response object stated so far.
+    response: Option<Value>,
+    /// Whether `response` is the reply's last word.
+    terminal: bool,
+    /// The output items the stream stated, by output index: as added, then
+    /// as done.
+    items: BTreeMap<usize, Value>,
 }
 
-impl Reassemble<WireFrame> for TerminalRecord {
-    fn absorb(&mut self, frame: &WireFrame) {
-        if self.record.is_some() || self.failed {
+impl Response {
+    /// Keep `item` at the frame's output index, or after every item so far
+    /// when it names none. An item added after its index is done keeps the
+    /// done one.
+    fn item(&mut self, frame: &Value, done: bool) {
+        let Some(item) = frame.get("item").filter(|item| item.is_object()) else {
+            return;
+        };
+        let index = frame
+            .u64("output_index")
+            .and_then(|index| usize::try_from(index).ok())
+            .unwrap_or_else(|| {
+                self.items
+                    .last_key_value()
+                    .map_or(0, |(last, _)| last.saturating_add(1))
+            });
+        if done {
+            self.items.insert(index, item.clone());
+        } else {
+            self.items.entry(index).or_insert_with(|| item.clone());
+        }
+    }
+
+    /// The response a lifecycle event of `kind` carries. A terminal one
+    /// states its status by its event, whatever its body says.
+    fn lifecycle(&mut self, kind: &str, frame: &Value) {
+        if self.terminal {
             return;
         }
+        let status = match kind {
+            "response.completed" => Some("completed"),
+            "response.incomplete" => Some("incomplete"),
+            "response.failed" => Some("failed"),
+            _ => None,
+        };
+        let mut response = frame
+            .get("response")
+            .filter(|response| response.is_object())
+            .cloned()
+            .unwrap_or_else(|| json!({}));
+        if let Some(status) = status {
+            self.terminal = true;
+            if let Some(fields) = response.as_object_mut() {
+                fields.insert("status".to_owned(), json!(status));
+            }
+        }
+        self.response = Some(response);
+    }
+}
+
+impl Reassemble<WireFrame> for Response {
+    fn absorb(&mut self, frame: &WireFrame) {
         match classify_responses_payload(&frame.as_str()) {
-            crate::wire::WireEvent::Known(ResponsesEvent::Frame { kind, frame, .. }) => {
-                match kind.as_str() {
-                    "response.completed" | "response.incomplete" => {
-                        let mut response = frame
-                            .get("response")
-                            .filter(|response| response.is_object())
-                            .cloned()
-                            .unwrap_or_else(|| json!({}));
-                        if let (true, Some(fields)) =
-                            (kind == "response.incomplete", response.as_object_mut())
-                        {
-                            fields.insert("status".to_owned(), json!("incomplete"));
-                        }
-                        self.record = Some(response);
-                    }
-                    "response.failed" => self.failed = true,
-                    _ => {}
-                }
+            WireEvent::Known(ResponsesEvent::Frame { kind, frame, .. }) => match kind.as_str() {
+                "response.output_item.added" => self.item(&frame, false),
+                "response.output_item.done" => self.item(&frame, true),
+                kind if super::is_lifecycle_event(kind) => self.lifecycle(kind, &frame),
+                _ => {}
+            },
+            WireEvent::Known(ResponsesEvent::Whole(body)) if !self.terminal => {
+                self.terminal = true;
+                self.response = Some(body);
             }
-            crate::wire::WireEvent::Known(ResponsesEvent::Whole(body)) => {
-                self.record = Some(body);
-            }
-            crate::wire::WireEvent::Known(ResponsesEvent::Failure(_)) => self.failed = true,
-            // The driver reports what does not classify.
+            // An `error` event ends the reply with the response so far; the
+            // driver reports what does not classify.
             _ => {}
         }
     }
 
     fn finish(self) -> Value {
-        self.record.unwrap_or(Value::Null)
+        let Some(mut response) = self.response.or_else(|| {
+            (!self.items.is_empty()).then(|| json!({ "object": "response", "output": [] }))
+        }) else {
+            return Value::Null;
+        };
+        if let Some(fields) = response.as_object_mut()
+            && fields
+                .get("output")
+                .is_none_or(|output| output.as_array().is_none_or(Vec::is_empty))
+            && !self.items.is_empty()
+        {
+            fields.insert(
+                "output".to_owned(),
+                Value::Array(self.items.into_values().collect()),
+            );
+        }
+        response
     }
 }
+
+#[cfg(test)]
+mod tests;

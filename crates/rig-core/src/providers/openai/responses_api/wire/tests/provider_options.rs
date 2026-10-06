@@ -1,7 +1,7 @@
 //! Typed provider options on the Responses wire, and the typed extras of its
 //! replies. Each encoder test sets one field and checks the body is the
 //! baseline body with that field's JSON merged in. The extras are read from
-//! recorded unary replies.
+//! recorded replies, and read the same from a stream of the turn.
 
 use super::*;
 use crate::completion::options::{CacheRetention, Effort, GenerationOptions, OnUnsupported};
@@ -527,7 +527,8 @@ async fn openai_extras_of_an_incomplete_unary_recording() {
 }
 
 /// ChatGPT answers a unary request with an event stream; its terminal
-/// response object carries the envelope and an empty `output`.
+/// response object carries the envelope and an empty `output`, which the
+/// items the stream finished fill.
 #[tokio::test]
 async fn chatgpt_extras_from_a_unary_recording() {
     let sse = cassette_body("chatgpt/codex_sessions/long_history_replay_nonstreaming.yaml");
@@ -551,4 +552,71 @@ async fn chatgpt_extras_from_a_unary_recording() {
         }
     );
     assert!(response.extras::<OpenAi>().is_none());
+}
+
+/// One prompt answered unary and streamed: every field reads the same from
+/// both, except the payer, which only a unary body states.
+#[tokio::test]
+async fn openai_extras_read_the_same_from_streamed_and_unary_recordings() {
+    let wire = || OpenAIConfig::new("test-key").responses("gpt-4.1-nano");
+    let unary = cassette_body(
+        "openai/raw_capture_matrix/responses_raw_exposes_service_tier_and_store.yaml",
+    );
+    let streamed =
+        cassette_body("openai/raw_stream_capture_matrix/responses_stream_raw_exposes_status.yaml");
+    let extras = |response: completion::CompletionResponse| {
+        response
+            .extras::<OpenAi>()
+            .expect("the reply is OpenAI's")
+            .expect("the reply holds the extras")
+    };
+    let from_body = extras(folded_unary(wire(), &unary).await);
+    let from_stream = extras(folded_stream(wire(), &streamed).await);
+
+    assert_eq!(from_body.billing_payer.as_deref(), Some("developer"));
+    assert_eq!(from_stream.billing_payer, None);
+    assert_eq!(from_stream.service_tier.as_deref(), Some("default"));
+    assert_eq!(
+        from_stream.prompt_cache_retention.as_deref(),
+        Some("in_memory")
+    );
+    let phases = |extras: &OpenAiExtras| extras.phases.as_ref().map(Vec::len);
+    assert_eq!(phases(&from_stream), Some(1));
+    assert_eq!(phases(&from_body), Some(1));
+    assert_eq!(
+        OpenAiExtras {
+            billing_payer: None,
+            phases: None,
+            ..from_body
+        },
+        OpenAiExtras {
+            phases: None,
+            ..from_stream
+        }
+    );
+}
+
+/// The ChatGPT backend's terminal states no output: the message's phase
+/// is read from the items the stream finished, on the unary path and the
+/// streamed one alike.
+#[tokio::test]
+async fn chatgpt_extras_read_the_same_phases_from_both_paths() {
+    let sse = cassette_body("chatgpt/codex_sessions/streamed_phase_round_trips_on_follow_up.yaml");
+    let extras = |response: completion::CompletionResponse| {
+        response
+            .extras::<ChatGpt>()
+            .expect("the reply is ChatGPT's")
+            .expect("the reply holds the extras")
+    };
+    let from_body = extras(folded_unary(chatgpt(), &sse).await);
+    let from_stream = extras(folded_stream(chatgpt(), &sse).await);
+
+    assert_eq!(
+        from_stream.phases,
+        Some(vec![ItemPhase {
+            id: "msg_0f892fbd3994996e016abc8bbc3e3c87d2913ed196f7d239c2".to_owned(),
+            phase: Some("final_answer".to_owned()),
+        }])
+    );
+    assert_eq!(from_stream, from_body);
 }

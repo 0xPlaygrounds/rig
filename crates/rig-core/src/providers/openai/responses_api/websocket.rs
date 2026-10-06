@@ -14,7 +14,7 @@ use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
 use crate::operation::{Completion, Turn};
 use crate::providers::openai::responses_api::streaming::{
-    ResponsesDecoder, ResponsesEvent, classify_responses_payload, is_lifecycle_event,
+    ResponsesDecoder, ResponsesEvent, classify_responses_payload, document, is_lifecycle_event,
 };
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::Item;
@@ -492,7 +492,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Sends a completion turn and collects the final OpenAI response,
-    /// normalized; its `raw` is the provider's own terminal response object.
+    /// normalized; its `raw` is the `Response` the turn's events rebuild.
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -546,20 +546,21 @@ impl ResponsesWebSocketSession {
         // The reply's state and its decoder live for this turn only.
         let reply = std::sync::Mutex::new(Shared::new(turn));
         let mut decoder = self.wire.decoder();
+        let mut document = self.wire.reassembler();
         loop {
             let (event, payload) = self.next_event_with_payload().await?;
             match event {
                 ResponsesWebSocketEvent::Response { kind, response } => {
                     if !is_terminal_kind(&kind) {
-                        feed(&mut decoder, &reply, payload)?;
+                        feed(&mut decoder, &mut document, &reply, payload)?;
                         continue;
                     }
                     // A failed turn is reported from its own envelope; only a
                     // completed or incomplete one reaches the decoder, whose
                     // end closes the turn.
                     let response = terminal_response_result(response)?;
-                    let ended = feed(&mut decoder, &reply, payload)?;
-                    let folded = fold_reply(reply, ended, &provider, &response)?;
+                    let ended = feed(&mut decoder, &mut document, &reply, payload)?;
+                    let folded = fold_reply(reply, ended, &provider, document)?;
                     return Ok((response, folded));
                 }
                 ResponsesWebSocketEvent::Done(done) => {
@@ -571,8 +572,8 @@ impl ResponsesWebSocketSession {
                         // which is the decoder's whole-body shape: hand it
                         // over as the frame it is.
                         let body = serde_json::to_string(&response)?;
-                        let ended = feed(&mut decoder, &reply, body)?;
-                        let folded = fold_reply(reply, ended, &provider, &response)?;
+                        let ended = feed(&mut decoder, &mut document, &reply, body)?;
+                        let folded = fold_reply(reply, ended, &provider, document)?;
                         return Ok((response, folded));
                     }
 
@@ -596,7 +597,7 @@ impl ResponsesWebSocketSession {
                 }
                 // Unknown frames keep their raw payload.
                 ResponsesWebSocketEvent::Item(_) | ResponsesWebSocketEvent::Unknown(_) => {
-                    feed(&mut decoder, &reply, payload)?;
+                    feed(&mut decoder, &mut document, &reply, payload)?;
                 }
             }
         }
@@ -712,16 +713,17 @@ impl Drop for ResponsesWebSocketSession {
     }
 }
 
-/// Feed one message to the turn's decoder. Returns whether it ended the
-/// turn.
+/// Feed one message to the turn's reassembler and decoder. Returns whether
+/// it ended the turn.
 fn feed(
     decoder: &mut ResponsesDecoder,
+    document: &mut document::Response,
     reply: &std::sync::Mutex<Shared<Completion>>,
     payload: String,
 ) -> Result<bool, ProviderError> {
     crate::driver::step(
         decoder,
-        None::<&mut crate::wire::document::Unreassembled>,
+        Some(document),
         reply,
         WireFrame::Text(payload),
         None,
@@ -729,13 +731,13 @@ fn feed(
     .map(|step| matches!(step, Flow::Ended(_)))
 }
 
-/// Fold the turn's events and end into the normalized response, retaining
-/// the terminal body as raw JSON.
+/// Fold the turn's events and end into the normalized response, whose raw
+/// is the `Response` the turn's events rebuild, as a stream's is.
 fn fold_reply(
     reply: std::sync::Mutex<Shared<Completion>>,
     ended: bool,
     provider: &str,
-    response: &Value,
+    document: document::Response,
 ) -> Result<completion::CompletionResponse, ProviderError> {
     let fed = if ended {
         Ok(())
@@ -744,7 +746,7 @@ fn fold_reply(
     };
     let reply_of = Reply {
         provider: provider.to_owned(),
-        raw: response.clone(),
+        raw: crate::wire::document::Reassemble::finish(document),
         // The websocket carries no reply headers past the handshake.
         provider_request_id: None,
     };

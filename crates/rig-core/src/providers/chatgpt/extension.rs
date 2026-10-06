@@ -109,9 +109,9 @@ pub struct ChatGptExtras {
     pub prompt_cache_retention: Option<String>,
     /// `/incomplete_details/reason`, such as `max_output_tokens`.
     pub incomplete_reason: Option<String>,
-    /// The `phase` of each `message` item in `/output`. The backend's
-    /// terminal event carries an empty `output`, so this is `None` until
-    /// the reply's `raw` is rebuilt from the stream.
+    /// The `phase` of each `message` item in `/output`, which the reply's
+    /// `raw` rebuilds from the items the stream finished; `None` when the
+    /// output holds no message.
     pub phases: Option<Vec<ItemPhase>>,
 }
 

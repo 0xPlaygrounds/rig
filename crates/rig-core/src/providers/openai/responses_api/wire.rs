@@ -148,7 +148,7 @@ impl Wire for Responses {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ResponsesDecoder;
-    type Reassembler = super::streaming::document::TerminalRecord;
+    type Reassembler = super::streaming::document::Response;
 
     /// The xAI contract does not compose native structured output with tools.
     fn describe(&self) -> Descriptor<'_> {

@@ -1015,7 +1015,7 @@ impl<Op: Operation<Emit = Free>> Out<'_, Op> { pub fn raw(&mut self, raw: serde_
 ```
 
 One reassembler per API: `openai::wire::chat::document::ChatCompletion`
-(`"openai.chat"`), `openai::responses_api::document::Response`,
+(`"openai.chat"`), `openai::responses_api::streaming::document::Response`,
 `anthropic::document::Message`, `gemini::document::GenerateContentResponse`
 (shared by Vertex and gRPC), `gemini::interactions_api::document::Interaction`,
 `cohere::document::ChatResponse`, `ollama::document::ChatResponse`,
@@ -1796,7 +1796,7 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
 |---|---|---|---|
 | OpenAI Chat, every dialect | `chat.completion` body | `{usage, finish_reason (rig's enum), response_id, model, logprobs, additional_params}` (`crates/rig-core/src/providers/openai/wire/chat.rs:1687-1708`); drops `native_finish_reason`, `annotations`, `refusal`; repeated arrays are extended (Perplexity: 68 citations, 17 distinct) | `openai::wire::chat::document::ChatCompletion`, fed what the decoder classifies as a chunk or a whole reply: top-level keys last non-null wins, `object` renamed `chat.completion`, stream padding (`obfuscation`, Mistral's `p`) dropped; `delta.content`, `refusal`, `reasoning`, `reasoning_content` append; `tool_calls` merge by `index` (`arguments`, `input` append), `index` dropped at finish; `reasoning_details` merge with the decoder's own merge; `annotations`, `images`, `audio.data`, `audio.transcript`, `logprobs.*` arrays append; choices kept by `index` and listed in `index` order; a choice that carries its whole `message` (a whole reply, or Perplexity's message-so-far beside each delta) is kept as its last frame sent it; an empty `content` beside calls or a refusal is `null`; OpenRouter's terminal `usage.cost`, `provider`, `native_finish_reason` land where unary has them; the `[DONE]` sentinel and the in-band error envelope add nothing; a bare-string reply (Mira) has no document |
 | Anthropic Messages | `Message` | `{usage, stop_reason, stop_sequence, message_id, model}` (`crates/rig-core/src/providers/anthropic/streaming.rs:549-558`), pinned by a key-set test | `message_start.message` is the skeleton; `content_block_start` placed at its index; `text_delta`, `thinking_delta`, `signature_delta` append; `input_json_delta` accumulates and is parsed at `content_block_stop` (`{}` when empty); `citations_delta` appends; `message_delta` sets `stop_reason`, `stop_sequence`, `stop_details`, `container`, and merges its cumulative `usage` over the start usage; server-tool results and `fallback` blocks kept whole |
-| OpenAI Responses (HTTP and WebSocket) | `Response` | the terminal event's `response` (`crates/rig-core/src/providers/openai/responses_api/streaming.rs:795`), already the unary shape | take the terminal `response`; fill `output` from `response.output_item.done` items when the terminal `output` is empty (the Codex backend sends `output: []`); `billing` is unary-only and stays `Option` in `Extras` |
+| OpenAI Responses (HTTP and WebSocket) | `Response` | the terminal event's `response` (`crates/rig-core/src/providers/openai/responses_api/streaming.rs:795`), already the unary shape | `openai::responses_api::streaming::document::Response`: the latest lifecycle event's `response`, final at the terminal one (`completed`, `incomplete` or `failed`, whose status it states); fill `output` from `response.output_item.added`/`.done` items by `output_index` when the terminal `output` is empty (the Codex backend sends `output: []`) or the stream was cut; `billing` is unary-only and stays `Option` in `Extras`. The WebSocket session feeds the same reassembler |
 | Gemini GenerateContent, Vertex, gRPC | `GenerateContentResponse` | REST: a snake_case summary (`crates/rig-core/src/providers/gemini/streaming.rs:195-207`); gRPC and Vertex: the last chunk through `keep_raw` (`gemini/streaming.rs:73`, `crates/rig-gemini-grpc/src/streaming.rs:52`, `crates/rig-vertexai/src/types/completion_response.rs:34`) | `candidates[i].content.parts` append; adjacent text parts with equal `thought` and no `thoughtSignature` coalesce (derived from recordings, not docs); `citationMetadata.citationSources` append; `groundingMetadata`, `urlContextMetadata`, `safetyRatings`, `finishReason`, `finishMessage`, `usageMetadata`, `modelVersion`, `responseId` last non-null; `promptFeedback` first. Vertex's "stream" re-emits the unary reply, so it is already equal |
 | Gemini Interactions | interaction resource | `{usage, interaction, model_version}` (`crates/rig-core/src/providers/gemini/interactions_api/streaming.rs:342-350`); `interaction.completed` carries no `steps` | the completed interaction with `steps` (or `outputs`) rebuilt from the content events, as the decoder already folds them (`interactions_api/streaming.rs:300-323`) |
 | Cohere native | chat response | the `message-end` event (`crates/rig-core/src/providers/cohere/streaming.rs:493`) | `id` from `message-start`; `content-start`/`content-delta` build `message.content[i]`; `tool-plan-delta` appends `message.tool_plan`; `tool-call-*` build `message.tool_calls[i]`; `citation-start` appends `message.citations` with `content_index`; `message-end.delta` gives `finish_reason` and `usage`. The Compatibility route uses the Chat reassembler |
@@ -2037,9 +2037,8 @@ interim reassembler:
    `cargo xtask cassette goldens` and `cargo xtask cassette snapshots`, and
    move the assertions that read the old terminal record.
 
-The Responses WebSocket session still records the terminal response body
-as `raw` (`settle` with the body as the document) and feeds no reassembler;
-the Responses family moves it onto the reassembler.
+The Responses WebSocket session feeds each turn's messages to the same
+reassembler as the HTTP stream and settles with what it finishes with.
 
 ### 12.5 P6: citations and cost
 
