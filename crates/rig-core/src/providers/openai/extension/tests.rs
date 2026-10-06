@@ -1,11 +1,13 @@
-//! OpenAI's Chat options as the bodies they encode to, and its extras read
-//! from a recorded reply. The encoder tests are unit tests because no
-//! recording sends typed provider options.
+//! OpenAI's Chat options as the bodies they encode to, its sections as they
+//! serialize, and its extras read from a recorded Chat reply and from built
+//! Responses bodies. The encoder tests are unit tests because no recording
+//! sends typed provider options; the recorded Responses replies are read in
+//! the Responses wire's tests.
 
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{GenerationOptions, OnUnsupported, Reasoning};
+use crate::completion::{GenerationOptions, OnUnsupported, ProviderOptions, Reasoning};
 use crate::providers::openai::completion::{GPT_4_1_MINI, GPT_6_SOL};
 use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
 use crate::providers::openrouter::extension::OpenRouter;
@@ -197,4 +199,62 @@ async fn chat_extras_from_a_unary_recording() {
     assert_eq!(prompt.cached_tokens, Some(0));
     assert_eq!(prompt.audio_tokens, Some(0));
     assert!(reply.extras::<OpenRouter>().is_none());
+}
+
+/// A fully set shared section serializes under `"*"`, and no section is
+/// sent for a route the options leave empty.
+#[test]
+fn the_shared_section_serializes_under_the_shared_key() {
+    let options = OpenAiOptions::default().shared(
+        OpenAiShared::default()
+            .store(false)
+            .metadata("tenant", "acme")
+            .prompt_cache_key("k1")
+            .safety_identifier("u-1"),
+    );
+    let entry = ProviderOptions::new()
+        .with::<OpenAi>(&options)
+        .expect("the options are sections");
+    assert_eq!(
+        serde_json::to_value(entry.get::<OpenAi>()).expect("the sections serialize"),
+        json!({"*": {
+            "store": false,
+            "metadata": {"tenant": "acme"},
+            "prompt_cache_key": "k1",
+            "safety_identifier": "u-1"
+        }})
+    );
+}
+
+/// Options that set nothing leave no entry.
+#[test]
+fn empty_options_leave_no_entry() {
+    let entry = ProviderOptions::new()
+        .with::<OpenAi>(&OpenAiOptions::default())
+        .expect("the options are sections");
+    assert!(entry.is_empty());
+}
+
+/// A compatible server's text `reasoning` gives no reasoning fields rather
+/// than failing the whole view, and a reply with no envelope fields reads
+/// all `None`.
+#[test]
+fn a_text_reasoning_reads_as_no_reasoning() {
+    let api = Api::from_static("openai.responses");
+    let extras = OpenAiExtras::from_reply(
+        &api,
+        &json!({"reasoning": "thought about it", "service_tier": "flex", "output": []}),
+    )
+    .expect("the view reads");
+    assert_eq!(
+        extras,
+        OpenAiExtras {
+            service_tier: Some("flex".to_owned()),
+            ..OpenAiExtras::default()
+        }
+    );
+    assert_eq!(
+        OpenAiExtras::from_reply(&api, &json!({})).expect("the view reads"),
+        OpenAiExtras::default()
+    );
 }

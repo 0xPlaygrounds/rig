@@ -1,61 +1,9 @@
-//! OpenAI's typed request options and reply extras. The Chat Completions
-//! section is sent only on that route.
-//!
-//! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::openai::extension::{ChatOptions, OpenAi, OpenAiOptions};
-//!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = OpenAiOptions::new().chat(ChatOptions::new().logprobs(true).top_logprobs(3));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OpenAi>(&options)?);
-//! # let _ = request;
-//! # Ok(())
-//! # }
-//! ```
+//! The Chat Completions section of OpenAI's options, and the token details
+//! only a Chat reply carries.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::completion::provider_options::reply_field;
-use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
-use crate::message::Api;
-
-/// OpenAI's extension marker.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OpenAi;
-
-impl ProviderExtension for OpenAi {
-    const PROVIDER: &'static str = super::PROVIDER_NAME;
-    type Options = OpenAiOptions;
-    type Extras = OpenAiExtras;
-}
-
-/// OpenAI's request options, by route.
-#[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
-pub struct OpenAiOptions {
-    /// Sent on Chat Completions only.
-    #[serde(rename = "openai.chat")]
-    pub chat: ChatOptions,
-}
-
-impl OpenAiOptions {
-    /// No option set.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Send `chat` on Chat Completions.
-    pub fn chat(mut self, chat: ChatOptions) -> Self {
-        self.chat = chat;
-        self
-    }
-}
-
-impl ExtensionOptions for OpenAiOptions {}
 
 /// The fields only Chat Completions takes
 /// (<https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create>).
@@ -324,22 +272,6 @@ impl ApproximateLocation {
     }
 }
 
-/// OpenAI's reply fields. Each is `None` when the reply lacks it.
-#[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct OpenAiExtras {
-    /// The service tier that served the request. Both routes.
-    pub service_tier: Option<String>,
-    /// The backend configuration's fingerprint. Chat only.
-    pub system_fingerprint: Option<String>,
-    /// Prompt token details. Chat only.
-    pub prompt_tokens_details: Option<PromptTokensDetails>,
-    /// Completion token details. Chat only.
-    pub completion_tokens_details: Option<CompletionTokensDetails>,
-    /// The message's annotations, such as URL citations. Chat only.
-    pub annotations: Option<Vec<Value>>,
-}
-
 /// Where a Chat reply's prompt tokens went.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -372,25 +304,3 @@ pub struct CompletionTokensDetails {
     #[serde(default)]
     pub rejected_prediction_tokens: Option<u64>,
 }
-
-impl ReplyExtras for OpenAiExtras {
-    fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
-        let service_tier = reply_field(raw, "/service_tier")?;
-        if api.as_str() != "openai.chat" {
-            return Ok(Self {
-                service_tier,
-                ..Self::default()
-            });
-        }
-        Ok(Self {
-            service_tier,
-            system_fingerprint: reply_field(raw, "/system_fingerprint")?,
-            prompt_tokens_details: reply_field(raw, "/usage/prompt_tokens_details")?,
-            completion_tokens_details: reply_field(raw, "/usage/completion_tokens_details")?,
-            annotations: reply_field(raw, "/choices/0/message/annotations")?,
-        })
-    }
-}
-
-#[cfg(test)]
-mod tests;

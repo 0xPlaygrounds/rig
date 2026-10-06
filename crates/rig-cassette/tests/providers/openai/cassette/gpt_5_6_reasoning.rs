@@ -2,7 +2,8 @@
 //!
 //! Locks down the GPT-5.6 model constants and verifies that the Responses API
 //! accepts `reasoning.effort = "max"`, `reasoning.mode = "pro"`, and
-//! `reasoning.context`. Unit tests in the provider module cover every typed
+//! `reasoning.context`, set through the typed options and read back through
+//! the typed extras. Unit tests in the provider module cover every typed
 //! context value and optional-field serialization.
 //!
 //! Run cassette tests in replay mode by default, or set
@@ -18,7 +19,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
+use rig::providers::openai::extension::{
+    OpenAi, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, ReasoningContext, ReasoningMode,
+};
 
 const PROMPT: &str = "Reply with exactly: OK";
 const FIVE_TURN_PROMPTS: [(&str, &str); 5] = [
@@ -51,24 +55,42 @@ struct StoredResponseTurn {
     raw_response: Value,
 }
 
-/// Issue one GPT-5.6 completion and return both views of the single recorded
-/// interaction: the normalized response, and the Responses API's own wire
-/// response read back out of [`CompletionResponse::raw`], which is the only
-/// carrier of the reasoning metadata these tests lock down.
+/// Issue one GPT-5.6 completion at `effort`, with the typed Responses
+/// options `responses`, and read the reasoning the provider reports through
+/// the typed extras.
 async fn prompt_with_reasoning(
     model: &Model<OpenAiWire>,
-    reasoning: serde_json::Value,
-) -> (CompletionResponse, Value) {
-    let request =
-        CompletionRequest::new(PROMPT).additional_params(json!({ "reasoning": reasoning }));
+    effort: Effort,
+    responses: OpenAiResponsesOptions,
+) -> (CompletionResponse, OpenAiExtras) {
+    let options = ProviderOptions::new()
+        .with::<OpenAi>(&OpenAiOptions::default().responses(responses))
+        .expect("the options are sections");
+    let request = CompletionRequest::new(PROMPT)
+        .options(GenerationOptions::default().reasoning(effort))
+        .provider_options(options);
 
     let response = model
         .call(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
-    let raw_response = response.raw.clone();
+    let extras = response
+        .extras::<OpenAi>()
+        .expect("the reply is OpenAI's")
+        .expect("the reply holds the extras");
 
-    (response, raw_response)
+    (response, extras)
+}
+
+/// The effective reasoning `extras` report: effort, mode, context and
+/// summary.
+fn reasoning_of(extras: &OpenAiExtras) -> [Option<&str>; 4] {
+    [
+        extras.reasoning_effort.as_deref(),
+        extras.reasoning_mode.as_deref(),
+        extras.reasoning_context.as_deref(),
+        extras.reasoning_summary.as_deref(),
+    ]
 }
 
 #[test]
@@ -111,17 +133,16 @@ async fn mode_pro_with_independent_effort() {
         "gpt_5_6_reasoning/mode_pro_with_independent_effort",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let (response, raw_response) =
-                prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
+            let (response, extras) = prompt_with_reasoning(
+                &model,
+                Effort::High,
+                OpenAiResponsesOptions::default().reasoning_mode(ReasoningMode::Pro),
+            )
+            .await;
             assert_has_text(&response);
-            assert_reasoning_metadata(
-                &raw_response,
-                json!({
-                    "context": "all_turns",
-                    "effort": "high",
-                    "mode": "pro",
-                    "summary": null
-                }),
+            assert_eq!(
+                reasoning_of(&extras),
+                [Some("high"), Some("pro"), Some("all_turns"), None]
             );
         },
     )
@@ -134,20 +155,16 @@ async fn context_current_turn() {
         "gpt_5_6_reasoning/context_current_turn",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let (response, raw_response) = prompt_with_reasoning(
+            let (response, extras) = prompt_with_reasoning(
                 &model,
-                json!({ "effort": "low", "context": "current_turn" }),
+                Effort::Low,
+                OpenAiResponsesOptions::default().reasoning_context(ReasoningContext::CurrentTurn),
             )
             .await;
             assert_has_text(&response);
-            assert_reasoning_metadata(
-                &raw_response,
-                json!({
-                    "context": "current_turn",
-                    "effort": "low",
-                    "mode": "standard",
-                    "summary": null
-                }),
+            assert_eq!(
+                reasoning_of(&extras),
+                [Some("low"), Some("standard"), Some("current_turn"), None]
             );
         },
     )

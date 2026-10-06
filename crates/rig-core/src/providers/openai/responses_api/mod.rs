@@ -354,9 +354,10 @@ pub(crate) enum Delivery {
 
 impl wire::Responses {
     /// The Responses request body this wire sends: its encoding of the
-    /// request, then the mapped options, then `additional_params`, merged by
-    /// [`request_params`], then the post-merge rewrites. The WebSocket session
-    /// calls it too, so both transports send one body.
+    /// request, then the mapped options, then the provider options, then
+    /// `additional_params`, merged by [`request_params`], then the post-merge
+    /// rewrites. The WebSocket session calls it too, so both transports send
+    /// one body.
     pub(crate) fn responses_request(
         &self,
         request: &completion::CompletionRequest,

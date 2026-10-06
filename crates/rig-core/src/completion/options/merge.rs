@@ -408,21 +408,39 @@ fn provider_layer(target: &dyn ReplayTarget, request: &CompletionRequest) -> Pro
         deep_merge(&mut layer.fields, route.clone());
     }
     for (field, reason) in request.provider_options.refusals(provider, target, request) {
-        if layer.fields.shift_remove(field).is_none() {
-            continue;
+        layer.refuse(target, request, field, reason);
+    }
+    layer
+}
+
+impl ProviderLayer {
+    /// Take `field` out and list it as refused for `reason`, when the layer
+    /// sets it. It is named by the section it came from: the route's when
+    /// that section sets it, [`SHARED`] otherwise.
+    fn refuse(
+        &mut self,
+        target: &dyn ReplayTarget,
+        request: &CompletionRequest,
+        field: &'static str,
+        reason: String,
+    ) {
+        if self.fields.shift_remove(field).is_none() {
+            return;
         }
-        let section = if route.is_some_and(|route| route.contains_key(field)) {
-            api.as_str().to_owned()
-        } else {
-            SHARED.to_owned()
-        };
-        layer.refused.push(Refused {
+        let api = target.api();
+        let in_route = request
+            .provider_options
+            .sections(target.provider())
+            .and_then(|sections| sections.get(api.as_str()))
+            .and_then(Value::as_object)
+            .is_some_and(|route| route.contains_key(field));
+        let section = if in_route { api.as_str() } else { SHARED };
+        self.refused.push(Refused {
             field,
-            section,
+            section: section.to_owned(),
             reason,
         });
     }
-    layer
 }
 
 /// `additional_params` as an object, or empty.
@@ -553,7 +571,17 @@ pub fn request_params(
     rewrites: &[Rewrite],
 ) -> Result<FinalBody, EncodeError> {
     let settled = settle(target, request)?;
-    let provider = provider_layer(target, request);
+    let mut provider = provider_layer(target, request);
+    // The rewrite drops a raw `background` as it always has; a typed one is
+    // refused rather than dropped unseen.
+    if rewrites.contains(&Rewrite::NoBackground) {
+        provider.refuse(
+            target,
+            request,
+            "background",
+            "a WebSocket session takes no `background`".to_owned(),
+        );
+    }
     for refusal in provider.refused {
         refuse(target, request, refusal.name(target), refusal.reason)?;
     }
