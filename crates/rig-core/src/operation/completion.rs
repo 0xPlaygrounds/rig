@@ -1117,11 +1117,17 @@ fn priced(usage: Usage, origin: &Origin) -> Usage {
     if usage.cost.is_some() {
         return usage;
     }
-    let cost = crate::catalog::lookup(&origin.provider, &origin.model)
+    let cost = catalog_cost(origin, &usage);
+    usage.cost(cost)
+}
+
+/// What `usage` costs at the built-in catalog's pricing for `origin`'s
+/// model, or `None` when the catalog has no price for it.
+fn catalog_cost(origin: &Origin, usage: &Usage) -> Option<crate::completion::Cost> {
+    crate::catalog::lookup(&origin.provider, &origin.model)
         .or_else(|| crate::catalog::lookup_snapshot(&origin.provider, &origin.model))
         .and_then(|spec| spec.pricing.as_ref())
-        .and_then(|pricing| pricing.cost(&usage));
-    usage.cost(cost)
+        .and_then(|pricing| pricing.cost(usage))
 }
 
 /// `block` with no provider item: an opaque item no longer replays.
@@ -1259,6 +1265,13 @@ impl Fold<Completion> for Turn {
 }
 
 impl<'id> Out<'id, Completion> {
+    /// What `usage` costs at the built-in catalog's pricing for the
+    /// requested model, for a decoder whose provider bills other counters
+    /// than the ones it reports as usage.
+    pub(crate) fn catalog_cost(&self, usage: &Usage) -> Option<crate::completion::Cost> {
+        catalog_cost(&self.lock().fold.origin, usage)
+    }
+
     /// Open the provider item at wire `index` as `block`: it takes the next
     /// position in the reply. `item` is the item as its first event states
     /// it, the base its deltas merge into; `Null` when the block keeps no

@@ -17,9 +17,11 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig_core::completion::{FinishReason, Usage};
 use rig_core::error::ProviderError;
 use rig_core::json_utils::Lenient;
-use rig_core::message::{DocumentSourceKind, Image, ImageMediaType};
+use rig_core::message::{
+    DocumentRange, DocumentSourceKind, Image, ImageMediaType, Source, SourceLocation,
+};
 use rig_core::operation::{Block, CallFragment, Completion, Finish, merge};
-use rig_core::wire::{Flow, Out, WireEvent};
+use rig_core::wire::{Flow, Out, WireCitation, WireEvent};
 use serde_json::{Map, Value, json};
 
 use crate::completion::ConverseFrame;
@@ -173,7 +175,12 @@ impl StreamState {
         }
         let (pointer, merged) = match (kind, open) {
             ("text", Some(Open::Text)) => ("", json!({ "text": body })),
-            ("citation", Some(Open::Text)) => ("", json!({ "citations": [body] })),
+            ("citation", Some(Open::Text)) => {
+                if let Some(cited) = citation_of(body) {
+                    out.cite(index, cited);
+                }
+                ("", json!({ "citations": [body] }))
+            }
             ("reasoningContent", Some(Open::Reasoning)) => match redacted {
                 Some(chunk) => ("", json!({ "redactedContent": [chunk] })),
                 None => ("", body.clone()),
@@ -344,6 +351,53 @@ impl StreamState {
             None => Flow::More,
         })
     }
+}
+
+/// One Converse citation as a whole-block [`WireCitation`]: Converse cites
+/// each `citationsContent` block as a whole. A location kind this crate does
+/// not know, or a search result without its `source`, is `None` and stays
+/// only in the block's item. Ranges are as Anthropic's, which Converse
+/// relays: end exclusive, pages from 1, characters and chunks from 0.
+fn citation_of(citation: &Value) -> Option<WireCitation> {
+    let (kind, at) = member(citation.get("location")?)?;
+    let number = |key: &str| at.u64(key).and_then(|n| u32::try_from(n).ok());
+    let range = || Some(number("start")?..number("end")?);
+    let document = |within: Option<DocumentRange>| SourceLocation::Document {
+        index: number("documentIndex"),
+        id: None,
+        within,
+    };
+    let location = match kind {
+        "documentChar" => document(
+            at.u64("start")
+                .zip(at.u64("end"))
+                .map(|(start, end)| DocumentRange::Chars(start..end)),
+        ),
+        "documentPage" => document(range().map(DocumentRange::Pages)),
+        "documentChunk" => document(range().map(DocumentRange::Blocks)),
+        "searchResultLocation" => SourceLocation::SearchResult {
+            index: number("searchResultIndex")?,
+            source: citation.str("source")?.to_owned(),
+            blocks: range(),
+        },
+        "web" => SourceLocation::Url {
+            url: at.str("url")?.to_owned(),
+        },
+        _ => return None,
+    };
+    let mut source = Source::new(location);
+    if let Some(title) = citation.str("title") {
+        source = source.title(title);
+    }
+    let quoted: Vec<&str> = citation
+        .arr("sourceContent")
+        .iter()
+        .filter_map(|part| part.str("text"))
+        .collect();
+    if !quoted.is_empty() {
+        source = source.cited_text(quoted.concat());
+    }
+    Some(WireCitation::new(None, vec![source]))
 }
 
 /// The image type a Converse image `format` names.

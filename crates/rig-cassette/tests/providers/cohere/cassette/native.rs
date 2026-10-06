@@ -5,8 +5,8 @@
 use std::collections::HashMap;
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, CompletionResponse, Document, Message};
-use rig::message::{AssistantContent, ToolResultContent, UserContent};
+use rig::completion::{CompletionRequest, CompletionResponse, Cost, Document, Message};
+use rig::message::{AssistantContent, Source, SourceLocation, ToolResultContent, UserContent};
 use rig::providers::cohere::extension::{Cohere, CohereExtras};
 use rig::providers::cohere::{ChatRoute, CohereChat};
 use rig::providers::ollama::extension::Ollama;
@@ -35,17 +35,43 @@ fn documents() -> Vec<Document> {
     ]
 }
 
-/// The document ids the citations on `response`'s text blocks name.
-fn cited_documents(response: &CompletionResponse) -> Vec<String> {
+/// Each citation on `response`'s text blocks: the text it spans and its
+/// sources.
+fn citations(response: &CompletionResponse) -> Vec<(String, Vec<Source>)> {
     response
         .choice
         .iter()
-        .filter(|block| matches!(block, AssistantContent::Text(_)))
-        .filter_map(AssistantContent::native_item)
-        .flat_map(|item| item["citations"].as_array().cloned().unwrap_or_default())
-        .flat_map(|citation| citation["sources"].as_array().cloned().unwrap_or_default())
-        .filter_map(|source| source["id"].as_str().map(str::to_owned))
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some(text),
+            _ => None,
+        })
+        .flat_map(|text| {
+            text.citations().iter().map(|citation| {
+                let cited = citation.span.and(text.cited(citation)).unwrap_or_default();
+                (cited.to_owned(), citation.sources.clone())
+            })
+        })
         .collect()
+}
+
+/// A request document cited by its id.
+fn document(id: &str) -> Source {
+    Source::new(SourceLocation::Document {
+        index: None,
+        id: Some(id.to_owned()),
+        within: None,
+    })
+}
+
+/// The billed units priced at Command A's $2.50 input and $10 output per
+/// million tokens.
+fn billed(input: f64, output: f64) -> Option<Cost> {
+    Some(Cost::from_parts(
+        input * 2.5 / 1e6,
+        output * 10.0 / 1e6,
+        0.0,
+        0.0,
+    ))
 }
 
 /// The events of a streamed reply, and the response it folds into.
@@ -65,8 +91,10 @@ async fn streamed(
 }
 
 /// On the `Auto` route a streamed answer grounded in documents cites them:
-/// each citation, with its source document, sits in the provider item of
-/// the text it cites.
+/// each citation spans the characters it quotes and names its source
+/// document, and its JSON sits in the provider item of the text it cites.
+/// The second citation arrives after the last text it spans. The cost
+/// prices the billed units, not the larger token counts.
 #[tokio::test]
 async fn documents_ground_a_streamed_answer_with_citations() {
     with_cohere_cassette(
@@ -87,12 +115,24 @@ async fn documents_ground_a_streamed_answer_with_citations() {
                 "the answer streams as text: {events:?}"
             );
             assert_eq!(response.origin.api.as_str(), "cohere.chat");
-            let cited = cited_documents(&response);
-            assert!(
-                cited.iter().any(|id| id.starts_with("harbor-record-")),
-                "the answer cites the documents: {:?}",
-                response.choice
+            assert_eq!(
+                citations(&response),
+                [
+                    ("Dock Seven".to_owned(), vec![document("harbor-record-1")]),
+                    (
+                        "closes for repairs every Tuesday.".to_owned(),
+                        vec![document("harbor-record-2")]
+                    ),
+                ]
             );
+            let item = response
+                .choice
+                .iter()
+                .find_map(AssistantContent::native_item)
+                .expect("the text keeps its item");
+            assert_eq!(item["citations"].as_array().map(Vec::len), Some(2));
+            assert_eq!(response.usage.input_tokens, Some(1696));
+            assert_eq!(response.usage.cost, billed(45.0, 17.0));
             // The streamed reply's extras read what a unary reply's do.
             let extras = extras(&response);
             assert_eq!(
@@ -185,6 +225,16 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
                 })
                 .collect();
             assert!(text.contains("-3"), "{text}");
+            // The answer cites the tool's output by its id.
+            assert_eq!(
+                citations(&reply),
+                [(
+                    "-3".to_owned(),
+                    vec![Source::new(SourceLocation::ToolOutput {
+                        id: "subtract_d41p5xnhmncp:0".to_owned()
+                    })]
+                )]
+            );
         },
     )
     .await;
@@ -226,7 +276,11 @@ async fn a_conversation_switching_routes_replays() {
                 .await
                 .expect("the native turn succeeds");
             assert_eq!(first.origin.api.as_str(), "cohere.chat");
-            assert!(!cited_documents(&first).is_empty(), "{:?}", first.choice);
+            assert_eq!(
+                citations(&first),
+                [("Dock Seven".to_owned(), vec![document("harbor-record-1")])]
+            );
+            assert_eq!(first.usage.cost, billed(39.0, 9.0));
             let first_extras = extras(&first);
             assert_eq!(
                 first_extras.id.as_deref(),
@@ -326,11 +380,7 @@ async fn the_compatibility_route_sends_documents_as_text() {
             request.documents = documents();
             let response = model.call(request).await.expect("the request succeeds");
             assert_eq!(response.origin.api.as_str(), "openai.chat");
-            assert!(
-                cited_documents(&response).is_empty(),
-                "{:?}",
-                response.choice
-            );
+            assert!(citations(&response).is_empty(), "{:?}", response.choice);
             let text = response
                 .choice
                 .iter()

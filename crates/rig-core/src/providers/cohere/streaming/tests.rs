@@ -728,3 +728,193 @@ fn a_whole_reply_is_its_document_and_a_cut_stream_keeps_what_arrived() {
             "tool_plan": "", "tool_calls": [], "citations": []}})
     );
 }
+
+/// `frames` as a reply in `mode` from the native wire for Command A, which
+/// the catalog prices.
+fn command_a(frames: &[Value], mode: crate::wire::Mode) -> CompletionResponse {
+    let wire = super::super::NativeChat::new(
+        super::super::CohereConfig::new("key"),
+        super::super::COMMAND_A_03_2025,
+    );
+    crate::test_utils::decode_reply(
+        &wire,
+        &crate::completion::CompletionRequest::new("hi"),
+        mode,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+        Value::Null,
+    )
+    .expect("the reply decodes")
+}
+
+/// Each text block's text and its citations' spans as text, with their
+/// sources.
+fn typed_citations(
+    response: &CompletionResponse,
+) -> Vec<(String, Vec<(Option<String>, Vec<crate::message::Source>)>)> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some((
+                text.text.clone(),
+                text.citations()
+                    .iter()
+                    .map(|citation| {
+                        (
+                            citation.span.and(text.cited(citation)).map(str::to_owned),
+                            citation.sources.clone(),
+                        )
+                    })
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+fn document(id: &str) -> crate::message::Source {
+    crate::message::Source::new(crate::message::SourceLocation::Document {
+        index: None,
+        id: Some(id.to_owned()),
+        within: None,
+    })
+}
+
+/// A cited answer after thinking, in a non-ASCII text so character offsets
+/// differ from bytes. Hand-built: the recordings are ASCII and none thinks.
+fn cited_answer() -> (Value, Vec<Value>) {
+    let first = json!({"start": 0, "end": 4, "text": "Café", "type": "TEXT_CONTENT",
+        "content_index": 1, "sources": [{"type": "document", "id": "doc-1",
+            "document": {"id": "doc-1", "title": "Menu", "text": "Café opens at nine."}}]});
+    let second = json!({"start": 14, "end": 18, "text": "nine", "type": "TEXT_CONTENT",
+        "content_index": 1, "sources": [
+            {"type": "tool", "id": "clock_1:0", "tool_output": {"hour": 9}},
+            {"type": "document", "id": "doc-2", "document": {"text": "9am"}}]});
+    let thinking = json!({"start": 0, "end": 5, "text": "Check", "type": "THINKING_CONTENT",
+        "content_index": 0, "sources": [{"type": "document", "id": "doc-1"}]});
+    let message = json!({"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "Check the menu."},
+            {"type": "text", "text": "Café opens at nine."}],
+        "citations": [first, second, thinking]});
+    (message, vec![first, second, thinking])
+}
+
+/// Text citations resolve to the characters they quote, each source
+/// becoming a document or a tool output, the same in a whole reply and a
+/// stream; a thinking citation stays in its item only.
+#[test]
+fn citations_resolve_the_same_unary_and_streamed() {
+    let (message, citations) = cited_answer();
+    let [first, second, thinking] = citations.as_slice() else {
+        panic!("three citations");
+    };
+    let unary = command_a(&whole(message, "COMPLETE"), crate::wire::Mode::Unary);
+    let streamed = command_a(
+        &stream(
+            vec![
+                content_start(0, "thinking"),
+                content_delta(0, "thinking", "Check the menu."),
+                citation_start(0, thinking.clone()),
+                content_end(0),
+                content_start(1, "text"),
+                content_delta(1, "text", "Café opens"),
+                citation_start(1, first.clone()),
+                content_delta(1, "text", " at nine."),
+                citation_start(2, second.clone()),
+                content_end(1),
+            ],
+            "COMPLETE",
+        ),
+        crate::wire::Mode::Streaming,
+    );
+    let expected = vec![(
+        "Café opens at nine.".to_owned(),
+        vec![
+            (
+                Some("Café".to_owned()),
+                vec![document("doc-1").title("Menu")],
+            ),
+            (
+                Some("nine".to_owned()),
+                vec![
+                    crate::message::Source::new(crate::message::SourceLocation::ToolOutput {
+                        id: "clock_1:0".to_owned(),
+                    }),
+                    document("doc-2"),
+                ],
+            ),
+        ],
+    )];
+    for response in [&unary, &streamed] {
+        assert_eq!(typed_citations(response), expected);
+        let Some(AssistantContent::Reasoning(reasoning)) = response.choice.first() else {
+            panic!("thinking first: {:?}", response.choice);
+        };
+        assert_eq!(
+            item(&reasoning.native).and_then(|item| item.get("citations").cloned()),
+            Some(json!([thinking]))
+        );
+    }
+}
+
+/// A citation whose quoted text is not at its offsets, or that names no
+/// offsets, is dropped from the block's citations and kept in its item.
+#[test]
+fn a_citation_that_does_not_match_its_text_stays_in_the_item() {
+    let wrong = citation(0, 3, "doc-1", json!({}));
+    let unplaced = json!({"text": "Sky", "sources": [], "type": "TEXT_CONTENT"});
+    let response = command_a(
+        &whole(
+            json!({"role": "assistant",
+                "content": [{"type": "text", "text": "Sky is green."}],
+                "citations": [wrong, unplaced]}),
+            "COMPLETE",
+        ),
+        crate::wire::Mode::Unary,
+    );
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    assert!(text.citations().is_empty(), "{:?}", text.citations());
+    assert_eq!(
+        item(&text.native).map(|item| item.arr("citations").len()),
+        Some(2)
+    );
+}
+
+/// The cost is the billed units at the catalog's Command A prices, not the
+/// larger `tokens` the usage reports, the same on both paths; without
+/// billed units the fold prices the usage.
+#[test]
+fn the_cost_prices_the_billed_units() {
+    // 56 input tokens at $2.50 and 20 output tokens at $10 per million.
+    let priced = |input: f64, output: f64| {
+        crate::completion::Cost::from_parts(input * 2.5 / 1e6, output * 10.0 / 1e6, 0.0, 0.0)
+    };
+    let billed = priced(56.0, 20.0);
+    let message = json!({"role": "assistant", "content": [{"type": "text", "text": "Hi."}]});
+    let unary = command_a(&whole(message, "COMPLETE"), crate::wire::Mode::Unary);
+    let streamed = command_a(
+        &stream(
+            vec![
+                content_start(0, "text"),
+                content_delta(0, "text", "Hi."),
+                content_end(0),
+            ],
+            "COMPLETE",
+        ),
+        crate::wire::Mode::Streaming,
+    );
+    for response in [&unary, &streamed] {
+        assert_eq!(response.usage.input_tokens, Some(1706));
+        assert_eq!(response.usage.cost, Some(billed));
+    }
+
+    let tokens_only = json!({"id": "resp_1", "finish_reason": "COMPLETE",
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "Hi."}]},
+        "usage": {"tokens": {"input_tokens": 100, "output_tokens": 10}}});
+    let response = command_a(&[tokens_only], crate::wire::Mode::Unary);
+    assert_eq!(response.usage.cost, Some(priced(100.0, 10.0)));
+}

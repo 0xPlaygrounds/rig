@@ -1,7 +1,9 @@
 use super::*;
 use crate::completion::{AMAZON_NOVA_LITE, ANTHROPIC_CLAUDE_SONNET_4_6, Converse};
 use rig_core::completion::CompletionResponse;
-use rig_core::message::{AssistantContent, Opaque, StopReason};
+use rig_core::message::{
+    AssistantContent, DocumentRange, Opaque, Source, SourceLocation, StopReason,
+};
 use rig_core::test_utils::history::decode;
 use rig_core::wire::Mode;
 
@@ -507,4 +509,144 @@ async fn the_recorded_pair_agrees() {
     );
     let minted = ["/metrics"];
     assert_eq!(comparable(&unary, &minted), comparable(&streamed, &minted));
+}
+
+/// One cited claim per `citationsContent` block, one per location kind
+/// Converse documents, plus a kind this crate does not know. Hand-built:
+/// rig never turns Converse citations on, so no recording carries them.
+fn cited_blocks() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "The grass is green.",
+            json!({ "title": "Lawn", "sourceContent": [{ "text": "The grass is green." }],
+                "location": { "documentChar": { "documentIndex": 0, "start": 0, "end": 20 } } }),
+        ),
+        (
+            "Pages two and three.",
+            json!({ "sourceContent": [{ "text": "Two. " }, { "text": "Three." }],
+                "location": { "documentPage": { "documentIndex": 1, "start": 2, "end": 4 } } }),
+        ),
+        (
+            "Chunk one.",
+            json!({ "title": "Chunks",
+                "location": { "documentChunk": { "documentIndex": 2, "start": 1, "end": 2 } } }),
+        ),
+        (
+            "Café opens at nine.",
+            json!({ "title": "Café", "source": "https://example.com/cafe",
+                "sourceContent": [{ "text": "Opens 9am." }],
+                "location": { "searchResultLocation": { "searchResultIndex": 3, "start": 0, "end": 1 } } }),
+        ),
+        (
+            "Rust 2.0 shipped.",
+            json!({ "title": "Rust",
+                "location": { "web": { "url": "https://example.com/rust", "domain": "example.com" } } }),
+        ),
+        ("Unknown.", json!({ "location": { "frobnicate": {} } })),
+    ]
+}
+
+/// The sources [`cited_blocks`] resolve to, block by block.
+fn cited_sources() -> Vec<Vec<Source>> {
+    let document = |index, within| {
+        Source::new(SourceLocation::Document {
+            index: Some(index),
+            id: None,
+            within: Some(within),
+        })
+    };
+    vec![
+        vec![
+            document(0, DocumentRange::Chars(0..20))
+                .title("Lawn")
+                .cited_text("The grass is green."),
+        ],
+        vec![document(1, DocumentRange::Pages(2..4)).cited_text("Two. Three.")],
+        vec![document(2, DocumentRange::Blocks(1..2)).title("Chunks")],
+        vec![
+            Source::new(SourceLocation::SearchResult {
+                index: 3,
+                source: "https://example.com/cafe".to_owned(),
+                blocks: Some(0..1),
+            })
+            .title("Café")
+            .cited_text("Opens 9am."),
+        ],
+        vec![
+            Source::new(SourceLocation::Url {
+                url: "https://example.com/rust".to_owned(),
+            })
+            .title("Rust"),
+        ],
+        vec![],
+    ]
+}
+
+/// Each text block's text, and its citations' spans and sources.
+fn citations_of(
+    response: &CompletionResponse,
+) -> Vec<(String, Vec<(Option<std::ops::Range<usize>>, Vec<Source>)>)> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some((
+                text.text.clone(),
+                text.citations()
+                    .iter()
+                    .map(|citation| {
+                        (
+                            citation.span.map(|span| span.range()),
+                            citation.sources.clone(),
+                        )
+                    })
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every documented location kind decodes to a whole-block citation with
+/// its source, title and quoted passage, the same in a whole reply and a
+/// stream, with the citation streamed before the text it cites. The
+/// `citationsContent` item keeps Converse's JSON, so replay is unchanged.
+#[test]
+fn every_citation_kind_resolves_the_same_unary_and_streamed() {
+    let blocks = cited_blocks();
+    let expected: Vec<_> = blocks
+        .iter()
+        .zip(cited_sources())
+        .map(|((text, _), sources)| {
+            let cited = (!sources.is_empty()).then_some((None, sources));
+            ((*text).to_owned(), cited.into_iter().collect::<Vec<_>>())
+        })
+        .collect();
+    let content: Vec<Value> = blocks
+        .iter()
+        .map(|(text, citation)| {
+            json!({ "citationsContent": {
+                "content": [{ "text": text }],
+                "citations": [citation],
+            } })
+        })
+        .collect();
+    let unary = whole(CLAUDE, content.clone(), "end_turn");
+    let mut events = Vec::new();
+    for (index, (text, citation)) in blocks.iter().enumerate() {
+        events.push(delta(index, json!({ "citation": citation })));
+        events.push(delta(index, json!({ "text": text })));
+        events.push(stop(index));
+    }
+    events.extend(ended("end_turn"));
+    let streamed = streamed(CLAUDE, events).expect("decodes");
+    for response in [&unary, &streamed] {
+        assert_eq!(citations_of(response), expected);
+        let items: Vec<_> = response
+            .choice
+            .iter()
+            .map(|block| block.native_item().cloned())
+            .collect();
+        assert_eq!(items, content.iter().cloned().map(Some).collect::<Vec<_>>());
+    }
 }

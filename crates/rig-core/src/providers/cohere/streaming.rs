@@ -11,7 +11,7 @@
 //! # let _ = decoder;
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
@@ -19,12 +19,12 @@ use super::chat::PLAN;
 use crate::completion::{FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::message::{CallId, ToolName};
+use crate::message::{CallId, Source, SourceLocation, ToolName};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
-    WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, SpanUnit,
+    WireCitation, WireEvent, WireFrame, WireSpan,
 };
 
 /// The stream's event tags; any other tag classifies as unknown.
@@ -112,8 +112,9 @@ enum Kind {
 pub struct ChatDecoder {
     /// Each open block's kind and, for a call, the argument text streamed.
     open: BTreeMap<usize, (Kind, String)>,
-    /// Every index a block opened at, so a citation finds its block.
-    started: BTreeSet<usize>,
+    /// Every index a block opened at and its kind, so a citation finds its
+    /// block.
+    started: BTreeMap<usize, Kind>,
     message_id: Option<String>,
 }
 
@@ -139,7 +140,7 @@ impl ChatDecoder {
         };
         let text = part.str(key).unwrap_or_default().to_owned();
         self.open.insert(index, (kind, String::new()));
-        self.started.insert(index);
+        self.started.insert(index, kind);
         out.open(index, block, part)?;
         out.push(index, &text)
     }
@@ -179,9 +180,9 @@ impl ChatDecoder {
 
     /// Append a fragment of the tool plan, opening it at its first.
     fn plan(&mut self, text: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
-        if !self.started.contains(&PLAN_INDEX) {
+        if !self.started.contains_key(&PLAN_INDEX) {
             self.open.insert(PLAN_INDEX, (Kind::Plan, String::new()));
-            self.started.insert(PLAN_INDEX);
+            self.started.insert(PLAN_INDEX, Kind::Plan);
             let item = json!({"type": PLAN, PLAN: ""});
             out.open(PLAN_INDEX, Block::Reasoning { redacted: false }, item)?;
         }
@@ -210,7 +211,7 @@ impl ChatDecoder {
             .unwrap_or_default()
             .to_owned();
         self.open.insert(index, (Kind::Call, String::new()));
-        self.started.insert(index);
+        self.started.insert(index, Kind::Call);
         match ToolName::new(
             item.at("/function/name")
                 .and_then(Value::as_str)
@@ -251,8 +252,9 @@ impl ChatDecoder {
 
     /// Attach `citation` to the item of the block it cites: the tool plan,
     /// or the content part at its `content_index` (the first by default).
-    /// A citation of a block that never opened has nowhere to go, and one
-    /// whose `content_index` reaches [`CALLS`] fails the reply.
+    /// A citation of a text part is also cited on its block. A citation of
+    /// a block that never opened has nowhere to go, and one whose
+    /// `content_index` reaches [`CALLS`] fails the reply.
     fn cite(&self, citation: Value, out: &mut Out<'_, Completion>) -> Result<(), ProviderError> {
         let index = if citation.str("type") == Some("PLAN") {
             PLAN_INDEX
@@ -264,12 +266,17 @@ impl ChatDecoder {
                     .unwrap_or(usize::MAX),
             )?
         };
-        if !self.started.contains(&index) {
+        let Some(kind) = self.started.get(&index) else {
             tracing::warn!(
                 index,
                 "Cohere cited a block the reply never opened; dropping it"
             );
             return Ok(());
+        };
+        if *kind == Kind::Text
+            && let Some(cited) = citation_of(&citation)
+        {
+            out.cite(index, cited);
         }
         out.edit(index, |item| {
             if let Some(item) = item.as_object_mut() {
@@ -319,10 +326,12 @@ impl ChatDecoder {
     }
 
     /// End the reply: every block still open is complete, but a call whose
-    /// arguments are not JSON yet, which the end closes unfinished.
+    /// arguments are not JSON yet, which the end closes unfinished. Its
+    /// cost is the `billed_units` priced at the catalog, since the `tokens`
+    /// it reports as usage include tokens Cohere does not bill.
     fn end(
         &mut self,
-        usage: Option<&Value>,
+        usage_value: Option<&Value>,
         reason: Option<&str>,
         error: Option<&str>,
         mut out: Out<'_, Completion>,
@@ -346,8 +355,12 @@ impl ChatDecoder {
             .or_else(|| {
                 (reason == Some("ERROR")).then(|| "Cohere ended the reply with an error".to_owned())
             });
+        let mut usage = usage_of(usage_value);
+        if let Some(billed) = billed_of(usage_value) {
+            usage.cost = out.catalog_cost(&billed);
+        }
         Ok(out.end(Finish {
-            usage: usage_of(usage),
+            usage,
             reason: reason.map(finish_of),
             response_id: self.message_id.clone(),
             model: None,
@@ -406,6 +419,54 @@ fn finish_of(reason: &str) -> FinishReason {
         "TOOL_CALL" => FinishReason::ToolCalls,
         other => FinishReason::Other(other.to_owned()),
     }
+}
+
+/// One native citation as a [`WireCitation`]: a span of its content part
+/// in characters, checked against the `text` Cohere quotes, cited by each
+/// document or tool output it names. A citation without both offsets is
+/// `None` and stays only in the item.
+fn citation_of(citation: &Value) -> Option<WireCitation> {
+    let mut span = WireSpan::new(
+        citation.u64("start")?,
+        citation.u64("end")?,
+        SpanUnit::Chars,
+    );
+    if let Some(text) = citation.str("text") {
+        span = span.quoted(text);
+    }
+    let sources = citation
+        .arr("sources")
+        .iter()
+        .filter_map(|source| {
+            let id = source.str("id")?.to_owned();
+            match source.str("type") {
+                Some("document") => {
+                    let cited = Source::new(SourceLocation::Document {
+                        index: None,
+                        id: Some(id),
+                        within: None,
+                    });
+                    Some(match source.at("/document/title").and_then(Value::as_str) {
+                        Some(title) => cited.title(title),
+                        None => cited,
+                    })
+                }
+                Some("tool") => Some(Source::new(SourceLocation::ToolOutput { id })),
+                _ => None,
+            }
+        })
+        .collect();
+    Some(WireCitation::new(Some(span), sources))
+}
+
+/// The `billed_units` Cohere charges for, as usage to price: input and
+/// output, which leave out the tokens Cohere adds and does not bill.
+/// `None` unless both are reported.
+fn billed_of(usage: Option<&Value>) -> Option<Usage> {
+    let count = |pointer: &str| usage?.at(pointer)?.as_u64_lenient();
+    let input = count("/billed_units/input_tokens")?;
+    let output = count("/billed_units/output_tokens")?;
+    Some(Usage::new().input_tokens(input).output_tokens(output))
 }
 
 /// Rig's usage from Cohere's: the `tokens` the model read and wrote,
