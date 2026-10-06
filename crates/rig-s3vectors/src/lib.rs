@@ -9,7 +9,7 @@
 
 use aws_sdk_s3vectors::{
     Client,
-    types::{PutInputVector, VectorData},
+    types::{DistanceMetric, PutInputVector, VectorData},
 };
 use aws_smithy_types::Document;
 use rig_core::{
@@ -22,7 +22,7 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
 use uuid::Uuid;
 
 /// Metadata written for each stored vector, wrapping the document alongside the
@@ -128,11 +128,17 @@ impl S3SearchFilter {
 ///
 /// Queries are embedded with the same model that populated the index, so
 /// results are meaningless under another model.
+///
+/// A request threshold is a similarity: `1 - distance` for cosine indexes and
+/// `-distance` for Euclidean ones, so hits with a similarity at or above it are
+/// kept. Applying it reads the index's distance metric once through
+/// `GetIndex`, which needs the `s3vectors:GetIndex` permission.
 pub struct S3VectorsVectorStore {
     embedding_model: rig_core::DynModel<rig_core::operation::Embedding>,
     client: Client,
     bucket_name: String,
     index_name: String,
+    distance_metric: OnceLock<DistanceMetric>,
 }
 
 impl S3VectorsVectorStore {
@@ -147,6 +153,7 @@ impl S3VectorsVectorStore {
             client,
             bucket_name: bucket_name.to_string(),
             index_name: index_name.to_string(),
+            distance_metric: OnceLock::new(),
         }
     }
 
@@ -162,9 +169,34 @@ impl S3VectorsVectorStore {
         &self.client
     }
 
-    /// Embeds the query and runs the S3Vectors query, discarding hits whose
-    /// reported distance is below any request threshold. Errors when the sample
-    /// count exceeds `i32::MAX` or a hit carries no distance.
+    /// Returns the index's distance metric, fetched once and then cached.
+    async fn distance_metric(&self) -> Result<DistanceMetric, VectorStoreError> {
+        if let Some(metric) = self.distance_metric.get() {
+            return Ok(metric.clone());
+        }
+
+        let output = self
+            .client
+            .get_index()
+            .vector_bucket_name(self.bucket_name())
+            .index_name(self.index_name())
+            .send()
+            .await
+            .map_err(VectorStoreError::datastore)?;
+        let metric = output
+            .index()
+            .map(|index| index.distance_metric().clone())
+            .ok_or_else(|| {
+                VectorStoreError::DatastoreError("S3Vectors GetIndex response missing index".into())
+            })?;
+
+        Ok(self.distance_metric.get_or_init(|| metric).clone())
+    }
+
+    /// Embeds the query and runs the S3Vectors query, keeping hits whose
+    /// similarity meets any request threshold. Errors when the sample count
+    /// exceeds `i32::MAX`, a hit carries no distance, or the index's distance
+    /// metric cannot be read or is unsupported.
     async fn run_query(
         &self,
         req: &VectorSearchRequest<S3SearchFilter>,
@@ -208,7 +240,7 @@ impl S3VectorsVectorStore {
             .await
             .map_err(VectorStoreError::datastore)?;
 
-        Ok(query
+        let hits = query
             .vectors
             .into_iter()
             .map(|x| {
@@ -218,14 +250,42 @@ impl S3VectorsVectorStore {
 
                 Ok((distance, x))
             })
-            .collect::<Result<Vec<_>, VectorStoreError>>()?
-            .into_iter()
-            .filter(|(distance, _)| {
-                !req.threshold()
-                    .is_some_and(|threshold| *distance < threshold)
-            })
-            .collect())
+            .collect::<Result<Vec<_>, VectorStoreError>>()?;
+
+        let Some(threshold) = req.threshold() else {
+            return Ok(hits);
+        };
+        let metric = self.distance_metric().await?;
+        retain_within_threshold(hits, &metric, threshold)
     }
+}
+
+/// Converts an S3Vectors distance into a similarity that rises with closeness:
+/// `1 - distance` for cosine and `-distance` for Euclidean. Errors on any other
+/// metric.
+fn similarity(metric: &DistanceMetric, distance: f64) -> Result<f64, VectorStoreError> {
+    match metric {
+        DistanceMetric::Cosine => Ok(1.0 - distance),
+        DistanceMetric::Euclidean => Ok(-distance),
+        other => Err(VectorStoreError::DatastoreError(
+            format!("unsupported S3Vectors distance metric `{}`", other.as_str()).into(),
+        )),
+    }
+}
+
+/// Keeps the `(distance, hit)` pairs whose similarity is at least `threshold`.
+fn retain_within_threshold<T>(
+    hits: Vec<(f64, T)>,
+    metric: &DistanceMetric,
+    threshold: f64,
+) -> Result<Vec<(f64, T)>, VectorStoreError> {
+    let mut kept = Vec::with_capacity(hits.len());
+    for (distance, hit) in hits {
+        if similarity(metric, distance)? >= threshold {
+            kept.push((distance, hit));
+        }
+    }
+    Ok(kept)
 }
 
 impl InsertDocuments for S3VectorsVectorStore {
@@ -322,8 +382,9 @@ fn document_to_json_value(value: &Document) -> Value {
 impl VectorStoreIndex for S3VectorsVectorStore {
     type Filter = S3SearchFilter;
 
-    /// Returns matches scored by distance and keyed by vector key. The document
-    /// is the stored [`CreateRecord`] metadata wrapper. Errors when a hit carries no
+    /// Returns matches keyed by vector key. The score is the distance S3Vectors
+    /// reports for the index's metric, so lower is closer. The document is the
+    /// stored [`CreateRecord`] metadata wrapper. Errors when a hit carries no
     /// metadata or it does not deserialize into `T`.
     async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
@@ -349,7 +410,7 @@ impl VectorStoreIndex for S3VectorsVectorStore {
     }
 
     /// Like `top_n` but returns distances and vector keys without requesting
-    /// metadata.
+    /// metadata. The score is the reported distance, so lower is closer.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,

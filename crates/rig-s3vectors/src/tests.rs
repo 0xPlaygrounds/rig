@@ -47,3 +47,36 @@ fn extension_operators_build_the_documented_filter_shapes() {
         })
     );
 }
+
+/// Unit test: the threshold check runs on distances S3Vectors already
+/// returned, so no request or response shape is involved.
+#[test]
+fn cosine_threshold_keeps_the_nearest_hit_and_drops_a_far_one() {
+    let hits = vec![(0.05, "near"), (0.9, "far")];
+
+    let kept = retain_within_threshold(hits, &DistanceMetric::Cosine, 0.5)
+        .expect("cosine is a supported metric");
+
+    assert_eq!(kept, vec![(0.05, "near")]);
+}
+
+/// Unit test: the threshold check runs on distances S3Vectors already
+/// returned, so no request or response shape is involved.
+#[test]
+fn euclidean_threshold_keeps_the_nearest_hit_and_drops_a_far_one() {
+    let hits = vec![(0.2, "near"), (3.0, "far")];
+
+    let kept = retain_within_threshold(hits, &DistanceMetric::Euclidean, -1.0)
+        .expect("euclidean is a supported metric");
+
+    assert_eq!(kept, vec![(0.2, "near")]);
+}
+
+#[test]
+fn threshold_on_an_unsupported_metric_errors() {
+    let hits = vec![(0.1, "hit")];
+
+    let result = retain_within_threshold(hits, &DistanceMetric::from("dot"), 0.0);
+
+    assert!(matches!(result, Err(VectorStoreError::DatastoreError(_))));
+}
