@@ -14,7 +14,7 @@
 //! ```
 
 use super::VertexAi;
-use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder};
+use crate::types::completion_response::{PROVIDER_NAME, VertexDecoder, rest_chunk};
 use base64::Engine as _;
 use base64::engine::general_purpose::{STANDARD as BASE64, URL_SAFE};
 use google_cloud_aiplatform_v1 as vertexai;
@@ -48,6 +48,7 @@ impl Wire for GenerateContent {
     type Payload = vertexai::model::GenerateContentRequest;
     type Frame = vertexai::model::GenerateContentResponse;
     type Decoder<'id> = VertexDecoder;
+    type Reassembler = crate::types::completion_response::VertexDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -241,7 +242,14 @@ impl Transport<GenerateContent> for VertexAi {
                         target: "rig_core::vertexai",
                         "Vertex AI completion response: {response:?}"
                     );
-                    Ok(Opened::new(futures::stream::iter([Ok(response)])))
+                    // The reply's REST JSON is the response's `raw`, in both
+                    // modes.
+                    let document = rest_chunk(&response).ok().map(serde_json::Value::Object);
+                    let opened = Opened::new(futures::stream::iter([Ok(response)]));
+                    Ok(match document {
+                        Some(document) => opened.with_document(document),
+                        None => opened,
+                    })
                 }
                 Err(error) => Ok(Opened::failed(rpc_error(&error))),
             }

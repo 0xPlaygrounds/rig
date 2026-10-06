@@ -324,7 +324,7 @@ impl InteractionsDecoder {
     }
 
     /// End the reply with the interaction resource it completed with.
-    fn complete(&mut self, interaction: Map<String, Value>, mut out: Out<'_, Completion>) -> Flow {
+    fn complete(&mut self, interaction: Map<String, Value>, out: Out<'_, Completion>) -> Flow {
         let interaction = Value::Object(interaction);
         let field = |key: &str| interaction.str(key).map(str::to_owned);
         // An agent interaction names its agent in place of a model.
@@ -338,17 +338,9 @@ impl InteractionsDecoder {
             usage: usage_of(&usage),
             reason,
             response_id: field("id"),
-            model: model.clone(),
+            model,
             error,
         };
-        let mut raw = Map::from_iter([
-            ("usage".to_owned(), usage),
-            ("interaction".to_owned(), interaction),
-        ]);
-        if let Some(model) = model {
-            raw.insert("model_version".to_owned(), Value::String(model));
-        }
-        out.raw(Value::Object(raw));
         out.end(finish)
     }
 }
@@ -509,6 +501,8 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         Ok(Flow::More)
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

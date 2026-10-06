@@ -135,6 +135,7 @@ impl Wire for Vendor {
     type Payload = CompletionRequest;
     type Frame = Frame;
     type Decoder<'id> = VendorDecoder<'id>;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("vendor").replay(self)

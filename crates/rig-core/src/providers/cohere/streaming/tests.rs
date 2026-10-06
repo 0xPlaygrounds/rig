@@ -9,6 +9,7 @@ use serde_json::json;
 fn fed(frames: &[Value]) -> Decoded<Completion> {
     feed_frames!(
         ChatDecoder::default(),
+        document::TerminalRecord::default(),
         "cohere",
         frames
             .iter()

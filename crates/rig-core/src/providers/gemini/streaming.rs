@@ -46,15 +46,12 @@ pub struct GenerateContentChunk(pub Map<String, Value>);
 /// hosted-tool rounds can report intermediate finish reasons.
 #[derive(Debug, Default)]
 pub struct GenerateContentDecoder {
-    /// The latest `finishReason` and `finishMessage`.
+    /// The latest `finishReason`.
     finish: Option<String>,
-    finish_message: Option<String>,
     /// The latest `usageMetadata`, as Gemini sent it.
     usage: Option<Value>,
     model_version: Option<String>,
     response_id: Option<String>,
-    /// The reply document a wire kept in place of the summary record.
-    raw: Option<Value>,
     /// The text or thought run later parts continue, and whether it is
     /// thought.
     open: Option<(usize, bool)>,
@@ -64,15 +61,6 @@ pub struct GenerateContentDecoder {
     last: Option<usize>,
     /// A signature sent alone before any block, which the next block takes.
     signature: Option<String>,
-}
-
-impl GenerateContentDecoder {
-    /// Report `raw` as the reply's raw document in place of the summary
-    /// record, for a wire whose own reply is not REST JSON (an SDK's or
-    /// a protobuf message).
-    pub fn keep_raw(&mut self, raw: Value) {
-        self.raw = Some(raw);
-    }
 }
 
 impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
@@ -149,9 +137,6 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             Some(Value::Number(number)) => self.finish = Some(format!("FINISH_REASON_{number}")),
             _ => {}
         }
-        if let Some(message) = candidate.str("finishMessage") {
-            self.finish_message = Some(message.to_owned());
-        }
         let parts = match candidate.get("content") {
             None | Some(Value::Null) => None,
             Some(content @ Value::Object(_)) => content.get("parts"),
@@ -193,18 +178,6 @@ impl GenerateContentDecoder {
         let usage = self.usage.as_ref().map(usage_of).unwrap_or_default();
         let model = self.model_version.take();
         let response_id = self.response_id.take();
-        let summary = serde_json::json!({
-            "usage_metadata": self.usage.take().unwrap_or_else(|| Value::Object(Map::new())),
-            "finish_reason": reason,
-            "finish_message": self.finish_message.take(),
-            "model_version": model,
-            "response_id": response_id,
-        });
-        let Value::Object(mut summary) = summary else {
-            return Err(malformed("a reply"));
-        };
-        summary.retain(|_, value| !value.is_null());
-        out.raw(self.raw.take().unwrap_or(Value::Object(summary)));
         Ok(out.end(Finish {
             usage,
             reason: Some(map_google_finish_reason(&reason)),
@@ -415,6 +388,8 @@ fn merge_part(item: &mut Value, part: &Value) {
         }
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

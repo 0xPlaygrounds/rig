@@ -941,12 +941,17 @@ stream. An `Extras` type is written once, against the unary document, and
 reads both paths.
 
 **Mechanism.**
-- Every `Wire` names `type Reassembler: Reassemble<Self::Frame>`. In stream
-  mode the driver hands each frame to the reassembler before the decoder
-  sees it, and at the end of the stream records `finish()` as the reply's
-  `raw`. A decoder cannot skip a frame, because it never feeds the
+- Every `Wire` names `type Reassembler: Reassemble<Self::Frame>`. Whenever
+  the transport reports no whole document (every stream, and a unary reply
+  whose body is an event stream, as the ChatGPT backend sends), the driver
+  hands each frame to the reassembler before the decoder sees it, and when
+  the reply ends records `finish()` as the reply's `raw` (a `Null` records
+  nothing). A decoder cannot skip a frame, because it never feeds the
   reassembler. On a truncated or failed stream the driver records the
-  partial document, which is more than today's `Null`.
+  partial document, which is more than today's `Null`. `Wire::reassembler`
+  builds one per reply; it defaults to `Default`, and a wire that picks its
+  API per reply (`OpenAiWire`, Copilot, `CohereChat`) builds the matching
+  one.
 - `Out::raw` moves into the `impl<Op: Operation<Emit = Free>>` block that
   already hides `Out::event` from completions (`crates/rig-core/src/wire.rs:613`).
   A completion decoder has no way to write `raw`. Other operations keep it,
@@ -978,6 +983,15 @@ reads both paths.
   absent key and an empty list are equivalent; `Extras` fields are `Option<T>`
   or `#[serde(default)] Vec<T>`, and the parity test normalizes the same way.
 - `CompletionResponse::raw` stays a public field (section 1.1).
+- **Parity.** `rig_core::test_utils::raw_parity` decodes a recorded unary
+  body and a recorded stream of the same turn through the driver
+  (`raw_pair`), and compares them whole after `comparable`, which drops
+  `null`, empty lists and objects, minted keys (`id`, `created`,
+  `created_at`, `completed_at`) and the JSON pointers a row names for what
+  two answers cannot share. Its tests hold one row per recorded pair, each
+  marked `rebuilt` once its API's reassembler rebuilds the unary document.
+  A rebuilt row that disagrees fails, an unrebuilt row that agrees fails,
+  and a provider with both capture matrices and no row fails.
 
 **Public API.**
 
@@ -996,6 +1010,7 @@ impl<F> Reassemble<F> for Unreassembled { /* finish() is Value::Null */ }
 pub trait Wire {
     // ...the existing items, then:
     type Reassembler: Reassemble<Self::Frame>;
+    fn reassembler(&self) -> Self::Reassembler { Self::Reassembler::default() }
 }
 impl<Op: Operation<Emit = Free>> Out<'_, Op> { pub fn raw(&mut self, raw: serde_json::Value); }
 ```
@@ -1996,6 +2011,30 @@ unary frame at `crates/rig-vertexai/src/completion.rs:231`) and Gemini gRPC
 unchanged into the unary transport with `Opened::with_document`, as Bedrock
 does today (`crates/rig-bedrock/src/completion.rs:440`), so their unary
 `raw` does not move; a unit test per wire pins it.
+
+The mechanism lands first, with an interim reassembler per completion API
+(`document::TerminalRecord` beside each decoder: Chat, Messages,
+Responses, GenerateContent, Interactions, Cohere native, Ollama native,
+Bedrock Converse and Gemini gRPC) that rebuilds exactly the terminal
+record its decoder wrote, so that commit moves no recorded value. Candle
+(`CandleDocument`, the response record) and Vertex (`VertexDocument`, the
+one reply's REST JSON, which its transport also reports in both modes)
+already rebuild their unary document. Each family then replaces its
+interim reassembler:
+1. Write the unary-document fold in the same `document` module and name it
+   in `type Reassembler` (and in `reassembler()` where the wire configures
+   it), deleting `TerminalRecord`.
+2. Set `rebuilt: true` on the family's rows in
+   `test_utils/raw_parity/tests.rs`, adjusting their `minted` pointers to
+   what the two recordings of the turn cannot share, and add unit tests for
+   the cases no recording covers.
+3. Regenerate the goldens and snapshots whose streamed `raw` moved with
+   `cargo xtask cassette goldens` and `cargo xtask cassette snapshots`, and
+   move the assertions that read the old terminal record.
+
+The Responses WebSocket session still records the terminal response body
+as `raw` (`settle` with the body as the document) and feeds no reassembler;
+the Responses family moves it onto the reassembler.
 
 ### 12.5 P6: citations and cost
 

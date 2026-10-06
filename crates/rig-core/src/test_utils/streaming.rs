@@ -231,6 +231,35 @@ pub enum MockFrame {
     Response(Box<CompletionResponse>),
 }
 
+/// The reply document of [`MockScript`](super::MockScript): a whole
+/// response's `raw`, or a stream's scripted end, serialized. A stream that
+/// failed before its end has none.
+#[derive(Debug, Default)]
+pub struct MockDocument {
+    document: Option<serde_json::Value>,
+    failed: bool,
+}
+
+impl crate::wire::document::Reassemble<MockFrame> for MockDocument {
+    fn absorb(&mut self, frame: &MockFrame) {
+        if self.document.is_some() || self.failed {
+            return;
+        }
+        match frame {
+            MockFrame::Response(response) => self.document = Some(response.raw.clone()),
+            MockFrame::Event(MockStreamEvent::FinalResponse(finish)) => {
+                self.document = serde_json::to_value(finish).ok();
+            }
+            MockFrame::Event(MockStreamEvent::Error(_)) => self.failed = true,
+            MockFrame::Event(_) => {}
+        }
+    }
+
+    fn finish(self) -> serde_json::Value {
+        self.document.unwrap_or(serde_json::Value::Null)
+    }
+}
+
 /// The decoder of [`MockScript`](super::MockScript): each scripted step is
 /// written through the completion writer.
 #[derive(Default)]
@@ -394,8 +423,6 @@ impl<'id> MockDecoder<'id> {
                 for (_, index) in std::mem::take(&mut self.reasoning) {
                     out.finish(index)?;
                 }
-                // The mock's document is its scripted end, serialized.
-                out.raw(serde_json::to_value(&finish)?);
                 return Ok(out.end(finish));
             }
             MockStreamEvent::Error(error) => return Err(error.into_completion_error()),
@@ -411,7 +438,6 @@ impl<'id> MockDecoder<'id> {
         for content in response.choice.iter().cloned() {
             out.content(content)?;
         }
-        out.raw(response.raw.clone());
         Ok(out.end(Finish {
             usage: response.usage,
             reason: response.finish_reason(),

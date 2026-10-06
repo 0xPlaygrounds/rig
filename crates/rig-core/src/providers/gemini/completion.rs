@@ -161,6 +161,7 @@ impl Wire for GenerateContent {
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = super::streaming::GenerateContentDecoder;
+    type Reassembler = super::streaming::document::TerminalRecord;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)

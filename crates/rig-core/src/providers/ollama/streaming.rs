@@ -155,7 +155,6 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
             cached_input_tokens: record.u64("prompt_eval_cached_count"),
             ..Usage::default()
         };
-        out.raw(record);
         Ok(out.end(Finish {
             usage,
             reason,
@@ -334,6 +333,8 @@ fn reason(text: &str, out: &mut Out<'_, Completion>) -> Result<(), ProviderError
         _ => *item = serde_json::json!({ "thinking": text }),
     })
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

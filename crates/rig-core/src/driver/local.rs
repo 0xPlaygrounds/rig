@@ -106,6 +106,7 @@ impl<Op: Operation<Emit = Free>> Wire for Local<Op> {
     type Payload = Op::Request;
     type Frame = Step<Op>;
     type Decoder<'id> = Steps;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(&self.name)

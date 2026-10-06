@@ -719,8 +719,14 @@ fn feed(
     reply: &std::sync::Mutex<Shared<Completion>>,
     payload: String,
 ) -> Result<bool, ProviderError> {
-    crate::driver::step(decoder, reply, WireFrame::Text(payload), None)
-        .map(|step| matches!(step, Flow::Ended(_)))
+    crate::driver::step(
+        decoder,
+        None::<&mut crate::wire::document::Unreassembled>,
+        reply,
+        WireFrame::Text(payload),
+        None,
+    )
+    .map(|step| matches!(step, Flow::Ended(_)))
 }
 
 /// Fold the turn's events and end into the normalized response, retaining

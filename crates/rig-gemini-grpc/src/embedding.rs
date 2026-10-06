@@ -44,6 +44,7 @@ impl Wire for Embeddings {
     type Payload = Vec<(String, EmbedContentRequest)>;
     type Frame = (String, proto::EmbedContentResponse);
     type Decoder<'id> = EmbeddingsDecoder;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::completion::PROVIDER_NAME)

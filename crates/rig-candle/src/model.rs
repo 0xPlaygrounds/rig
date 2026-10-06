@@ -356,6 +356,7 @@ impl rig_core::wire::Wire for Generation {
     type Payload = CandleRequest;
     type Frame = CandleFrame;
     type Decoder<'id> = CandleAdapter<'id>;
+    type Reassembler = CandleDocument;
 
     fn describe(&self) -> rig_core::wire::Descriptor<'_> {
         rig_core::wire::Descriptor::new(crate::types::PROVIDER_NAME)
@@ -480,6 +481,26 @@ impl rig_core::completion::ReplayTarget for Generation {
     }
 }
 
+/// A streamed generation's document: its local response record, as a
+/// unary reply's is.
+#[derive(Debug, Default)]
+pub struct CandleDocument(Option<serde_json::Value>);
+
+impl rig_core::wire::document::Reassemble<CandleFrame> for CandleDocument {
+    fn absorb(&mut self, frame: &CandleFrame) {
+        let response = match frame {
+            CandleFrame::Event(GenerationEvent::Final(response)) => response,
+            CandleFrame::Whole(inferred) => &inferred.response,
+            CandleFrame::Event(_) => return,
+        };
+        self.0 = serde_json::to_value(response).ok();
+    }
+
+    fn finish(self) -> serde_json::Value {
+        self.0.unwrap_or(serde_json::Value::Null)
+    }
+}
+
 /// Writes local generation events into the reply. Every input is modeled;
 /// no byte decoding or unknown-frame classification occurs. Channel EOF
 /// without a `Final` event means the generator failed or was cancelled: the
@@ -523,10 +544,8 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, CandleFrame> for CandleAdapte
                 out.end_run()?;
                 whole(&mut out, AssistantContent::Reasoning(reasoning))?;
             }
-            // The local response record is the response's `raw`.
             GenerationEvent::Final(response) => {
                 out.end_run()?;
-                out.raw(serde_json::to_value(&response)?);
                 return Ok(out.end(Finish {
                     usage: (&response).into(),
                     reason: Some(response.finish_reason.into()),
@@ -584,10 +603,15 @@ impl Transport<Generation> for CandleModel {
         let model = self.clone();
         Opening::new(async move {
             Ok(match mode {
+                // The local response record is the response's `raw`.
                 Mode::Unary => match model.infer_completion(request).await {
-                    Ok(inferred) => {
-                        Opened::new(futures::stream::iter([Ok(CandleFrame::Whole(inferred))]))
-                    }
+                    Ok(inferred) => match serde_json::to_value(&inferred.response) {
+                        Ok(document) => {
+                            Opened::new(futures::stream::iter([Ok(CandleFrame::Whole(inferred))]))
+                                .with_document(document)
+                        }
+                        Err(error) => Opened::failed(error.into()),
+                    },
                     Err(error) => Opened::failed(error),
                 },
                 Mode::Streaming => match model.open_stream(request).await {

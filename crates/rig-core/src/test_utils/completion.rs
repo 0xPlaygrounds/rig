@@ -14,7 +14,7 @@ use crate::{
     message::{ToolCall, ToolFunction},
 };
 
-use super::streaming::{MOCK_PROVIDER, MockDecoder, MockFrame, MockStreamEvent};
+use super::streaming::{MOCK_PROVIDER, MockDecoder, MockDocument, MockFrame, MockStreamEvent};
 
 /// Scripted error returned by [`MockCompletionModel`].
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -377,6 +377,7 @@ impl Wire for MockScript {
     type Payload = CompletionRequest;
     type Frame = MockFrame;
     type Decoder<'id> = MockDecoder<'id>;
+    type Reassembler = MockDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(&self.name)

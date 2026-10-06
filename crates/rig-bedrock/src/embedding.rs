@@ -94,6 +94,7 @@ impl Wire for Embeddings {
     type Payload = EmbeddingBatch;
     type Frame = EmbeddingFrame;
     type Decoder<'id> = EmbeddingsDecoder;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)

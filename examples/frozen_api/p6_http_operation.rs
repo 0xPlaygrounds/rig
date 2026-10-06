@@ -71,6 +71,7 @@ impl Wire for Jev {
     type Frame = WireFrame;
     // One JSON document in, the reply's end out, the document kept as `raw`.
     type Decoder<'id> = Json;
+    type Reassembler = rig::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("typesafeai")

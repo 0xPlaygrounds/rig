@@ -79,9 +79,15 @@ fn events_after_each(model: &str, records: &[Value]) -> Vec<Vec<StreamEvent>> {
     let mut seen = Vec::new();
     let mut taken = Vec::new();
     for frame in frames(records) {
-        crate::driver::step(&mut decoder, &shared, frame, None)
-            .map(drop)
-            .expect("the record decodes");
+        crate::driver::step(
+            &mut decoder,
+            None::<&mut crate::wire::document::Unreassembled>,
+            &shared,
+            frame,
+            None,
+        )
+        .map(drop)
+        .expect("the record decodes");
         let mut shared = shared.lock().expect("the reply is not poisoned");
         while let Some(item) = shared.take() {
             if let Ok(Item::Event(event)) = item {

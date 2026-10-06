@@ -24,8 +24,8 @@ use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 /// hook.
 pub use crate::providers::openai::wire::Embeddings;
 use crate::providers::openai::wire::{
-    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiWire, Quirks,
-    ResponsesQuirks, Route,
+    Dialect, DialectHooks, EmbeddingQuirks, OpenAIConfig, OpenAiDecoder, OpenAiReassembler,
+    OpenAiWire, Quirks, ResponsesQuirks, Route,
 };
 use crate::wire::{Body, Descriptor, Encoded, Mode, Secret, Wire};
 
@@ -299,6 +299,7 @@ impl Wire for CopilotWire {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = OpenAiDecoder;
+    type Reassembler = OpenAiReassembler;
 
     fn describe(&self) -> Descriptor<'_> {
         self.wire.describe()
@@ -313,6 +314,10 @@ impl Wire for CopilotWire {
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         self.wire.decoder()
+    }
+
+    fn reassembler(&self) -> Self::Reassembler {
+        self.wire.reassembler()
     }
 }
 

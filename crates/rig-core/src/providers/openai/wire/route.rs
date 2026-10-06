@@ -17,6 +17,7 @@ use crate::providers::openai::responses_api::wire::Responses;
 use crate::providers::openai::responses_api::{
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
+use crate::wire::document::Reassemble;
 use crate::wire::{Decoder, Descriptor, Encoded, Flow, Mode, Out, Wire, WireEvent, WireFrame};
 
 use super::OpenAIConfig;
@@ -170,6 +171,7 @@ impl Wire for OpenAiWire {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = OpenAiDecoder;
+    type Reassembler = OpenAiReassembler;
 
     fn describe(&self) -> Descriptor<'_> {
         on_route!(self, wire => wire.describe())
@@ -184,6 +186,38 @@ impl Wire for OpenAiWire {
             Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder()),
             Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
         }
+    }
+
+    fn reassembler(&self) -> Self::Reassembler {
+        match self {
+            Self::Chat(wire) => OpenAiReassembler::Chat(wire.reassembler()),
+            Self::Responses(wire) => OpenAiReassembler::Responses(wire.reassembler()),
+        }
+    }
+}
+
+/// The chosen route's reassembler.
+pub enum OpenAiReassembler {
+    /// The chat-completions reply document.
+    Chat(<Chat as Wire>::Reassembler),
+    /// The Responses reply document.
+    Responses(<Responses as Wire>::Reassembler),
+}
+
+/// The chat route's, as [`OpenAiWire`]'s default route is.
+impl Default for OpenAiReassembler {
+    fn default() -> Self {
+        Self::Chat(Default::default())
+    }
+}
+
+impl Reassemble<WireFrame> for OpenAiReassembler {
+    fn absorb(&mut self, frame: &WireFrame) {
+        on_route!(self, document => document.absorb(frame));
+    }
+
+    fn finish(self) -> serde_json::Value {
+        on_route!(self, document => document.finish())
     }
 }
 

@@ -772,6 +772,7 @@ impl Wire for Chat {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
+    type Reassembler = document::TerminalRecord;
 
     /// Format deferral permits tool composition; dialects without schema
     /// support require the agent's tool-mode enforcement instead.
@@ -792,6 +793,10 @@ impl Wire for Chat {
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ChatDecoder::new(self.provider.dialect.quirks)
+    }
+
+    fn reassembler(&self) -> Self::Reassembler {
+        document::TerminalRecord::new(self.provider.dialect.quirks)
     }
 }
 
@@ -1611,13 +1616,12 @@ impl ChatDecoder {
         }
         self.delta(&message, &mut out)?;
         self.close_calls(&mut out, true)?;
-        self.end(out, false)
+        self.end(out)
     }
 
-    /// Write the provider's end of the reply. A stream's `raw` is the
-    /// terminal record the chunks built; a whole body's is the body itself,
-    /// which the transport keeps.
-    fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
+    /// Write the provider's end of the reply. Its `raw` is the wire's
+    /// reassembler's.
+    fn end(&mut self, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
         self.close_writing(&mut out)?;
         self.close_reasoning(&mut out)?;
         let usage = self
@@ -1625,28 +1629,6 @@ impl ChatDecoder {
             .as_ref()
             .map(|usage| normalized_usage(usage, &self.quirks))
             .unwrap_or_default();
-        if streamed {
-            let fields = std::mem::take(&mut self.fields);
-            let record = [
-                ("usage", self.usage.clone()),
-                (
-                    "finish_reason",
-                    self.finish.as_ref().map(serde_json::to_value).transpose()?,
-                ),
-                ("response_id", self.response_id.clone().map(Value::String)),
-                ("model", self.response_model.clone().map(Value::String)),
-                ("logprobs", self.logprobs.take().map(Value::Object)),
-                (
-                    "additional_params",
-                    (!fields.is_empty()).then_some(Value::Object(fields)),
-                ),
-            ];
-            let record = record
-                .into_iter()
-                .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-                .collect();
-            out.raw(Value::Object(record));
-        }
         Ok(out.end(Finish {
             usage,
             reason: self.finish.take(),
@@ -1663,7 +1645,7 @@ impl ChatDecoder {
             return Err(ProviderError::Truncated);
         }
         self.close_calls(&mut out, true)?;
-        self.end(out, true)
+        self.end(out)
     }
 
     /// The `[DONE]` sentinel. A dialect whose streams omit the finish reason
@@ -1780,7 +1762,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                 self.ended = true;
                 self.finish = Some(FinishReason::Stop);
                 self.write(Writing::Text, &text, &mut out)?;
-                self.end(out, false)
+                self.end(out)
             }
             ChatEvent::Failure(error) => Err(error),
         }
@@ -1882,6 +1864,8 @@ impl ChatDecoder {
         }
     }
 }
+
+mod document;
 
 #[cfg(test)]
 mod tests;

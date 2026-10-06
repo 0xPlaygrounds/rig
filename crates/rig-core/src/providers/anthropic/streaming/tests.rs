@@ -478,14 +478,16 @@ fn classify_dispatches_on_the_known_event_list() {
 /// and 4 written.
 #[test]
 fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
-    let decoded = decode([
-        classified(
-            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":1}}}}"#,
-        ),
-        classified(
-            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
-        ),
-    ]);
+    let frames = [
+        r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":1}}}}"#,
+        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
+    ];
+    let decoded = crate::driver::feed_frames!(
+        MessagesDecoder::new(false),
+        document::TerminalRecord::default(),
+        "anthropic",
+        frames.map(|frame| WireFrame::Text(frame.to_owned()))
+    );
     let response = decoded.outcome.expect("the message_delta ends the reply");
     assert_eq!(response.usage.input_tokens, Some(10 + 6 + 4));
     assert_eq!(response.usage.cache_creation_input_tokens, Some(4));

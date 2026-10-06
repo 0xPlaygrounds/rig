@@ -258,6 +258,7 @@ impl Wire for Echo {
     type Payload = Encoded;
     type Frame = WireFrame;
     type Decoder<'id> = EchoDecoder<'id>;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("echo").model("echo-1").replay(self)
@@ -552,6 +553,7 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         type Payload = Encoded;
         type Frame = WireFrame;
         type Decoder<'id> = EchoDecoder<'id>;
+        type Reassembler = crate::wire::document::Unreassembled;
         fn describe(&self) -> Descriptor<'_> {
             Descriptor::new("echo").replay(self)
         }

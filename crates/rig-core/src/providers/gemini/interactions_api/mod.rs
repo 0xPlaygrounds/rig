@@ -57,6 +57,7 @@ impl crate::wire::Wire for Interactions {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = streaming::InteractionsDecoder;
+    type Reassembler = streaming::document::TerminalRecord;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -237,6 +238,7 @@ impl crate::wire::Wire for InteractionResume {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = streaming::InteractionsDecoder;
+    type Reassembler = streaming::document::TerminalRecord;
 
     /// The interaction names its own model; this wire addresses no model id.
     /// The decoder reports the model the interaction names, which the turn's

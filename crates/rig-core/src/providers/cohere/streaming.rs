@@ -491,7 +491,6 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                 }
             }
             "message-end" => {
-                out.raw(event.fields.clone());
                 let delta = event.fields.get("delta");
                 return self.end(
                     delta.and_then(|delta| delta.get("usage")),
@@ -540,6 +539,8 @@ impl ChatDecoder {
         sink.provider(verdict, response_id);
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

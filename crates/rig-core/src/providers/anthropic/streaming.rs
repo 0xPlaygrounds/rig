@@ -544,19 +544,6 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));
-                // The stop sequence rides the same `message_delta` as the
-                // stop reason: `message_start` always opens with `null`.
-                let stop_sequence = delta.and_then(|delta| delta.str("stop_sequence"));
-                out.raw(Value::Object(object([
-                    ("usage", Some(usage.record())),
-                    ("stop_reason", Some(json!(reason))),
-                    (
-                        "stop_sequence",
-                        stop_sequence.map(|sequence| json!(sequence)),
-                    ),
-                    ("message_id", self.message_id.clone().map(Value::String)),
-                    ("model", self.response_model.clone().map(Value::String)),
-                ])));
                 let details = delta.and_then(|delta| delta.get("stop_details"));
                 return self.end(&usage, Some(reason), details, out);
             }
@@ -623,6 +610,8 @@ impl MessagesDecoder {
         }
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

@@ -51,6 +51,7 @@ impl Wire for GenerateContent {
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
     type Decoder<'id> = crate::streaming::GrpcAdapter;
+    type Reassembler = crate::streaming::document::TerminalRecord;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -147,8 +148,17 @@ impl Transport<GenerateContent> for GeminiGrpc {
         let mut client = self.grpc_client();
         Opening::new(async move {
             Ok(match mode {
+                // The reply's REST JSON is the response's `raw`.
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => Opened::new(futures::stream::iter([Ok(response.into_inner())])),
+                    Ok(response) => {
+                        let response = response.into_inner();
+                        let document = crate::streaming::document::rest_document(&response);
+                        let opened = Opened::new(futures::stream::iter([Ok(response)]));
+                        match document {
+                            Some(document) => opened.with_document(document),
+                            None => opened,
+                        }
+                    }
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {

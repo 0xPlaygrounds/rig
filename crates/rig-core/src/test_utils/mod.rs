@@ -8,6 +8,8 @@ mod memory;
 pub mod observations;
 #[cfg(test)]
 pub(crate) mod provider_extensions;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub mod raw_parity;
 mod relay;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -30,7 +32,7 @@ pub use rig_http::test_utils::{
     SequencedStreamingHttpClient,
 };
 pub use streaming::{
-    MOCK_PROVIDER, MockDecoder, MockFrame, MockStreamEvent, mock_final,
+    MOCK_PROVIDER, MockDecoder, MockDocument, MockFrame, MockStreamEvent, mock_final,
     mock_final_with_total_tokens,
 };
 pub use trace_capture::{CapturedEvent, CapturedSpan, TraceCapture};
@@ -62,7 +64,12 @@ pub(crate) fn decode_reply<W: crate::wire::Wire>(
     raw: serde_json::Value,
 ) -> Result<crate::wire::Response<W>, crate::error::ProviderError> {
     let shared = std::sync::Mutex::new(crate::wire::Shared::new(fold_for(request, wire, mode)));
-    let fed = crate::driver::feed(&mut wire.decoder(), &shared, frames);
+    let fed = crate::driver::feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
     crate::driver::settle(
         shared,
         fed,

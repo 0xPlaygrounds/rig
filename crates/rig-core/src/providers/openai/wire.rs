@@ -38,7 +38,7 @@ pub use modality::{
     RerankQuirks, RerankReply, RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody,
     Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
 };
-pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
+pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};

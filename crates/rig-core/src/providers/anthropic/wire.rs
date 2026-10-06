@@ -464,6 +464,7 @@ impl Wire for Messages {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = MessagesDecoder;
+    type Reassembler = super::streaming::document::TerminalRecord;
 
     /// Constrained output decoding does not suppress strict tool calls.
     fn describe(&self) -> Descriptor<'_> {

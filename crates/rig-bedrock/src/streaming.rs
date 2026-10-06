@@ -40,8 +40,6 @@ enum Open {
 pub struct StreamState {
     open: BTreeMap<usize, Open>,
     reason: Option<String>,
-    /// The stream's message-level events, by type: the response's `raw`.
-    raw: Map<String, Value>,
 }
 
 /// The one key of a Converse union and its value.
@@ -412,20 +410,14 @@ impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamStat
             ConverseFrame::Whole(document) => return self.whole(&document, out),
             ConverseFrame::Event(event) => event,
         };
-        if let Some((kind @ ("messageStart" | "messageStop" | "metadata"), payload)) =
-            member(&event)
-        {
-            self.raw.insert(kind.to_owned(), payload.clone());
-        }
         let Some(end) = self.event(&event, &mut out)? else {
             return Ok(Flow::More);
         };
-        if !self.raw.is_empty() {
-            out.raw(Value::Object(std::mem::take(&mut self.raw)));
-        }
         Ok(out.end(end))
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 pub(crate) mod tests;

@@ -206,6 +206,7 @@ impl Wire for Converse {
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
     type Decoder<'id> = StreamState;
+    type Reassembler = crate::streaming::document::TerminalRecord;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)

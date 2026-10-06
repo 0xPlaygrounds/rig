@@ -792,7 +792,6 @@ impl ResponsesDecoder {
                 .map(str::to_owned),
             error,
         };
-        out.raw(response);
         Ok(out.end(end))
     }
 }
@@ -927,6 +926,8 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
         }
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

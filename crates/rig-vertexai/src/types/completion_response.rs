@@ -8,6 +8,26 @@ use serde_json::{Map, Value};
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
 
+/// A Vertex AI reply's document: the REST JSON of its one response, which
+/// the transport also reports, since a streamed call re-emits the unary
+/// reply.
+#[derive(Debug, Default)]
+pub struct VertexDocument(Option<Value>);
+
+impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentResponse>
+    for VertexDocument
+{
+    fn absorb(&mut self, frame: &vertexai::model::GenerateContentResponse) {
+        if let Ok(chunk) = rest_chunk(frame) {
+            self.0 = Some(Value::Object(chunk));
+        }
+    }
+
+    fn finish(self) -> Value {
+        self.0.unwrap_or(Value::Null)
+    }
+}
+
 /// Decodes Vertex AI's whole `GenerateContent` reply. The reply is restated
 /// as the REST chunk its JSON is and read by the Gemini API's decoder, so a
 /// block's provider item is the SDK part's JSON. A streamed call re-emits
@@ -31,7 +51,6 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
         out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         let chunk = rest_chunk(&response)?;
-        self.0.keep_raw(Value::Object(chunk.clone()));
         Decoder::<'id, Completion>::decode(&mut self.0, GenerateContentChunk(chunk), out)
     }
 

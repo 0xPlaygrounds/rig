@@ -325,6 +325,7 @@ impl Wire for Scripted {
     type Payload = ();
     type Frame = Finish;
     type Decoder<'id> = Ends;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("prov").model("model").replay(self)
