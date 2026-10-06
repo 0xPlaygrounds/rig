@@ -43,6 +43,49 @@ fn openai_model_facts_come_from_the_catalog() {
     assert!(caches_by_options("gpt-6-sol") && !caches_by_options("gpt-5.5"));
 }
 
+/// OpenAI ids the catalog does not list (from OpenAI's own model list,
+/// `openai/models/list_models_smoke.yaml`) reason by their name: Chat sends
+/// `max_completion_tokens`, and `Off` is refused where the name says the
+/// model cannot turn reasoning off.
+#[test]
+fn an_unlisted_openai_reasoning_id_reasons_by_its_name() {
+    let unlisted = [
+        "gpt-5-codex",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-mini",
+        "gpt-5.1-codex-max",
+        "gpt-5.2-codex",
+        "gpt-5-chat-latest",
+        "gpt-5.1-chat-latest",
+        "gpt-5-search-api-2025-10-14",
+        "o3-deep-research-2025-06-26",
+        "o4-mini-deep-research",
+    ];
+    for model in unlisted {
+        assert!(openai_spec(model).is_none(), "{model} is listed now");
+        assert_eq!(reasons(model), Some(true), "{model}");
+        let body = sent(&chat(&OPENAI, model), GenerationOptions::default()).expect(model);
+        assert_eq!(body["max_completion_tokens"], 16, "{model}");
+        assert!(body.get("max_tokens").is_none(), "{model}");
+    }
+    for model in ["gpt-5-codex", "o3-deep-research-2025-06-26"] {
+        assert_eq!(
+            refused(sent(
+                &chat(&OPENAI, model),
+                GenerationOptions::default().reasoning(Reasoning::Off),
+            )),
+            Some("reasoning"),
+            "{model}"
+        );
+    }
+    let body = sent(
+        &chat(&OPENAI, "gpt-5.1-codex"),
+        GenerationOptions::default().reasoning(Reasoning::Off),
+    )
+    .expect("GPT-5.1 turns reasoning off");
+    assert_eq!(body["reasoning_effort"], "none");
+}
+
 /// On xAI's Chat route the encoder refuses a reasoning option exactly when
 /// `ModelSpec::validate` does, for every xAI row: Grok 4.3 turns reasoning
 /// off with `reasoning_effort: "none"`.
@@ -85,6 +128,17 @@ fn xai_chat_reasoning_agrees_with_validate() {
     )
     .expect("Grok 4.3 turns reasoning off");
     assert_eq!(body["reasoning_effort"], "none");
+}
+
+/// Grok 4.3 takes `xhigh` (docs.x.ai/docs/models/grok-4.3).
+#[test]
+fn grok_4_3_sends_xhigh_effort() {
+    let body = sent(
+        &chat(&crate::providers::xai::DIALECT, "grok-4.3"),
+        GenerationOptions::default().reasoning(Effort::XHigh),
+    )
+    .expect("Grok 4.3 takes xhigh");
+    assert_eq!(body["reasoning_effort"], "xhigh");
 }
 
 /// A Grok id the catalog does not list reasons unless its id says
@@ -370,6 +424,47 @@ mod responses {
         }
     }
 
+    /// A reasoning id the catalog does not list takes `top_p` only at effort
+    /// `none`, and `none` only where its name allows it.
+    #[test]
+    fn an_unlisted_reasoning_id_samples_only_with_reasoning_off() {
+        for model in [
+            "gpt-5-codex",
+            "o3-deep-research-2025-06-26",
+            "gpt-5.1-codex",
+        ] {
+            assert_eq!(
+                refused(sent(
+                    &responses(&OPENAI, model),
+                    with(GenerationOptions::default().top_p(0.5))
+                )),
+                Some("top_p"),
+                "{model}"
+            );
+        }
+        for model in ["gpt-5-codex", "o3-deep-research-2025-06-26"] {
+            assert_eq!(
+                refused(sent(
+                    &responses(&OPENAI, model),
+                    with(GenerationOptions::default().reasoning(Reasoning::Off))
+                )),
+                Some("reasoning"),
+                "{model}"
+            );
+        }
+        let body = sent(
+            &responses(&OPENAI, "gpt-5.1-codex"),
+            with(
+                GenerationOptions::default()
+                    .reasoning(Reasoning::Off)
+                    .top_p(0.5),
+            ),
+        )
+        .expect("GPT-5.1 samples with reasoning off");
+        assert_eq!(body["reasoning"], json!({"effort": "none"}));
+        assert_eq!(body["top_p"], 0.5);
+    }
+
     /// Ported from #2171 (`prompt_cache_options_serialize_at_request_top_level`):
     /// a long cache on GPT-5.6 is `prompt_cache_options.ttl`, and a raw
     /// `mode` and `prompt_cache_key` join it at the top level.
@@ -486,6 +581,12 @@ mod responses {
             with(GenerationOptions::default().reasoning(Effort::XHigh)),
         )
         .expect("Grok 4.7 takes xhigh");
+        assert_eq!(body["reasoning"], json!({"effort": "xhigh"}));
+        let body = sent(
+            &responses(&crate::providers::xai::DIALECT, "grok-4.3"),
+            with(GenerationOptions::default().reasoning(Effort::XHigh)),
+        )
+        .expect("Grok 4.3 takes xhigh");
         assert_eq!(body["reasoning"], json!({"effort": "xhigh"}));
         assert_eq!(
             refused(sent(

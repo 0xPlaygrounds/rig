@@ -21,10 +21,59 @@ pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
     crate::catalog::lookup(super::wire::OPENAI.name, name)
 }
 
-/// Whether OpenAI's `model` reasons, or `None` for a model the catalog does
-/// not list.
+/// Whether OpenAI's `model` reasons, as its catalog entry says. For a model
+/// the catalog does not list, `Some(true)` when its id names GPT-5 or later
+/// or the o-series (see [`named_reasoning`]), else `None`.
 pub(crate) fn reasons(model: &str) -> Option<bool> {
-    openai_spec(model).map(|spec| spec.reasoning.supported)
+    match openai_spec(model) {
+        Some(spec) => Some(spec.reasoning.supported),
+        None => named_reasoning(model).then_some(true),
+    }
+}
+
+/// Whether `model`'s id names an OpenAI reasoning model: a single-digit GPT
+/// major version of 5 or more, or `o` and a digit (`o3`, `o4-mini`). The
+/// fallback for an id the catalog does not list, such as a `-codex` or
+/// `-deep-research` variant.
+fn named_reasoning(model: &str) -> bool {
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let gpt = name
+        .strip_prefix("gpt-")
+        .and_then(|rest| rest.split(['.', '-']).next())
+        .filter(|major| major.len() == 1)
+        .and_then(|major| major.parse::<u32>().ok())
+        .is_some_and(|major| major >= 5);
+    gpt || named_o_series(name)
+}
+
+/// Whether `name` is `o` and a digit, then its end, a digit or a hyphen.
+fn named_o_series(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next() == Some('o')
+        && chars.next().is_some_and(|digit| digit.is_ascii_digit())
+        && chars
+            .next()
+            .is_none_or(|next| next == '-' || next.is_ascii_digit())
+}
+
+/// Whether a reasoning model the catalog does not list can turn reasoning
+/// off, by its id: not the o-series, a `-pro` model or GPT-5 itself (`gpt-5`
+/// and its `gpt-5-*` variants), which take no effort `none`.
+fn named_can_disable(model: &str) -> bool {
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let gpt_5_0 = name == "gpt-5" || name.starts_with("gpt-5-");
+    let pro = name.ends_with("-pro") || name.contains("-pro-");
+    !(named_o_series(name) || pro || gpt_5_0)
+}
+
+/// Why OpenAI's `model` cannot turn reasoning off, or `None` when it can (or
+/// does not reason): its catalog entry's `can_disable`, else its id.
+fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
+    let can_disable = match spec {
+        Some(spec) => spec.reasoning.can_disable,
+        None => reasons(model) != Some(true) || named_can_disable(model),
+    };
+    (!can_disable).then(|| Mapping::unsupported("this model cannot turn reasoning off"))
 }
 
 /// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
@@ -308,10 +357,9 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
                 _ if reasons(model) == Some(false) => {
                     Mapping::unsupported("the model does not reason")
                 }
-                Reasoning::Off if spec.is_some_and(|spec| !spec.reasoning.can_disable) => {
-                    Mapping::unsupported("this model cannot turn reasoning off")
+                Reasoning::Off => {
+                    off_refusal(spec, model).unwrap_or_else(|| send("reasoning_effort", "none"))
                 }
-                Reasoning::Off => send("reasoning_effort", "none"),
                 Reasoning::Effort(Effort::Max) if azure.is_some() => {
                     Mapping::unsupported("Azure takes `max` effort only on Responses")
                 }
@@ -1120,10 +1168,7 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 Mapping::Omit("the model does not reason")
             }
             _ if reasons(model) == Some(false) => Mapping::unsupported("the model does not reason"),
-            Reasoning::Off if spec.is_some_and(|spec| !spec.reasoning.can_disable) => {
-                Mapping::unsupported("this model cannot turn reasoning off")
-            }
-            Reasoning::Off => reasoning_object("none"),
+            Reasoning::Off => off_refusal(spec, model).unwrap_or_else(|| reasoning_object("none")),
             Reasoning::Effort(effort) => {
                 effort_refusal(spec, effort).unwrap_or_else(|| reasoning_object(effort.as_str()))
             }
@@ -1159,7 +1204,10 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
                     "unverified for this model, whose sampling rule the catalog lacks",
                 ),
             },
-            _ => send("top_p", top_p),
+            Some(_) => send("top_p", top_p),
+            None if reasons(model) != Some(true) => send("top_p", top_p),
+            None if reasoning_off && named_can_disable(model) => send("top_p", top_p),
+            None => Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`"),
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Responses has no seed parameter")
