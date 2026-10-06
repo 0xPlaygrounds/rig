@@ -125,6 +125,7 @@ impl Counts {
             reasoning_tokens: self.thinking,
             total_tokens: input.zip(self.output).map(|(input, output)| input + output),
             tool_use_prompt_tokens: None,
+            cost: None,
         }
     }
 

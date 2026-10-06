@@ -140,10 +140,7 @@ fn server_tool_assistant_message_from_response(response: &RigCompletionResponse)
         "first Anthropic response should end the preserved raw transcript with a server-tool result"
     );
 
-    Message::Assistant(rig::message::AssistantMessage {
-        content: raw_blocks,
-        ..response.head()
-    })
+    Message::Assistant(response.head().with_content(raw_blocks))
 }
 
 /// The Anthropic block type of an opaque provider item.

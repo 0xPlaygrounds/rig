@@ -64,10 +64,11 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
                     .max_tokens(4096)
                     .additional_params(thinking_params())
                     .message(Message::user(redacted_thinking_prompt()))
-                    .message(Message::Assistant(rig::message::AssistantMessage {
-                        content: first_response.choice.clone(),
-                        ..first_response.head()
-                    }));
+                    .message(Message::Assistant(
+                        first_response
+                            .head()
+                            .with_content(first_response.choice.clone()),
+                    ));
 
             let second_response = model
                 .call(second_request)
