@@ -492,7 +492,7 @@ mod option_matrix {
         match (&mut body, patch) {
             (Value::Object(target), Value::Object(patch)) => {
                 for (key, value) in patch {
-                    let slot = target.remove(key).unwrap_or(Value::Null);
+                    let slot = target.shift_remove(key).unwrap_or(Value::Null);
                     target.insert(key.clone(), merged(slot, value));
                 }
                 body
@@ -574,15 +574,18 @@ mod option_layers {
 // P2 removes this gate.
 #[cfg(any())]
 mod precedence {
-    //! The merge keeps two behaviours every wire has today: tools in
+    //! The merge keeps three behaviours every wire has today: tools in
     //! `additional_params.tools` join rig's own tools rather than replacing
-    //! them, and a `null` in `additional_params` is a value that is sent.
+    //! them, a `null` in `additional_params` is a value that is sent, and
+    //! the writes a wire makes after the merge read the merged body, so a
+    //! raw key still drives them.
 
     use rig::completion::{CompletionRequest, GenerationOptions, ToolDefinition};
-    use rig::message::ToolName;
+    use rig::message::{ToolChoice, ToolName};
     use serde_json::{Value, json};
 
-    use super::harness_switch::{anthropic, encode, openrouter};
+    use super::harness_switch::{anthropic, encode, openai_responses, openrouter};
+    use super::no_silent_drop::deepseek;
 
     fn request() -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
@@ -649,6 +652,35 @@ mod precedence {
         .expect("the request encodes");
         assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
         assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
+    }
+
+    #[test]
+    fn post_merge_rewrites_read_raw_keys() {
+        // A raw `reasoning` still asks Responses for the reasoning ciphertext.
+        let sent = encode(
+            &openai_responses(),
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(16)
+                .additional_params(json!({"reasoning": {"effort": "low"}})),
+        )
+        .expect("the request encodes");
+        let include = sent.get("include").and_then(Value::as_array);
+        assert!(
+            include.is_some_and(|items| items.contains(&json!("reasoning.encrypted_content"))),
+            "{sent}"
+        );
+
+        // A raw `thinking: disabled` still keeps DeepSeek's forced tool choice.
+        let sent = encode(
+            &deepseek(),
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(16)
+                .tool(lookup())
+                .tool_choice(ToolChoice::Required)
+                .additional_params(json!({"thinking": {"type": "disabled"}})),
+        )
+        .expect("the request encodes");
+        assert_eq!(sent.get("tool_choice"), Some(&json!("required")), "{sent}");
     }
 }
 
