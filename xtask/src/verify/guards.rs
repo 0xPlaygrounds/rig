@@ -5,13 +5,14 @@
 //! `OptionMap` literal has no `..base`, and no wire file builds or rewrites a
 //! request's options. `options-precedence` keeps the merge in
 //! `request_params`: no wire file reads `additional_params` as a field or
-//! builds request bytes but from `FinalBody::into_body` (or sends none:
-//! `Body::empty()`, a WebSocket handshake's `NoBody`). Both run over the
+//! through a pattern, builds or opens request bytes but from
+//! `FinalBody::into_body` (or sends none: `Body::empty()`, a WebSocket
+//! handshake's `NoBody`), or calls `.body_mut()`. Both run over the
 //! completion-wire files listed in [`COMPLETION_WIRE_FILES`], and a file
 //! holding a completion `Wire` or a `ReplayTarget` impl that the list misses
 //! is a finding too. Files are parsed with `syn`, and `use` trees (grouped,
-//! renamed, `self`) resolve names before they are matched. `#[cfg(test)]`
-//! items and test files are skipped.
+//! renamed, `self`, glob) and `type` aliases resolve names before they are
+//! matched. `#[cfg(test)]` items and test files are skipped.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -169,6 +170,7 @@ pub(super) fn offenders(file: &str, source: &str) -> Result<Vec<String>, String>
     let mut guard = Guard {
         file,
         imports: imports.map,
+        globs: imports.globs,
         findings: Vec::new(),
         function: Vec::new(),
     };
@@ -176,10 +178,12 @@ pub(super) fn offenders(file: &str, source: &str) -> Result<Vec<String>, String>
     Ok(guard.findings)
 }
 
-/// Local names to the full paths `use` items give them.
+/// Local names to the full paths `use` items and `type` aliases give them,
+/// and the prefixes of glob imports.
 #[derive(Default)]
 struct Imports {
     map: BTreeMap<String, Vec<String>>,
+    globs: Vec<Vec<String>>,
 }
 
 impl Imports {
@@ -207,7 +211,7 @@ impl Imports {
                 }
                 self.map.insert(rename.rename.to_string(), full);
             }
-            syn::UseTree::Glob(_) => {}
+            syn::UseTree::Glob(_) => self.globs.push(prefix.clone()),
             syn::UseTree::Group(group) => {
                 for tree in &group.items {
                     self.add(prefix, tree);
@@ -220,6 +224,19 @@ impl Imports {
 impl<'ast> Visit<'ast> for Imports {
     fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
         self.add(&mut Vec::new(), &item.tree);
+    }
+
+    fn visit_item_type(&mut self, item: &'ast syn::ItemType) {
+        if let syn::Type::Path(ty) = &*item.ty {
+            let full = ty
+                .path
+                .segments
+                .iter()
+                .map(|segment| segment.ident.to_string())
+                .collect();
+            self.map.insert(item.ident.to_string(), full);
+        }
+        visit::visit_item_type(self, item);
     }
 }
 
@@ -271,6 +288,7 @@ struct Function {
 struct Guard<'a> {
     file: &'a str,
     imports: BTreeMap<String, Vec<String>>,
+    globs: Vec<Vec<String>>,
     findings: Vec<String>,
     function: Vec<Function>,
 }
@@ -284,32 +302,77 @@ impl Guard<'_> {
 
     /// `path`'s segments with its first one read through the file's imports.
     fn resolve(&self, path: &syn::Path) -> Vec<String> {
-        let segments: Vec<String> = path
-            .segments
-            .iter()
-            .map(|segment| segment.ident.to_string())
-            .collect();
-        match segments.split_first() {
-            Some((first, rest)) => match self.imports.get(first) {
-                Some(full) => full.iter().chain(rest).cloned().collect(),
-                None => segments,
-            },
-            None => segments,
+        self.resolve_segments(
+            path.segments
+                .iter()
+                .map(|segment| segment.ident.to_string())
+                .collect(),
+        )
+    }
+
+    fn resolve_segments(&self, segments: Vec<String>) -> Vec<String> {
+        read_through(&self.imports, segments, 0)
+    }
+
+    /// Every full path `segments` may name: read through the imports, and,
+    /// when its first segment is no import, under each glob import's prefix.
+    fn candidates(&self, segments: Vec<String>) -> Vec<Vec<String>> {
+        let resolved = self.resolve_segments(segments.clone());
+        let mut candidates = vec![resolved];
+        if let Some(first) = segments.first()
+            && !self.imports.contains_key(first)
+        {
+            for glob in &self.globs {
+                let prefix = self.resolve_segments(glob.clone());
+                candidates.push(prefix.into_iter().chain(segments.iter().cloned()).collect());
+            }
         }
+        candidates
     }
 
     /// Whether `path` resolves to a path ending in `tail`.
     fn ends_with(&self, path: &syn::Path, tail: &[&str]) -> bool {
-        let resolved = self.resolve(path);
-        resolved
-            .len()
-            .checked_sub(tail.len())
-            .and_then(|start| resolved.get(start..))
-            .is_some_and(|end| {
-                end.iter()
-                    .zip(tail)
-                    .all(|(segment, expected)| segment == expected)
-            })
+        let segments = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        self.segments_end_with(segments, tail)
+    }
+
+    fn segments_end_with(&self, segments: Vec<String>, tail: &[&str]) -> bool {
+        self.candidates(segments).iter().any(|resolved| {
+            resolved
+                .len()
+                .checked_sub(tail.len())
+                .and_then(|start| resolved.get(start..))
+                .is_some_and(|end| {
+                    end.iter()
+                        .zip(tail)
+                        .all(|(segment, expected)| segment == expected)
+                })
+        })
+    }
+
+    /// Whether `segments` name `Body::Bytes` or `Body::Multipart`.
+    fn names_a_body_constructor(&self, segments: Vec<String>) -> bool {
+        self.segments_end_with(segments.clone(), &["Body", "Bytes"])
+            || self.segments_end_with(segments, &["Body", "Multipart"])
+    }
+
+    /// Reports a field `additional_params` read through `receiver`, unless
+    /// the allowlist names it for this file.
+    fn check_additional_params(&mut self, receiver: &str, span: proc_macro2::Span) {
+        let allowed = ADDITIONAL_PARAMS_ALLOWED
+            .iter()
+            .any(|(file, base)| *file == self.file && receiver == *base);
+        if !allowed {
+            self.report(
+                "options-precedence",
+                span,
+                "reads additional_params outside request_params",
+            );
+        }
     }
 
     fn enter_function(&mut self, inputs: impl IntoIterator<Item = (String, String)>) {
@@ -415,6 +478,16 @@ impl<'ast> Visit<'ast> for Guard<'_> {
 
     fn visit_pat_struct(&mut self, pattern: &'ast syn::PatStruct) {
         self.check_fields_pattern(pattern);
+        // A pattern has no receiver: the struct's type name, in snake case,
+        // stands for it in the allowlist.
+        let receiver = last(&pattern.path)
+            .map(|name| snake_case(&name))
+            .unwrap_or_default();
+        for field in &pattern.fields {
+            if matches!(&field.member, syn::Member::Named(name) if name == "additional_params") {
+                self.check_additional_params(&receiver, field.span());
+            }
+        }
         visit::visit_pat_struct(self, pattern);
     }
 
@@ -476,17 +549,39 @@ impl<'ast> Visit<'ast> for Guard<'_> {
         visit::visit_expr_call(self, call);
     }
 
-    fn visit_expr_path(&mut self, expr: &'ast syn::ExprPath) {
-        if self.ends_with(&expr.path, &["Body", "Bytes"])
-            || self.ends_with(&expr.path, &["Body", "Multipart"])
-        {
+    // Every path, in an expression or a pattern: matching `Body::Bytes`
+    // reaches the bytes as surely as building one.
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        let segments = path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect();
+        if self.names_a_body_constructor(segments) {
             self.report(
                 "options-precedence",
-                expr.span(),
-                "builds a request body without FinalBody::into_body",
+                path.span(),
+                "builds or opens a request body without FinalBody::into_body",
             );
         }
-        visit::visit_expr_path(self, expr);
+        visit::visit_path(self, path);
+    }
+
+    // A macro's tokens are not parsed: every `a::b::C` run in them is
+    // matched as a path.
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        let mut paths = Vec::new();
+        token_paths(mac.tokens.clone(), &mut Vec::new(), &mut paths);
+        for (segments, span) in paths {
+            if self.names_a_body_constructor(segments) {
+                self.report(
+                    "options-precedence",
+                    span,
+                    "builds or opens a request body without FinalBody::into_body",
+                );
+            }
+        }
+        visit::visit_macro(self, mac);
     }
 
     fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
@@ -511,6 +606,11 @@ impl<'ast> Visit<'ast> for Guard<'_> {
                     );
                 }
             }
+            "body_mut" => self.report(
+                "options-precedence",
+                call.span(),
+                "writes to a built request's body",
+            ),
             "options" if call.args.len() == 1 => self.report(
                 "options-mapping",
                 call.span(),
@@ -553,16 +653,7 @@ impl<'ast> Visit<'ast> for Guard<'_> {
         if let syn::Member::Named(name) = &field.member {
             if name == "additional_params" {
                 let receiver = field.base.to_token_stream().to_string().replace(' ', "");
-                let allowed = ADDITIONAL_PARAMS_ALLOWED
-                    .iter()
-                    .any(|(file, base)| *file == self.file && receiver == *base);
-                if !allowed {
-                    self.report(
-                        "options-precedence",
-                        field.span(),
-                        "reads additional_params outside request_params",
-                    );
-                }
+                self.check_additional_params(&receiver, field.span());
             }
             if name == "options" {
                 self.report(
@@ -573,5 +664,83 @@ impl<'ast> Visit<'ast> for Guard<'_> {
             }
         }
         visit::visit_expr_field(self, field);
+    }
+}
+
+/// `name` in snake case: `CompletionRequest` is `completion_request`.
+fn snake_case(name: &str) -> String {
+    let mut out = String::new();
+    for (index, character) in name.chars().enumerate() {
+        if character.is_uppercase() {
+            if index > 0 {
+                out.push('_');
+            }
+            out.extend(character.to_lowercase());
+        } else {
+            out.push(character);
+        }
+    }
+    out
+}
+
+/// Every run of `ident :: ident ...` in `tokens`, with the span of its last
+/// segment, into `paths`.
+fn token_paths(
+    tokens: proc_macro2::TokenStream,
+    current: &mut Vec<(String, proc_macro2::Span)>,
+    paths: &mut Vec<(Vec<String>, proc_macro2::Span)>,
+) {
+    fn flush(
+        current: &mut Vec<(String, proc_macro2::Span)>,
+        paths: &mut Vec<(Vec<String>, proc_macro2::Span)>,
+    ) {
+        if let Some((_, span)) = current.last() {
+            let span = *span;
+            paths.push((current.drain(..).map(|(name, _)| name).collect(), span));
+        }
+    }
+    let mut after_colons = false;
+    for token in tokens {
+        match token {
+            proc_macro2::TokenTree::Ident(ident) => {
+                if !after_colons {
+                    flush(current, paths);
+                }
+                current.push((ident.to_string(), ident.span()));
+                after_colons = false;
+            }
+            proc_macro2::TokenTree::Punct(punct) if punct.as_char() == ':' => {
+                after_colons = !current.is_empty();
+            }
+            proc_macro2::TokenTree::Group(group) => {
+                flush(current, paths);
+                after_colons = false;
+                token_paths(group.stream(), &mut Vec::new(), paths);
+            }
+            _ => {
+                flush(current, paths);
+                after_colons = false;
+            }
+        }
+    }
+    flush(current, paths);
+}
+
+/// `segments` with its first one read through `imports`, repeatedly, so an
+/// alias of an import resolves too.
+fn read_through(
+    imports: &BTreeMap<String, Vec<String>>,
+    segments: Vec<String>,
+    depth: usize,
+) -> Vec<String> {
+    match segments.split_first() {
+        Some((first, rest)) if depth < 8 => match imports.get(first) {
+            Some(full) if full.len() > 1 || full.first() != Some(first) => {
+                let next = full.iter().chain(rest).cloned().collect();
+                read_through(imports, next, depth + 1)
+            }
+            _ => segments,
+        },
+        _ => segments,
     }
 }

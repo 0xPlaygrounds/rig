@@ -1080,6 +1080,83 @@ fn a_wire_reads_no_raw_params_and_builds_no_body_of_its_own() {
     assert_eq!(guarded(document).len(), 1);
 }
 
+/// Whether `source`, as a listed completion-wire file, fails the precedence
+/// guard.
+fn fails_precedence(source: &str) -> bool {
+    guarded(source)
+        .iter()
+        .any(|finding| finding.starts_with("options-precedence: "))
+}
+
+#[test]
+fn a_wire_opens_no_body_in_a_pattern() {
+    for source in [
+        "fn rewrite(body: &mut crate::wire::Body) {
+             if let crate::wire::Body::Bytes(bytes) = body { bytes.clear(); }
+         }",
+        "use crate::wire::{Body as B};
+         fn rewrite(body: B) -> usize { match body { B::Multipart(_) => 0, _ => 1 } }",
+        "fn rewrite(body: &crate::wire::Body) -> bool { matches!(body, crate::wire::Body::Bytes(_)) }",
+        "use crate::wire::Body;
+         type Sent = Body;
+         fn rewrite(body: Sent) -> bool { if let Sent::Bytes(_) = body { true } else { false } }",
+    ] {
+        assert!(fails_precedence(source), "{source}");
+    }
+    assert!(!fails_precedence(
+        "use crate::wire::Body;
+         fn send(body: FinalBody) -> Body { body.into_body() }"
+    ));
+}
+
+#[test]
+fn a_wire_writes_to_no_built_body() {
+    assert!(fails_precedence(
+        "fn rewrite(mut built: http::Request<Body>) { let body = built.body_mut(); }"
+    ));
+}
+
+#[test]
+fn a_wire_destructures_no_raw_params() {
+    for source in [
+        "fn encode(request: CompletionRequest) { let CompletionRequest { additional_params, .. } = request; }",
+        "fn encode(request: CompletionRequest) { let CompletionRequest { additional_params: raw, .. } = request; }",
+        "fn encode(requests: Vec<CompletionRequest>) { requests.into_iter().map(|CompletionRequest { additional_params, .. }| additional_params); }",
+    ] {
+        assert!(fails_precedence(source), "{source}");
+    }
+    // The allowlist holds for a pattern as for a field read: a document
+    // part's own `additional_params` is another field.
+    let document =
+        "fn part(document: Document) { let Document { additional_params, .. } = document; }";
+    let anthropic = super::guards::offenders(
+        "crates/rig-core/src/providers/anthropic/completion.rs",
+        document,
+    );
+    assert_eq!(anthropic, Ok(Vec::new()));
+    assert!(fails_precedence(document));
+}
+
+#[test]
+fn a_glob_import_of_body_resolves() {
+    for source in [
+        "use crate::wire::Body::*;
+         fn rewrite(body: &mut crate::wire::Body) { if let Bytes(bytes) = body { bytes.clear(); } }",
+        "use crate::wire::Body::*;
+         fn encode(bytes: Vec<u8>) -> crate::wire::Body { Bytes(bytes) }",
+        "use crate::wire::{Body as B};
+         use B::*;
+         fn encode(form: Form) -> B { Multipart(form) }",
+    ] {
+        assert!(fails_precedence(source), "{source}");
+    }
+    // A glob of another module does not make every `Bytes` a body.
+    assert!(!fails_precedence(
+        "use crate::types::*;
+         fn size(bytes: Bytes) -> usize { bytes.len() }"
+    ));
+}
+
 #[test]
 fn test_items_are_not_guarded() {
     assert!(
