@@ -483,7 +483,7 @@ fn whole(out: &mut Out<'_, Completion>, content: AssistantContent) -> Result<(),
                 arguments,
             )
         }
-        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {
+        _ => {
             return Err(ProviderError::Response(
                 "local generation produced a block it has no form for".to_owned(),
             ));

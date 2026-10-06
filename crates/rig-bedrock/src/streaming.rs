@@ -387,14 +387,12 @@ fn usage(usage: &Value) -> Usage {
         .flatten()
         .fold(0, u64::saturating_add);
     let output = usage.u64("outputTokens").unwrap_or(0);
-    Usage {
-        input_tokens: Some(input),
-        output_tokens: Some(output),
-        total_tokens: Some(input.saturating_add(output)),
-        cached_input_tokens: cache_read,
-        cache_creation_input_tokens: cache_write,
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input)
+        .output_tokens(output)
+        .total_tokens(input.saturating_add(output))
+        .cached_input_tokens(cache_read)
+        .cache_creation_input_tokens(cache_write)
 }
 
 impl<'id> rig_core::wire::Decoder<'id, Completion, ConverseFrame> for StreamState {

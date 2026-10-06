@@ -284,23 +284,11 @@ fn config_with(
 }
 
 fn request(messages: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("hello")]
-        } else {
-            messages
-        },
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    CompletionRequest::from(if messages.is_empty() {
+        vec![Message::user("hello")]
+    } else {
+        messages
+    })
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -1472,14 +1460,14 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
     );
     let history = vec![
         Message::user("add"),
-        Message::Assistant(AssistantMessage {
-            content: vec![
+        Message::Assistant(
+            AssistantMessage::new(vec![
                 AssistantContent::text("adding"),
                 AssistantContent::ToolCall(call.clone()),
-            ],
-            origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
-            stop: Some(StopReason::ToolUse),
-        }),
+            ])
+            .with_origin(Origin::new("anthropic.messages", "anthropic", "claude"))
+            .with_stop(StopReason::ToolUse),
+        ),
         Message::User {
             content: vec![UserContent::ToolResult(
                 call.result(vec![ToolResultContent::text("2")]),

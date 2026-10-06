@@ -144,7 +144,7 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
+                        _ => {}
                     }
                 }
             }
@@ -405,6 +405,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     AssistantContent::Opaque(_) => {
                         return Err(CandleError::UnsupportedPromptContent("provider items"));
                     }
+                    _ => {
+                        return Err(CandleError::UnsupportedPromptContent("assistant content"));
+                    }
                 }
             }
             Ok(("assistant", parts.join("\n")))
@@ -586,6 +589,9 @@ fn render_qwen_message(
                     }
                     AssistantContent::Opaque(_) => {
                         return Err(CandleError::UnsupportedPromptContent("provider items"));
+                    }
+                    _ => {
+                        return Err(CandleError::UnsupportedPromptContent("assistant content"));
                     }
                 }
             }

@@ -647,7 +647,7 @@ fn emit_parsed_items(
             AssistantContent::Reasoning(reasoning) => {
                 emit(GenerationEvent::Reasoning(reasoning))?;
             }
-            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {
+            _ => {
                 return Err(CandleError::Inference(
                     "text-only Qwen output parser produced non-text content".to_string(),
                 ));

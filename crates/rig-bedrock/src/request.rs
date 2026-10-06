@@ -216,6 +216,11 @@ fn assistant(
         }
         AssistantContent::Image(image) => Some(json!({ "image": self::image(image)? })),
         AssistantContent::Opaque(_) => None,
+        _ => {
+            return Err(EncodeError::request(
+                "Converse has no form for this assistant block",
+            ));
+        }
     })
 }
 

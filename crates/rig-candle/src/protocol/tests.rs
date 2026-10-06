@@ -19,23 +19,15 @@ fn tool(name: &str) -> ToolDefinition {
 }
 
 fn request(messages: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("fallback")]
-        } else {
-            messages
-        },
-        documents: Vec::new(),
-        tools: vec![tool("calculate"), tool("lookup")],
-        temperature: Some(0.0),
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(if messages.is_empty() {
+        vec![Message::user("fallback")]
+    } else {
+        messages
+    });
+    request.tools = vec![tool("calculate"), tool("lookup")];
+    request.temperature = Some(0.0);
+    request.max_tokens = Some(64);
+    request
 }
 
 #[test]
@@ -296,10 +288,8 @@ fn every_renderer_takes_any_media_the_adapter_hands_over() {
         ConversationProtocol::SmolLm2,
         ConversationProtocol::Qwen3,
     ] {
-        let request = CompletionRequest {
-            tools: Vec::new(),
-            ..request(adapted.clone())
-        };
+        let mut request = request(adapted.clone());
+        request.tools = Vec::new();
         let prompt = render_prompt(&request, protocol)
             .unwrap_or_else(|error| panic!("{protocol:?} renders the adapted history: {error}"));
         assert!(prompt.contains("the plain document"), "{prompt}");

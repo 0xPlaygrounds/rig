@@ -422,6 +422,7 @@ fn usage_of(usage: Option<&Value>) -> Usage {
         reasoning_tokens: count("/tokens/reasoning_tokens"),
         total_tokens: input.zip(output).map(|(input, output)| input + output),
         tool_use_prompt_tokens: None,
+        cost: None,
     }
 }
 

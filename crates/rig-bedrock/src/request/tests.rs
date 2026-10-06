@@ -287,14 +287,11 @@ fn only_nova_and_claude_get_a_result_status() {
         (ANTHROPIC_CLAUDE_SONNET_4_5, Some(json!("error"))),
         (LLAMA_3_1_70B_INSTRUCT, None),
     ] {
-        let calls = AssistantMessage {
-            content: vec![
-                AssistantContent::ToolCall(call("failed", "t", json!({}))),
-                AssistantContent::ToolCall(call("fine", "t", json!({}))),
-            ],
-            origin: None,
-            stop: Some(StopReason::ToolUse),
-        };
+        let calls = AssistantMessage::new(vec![
+            AssistantContent::ToolCall(call("failed", "t", json!({}))),
+            AssistantContent::ToolCall(call("fine", "t", json!({}))),
+        ])
+        .with_stop(StopReason::ToolUse);
         let body = sent(
             model,
             vec![
@@ -364,9 +361,11 @@ fn another_model_gets_canonical_fields() {
     let foreign = call(&id, "lookup", json!({}));
     let history = vec![
         Message::user("q"),
-        Message::Assistant(AssistantMessage {
-            origin: Some(Origin::new("openai.responses", "openai", "gpt-5")),
-            ..AssistantMessage::new(vec![AssistantContent::ToolCall(foreign.clone())])
+        Message::Assistant({
+            let mut message =
+                AssistantMessage::new(vec![AssistantContent::ToolCall(foreign.clone())]);
+            message.origin = Some(Origin::new("openai.responses", "openai", "gpt-5"));
+            message
         }),
         Message::tool_results(vec![foreign.result(vec![ToolResultContent::text("ok")])]),
     ];
@@ -551,11 +550,9 @@ fn a_hosted_use_replays_only_with_its_result() {
     ] {
         let mut content = content;
         content.push(AssistantContent::text("done"));
-        let turn = AssistantMessage {
-            content,
-            origin: Some(origin.clone()),
-            stop: Some(StopReason::Stop),
-        };
+        let turn = AssistantMessage::new(content)
+            .with_origin(origin.clone())
+            .with_stop(StopReason::Stop);
         let history = vec![Message::user("q"), Message::Assistant(turn)];
         let body = sent_with_tools(NOVA, history.clone());
         let blocks = body["messages"][1]["content"].as_array().expect("content");
@@ -637,11 +634,11 @@ fn converse_violations(body: &Value) -> Vec<String> {
 fn adversarial_histories_encode_to_requests_converse_takes() {
     let other = Some(Origin::new("openai.chat", "openai", "gpt-4.1"));
     let asst = |content: Vec<AssistantContent>, stop: StopReason| {
-        Message::Assistant(AssistantMessage {
-            content,
-            origin: other.clone(),
-            stop: Some(stop),
-        })
+        Message::Assistant(
+            AssistantMessage::new(content)
+                .with_origin(other.clone())
+                .with_stop(stop),
+        )
     };
     let result = |id: &str| Message::User {
         content: vec![UserContent::ToolResult(
