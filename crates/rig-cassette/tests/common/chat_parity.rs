@@ -371,10 +371,16 @@ pub fn project(streaming: bool, outcome: &Result<CompletionResponse, ErrorKind>)
 
 fn project_content(content: &AssistantContent) -> Value {
     match content {
-        AssistantContent::Text(text) => json!({
-            "text": text.text,
-            "native": text.native,
-        }),
+        AssistantContent::Text(text) => {
+            let mut projected = json!({
+                "text": text.text,
+                "native": text.native,
+            });
+            if !text.citations().is_empty() {
+                projected["citations"] = json!(text.citations());
+            }
+            projected
+        }
         AssistantContent::ToolCall(call) => {
             let id = match call.id.provider() {
                 Some(provider) => provider.as_str().to_owned(),
@@ -563,6 +569,16 @@ pub fn restate_chat(body: &Value) -> Vec<WireFrame> {
     frames.extend(deltas.into_iter().map(|delta| chunk(delta, &Value::Null)));
     let mut last = chunk(json!({}), &body["choices"][0]["finish_reason"]);
     last["usage"] = body["usage"].clone();
+    // The fields a reply states beside its choices, such as Perplexity's
+    // `citations` or Venice's `cost`, as a stream states them on a chunk.
+    for (key, value) in body.as_object().into_iter().flatten() {
+        if !matches!(
+            key.as_str(),
+            "id" | "model" | "object" | "choices" | "usage"
+        ) {
+            last[key] = value.clone();
+        }
+    }
     frames.push(last);
     frames
         .into_iter()

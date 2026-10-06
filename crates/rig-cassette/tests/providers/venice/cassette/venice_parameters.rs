@@ -6,9 +6,9 @@
 //! miss), and that what Venice sends back — the resolved echo, including web
 //! search citations — survives onto
 //! [`rig::completion::CompletionResponse::raw`] instead of being dropped by
-//! the OpenAI-shaped decode. `raw` is the provider's verbatim reply document;
-//! the echo and the per-request `cost` have no slot on the normalized
-//! response, which makes it the only route to them.
+//! the OpenAI-shaped decode. `raw` is the provider's verbatim reply document
+//! and the only route to the echo; the web search citations also cite the
+//! answer text and the per-request `cost` is the usage's cost.
 
 use serde_json::{Value, json};
 

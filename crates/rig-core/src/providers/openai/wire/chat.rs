@@ -1160,6 +1160,17 @@ pub struct ChatDecoder {
     /// The calls still open, in the order they opened.
     calls: Vec<OpenCall>,
     usage: Option<Value>,
+    /// The top-level [`reported::REPLY_FIELDS`] as last stated.
+    reply_fields: Map<String, Value>,
+    /// The writer index of the message's first text block, which the
+    /// message-level citations cite.
+    first_text: Option<usize>,
+    /// The writer index of the latest text block, which a Mistral
+    /// `reference` chunk after it cites.
+    last_text: Option<usize>,
+    /// Citations of the turn's first text block held until it opens:
+    /// message annotations, and references that came before any text.
+    turn_citations: Vec<crate::wire::WireCitation>,
     finish: Option<FinishReason>,
     response_id: Option<String>,
     response_model: Option<String>,
@@ -1201,6 +1212,11 @@ impl ChatDecoder {
             .or_else(|| choice.as_ref().and_then(|choice| choice.at("/usage")))
         {
             self.usage = Some(usage.clone());
+        }
+        for key in reported::REPLY_FIELDS {
+            if let Some(value) = frame.get(key).filter(|value| !value.is_null()) {
+                self.reply_fields.insert(key.to_owned(), value.clone());
+            }
         }
         let choice = choice?;
         // A gateway's upstream-native reason is consulted only when the
@@ -1290,7 +1306,26 @@ impl ChatDecoder {
         {
             self.call(call, out)?;
         }
+        self.turn_citations.extend(
+            delta
+                .get("annotations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(reported::annotation),
+        );
+        self.cite_turn(out);
         Ok(())
+    }
+
+    /// Cite the turn's first text block with the citations held for it, as
+    /// soon as it exists, so a reply cut off before its end keeps them.
+    fn cite_turn(&mut self, out: &mut Out<'_, Completion>) {
+        if let Some(text) = self.first_text {
+            for citation in self.turn_citations.drain(..) {
+                out.cite(text, citation);
+            }
+        }
     }
 
     /// Append `text` to the message's reasoning block, opening it first.
@@ -1340,7 +1375,11 @@ impl ChatDecoder {
                 let index = out.fresh_index();
                 let block = match writing {
                     Writing::Thinking => Block::Reasoning { redacted: false },
-                    Writing::Text => Block::Text,
+                    Writing::Text => {
+                        self.first_text.get_or_insert(index);
+                        self.last_text = Some(index);
+                        Block::Text
+                    }
                 };
                 out.open(index, block, Value::Null)?;
                 self.writing = Some((writing, index));
@@ -1387,6 +1426,12 @@ impl ChatDecoder {
             Part::Image => self.image(part, out),
             Part::Unknown => {
                 self.close_writing(out)?;
+                if let Some(citation) = reported::reference(part) {
+                    match self.last_text {
+                        Some(text) => out.cite(text, citation),
+                        None => self.turn_citations.push(citation),
+                    }
+                }
                 let index = out.fresh_index();
                 out.whole(index, Block::Opaque { replay: true }, part.clone(), "")
             }
@@ -1611,11 +1656,19 @@ impl ChatDecoder {
     fn end(&mut self, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
         self.close_writing(&mut out)?;
         self.close_reasoning(&mut out)?;
+        self.cite_turn(&mut out);
+        if let Some(text) = self.first_text {
+            for citation in reported::listed(&self.reply_fields) {
+                out.cite(text, citation);
+            }
+        }
+        let cost = reported::cost(self.usage.as_ref(), &self.reply_fields);
         let usage = self
             .usage
             .as_ref()
             .map(|usage| normalized_usage(usage, &self.quirks))
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .cost(cost);
         Ok(out.end(Finish {
             usage,
             reason: self.finish.take(),
@@ -1853,6 +1906,7 @@ impl ChatDecoder {
 }
 
 mod document;
+mod reported;
 
 #[cfg(test)]
 mod tests;

@@ -12,9 +12,9 @@
 //! is the terminal record only, never the stream's frames.
 //!
 //! **Why it matters here.** A gateway reports things the normalized terminal
-//! has no slot for: OpenRouter's terminal usage carries the turn's `cost`, and
-//! the terminal's accumulated `additional_params` carries the routed
-//! `provider` the frames repeat. The record's `usage` is the provider's usage
+//! has no slot for: the terminal's accumulated `additional_params` carries
+//! the routed `provider` the frames repeat. OpenRouter's terminal usage also
+//! carries the turn's `cost`, which the normalized usage reports as well. The record's `usage` is the provider's usage
 //! object, extra fields included, so both reach a caller through `raw`. That
 //! is the capability the cell pins: `raw.usage.cost` and
 //! `raw.additional_params.provider` equal the recorded terminal frame's.
@@ -79,11 +79,10 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
     assert_eq!(raw["provider"], json!(recorded_provider));
     // The normalized terminal's `provider` is rig's descriptor name, not the
-    // routed upstream; its usage carries a cost.
+    // routed upstream; its usage's cost is the one OpenRouter reported.
     assert_eq!(terminal.provider(), PROVIDER);
-    assert!(
-        terminal.usage.cost.is_some(),
-        "the normalized usage has a cost: {:?}",
-        terminal.usage
+    assert_eq!(
+        terminal.usage.cost.map(|cost| cost.total),
+        Some(recorded_cost)
     );
 }

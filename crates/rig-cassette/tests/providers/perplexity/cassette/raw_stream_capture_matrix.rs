@@ -134,4 +134,9 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
         recorded_usage.get("cost"),
         "the dialect's extra usage fields ride along in raw: {raw}"
     );
+    // The normalized usage reports the cost too, its total the recorded one.
+    assert_eq!(
+        terminal.usage.cost.map(|cost| cost.total),
+        recorded_usage["cost"]["total_cost"].as_f64()
+    );
 }
