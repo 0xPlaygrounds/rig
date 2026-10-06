@@ -18,8 +18,10 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::catalog::ModelSpec;
 #[cfg(feature = "reqwest")]
 use crate::client::env::{self, EnvError};
+use crate::completion::ModelRef;
 use crate::driver::DynModel;
 use crate::http_client::{DynHttpClient, HttpClientExt};
 use crate::operation::Completion;
@@ -133,11 +135,121 @@ enum Registered {
     Gemini,
 }
 
-/// Validated vendor and protocol-family pair from this build's dialect tables.
-/// Construction and deserialization reject unregistered pairs. Equality and
-/// hashing use the pair, not dialect options; display emits `vendor/format`.
+/// Identity is the `(vendor, format)` pair, as for [`ProviderId`].
+impl PartialEq for Registered {
+    fn eq(&self, other: &Self) -> bool {
+        self.vendor() == other.vendor() && self.format() == other.format()
+    }
+}
+
+impl Registered {
+    fn vendor(&self) -> &'static str {
+        match self {
+            Self::OpenAi(dialect) => dialect.name,
+            Self::Anthropic(dialect) => dialect.name,
+            Self::Gemini => gemini::PROVIDER_NAME,
+        }
+    }
+
+    fn format(&self) -> Format {
+        match self {
+            Self::OpenAi(_) => Format::OpenAi,
+            Self::Anthropic(_) => Format::Anthropic,
+            Self::Gemini => Format::Gemini,
+        }
+    }
+
+    fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
+        match self {
+            Self::OpenAi(dialect) => {
+                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(dialect, api_key))
+            }
+            Self::Anthropic(dialect) => ProviderConfig::Anthropic(
+                anthropic::wire::AnthropicConfig::with_key(dialect, api_key),
+            ),
+            Self::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::new(api_key)),
+        }
+    }
+
+    /// This selection's preset, configured from the environment variables
+    /// its dialect names.
+    #[cfg(feature = "reqwest")]
+    fn config_from_env(&self) -> Result<ProviderConfig, EnvError> {
+        Ok(match self {
+            Self::OpenAi(dialect) => {
+                let (api_key, auth) = openai_credential_from_env(dialect)?;
+                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::from_env_with_credential(
+                    dialect, api_key, auth,
+                )?)
+            }
+            Self::Anthropic(dialect) => {
+                ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::from_env_with(dialect)?)
+            }
+            Self::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::from_env()?),
+        })
+    }
+}
+
+/// A provider the model catalog files models under that the registry cannot
+/// configure: an SDK-backed or local provider in a companion crate, or one
+/// that serves no completions.
+#[derive(Debug)]
+struct CatalogOnly {
+    /// The provider's own descriptor name.
+    vendor: &'static str,
+    /// Where its models are served from, for the error `connect` returns.
+    home: &'static str,
+    /// Whether it needs a credential.
+    credential: bool,
+}
+
+/// Every catalog-only provider.
+static CATALOG_ONLY: [CatalogOnly; 5] = [
+    CatalogOnly {
+        vendor: "aws_bedrock",
+        home: "the `rig-bedrock` crate",
+        credential: true,
+    },
+    CatalogOnly {
+        vendor: "vertexai",
+        home: "the `rig-vertexai` crate",
+        credential: true,
+    },
+    CatalogOnly {
+        vendor: "gemini-grpc",
+        home: "the `rig-gemini-grpc` crate",
+        credential: true,
+    },
+    CatalogOnly {
+        vendor: "candle",
+        home: "the `rig-candle` crate",
+        credential: false,
+    },
+    CatalogOnly {
+        vendor: "voyageai",
+        home: "`rig_core::providers::voyageai`, which serves embeddings and reranking only",
+        credential: true,
+    },
+];
+
+/// What a [`ProviderId`] names.
 #[derive(Debug, Clone, Copy)]
-pub struct ProviderId(Registered);
+enum Kind {
+    /// A selection the registry configures.
+    Registered(Registered),
+    /// A provider only the model catalog names.
+    CatalogOnly(&'static CatalogOnly),
+}
+
+/// Validated vendor and protocol-family pair from this build's dialect tables,
+/// or a catalog-only provider the registry cannot configure. Construction and
+/// deserialization reject unregistered pairs; only
+/// [`ProviderId::catalog`] and the model catalog produce a catalog-only id,
+/// which has no format and no preset. Equality and hashing use the pair, not
+/// dialect options; display emits `vendor/format`, or the vendor alone for a
+/// catalog-only id.
+#[derive(Debug, Clone, Copy)]
+pub struct ProviderId(Kind);
 
 /// Identity is the `(vendor, format)` pair, never the dialect's payload: two
 /// ids that name the same selection are the same id.
@@ -158,44 +270,72 @@ impl Hash for ProviderId {
 
 impl ProviderId {
     /// Every selection this build registers: one per OpenAI-shaped dialect,
-    /// one per Messages-format dialect, and Gemini.
+    /// one per Messages-format dialect, and Gemini. Catalog-only providers
+    /// are not selections.
     pub fn all() -> impl Iterator<Item = ProviderId> {
         openai::wire::all()
-            .map(|dialect| ProviderId(Registered::OpenAi(*dialect)))
-            .chain(
-                anthropic::wire::all().map(|dialect| ProviderId(Registered::Anthropic(*dialect))),
-            )
-            .chain(std::iter::once(ProviderId(Registered::Gemini)))
+            .map(|dialect| Registered::OpenAi(*dialect))
+            .chain(anthropic::wire::all().map(|dialect| Registered::Anthropic(*dialect)))
+            .chain(std::iter::once(Registered::Gemini))
+            .map(|registered| ProviderId(Kind::Registered(registered)))
     }
 
     /// The selection `vendor` names in `format`, or `None` when this build
     /// registers no such pair.
     pub fn new(vendor: &str, format: Format) -> Option<Self> {
-        match format {
+        let registered = match format {
             Format::OpenAi => {
-                openai::wire::by_name(vendor).map(|dialect| Self(Registered::OpenAi(*dialect)))
+                openai::wire::by_name(vendor).map(|dialect| Registered::OpenAi(*dialect))
             }
-            Format::Anthropic => anthropic::wire::Dialect::by_name(vendor)
-                .map(|dialect| Self(Registered::Anthropic(dialect))),
-            Format::Gemini => (vendor == gemini::PROVIDER_NAME).then_some(Self(Registered::Gemini)),
-        }
+            Format::Anthropic => {
+                anthropic::wire::Dialect::by_name(vendor).map(Registered::Anthropic)
+            }
+            Format::Gemini => (vendor == gemini::PROVIDER_NAME).then_some(Registered::Gemini),
+        };
+        registered.map(|registered| Self(Kind::Registered(registered)))
+    }
+
+    /// The id the model catalog files `vendor`'s models under: its first
+    /// registered selection, or a catalog-only id for a provider the
+    /// registry cannot configure (`aws_bedrock`, `vertexai`, `gemini-grpc`,
+    /// `candle`, `voyageai`). `None` for a vendor this build does not know.
+    pub fn catalog(vendor: &str) -> Option<Self> {
+        Self::vendor_selections(vendor).next().or_else(|| {
+            CATALOG_ONLY
+                .iter()
+                .find(|provider| provider.vendor == vendor)
+                .map(|provider| Self(Kind::CatalogOnly(provider)))
+        })
     }
 
     /// The vendor, spelled as the provider's own descriptor name.
     pub fn vendor(&self) -> &'static str {
         match &self.0 {
-            Registered::OpenAi(dialect) => dialect.name,
-            Registered::Anthropic(dialect) => dialect.name,
-            Registered::Gemini => gemini::PROVIDER_NAME,
+            Kind::Registered(registered) => registered.vendor(),
+            Kind::CatalogOnly(provider) => provider.vendor,
         }
     }
 
-    /// The protocol family.
-    pub fn format(&self) -> Format {
+    /// The protocol family, or `None` for a catalog-only provider.
+    pub fn format(&self) -> Option<Format> {
         match &self.0 {
-            Registered::OpenAi(_) => Format::OpenAi,
-            Registered::Anthropic(_) => Format::Anthropic,
-            Registered::Gemini => Format::Gemini,
+            Kind::Registered(registered) => Some(registered.format()),
+            Kind::CatalogOnly(_) => None,
+        }
+    }
+
+    /// Whether the registry can configure this provider. A catalog-only
+    /// provider is served by its companion crate instead.
+    pub fn is_registered(&self) -> bool {
+        matches!(self.0, Kind::Registered(_))
+    }
+
+    /// Where a catalog-only provider's models are served from, or `None`
+    /// for a registered selection.
+    pub(crate) fn served_by(&self) -> Option<&'static str> {
+        match &self.0 {
+            Kind::Registered(_) => None,
+            Kind::CatalogOnly(provider) => Some(provider.home),
         }
     }
 
@@ -208,7 +348,8 @@ impl ProviderId {
     ///
     /// A bare vendor is accepted only when this build registers exactly one
     /// family for it; otherwise the error names the qualified alternatives,
-    /// each of which this resolver accepts.
+    /// each of which this resolver accepts. A catalog-only provider is not a
+    /// selection, so it does not resolve.
     pub fn resolve(selection: &str) -> Result<Self, SelectionError> {
         let malformed = || SelectionError::Malformed {
             selection: selection.to_owned(),
@@ -254,44 +395,25 @@ impl ProviderId {
         })
     }
 
-    /// Build this selection's preset with `api_key`. Copilot requires an exchanged
-    /// session token, not a GitHub OAuth token.
-    pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
+    /// Build this selection's preset with `api_key`, or `None` for a
+    /// catalog-only provider. Copilot requires an exchanged session token,
+    /// not a GitHub OAuth token.
+    pub fn config(&self, api_key: impl Into<Secret>) -> Option<ProviderConfig> {
         match &self.0 {
-            Registered::OpenAi(dialect) => {
-                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(dialect, api_key))
-            }
-            Registered::Anthropic(dialect) => ProviderConfig::Anthropic(
-                anthropic::wire::AnthropicConfig::with_key(dialect, api_key),
-            ),
-            Registered::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::new(api_key)),
+            Kind::Registered(registered) => Some(registered.config(api_key)),
+            Kind::CatalogOnly(_) => None,
         }
     }
 
-    /// This selection's preset, configured from the environment variables
-    /// its dialect names.
-    #[cfg(feature = "reqwest")]
-    fn config_from_env(&self) -> Result<ProviderConfig, EnvError> {
-        Ok(match &self.0 {
-            Registered::OpenAi(dialect) => {
-                let (api_key, auth) = openai_credential_from_env(dialect)?;
-                ProviderConfig::OpenAi(openai::wire::OpenAIConfig::from_env_with_credential(
-                    dialect, api_key, auth,
-                )?)
-            }
-            Registered::Anthropic(dialect) => {
-                ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::from_env_with(dialect)?)
-            }
-            Registered::Gemini => ProviderConfig::Gemini(gemini::GeminiConfig::from_env()?),
-        })
-    }
-
-    /// Environment variable named by the registered credential configuration.
-    pub fn api_key_env(&self) -> &'static str {
+    /// Environment variable named by the registered credential configuration,
+    /// or `None` for a catalog-only provider, whose companion crate reads its
+    /// own credentials.
+    pub fn api_key_env(&self) -> Option<&'static str> {
         match &self.0 {
-            Registered::OpenAi(dialect) => dialect.api_key_env,
-            Registered::Anthropic(dialect) => dialect.api_key_env,
-            Registered::Gemini => gemini::API_KEY_ENV,
+            Kind::Registered(Registered::OpenAi(dialect)) => Some(dialect.api_key_env),
+            Kind::Registered(Registered::Anthropic(dialect)) => Some(dialect.api_key_env),
+            Kind::Registered(Registered::Gemini) => Some(gemini::API_KEY_ENV),
+            Kind::CatalogOnly(_) => None,
         }
     }
 
@@ -301,10 +423,11 @@ impl ProviderId {
     /// variable is a hint rather than a requirement.
     pub fn requires_credential(&self) -> bool {
         match &self.0 {
-            Registered::OpenAi(dialect) => {
+            Kind::Registered(Registered::OpenAi(dialect)) => {
                 !matches!(dialect.quirks.auth, openai::wire::Auth::OptionalBearer)
             }
-            Registered::Anthropic(_) | Registered::Gemini => true,
+            Kind::Registered(Registered::Anthropic(_) | Registered::Gemini) => true,
+            Kind::CatalogOnly(provider) => provider.credential,
         }
     }
 }
@@ -318,7 +441,10 @@ fn alternatives(vendor: &str) -> Vec<String> {
 
 impl fmt::Display for ProviderId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}/{}", self.vendor(), self.format())
+        match self.format() {
+            Some(format) => write!(f, "{}/{format}", self.vendor()),
+            None => f.write_str(self.vendor()),
+        }
     }
 }
 
@@ -328,10 +454,18 @@ impl Serialize for ProviderId {
     }
 }
 
+/// Reads a selection as [`ProviderId::resolve`] does, and a catalog-only
+/// provider by its vendor name, so a catalog id reads back.
 impl<'de> Deserialize<'de> for ProviderId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let selection = String::deserialize(deserializer)?;
-        Self::resolve(&selection).map_err(de::Error::custom)
+        Self::resolve(&selection)
+            .or_else(|error| {
+                Self::catalog(&selection)
+                    .filter(|id| !id.is_registered())
+                    .ok_or(error)
+            })
+            .map_err(de::Error::custom)
     }
 }
 
@@ -571,18 +705,33 @@ pub enum Provider {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProviderRef {
     /// The provider.
-    provider: Provider,
+    recipe: Recipe,
     /// The provider's own model identifier. Non-empty: the string form
     /// separates the selection from the model at the first `:`, so an empty
     /// model has no spelling [`parse`](Self::parse) would read back.
     model: String,
 }
 
+/// What a [`ProviderRef`] builds from: a registered preset, never a
+/// catalog-only provider, or an explicit configuration.
+#[derive(Clone, Debug, PartialEq)]
+enum Recipe {
+    Registered(Registered),
+    Configured(ProviderConfig),
+}
+
 impl ProviderRef {
     /// A reference to a non-empty `model` on a registered selection.
-    /// Returns [`RefError::EmptyModel`] for an empty identifier.
+    /// Returns [`RefError::EmptyModel`] for an empty identifier, and
+    /// [`SelectionError::Unknown`] for a catalog-only provider, which the
+    /// registry cannot configure.
     pub fn registered(id: ProviderId, model: impl Into<String>) -> Result<Self, RefError> {
-        Self::new(Provider::Registered(id), model.into())
+        match id.0 {
+            Kind::Registered(registered) => Self::new(Recipe::Registered(registered), model.into()),
+            Kind::CatalogOnly(provider) => Err(RefError::Selection(SelectionError::Unknown {
+                vendor: provider.vendor.to_owned(),
+            })),
+        }
     }
 
     /// A reference to a non-empty `model` on an explicit configuration.
@@ -593,22 +742,24 @@ impl ProviderRef {
     /// or configure the intended endpoint before creating this reference.
     /// Returns [`RefError::EmptyModel`] for an empty identifier.
     pub fn configured(config: ProviderConfig, model: impl Into<String>) -> Result<Self, RefError> {
-        Self::new(
-            Provider::Configured(config.with_credential("")),
-            model.into(),
-        )
+        Self::new(Recipe::Configured(config.with_credential("")), model.into())
     }
 
     /// The credential-free provider recipe.
-    pub fn provider(&self) -> &Provider {
-        &self.provider
+    pub fn provider(&self) -> Provider {
+        match &self.recipe {
+            Recipe::Registered(registered) => {
+                Provider::Registered(ProviderId(Kind::Registered(*registered)))
+            }
+            Recipe::Configured(config) => Provider::Configured(config.clone()),
+        }
     }
 
-    fn new(provider: Provider, model: String) -> Result<Self, RefError> {
+    fn new(recipe: Recipe, model: String) -> Result<Self, RefError> {
         if model.is_empty() {
             return Err(RefError::EmptyModel);
         }
-        Ok(Self { provider, model })
+        Ok(Self { recipe, model })
     }
 
     /// The non-empty model identifier.
@@ -636,18 +787,18 @@ impl ProviderRef {
 
     /// The catalog selection this reference names, if its dialect is registered.
     pub fn id(&self) -> Option<ProviderId> {
-        match &self.provider {
-            Provider::Registered(id) => Some(*id),
-            Provider::Configured(config) => config.id(),
+        match &self.recipe {
+            Recipe::Registered(registered) => Some(ProviderId(Kind::Registered(*registered))),
+            Recipe::Configured(config) => config.id(),
         }
     }
 
     /// The configuration to build from, credentialed with `api_key`: the
     /// registry's preset, or the explicit configuration rehydrated.
     pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
-        match &self.provider {
-            Provider::Registered(id) => id.config(api_key),
-            Provider::Configured(config) => config.clone().with_credential(api_key),
+        match &self.recipe {
+            Recipe::Registered(registered) => registered.config(api_key),
+            Recipe::Configured(config) => config.clone().with_credential(api_key),
         }
     }
 }
@@ -660,9 +811,9 @@ impl ProviderRef {
     #[cfg(feature = "reqwest")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
     pub fn completion_model(&self) -> Result<DynModel<Completion>, EnvError> {
-        let config = match &self.provider {
-            Provider::Registered(id) => id.config_from_env()?,
-            Provider::Configured(config) => config.clone().with_credential_from_env()?,
+        let config = match &self.recipe {
+            Recipe::Registered(registered) => registered.config_from_env()?,
+            Recipe::Configured(config) => config.clone().with_credential_from_env()?,
         };
         Ok(config.completion_model(&self.model, rig_reqwest::shared()))
     }
@@ -691,9 +842,17 @@ impl std::str::FromStr for ProviderRef {
 /// This label omits hosts and options; use serialization to preserve them.
 impl fmt::Display for ProviderRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.provider {
-            Provider::Registered(id) => write!(f, "{id}:{}", self.model),
-            Provider::Configured(config) => {
+        match &self.recipe {
+            Recipe::Registered(registered) => {
+                write!(
+                    f,
+                    "{}/{}:{}",
+                    registered.vendor(),
+                    registered.format(),
+                    self.model
+                )
+            }
+            Recipe::Configured(config) => {
                 write!(f, "{}/{}:{}", config.vendor(), config.format(), self.model)
             }
         }
@@ -717,6 +876,150 @@ pub enum RefError {
     Selection(#[from] SelectionError),
 }
 
+/// What [`connect`] connects to: a catalog entry, or a reference spelled as
+/// [`Catalog::resolve`](crate::catalog::Catalog::resolve) reads one
+/// (`anthropic/claude-opus-5-5`, `deepseek:deepseek-chat`).
+#[derive(Clone, Copy, Debug)]
+pub enum ModelSelector<'a> {
+    /// A catalog entry: its provider and id.
+    Spec(&'a ModelSpec),
+    /// `vendor/model` or `vendor[/format]:model`. The first form names a
+    /// vendor served over two formats by its first registered selection.
+    Reference(&'a str),
+}
+
+impl<'a> From<&'a ModelSpec> for ModelSelector<'a> {
+    fn from(spec: &'a ModelSpec) -> Self {
+        Self::Spec(spec)
+    }
+}
+
+impl<'a> From<&'a str> for ModelSelector<'a> {
+    fn from(reference: &'a str) -> Self {
+        Self::Reference(reference)
+    }
+}
+
+impl<'a> From<&'a String> for ModelSelector<'a> {
+    fn from(reference: &'a String) -> Self {
+        Self::Reference(reference)
+    }
+}
+
+impl<'a> From<&'a ModelRef> for ModelSelector<'a> {
+    fn from(reference: &'a ModelRef) -> Self {
+        Self::Reference(reference.as_str())
+    }
+}
+
+impl ModelSelector<'_> {
+    /// The registered reference this selects. A catalog-only provider is
+    /// [`ConnectError::CatalogOnly`].
+    pub fn provider_ref(self) -> Result<ProviderRef, ConnectError> {
+        let (id, model) = match self {
+            Self::Spec(spec) => (spec.provider, spec.id.as_str()),
+            Self::Reference(reference) => {
+                let (vendor, model) =
+                    crate::catalog::split_reference(reference).ok_or_else(|| {
+                        ConnectError::Malformed {
+                            reference: reference.to_owned(),
+                        }
+                    })?;
+                if let Some(id) = ProviderId::catalog(vendor).filter(|id| !id.is_registered()) {
+                    (id, model)
+                } else if selection_grammar(reference) {
+                    return Ok(ProviderRef::parse(reference)?);
+                } else {
+                    let id = ProviderId::catalog(vendor).ok_or_else(|| {
+                        RefError::Selection(SelectionError::Unknown {
+                            vendor: vendor.to_owned(),
+                        })
+                    })?;
+                    (id, model)
+                }
+            }
+        };
+        match id.served_by() {
+            Some(served_by) => Err(ConnectError::CatalogOnly {
+                vendor: id.vendor().to_owned(),
+                served_by,
+            }),
+            None => Ok(ProviderRef::registered(id, model)?),
+        }
+    }
+}
+
+/// Whether `reference` is `vendor[/format]:model` rather than `vendor/model`.
+fn selection_grammar(reference: &str) -> bool {
+    reference.split_once(':').is_some_and(|(selection, _)| {
+        selection
+            .split_once('/')
+            .is_none_or(|(_, format)| Format::named(format).is_some())
+    })
+}
+
+/// Why [`connect`] built no model.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ConnectError {
+    /// The reference names no model.
+    #[error("`{reference}` names no model: expected `vendor/model` or `vendor[/format]:model`")]
+    Malformed {
+        /// What was given.
+        reference: String,
+    },
+    /// The provider is one only the catalog knows; its companion crate
+    /// serves its models.
+    #[error("the registry cannot connect to `{vendor}`: its models are served by {served_by}")]
+    CatalogOnly {
+        /// The provider's vendor name.
+        vendor: String,
+        /// Where its models are served from.
+        served_by: &'static str,
+    },
+    /// The reference did not resolve to a registered selection.
+    #[error(transparent)]
+    Reference(#[from] RefError),
+}
+
+/// The completion model `model` selects, credentialed with `api_key`, on
+/// the shared reqwest client: the same model
+/// [`ProviderRef::completion_model_with`] builds.
+///
+/// ```no_run
+/// use rig_core::catalog::Catalog;
+/// use rig_core::providers::registry::connect;
+///
+/// let model = connect("anthropic/claude-opus-5-5", "sk-ant-...")?;
+/// let spec = Catalog::builtin().resolve("openai/gpt-5.5").ok_or("listed")?;
+/// let other = connect(spec, "sk-...")?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+#[cfg(feature = "reqwest")]
+#[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
+pub fn connect<'a>(
+    model: impl Into<ModelSelector<'a>>,
+    api_key: impl Into<Secret>,
+) -> Result<DynModel<Completion>, ConnectError> {
+    let reference = model.into().provider_ref()?;
+    Ok(reference
+        .config(api_key)
+        .completion_model(reference.model(), rig_reqwest::shared()))
+}
+
+/// The completion model `model` selects, credentialed with `api_key`,
+/// sending through `http`.
+pub fn connect_with<'a>(
+    model: impl Into<ModelSelector<'a>>,
+    api_key: impl Into<Secret>,
+    http: impl HttpClientExt + 'static,
+) -> Result<DynModel<Completion>, ConnectError> {
+    Ok(model
+        .into()
+        .provider_ref()?
+        .completion_model_with(api_key, http))
+}
+
 /// The field names of the object form, which is also what a wrong shape is
 /// reported against.
 const REF_FIELDS: &[&str] = &["config", "model"];
@@ -725,9 +1028,9 @@ const REF_FIELDS: &[&str] = &["config", "model"];
 /// as `{config, model}` objects to preserve their hosts and options.
 impl Serialize for ProviderRef {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match &self.provider {
-            Provider::Registered(_) => serializer.collect_str(self),
-            Provider::Configured(config) => {
+        match &self.recipe {
+            Recipe::Registered(_) => serializer.collect_str(self),
+            Recipe::Configured(config) => {
                 let mut object = serializer.serialize_struct("ProviderRef", 2)?;
                 object.serialize_field("config", config)?;
                 object.serialize_field("model", &self.model)?;

@@ -1278,8 +1278,6 @@ mod precedence {
     }
 }
 
-// P3 removes this gate.
-#[cfg(any())]
 mod catalog_validation {
     //! The catalog knows which reasoning a model takes, and `validate`
     //! refuses the rest before a request is sent.

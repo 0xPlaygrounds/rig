@@ -20,7 +20,7 @@ fn every_registered_identity_round_trips_through_its_qualified_spelling() {
     let mut seen = 0;
     for id in ProviderId::all() {
         assert!(unique.insert(id), "duplicate selection: {id}");
-        assert_eq!(ProviderId::new(id.vendor(), id.format()), Some(id));
+        assert_eq!(ProviderId::new(id.vendor(), id.format().unwrap()), Some(id));
         let qualified = id.to_string();
         assert_eq!(
             ProviderId::resolve(&qualified),
@@ -42,7 +42,7 @@ fn every_registered_identity_round_trips_through_its_qualified_spelling() {
 #[test]
 fn configured_references_never_retain_a_credential() {
     for id in ProviderId::all() {
-        let config = id.config("embedded-secret");
+        let config = id.config("embedded-secret").unwrap();
         assert!(!config.is_unauthenticated());
         let reference = ProviderRef::configured(config.clone(), "model").unwrap();
         assert_eq!(
@@ -87,7 +87,7 @@ fn configured_copilot_hosts_stay_explicit_when_credentials_change() {
             "https://api.individual.githubcopilot.com",
         ),
     ] {
-        let reference = ProviderRef::configured(id.config(initial_key), "gpt-4o").unwrap();
+        let reference = ProviderRef::configured(id.config(initial_key).unwrap(), "gpt-4o").unwrap();
         let saved = serde_json::to_string(&reference).unwrap();
         let restored = serde_json::from_str::<ProviderRef>(&saved).unwrap();
         for reference in [reference, restored] {
@@ -109,12 +109,12 @@ fn configured_copilot_hosts_stay_explicit_when_credentials_change() {
 fn model_validation_applies_to_constructors_and_structured_input() {
     let id = ProviderId::resolve("deepseek").unwrap();
     assert!(ProviderRef::registered(id, "").is_err());
-    assert!(ProviderRef::configured(id.config(""), "").is_err());
-    let json = serde_json::json!({"config": id.config(""), "model": ""});
+    assert!(ProviderRef::configured(id.config("").unwrap(), "").is_err());
+    let json = serde_json::json!({"config": id.config("").unwrap(), "model": ""});
     assert!(serde_json::from_value::<ProviderRef>(json).is_err());
     for reference in [
         ProviderRef::registered(id, "namespace/model:tag").unwrap(),
-        ProviderRef::configured(id.config(""), "namespace/model:tag").unwrap(),
+        ProviderRef::configured(id.config("").unwrap(), "namespace/model:tag").unwrap(),
     ] {
         assert_eq!(reference.model(), "namespace/model:tag");
         assert_eq!(
@@ -150,7 +150,7 @@ fn configured_identity_never_mints_an_unregistered_or_custom_preset() {
     );
     let id = config.id().unwrap();
     assert_eq!(id, ProviderId::resolve("openai").unwrap());
-    let ProviderConfig::OpenAi(preset) = id.config("") else {
+    let ProviderConfig::OpenAi(preset) = id.config("").unwrap() else {
         panic!("OpenAI preset")
     };
     assert_eq!(preset.base_url, openai::wire::OPENAI.base_url);
@@ -311,7 +311,7 @@ fn shorthand_is_canonicalized_on_write() {
 #[test]
 fn configurations_round_trip_and_stay_distinct() {
     let openai = ProviderId::resolve("openai/openai").unwrap();
-    let plain = openai.config("sk-secret");
+    let plain = openai.config("sk-secret").unwrap();
     let elsewhere = match plain.clone() {
         ProviderConfig::OpenAi(provider) => {
             ProviderConfig::OpenAi(provider.with_base_url("https://gateway.invalid/v1"))
@@ -367,7 +367,7 @@ fn configurations_round_trip_and_stay_distinct() {
 #[test]
 fn a_configuration_is_never_written_as_shorthand() {
     let venice = ProviderId::resolve("venice/openai").unwrap();
-    let config = match venice.config("vk-secret") {
+    let config = match venice.config("vk-secret").unwrap() {
         ProviderConfig::OpenAi(provider) => {
             ProviderConfig::OpenAi(provider.with_base_url("https://private.invalid/api/v1"))
         }
@@ -430,7 +430,7 @@ fn bad_configuration_data_reports_what_was_wrong() {
 #[test]
 fn optional_auth_selections_are_not_described_as_requiring_a_credential() {
     let local = ProviderId::resolve("llamacpp/openai").unwrap();
-    assert_eq!(local.api_key_env(), "LLAMACPP_API_KEY");
+    assert_eq!(local.api_key_env(), Some("LLAMACPP_API_KEY"));
     assert!(
         !local.requires_credential(),
         "a local llama-server authenticates optionally"
@@ -438,7 +438,7 @@ fn optional_auth_selections_are_not_described_as_requiring_a_credential() {
     for qualified in ["openai/openai", "anthropic/anthropic", "gcp.gemini/gemini"] {
         let id = ProviderId::resolve(qualified).unwrap();
         assert!(id.requires_credential(), "{qualified} needs a credential");
-        assert!(!id.api_key_env().is_empty());
+        assert!(id.api_key_env().is_some_and(|name| !name.is_empty()));
     }
 }
 
@@ -466,7 +466,10 @@ fn equivalent_reference_and_configuration_describe_themselves_alike() {
     let transport = || transport();
     let registered = ProviderRef::parse("deepseek:deepseek-chat").unwrap();
     let configured = ProviderRef::configured(
-        ProviderId::resolve("deepseek/openai").unwrap().config(""),
+        ProviderId::resolve("deepseek/openai")
+            .unwrap()
+            .config("")
+            .unwrap(),
         "deepseek-chat",
     )
     .unwrap();
@@ -503,7 +506,7 @@ fn the_configured_instruction_placement_reaches_the_request_body() {
 
     let openai = ProviderId::resolve("openai/openai").unwrap();
     // Absent: the dialect's own placement — top-level `instructions`.
-    let default = encode(openai.config("k"));
+    let default = encode(openai.config("k").unwrap());
     assert_eq!(
         default.get("instructions").and_then(|value| value.as_str()),
         Some("be brief"),
@@ -548,7 +551,7 @@ fn credentials_never_enter_a_serialized_reference() {
     for id in ProviderId::all() {
         for reference in [
             ProviderRef::registered(id, "m").unwrap(),
-            ProviderRef::configured(id.config(SENTINEL), "m").unwrap(),
+            ProviderRef::configured(id.config(SENTINEL).unwrap(), "m").unwrap(),
         ] {
             let json = serde_json::to_string(&reference).expect("serializes");
             assert!(!json.contains(SENTINEL), "{json}");
@@ -569,7 +572,7 @@ fn credentials_never_enter_a_serialized_reference() {
 #[test]
 fn the_family_name_is_the_configuration_tag() {
     for id in ProviderId::all() {
-        let config = id.config("");
+        let config = id.config("").unwrap();
         let json = serde_json::to_value(&config).expect("a configuration serializes");
         let tag = json
             .as_object()
@@ -580,16 +583,16 @@ fn the_family_name_is_the_configuration_tag() {
             .clone();
         assert_eq!(
             tag,
-            id.format().as_str(),
+            id.format().unwrap().as_str(),
             "{id}: the family name and the configuration tag agree"
         );
         assert_eq!(
-            serde_json::to_string(&id.format()).unwrap(),
+            serde_json::to_string(&id.format().unwrap()).unwrap(),
             format!("\"{tag}\"")
         );
         assert_eq!(
             serde_json::from_str::<Format>(&format!("\"{tag}\"")).unwrap(),
-            id.format()
+            id.format().unwrap()
         );
     }
 }
@@ -602,6 +605,7 @@ fn a_configured_base_url_round_trips_through_serialization() {
         let config = ProviderId::resolve(selection)
             .unwrap()
             .config("sk-secret")
+            .unwrap()
             .with_base_url(HOST);
         let json = serde_json::to_string(&config).expect("a configuration serializes");
         assert!(json.contains(HOST), "{selection}: {json}");
@@ -620,14 +624,14 @@ fn both_doors_of_a_dual_format_vendor_reach_their_own_endpoint() {
     assert_eq!(chat.vendor(), messages.vendor());
     assert_ne!(chat, messages);
 
-    match chat.config("") {
+    match chat.config("").unwrap() {
         ProviderConfig::OpenAi(provider) => {
             assert_eq!(provider.base_url, "https://api.z.ai/api/paas/v4");
             assert_eq!(provider.dialect.name, "zai");
         }
         other => panic!("zai/openai is an OpenAI configuration: {other:?}"),
     }
-    match messages.config("") {
+    match messages.config("").unwrap() {
         ProviderConfig::Anthropic(provider) => {
             assert_eq!(provider.base_url, "https://api.z.ai/api/anthropic");
             assert_eq!(provider.dialect.name, "zai");
@@ -646,4 +650,72 @@ fn ids_of_different_vendors_differ_in_one_format() {
     let venice = ProviderId::resolve("venice/openai").unwrap();
     assert_eq!(openai.format(), venice.format());
     assert_ne!(openai, venice);
+}
+
+/// `connect` takes a catalog entry or either reference grammar to the model
+/// `ProviderRef` builds, and names the companion crate of a catalog-only
+/// provider instead of building one.
+#[test]
+fn connect_selects_by_spec_or_reference() {
+    let reference = |selector: ModelSelector<'_>| selector.provider_ref().map(|r| r.to_string());
+    assert_eq!(
+        reference("anthropic/claude-opus-5-5".into()),
+        Ok("anthropic/anthropic:claude-opus-5-5".to_owned())
+    );
+    assert_eq!(
+        reference("openrouter/anthropic/claude-sonnet-4.5".into()),
+        Ok("openrouter/openai:anthropic/claude-sonnet-4.5".to_owned())
+    );
+    assert_eq!(
+        reference("ollama/qwen3:4b".into()),
+        Ok("ollama/openai:qwen3:4b".to_owned()),
+        "a `:` inside the model id"
+    );
+    assert_eq!(
+        reference("zai/anthropic:glm-5".into()),
+        Ok("zai/anthropic:glm-5".to_owned()),
+        "the selection grammar picks the format"
+    );
+    assert_eq!(
+        reference("zai/glm-5".into()),
+        Ok("zai/openai:glm-5".to_owned()),
+        "`vendor/model` takes the vendor's first registered selection"
+    );
+    let spec = crate::catalog::Catalog::builtin()
+        .resolve("openai/gpt-5.5")
+        .expect("listed");
+    assert_eq!(
+        reference(spec.into()),
+        Ok("openai/openai:gpt-5.5".to_owned())
+    );
+
+    let bedrock = crate::catalog::Catalog::builtin()
+        .resolve("aws_bedrock/us.anthropic.claude-sonnet-5")
+        .expect("listed");
+    for selector in [
+        ModelSelector::from(bedrock),
+        "aws_bedrock/us.anthropic.claude-sonnet-5".into(),
+    ] {
+        let error = selector.provider_ref().expect_err("catalog-only");
+        assert!(matches!(error, ConnectError::CatalogOnly { .. }), "{error}");
+        assert!(error.to_string().contains("rig-bedrock"), "{error}");
+    }
+    assert!(matches!(
+        reference("no-model".into()),
+        Err(ConnectError::Malformed { .. })
+    ));
+    assert!(matches!(
+        reference("nosuchvendor/model".into()),
+        Err(ConnectError::Reference(RefError::Selection(
+            SelectionError::Unknown { .. }
+        )))
+    ));
+    assert!(
+        ProviderRef::registered(bedrock.provider, "m").is_err(),
+        "a reference never names a catalog-only provider"
+    );
+
+    let model = connect_with("openai/gpt-5.5", "sk-test", RecordingHttpClient::new("{}"))
+        .expect("connects");
+    assert_eq!(model.id(), Some("gpt-5.5"));
 }

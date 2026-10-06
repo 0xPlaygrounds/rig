@@ -5,6 +5,7 @@
 //! test in its crate.
 
 mod agent_run_stepper;
+mod catalog_constants;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;

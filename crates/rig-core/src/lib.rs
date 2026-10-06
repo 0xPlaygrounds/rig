@@ -32,6 +32,7 @@ extern crate self as rig;
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;
+pub mod catalog;
 pub mod client;
 pub mod completion;
 pub mod driver;
