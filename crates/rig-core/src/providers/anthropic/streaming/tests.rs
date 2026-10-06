@@ -1311,3 +1311,44 @@ fn a_citation_without_its_source_stays_native() {
         );
     }
 }
+
+/// A citation without a quoted passage or a title still resolves to its
+/// source, with neither set, whether it opens with its text block or
+/// streams in after it.
+#[test]
+fn a_citation_without_its_passage_or_title_still_cites_its_source() {
+    let citation = json!({"type": "web_search_result_location",
+        "url": "https://example.com/rust"});
+    let expected = vec![(
+        "Rust 2.0 shipped.".to_owned(),
+        vec![(
+            None,
+            vec![Source::new(SourceLocation::Url {
+                url: "https://example.com/rust".to_owned(),
+            })],
+        )],
+    )];
+    let opened = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": "", "citations": [citation]}),
+            &[json!({"type": "text_delta", "text": "Rust 2.0 shipped."})],
+        )],
+        "end_turn",
+    );
+    let delta = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "citations_delta", "citation": citation}),
+                json!({"type": "text_delta", "text": "Rust 2.0 shipped."}),
+            ],
+        )],
+        "end_turn",
+    );
+    for frames in [opened, delta] {
+        let response = streamed(&frames).expect("the stream folds");
+        assert_eq!(citations_of(&response), expected);
+    }
+}

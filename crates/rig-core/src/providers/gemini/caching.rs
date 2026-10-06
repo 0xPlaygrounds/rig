@@ -166,8 +166,16 @@ impl AutoCache {
     /// `model` from the built-in catalog's pricing. A model the catalog
     /// does not price keeps the default ratio.
     pub fn for_model(model: &str) -> Self {
-        let pricing = crate::catalog::lookup(super::PROVIDER_NAME, model)
-            .and_then(|spec| spec.pricing.as_ref());
+        Self::priced(
+            crate::catalog::lookup(super::PROVIDER_NAME, model)
+                .and_then(|spec| spec.pricing.as_ref()),
+        )
+    }
+
+    /// The default policy with the cached-read ratio of `pricing`. Without
+    /// a cached-read price, with a negative one, or with no positive input
+    /// price to divide by, the default ratio stays.
+    fn priced(pricing: Option<&crate::catalog::Pricing>) -> Self {
         let ratio = pricing
             .and_then(|pricing| Some((pricing.cache_read?, pricing.input)))
             .filter(|(read, input)| *read >= 0.0 && *input > 0.0)
