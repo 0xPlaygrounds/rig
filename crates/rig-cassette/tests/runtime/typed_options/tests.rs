@@ -11,6 +11,7 @@ mod harness_switch {
     use rig::bedrock::completion::{ANTHROPIC_CLAUDE_SONNET_5, Converse};
     use rig::completion::{
         CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ServiceTier,
+        UnsupportedOption,
     };
     use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
     use rig::providers::anthropic::wire::AnthropicConfig;
@@ -20,7 +21,7 @@ mod harness_switch {
     use rig::providers::openai::responses_api::wire::Responses;
     use rig::providers::openai::wire::{Chat, OPENROUTER, OpenAIConfig};
     use rig::test_utils::TraceCapture;
-    use rig_core::error::EncodeError;
+    use rig_core::error::ProviderError;
     use rig_core::operation::Completion;
     use rig_core::wire::{Body, Encoded, Mode, Operation, Wire};
     use rig_test_support::cassette_models::AnthropicModels;
@@ -29,20 +30,29 @@ mod harness_switch {
     pub(super) const KEY: &str = "typed-options";
     const OPENROUTER_MODEL: &str = "anthropic/claude-sonnet-4.5";
 
-    /// `request` as `wire` prepares it, the way the driver does before encoding.
+    /// `request` as `wire` prepares it, the way the driver does before
+    /// encoding. A refused option fails here, before any wire encodes.
     pub(super) fn prepared<W: Wire<Op = Completion>>(
         wire: &W,
         request: CompletionRequest,
-    ) -> CompletionRequest {
-        Completion::prepare(request, &wire.describe()).expect("the request prepares")
+    ) -> Result<CompletionRequest, ProviderError> {
+        Completion::prepare(request, &wire.describe())
+    }
+
+    /// The option an error refuses, if it is a refusal.
+    pub(super) fn unsupported(error: &ProviderError) -> Option<&UnsupportedOption> {
+        match error {
+            ProviderError::UnsupportedOption(option) => Some(option),
+            _ => None,
+        }
     }
 
     /// The JSON body `wire` sends for `request`.
     pub(super) fn encode<W: Wire<Op = Completion, Payload = Encoded>>(
         wire: &W,
         request: CompletionRequest,
-    ) -> Result<Value, EncodeError> {
-        let encoded = wire.encode(prepared(wire, request), Mode::Unary)?;
+    ) -> Result<Value, ProviderError> {
+        let encoded = wire.encode(prepared(wire, request)?, Mode::Unary)?;
         let Body::Bytes(bytes) = encoded.request.body() else {
             panic!("a completion body is JSON, not multipart");
         };
@@ -96,11 +106,15 @@ mod harness_switch {
         Chat::new(OpenAIConfig::with_key(&OPENROUTER, KEY), OPENROUTER_MODEL)
     }
 
-    pub(super) fn bedrock(request: CompletionRequest) -> Result<Value, EncodeError> {
-        let wire = Converse::new(ANTHROPIC_CLAUDE_SONNET_5);
-        let request = prepared(&wire, request);
-        wire.encode(request, Mode::Unary)
-            .map(|request| serde_json::to_value(&request.body).expect("a FinalBody serializes"))
+    pub(super) fn bedrock_wire() -> Converse {
+        Converse::new(ANTHROPIC_CLAUDE_SONNET_5)
+    }
+
+    pub(super) fn bedrock(request: CompletionRequest) -> Result<Value, ProviderError> {
+        let wire = bedrock_wire();
+        let request = prepared(&wire, request)?;
+        let encoded = wire.encode(request, Mode::Unary)?;
+        Ok(serde_json::to_value(&encoded.body).expect("a FinalBody serializes"))
     }
 
     #[test]
@@ -108,7 +122,7 @@ mod harness_switch {
         let capture = TraceCapture::default();
         let (anthropic, responses, gemini, bedrock, openrouter) =
             tracing::subscriber::with_default(capture.subscriber(), || {
-                let encode_one = |result: Result<Value, EncodeError>| {
+                let encode_one = |result: Result<Value, ProviderError>| {
                     result.expect("the request encodes under Ignore")
                 };
                 (
@@ -191,9 +205,7 @@ mod harness_switch {
     fn long_cache_on_gemini_is_an_error_under_the_default_policy() {
         let error = encode(&gemini(), request(OnUnsupported::Error))
             .expect_err("Gemini has no request field for a long cache");
-        let unsupported = error
-            .unsupported_option()
-            .expect("the error names the unsupported option");
+        let unsupported = unsupported(&error).expect("the error names the unsupported option");
         assert_eq!(unsupported.option, "cache");
         assert_eq!(unsupported.provider, "gcp.gemini");
         assert_eq!(unsupported.model, GEMINI_3_FLASH_PREVIEW);
@@ -215,7 +227,7 @@ mod no_silent_drop {
     use rig::providers::openai::wire::{Chat, DEEPSEEK, OpenAIConfig};
     use rig::test_utils::TraceCapture;
 
-    use super::harness_switch::{KEY, encode};
+    use super::harness_switch::{KEY, bedrock_wire, encode, prepared, unsupported};
 
     fn request(cache: CacheRetention, policy: OnUnsupported) -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
@@ -258,9 +270,7 @@ mod no_silent_drop {
         ];
         for (result, provider, model) in refusals {
             let error = result.expect_err("the dialect cannot honour the cache");
-            let unsupported = error
-                .unsupported_option()
-                .expect("the error names the unsupported option");
+            let unsupported = unsupported(&error).expect("the error names the unsupported option");
             assert_eq!(unsupported.option, "cache");
             assert_eq!(unsupported.provider, provider);
             assert_eq!(unsupported.model, model);
@@ -294,6 +304,37 @@ mod no_silent_drop {
             .collect();
         assert_eq!(skipped.len(), 1, "{warnings:?}");
     }
+
+    /// Bedrock Converse builds an SDK request, not request bytes, so only
+    /// its required `ReplayTarget::map_options` and the driver's `prepare`
+    /// stand between a set option and a silent drop. `prepare` refuses the
+    /// option before the wire's `encode` runs.
+    #[test]
+    fn the_driver_refuses_an_option_before_any_wire_encodes() {
+        let seed = |policy| {
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(16)
+                .options(GenerationOptions::default().seed(7).on_unsupported(policy))
+        };
+        let error = prepared(&bedrock_wire(), seed(OnUnsupported::Error))
+            .expect_err("Bedrock Converse has no seed");
+        let refused = unsupported(&error).expect("the error names the unsupported option");
+        assert_eq!(refused.option, "seed");
+        assert_eq!(refused.provider, "aws_bedrock");
+
+        let capture = TraceCapture::default();
+        let request = tracing::subscriber::with_default(capture.subscriber(), || {
+            prepared(&bedrock_wire(), seed(OnUnsupported::Ignore))
+        })
+        .expect("Ignore prepares the rest of the request");
+        assert_eq!(request.options.seed, None, "an ignored option is cleared");
+        let warnings = capture.warnings();
+        let skipped = warnings
+            .iter()
+            .filter(|warning| warning.contains("option=seed"))
+            .count();
+        assert_eq!(skipped, 1, "{warnings:?}");
+    }
 }
 
 // P2 removes this gate.
@@ -312,13 +353,15 @@ mod option_matrix {
         CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ServiceTier,
         Verbosity,
     };
-    use rig_core::error::EncodeError;
+    use rig_core::error::ProviderError;
     use serde_json::{Value, json};
 
-    use super::harness_switch::{anthropic, bedrock, encode, gemini, openai_responses, openrouter};
+    use super::harness_switch::{
+        anthropic, bedrock, encode, gemini, openai_responses, openrouter, unsupported,
+    };
     use super::no_silent_drop::{cohere, deepseek};
 
-    type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, EncodeError>>;
+    type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, ProviderError>>;
 
     /// What one cell of section 6 says the wire does.
     enum Cell {
@@ -521,7 +564,7 @@ mod option_matrix {
                     Omit => baseline.clone(),
                     Refuse => {
                         let error = result.expect_err(&format!("{wire}: `{field}` is refused"));
-                        let unsupported = error.unsupported_option().unwrap_or_else(|| {
+                        let unsupported = unsupported(&error).unwrap_or_else(|| {
                             panic!("{wire}: `{field}` failed without naming an option: {error}")
                         });
                         assert_eq!(unsupported.option, field, "{wire}");
@@ -578,13 +621,26 @@ mod precedence {
     //! `additional_params.tools` join rig's own tools rather than replacing
     //! them, a `null` in `additional_params` is a value that is sent, and
     //! the writes a wire makes after the merge read the merged body, so a
-    //! raw key still drives them.
+    //! raw key still drives them. Two wires change, as section 12.0 states:
+    //! OpenAI Responses now sends a raw `null`, and Gemini Interactions
+    //! refuses a raw `tools` that is not an array. The ChatGPT backend still
+    //! gets no typed field it does not accept.
 
-    use rig::completion::{CompletionRequest, GenerationOptions, ToolDefinition};
+    use rig::completion::{
+        CompletionRequest, GenerationOptions, ServiceTier, ToolDefinition, Verbosity,
+    };
     use rig::message::{ToolChoice, ToolName};
+    use rig::providers::chatgpt;
+    use rig::providers::gemini::GeminiConfig;
+    use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+    use rig::providers::gemini::interactions_api::Interactions;
+    use rig::providers::openai::responses_api::wire::Responses;
+    use rig::providers::openai::wire::OpenAIConfig;
     use serde_json::{Value, json};
 
-    use super::harness_switch::{anthropic, encode, openai_responses, openrouter};
+    use super::harness_switch::{
+        KEY, anthropic, encode, openai_responses, openrouter, unsupported,
+    };
     use super::no_silent_drop::deepseek;
 
     fn request() -> CompletionRequest {
@@ -652,6 +708,81 @@ mod precedence {
         .expect("the request encodes");
         assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
         assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
+
+        // Responses skips a raw `null` today; it is now sent as on Chat.
+        let sent = encode(
+            &openai_responses(),
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(16)
+                .additional_params(json!({"user": null})),
+        )
+        .expect("the request encodes");
+        assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
+    }
+
+    #[test]
+    fn interactions_refuses_raw_tools_that_are_not_an_array() {
+        let wire = Interactions::new(GeminiConfig::new(KEY), GEMINI_3_FLASH_PREVIEW);
+        let error = encode(
+            &wire,
+            CompletionRequest::new("Reply with the single word: pong")
+                .additional_params(json!({"tools": {"type": "google_search"}})),
+        )
+        .expect_err("a raw tools object is not appended");
+        assert!(unsupported(&error).is_none(), "not an option: {error}");
+    }
+
+    #[test]
+    fn codex_still_omits_the_typed_fields_the_backend_refuses() {
+        let wire = Responses::new(
+            OpenAIConfig::with_key(&chatgpt::DIALECT, KEY),
+            chatgpt::GPT_5_4,
+        );
+        let schema = schemars::json_schema!({
+            "type": "object",
+            "properties": {"word": {"type": "string"}},
+        });
+        let sent = encode(
+            &wire,
+            CompletionRequest::new("Reply with the single word: pong")
+                .max_tokens(6000)
+                .temperature(0.5)
+                .output_schema(schema)
+                .options(
+                    GenerationOptions::default()
+                        .parallel_tool_calls(false)
+                        .service_tier(ServiceTier::Flex)
+                        .verbosity(Verbosity::Low),
+                )
+                .additional_params(json!({"metadata": {"run": "typed-options"}})),
+        )
+        .expect("the request encodes");
+
+        // Today's strip, kept for typed fields: the recorded ChatGPT bodies
+        // do not move.
+        for key in ["max_output_tokens", "temperature"] {
+            assert!(sent.get(key).is_none(), "{key} reached ChatGPT: {sent}");
+        }
+        assert!(sent.pointer("/text/format").is_none(), "{sent}");
+        assert_eq!(sent.get("store"), Some(&json!(false)), "{sent}");
+
+        // Mapped options and raw keys are no longer stripped.
+        assert_eq!(
+            sent.get("parallel_tool_calls"),
+            Some(&json!(false)),
+            "{sent}"
+        );
+        assert_eq!(sent.get("service_tier"), Some(&json!("flex")), "{sent}");
+        assert_eq!(
+            sent.pointer("/text/verbosity"),
+            Some(&json!("low")),
+            "{sent}"
+        );
+        assert_eq!(
+            sent.get("metadata"),
+            Some(&json!({"run": "typed-options"})),
+            "{sent}"
+        );
     }
 
     #[test]
