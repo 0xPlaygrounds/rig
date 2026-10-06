@@ -159,3 +159,26 @@ fn options_take_the_generate_content_cells_with_vertex_tiers() {
         Mapping::Unsupported(_)
     ));
 }
+
+/// A raw `generationConfig: null` is absent, as it was before the merge:
+/// the typed fields and the mapped thinking still reach the SDK request.
+#[test]
+fn a_raw_null_generation_config_keeps_the_typed_fields() {
+    use rig_core::completion::{CompletionRequest, Effort, GenerationOptions};
+    use rig_core::wire::{Mode, Wire as _};
+
+    let request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .max_tokens(64)
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .additional_params(serde_json::json!({"generationConfig": null}));
+    let encoded = GenerateContent::new("gemini-3-flash-preview")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.temperature, Some(0.2));
+    assert_eq!(config.max_output_tokens, Some(64));
+    assert!(config.thinking_config.is_some());
+}

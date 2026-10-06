@@ -390,3 +390,23 @@ fn options_take_the_cells_the_proto_declares() {
         Mapping::Unsupported(_)
     ));
 }
+
+/// A raw `generationConfig: null` is absent, as it was before the merge:
+/// the typed fields still reach the gRPC request.
+#[test]
+fn a_raw_null_generation_config_keeps_the_typed_fields() {
+    use rig_core::wire::{Mode, Wire as _};
+
+    let request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .max_tokens(64)
+        .additional_params(serde_json::json!({"generationConfig": null}));
+    let encoded = GenerateContent::new("gemini-2.5-flash")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.temperature, Some(0.2));
+    assert_eq!(config.max_output_tokens, Some(64));
+}

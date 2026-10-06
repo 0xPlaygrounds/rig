@@ -1157,6 +1157,37 @@ fn a_glob_import_of_body_resolves() {
     ));
 }
 
+/// `Self` in an `impl` of `Body`, a qualified `<Body>::X` and a macro that
+/// splices a variant after `Body` all reach `Body::Bytes` without naming it.
+#[test]
+fn a_body_reached_without_its_variant_path_fails() {
+    for source in [
+        "impl crate::wire::Body {
+             pub(crate) fn raw(bytes: Vec<u8>) -> Self { Self::Bytes(bytes) }
+         }",
+        "use crate::wire::Body;
+         impl From<Vec<u8>> for Body { fn from(bytes: Vec<u8>) -> Self { Self::Bytes(bytes) } }",
+        "fn encode(bytes: Vec<u8>) -> crate::wire::Body { <crate::wire::Body>::Bytes(bytes) }",
+        "use crate::wire::{Body as B};
+         fn encode(form: Form) -> B { <B>::Multipart(form) }",
+        "macro_rules! b { ($v:ident, $x:expr) => { crate::wire::Body::$v($x) } }
+         fn encode(bytes: Vec<u8>) -> crate::wire::Body { b!(Bytes, bytes) }",
+        "macro_rules! b { ($t:path, $x:expr) => { $t($x) } }
+         fn encode(bytes: Vec<u8>) { b!(crate::wire::Body, bytes); }",
+    ] {
+        assert!(fails_precedence(source), "{source}");
+    }
+    // A macro that names `Body::empty()` sends no body, and another type's
+    // `impl` is not `Body`'s.
+    for source in [
+        "fn send(builder: Builder) { builder.body(crate::wire::Body::empty()); }",
+        "macro_rules! on_route { ($c:expr) => { match $c { Self::Chat(w) => w } } }",
+        "impl Payload { fn bytes(&self) -> usize { 0 } }",
+    ] {
+        assert!(!fails_precedence(source), "{source}");
+    }
+}
+
 #[test]
 fn test_items_are_not_guarded() {
     assert!(

@@ -259,7 +259,19 @@ impl crate::wire::Wire for InteractionResume {
         let params = crate::completion::options::request_params(
             self,
             &request,
-            |_| Ok(Map::new()),
+            // `request_params` takes `additional_params.tools` (provider
+            // tools included) out of the raw layer for the base to append,
+            // so the base refuses them here or they would vanish.
+            |input| {
+                if input.raw_tools()?.is_empty() {
+                    Ok(Map::new())
+                } else {
+                    Err(EncodeError::request(
+                        "a resumed interaction takes no `additional_params.tools` or provider \
+                         tools: it is read, not created",
+                    ))
+                }
+            },
             crate::completion::options::RawAt::Top,
             &[],
         )?;

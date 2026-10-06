@@ -1,8 +1,8 @@
 use serde_json::{Value, json};
 
 use crate::completion::{
-    CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, Reasoning,
-    ServiceTier,
+    CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported,
+    ProviderToolDefinition, Reasoning, ServiceTier,
 };
 use crate::error::ProviderError;
 use crate::operation::Completion;
@@ -107,6 +107,33 @@ fn a_raw_generation_config_beats_the_typed_fields_and_keeps_the_rest() {
     );
 }
 
+/// A raw `generationConfig: null` is absent, as it was before the merge:
+/// the typed fields and the mapped thinking are still sent.
+#[test]
+fn a_raw_null_generation_config_keeps_the_typed_fields() {
+    let schema: schemars::Schema =
+        serde_json::from_value(json!({"type": "object"})).expect("a schema");
+    let body = sent(
+        &rest("gemini-2.5-flash"),
+        with(GenerationOptions::default().reasoning(Reasoning::Off))
+            .temperature(0.2)
+            .max_tokens(64)
+            .output_schema(schema)
+            .additional_params(json!({"generationConfig": null})),
+    )
+    .expect("encodes");
+    assert_eq!(
+        body["generationConfig"],
+        json!({
+            "responseMimeType": "application/json",
+            "responseJsonSchema": {"type": "object"},
+            "temperature": 0.2,
+            "maxOutputTokens": 64,
+            "thinkingConfig": {"thinkingBudget": 0},
+        })
+    );
+}
+
 #[test]
 fn tiers_follow_the_route() {
     let body = sent(
@@ -182,4 +209,16 @@ fn a_resumed_interaction_refuses_options_and_raw_params() {
     )
     .expect_err("raw parameters have nothing to reach");
     assert!(error.to_string().contains("additional_params"), "{error}");
+    // Raw tools leave the raw layer for the base to append; the resume base
+    // refuses them rather than drop them.
+    for request in [
+        CompletionRequest::new("hi").additional_params(json!({"tools": [{"googleSearch": {}}]})),
+        CompletionRequest::new("hi").provider_tool(ProviderToolDefinition::new("googleSearch")),
+    ] {
+        let error = sent(&resume, request).expect_err("raw tools have nothing to reach");
+        assert!(
+            error.to_string().contains("additional_params.tools"),
+            "{error}"
+        );
+    }
 }

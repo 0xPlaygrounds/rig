@@ -7,7 +7,9 @@
 //! `request_params`: no wire file reads `additional_params` as a field or
 //! through a pattern, builds or opens request bytes but from
 //! `FinalBody::into_body` (or sends none: `Body::empty()`, a WebSocket
-//! handshake's `NoBody`), or calls `.body_mut()`. Both run over the
+//! handshake's `NoBody`), names `Body` where a variant can follow unseen (an
+//! `impl` on it, `<Body>::..`, a macro's tokens), or calls `.body_mut()`.
+//! Both run over the
 //! completion-wire files listed in [`COMPLETION_WIRE_FILES`], and a file
 //! holding a completion `Wire` or a `ReplayTarget` impl that the list misses
 //! is a finding too. Files are parsed with `syn`, and `use` trees (grouped,
@@ -360,6 +362,11 @@ impl Guard<'_> {
             || self.segments_end_with(segments, &["Body", "Multipart"])
     }
 
+    /// Whether `ty` is a path that resolves to `Body` itself.
+    fn is_body(&self, ty: &syn::Type) -> bool {
+        matches!(ty, syn::Type::Path(path) if self.ends_with(&path.path, &["Body"]))
+    }
+
     /// Reports a field `additional_params` read through `receiver`, unless
     /// the allowlist names it for this file.
     fn check_additional_params(&mut self, receiver: &str, span: proc_macro2::Span) {
@@ -567,17 +574,50 @@ impl<'ast> Visit<'ast> for Guard<'_> {
         visit::visit_path(self, path);
     }
 
+    // `Self::Bytes` inside an `impl` of `Body` is a constructor the path
+    // check cannot resolve, so no listed file implements anything on `Body`.
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        if self.is_body(&item.self_ty) {
+            self.report(
+                "options-precedence",
+                item.self_ty.span(),
+                "implements on Body, whose `Self::Bytes` builds a body without FinalBody::into_body",
+            );
+        }
+        visit::visit_item_impl(self, item);
+    }
+
+    // `<Body>::Bytes` names its type in the qualified self, not the path.
+    fn visit_qself(&mut self, qself: &'ast syn::QSelf) {
+        if self.is_body(&qself.ty) {
+            self.report(
+                "options-precedence",
+                qself.ty.span(),
+                "names Body through a qualified path, which may build a body without \
+                 FinalBody::into_body",
+            );
+        }
+        visit::visit_qself(self, qself);
+    }
+
     // A macro's tokens are not parsed: every `a::b::C` run in them is
-    // matched as a path.
+    // matched as a path. A run that ends at `Body` itself is rejected too,
+    // since a macro can splice a variant after it (`Body::$variant`).
     fn visit_macro(&mut self, mac: &'ast syn::Macro) {
         let mut paths = Vec::new();
         token_paths(mac.tokens.clone(), &mut Vec::new(), &mut paths);
         for (segments, span) in paths {
-            if self.names_a_body_constructor(segments) {
+            if self.names_a_body_constructor(segments.clone()) {
                 self.report(
                     "options-precedence",
                     span,
                     "builds or opens a request body without FinalBody::into_body",
+                );
+            } else if self.segments_end_with(segments, &["Body"]) {
+                self.report(
+                    "options-precedence",
+                    span,
+                    "names Body in a macro, which may build a body without FinalBody::into_body",
                 );
             }
         }

@@ -117,7 +117,9 @@ pub enum Rewrite {
     /// The Chat Completions dialect's own rewrite.
     ChatDialect(BodyRewrite),
     /// Gemini `cachedContent`: each raw `cachedContent`/`cached_content`
-    /// handle, then the wire's own, checked against the body.
+    /// handle, then the wire's own, checked against the body. The
+    /// GenerateContent wires that name it also read a raw
+    /// `generationConfig: null` as absent, as they always have.
     GeminiCachedContent(Option<String>),
 }
 
@@ -479,6 +481,11 @@ pub fn request_params(
                     )));
                 }
             }
+        }
+        // GenerateContent has always read a raw `generationConfig: null` as
+        // absent, so the typed and mapped fields under it are still sent.
+        if raw.get("generationConfig").is_some_and(Value::is_null) {
+            raw.shift_remove("generationConfig");
         }
     }
     let raw = placed(raw, raw_at);
