@@ -522,3 +522,88 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
     }
     assert!(own.requests().is_empty(), "the refused call was not sent");
 }
+
+/// Under `OnUnsupported::Ignore` a cache retention the model refuses is
+/// dropped as a refused effort is; under `Error` it fails the run. A route
+/// registered from a model value that names no model id is not checked, and
+/// a route registered as a handler is found by its label read as a catalog
+/// reference.
+#[tokio::test]
+async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
+    use rig_core::catalog::Catalog;
+    use rig_core::completion::{CacheRetention, Effort, GenerationOptions, OnUnsupported};
+    use rig_core::error::ProviderError;
+    use rig_core::serve::adapters::ModelAdapter;
+
+    let mut short_only = Catalog::builtin()
+        .resolve("anthropic/claude-haiku-4-5")
+        .expect("listed")
+        .clone();
+    short_only.caching.retention = vec![CacheRetention::Short];
+    let own = MockCompletionModel::from_turns([MockTurn::text("one")]);
+    let unnamed = MockCompletionModel::from_turns([MockTurn::text("unnamed")]);
+    let handled = MockCompletionModel::from_turns([MockTurn::text("unused")]);
+    let haiku = "anthropic/claude-haiku-4-5";
+    let agent = AgentBuilder::new(own.clone())
+        .model_spec(short_only)
+        .model_route("unnamed", unnamed.clone())
+        .model_route_handler(haiku, ModelAdapter::new(haiku, handled.clone()))
+        .build();
+    let refused = |error: &crate::completion::PromptError, option: &str| {
+        matches!(
+            error,
+            crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(refused))
+                if refused.option == option
+        )
+    };
+
+    agent
+        .prompt("go")
+        .options(
+            GenerationOptions::default()
+                .cache(CacheRetention::Long)
+                .on_unsupported(OnUnsupported::Ignore),
+        )
+        .run()
+        .await
+        .expect("ignored, with a warning");
+    let requests = own.requests();
+    let [ignored] = requests.as_slice() else {
+        panic!("one request: {requests:?}");
+    };
+    assert_eq!(
+        ignored.options.cache, None,
+        "the refused retention was dropped"
+    );
+
+    let error = agent
+        .prompt("go")
+        .options(GenerationOptions::default().cache(CacheRetention::Long))
+        .run()
+        .await
+        .expect_err("refused");
+    assert!(refused(&error, "cache"), "{error:?}");
+
+    agent
+        .prompt("go")
+        .using_model("unnamed")
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .run()
+        .await
+        .expect("a model value with no model id is not checked");
+    assert_eq!(unnamed.requests().len(), 1);
+
+    let error = agent
+        .prompt("go")
+        .using_model(haiku)
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .run()
+        .await
+        .expect_err("the label names Haiku 4.5, which takes no effort level");
+    assert!(refused(&error, "reasoning"), "{error:?}");
+    assert!(
+        handled.requests().is_empty(),
+        "the refused call was not sent"
+    );
+    assert_eq!(own.requests().len(), 1, "the refused run sent nothing");
+}

@@ -719,3 +719,105 @@ fn connect_selects_by_spec_or_reference() {
         .expect("connects");
     assert_eq!(model.id(), Some("gpt-5.5"));
 }
+
+/// A catalog-only id has no credential variable of the registry's, says
+/// whether its companion crate needs a credential, and reads back from its
+/// serialized vendor name; a registered id serializes as its qualified
+/// selection.
+#[test]
+fn a_catalog_only_id_describes_itself_and_round_trips() {
+    for (vendor, credential) in [("aws_bedrock", true), ("candle", false)] {
+        let id = ProviderId::catalog(vendor).expect("known");
+        assert!(!id.is_registered(), "{vendor}");
+        assert_eq!(id.format(), None, "{vendor}");
+        assert_eq!(id.api_key_env(), None, "{vendor}");
+        assert!(id.config("sk-test").is_none(), "{vendor}");
+        assert_eq!(id.requires_credential(), credential, "{vendor}");
+        let json = serde_json::to_string(&id).expect("serializes");
+        assert_eq!(json, format!("\"{vendor}\""));
+        assert_eq!(serde_json::from_str::<ProviderId>(&json).unwrap(), id);
+    }
+    let openai = ProviderId::catalog("openai").expect("registered");
+    assert!(openai.is_registered());
+    assert_eq!(serde_json::to_string(&openai).unwrap(), "\"openai/openai\"");
+    assert!(ProviderId::catalog("nosuchvendor").is_none());
+    assert!(serde_json::from_str::<ProviderId>("\"nosuchvendor\"").is_err());
+}
+
+/// References on two registered vendors differ, as their ids do.
+#[test]
+fn registered_references_of_different_vendors_differ() {
+    let openai = ProviderRef::parse("openai/openai:gpt-5.5").unwrap();
+    let venice = ProviderRef::parse("venice/openai:gpt-5.5").unwrap();
+    assert_ne!(openai, venice);
+    assert_eq!(openai, "openai/openai:gpt-5.5".parse().unwrap());
+}
+
+/// The object form names each field once.
+#[test]
+fn a_repeated_reference_field_is_refused() {
+    let reference = ProviderRef::configured(
+        ProviderId::resolve("openai/openai")
+            .unwrap()
+            .config("")
+            .unwrap(),
+        "gpt-5.5",
+    )
+    .unwrap();
+    let json = serde_json::to_value(&reference).unwrap();
+    let config = json["config"].to_string();
+    for (repeated, text) in [
+        (
+            "config",
+            format!(r#"{{"config":{config},"config":{config},"model":"gpt-5.5"}}"#),
+        ),
+        (
+            "model",
+            format!(r#"{{"config":{config},"model":"gpt-5.5","model":"gpt-5.5"}}"#),
+        ),
+    ] {
+        let error = serde_json::from_str::<ProviderRef>(&text).expect_err("duplicate");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("duplicate field `{repeated}`")),
+            "{error}"
+        );
+    }
+}
+
+/// `connect` and `connect_with` take every selector spelling: a catalog
+/// entry, a `&str`, a `&String` and a `ModelRef`; a catalog-only provider is
+/// refused before any model is built.
+#[test]
+fn connect_takes_every_selector_spelling() {
+    let spec = crate::catalog::Catalog::builtin()
+        .resolve("openai/gpt-5.5")
+        .expect("listed");
+    let owned = "openai/gpt-5.5".to_owned();
+    let label = ModelRef::new("openai/gpt-5.5");
+    for selector in [
+        ModelSelector::from(spec),
+        ModelSelector::from("openai/gpt-5.5"),
+        ModelSelector::from(&owned),
+        ModelSelector::from(&label),
+    ] {
+        let model = connect(selector, "sk-test").expect("connects");
+        assert_eq!(model.id(), Some("gpt-5.5"));
+        let model =
+            connect_with(selector, "sk-test", RecordingHttpClient::new("{}")).expect("connects");
+        assert_eq!(model.id(), Some("gpt-5.5"));
+    }
+    let error = connect("candle/qwen3", "").expect_err("catalog-only");
+    assert_eq!(
+        error,
+        ConnectError::CatalogOnly {
+            vendor: "candle".to_owned(),
+            served_by: "the `rig-candle` crate",
+        }
+    );
+    assert!(matches!(
+        connect_with("no-model", "", RecordingHttpClient::new("{}")),
+        Err(ConnectError::Malformed { .. })
+    ));
+}

@@ -53,3 +53,6 @@ crate::client::macros::anthropic_vendor!(
     anthropic_from_env,
     anthropic_new
 );
+
+#[cfg(test)]
+mod tests;

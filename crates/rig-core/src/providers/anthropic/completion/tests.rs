@@ -2062,3 +2062,32 @@ fn tool_input_streaming_reads_its_names_and_sends_the_beta_flag_once() {
         Some("fine-grained-tool-streaming-2025-05-14".to_owned())
     );
 }
+
+/// A raw top-level `cache_control` that is not an ephemeral marker with a
+/// known TTL is refused, never sent as written.
+#[test]
+fn an_invalid_raw_top_level_cache_marker_is_refused() {
+    for marker in [
+        json!({"type": "persistent"}),
+        json!({"type": "ephemeral", "ttl": "1d"}),
+    ] {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({ "cache_control": marker })),
+        );
+        let error = request_body(Params {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .expect_err("refused");
+        assert!(
+            error
+                .to_string()
+                .contains("additional_params.cache_control"),
+            "{error}"
+        );
+    }
+}
