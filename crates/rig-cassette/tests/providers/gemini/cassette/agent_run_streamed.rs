@@ -115,6 +115,7 @@ async fn run_streamed_turn(
                         }
                     }
                 }
+                other => panic!("unhandled stream event {other:?}"),
             }
         }
     }

@@ -117,6 +117,7 @@ impl ProviderToolDefinition {
 /// such output is usable rather than treating every response as successful.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum FinishReason {
     /// Natural end of the response.
     Stop,

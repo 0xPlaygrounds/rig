@@ -235,6 +235,7 @@ impl HistoryFixture for ChatHistory {
                     Ending::Success
                 }
                 FinishReason::ContentFilter | FinishReason::Other(_) => Ending::Failure,
+                other => panic!("unclassified finish reason {other:?}"),
             };
             (*name, ending)
         });

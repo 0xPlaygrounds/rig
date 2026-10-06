@@ -100,6 +100,7 @@ pub enum RetryRequest {
 
 /// Action for invalid-tool-call hooks and manual invalid-call resolution.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum InvalidToolCallAction {
     /// Preserve fail-fast behavior.
     Fail,
