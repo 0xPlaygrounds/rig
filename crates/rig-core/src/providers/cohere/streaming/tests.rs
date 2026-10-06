@@ -604,8 +604,7 @@ fn an_unknown_finish_reason_fails_unless_accepted() {
     let reply = |accept: bool| {
         crate::test_utils::decode_reply(
             &wire,
-            &crate::completion::CompletionRequest::new("hi")
-                .accepting_unknown_finish_reasons(accept),
+            &crate::completion::CompletionRequest::new("hi").accept_unknown_finish_reasons(accept),
             crate::wire::Mode::Unary,
             whole(
                 json!({"content": [{"type": "text", "text": "hi"}]}),
