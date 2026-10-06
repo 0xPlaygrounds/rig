@@ -12,6 +12,7 @@
 use super::message::{
     AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
 };
+use super::options::GenerationOptions;
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::{
@@ -178,6 +179,7 @@ impl FinishReason {
 ///
 /// A response goes straight back into the conversation as the assistant
 /// turn: `history.extend(response.message())`.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
@@ -481,7 +483,16 @@ impl From<CompletionResponseRepr> for CompletionResponse {
 ///
 /// A counter the provider did not send is `None`; a reported zero is
 /// `Some(0)`. Serialized as the same keys, absent when `None`.
-#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+///
+/// ```
+/// use rig_core::completion::Usage;
+///
+/// let usage = Usage::new().input_tokens(12).output_tokens(3).total_tokens(15);
+/// assert_eq!(usage.input_tokens, Some(12));
+/// assert!(usage.cost.is_none());
+/// ```
+#[non_exhaustive]
+#[derive(Debug, Default, PartialEq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
     /// Every input token of the request: uncached, read from a cache,
     /// written to a cache, and any prompt a provider's hosted tools added.
@@ -506,12 +517,133 @@ pub struct Usage {
     /// "thoughts").
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_tokens: Option<u64>,
+    /// What the turn cost in USD, when known. Never derived from the token
+    /// counters here, and none of them is derived from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<Cost>,
 }
 
 impl Usage {
-    /// Whether the provider reported any counter at all.
+    /// No counter and no cost reported.
+    pub const fn new() -> Self {
+        Self {
+            input_tokens: None,
+            output_tokens: None,
+            total_tokens: None,
+            cached_input_tokens: None,
+            cache_creation_input_tokens: None,
+            tool_use_prompt_tokens: None,
+            reasoning_tokens: None,
+            cost: None,
+        }
+    }
+
+    /// Whether the provider reported any counter or a cost.
     pub fn is_reported(&self) -> bool {
         *self != Self::default()
+    }
+
+    /// Set, or with `None` clear, [`Self::input_tokens`](field@Self::input_tokens).
+    pub fn input_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.input_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::output_tokens`](field@Self::output_tokens).
+    pub fn output_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.output_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::total_tokens`](field@Self::total_tokens).
+    pub fn total_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.total_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear,
+    /// [`Self::cached_input_tokens`](field@Self::cached_input_tokens).
+    pub fn cached_input_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.cached_input_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear,
+    /// [`Self::cache_creation_input_tokens`](field@Self::cache_creation_input_tokens).
+    pub fn cache_creation_input_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.cache_creation_input_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear,
+    /// [`Self::tool_use_prompt_tokens`](field@Self::tool_use_prompt_tokens).
+    pub fn tool_use_prompt_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.tool_use_prompt_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::reasoning_tokens`](field@Self::reasoning_tokens).
+    pub fn reasoning_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
+        self.reasoning_tokens = tokens.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::cost`](field@Self::cost).
+    pub fn cost(mut self, cost: impl Into<Option<Cost>>) -> Self {
+        self.cost = cost.into();
+        self
+    }
+}
+
+/// What one or more turns cost, in USD. `total` is what was charged; a
+/// provider that reports only a total leaves the parts at `0.0`.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Cost {
+    /// Uncached input tokens.
+    pub input: f64,
+    /// Output tokens, reasoning included.
+    pub output: f64,
+    /// Input tokens read from a cache.
+    pub cache_read: f64,
+    /// Input tokens written to a cache.
+    pub cache_write: f64,
+    /// The whole charge.
+    pub total: f64,
+}
+
+impl Cost {
+    /// A cost split into its parts; `total` is their sum.
+    pub fn from_parts(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Self {
+        Self {
+            input,
+            output,
+            cache_read,
+            cache_write,
+            total: input + output + cache_read + cache_write,
+        }
+    }
+
+    /// A cost known only as its total; every part is `0.0`.
+    pub fn from_total(total: f64) -> Self {
+        Self {
+            total,
+            ..Self::default()
+        }
+    }
+}
+
+impl Add for Cost {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        Self {
+            input: self.input + other.input,
+            output: self.output + other.output,
+            cache_read: self.cache_read + other.cache_read,
+            cache_write: self.cache_write + other.cache_write,
+            total: self.total + other.total,
+        }
     }
 }
 
@@ -533,8 +665,24 @@ impl Add for Usage {
     }
 }
 
+/// Token counters add where an unreported side adds nothing. Cost sums only
+/// when both sides have one: a turn whose cost is unknown makes the sum
+/// unknown, rather than too low. A side that reports nothing at all
+/// ([`Usage::is_reported`] is `false`) is the identity, so a fold from
+/// [`Usage::default`] keeps its first turn's cost.
 impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
+        if !other.is_reported() {
+            return;
+        }
+        if !self.is_reported() {
+            *self = other;
+            return;
+        }
+        self.cost = match (self.cost, other.cost) {
+            (Some(lhs), Some(rhs)) => Some(lhs + rhs),
+            _ => None,
+        };
         self.input_tokens = add_counter(self.input_tokens, other.input_tokens);
         self.output_tokens = add_counter(self.output_tokens, other.output_tokens);
         self.total_tokens = add_counter(self.total_tokens, other.total_tokens);
@@ -586,6 +734,7 @@ impl ProviderCapabilities {
 }
 
 /// Struct representing a general completion request that can be sent to a completion model provider.
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompletionRequest {
     /// Optional model override for this request.
@@ -630,6 +779,10 @@ pub struct CompletionRequest {
     /// [`FinishReason::ContentFilter`] still fails the turn.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accept_unknown_finish_reasons: bool,
+    /// Portable generation options. Precedence, lowest first: the mapped
+    /// options, then `additional_params`.
+    #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
+    pub options: GenerationOptions,
 }
 
 impl CompletionRequest {
@@ -832,6 +985,7 @@ impl CompletionRequest {
             output_schema: None,
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
+            options: GenerationOptions::default(),
         }
     }
 
@@ -976,6 +1130,12 @@ impl CompletionRequest {
     /// [`Self::accept_unknown_finish_reasons`]: field@Self::accept_unknown_finish_reasons
     pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
         self.accept_unknown_finish_reasons = accept;
+        self
+    }
+
+    /// Replace the portable generation options.
+    pub fn options(mut self, options: GenerationOptions) -> Self {
+        self.options = options;
         self
     }
 

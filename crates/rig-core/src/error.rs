@@ -16,6 +16,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    completion::UnsupportedOption,
     http_client,
     memory::MemoryError,
     observe::AdapterErrorBoundary,
@@ -365,6 +366,10 @@ pub enum ProviderError {
     /// The reply stopped before the provider ended it: its frames ran out,
     /// or the runtime stopped, without the provider's end.
     Truncated,
+    /// A [`GenerationOptions`](crate::completion::GenerationOptions) field
+    /// the wire or model cannot honour, under
+    /// [`OnUnsupported::Error`](crate::completion::OnUnsupported::Error).
+    UnsupportedOption(UnsupportedOption),
 }
 
 impl fmt::Display for ProviderError {
@@ -399,6 +404,7 @@ impl fmt::Display for ProviderError {
             Self::Truncated => {
                 f.write_str("ResponseError: the reply ended before the provider ended it")
             }
+            Self::UnsupportedOption(option) => write!(f, "RequestError: {option}"),
         }
     }
 }
@@ -460,7 +466,7 @@ impl ProviderError {
             Self::Http(_) => ErrorKind::Http,
             Self::Json(_) => ErrorKind::Json,
             Self::Url(_) => ErrorKind::Url,
-            Self::Request(_) => ErrorKind::Request,
+            Self::Request(_) | Self::UnsupportedOption(_) => ErrorKind::Request,
             Self::Response(_) | Self::MismatchedDimensions { .. } | Self::Truncated => {
                 ErrorKind::Response
             }
@@ -652,8 +658,10 @@ impl From<http_client::Error> for ProviderError {
 
 /// A failure to build a provider request, returned by
 /// [`Wire::encode`](crate::wire::Wire::encode). It converts only into
-/// [`ProviderError::Request`], so every provider classifies its encode
+/// [`ProviderError::Request`] or [`ProviderError::UnsupportedOption`], both
+/// of kind [`ErrorKind::Request`], so every provider classifies its encode
 /// failures alike.
+#[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub struct EncodeError(ProviderError);
@@ -662,6 +670,19 @@ impl EncodeError {
     /// A request that could not be built, for the given reason.
     pub fn request(reason: impl Into<BoxError>) -> Self {
         Self(ProviderError::request(reason))
+    }
+
+    /// A request that sets an option the wire or model cannot honour.
+    pub fn unsupported(option: UnsupportedOption) -> Self {
+        Self(ProviderError::UnsupportedOption(option))
+    }
+
+    /// The refused option, when this error is a refusal.
+    pub fn unsupported_option(&self) -> Option<&UnsupportedOption> {
+        match &self.0 {
+            ProviderError::UnsupportedOption(option) => Some(option),
+            _ => None,
+        }
     }
 }
 

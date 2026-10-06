@@ -69,6 +69,7 @@ fn normalized_response_round_trips_through_serde() {
                 cache_creation_input_tokens: Some(0),
                 tool_use_prompt_tokens: Some(0),
                 reasoning_tokens: Some(1),
+                cost: None,
             },
             crate::message::Origin::new("test.api", "example", ""),
             serde_json::json!({}),
@@ -462,5 +463,70 @@ mod unknown_finish_reasons {
             serde_json::to_value(response.accept_unknown_finish_reasons(true)).expect("serializes");
         let back: super::CompletionResponse = serde_json::from_value(on).expect("parses");
         assert!(back.accepts_unknown_finish_reasons());
+    }
+}
+
+/// The fields added for options and cost are absent from the serialized
+/// form while empty, so stored requests, usage and recordings keep their
+/// bytes; set, they round-trip.
+mod empty_new_fields_are_not_serialized {
+    use super::{CompletionRequest, Usage};
+    use crate::completion::{Cost, Effort, GenerationOptions};
+    use serde_json::json;
+
+    #[test]
+    fn a_request_without_options_has_no_options_key() {
+        let value = serde_json::to_value(CompletionRequest::new("hi")).expect("serializes");
+        assert!(value.get("options").is_none(), "{value}");
+
+        let request = CompletionRequest::new("hi")
+            .options(GenerationOptions::default().reasoning(Effort::High));
+        let value = serde_json::to_value(&request).expect("serializes");
+        assert_eq!(value["options"]["reasoning"], json!({"effort": "high"}));
+        let back = serde_json::from_value::<CompletionRequest>(value).expect("deserializes");
+        assert_eq!(back.options, request.options);
+    }
+
+    #[test]
+    fn usage_without_cost_keeps_its_keys() {
+        let usage = Usage::new()
+            .input_tokens(4)
+            .output_tokens(2)
+            .total_tokens(6);
+        assert_eq!(
+            serde_json::to_value(usage).expect("serializes"),
+            json!({"input_tokens": 4, "output_tokens": 2, "total_tokens": 6})
+        );
+        assert_eq!(
+            serde_json::to_value(Usage::default()).expect("serializes"),
+            json!({})
+        );
+
+        let priced = usage.cost(Cost::from_total(0.5));
+        let value = serde_json::to_value(priced).expect("serializes");
+        assert_eq!(value["cost"]["total"], json!(0.5));
+        assert_eq!(
+            serde_json::from_value::<Usage>(value).expect("deserializes"),
+            priced
+        );
+    }
+
+    #[test]
+    fn a_cost_from_parts_totals_them() {
+        let cost = Cost::from_parts(1.0, 2.0, 0.25, 0.5);
+        assert_eq!(cost.total, 3.75);
+        assert_eq!((cost + Cost::from_total(1.0)).total, 4.75);
+    }
+
+    #[test]
+    fn token_sums_are_unchanged_when_no_turn_has_a_cost() {
+        let first = Usage::new().input_tokens(3).cached_input_tokens(1);
+        let second = Usage::new().input_tokens(5).output_tokens(2);
+        let sum = first + second;
+        assert_eq!(sum.input_tokens, Some(8));
+        assert_eq!(sum.cached_input_tokens, Some(1));
+        assert_eq!(sum.output_tokens, Some(2));
+        assert_eq!(sum.cost, None);
+        assert_eq!(Usage::default() + Usage::default(), Usage::default());
     }
 }

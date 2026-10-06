@@ -36,6 +36,7 @@ pub use native::{Api, Fingerprint, Native, Opaque, Origin, StopReason};
 /// provider produced them. `origin` names the wire, provider and model that
 /// produced the turn; a hand-built turn has none and always replays from its
 /// canonical fields.
+#[non_exhaustive]
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct AssistantMessage {
     /// The blocks, in provider order.
@@ -80,6 +81,24 @@ impl AssistantMessage {
             origin,
             stop: Some(StopReason::Aborted(reason.into())),
         }
+    }
+
+    /// This turn holding `content` in place of its blocks.
+    pub fn with_content(mut self, content: Vec<AssistantContent>) -> Self {
+        self.content = content;
+        self
+    }
+
+    /// This turn with `origin` as who produced it.
+    pub fn with_origin(mut self, origin: impl Into<Option<Origin>>) -> Self {
+        self.origin = origin.into();
+        self
+    }
+
+    /// This turn with `stop` as how it ended.
+    pub fn with_stop(mut self, stop: impl Into<Option<StopReason>>) -> Self {
+        self.stop = stop.into();
+        self
     }
 
     /// The tool calls, in order.
@@ -159,6 +178,7 @@ pub enum UserContent {
 
 /// One block of an assistant turn: one provider output item.
 /// Deserialization requires the lowercase `type` tag.
+#[non_exhaustive]
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AssistantContent {
@@ -564,6 +584,7 @@ impl<'de> Deserialize<'de> for ToolFunction {
 
 /// Text. On an assistant turn, `native` holds the provider item the block
 /// was decoded from; user and tool-result text leave it `None`.
+#[non_exhaustive]
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Text {
     /// Text content.
