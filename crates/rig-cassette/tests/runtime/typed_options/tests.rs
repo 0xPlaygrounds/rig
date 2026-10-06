@@ -302,8 +302,8 @@ mod option_matrix {
     //! A golden of section 6: each option set alone on each wire gives
     //! exactly the body delta or the refusal its cell names. `omit` passes
     //! only where the cell says "omit", because any other cell expects a
-    //! change or an error; a wire that binds a token and never consumes it
-    //! fails with a non-`UnsupportedOption` error.
+    //! change or an error; a wire that answers `Mapping::Nothing` for a set
+    //! option fails with a non-`UnsupportedOption` error.
     //!
     //! Encode-only. P2 extends `cells` to every completion wire and dialect
     //! of section 6, `InteractionResume` included.
@@ -574,13 +574,15 @@ mod option_layers {
 // P2 removes this gate.
 #[cfg(any())]
 mod precedence {
-    //! `null` in `additional_params` is a value and is sent, as `body.extend`
-    //! sends it today; clearing a key is `remove_param`, never `null`.
+    //! The merge keeps two behaviours every wire has today: tools in
+    //! `additional_params.tools` join rig's own tools rather than replacing
+    //! them, and a `null` in `additional_params` is a value that is sent.
 
-    use rig::completion::{CompletionRequest, GenerationOptions};
+    use rig::completion::{CompletionRequest, GenerationOptions, ToolDefinition};
+    use rig::message::ToolName;
     use serde_json::{Value, json};
 
-    use super::harness_switch::{encode, openrouter};
+    use super::harness_switch::{anthropic, encode, openrouter};
 
     fn request() -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
@@ -588,8 +590,58 @@ mod precedence {
             .options(GenerationOptions::default().top_p(0.5))
     }
 
+    fn lookup() -> ToolDefinition {
+        ToolDefinition::new(
+            ToolName::try_from("lookup").expect("the name is not empty"),
+            "Look a word up.",
+            json!({"type": "object", "properties": {}}),
+        )
+    }
+
+    /// The `name` of each entry of the body's `tools`, in order.
+    fn tool_names(body: &Value) -> Vec<&str> {
+        body.get("tools")
+            .and_then(Value::as_array)
+            .map(|tools| {
+                tools
+                    .iter()
+                    .filter_map(|tool| {
+                        tool.get("name")
+                            .or_else(|| tool.pointer("/function/name"))
+                            .and_then(Value::as_str)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     #[test]
-    fn null_is_sent_and_remove_param_clears() {
+    fn raw_tools_are_appended_to_rig_tools() {
+        let server_tool = json!({"type": "web_search_20250305", "name": "web_search"});
+        let sent = encode(
+            &anthropic(),
+            request()
+                .tool(lookup())
+                .additional_params(json!({"tools": [server_tool]})),
+        )
+        .expect("the request encodes");
+        assert_eq!(tool_names(&sent), ["lookup", "web_search"], "{sent}");
+
+        let function = json!({"type": "function", "function": {
+            "name": "raw_lookup", "parameters": {"type": "object", "properties": {}},
+        }});
+        let sent = encode(
+            &openrouter(),
+            request()
+                .tool(lookup())
+                .additional_params(json!({"tools": [function]})),
+        )
+        .expect("the request encodes");
+        assert_eq!(tool_names(&sent), ["lookup", "raw_lookup"], "{sent}");
+    }
+
+    #[test]
+    fn null_is_sent() {
         let sent = encode(
             &openrouter(),
             request().additional_params(json!({"top_p": null, "user": null})),
@@ -597,10 +649,6 @@ mod precedence {
         .expect("the request encodes");
         assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
         assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
-
-        let cleared =
-            encode(&openrouter(), request().remove_param("/top_p")).expect("the request encodes");
-        assert!(cleared.get("top_p").is_none(), "{cleared}");
     }
 }
 
@@ -1004,5 +1052,51 @@ mod citations_and_cost {
         )
         .await;
         assert_eq!(unlisted.usage.cost, None);
+    }
+}
+
+// P1 removes this gate.
+#[cfg(any())]
+mod usage_cost_sum {
+    //! Summing usage sums cost only when every summed turn has one: a turn
+    //! with an unknown cost makes the total unknown rather than too low. The
+    //! empty usage is the identity, so a fold from it keeps the cost.
+
+    use rig::completion::Usage;
+    use serde_json::json;
+
+    fn usage(value: serde_json::Value) -> Usage {
+        serde_json::from_value(value).expect("the usage deserializes")
+    }
+
+    fn priced(input: f64, output: f64) -> Usage {
+        usage(json!({
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "cost": {
+                "input": input,
+                "output": output,
+                "cache_read": 0.0,
+                "cache_write": 0.0,
+                "total": input + output,
+            },
+        }))
+    }
+
+    #[test]
+    fn cost_sums_only_when_every_turn_has_one() {
+        let both = priced(1.0, 2.0) + priced(0.5, 0.25);
+        let cost = both.cost.expect("both turns are priced");
+        assert_eq!((cost.input, cost.output, cost.total), (1.5, 2.25, 3.75));
+        assert_eq!(both.input_tokens, Some(20));
+
+        let unpriced = usage(json!({"input_tokens": 10, "output_tokens": 5}));
+        let mixed = priced(1.0, 2.0) + unpriced;
+        assert_eq!(mixed.cost, None);
+        assert_eq!(mixed.input_tokens, Some(20));
+
+        let mut total = Usage::default();
+        total += priced(1.0, 2.0);
+        assert_eq!(total.cost.map(|cost| cost.total), Some(3.0));
     }
 }
