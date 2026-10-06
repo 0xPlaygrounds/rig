@@ -254,11 +254,46 @@ impl Wire for Converse {
 }
 
 /// The catalog entry of the Bedrock `model`: a base model id or system
-/// inference profile, or the last part of its ARN. `None` for a model the
-/// catalog does not list.
+/// inference profile, or the last part of its ARN. A Claude id the catalog
+/// does not list under Bedrock (another region's profile, another
+/// `-v1:N` revision, a dated snapshot) takes the Anthropic model's entry.
+/// `None` for any other model the catalog does not list.
 pub fn spec(model: &str) -> Option<&'static ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
-    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
+    let catalog = Catalog::builtin();
+    ProviderId::catalog(PROVIDER_NAME)
+        .and_then(|provider| catalog.get(provider, id))
+        .or_else(|| {
+            let anthropic = ProviderId::catalog("anthropic")?;
+            let claude = claude_model(id)?;
+            catalog
+                .get(anthropic, &claude)
+                .or_else(|| catalog.get(anthropic, undated(&claude)?))
+        })
+}
+
+/// The Anthropic model a Bedrock Claude id serves:
+/// `[region.]anthropic.<model>[-v<n>[:<m>]]` to `<model>`, with `.` read as
+/// `-` (`claude-opus-4.6` is `claude-opus-4-6`).
+fn claude_model(id: &str) -> Option<String> {
+    let (_, model) = id.split_once("anthropic.")?;
+    let model = match model.rsplit_once("-v") {
+        Some((model, version))
+            if version
+                .split(':')
+                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())) =>
+        {
+            model
+        }
+        _ => model,
+    };
+    Some(model.replace('.', "-"))
+}
+
+/// `model` without a trailing `-YYYYMMDD` snapshot date.
+fn undated(model: &str) -> Option<&str> {
+    let (rest, date) = model.rsplit_once('-')?;
+    (date.len() == 8 && date.bytes().all(|byte| byte.is_ascii_digit())).then_some(rest)
 }
 
 impl ReplayTarget for Converse {

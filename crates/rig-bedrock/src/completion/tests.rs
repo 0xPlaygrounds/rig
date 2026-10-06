@@ -141,3 +141,25 @@ fn bedrock_models_take_their_facts_from_the_catalog() {
             .is_none()
     );
 }
+
+/// A Claude id the catalog does not list under Bedrock (another region's
+/// profile, a `-v1:N` revision, a dated snapshot) takes the Anthropic
+/// model's entry, so its thinking and context binding still apply.
+#[test]
+fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
+    for model in [
+        "in.anthropic.claude-opus-5-5",
+        "us.anthropic.claude-opus-5-5-20260101-v1:0",
+        "anthropic.claude-opus-5-5-v1:0",
+    ] {
+        let spec = super::spec(model).unwrap_or_else(|| panic!("{model}: a Claude entry"));
+        assert!(
+            spec.compat.binds_context && !spec.reasoning.can_disable,
+            "{model}"
+        );
+    }
+    let sonnet = super::spec("jp.anthropic.claude-sonnet-5-5").expect("a Claude entry");
+    assert_eq!(sonnet.compat.thinking_off.as_deref(), Some("between_tools"));
+    assert!(sonnet.compat.binds_context);
+    assert!(super::spec("jp.amazon.nova-unlisted-v1:0").is_none());
+}
