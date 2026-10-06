@@ -974,5 +974,296 @@ fn xiaomimimo(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
+/// `verbosity` for the Responses API, inside `text`.
+fn text_verbosity(verbosity: &crate::completion::Verbosity) -> Mapping {
+    send("text", json!({"verbosity": verbosity.as_str()}))
+}
+
+/// How the Responses wire answers `fields` for `request`, by dialect
+/// (section 6.3 of `TYPED_OPTIONS.md`). Responses has no `seed` and no
+/// `stop`.
+pub(crate) fn responses_options(
+    responses: &super::responses_api::wire::Responses,
+    request: &CompletionRequest,
+    fields: OptionFields<'_>,
+) -> OptionMap {
+    use super::responses_api::wire::ResponsesContract;
+    use super::wire::{OPENAI, OPENROUTER};
+    let model = request.model.as_deref().unwrap_or(&responses.model);
+    let dialect = &responses.provider.dialect;
+    match dialect.quirks.responses.contract {
+        ResponsesContract::Codex => codex(fields),
+        ResponsesContract::Xai => xai_responses(model, fields),
+        ResponsesContract::OpenAi if dialect.name == OPENAI.name => openai_responses(model, fields),
+        ResponsesContract::OpenAi if dialect.name == OPENROUTER.name => {
+            openrouter_responses(model, fields)
+        }
+        ResponsesContract::OpenAi
+            if dialect.name == crate::providers::copilot::wire::DIALECT.name =>
+        {
+            copilot_responses(fields)
+        }
+        ResponsesContract::OpenAi => refuse_all(
+            fields,
+            "no Responses option mapping is known for this provider; send it through \
+             `additional_params`",
+        ),
+    }
+}
+
+/// `reasoning` on the Responses API, as `reasoning.effort`.
+fn reasoning_object(effort: &str) -> Mapping {
+    send("reasoning", json!({"effort": effort}))
+}
+
+fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    let version = gpt_version(model);
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let pro = name.ends_with("-pro") || name.contains("-pro-");
+    let o_series = reasons(model) == Some(true) && version.is_none();
+    let below = |floor: (u32, u32)| version.is_some_and(|version| version < floor);
+    let reasoning_off = matches!(reasoning, Some(Reasoning::Off));
+    OptionMap {
+        reasoning: Mapping::of(reasoning, |reasoning| match (reasoning, reasons(model)) {
+            (Reasoning::Budget { .. }, _) => {
+                Mapping::unsupported("Responses takes an effort level, not a budget")
+            }
+            (Reasoning::Off, Some(false)) => Mapping::Omit("the model does not reason"),
+            (_, Some(false)) => Mapping::unsupported("the model does not reason"),
+            (Reasoning::Off, _)
+                if o_series
+                    || pro
+                    || version == Some((5, 0))
+                    || name.starts_with(super::completion::GPT_6_ASTRA)
+                    || name.starts_with(super::completion::GPT_6_1_SOL) =>
+            {
+                Mapping::unsupported("this model cannot turn reasoning off")
+            }
+            (Reasoning::Off, _) => reasoning_object("none"),
+            (Reasoning::Effort(Effort::Minimal), _) if version.is_some_and(|v| v != (5, 0)) => {
+                Mapping::unsupported("only GPT-5 takes `minimal` effort")
+            }
+            (Reasoning::Effort(Effort::XHigh), _) if below((5, 2)) => {
+                Mapping::unsupported("`xhigh` effort needs GPT-5.2 or later")
+            }
+            (Reasoning::Effort(Effort::Max), _) if below((5, 6)) => {
+                Mapping::unsupported("`max` effort needs GPT-5.6 or later")
+            }
+            (Reasoning::Effort(effort), _) => reasoning_object(effort.as_str()),
+        }),
+        cache: Mapping::of(cache, |cache| {
+            openai_cache(
+                model,
+                cache,
+                send("prompt_cache_options", json!({"ttl": "30m"})),
+            )
+        }),
+        service_tier: Mapping::of(service_tier, |tier| match tier {
+            ServiceTier::Auto => send("service_tier", "auto"),
+            ServiceTier::Default => send("service_tier", "default"),
+            ServiceTier::Flex => send("service_tier", "flex"),
+            ServiceTier::Priority => send("service_tier", "priority"),
+        }),
+        verbosity: Mapping::of(verbosity, text_verbosity),
+        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
+            send("parallel_tool_calls", parallel)
+        }),
+        top_p: Mapping::of(top_p, |top_p| match reasons(model) {
+            Some(false) | None => send("top_p", top_p),
+            Some(true) if o_series || version == Some((5, 0)) => {
+                Mapping::unsupported("this model takes no sampling parameters")
+            }
+            Some(true) if version == Some((5, 5)) => {
+                Mapping::unsupported("unverified for GPT-5.5, whose default effort is unconfirmed")
+            }
+            Some(true) if reasoning_off => send("top_p", top_p),
+            Some(true) => {
+                Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
+            }
+        }),
+        seed: Mapping::of(seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+    }
+}
+
+fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    const UNSUPPORTED: &str = "xAI's Responses API does not support it";
+    OptionMap {
+        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            Reasoning::Off if model.starts_with("grok-4.3") => reasoning_object("none"),
+            Reasoning::Effort(Effort::XHigh) if !model.starts_with("grok-4.5") => {
+                match ["grok-4.6", "grok-4.7"]
+                    .iter()
+                    .any(|prefix| model.starts_with(prefix))
+                {
+                    true => reasoning_object("xhigh"),
+                    false => Mapping::unsupported("`xhigh` effort needs Grok 4.6 or later"),
+                }
+            }
+            reasoning => {
+                xai_reasoning(model, reasoning, |effort| reasoning_object(effort.as_str()))
+            }
+        }),
+        cache: Mapping::of(cache, automatic_cache),
+        service_tier: Mapping::of(service_tier, xai_tier),
+        verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(UNSUPPORTED)),
+        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
+            send("parallel_tool_calls", parallel)
+        }),
+        top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
+        seed: Mapping::of(seed, |_| Mapping::unsupported(UNSUPPORTED)),
+        stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNSUPPORTED)),
+    }
+}
+
+fn openrouter_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    OptionMap {
+        reasoning: Mapping::of(reasoning, |reasoning| {
+            openrouter_reasoning(model, reasoning)
+        }),
+        cache: Mapping::of(cache, |cache| match cache {
+            CacheRetention::None if model.starts_with("openai/") && caches_by_options(model) => {
+                send("prompt_cache_options", json!({"mode": "explicit"}))
+            }
+            cache => openrouter_cache(model, cache),
+        }),
+        service_tier: Mapping::of(service_tier, openrouter_tier),
+        verbosity: Mapping::of(verbosity, text_verbosity),
+        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
+            send("parallel_tool_calls", parallel)
+        }),
+        top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
+        seed: Mapping::of(seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+    }
+}
+
+/// The ChatGPT (Codex) backend: no public reference; the cells follow the
+/// Codex CLI's requests and the recorded echoes.
+fn codex(fields: OptionFields<'_>) -> OptionMap {
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    const UNSUPPORTED: &str = "the ChatGPT backend does not take it";
+    OptionMap {
+        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            Reasoning::Off => reasoning_object("none"),
+            Reasoning::Effort(effort) => reasoning_object(effort.as_str()),
+            Reasoning::Budget { .. } => {
+                Mapping::unsupported("the ChatGPT backend takes an effort level, not a budget")
+            }
+        }),
+        cache: Mapping::of(cache, |cache| match cache {
+            CacheRetention::Long => Mapping::Omit("the backend keeps prompts for 24 hours"),
+            CacheRetention::None | CacheRetention::Short => {
+                Mapping::unsupported("the ChatGPT backend keeps prompts for 24 hours")
+            }
+        }),
+        service_tier: Mapping::of(service_tier, |tier| match tier {
+            ServiceTier::Flex => send("service_tier", "flex"),
+            ServiceTier::Priority => send("service_tier", "priority"),
+            ServiceTier::Auto | ServiceTier::Default => Mapping::unsupported(UNSUPPORTED),
+        }),
+        verbosity: Mapping::of(verbosity, text_verbosity),
+        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
+            send("parallel_tool_calls", parallel)
+        }),
+        top_p: Mapping::of(top_p, |_| Mapping::unsupported(UNSUPPORTED)),
+        seed: Mapping::of(seed, |_| Mapping::unsupported(UNSUPPORTED)),
+        stop: Mapping::of_stop(stop, |_| Mapping::unsupported(UNSUPPORTED)),
+    }
+}
+
+/// Copilot's Responses route (`*codex*` models): no public reference; the
+/// cells follow its recorded streams.
+fn copilot_responses(fields: OptionFields<'_>) -> OptionMap {
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    const UNVERIFIED: &str = "unverified for copilot";
+    OptionMap {
+        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            Reasoning::Effort(Effort::Minimal) => {
+                Mapping::unsupported("Copilot's codex models have no `minimal` effort")
+            }
+            Reasoning::Effort(effort) => reasoning_object(effort.as_str()),
+            Reasoning::Off => {
+                Mapping::unsupported("Copilot's codex models cannot turn reasoning off")
+            }
+            Reasoning::Budget { .. } => {
+                Mapping::unsupported("Copilot takes an effort level, not a budget")
+            }
+        }),
+        cache: Mapping::of(cache, |cache| match cache {
+            CacheRetention::Long => Mapping::Omit("Copilot echoes a 24 hour retention"),
+            CacheRetention::None | CacheRetention::Short => Mapping::unsupported(UNVERIFIED),
+        }),
+        service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(UNVERIFIED)),
+        verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(UNVERIFIED)),
+        parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
+            send("parallel_tool_calls", parallel)
+        }),
+        top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
+        seed: Mapping::of(seed, |_| {
+            Mapping::unsupported("Responses has no seed parameter")
+        }),
+        stop: Mapping::of_stop(stop, |_| {
+            Mapping::unsupported("Responses has no stop parameter")
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests;

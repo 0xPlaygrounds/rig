@@ -103,6 +103,9 @@ pub enum Rewrite {
     Stream(bool),
     /// `stream` removed.
     NoStream,
+    /// OpenAI Responses over a WebSocket session: `background` removed,
+    /// which the session ignores.
+    NoBackground,
     /// Chat Completions streams: `stream_options.include_usage: true`
     /// unless the body states it.
     StreamUsage,
@@ -540,6 +543,9 @@ fn apply(
         }
         Rewrite::NoStream => {
             body.shift_remove("stream");
+        }
+        Rewrite::NoBackground => {
+            body.shift_remove("background");
         }
         Rewrite::StreamUsage => {
             if let Some(options) = body

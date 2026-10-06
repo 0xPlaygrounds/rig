@@ -8,6 +8,7 @@
 //! ```
 
 use crate::completion;
+use crate::completion::options::FinalBody;
 use crate::driver::Model;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::{self, NoBody};
@@ -59,7 +60,7 @@ struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
     #[serde(flatten)]
-    request: Value,
+    request: FinalBody,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
 }
@@ -518,19 +519,15 @@ impl ResponsesWebSocketSession {
         result
     }
 
+    /// The `response.create` body: the HTTP body, without the `stream` and
+    /// `background` flags an event-driven session ignores.
     fn prepare_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<Value, ProviderError> {
-        let mut request = self.wire.responses_request(completion_request, false)?;
-
-        // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
-        // are ignored by the provider and only add noise to the payload.
-        if let Some(fields) = request.as_object_mut() {
-            fields.shift_remove("stream");
-            fields.shift_remove("background");
-        }
-        Ok(request)
+    ) -> Result<FinalBody, ProviderError> {
+        Ok(self
+            .wire
+            .responses_request(&completion_request, super::Delivery::WebSocket)?)
     }
 
     /// Decode the turn's events as they arrive, and return the provider's

@@ -12,6 +12,7 @@
 //! ```
 
 use crate::completion::history::Replay;
+use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::error::EncodeError;
 use crate::json_utils;
 use crate::json_utils::Lenient;
@@ -20,6 +21,7 @@ use crate::message::{
     ToolResultContent, UserContent,
 };
 use crate::providers::internal::wire_ids::WireIds;
+use crate::wire::Mode;
 use crate::{completion, message};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::{Map, Value, json};
@@ -340,36 +342,76 @@ pub(crate) fn include_ciphertext(body: &mut Map<String, Value>) {
     body.insert("include".to_owned(), Value::Array(include));
 }
 
+/// Where a Responses body goes: the HTTP endpoint in a mode, or a WebSocket
+/// session's `response.create` event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Delivery {
+    /// `POST /responses`, streamed or not.
+    Http(Mode),
+    /// A WebSocket session, which ignores `stream` and `background`.
+    WebSocket,
+}
+
 impl wire::Responses {
-    /// The Responses request body this wire sends.
+    /// The Responses request body this wire sends: its encoding of the
+    /// request, then the mapped options, then `additional_params`, merged by
+    /// [`request_params`], then the post-merge rewrites. The WebSocket session
+    /// calls it too, so both transports send one body.
     pub(crate) fn responses_request(
         &self,
-        mut request: completion::CompletionRequest,
-        streaming: bool,
-    ) -> Result<Value, EncodeError> {
-        let model = request.model.take().unwrap_or_else(|| self.model.clone());
-        let mut params = match request.additional_params.take() {
-            None | Some(Value::Null) => Map::new(),
-            Some(Value::Object(params)) => params,
-            Some(_) => {
-                return Err(EncodeError::request(
-                    "Invalid OpenAI Responses additional_params payload: not an object",
-                ));
-            }
-        };
-        params.shift_remove("stream");
+        request: &completion::CompletionRequest,
+        delivery: Delivery,
+    ) -> Result<FinalBody, EncodeError> {
+        let codex =
+            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
+        let mut rewrites = Vec::new();
+        match delivery {
+            Delivery::Http(Mode::Streaming) => rewrites.push(Rewrite::Stream(true)),
+            Delivery::Http(Mode::Unary) | Delivery::WebSocket => rewrites.push(Rewrite::NoStream),
+        }
+        if delivery == Delivery::WebSocket {
+            rewrites.push(Rewrite::NoBackground);
+        }
+        if codex {
+            rewrites.push(Rewrite::CodexStore);
+        }
+        // Reasoning replays without stored state only with its ciphertext.
+        rewrites.push(Rewrite::ReasoningCiphertext(codex));
+        request_params(
+            self,
+            request,
+            |layers| self.base(request, codex, layers),
+            RawAt::Top,
+            &rewrites,
+        )
+    }
+
+    /// This wire's own encoding of `request`: model, input, instructions,
+    /// tools and the typed fields the dialect takes. The Codex backend takes
+    /// no `max_output_tokens`, `temperature` or structured output, so it
+    /// gets none of them.
+    fn base(
+        &self,
+        request: &completion::CompletionRequest,
+        codex: bool,
+        layers: &mut BaseInput<'_>,
+    ) -> Result<Map<String, Value>, EncodeError> {
+        let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let mut tools: Vec<ResponsesToolDefinition> = request
             .tools
-            .into_iter()
+            .iter()
+            .cloned()
             .map(ResponsesToolDefinition::from)
             .collect();
-        if let Some(extra) = params.shift_remove("tools") {
+        let extra = layers.raw_tools()?;
+        if !extra.is_empty() {
             tools.extend(
-                serde_json::from_value::<Vec<ResponsesToolDefinition>>(extra).map_err(|err| {
-                    EncodeError::request(format!(
-                        "Invalid OpenAI Responses tools payload in additional_params: {err}"
-                    ))
-                })?,
+                serde_json::from_value::<Vec<ResponsesToolDefinition>>(Value::Array(extra))
+                    .map_err(|err| {
+                        EncodeError::request(format!(
+                            "Invalid OpenAI Responses tools payload in additional_params: {err}"
+                        ))
+                    })?,
             );
         }
         tools.extend(self.tools.iter().cloned());
@@ -387,10 +429,8 @@ impl wire::Responses {
                 .collect(),
             calls: Default::default(),
         };
-        let codex =
-            self.provider.dialect.quirks.responses.contract == wire::ResponsesContract::Codex;
-        let stateless = codex || params.get("store") == Some(&json!(false));
-        let mut input = input(&request.chat_history, self, &model, &mut custom, stateless)?;
+        let stateless = codex || layers.param("store") == Some(&json!(false));
+        let mut items = input(&request.chat_history, self, &model, &mut custom, stateless)?;
 
         let system = |item: &Value| {
             (item.str("role") == Some("system")).then(|| {
@@ -400,22 +440,22 @@ impl wire::Responses {
                     .to_owned()
             })
         };
-        let before = input.len();
+        let before = items.len();
         let mut lifted = Vec::new();
         match self.system_instructions {
             // The leading run of system messages, unless it is the whole
             // request, which then keeps them in `input` so it is not empty.
             SystemInstructionsPlacement::Instructions => {
-                let leading = input
+                let leading = items
                     .iter()
                     .take_while(|item| system(item).is_some())
                     .count();
-                if leading < input.len() {
-                    lifted.extend(input.drain(..leading).filter_map(|item| system(&item)));
+                if leading < items.len() {
+                    lifted.extend(items.drain(..leading).filter_map(|item| system(&item)));
                 }
             }
             SystemInstructionsPlacement::AllInstructions => {
-                input.retain(|item| match system(item) {
+                items.retain(|item| match system(item) {
                     Some(text) => {
                         lifted.push(text);
                         false
@@ -425,8 +465,8 @@ impl wire::Responses {
             }
             SystemInstructionsPlacement::InputSystemMessages => {}
         }
-        if input.is_empty() {
-            return Err(EncodeError::request(if input.len() < before {
+        if items.is_empty() {
+            return Err(EncodeError::request(if items.len() < before {
                 "OpenAI Responses request input must contain at least one non-system item \
              (system messages were lifted into the top-level `instructions` field)"
             } else {
@@ -447,58 +487,38 @@ impl wire::Responses {
             }
             _ => (!lifted.is_empty()).then_some(lifted),
         };
+        let text = request
+            .output_schema
+            .clone()
+            .filter(|_| !codex)
+            .map(|schema| {
+                let (name, schema) = super::structured_output_schema(schema);
+                json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}})
+            });
 
-        let mut body = json!({"model": model, "input": input});
         let fields = [
+            ("model", Some(Value::String(model))),
+            ("input", Some(Value::Array(items))),
             ("instructions", instructions.map(Value::from)),
-            ("max_output_tokens", request.max_tokens.map(Value::from)),
-            ("temperature", request.temperature.map(Value::from)),
+            (
+                "max_output_tokens",
+                request.max_tokens.filter(|_| !codex).map(Value::from),
+            ),
+            (
+                "temperature",
+                request.temperature.filter(|_| !codex).map(Value::from),
+            ),
             (
                 "tool_choice",
-                request.tool_choice.map(tool_choice).transpose()?,
+                request.tool_choice.clone().map(tool_choice).transpose()?,
             ),
             ("tools", (!tools.is_empty()).then(|| json!(tools))),
-            ("stream", streaming.then_some(Value::Bool(true))),
+            ("text", text),
         ];
-        for (key, value) in fields {
-            if let Some(value) = value {
-                set(&mut body, key, value);
-            }
-        }
-        for (key, value) in params {
-            if !value.is_null() && body.get(&key).is_none() {
-                set(&mut body, &key, value);
-            }
-        }
-        if body.get("text").is_none()
-            && let Some(schema) = request.output_schema
-        {
-            let (name, schema) = super::structured_output_schema(schema);
-            set(
-                &mut body,
-                "text",
-                json!({"format": {"type": "json_schema", "name": name, "schema": schema, "strict": true}}),
-            );
-        }
-        if codex {
-            // The codex gateway takes the turn and the tools; sampling, storage,
-            // metadata and structured output are not its to accept, and
-            // `store: false` is the one value it wants stated.
-            const UNACCEPTED: &str = "temperature max_output_tokens background metadata parallel_tool_calls service_tier text top_p user";
-            if let Some(fields) = body.as_object_mut() {
-                UNACCEPTED.split(' ').for_each(|key| {
-                    fields.shift_remove(key);
-                });
-            }
-            set(&mut body, "store", json!(false));
-        }
-        // Reasoning replays without stored state only with its ciphertext.
-        if (codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)))
-            && let Some(fields) = body.as_object_mut()
-        {
-            include_ciphertext(fields);
-        }
-        Ok(body)
+        Ok(fields
+            .into_iter()
+            .filter_map(|(key, value)| Some((key.to_owned(), value?)))
+            .collect())
     }
 }
 
