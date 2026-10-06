@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -23,10 +24,9 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 };
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
-use crate::providers::openai::completion as models;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Decoder, Descriptor, Encoded,
-    Flow, Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow,
+    Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::merge_fields;
@@ -46,9 +46,6 @@ pub struct Chat {
     pub strict_tools: bool,
     /// Whether tool-result messages serialize their content as arrays.
     pub tool_result_array_content: bool,
-    /// Whether the request asks for provider-side prompt caching
-    /// (OpenRouter's ephemeral `cache_control` on the system prompt).
-    pub prompt_caching: bool,
 }
 
 /// The error for media in a form Chat Completions cannot carry, which the
@@ -185,27 +182,37 @@ impl Chat {
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
         );
-        let mut body = self.body(request)?;
+        let mut rewrites = Vec::new();
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
+            rewrites.push(Rewrite::OutputCapRename);
+        }
         if mode == Mode::Streaming {
             // A caller's own stream options, `include_usage` among them, stand.
-            if quirks.stream_include_usage
-                && let Some(options) = body
-                    .entry("stream_options")
-                    .or_insert_with(|| json!({}))
-                    .as_object_mut()
-            {
-                options.entry("include_usage").or_insert(Value::Bool(true));
+            if quirks.stream_include_usage {
+                rewrites.push(Rewrite::StreamUsage);
             }
-            body.insert("stream".to_owned(), Value::Bool(true));
+            rewrites.push(Rewrite::Stream(true));
         }
-        self.rewrite(&mut body)?;
-        let body = Value::Object(body);
+        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        let raw_at = match quirks.rewrite {
+            BodyRewrite::Mira => RawAt::Ignored(
+                "Additional parameters are not supported by Mira and will be ignored",
+            ),
+            _ => RawAt::Top,
+        };
+        let body = request_params(
+            self,
+            &request,
+            |input| self.base(&request, input),
+            raw_at,
+            &rewrites,
+        )?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "OpenAI Chat Completions request",
             &body,
         );
-        let request = builder.body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        let request = builder.body(body.into_body())?;
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
@@ -245,7 +252,6 @@ impl Chat {
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
-            prompt_caching: false,
         }
     }
 
@@ -262,42 +268,23 @@ impl Chat {
         self
     }
 
-    /// Ask the provider to cache the prompt.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// The request body, before the stream options and the dialect's final
-    /// rewrite. `additional_params` is flattened in last, so its keys
-    /// override the typed ones.
-    fn body(&self, request: CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
+    /// The wire's own encoding of `request`: messages, tools and the typed
+    /// fields. The mapped options and `additional_params` merge over it.
+    fn base(
+        &self,
+        request: &CompletionRequest,
+        input: &mut BaseInput<'_>,
+    ) -> Result<Map<String, Value>, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
         let mut model = request.model.clone().unwrap_or_else(|| self.model.clone());
         if quirks.rewrite == BodyRewrite::HuggingFaceRouter {
             // Some sub-providers (Fireworks) address models by a qualified id.
             model = self.provider.route().model_identifier(&model);
         }
-        let mut params = match request.additional_params {
-            None | Some(Value::Null) => Map::new(),
-            Some(Value::Object(params)) => params,
-            Some(_) => {
-                return Err(EncodeError::request(
-                    "Chat Completions `additional_params` must be a JSON object",
-                ));
-            }
-        };
-        if quirks.rewrite == BodyRewrite::Mira && !params.is_empty() {
-            // The gateway rejects pass-through parameters.
-            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
-            params.clear();
-        }
+        let passthrough = input.raw_tools()?;
         // A call to a custom tool the request declares is a custom call (pi).
-        let custom: Vec<String> = params
-            .get("tools")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
+        let custom: Vec<String> = passthrough
+            .iter()
             .filter(|tool| tool.str("type") == Some("custom"))
             .filter_map(|tool| tool.at("/custom/name").and_then(Value::as_str))
             .map(str::to_owned)
@@ -322,17 +309,8 @@ impl Chat {
                 tools.push(json!({"type": "function", "function": function}));
             }
             // Passthrough tools, function or native (Groq's `browser_search`),
-            // join the typed ones in one array, which a flattened `tools` key
-            // would otherwise replace.
-            if let Some(passthrough) = params.shift_remove("tools") {
-                let Value::Array(passthrough) = passthrough else {
-                    return Err(EncodeError::request(
-                        "Invalid OpenAI Chat Completions `additional_params.tools` payload: \
-                         expected an array",
-                    ));
-                };
-                tools.extend(passthrough);
-            }
+            // join the typed ones in one array.
+            tools.extend(passthrough);
             tool_choice = request
                 .tool_choice
                 .clone()
@@ -346,6 +324,9 @@ impl Chat {
             if request.tool_choice.is_some() {
                 tracing::warn!("Tool choice is not supported by this provider and will be ignored");
             }
+            // The caller's own tools still reach a dialect that takes none,
+            // as `additional_params` always did.
+            tools.extend(passthrough);
         }
 
         if request.output_schema.is_some() && !quirks.supports_response_format {
@@ -357,17 +338,17 @@ impl Chat {
         let answered = messages
             .iter()
             .any(|message| message.str("role") == Some("tool"));
-        if let Some(schema) = request.output_schema
-            && quirks.supports_response_format
-            && (quirks.response_format_with_tools || tools.is_empty() || answered)
-        {
-            let (name, schema) = crate::providers::openai::structured_output_schema(schema);
-            params.insert(
-                "response_format".to_owned(),
-                json!({"type": "json_schema",
-                    "json_schema": {"name": name, "strict": true, "schema": schema}}),
-            );
-        }
+        let response_format = match request.output_schema.clone() {
+            Some(schema)
+                if quirks.supports_response_format
+                    && (quirks.response_format_with_tools || tools.is_empty() || answered) =>
+            {
+                let (name, schema) = crate::providers::openai::structured_output_schema(schema);
+                Some(json!({"type": "json_schema",
+                    "json_schema": {"name": name, "strict": true, "schema": schema}}))
+            }
+            _ => None,
+        };
 
         let fields = [
             ("model", Some(Value::String(model))),
@@ -376,25 +357,12 @@ impl Chat {
             ("tool_choice", tool_choice),
             ("temperature", request.temperature.map(Value::from)),
             ("max_tokens", request.max_tokens.map(Value::from)),
+            ("response_format", response_format),
         ];
-        let mut body: Map<String, Value> = fields
+        Ok(fields
             .into_iter()
             .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect();
-        body.extend(params);
-        // The resolved model, not the handle's: a per-request override
-        // changes which endpoint answers, so it decides the spelling too.
-        let model = body
-            .get("model")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies
-            && models::is_openai_reasoning_model(model)
-            && let Some(max_tokens) = body.shift_remove("max_tokens")
-        {
-            body.entry("max_completion_tokens").or_insert(max_tokens);
-        }
-        Ok(body)
+            .collect())
     }
 
     /// The history as Chat messages, each call and result spelled by one
@@ -549,17 +517,6 @@ impl Chat {
         }
         has_content.then_some(Value::Object(message))
     }
-
-    /// The dialect's rewrite of the finished body ([`BodyRewrite`]), then
-    /// OpenRouter's prompt caching when it is on.
-    fn rewrite(&self, map: &mut Map<String, Value>) -> Result<(), EncodeError> {
-        let kind = self.provider.dialect.quirks.rewrite;
-        rewrite_body(kind, map)?;
-        if kind == BodyRewrite::OpenRouter && self.prompt_caching {
-            apply_openrouter_prompt_caching(map);
-        }
-        Ok(())
-    }
 }
 
 /// The dialect's rewrite of the finished body ([`BodyRewrite`]): a refusal
@@ -698,10 +655,8 @@ fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, Encode
     })
 }
 
-/// Ollama's OpenAI-compatible body. `keep_alive` passes as it is, and
-/// `think` becomes `reasoning_effort`: `true` is `medium`, `false` is
-/// `none`, and a level passes through. `num_ctx` and `options` are refused:
-/// this API ignores them, and only the native route sends them.
+/// Ollama's OpenAI-compatible body: `num_ctx` and `options` are refused,
+/// because this API ignores them and only the native route sends them.
 fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
     if let Some(key) = ["num_ctx", "options"]
         .into_iter()
@@ -712,25 +667,6 @@ fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
              route (`Ollama::native_completion`)"
         )));
     }
-    let Some(think) = map.shift_remove("think") else {
-        return Ok(());
-    };
-    if map.contains_key("reasoning_effort") {
-        return Err(EncodeError::request(
-            "Ollama takes one of `think` and `reasoning_effort`, not both",
-        ));
-    }
-    let effort = match think {
-        Value::Bool(true) => Value::from("medium"),
-        Value::Bool(false) => Value::from("none"),
-        level @ Value::String(_) => level,
-        _ => {
-            return Err(EncodeError::request(
-                "Ollama `think` must be a boolean or a thinking level",
-            ));
-        }
-    };
-    map.insert("reasoning_effort".to_owned(), effort);
     Ok(())
 }
 
@@ -824,37 +760,6 @@ fn mistral_chunk(part: &Value) -> Value {
     }
 }
 
-/// OpenRouter's ephemeral `cache_control` on the system prompt: on its
-/// text, or on the last of its parts.
-fn apply_openrouter_prompt_caching(map: &mut Map<String, Value>) {
-    let Some(system) = map
-        .get_mut("messages")
-        .and_then(Value::as_array_mut)
-        .and_then(|messages| {
-            messages
-                .iter_mut()
-                .find(|message| message.str("role") == Some("system"))
-        })
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-    let ephemeral = json!({"type": "ephemeral"});
-    let content = match system.get_mut("content") {
-        Some(Value::String(text)) => {
-            json!([{"type": "text", "text": text, "cache_control": ephemeral}])
-        }
-        Some(Value::Array(parts)) => {
-            if let Some(Value::Object(last)) = parts.last_mut() {
-                last.insert("cache_control".to_owned(), ephemeral);
-            }
-            return;
-        }
-        _ => return,
-    };
-    system.insert("content".to_owned(), content);
-}
-
 impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
@@ -884,12 +789,13 @@ impl Wire for Chat {
 }
 
 impl crate::completion::ReplayTarget for Chat {
+    /// Section 6.2 of the typed-options design, by dialect.
     fn map_options(
         &self,
-        _request: &crate::completion::CompletionRequest,
+        request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        crate::completion::options::unmapped(fields)
+        crate::providers::openai::options::chat_options(self, request, fields)
     }
 
     fn api(&self) -> crate::message::Api {

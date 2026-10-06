@@ -62,7 +62,7 @@ fn model_level_options_require_intact_host_bindings() {
     let http = SequencedHttpClient::new(vec![]);
     let provider = OpenAIConfig::new("local-test-key").connect(http.clone());
     let mut chat = provider.chat("model");
-    chat.wire = chat.wire.with_prompt_caching();
+    chat.wire = chat.wire.with_tool_result_array_content();
     check(chat, ThinkingWire::OpenAiChat);
     let mut responses = provider.responses("model");
     responses.wire = responses.wire.with_strict_tools();

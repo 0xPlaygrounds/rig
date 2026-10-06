@@ -7,26 +7,26 @@
 
 /// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model. Chat Completions
 /// takes its function tools only at `reasoning_effort: "none"`, which it does
-/// not support, so a Chat request with tools (the extractor's included) is
-/// refused before it is sent: use the Responses wire.
+/// not support: use the Responses wire for a request with tools.
 pub const GPT_6_ASTRA: &str = "gpt-6-astra";
 
 /// GPT-6.1 Sol, API ID `gpt-6.1-sol`: a reasoning model. Chat Completions
 /// takes its function tools only at `reasoning_effort: "none"`, which it does
-/// not support, so a Chat request with tools (the extractor's included) is
-/// refused before it is sent: use the Responses wire.
+/// not support: use the Responses wire for a request with tools.
 pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
 
 /// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Chat Completions takes
-/// its function tools only at `reasoning_effort: "none"`: a Chat request with
-/// tools is refused before it is sent unless `additional_params` carries
-/// `"reasoning_effort": "none"`. Responses takes them at any effort.
+/// its function tools only at `reasoning_effort: "none"`, which a request
+/// sets with
+/// [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
+/// `(Reasoning::Off)`. Responses takes them at any effort.
 pub const GPT_6_SOL: &str = "gpt-6-sol";
 
 /// GPT-6 Luna, API ID `gpt-6-luna`: a reasoning model. Chat Completions takes
-/// its function tools only at `reasoning_effort: "none"`: a Chat request with
-/// tools is refused before it is sent unless `additional_params` carries
-/// `"reasoning_effort": "none"`. Responses takes them at any effort.
+/// its function tools only at `reasoning_effort: "none"`, which a request
+/// sets with
+/// [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
+/// `(Reasoning::Off)`. Responses takes them at any effort.
 pub const GPT_6_LUNA: &str = "gpt-6-luna";
 
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)

@@ -104,12 +104,6 @@ impl OpenAiWire {
         self.on_chat(Chat::with_tool_result_array_content)
     }
 
-    /// Ask the provider to cache the prompt: an OpenRouter `cache_control`
-    /// on the chat body, so a no-op on the Responses route.
-    pub fn with_prompt_caching(self) -> Self {
-        self.on_chat(Chat::with_prompt_caching)
-    }
-
     /// Add a provider-side tool to every request: a Responses shape, so a
     /// no-op on the chat route, which carries no wire-level tools.
     pub fn with_tool(self, tool: impl Into<ResponsesToolDefinition>) -> Self {

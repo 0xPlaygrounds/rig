@@ -9,8 +9,6 @@ use crate::completion::ToolDefinition;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use crate::test_utils::json_body;
 
-use super::super::OPENROUTER;
-
 /// A turn with a system prompt, a tool and a tool result, so each option
 /// under test has something in the body it could change.
 fn request() -> CompletionRequest {
@@ -123,17 +121,6 @@ fn map_wire_reaches_tool_result_array_content_on_the_chat_route_only() {
         chat(),
         responses(),
         OpenAiWire::with_tool_result_array_content,
-    );
-}
-
-/// Prompt caching is OpenRouter's `cache_control` on the chat body, so that
-/// is the dialect whose request it changes.
-#[test]
-fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
-    only_on(
-        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Chat),
-        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Responses),
-        OpenAiWire::with_prompt_caching,
     );
 }
 

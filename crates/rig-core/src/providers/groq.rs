@@ -1,7 +1,9 @@
 //! Groq's model identifiers.
 //!
-//! [`from_env`] and [`new`] build a client on the [`GROQ`](crate::providers::openai::wire::GROQ) dialect. Reasoning
-//! options such as `reasoning_format` belong in request `additional_params`.
+//! [`from_env`] and [`new`] build a client on the [`GROQ`](crate::providers::openai::wire::GROQ) dialect. A
+//! request sets its reasoning effort with
+//! [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning);
+//! Groq's own fields such as `reasoning_format` go in `additional_params`.
 //!
 //! ```no_run
 //! use rig_core::providers::groq;
