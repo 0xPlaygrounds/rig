@@ -2,7 +2,8 @@
 //! message item states, and the text blocks a route delivered for it.
 
 use futures::StreamExt;
-use rig_core::message::{AssistantContent, Text};
+use rig_core::completion::Usage;
+use rig_core::message::{AssistantContent, Source, SourceLocation, Text};
 use rig_core::streaming::{CompletionStream, Item, StreamEvent};
 use serde_json::{Map, Value};
 
@@ -12,6 +13,8 @@ pub struct Drained {
     pub texts: Vec<Text>,
     /// The `type` of every unmodeled payload it delivered, in order.
     pub unknown_types: Vec<String>,
+    /// The usage of the response it folded into.
+    pub usage: Usage,
 }
 
 /// Drain `stream`, check its event grammar, and keep its text blocks and
@@ -45,6 +48,7 @@ pub async fn drain(mut stream: CompletionStream) -> Drained {
     Drained {
         texts,
         unknown_types,
+        usage: response.usage,
     }
 }
 
@@ -138,8 +142,33 @@ pub fn frames_of<'a>(frames: &'a [Value], kind: &str) -> Vec<&'a Value> {
         .collect()
 }
 
+/// The sources a recorded message item's `url_citation` annotations name,
+/// one per annotation in part order. Panics on any other annotation type,
+/// which no recording holds.
+pub fn recorded_url_sources(item: &Value) -> Vec<Source> {
+    item["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|part| part["annotations"].as_array().into_iter().flatten())
+        .map(|annotation| {
+            assert_eq!(annotation["type"], "url_citation", "a recorded annotation");
+            let url = annotation["url"].as_str().expect("the citation's url");
+            let source = Source::new(SourceLocation::Url {
+                url: url.to_owned(),
+            });
+            match annotation["title"].as_str() {
+                Some(title) => source.title(title),
+                None => source,
+            }
+        })
+        .collect()
+}
+
 /// Each text block with text ends with the text and extras of its recorded
-/// message item, in order: one part per item, its extras stated once.
+/// message item, in order: one part per item, its extras stated once. Its
+/// citations are the item's annotations, each citing the whole block,
+/// since the offsets' unit is undocumented.
 pub fn assert_texts_match_items(route: &str, texts: &[Text], items: &[Value]) {
     let texts: Vec<&Text> = texts.iter().filter(|text| !text.text.is_empty()).collect();
     assert_eq!(
@@ -154,5 +183,25 @@ pub fn assert_texts_match_items(route: &str, texts: &[Text], items: &[Value]) {
             recorded_extras(item),
             "{route}: the item's extras, once"
         );
+        let citations = text.citations();
+        assert_eq!(
+            citations
+                .iter()
+                .map(|citation| citation.sources.clone())
+                .collect::<Vec<_>>(),
+            recorded_url_sources(item)
+                .into_iter()
+                .map(|source| vec![source])
+                .collect::<Vec<_>>(),
+            "{route}: one citation per annotation"
+        );
+        for citation in citations {
+            assert_eq!(citation.span, None, "{route}: the citation's span");
+            assert_eq!(
+                text.cited(citation),
+                Some(text.text.as_str()),
+                "{route}: the cited text"
+            );
+        }
     }
 }

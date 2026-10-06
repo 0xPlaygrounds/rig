@@ -1,8 +1,9 @@
 //! Citations of the Responses hosted `web_search` tool, recorded live on
 //! the streamed and the unary route with the same prompt. Each route's text
 //! part must end with the `output_text` extras its recorded message item
-//! states, annotations included, once. Every expectation is derived from the
-//! frozen recording; none names a generated answer, source or count.
+//! states, annotations included, once, and cite it once per annotation.
+//! Every expectation is derived from the frozen recording; none names a
+//! generated answer, source or count.
 
 use std::sync::{Arc, Mutex};
 
