@@ -18,7 +18,7 @@
 /// OpenAI-compatible base URL.
 pub const API_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
 /// Anthropic-compatible base URL.
-pub const ANTHROPIC_API_BASE_URL: &str = "https://api.xiaomimimo.com/anthropic/v1";
+pub const ANTHROPIC_API_BASE_URL: &str = "https://api.xiaomimimo.com/anthropic";
 
 /// `mimo-v2-flash`
 pub const MIMO_V2_FLASH: &str = "mimo-v2-flash";
