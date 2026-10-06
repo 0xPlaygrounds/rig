@@ -540,15 +540,12 @@ impl crate::completion::ReplayTarget for Messages {
 
     /// Messages takes images in user turns and tool results, never in
     /// assistant turns, on models that read images: every Claude model, and
-    /// each dialect's vision models by its documented naming (pi's model
-    /// data agrees). A model a dialect does not name reads images.
+    /// on another dialect each model its catalog entry lists as reading
+    /// them. A model the catalog does not list reads images.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let images = match self.provider.dialect.name {
-            name if name == ZAI.name => crate::providers::zai::reads_images(model),
-            name if name == MOONSHOT.name => crate::providers::moonshot::reads_images(model),
-            name if name == MINIMAX.name => crate::providers::minimax::reads_images(model),
-            name if name == XIAOMIMIMO.name => crate::providers::xiaomimimo::reads_images(model),
-            _ => true,
+            name if name == ANTHROPIC.name => true,
+            name => crate::catalog::reads_images(name, model),
         };
         crate::completion::Accepts {
             user_images: images,

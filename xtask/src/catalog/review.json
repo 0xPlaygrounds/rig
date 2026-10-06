@@ -1956,6 +1956,129 @@
       }
     }
   },
+  "moonshot": {
+    "models": {
+      "kimi-k2-0711-preview": {
+        "name": "kimi-k2-0711-preview",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "kimi-k2-0905-preview": {
+        "name": "kimi-k2-0905-preview",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "kimi-k2-thinking": {
+        "name": "kimi-k2-thinking",
+        "reasoning": true,
+        "reasoning_options": [],
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "kimi-k2-turbo-preview": {
+        "name": "kimi-k2-turbo-preview",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "kimi-k3": {
+        "rig": {
+          "reasoning_field": "reasoning_content"
+        }
+      },
+      "moonshot-v1-128k": {
+        "name": "moonshot-v1-128k",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "moonshot-v1-128k-vision-preview": {
+        "name": "moonshot-v1-128k vision",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      },
+      "moonshot-v1-32k": {
+        "name": "moonshot-v1-32k",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "moonshot-v1-32k-vision-preview": {
+        "name": "moonshot-v1-32k vision",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      },
+      "moonshot-v1-8k": {
+        "name": "moonshot-v1-8k",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        }
+      },
+      "moonshot-v1-8k-vision-preview": {
+        "name": "moonshot-v1-8k vision",
+        "reasoning": false,
+        "tool_call": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      }
+    }
+  },
   "ollama": {
     "models": {
       "all-minilm": {
@@ -2699,7 +2822,13 @@
             "long"
           ],
           "sampling": "reasoning_off"
-        }
+        },
+        "modalities": {
+          "input": [
+            "text"
+          ]
+        },
+        "note": "rig sends it text only; models.dev lists images"
       },
       "gpt-5.4": {
         "source": "https://developers.openai.com/api/docs/pricing",
@@ -2876,7 +3005,7 @@
       },
       "o1-mini": {
         "name": "o1-mini",
-        "reasoning": false,
+        "reasoning": true,
         "tool_call": true,
         "temperature": false,
         "modalities": {
@@ -2889,6 +3018,7 @@
           "output": 65536
         },
         "status": "deprecated",
+        "reasoning_options": [],
         "source": "https://developers.openai.com/api/docs/pricing",
         "rig": {
           "cache": [
@@ -2899,7 +3029,7 @@
       },
       "o1-mini-2024-09-12": {
         "name": "o1-mini",
-        "reasoning": false,
+        "reasoning": true,
         "tool_call": true,
         "temperature": false,
         "modalities": {
@@ -2912,6 +3042,7 @@
           "output": 65536
         },
         "status": "deprecated",
+        "reasoning_options": [],
         "source": "https://developers.openai.com/api/docs/pricing",
         "rig": {
           "cache": [
@@ -2922,7 +3053,7 @@
       },
       "o1-preview": {
         "name": "o1-preview",
-        "reasoning": false,
+        "reasoning": true,
         "tool_call": true,
         "temperature": false,
         "modalities": {
@@ -2935,6 +3066,7 @@
           "output": 32768
         },
         "status": "deprecated",
+        "reasoning_options": [],
         "source": "https://developers.openai.com/api/docs/pricing",
         "rig": {
           "cache": [
@@ -2945,7 +3077,7 @@
       },
       "o1-preview-2024-09-12": {
         "name": "o1-preview",
-        "reasoning": false,
+        "reasoning": true,
         "tool_call": true,
         "temperature": false,
         "modalities": {
@@ -2958,6 +3090,7 @@
           "output": 32768
         },
         "status": "deprecated",
+        "reasoning_options": [],
         "source": "https://developers.openai.com/api/docs/pricing",
         "rig": {
           "cache": [
@@ -3094,6 +3227,11 @@
           "input": [
             "text"
           ]
+        }
+      },
+      "moonshotai/kimi-k2.6": {
+        "rig": {
+          "reasoning_field": "reasoning_content"
         }
       },
       "openai/gpt-4o-mini-transcribe": {

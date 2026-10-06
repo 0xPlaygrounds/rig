@@ -13,8 +13,8 @@
 //! against `gpt-5*` / `o*` through the Chat Completions surface. The fix sends
 //! `max_completion_tokens` **only for the models that reject the legacy field**
 //! (`OpenAICompatibleProvider::requires_modern_output_cap`, implemented for
-//! OpenAI as `is_openai_reasoning_model`: the `gpt-5`-and-up and `o`-series
-//! families). Scoping it to those models rather than to the whole endpoint is
+//! OpenAI as the model catalog's reasoning entries: the `gpt-5`-and-up and
+//! `o`-series families). Scoping it to those models rather than to the whole endpoint is
 //! deliberate: this same extension is how rig reaches OpenAI-*compatible*
 //! servers (mistral.rs, vLLM, llama.cpp, gateways), and OpenAI's own older
 //! models still take `max_tokens` — so nothing that worked before changes a

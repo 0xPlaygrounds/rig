@@ -296,9 +296,11 @@ impl crate::completion::ReplayTarget for Responses {
 fn reads_images(contract: ResponsesContract, model: &str) -> bool {
     let model = model.rsplit('/').next().unwrap_or_default();
     match contract {
-        ResponsesContract::Xai => crate::providers::xai::reads_images(model),
+        ResponsesContract::Xai => {
+            crate::catalog::reads_images(crate::providers::xai::DIALECT.name, model)
+        }
         ResponsesContract::OpenAi | ResponsesContract::Codex => {
-            crate::providers::openai::reads_images(model)
+            crate::catalog::reads_images(crate::providers::openai::wire::OPENAI.name, model)
         }
     }
 }

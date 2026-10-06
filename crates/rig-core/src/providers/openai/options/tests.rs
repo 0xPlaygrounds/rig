@@ -34,16 +34,13 @@ fn refused(result: Result<Value, ProviderError>) -> Option<&'static str> {
 }
 
 #[test]
-fn gpt_versions_read_every_spelling() {
-    assert_eq!(gpt_version("gpt-5"), Some((5, 0)));
-    assert_eq!(gpt_version("gpt-5.5-pro"), Some((5, 5)));
-    assert_eq!(gpt_version("openai/gpt-5.6-sol"), Some((5, 6)));
-    assert_eq!(gpt_version("gpt-6-sol"), Some((6, 0)));
-    assert_eq!(gpt_version("gpt-4o-mini"), Some((4, 0)));
-    assert_eq!(gpt_version("o3"), None);
+fn openai_model_facts_come_from_the_catalog() {
     assert_eq!(reasons("o3-mini"), Some(true));
+    assert_eq!(reasons("openai/gpt-5.6-sol"), Some(true));
+    assert_eq!(reasons("gpt-5-2025-08-07"), Some(true), "a dated snapshot");
     assert_eq!(reasons("gpt-4.1"), Some(false));
     assert_eq!(reasons("my-deployment"), None);
+    assert!(caches_by_options("gpt-6-sol") && !caches_by_options("gpt-5.5"));
 }
 
 #[test]
@@ -494,4 +491,167 @@ mod responses {
         }
         assert_eq!(socket, expected);
     }
+}
+
+// GPT-6's sampling and Chat Completions tool rules, ported from #2616 and
+// expressed as catalog data: the four GPT-6 models' `sampling` is
+// `reasoning_off`, they are marked `chat_tools_need_reasoning_off`, and their
+// documented default effort is `medium`. Sources: the GPT-6 model pages and
+// <https://developers.openai.com/api/docs/guides/latest-model>.
+
+use crate::completion::ToolDefinition;
+use crate::message::ToolName;
+use crate::providers::openai::completion::{GPT_6_ASTRA, GPT_6_LUNA, GPT_6_SOL};
+use crate::providers::openai::responses_api::wire::Responses as ResponsesWire;
+
+fn gpt_6_request(additional_params: Option<Value>) -> CompletionRequest {
+    CompletionRequest::new("hi").additional_params(additional_params)
+}
+
+fn with_tool(request: CompletionRequest) -> CompletionRequest {
+    request.tool(ToolDefinition::new(
+        ToolName::new("lookup").expect("a tool name"),
+        "Look something up.",
+        json!({"type": "object", "properties": {}}),
+    ))
+}
+
+fn gpt_6_body(
+    encoded: Result<crate::wire::Encoded, crate::error::EncodeError>,
+) -> Result<Value, String> {
+    let encoded = encoded.map_err(|error| ProviderError::from(error).to_string())?;
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        return Err("a JSON body".to_owned());
+    };
+    serde_json::from_slice(bytes).map_err(|error| error.to_string())
+}
+
+fn on_chat(model: &str, request: CompletionRequest) -> Result<Value, String> {
+    gpt_6_body(chat(&OPENAI, model).encode(request, Mode::Unary))
+}
+
+fn on_responses(model: &str, request: CompletionRequest) -> Result<Value, String> {
+    gpt_6_body(
+        ResponsesWire::new(OpenAIConfig::with_key(&OPENAI, "sk-test"), model)
+            .encode(request, Mode::Unary),
+    )
+}
+
+#[test]
+fn gpt_6_sampling_parameters_fail_while_the_model_reasons_by_default() {
+    for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
+        let with_temperature = gpt_6_request(None).temperature(0.2);
+        for error in [
+            on_chat(model, with_temperature.clone()).expect_err("chat temperature"),
+            on_responses(model, with_temperature).expect_err("responses temperature"),
+        ] {
+            assert!(error.contains(model), "{error}");
+            assert!(error.contains("`temperature`"), "{error}");
+        }
+        let top_p = on_responses(model, gpt_6_request(Some(json!({"top_p": 0.9}))))
+            .expect_err("responses top_p");
+        assert!(top_p.contains("`top_p`"), "{top_p}");
+        for (field, value) in [
+            ("top_p", json!(0.9)),
+            ("top_logprobs", json!(2)),
+            ("logprobs", json!(true)),
+        ] {
+            let error = on_chat(model, gpt_6_request(Some(json!({field: value}))))
+                .expect_err("chat sampling parameter");
+            assert!(error.contains(&format!("`{field}`")), "{error}");
+        }
+    }
+}
+
+#[test]
+fn gpt_6_explicit_effort_other_than_none_still_rejects_sampling() {
+    let chat_request = gpt_6_request(Some(json!({"reasoning_effort": "high"}))).temperature(0.2);
+    assert!(on_chat(GPT_6_SOL, chat_request).is_err());
+    let responses_request =
+        gpt_6_request(Some(json!({"reasoning": {"effort": "low"}}))).temperature(0.2);
+    assert!(on_responses(GPT_6_LUNA, responses_request).is_err());
+}
+
+#[test]
+fn gpt_6_effort_none_allows_sampling_on_sol_and_luna() {
+    for model in [GPT_6_SOL, GPT_6_LUNA] {
+        let chat_request =
+            gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2);
+        let body = on_chat(model, chat_request).expect("effort none samples");
+        assert_eq!(body["temperature"], json!(0.2));
+        let responses_request =
+            gpt_6_request(Some(json!({"reasoning": {"effort": "none"}}))).temperature(0.2);
+        let body = on_responses(model, responses_request).expect("effort none samples");
+        assert_eq!(body["temperature"], json!(0.2));
+    }
+}
+
+#[test]
+fn gpt_6_astras_sampling_error_does_not_suggest_effort_none() {
+    let error =
+        on_responses(GPT_6_ASTRA, gpt_6_request(None).temperature(0.2)).expect_err("rejected");
+    assert!(!error.contains("to `none`"), "{error}");
+}
+
+/// Astra never calls tools through Chat Completions, so rig refuses before
+/// sending. Sol and Luna call them at effort `none`; at their default
+/// effort the request reaches OpenAI, whose 400 names the fix (the recorded
+/// `gpt_6_luna` session pins that reply).
+#[test]
+fn gpt_6_chat_completions_tools_fail_for_astra_and_reach_the_api_on_sol_and_luna() {
+    let error = on_chat(GPT_6_ASTRA, with_tool(gpt_6_request(None))).expect_err("astra chat tools");
+    assert!(
+        error.contains(GPT_6_ASTRA) && error.contains("Responses"),
+        "{error}"
+    );
+    let error = on_chat(
+        GPT_6_ASTRA,
+        with_tool(gpt_6_request(Some(json!({"reasoning_effort": "none"})))),
+    )
+    .expect_err("astra never calls tools on chat");
+    assert!(error.contains("Responses"), "{error}");
+    for model in [GPT_6_SOL, GPT_6_LUNA] {
+        let body = on_chat(model, with_tool(gpt_6_request(None))).expect("sent; OpenAI decides");
+        assert_eq!(body.get("reasoning_effort"), None, "{body}");
+        let body = on_chat(
+            model,
+            with_tool(gpt_6_request(Some(json!({"reasoning_effort": "none"})))),
+        )
+        .expect("effort none calls tools");
+        assert_eq!(body["tools"][0]["function"]["name"], "lookup");
+    }
+}
+
+#[test]
+fn gpt_6_responses_carries_tools_at_any_effort() {
+    for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
+        let body = on_responses(model, with_tool(gpt_6_request(None))).expect("responses tools");
+        assert_eq!(body["tools"][0]["name"], "lookup");
+    }
+}
+
+#[test]
+fn gpt_6_chat_requests_use_the_reasoning_output_cap() {
+    for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
+        let capped = gpt_6_request(Some(json!({"reasoning_effort": "none"}))).max_tokens(256);
+        let body = on_chat(model, capped).expect("encodes");
+        assert_eq!(body["max_completion_tokens"], json!(256), "{model}");
+        assert_eq!(body.get("max_tokens"), None, "{model}");
+    }
+}
+
+#[test]
+fn gpt_6_rules_leave_other_models_unchecked() {
+    for model in ["gpt-5.6-sol", "gpt-6", "gpt-6-sol-mini", "openai/gpt-6-sol"] {
+        let sampled = with_tool(gpt_6_request(None)).temperature(0.2);
+        assert!(on_chat(model, sampled.clone()).is_ok(), "{model}");
+        assert!(on_responses(model, sampled).is_ok(), "{model}");
+    }
+}
+
+#[test]
+fn gpt_6_rules_follow_a_per_request_model_override() {
+    let request = gpt_6_request(None).model(GPT_6_SOL).temperature(0.2);
+    assert!(on_chat("gpt-5.6-sol", request.clone()).is_err());
+    assert!(on_responses("gpt-5.6-sol", request).is_err());
 }

@@ -5,28 +5,28 @@
 //! assert_eq!(GPT_4O, "gpt-4o");
 //! ```
 
-/// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model. Chat Completions
-/// takes its function tools only at `reasoning_effort: "none"`, which it does
-/// not support: use the Responses wire for a request with tools.
+/// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model that cannot turn
+/// reasoning off. Its catalog entry holds what the encoders enforce: no
+/// sampling parameters, and tools only through Responses.
 pub const GPT_6_ASTRA: &str = "gpt-6-astra";
 
-/// GPT-6.1 Sol, API ID `gpt-6.1-sol`: a reasoning model. Chat Completions
-/// takes its function tools only at `reasoning_effort: "none"`, which it does
-/// not support: use the Responses wire for a request with tools.
+/// GPT-6.1 Sol, API ID `gpt-6.1-sol`: a reasoning model that cannot turn
+/// reasoning off. Its catalog entry holds what the encoders enforce: no
+/// sampling parameters, and tools only through Responses.
 pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
 
-/// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Chat Completions takes
-/// its function tools only at `reasoning_effort: "none"`, which a request
-/// sets with
-/// [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
-/// `(Reasoning::Off)`. Responses takes them at any effort.
+/// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Its catalog entry
+/// holds what the encoders enforce: sampling parameters, and Chat
+/// Completions tools, only at effort `none`
+/// ([`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
+/// `(Reasoning::Off)`). Responses takes tools at any effort.
 pub const GPT_6_SOL: &str = "gpt-6-sol";
 
-/// GPT-6 Luna, API ID `gpt-6-luna`: a reasoning model. Chat Completions takes
-/// its function tools only at `reasoning_effort: "none"`, which a request
-/// sets with
-/// [`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
-/// `(Reasoning::Off)`. Responses takes them at any effort.
+/// GPT-6 Luna, API ID `gpt-6-luna`: a reasoning model. Its catalog entry
+/// holds what the encoders enforce: sampling parameters, and Chat
+/// Completions tools, only at effort `none`
+/// ([`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
+/// `(Reasoning::Off)`). Responses takes tools at any effort.
 pub const GPT_6_LUNA: &str = "gpt-6-luna";
 
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
@@ -138,33 +138,6 @@ pub const GPT_4_1_NANO: &str = "gpt-4.1-nano";
 pub const GPT_4_1_2025_04_14: &str = "gpt-4.1-2025-04-14";
 /// `gpt-4.1` completion model
 pub const GPT_4_1: &str = "gpt-4.1";
-
-/// Whether the model matches the GPT-5 through GPT-9 or numeric o-series rules
-/// used to select `max_completion_tokens`.
-pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
-    /// Match a single-digit GPT major version at least `lowest`, allowing dot
-    /// and hyphen suffixes. Multi-digit major versions do not match.
-    fn is_numbered_gpt_family(model: &str, lowest: u32) -> bool {
-        model
-            .strip_prefix("gpt-")
-            .and_then(|rest| rest.split(['.', '-']).next())
-            .filter(|major| major.len() == 1)
-            .and_then(|major| major.parse::<u32>().ok())
-            .is_some_and(|major| major >= lowest)
-    }
-
-    /// Match `o` followed by a digit and then an end, hyphen, or another digit.
-    fn is_o_series(model: &str) -> bool {
-        let mut chars = model.chars();
-        chars.next() == Some('o')
-            && chars.next().is_some_and(|digit| digit.is_ascii_digit())
-            && chars
-                .next()
-                .is_none_or(|next| next == '-' || next.is_ascii_digit())
-    }
-
-    is_numbered_gpt_family(model, 5) || is_o_series(model)
-}
 
 #[cfg(test)]
 pub(crate) mod tests;

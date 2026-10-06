@@ -1,9 +1,11 @@
 use super::*;
+use crate::providers::openai::options::reasons;
 
 /// The gate itself, over every family whose behavior was measured against
-/// the live endpoint: the reasoning models reject the legacy field, and
-/// everything else, including OpenAI's own older models and any
-/// compatible server's model names, still gets the bytes it always got.
+/// the live endpoint: the models the catalog lists as reasoning reject the
+/// legacy field, and everything else, including OpenAI's own older models
+/// and any compatible server's model names, still gets the bytes it always
+/// got.
 #[test]
 fn modern_output_cap_covers_exactly_the_reasoning_families() {
     for model in [
@@ -12,7 +14,6 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "gpt-5.2",
         "gpt-5-nano",
         "gpt-5-2025-08-07",
-        "gpt-6",
         GPT_6_ASTRA,
         GPT_6_1_SOL,
         GPT_6_SOL,
@@ -29,7 +30,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "o4-mini-2025-04-16",
     ] {
         assert!(
-            is_openai_reasoning_model(model),
+            reasons(model) == Some(true),
             "{model} rejects `max_tokens` and must get the modern spelling"
         );
     }
@@ -54,7 +55,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "",
     ] {
         assert!(
-            !is_openai_reasoning_model(model),
+            reasons(model) != Some(true),
             "{model:?} still takes `max_tokens`; changing its request would be a regression"
         );
     }

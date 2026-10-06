@@ -21,7 +21,7 @@
 
 pub mod completion;
 pub mod embedding;
-mod options;
+pub(crate) mod options;
 pub mod responses_api;
 
 /// The OpenAI wires: the configuration, the chat-completions wire and one
@@ -79,26 +79,6 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
 pub use audio_generation::{TTS_1, TTS_1_HD};
 
 pub use transcription::*;
-
-/// Whether the OpenAI `model` reads images: every model but GPT-3.5, the
-/// text-only GPT-4 snapshots, o1-mini, o1-preview, o3-mini and GPT-5.3 Codex
-/// Spark. Chat and Responses both read this one list.
-pub(crate) fn reads_images(model: &str) -> bool {
-    const TEXT_ONLY: [&str; 9] = [
-        "gpt-3.5",
-        "gpt-4-32k",
-        "gpt-4-0125-preview",
-        "gpt-4-1106-preview",
-        "gpt-4-turbo-preview",
-        "o1-mini",
-        "o1-preview",
-        "o3-mini",
-        "gpt-5.3-codex-spark",
-    ];
-    let model = model.to_ascii_lowercase();
-    !(matches!(model.as_str(), "gpt-4" | "gpt-4-0613" | "gpt-4-0314")
-        || TEXT_ONLY.iter().any(|prefix| model.starts_with(prefix)))
-}
 
 #[cfg(test)]
 mod tests;

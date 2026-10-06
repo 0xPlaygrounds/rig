@@ -39,16 +39,6 @@ pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
 
-/// Whether GLM `model` reads images: the vision models put `v` right after
-/// the version (`glm-4.5v`, `glm-4.6v-flash`, `glm-5v-turbo`). Every wire
-/// Z.AI serves applies this rule.
-pub(crate) fn reads_images(model: &str) -> bool {
-    model.strip_prefix("glm-").is_some_and(|rest| {
-        rest.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.')
-            .starts_with('v')
-    })
-}
-
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::ZAI, "Z.AI");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::ZAI,

@@ -207,6 +207,10 @@ impl Chat {
             raw_at,
             &rewrites,
         )?;
+        crate::providers::openai::options::check_body(
+            &body,
+            crate::providers::openai::options::Endpoint::ChatCompletions,
+        )?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "OpenAI Chat Completions request",
@@ -225,10 +229,10 @@ impl Chat {
 
     /// The field every assistant message carries its reasoning under,
     /// empty when the turn has none (pi's
-    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own, and
-    /// `reasoning_content` for DeepSeek at any base URL, for Kimi K3 under
-    /// any gateway's path, and for OpenRouter's Kimi K2.6, as pi's catalogue
-    /// marks them.
+    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own,
+    /// `reasoning_content` for DeepSeek at any base URL, and the field the
+    /// model's catalog entry names, on this dialect or, for a model a
+    /// gateway serves under its vendor's path, on Moonshot's own API.
     fn reasoning_field(&self, model: &str) -> Option<&'static str> {
         let deepseek = self
             .provider
@@ -236,13 +240,15 @@ impl Chat {
             .to_ascii_lowercase()
             .contains("deepseek.com");
         let name = model.rsplit('/').next().unwrap_or(model);
-        let listed = is_model(name, crate::providers::moonshot::KIMI_K3)
-            || is_model(model, "moonshotai/kimi-k2.6");
+        let listed = crate::catalog::lookup(self.provider.dialect.name, model)
+            .or_else(|| crate::catalog::lookup(crate::providers::openai::wire::MOONSHOT.name, name))
+            .and_then(|spec| spec.compat.reasoning_field.as_deref());
         self.provider
             .dialect
             .quirks
             .reasoning_field
-            .or((deepseek || listed).then_some("reasoning_content"))
+            .or(deepseek.then_some("reasoning_content"))
+            .or(listed)
     }
 
     /// The wire for `model` on `provider`, with every option off.
@@ -679,13 +685,6 @@ fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<S
         .filter_map(Value::as_object_mut)
 }
 
-/// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYY-MM-DD`).
-fn is_model(model: &str, id: &str) -> bool {
-    model
-        .strip_prefix(id)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
-}
-
 /// DeepSeek rejects a forced tool choice while thinking, and every model
 /// but `deepseek-chat` thinks unless `thinking` says `disabled` (checked
 /// live), so the choice is relaxed to the default there.
@@ -968,37 +967,34 @@ impl crate::completion::ReplayTarget for Chat {
 }
 
 /// Whether `model` reads user images from `vendor`, a dialect's name or the
-/// vendor an OpenRouter model id starts with, by the provider's documented
-/// model rules. A model the rules do not name reads them. DeepSeek's API
-/// takes text content only (it answers an image part with a 400) and
-/// Mira's gateway takes text; Groq reads images on its Llama 4 models;
-/// Mistral's Codestral and Devstral are text models; OpenAI, xAI, Z.AI,
-/// Moonshot, MiniMax and MiMo apply the rules their other wires share.
+/// vendor an OpenRouter model id starts with, as the model catalog lists it.
+/// A model the catalog does not list reads them. DeepSeek's API takes text
+/// content only (it answers an image part with a 400) and Mira's gateway
+/// takes text, whatever the model. OpenAI's model names hold on Azure too.
 fn vendor_reads_images(vendor: &str, model: &str) -> bool {
-    use crate::providers::{minimax, moonshot, xiaomimimo, zai};
-    match vendor {
-        "deepseek" | "mira" => false,
-        "groq" => model.contains("llama-4"),
-        "mistral" | "mistralai" => {
-            !(model.starts_with("codestral") || model.starts_with("devstral"))
-        }
-        "openai" | "azure.openai" => crate::providers::openai::reads_images(model),
-        "xai" | "x-ai" => crate::providers::xai::reads_images(model),
-        "cohere" => crate::providers::cohere::reads_images(model),
-        "zai" | "z-ai" => zai::reads_images(model),
-        "moonshot" | "moonshotai" => moonshot::reads_images(model),
-        "minimax" => minimax::reads_images(model),
-        "xiaomimimo" | "xiaomi" => xiaomimimo::reads_images(model),
-        _ => true,
-    }
+    let vendor = match vendor {
+        "deepseek" | "mira" => return false,
+        "azure.openai" => "openai",
+        "x-ai" => "xai",
+        "mistralai" => "mistral",
+        "z-ai" => "zai",
+        "moonshotai" => "moonshot",
+        "xiaomi" => "xiaomimimo",
+        vendor => vendor,
+    };
+    crate::catalog::reads_images(vendor, model)
 }
 
 /// Whether `model` reads user images on `dialect`. OpenRouter names a
-/// model `vendor/model`, and the vendor's rule applies.
+/// model `vendor/model`: its own catalog entry decides, or failing that the
+/// vendor's.
 fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
     match model.split_once('/') {
-        Some((vendor, model)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
-            vendor_reads_images(vendor, model)
+        Some((vendor, upstream)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
+            match crate::catalog::lookup(dialect.name, model) {
+                Some(spec) => spec.input.image,
+                None => vendor_reads_images(vendor, upstream),
+            }
         }
         _ => vendor_reads_images(dialect.name, model),
     }

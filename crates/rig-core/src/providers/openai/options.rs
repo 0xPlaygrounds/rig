@@ -1,70 +1,52 @@
 //! How the OpenAI-shaped wires answer
 //! [`GenerationOptions`](crate::completion::GenerationOptions): Chat
-//! Completions per dialect, and the model facts Chat and Responses share
-//! (which GPT generation a model is, whether it reasons). The catalog
-//! replaces the model facts once it lands.
+//! Completions per dialect, and the OpenAI and xAI model facts Chat and
+//! Responses share, which the catalog holds: whether a model reasons, the
+//! effort levels it takes, its sampling rule and its prompt cache.
 
 use serde_json::json;
 
-use crate::completion::options::{Mapping, OptionFields, OptionMap};
+use crate::catalog::{ModelSpec, Sampling};
+use crate::completion::options::{FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
+use crate::error::EncodeError;
 
 use super::wire::Chat;
 
-/// The GPT generation `model` names (`gpt-5.5-pro` is `(5, 5)`, `gpt-6-sol`
-/// is `(6, 0)`), read past a `vendor/` prefix. `None` for a model that is
-/// not a numbered GPT.
-pub(crate) fn gpt_version(model: &str) -> Option<(u32, u32)> {
-    let model = model.rsplit('/').next().unwrap_or(model);
-    let rest = model.strip_prefix("gpt-")?;
-    let major_end = rest
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(rest.len());
-    let major = rest.get(..major_end)?.parse().ok()?;
-    let minor = rest
-        .get(major_end..)
-        .and_then(|rest| rest.strip_prefix('.'))
-        .map(|rest| {
-            let end = rest
-                .find(|c: char| !c.is_ascii_digit())
-                .unwrap_or(rest.len());
-            rest.get(..end)
-                .and_then(|minor| minor.parse().ok())
-                .unwrap_or(0)
-        })
-        .unwrap_or(0);
-    Some((major, minor))
-}
-
-/// Whether OpenAI's `model` reasons: `Some(true)` for GPT-5 and later and
-/// the o-series, `Some(false)` for earlier GPT models, `None` for a model
-/// these rules do not name (an Azure deployment name, a fine-tune).
-pub(crate) fn reasons(model: &str) -> Option<bool> {
+/// The catalog entry of OpenAI's `model`, read past a `vendor/` prefix and
+/// a dated snapshot suffix. `None` for a model the catalog does not list (an
+/// Azure deployment name, a fine-tune).
+pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
     let name = model.rsplit('/').next().unwrap_or(model);
-    if super::completion::is_openai_reasoning_model(name) {
-        return Some(true);
-    }
-    gpt_version(name).map(|_| false)
+    crate::catalog::lookup(super::wire::OPENAI.name, name)
 }
 
-/// Whether `model` is GPT-5.6 or later, whose prompt cache takes
-/// `prompt_cache_options` and keeps one 30 minute retention.
+/// Whether OpenAI's `model` reasons, or `None` for a model the catalog does
+/// not list.
+pub(crate) fn reasons(model: &str) -> Option<bool> {
+    openai_spec(model).map(|spec| spec.reasoning.supported)
+}
+
+/// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
+/// later, which keep one 30 minute retention).
 pub(crate) fn caches_by_options(model: &str) -> bool {
-    gpt_version(model).is_some_and(|version| version >= (5, 6))
+    openai_spec(model).is_some_and(|spec| spec.compat.prompt_cache_options)
 }
 
-/// OpenAI's prompt cache retention for `model`. Before GPT-5.6, `Short` is
-/// `in_memory` and `Long` is `24h` on the models with extended retention
-/// (GPT-4.1 and GPT-5 up to 5.5); GPT-5.5 keeps only `24h`. From GPT-5.6 on
-/// one 30 minute retention is all there is: `Short` sends nothing, and
-/// `Long` is `long` (Responses sends its 30 minute `ttl`; Chat refuses).
-/// `None` stops caching only from GPT-5.6 on, through explicit mode with no
-/// breakpoints.
+/// OpenAI's prompt cache retention for `model`, from the retentions its
+/// catalog entry honours. Where it takes `prompt_cache_retention`, `Short`
+/// is `in_memory` and `Long` is `24h`; a model the catalog does not list
+/// takes `Short` only. Where it takes `prompt_cache_options`, one 30 minute
+/// retention is all there is: `Short` sends nothing, `Long` is `long`
+/// (Responses sends its 30 minute `ttl`; Chat refuses), and `None` stops
+/// caching through explicit mode with no breakpoints.
 pub(crate) fn openai_cache(model: &str, cache: &CacheRetention, long: Mapping) -> Mapping {
-    let version = gpt_version(model);
-    let options = caches_by_options(model);
-    let only_24h = version == Some((5, 5));
-    let extended = version.is_some_and(|version| version == (4, 1) || version.0 == 5);
+    let spec = openai_spec(model);
+    let options = spec.is_some_and(|spec| spec.compat.prompt_cache_options);
+    let honours = |retention: CacheRetention| match spec.map(|spec| &spec.caching.retention) {
+        Some(listed) if !listed.is_empty() => listed.contains(&retention),
+        _ => retention == CacheRetention::Short,
+    };
     match cache {
         CacheRetention::None if options => {
             Mapping::Send(json!({"prompt_cache_options": {"mode": "explicit"}}))
@@ -73,14 +55,95 @@ pub(crate) fn openai_cache(model: &str, cache: &CacheRetention, long: Mapping) -
         CacheRetention::Short if options => {
             Mapping::Omit("30 minutes is the only retention from GPT-5.6 on")
         }
-        CacheRetention::Short if only_24h => {
+        CacheRetention::Short if !honours(CacheRetention::Short) => {
             Mapping::unsupported("this model keeps its prompt cache for 24 hours only")
         }
         CacheRetention::Short => Mapping::Send(json!({"prompt_cache_retention": "in_memory"})),
         CacheRetention::Long if options => long,
-        CacheRetention::Long if extended => Mapping::Send(json!({"prompt_cache_retention": "24h"})),
+        CacheRetention::Long if honours(CacheRetention::Long) => {
+            Mapping::Send(json!({"prompt_cache_retention": "24h"}))
+        }
         CacheRetention::Long => Mapping::unsupported("this model has no extended cache retention"),
     }
+}
+
+/// The OpenAI endpoint a request body is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Endpoint {
+    ChatCompletions,
+    Responses,
+}
+
+/// Refuse a body the model's catalog entry says the API rejects, by its
+/// exact id (an OpenRouter `openai/` id is the gateway's to check). While
+/// the model reasons, a model whose sampling rule is
+/// [`Sampling::ReasoningOff`] takes no `temperature`, `top_p` or
+/// `top_logprobs` (nor, on Chat Completions, `logprobs`), and one marked
+/// `chat_tools_need_reasoning_off` whose reasoning cannot be turned off takes
+/// no tools on Chat Completions at all. (One that can turn it off takes them
+/// at effort `none`; the API's own error names that fix, and a recorded
+/// session pins it.) The model reasons unless the body sets effort `none`;
+/// with no effort it reasons when the catalog names its default level, and
+/// is not checked otherwise. These are fields `additional_params` can set, so the check
+/// reads the final body.
+pub(crate) fn check_body(body: &FinalBody, endpoint: Endpoint) -> Result<(), EncodeError> {
+    let Some(model) = body.get("model").and_then(serde_json::Value::as_str) else {
+        return Ok(());
+    };
+    let Some(spec) = crate::catalog::lookup(super::wire::OPENAI.name, model) else {
+        return Ok(());
+    };
+    let (effort, effort_field) = match endpoint {
+        Endpoint::ChatCompletions => (body.get("reasoning_effort"), "reasoning_effort"),
+        Endpoint::Responses => (body.pointer("/reasoning/effort"), "reasoning.effort"),
+    };
+    let reasons = match effort.and_then(serde_json::Value::as_str) {
+        Some(effort) => effort != "none",
+        None => spec.reasoning.default.is_some(),
+    };
+    let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
+    if reasons && spec.sampling == Some(Sampling::ReasoningOff) {
+        let sampling: &[&str] = match endpoint {
+            Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
+            Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
+        };
+        if let Some(field) = sampling.iter().find(|field| present(field)) {
+            let fix = match spec.reasoning.can_disable {
+                true => format!("remove `{field}` or set `{effort_field}` to `none`"),
+                false => format!("remove `{field}`"),
+            };
+            return Err(EncodeError::request(format!(
+                "`{model}` rejects `{field}` while it reasons, which it does unless \
+                 `{effort_field}` is `none`; {fix}"
+            )));
+        }
+    }
+    let carries_tools = body
+        .get("tools")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
+    if endpoint == Endpoint::ChatCompletions
+        && carries_tools
+        && spec.compat.chat_tools_need_reasoning_off
+        && !spec.reasoning.can_disable
+    {
+        return Err(EncodeError::request(format!(
+            "`{model}` cannot call tools through Chat Completions; use the Responses API"
+        )));
+    }
+    Ok(())
+}
+
+/// Why the model `spec` describes cannot take effort `effort`, from its
+/// catalog levels, or `None` when it can or the catalog does not list it.
+fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> {
+    let levels = &spec?.reasoning.levels;
+    (!levels.contains(effort)).then(|| {
+        Mapping::unsupported(format!(
+            "this model has no `{}` effort level",
+            effort.as_str()
+        ))
+    })
 }
 
 /// A `stop` list sent under `key`, refused past `limit` sequences.
@@ -234,20 +297,27 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
             if dated {
                 return refuse_dated();
             }
-            match (reasoning, reasons(model)) {
-                (Reasoning::Budget { .. }, _) => {
+            let spec = openai_spec(model);
+            match reasoning {
+                Reasoning::Budget { .. } => {
                     Mapping::unsupported("Chat Completions takes an effort level, not a budget")
                 }
-                (Reasoning::Off, Some(false)) => Mapping::Omit("the model does not reason"),
-                (_, Some(false)) => Mapping::unsupported("the model does not reason"),
-                (Reasoning::Off, _) if gpt_version(model) == Some((5, 0)) => {
-                    Mapping::unsupported("GPT-5 cannot turn reasoning off")
+                Reasoning::Off if reasons(model) == Some(false) => {
+                    Mapping::Omit("the model does not reason")
                 }
-                (Reasoning::Off, _) => send("reasoning_effort", "none"),
-                (Reasoning::Effort(Effort::Max), _) if azure.is_some() => {
+                _ if reasons(model) == Some(false) => {
+                    Mapping::unsupported("the model does not reason")
+                }
+                Reasoning::Off if spec.is_some_and(|spec| !spec.reasoning.can_disable) => {
+                    Mapping::unsupported("this model cannot turn reasoning off")
+                }
+                Reasoning::Off => send("reasoning_effort", "none"),
+                Reasoning::Effort(Effort::Max) if azure.is_some() => {
                     Mapping::unsupported("Azure takes `max` effort only on Responses")
                 }
-                (Reasoning::Effort(effort), _) => reasoning_effort(effort),
+                Reasoning::Effort(effort) => {
+                    effort_refusal(spec, effort).unwrap_or_else(|| reasoning_effort(effort))
+                }
             }
         }),
         cache: Mapping::of(cache, |cache| {
@@ -455,8 +525,12 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off if model.contains("gpt-oss") => {
-                Mapping::unsupported("GPT-OSS cannot turn reasoning off")
+            Reasoning::Off
+                if crate::catalog::lookup(super::wire::GROQ.name, model).is_some_and(|spec| {
+                    spec.reasoning.supported && !spec.reasoning.can_disable
+                }) =>
+            {
+                Mapping::unsupported("this model cannot turn reasoning off")
             }
             Reasoning::Off => send("reasoning_effort", "none"),
             Reasoning::Effort(effort) => reasoning_effort(effort),
@@ -483,14 +557,20 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-/// Whether xAI's `model` reasons: every Grok model but a `-non-reasoning`
-/// one.
+/// The catalog entry of xAI's `model`.
+fn xai_spec(model: &str) -> Option<&'static ModelSpec> {
+    crate::catalog::lookup(crate::providers::xai::DIALECT.name, model)
+}
+
+/// Whether xAI's `model` reasons, as its catalog entry says; a Grok model
+/// the catalog does not list is taken to reason, as every Grok model since
+/// Grok 4 does.
 fn grok_reasons(model: &str) -> bool {
-    !model.contains("non-reasoning")
+    xai_spec(model).is_none_or(|spec| spec.reasoning.supported)
 }
 
 /// xAI's `reasoning` on either route: `effort` spells the level as the
-/// route takes it.
+/// route takes it. The levels a model takes are its catalog entry's.
 pub(crate) fn xai_reasoning(
     model: &str,
     reasoning: &Reasoning,
@@ -501,14 +581,11 @@ pub(crate) fn xai_reasoning(
             Mapping::unsupported("a reasoning Grok model cannot turn reasoning off")
         }
         Reasoning::Off => Mapping::Omit("the model does not reason"),
-        Reasoning::Effort(Effort::XHigh) if model.starts_with("grok-4.5") => {
-            Mapping::unsupported("Grok 4.5 takes `low` to `high`; xAI reads `xhigh` as `high`")
-        }
-        Reasoning::Effort(
-            level @ (Effort::Low | Effort::Medium | Effort::High | Effort::XHigh),
-        ) => effort(level),
-        Reasoning::Effort(level) => {
+        Reasoning::Effort(level @ (Effort::Minimal | Effort::Max)) => {
             Mapping::unsupported(format!("xAI has no `{}` effort level", level.as_str()))
+        }
+        Reasoning::Effort(level) => {
+            effort_refusal(xai_spec(model), level).unwrap_or_else(|| effort(level))
         }
         Reasoning::Budget { .. } => Mapping::unsupported("xAI takes an effort level, not a budget"),
     }
@@ -1027,39 +1104,24 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         seed,
         stop,
     } = fields;
-    let version = gpt_version(model);
-    let name = model.rsplit('/').next().unwrap_or(model);
-    let pro = name.ends_with("-pro") || name.contains("-pro-");
-    let o_series = reasons(model) == Some(true) && version.is_none();
-    let below = |floor: (u32, u32)| version.is_some_and(|version| version < floor);
+    let spec = openai_spec(model);
     let reasoning_off = matches!(reasoning, Some(Reasoning::Off));
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match (reasoning, reasons(model)) {
-            (Reasoning::Budget { .. }, _) => {
+        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+            Reasoning::Budget { .. } => {
                 Mapping::unsupported("Responses takes an effort level, not a budget")
             }
-            (Reasoning::Off, Some(false)) => Mapping::Omit("the model does not reason"),
-            (_, Some(false)) => Mapping::unsupported("the model does not reason"),
-            (Reasoning::Off, _)
-                if o_series
-                    || pro
-                    || version == Some((5, 0))
-                    || name.starts_with(super::completion::GPT_6_ASTRA)
-                    || name.starts_with(super::completion::GPT_6_1_SOL) =>
-            {
+            Reasoning::Off if reasons(model) == Some(false) => {
+                Mapping::Omit("the model does not reason")
+            }
+            _ if reasons(model) == Some(false) => Mapping::unsupported("the model does not reason"),
+            Reasoning::Off if spec.is_some_and(|spec| !spec.reasoning.can_disable) => {
                 Mapping::unsupported("this model cannot turn reasoning off")
             }
-            (Reasoning::Off, _) => reasoning_object("none"),
-            (Reasoning::Effort(Effort::Minimal), _) if version.is_some_and(|v| v != (5, 0)) => {
-                Mapping::unsupported("only GPT-5 takes `minimal` effort")
+            Reasoning::Off => reasoning_object("none"),
+            Reasoning::Effort(effort) => {
+                effort_refusal(spec, effort).unwrap_or_else(|| reasoning_object(effort.as_str()))
             }
-            (Reasoning::Effort(Effort::XHigh), _) if below((5, 2)) => {
-                Mapping::unsupported("`xhigh` effort needs GPT-5.2 or later")
-            }
-            (Reasoning::Effort(Effort::Max), _) if below((5, 6)) => {
-                Mapping::unsupported("`max` effort needs GPT-5.6 or later")
-            }
-            (Reasoning::Effort(effort), _) => reasoning_object(effort.as_str()),
         }),
         cache: Mapping::of(cache, |cache| {
             openai_cache(
@@ -1078,18 +1140,21 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
             send("parallel_tool_calls", parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| match reasons(model) {
-            Some(false) | None => send("top_p", top_p),
-            Some(true) if o_series || version == Some((5, 0)) => {
-                Mapping::unsupported("this model takes no sampling parameters")
-            }
-            Some(true) if version == Some((5, 5)) => {
-                Mapping::unsupported("unverified for GPT-5.5, whose default effort is unconfirmed")
-            }
-            Some(true) if reasoning_off => send("top_p", top_p),
-            Some(true) => {
-                Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
-            }
+        top_p: Mapping::of(top_p, |top_p| match spec {
+            Some(spec) if spec.reasoning.supported => match spec.sampling {
+                Some(Sampling::Any) => send("top_p", top_p),
+                Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
+                Some(Sampling::ReasoningOff) => {
+                    Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
+                }
+                Some(Sampling::Never) => {
+                    Mapping::unsupported("this model takes no sampling parameters")
+                }
+                None => Mapping::unsupported(
+                    "unverified for this model, whose sampling rule the catalog lacks",
+                ),
+            },
+            _ => send("top_p", top_p),
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Responses has no seed parameter")
@@ -1114,15 +1179,8 @@ fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off if model.starts_with("grok-4.3") => reasoning_object("none"),
-            Reasoning::Effort(Effort::XHigh) if !model.starts_with("grok-4.5") => {
-                match ["grok-4.6", "grok-4.7"]
-                    .iter()
-                    .any(|prefix| model.starts_with(prefix))
-                {
-                    true => reasoning_object("xhigh"),
-                    false => Mapping::unsupported("`xhigh` effort needs Grok 4.6 or later"),
-                }
+            Reasoning::Off if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable) => {
+                reasoning_object("none")
             }
             reasoning => {
                 xai_reasoning(model, reasoning, |effort| reasoning_object(effort.as_str()))

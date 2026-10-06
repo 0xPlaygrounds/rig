@@ -192,6 +192,12 @@ pub(crate) fn lookup(vendor: &str, model: &str) -> Option<&'static ModelSpec> {
     Catalog::builtin().find(vendor, model)
 }
 
+/// Whether `vendor`'s `model` reads images: what its catalog entry lists,
+/// and `true` for a model the catalog does not list.
+pub(crate) fn reads_images(vendor: &str, model: &str) -> bool {
+    lookup(vendor, model).is_none_or(|spec| spec.input.image)
+}
+
 /// The rig vendor a models.dev provider key names.
 fn vendor_of(key: &str) -> &str {
     KEYS.iter()

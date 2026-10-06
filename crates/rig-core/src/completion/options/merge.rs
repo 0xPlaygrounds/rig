@@ -521,7 +521,9 @@ fn apply(
             let reasoning = body
                 .get("model")
                 .and_then(Value::as_str)
-                .is_some_and(crate::providers::openai::completion::is_openai_reasoning_model);
+                .is_some_and(|model| {
+                    crate::providers::openai::options::reasons(model) == Some(true)
+                });
             if reasoning && let Some(max_tokens) = body.shift_remove("max_tokens") {
                 body.entry("max_completion_tokens").or_insert(max_tokens);
             }
