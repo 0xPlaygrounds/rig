@@ -72,6 +72,9 @@ pub struct GenerateContentDecoder {
     placement: Option<(usize, usize)>,
     /// The latest `groundingMetadata`'s citations, by block.
     grounding: Vec<(usize, WireCitation)>,
+    /// How many chunks carried parts: a reply over more than one counts a
+    /// grounding segment's bytes in the whole answer, not in a part.
+    chunks: usize,
     /// The `citationMetadata` sources of every chunk, by block.
     recitations: Vec<(usize, WireCitation)>,
 }
@@ -158,6 +161,7 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         match parts {
             None | Some(Value::Null) => {}
             Some(Value::Array(parts)) => {
+                self.chunks += 1;
                 self.placed.clear();
                 for part in parts {
                     self.part(part.clone(), &mut out)?;
@@ -168,7 +172,8 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         }
         // Each chunk restates the grounding whole; recitation sources add up.
         if let Some(metadata) = candidate.get("groundingMetadata") {
-            self.grounding = grounding::grounding(metadata, &self.placed, &self.answer);
+            self.grounding =
+                grounding::grounding(metadata, &self.placed, &self.answer, self.chunks > 1);
         }
         if let Some(metadata) = candidate.get("citationMetadata") {
             let recitations = grounding::recitations(metadata, &self.answer);

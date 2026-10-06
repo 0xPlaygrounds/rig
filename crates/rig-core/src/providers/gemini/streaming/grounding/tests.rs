@@ -358,3 +358,35 @@ fn a_reversed_or_huge_range_is_dropped_without_panicking() {
         }
     }
 }
+
+/// An unquoted segment of a reply streamed over several chunks counts bytes
+/// in the whole answer: it cites the text the unary reply cites, never the
+/// text at that offset in the last chunk's part.
+#[test]
+fn an_unquoted_streamed_segment_cites_the_whole_answers_bytes() {
+    let segment = |text: &str| {
+        let start = bytes_of(text);
+        json!({"groundingMetadata": {
+            "groundingChunks": [{"web": {"uri": "https://example.com/final", "title": "example.com"}}],
+            "groundingSupports": [{
+                "segment": {"partIndex": 0, "startIndex": start, "endIndex": start + text.len()},
+                "groundingChunkIndices": [0],
+            }],
+        }})
+    };
+    let quoted = "Spain won";
+    let unary = finished(chunk(json!([{"text": ANSWER}]), segment(quoted)));
+    let (first, last) = ANSWER.split_at(bytes_of("Nico"));
+    let streamed = [
+        chunk(json!([{"text": first}]), json!({})),
+        finished(chunk(json!([{"text": last}]), segment(quoted))),
+    ];
+    let response =
+        decode(&wire(), Mode::Streaming, streamed.clone().map(frame)).expect("the stream decodes");
+    let [text] = texts(&response)[..] else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    let spans: Vec<_> = cited(text).into_iter().map(|(span, _)| span).collect();
+    assert_eq!(spans, [Some(quoted.to_owned())]);
+    assert_restated_agrees(&wire(), [frame(unary)], streamed.map(frame));
+}

@@ -93,6 +93,7 @@ pub(super) fn grounding(
     metadata: &Value,
     placed: &[Option<(usize, usize)>],
     answer: &AnswerText,
+    streamed: bool,
 ) -> Vec<(usize, WireCitation)> {
     let chunks = metadata.arr("groundingChunks");
     metadata
@@ -116,7 +117,7 @@ pub(super) fn grounding(
             if sources.is_empty() {
                 return None;
             }
-            let (index, span) = segment(support.get("segment")?, placed, answer)?;
+            let (index, span) = segment(support.get("segment")?, placed, answer, streamed)?;
             Some((index, WireCitation::new(Some(span), sources)))
         })
         .collect()
@@ -127,6 +128,7 @@ fn segment(
     segment: &Value,
     placed: &[Option<(usize, usize)>],
     answer: &AnswerText,
+    streamed: bool,
 ) -> Option<(usize, WireSpan)> {
     let offset = |key: &str| usize::try_from(segment.u64(key).unwrap_or(0)).ok();
     let (start, end) = (offset("startIndex")?, offset("endIndex")?);
@@ -139,6 +141,9 @@ fn segment(
     let in_answer = answer.locate(start);
     let quoted = segment.str("text").filter(|text| !text.is_empty());
     let (index, at) = match quoted {
+        // Nothing to check the span against: a reply over several chunks
+        // counts bytes in the whole answer, a whole reply in its part.
+        None if streamed => in_answer?,
         None => in_part.or(in_answer)?,
         Some(quoted) => [in_part, in_answer]
             .into_iter()
