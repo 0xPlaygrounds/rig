@@ -290,6 +290,7 @@ use rig_core::memory::MemoryError;
 /// Variants that wrap another error display it unchanged and forward its
 /// source.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PromptError {
     /// A provider completion failed.
     #[error(transparent)]

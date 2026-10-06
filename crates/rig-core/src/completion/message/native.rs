@@ -107,6 +107,7 @@ impl Origin {
 /// history but never replayed to a model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum StopReason {
     /// The model finished.
     Stop,

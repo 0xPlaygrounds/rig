@@ -38,6 +38,7 @@ pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, 
 /// from its serialized form on its own, without checking its order against
 /// the items around it; [`Transcript::parse`](rig_core::streaming::Transcript::parse)
 /// checks a run's provider stream items.
+#[non_exhaustive]
 pub enum MultiTurnStreamItem {
     /// A provider stream item containing model-emitted content: part
     /// starts and ends, text and reasoning fragments, a tool call's

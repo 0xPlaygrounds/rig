@@ -139,6 +139,7 @@ pub enum OutputCap {
 
 /// Dialect-specific transformation of the serialized chat request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum BodyRewrite {
     /// Send the OpenAI-compatible body unchanged.
     None,

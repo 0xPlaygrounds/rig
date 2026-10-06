@@ -177,6 +177,7 @@ pub enum StreamedResolution {
 
 /// Required driver action after ingesting a stream item.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum StreamedTurnEvent {
     /// Forward the ingested item to the consumer as-is.
     EmitIngested,
