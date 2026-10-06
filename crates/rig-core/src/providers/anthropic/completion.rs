@@ -75,17 +75,40 @@ pub enum CacheTtl {
     OneHour,
 }
 
-/// The catalog entry of Anthropic's `model`, or of the model a dated
-/// snapshot (`<id>-YYYYMMDD`) names. `None` for a model the catalog does not
-/// list, which gets the newest models' behaviour.
+/// The catalog entry of Anthropic's `model`, or of the model a snapshot
+/// (`<id>-YYYYMMDD`, or any suffix from `-20`) names. `None` for a model the
+/// catalog does not list, which gets the newest models' behaviour.
 pub(super) fn spec(model: &str) -> Option<&'static ModelSpec> {
-    crate::catalog::lookup(super::ANTHROPIC.name, model)
+    crate::catalog::lookup_snapshot(super::ANTHROPIC.name, model)
 }
 
-/// The published synchronous output limit of a listed model. Unlisted
-/// models require an explicit `max_tokens` value.
+/// The catalog entry of the Claude `model`, however the serving API spells
+/// it: Anthropic's `claude-opus-5-5`, OpenRouter's `anthropic/claude-opus-5.5`
+/// or Bedrock's `us.anthropic.claude-opus-5-5-v1:0`, or one of its dated
+/// snapshots. Its reasoning, sampling and context binding are read through
+/// this one spelling rule on every wire that serves Claude.
+#[doc(hidden)]
+pub fn claude_spec(model: &str) -> Option<&'static ModelSpec> {
+    let model = model
+        .rsplit_once("anthropic.")
+        .map_or(model, |(_, rest)| rest);
+    let model = model.strip_prefix("anthropic/").unwrap_or(model);
+    let model = model.split_once("-v1:").map_or(model, |(id, _)| id);
+    spec(&model.replace('.', "-"))
+}
+
+/// The published synchronous output limit of a listed model. A model the
+/// catalog does not list under the `claude-opus-4`, `claude-sonnet-4` or
+/// `claude-haiku-4-5` prefixes takes 64000; any other requires an explicit
+/// `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    spec(model)?.max_output_tokens.map(u64::from)
+    match spec(model) {
+        Some(spec) => spec.max_output_tokens.map(u64::from),
+        None => ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
+            .iter()
+            .any(|prefix| model.starts_with(prefix))
+            .then_some(64_000),
+    }
 }
 
 /// Whether `model` rejects a forced tool choice.
@@ -101,9 +124,10 @@ pub(super) fn takes_mid_conversation_system(model: &str) -> bool {
 }
 
 /// Whether the Claude `model` binds its thinking blocks to the request's
-/// tools and system prompt.
+/// tools and system prompt, however the serving API spells it
+/// ([`claude_spec`]).
 pub(super) fn binds_context(model: &str) -> bool {
-    spec(model).is_some_and(|spec| spec.compat.binds_context)
+    claude_spec(model).is_some_and(|spec| spec.compat.binds_context)
 }
 
 /// The beta that lets a request ask Anthropic to drop a thinking block bound

@@ -517,7 +517,11 @@ impl crate::completion::ReplayTarget for NativeChat {
     /// assistant turns or tool results.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         crate::completion::Accepts {
-            user_images: crate::catalog::reads_images(super::PROVIDER_NAME, model),
+            user_images: crate::catalog::reads_images_or(
+                super::PROVIDER_NAME,
+                model,
+                super::reads_images,
+            ),
             assistant_images: false,
             tool_result_images: false,
             tools: true,

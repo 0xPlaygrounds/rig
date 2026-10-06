@@ -44,17 +44,14 @@ enum Thinking {
 
 /// The thinking `model` takes, by its id past a `models/` prefix. An id
 /// the catalog does not list is looked up as the model it versions: without
-/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, a model
-/// before Gemini 2.5 does not think.
+/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, its family
+/// decides ([`named_thinking`]).
 fn thinking(model: &str) -> Thinking {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
     let lookup = |model: &str| crate::catalog::lookup(super::PROVIDER_NAME, model);
     let Some(spec) = lookup(model).or_else(|| lookup(versioned_model(model)?)) else {
-        return match super::completion::gemini_major(model) {
-            Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
-            _ => Thinking::Unknown,
-        };
+        return named_thinking(model);
     };
     let support = &spec.reasoning;
     match &support.budget {
@@ -67,6 +64,48 @@ fn thinking(model: &str) -> Thinking {
             levels: &support.levels,
             can_disable: support.can_disable,
         },
+    }
+}
+
+const LOW_TO_HIGH: &[Effort] = &[Effort::Low, Effort::Medium, Effort::High];
+const MINIMAL_TO_HIGH: &[Effort] = &[Effort::Minimal, Effort::Low, Effort::Medium, Effort::High];
+
+/// The thinking of a model the catalog does not list, by the family its id
+/// starts with (`gemini-2.5-flash-latest`, a `-tts` variant): Gemini 3's
+/// levels, Gemini 2.5's budgets, no thinking before 2.5, and otherwise
+/// unknown.
+fn named_thinking(model: &str) -> Thinking {
+    let levels: [(&str, &'static [Effort]); 10] = [
+        ("gemini-3.8-flash", LOW_TO_HIGH),
+        ("gemini-3.7-flash", LOW_TO_HIGH),
+        ("gemini-3.6-flash", MINIMAL_TO_HIGH),
+        ("gemini-3.5-flash-lite", MINIMAL_TO_HIGH),
+        ("gemini-3.5-flash", MINIMAL_TO_HIGH),
+        ("gemini-3.1-pro", LOW_TO_HIGH),
+        ("gemini-3.1-flash-lite", MINIMAL_TO_HIGH),
+        ("gemini-3-flash-preview", MINIMAL_TO_HIGH),
+        ("gemini-3-pro-preview", &[Effort::Low, Effort::High]),
+        ("gemini-3-pro", &[Effort::Low, Effort::High]),
+    ];
+    if let Some((_, levels)) = levels.iter().find(|(id, _)| model.starts_with(id)) {
+        return Thinking::Levels {
+            levels,
+            can_disable: false,
+        };
+    }
+    let budgets = [
+        ("gemini-2.5-flash-lite", 512..=24_576, true),
+        ("gemini-2.5-flash", 0..=24_576, true),
+        ("gemini-2.5-pro", 128..=32_768, false),
+    ];
+    if let Some((_, range, can_disable)) =
+        budgets.into_iter().find(|(id, ..)| model.starts_with(id))
+    {
+        return Thinking::Budget { range, can_disable };
+    }
+    match super::completion::gemini_major(model) {
+        Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
+        _ => Thinking::Unknown,
     }
 }
 

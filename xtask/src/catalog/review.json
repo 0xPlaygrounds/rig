@@ -1974,7 +1974,8 @@
         "temperature": true,
         "modalities": {
           "input": [
-            "text"
+            "text",
+            "image"
           ]
         }
       }

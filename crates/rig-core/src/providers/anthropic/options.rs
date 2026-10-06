@@ -160,7 +160,7 @@ fn anthropic(
         seed,
         stop,
     } = fields;
-    let spec = super::completion::spec(model);
+    let spec = super::completion::claude_spec(model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {

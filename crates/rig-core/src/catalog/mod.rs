@@ -192,10 +192,27 @@ pub(crate) fn lookup(vendor: &str, model: &str) -> Option<&'static ModelSpec> {
     Catalog::builtin().find(vendor, model)
 }
 
+/// The model of the built-in catalog `vendor` serves as `model`, or as a
+/// snapshot of it: a listed id followed by `-20` and anything
+/// (`claude-opus-4-1-20250805`, `claude-opus-5-5-20260601-v1:0`), the
+/// longest such id.
+pub(crate) fn lookup_snapshot(vendor: &str, model: &str) -> Option<&'static ModelSpec> {
+    let catalog = Catalog::builtin();
+    catalog.exact(vendor, model).or_else(|| {
+        model
+            .match_indices("-20")
+            .filter_map(|(at, _)| catalog.exact(vendor, model.get(..at)?))
+            .last()
+    })
+}
+
 /// Whether `vendor`'s `model` reads images: what its catalog entry lists,
-/// and `true` for a model the catalog does not list.
-pub(crate) fn reads_images(vendor: &str, model: &str) -> bool {
-    lookup(vendor, model).is_none_or(|spec| spec.input.image)
+/// or, for a model the catalog does not list, what `rule` (the vendor's
+/// naming rule) says of its id. Every wire that filters images reads this,
+/// so an id the catalog does not list (a gateway's spelling, another case,
+/// a deployment name) keeps its vendor's naming rule.
+pub(crate) fn reads_images_or(vendor: &str, model: &str, rule: impl FnOnce(&str) -> bool) -> bool {
+    lookup(vendor, model).map_or_else(|| rule(model), |spec| spec.input.image)
 }
 
 /// The rig vendor a models.dev provider key names.

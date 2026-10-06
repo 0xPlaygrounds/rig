@@ -205,6 +205,29 @@ fn the_encoders_find_a_dated_snapshot_by_its_model() {
     }
 }
 
+/// A snapshot is any suffix from `-20` after a listed id, the longest such
+/// id winning; another spelling is not listed.
+#[test]
+fn a_snapshot_lookup_reads_any_suffix_from_a_date() {
+    let id = |model: &str| lookup_snapshot("anthropic", model).map(|spec| spec.id.as_str());
+    assert_eq!(id("claude-opus-5-5"), Some("claude-opus-5-5"));
+    assert_eq!(id("claude-opus-5-5-20260601"), Some("claude-opus-5-5"));
+    assert_eq!(id("claude-opus-5-5-20260601-v1:0"), Some("claude-opus-5-5"));
+    assert_eq!(id("claude-opus-5-20260601"), Some("claude-opus-5"));
+    assert_eq!(id("claude-opus-5.5"), None);
+    assert_eq!(id("claude-opus-5-5-latest"), None);
+}
+
+/// An id the catalog lists reads images as its entry says; any other id is
+/// read by the rule the caller passes, never by a default.
+#[test]
+fn an_unlisted_model_reads_images_by_its_vendor_rule() {
+    assert!(!reads_images_or("openai", "gpt-3.5-turbo", |_| true));
+    assert!(reads_images_or("openai", "gpt-4o", |_| false));
+    assert!(!reads_images_or("minimax", "minimax-m2.5", |_| false));
+    assert!(reads_images_or("minimax", "minimax-m2.5", |_| true));
+}
+
 #[test]
 fn catalog_only_providers_have_entries_and_no_preset() {
     let catalog = Catalog::from_json(SAMPLE).expect("parses");

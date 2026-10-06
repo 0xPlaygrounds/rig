@@ -60,7 +60,12 @@ pub struct Modalities {
     pub pdf: bool,
 }
 
-/// The reasoning a model takes.
+/// The reasoning a model takes. A row that marks a model as reasoning but
+/// lists no reasoning options (193 rows of the built-in catalog, most of
+/// them gateway rows on HuggingFace, OpenRouter, Venice and Bedrock) has no
+/// levels, no budget and cannot disable, so [`ModelSpec::validate`] refuses
+/// every effort, every budget and `Off` on it; unlike [`CacheSupport`],
+/// empty here does not mean unknown.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReasoningSupport {
@@ -144,7 +149,9 @@ pub struct Compat {
 impl ModelSpec {
     /// Checks `options` against what the model takes: `reasoning` against
     /// [`Self::reasoning`] and `cache` against [`Self::caching`]. The error
-    /// names the option, the provider's vendor and this model.
+    /// names the option, the provider's vendor and this model. A reasoning
+    /// row with no reasoning options refuses every `reasoning` value (see
+    /// [`ReasoningSupport`]).
     pub fn validate(&self, options: &GenerationOptions) -> Result<(), UnsupportedOption> {
         let refuse = |option: &'static str, reason: String| {
             UnsupportedOption::new(option, self.provider.vendor(), &self.id, reason)

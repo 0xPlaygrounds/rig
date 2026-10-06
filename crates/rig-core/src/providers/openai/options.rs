@@ -22,13 +22,51 @@ pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
 }
 
 /// Whether OpenAI's `model` reasons, as its catalog entry says. For a model
-/// the catalog does not list, `Some(true)` when its id names GPT-5 or later
-/// or the o-series (see [`named_reasoning`]), else `None`.
+/// the catalog does not list, by its id: `Some(true)` for GPT-5 and later
+/// and the o-series (see [`named_reasoning`]), `Some(false)` for an earlier
+/// numbered GPT, `None` for an id that names neither (an Azure deployment
+/// name, a fine-tune).
 pub(crate) fn reasons(model: &str) -> Option<bool> {
     match openai_spec(model) {
         Some(spec) => Some(spec.reasoning.supported),
-        None => named_reasoning(model).then_some(true),
+        None => named_reasons(model),
     }
+}
+
+/// Whether `model` reasons by its id alone: `Some(true)` for GPT-5 and
+/// later and the o-series, `Some(false)` for an earlier numbered GPT,
+/// `None` for an id that names neither.
+fn named_reasons(model: &str) -> Option<bool> {
+    match named_reasoning(model) {
+        true => Some(true),
+        false => gpt_version(model).map(|_| false),
+    }
+}
+
+/// The GPT generation `model` names (`gpt-5.5-pro` is `(5, 5)`, `gpt-6-sol`
+/// is `(6, 0)`), read past a `vendor/` prefix. `None` for a model that is
+/// not a numbered GPT. The rules for an id the catalog does not list read
+/// it.
+fn gpt_version(model: &str) -> Option<(u32, u32)> {
+    let model = model.rsplit('/').next().unwrap_or(model);
+    let rest = model.strip_prefix("gpt-")?;
+    let major_end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    let major = rest.get(..major_end)?.parse().ok()?;
+    let minor = rest
+        .get(major_end..)
+        .and_then(|rest| rest.strip_prefix('.'))
+        .map(|rest| {
+            let end = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            rest.get(..end)
+                .and_then(|minor| minor.parse().ok())
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+    Some((major, minor))
 }
 
 /// Whether `model`'s id names an OpenAI reasoning model: a single-digit GPT
@@ -66,6 +104,40 @@ fn named_can_disable(model: &str) -> bool {
     !(named_o_series(name) || pro || gpt_5_0)
 }
 
+/// Whether a model the catalog does not list can turn reasoning off on
+/// Responses, by its id: not the o-series, a `-pro` model, GPT-5 itself
+/// (`gpt-5` and its `gpt-5-*` variants), GPT-6 Astra or GPT-6.1 Sol, whether
+/// or not its id names a reasoning model.
+fn named_responses_can_disable(model: &str) -> bool {
+    let name = model.rsplit('/').next().unwrap_or(model);
+    let o_series = named_reasons(model) == Some(true) && gpt_version(model).is_none();
+    let pro = name.ends_with("-pro") || name.contains("-pro-");
+    !(o_series
+        || pro
+        || gpt_version(model) == Some((5, 0))
+        || name.starts_with(super::completion::GPT_6_ASTRA)
+        || name.starts_with(super::completion::GPT_6_1_SOL))
+}
+
+/// `top_p` on Responses for a model whose catalog entry gives no sampling
+/// rule (or that the catalog does not list), by its id: a model that does
+/// not reason by its name takes it; the o-series, `-pro` models and GPT-5
+/// take none; GPT-5.5 is unverified; the rest take it only at effort
+/// `none`.
+fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
+    match named_reasons(model) {
+        Some(false) | None => send("top_p", top_p),
+        Some(true) if !named_responses_can_disable(model) => {
+            Mapping::unsupported("this model takes no sampling parameters")
+        }
+        Some(true) if gpt_version(model) == Some((5, 5)) => {
+            Mapping::unsupported("unverified for GPT-5.5, whose default effort is unconfirmed")
+        }
+        Some(true) if reasoning_off => send("top_p", top_p),
+        Some(true) => Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`"),
+    }
+}
+
 /// Why OpenAI's `model` cannot turn reasoning off, or `None` when it can (or
 /// does not reason): its catalog entry's `can_disable`, else its id.
 fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
@@ -77,24 +149,39 @@ fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
 }
 
 /// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
-/// later, which keep one 30 minute retention).
+/// later, which keep one 30 minute retention): its catalog entry's, or for
+/// a model the catalog does not list, its GPT generation's.
 pub(crate) fn caches_by_options(model: &str) -> bool {
-    openai_spec(model).is_some_and(|spec| spec.compat.prompt_cache_options)
+    match openai_spec(model) {
+        Some(spec) => spec.compat.prompt_cache_options,
+        None => gpt_version(model).is_some_and(|version| version >= (5, 6)),
+    }
 }
 
 /// OpenAI's prompt cache retention for `model`, from the retentions its
 /// catalog entry honours. Where it takes `prompt_cache_retention`, `Short`
-/// is `in_memory` and `Long` is `24h`; a model the catalog does not list
-/// takes `Short` only. Where it takes `prompt_cache_options`, one 30 minute
-/// retention is all there is: `Short` sends nothing, `Long` is `long`
-/// (Responses sends its 30 minute `ttl`; Chat refuses), and `None` stops
-/// caching through explicit mode with no breakpoints.
+/// is `in_memory` and `Long` is `24h`; a listed model with no retention
+/// data takes `Short` only. Where it takes `prompt_cache_options`, one 30
+/// minute retention is all there is: `Short` sends nothing, `Long` is
+/// `long` (Responses sends its 30 minute `ttl`; Chat refuses), and `None`
+/// stops caching through explicit mode with no breakpoints. A model the
+/// catalog does not list is read by its GPT generation: `Long` on GPT-4.1
+/// and GPT-5 to 5.5, `24h` only on GPT-5.5, and `prompt_cache_options` from
+/// GPT-5.6 on.
 pub(crate) fn openai_cache(model: &str, cache: &CacheRetention, long: Mapping) -> Mapping {
     let spec = openai_spec(model);
-    let options = spec.is_some_and(|spec| spec.compat.prompt_cache_options);
+    let options = caches_by_options(model);
+    let version = gpt_version(model);
     let honours = |retention: CacheRetention| match spec.map(|spec| &spec.caching.retention) {
         Some(listed) if !listed.is_empty() => listed.contains(&retention),
-        _ => retention == CacheRetention::Short,
+        Some(_) => retention == CacheRetention::Short,
+        None => match retention {
+            CacheRetention::Short => version != Some((5, 5)),
+            CacheRetention::Long => {
+                version.is_some_and(|version| version == (4, 1) || version.0 == 5)
+            }
+            CacheRetention::None => false,
+        },
     };
     match cache {
         CacheRetention::None if options => {
@@ -573,12 +660,8 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off
-                if crate::catalog::lookup(super::wire::GROQ.name, model).is_some_and(|spec| {
-                    spec.reasoning.supported && !spec.reasoning.can_disable
-                }) =>
-            {
-                Mapping::unsupported("this model cannot turn reasoning off")
+            Reasoning::Off if model.contains("gpt-oss") => {
+                Mapping::unsupported("GPT-OSS cannot turn reasoning off")
             }
             Reasoning::Off => send("reasoning_effort", "none"),
             Reasoning::Effort(effort) => reasoning_effort(effort),
@@ -1168,6 +1251,9 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 Mapping::Omit("the model does not reason")
             }
             _ if reasons(model) == Some(false) => Mapping::unsupported("the model does not reason"),
+            Reasoning::Off if spec.is_none() && !named_responses_can_disable(model) => {
+                Mapping::unsupported("this model cannot turn reasoning off")
+            }
             Reasoning::Off => off_refusal(spec, model).unwrap_or_else(|| reasoning_object("none")),
             Reasoning::Effort(effort) => {
                 effort_refusal(spec, effort).unwrap_or_else(|| reasoning_object(effort.as_str()))
@@ -1200,14 +1286,10 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 Some(Sampling::Never) => {
                     Mapping::unsupported("this model takes no sampling parameters")
                 }
-                None => Mapping::unsupported(
-                    "unverified for this model, whose sampling rule the catalog lacks",
-                ),
+                None => named_top_p(model, top_p, reasoning_off),
             },
             Some(_) => send("top_p", top_p),
-            None if reasons(model) != Some(true) => send("top_p", top_p),
-            None if reasoning_off && named_can_disable(model) => send("top_p", top_p),
-            None => Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`"),
+            None => named_top_p(model, top_p, reasoning_off),
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Responses has no seed parameter")

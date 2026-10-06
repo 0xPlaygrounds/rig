@@ -253,63 +253,31 @@ impl Wire for Converse {
     }
 }
 
-/// The catalog entry of the Bedrock `model`: a base model id or system
-/// inference profile, or the last part of its ARN. A Claude id the catalog
-/// does not list under Bedrock (another region's profile, another
-/// `-v1:N` revision, a dated snapshot) takes the Anthropic model's entry.
-/// `None` for any other model the catalog does not list.
+/// Model families pi's catalog lists as text-only on Bedrock, separated by
+/// spaces: the rule for a model the catalog does not list under Bedrock (a
+/// region inference profile, a dated or `-v2` revision).
+const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-70b \
+    meta.llama3-1- meta.llama3-3- minimax. mistral.devstral mistral.mistral-7b \
+    mistral.mistral-large-2402 mistral.mistral-small-2402 mistral.mixtral mistral.voxtral \
+    moonshot.kimi-k2-thinking nvidia.nemotron-nano-3 nvidia.nemotron-nano-9b \
+    nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
+    qwen.qwen3-next writer.palmyra zai.glm";
+
+/// The catalog entry of the Bedrock `model`. A Claude id is read as every
+/// wire that serves Claude reads it ([`claude_spec`]: the Anthropic model's
+/// entry, past a region prefix, a `-v1:N` revision or a dated snapshot), so
+/// its reasoning, sampling and context binding match Anthropic's own API.
+/// Any other id is a base model id or system inference profile, or the last
+/// part of its ARN, listed under Bedrock. `None` for a model the catalog
+/// does not list.
+///
+/// [`claude_spec`]: rig_core::providers::anthropic::completion::claude_spec
 pub fn spec(model: &str) -> Option<&'static ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
-    let catalog = Catalog::builtin();
-    ProviderId::catalog(PROVIDER_NAME)
-        .and_then(|provider| catalog.get(provider, id))
-        .or_else(|| {
-            let anthropic = ProviderId::catalog("anthropic")?;
-            let claude = claude_model(id)?;
-            catalog
-                .get(anthropic, &claude)
-                .or_else(|| catalog.get(anthropic, undated(&claude)?))
-        })
-}
-
-/// The Anthropic model a Bedrock Claude id serves:
-/// `[region.]anthropic.<model>[-v<n>[:<m>]]` to `<model>`, with `.` read as
-/// `-` (`claude-opus-4.6` is `claude-opus-4-6`).
-fn claude_model(id: &str) -> Option<String> {
-    let (_, model) = id.split_once("anthropic.")?;
-    let model = match model.rsplit_once("-v") {
-        Some((model, version))
-            if version
-                .split(':')
-                .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())) =>
-        {
-            model
-        }
-        _ => model,
-    };
-    Some(model.replace('.', "-"))
-}
-
-/// The catalog entry of the base model a region inference profile routes
-/// to: `eu.meta.llama3-3-70b-instruct-v1:0` as
-/// `meta.llama3-3-70b-instruct-v1:0`. `None` when the id has no region
-/// prefix or the base model is not listed.
-fn base_model_spec(model: &str) -> Option<&'static ModelSpec> {
-    let id = model.rsplit('/').next().unwrap_or(model);
-    let (region, base) = id.split_once('.')?;
-    const REGIONS: [&str; 9] = [
-        "us", "eu", "apac", "global", "jp", "au", "ca", "in", "us-gov",
-    ];
-    if !REGIONS.contains(&region) {
-        return None;
+    if id.contains("anthropic.") || id.starts_with("claude") {
+        return rig_core::providers::anthropic::completion::claude_spec(id);
     }
-    Catalog::builtin().get(ProviderId::catalog(PROVIDER_NAME)?, base)
-}
-
-/// `model` without a trailing `-YYYYMMDD` snapshot date.
-fn undated(model: &str) -> Option<&str> {
-    let (rest, date) = model.rsplit_once('-')?;
-    (date.len() == 8 && date.bytes().all(|byte| byte.is_ascii_digit())).then_some(rest)
+    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
 }
 
 impl ReplayTarget for Converse {
@@ -338,14 +306,19 @@ impl ReplayTarget for Converse {
 
     /// Converse reads images in user turns and tool results, never in
     /// assistant turns. Claude reads them; so does every other model but
-    /// those the catalog lists as reading no images. A region profile the
-    /// catalog does not list (`eu.meta.llama3-3-70b-instruct-v1:0`) is
-    /// read as the base model it routes to.
+    /// those the catalog lists as reading no images, or, for a model the
+    /// catalog does not list (a region inference profile such as
+    /// `eu.meta.llama3-3-70b-instruct-v1:0`), the text-only families.
     fn accepts(&self, model: &str) -> Accepts {
         let images = self.family(model) == Family::Claude
-            || spec(model)
-                .or_else(|| base_model_spec(model))
-                .is_none_or(|spec| spec.input.image);
+            || spec(model).map_or_else(
+                || {
+                    !TEXT_ONLY
+                        .split_whitespace()
+                        .any(|family| model.contains(family))
+                },
+                |spec| spec.input.image,
+            );
         Accepts {
             user_images: images,
             assistant_images: false,

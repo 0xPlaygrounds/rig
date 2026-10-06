@@ -66,3 +66,12 @@ pub const DIALECT: Dialect = Dialect {
 };
 
 crate::client::macros::openai_vendor!(DIALECT, "xAI");
+
+/// Whether the xAI `model`, an id the catalog does not list, reads images:
+/// Grok 2 only in its vision models, and neither Grok 3 nor Grok Code.
+pub(crate) fn reads_images(model: &str) -> bool {
+    let model = model.to_ascii_lowercase();
+    !((model.starts_with("grok-2") && !model.contains("vision"))
+        || model.starts_with("grok-3")
+        || model.starts_with("grok-code"))
+}

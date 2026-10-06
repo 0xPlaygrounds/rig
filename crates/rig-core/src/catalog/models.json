@@ -629,7 +629,7 @@
   "meta-llama/Meta-Llama-3.1-8B-Instruct": {"name":"Llama 3.1 8B Instruct","reasoning":false,"tool_call":true,"temperature":true,"modalities":{"input":["text"]}}
 }},
 "llamacpp": {"models": {
-  "LLaMA_CPP": {"name":"llama.cpp server model","reasoning":false,"tool_call":true,"temperature":true,"modalities":{"input":["text"]}}
+  "LLaMA_CPP": {"name":"llama.cpp server model","reasoning":false,"tool_call":true,"temperature":true,"modalities":{"input":["text","image"]}}
 }},
 "minimax": {"models": {
   "MiniMax-M2": {"name":"MiniMax-M2","reasoning":true,"reasoning_options":[],"tool_call":true,"temperature":true,"modalities":{"input":["text"]},"limit":{"context":204800,"output":131072},"cost":{"input":0.3,"output":1.2}},

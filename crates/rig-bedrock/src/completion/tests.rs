@@ -123,7 +123,7 @@ fn hosted_items_pair_and_calls_have_an_id_slot() {
 }
 
 /// Bedrock finds a model's catalog entry by its id or the last part of its
-/// ARN, and a Claude row carries the Anthropic model's thinking facts.
+/// ARN, and a Claude id takes the Anthropic model's entry.
 #[test]
 fn bedrock_models_take_their_facts_from_the_catalog() {
     let opus = super::spec("us.anthropic.claude-opus-5-5").expect("listed");
@@ -132,7 +132,11 @@ fn bedrock_models_take_their_facts_from_the_catalog() {
         "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5";
     assert_eq!(
         super::spec(arn).map(|spec| spec.id.as_str()),
-        Some("us.anthropic.claude-opus-5-5")
+        Some("claude-opus-5-5")
+    );
+    assert!(
+        super::spec(AMAZON_NOVA_LITE).is_some(),
+        "another model's Bedrock row"
     );
     let haiku = super::spec(ANTHROPIC_CLAUDE_HAIKU_4_5).expect("listed");
     assert!(!haiku.compat.adaptive_thinking && haiku.reasoning.budget.is_some());
@@ -164,9 +168,10 @@ fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
     assert!(super::spec("jp.amazon.nova-unlisted-v1:0").is_none());
 }
 
-/// A region profile the catalog does not list reads images as the base
-/// model it routes to, so a text-only model's profile keeps P2's
-/// placeholder; an unlisted model without a listed base is sent images.
+/// A model the catalog does not list under Bedrock (a region profile) reads
+/// images unless its id names a text-only family, so a text-only model's
+/// profile keeps its placeholder and an unlisted model of another family is
+/// sent images.
 #[test]
 fn an_unlisted_region_profile_reads_images_as_its_base_model() {
     for model in [

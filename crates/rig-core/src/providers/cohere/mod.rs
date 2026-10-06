@@ -55,5 +55,12 @@ pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
 /// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
 
+/// Whether `model`, an id the catalog does not list, reads user images by
+/// its name: Cohere's vision models (Command A Vision, Aya Vision) do, and
+/// its text models do not.
+pub(crate) fn reads_images(model: &str) -> bool {
+    model.contains("vision")
+}
+
 #[cfg(test)]
 mod history_tests;

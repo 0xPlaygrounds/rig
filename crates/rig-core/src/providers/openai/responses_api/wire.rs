@@ -291,17 +291,22 @@ impl crate::completion::ReplayTarget for Responses {
     }
 }
 
-/// Whether `model` reads images, by its vendor's documented text-only
-/// models. An unknown model reads them.
+/// Whether `model` reads images, past a `vendor/` prefix: its catalog
+/// entry's input, or for a model the catalog does not list its vendor's
+/// documented text-only models. An unknown model reads them.
 fn reads_images(contract: ResponsesContract, model: &str) -> bool {
     let model = model.rsplit('/').next().unwrap_or_default();
     match contract {
-        ResponsesContract::Xai => {
-            crate::catalog::reads_images(crate::providers::xai::DIALECT.name, model)
-        }
-        ResponsesContract::OpenAi | ResponsesContract::Codex => {
-            crate::catalog::reads_images(crate::providers::openai::wire::OPENAI.name, model)
-        }
+        ResponsesContract::Xai => crate::catalog::reads_images_or(
+            crate::providers::xai::DIALECT.name,
+            model,
+            crate::providers::xai::reads_images,
+        ),
+        ResponsesContract::OpenAi | ResponsesContract::Codex => crate::catalog::reads_images_or(
+            crate::providers::openai::wire::OPENAI.name,
+            model,
+            crate::providers::openai::reads_images,
+        ),
     }
 }
 

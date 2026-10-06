@@ -974,37 +974,47 @@ impl crate::completion::ReplayTarget for Chat {
     }
 }
 
-/// Whether `model` reads user images from `vendor`, a dialect's name or the
-/// vendor an OpenRouter model id starts with, as the model catalog lists it.
-/// A model the catalog does not list reads them. DeepSeek's API takes text
-/// content only (it answers an image part with a 400) and Mira's gateway
-/// takes text, whatever the model. OpenAI's model names hold on Azure too.
-fn vendor_reads_images(vendor: &str, model: &str) -> bool {
-    let vendor = match vendor {
-        "deepseek" | "mira" => return false,
-        "azure.openai" => "openai",
-        "x-ai" => "xai",
-        "mistralai" => "mistral",
-        "z-ai" => "zai",
-        "moonshotai" => "moonshot",
-        "xiaomi" => "xiaomimimo",
-        vendor => vendor,
-    };
-    crate::catalog::reads_images(vendor, model)
+/// The catalog vendor whose entries say which models `vendor` serves read
+/// images, and the naming rule for an id the catalog does not list:
+/// `vendor` is a dialect's name or the vendor an OpenRouter model id starts
+/// with. Groq reads images on its Llama 4 models; Mistral's Codestral and
+/// Devstral are text models; OpenAI (on Azure too), xAI, Cohere, Z.AI,
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share; any
+/// other vendor's unlisted model reads them. `None` for DeepSeek's API,
+/// which takes text content only (it answers an image part with a 400), and
+/// Mira's gateway, which takes text, whatever the model.
+fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
+    use crate::providers::{minimax, moonshot, xiaomimimo, zai};
+    Some(match vendor {
+        "deepseek" | "mira" => return None,
+        "groq" => ("groq", |model| model.contains("llama-4")),
+        "mistral" | "mistralai" => ("mistral", |model| {
+            !(model.starts_with("codestral") || model.starts_with("devstral"))
+        }),
+        "openai" | "azure.openai" => ("openai", crate::providers::openai::reads_images),
+        "xai" | "x-ai" => ("xai", crate::providers::xai::reads_images),
+        "cohere" => ("cohere", crate::providers::cohere::reads_images),
+        "zai" | "z-ai" => ("zai", zai::reads_images),
+        "moonshot" | "moonshotai" => ("moonshot", moonshot::reads_images),
+        "minimax" => ("minimax", minimax::reads_images),
+        "xiaomimimo" | "xiaomi" => ("xiaomimimo", xiaomimimo::reads_images),
+        vendor => (vendor, |_| true),
+    })
 }
 
-/// Whether `model` reads user images on `dialect`. OpenRouter names a
-/// model `vendor/model`: its own catalog entry decides, or failing that the
-/// vendor's.
+/// Whether `model` reads user images on `dialect`, as the model catalog
+/// lists it, or by the naming rule of [`image_rule`] for a model it does not
+/// list. OpenRouter names a model `vendor/model`: its own catalog entry
+/// decides, or failing that the vendor's naming rule.
 fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
     match model.split_once('/') {
         Some((vendor, upstream)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
-            match crate::catalog::lookup(dialect.name, model) {
-                Some(spec) => spec.input.image,
-                None => vendor_reads_images(vendor, upstream),
-            }
+            crate::catalog::reads_images_or(dialect.name, model, |_| {
+                image_rule(vendor).is_some_and(|(_, rule)| rule(upstream))
+            })
         }
-        _ => vendor_reads_images(dialect.name, model),
+        _ => image_rule(dialect.name)
+            .is_some_and(|(vendor, rule)| crate::catalog::reads_images_or(vendor, model, rule)),
     }
 }
 

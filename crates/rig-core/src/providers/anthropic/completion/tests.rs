@@ -123,6 +123,15 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         "the Models API's limit for Claude Opus 4.1"
     );
     assert_eq!(default_max_tokens_for_model("claude-3-opus"), None);
+    // An id the catalog does not list takes its family's default.
+    assert_eq!(
+        default_max_tokens_for_model("claude-opus-4.6"),
+        Some(64_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model("claude-sonnet-4-6@20260101"),
+        Some(64_000)
+    );
 }
 
 fn generic_tool(name: &str) -> completion::ToolDefinition {
@@ -1668,10 +1677,20 @@ fn context_binding_reads_every_spelling_of_a_claude_model() {
         "claude-opus-5",
         "claude-fable-5-1",
         "claude-sonnet-5-5",
+        "anthropic/claude-opus-5.5",
+        "claude-opus-5.5",
+        "anthropic.claude-opus-5-5-v1:0",
+        "us.anthropic.claude-opus-5-5-20260101-v1:0",
+        "us.anthropic.claude-opus-5",
     ] {
         assert!(binds_context(model), "{model}");
     }
-    for model in ["claude-sonnet-5", "claude-haiku-4-5-20251001", "gpt-5"] {
+    for model in [
+        "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
+        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "gpt-5",
+    ] {
         assert!(!binds_context(model), "{model}");
     }
 }
