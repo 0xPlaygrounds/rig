@@ -38,7 +38,7 @@ fn scripted() -> Generation {
 struct Scripted(Arc<std::sync::Mutex<Vec<GenerationEvent>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
+    fn send(&self, _request: CandleRequest, _exchange: Exchange) -> Opening<CandleFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {
@@ -289,6 +289,28 @@ fn request(messages: Vec<Message>) -> CompletionRequest {
     } else {
         messages
     })
+}
+
+/// `request` as the generation wire encodes it for the loaded model.
+fn payload(request: CompletionRequest) -> Result<CandleRequest, CandleError> {
+    use rig_core::wire::Wire as _;
+    scripted()
+        .encode(request, Mode::Unary)
+        .map_err(|error| CandleError::InvalidGeneration(error.to_string()))
+}
+
+/// The generation settings `request` asks of a model with `defaults`.
+fn settings(
+    request: &CompletionRequest,
+    defaults: &GenerationConfig,
+    vocab_size: usize,
+) -> Result<GenerationConfig, CandleError> {
+    effective_generation(
+        request,
+        &payload(request.clone())?.params,
+        defaults,
+        vocab_size,
+    )
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -973,7 +995,11 @@ fn concurrency_limit_and_cancellation_are_deterministic()
     let signal = CancellationSignal::default();
     signal.cancel();
     assert!(matches!(
-        infer(&loaded, &request(vec![Message::user("hello")]), &signal),
+        infer(
+            &loaded,
+            &payload(request(vec![Message::user("hello")]))?,
+            &signal
+        ),
         Err(CandleError::Cancelled)
     ));
     Ok(())
@@ -1177,7 +1203,11 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     let mut override_request = request(vec![Message::user("hello")]);
     override_request.model = Some("other".to_string());
     assert!(matches!(
-        infer(&loaded, &override_request, &CancellationSignal::default()),
+        infer(
+            &loaded,
+            &payload(override_request)?,
+            &CancellationSignal::default()
+        ),
         Err(CandleError::UnsupportedFeature(feature)) if feature.contains("model override")
     ));
 
@@ -1217,7 +1247,7 @@ fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleErr
         "repeat_penalty": 1.2,
         "repeat_last_n": 9
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = settings(&request, &defaults, 8)?;
     assert_eq!(effective.max_tokens, 12);
     assert_eq!(effective.temperature, 0.0);
     assert_eq!(effective.top_k, Some(4));
@@ -1228,27 +1258,27 @@ fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleErr
         "top_k": null,
         "top_p": null
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = settings(&request, &defaults, 8)?;
     assert_eq!(effective.top_k, None);
     assert_eq!(effective.top_p, None);
 
     let mut inherited_defaults = defaults.clone();
     inherited_defaults.top_k = Some(5);
     request.additional_params = Some(serde_json::json!({}));
-    let effective = effective_generation(&request, &inherited_defaults, 8)?;
+    let effective = settings(&request, &inherited_defaults, 8)?;
     assert_eq!(effective.top_k, Some(5));
     assert_eq!(effective.top_p, defaults.top_p);
 
     request.additional_params = Some(serde_json::json!({"unknown": true}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.additional_params = Some(serde_json::json!({"top_k": "four"}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.additional_params = None;
     request.max_tokens = Some(0);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.max_tokens = Some(1);
     request.temperature = Some(f64::NAN);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     Ok(())
 }
 

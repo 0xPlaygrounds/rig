@@ -146,32 +146,3 @@ impl OptionMap {
         ]
     }
 }
-
-/// Every set option refused: the answer of a wire whose mapping has not
-/// landed yet.
-#[doc(hidden)]
-pub fn unmapped(fields: OptionFields<'_>) -> OptionMap {
-    let [
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-    ] = fields.set().map(|set| match set {
-        true => Mapping::unsupported("this wire maps no options yet"),
-        false => Mapping::Nothing,
-    });
-    OptionMap {
-        reasoning,
-        cache,
-        service_tier,
-        verbosity,
-        parallel_tool_calls,
-        top_p,
-        seed,
-        stop,
-    }
-}

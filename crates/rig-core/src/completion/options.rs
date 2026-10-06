@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 mod mapping;
 mod merge;
 
-pub use mapping::{Mapping, OptionFields, OptionMap, unmapped};
+pub use mapping::{Mapping, OptionFields, OptionMap};
 pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, mapped_param, param, request_params};
 
 /// Provider-neutral generation knobs for one request. An unset field leaves

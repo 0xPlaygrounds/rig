@@ -9,14 +9,15 @@ use base64::Engine as _;
 use base64::alphabet::STANDARD;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
 use base64::prelude::BASE64_STANDARD;
-use rig_core::completion::{CompletionRequest, Message, Replay};
+use rig_core::completion::options::{BaseInput, FinalBody, RawAt, request_params};
+use rig_core::completion::{CacheRetention, CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, MimeType, ToolChoice,
     ToolResultContent, UserContent, Video,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::completion::{Converse, Family};
@@ -31,15 +32,44 @@ const BASE64: GeneralPurpose = GeneralPurpose::new(
 /// Converse rejects blank text and empty content.
 const EMPTY_TEXT: &str = "<empty>";
 
-/// The Converse body of `request` for `model` on `wire`. A guardrail
-/// applies to a `unary` request only.
+/// The Converse body of `request` for `model` on `wire`: the wire's encoding
+/// of the request, then the mapped options, then `additional_params`, which
+/// merge under `additionalModelRequestFields`. A guardrail applies to a
+/// `unary` request only.
 pub(crate) fn body(
     wire: &Converse,
-    request: CompletionRequest,
+    request: &CompletionRequest,
     model: &str,
     unary: bool,
-) -> Result<Value, EncodeError> {
+) -> Result<FinalBody, EncodeError> {
+    request_params(
+        wire,
+        request,
+        |input| base(wire, request, model, unary, input),
+        RawAt::Under("/additionalModelRequestFields"),
+        &[],
+    )
+}
+
+/// A cache checkpoint with the TTL `cache` asks for.
+fn checkpoint(cache: CacheRetention) -> Value {
+    match cache {
+        CacheRetention::Long => json!({ "cachePoint": { "type": "default", "ttl": "1h" } }),
+        _ => json!({ "cachePoint": { "type": "default" } }),
+    }
+}
+
+/// The wire's own encoding of `request`, with the cache checkpoints the
+/// mapped `cache` places.
+fn base(
+    wire: &Converse,
+    request: &CompletionRequest,
+    model: &str,
+    unary: bool,
+    input: &mut BaseInput<'_>,
+) -> Result<Map<String, Value>, EncodeError> {
     let family = wire.family(model);
+    let cache = input.cache().filter(|cache| *cache != CacheRetention::None);
     // The system messages that lead the history are the system prompt. A
     // later one stays where the history puts it, as user text, so adding
     // one never changes the cached prefix before it.
@@ -59,8 +89,10 @@ pub(crate) fn body(
             _ => None,
         })
         .collect();
-    if wire.prompt_caching && !system.is_empty() {
-        system.push(json!({ "cachePoint": { "type": "default" } }));
+    if let Some(cache) = cache
+        && !system.is_empty()
+    {
+        system.push(checkpoint(cache));
     }
     let ids = WireIds::for_target(history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
@@ -104,14 +136,18 @@ pub(crate) fn body(
         }
     }
     // Bedrock rejects a cache point anywhere after a reasoning turn, even on
-    // the user's side.
-    let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
-    if wire.prompt_caching
-        && !reasoning
-        && let Some(Value::Array(last)) =
+    // the user's side, so that checkpoint is refused rather than skipped.
+    if let Some(cache) = cache {
+        let reasoning = blocks(&mut messages).any(|block| block.get("reasoningContent").is_some());
+        if reasoning {
+            input.refuse_cache(
+                "Bedrock rejects a message cache checkpoint after a reasoning turn",
+            )?;
+        } else if let Some(Value::Array(last)) =
             messages.last_mut().and_then(|last| last.get_mut("content"))
-    {
-        last.push(json!({ "cachePoint": { "type": "default" } }));
+        {
+            last.push(checkpoint(cache));
+        }
     }
     let output = match &request.output_schema {
         Some(schema) => Some(
@@ -126,15 +162,18 @@ pub(crate) fn body(
         "temperature": request.temperature.map(|temperature| f64::from(temperature as f32)),
         "maxTokens": request.max_tokens.map(|max_tokens| max_tokens as i32),
     });
-    Ok(present(json!({
+    let body = present(json!({
         "system": (!system.is_empty()).then_some(system),
         "inferenceConfig": present(inference),
-        "toolConfig": tool_config(&request),
-        "additionalModelRequestFields": request.additional_params,
+        "toolConfig": tool_config(request),
         "outputConfig": output,
         "guardrailConfig": wire.guardrail.as_ref().filter(|_| unary),
         "messages": messages,
-    })))
+    }));
+    Ok(match body {
+        Value::Object(body) => body,
+        _ => Map::new(),
+    })
 }
 
 /// `value` without its `null` fields: Converse reads an absent field, not a

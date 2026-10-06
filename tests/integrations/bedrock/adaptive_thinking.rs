@@ -2,7 +2,6 @@
 
 use futures::StreamExt;
 use rig::agent::AgentBuilder;
-use rig::bedrock::completion::Converse;
 use rig::completion::AssistantContent;
 use rig::streaming::StreamEvent;
 use serde_json::json;
@@ -25,8 +24,14 @@ fn adaptive_thinking_params() -> serde_json::Value {
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     let model = client().completion(anthropic_adaptive_model());
-    let model = rig::Model::new(Converse::with_prompt_caching(model.wire), model.transport);
+    // A checkpoint after the reasoning turn is refused by default; this
+    // round trip skips it with a warning and checks the rest still works.
     let agent = AgentBuilder::new(model)
+        .options(
+            rig::completion::GenerationOptions::default()
+                .cache(rig::completion::CacheRetention::Short)
+                .on_unsupported(rig::completion::OnUnsupported::Ignore),
+        )
         .preamble(
             "You must call tools when the user asks for their result. \
              After a tool result is available, answer with the exact result.",

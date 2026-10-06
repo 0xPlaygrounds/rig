@@ -17,6 +17,7 @@ use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
 use aws_sdk_bedrockruntime::types::GuardrailTrace;
+use rig_core::completion::options::FinalBody;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
@@ -148,11 +149,6 @@ pub struct Converse {
     /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
     /// the model id decides.
     pub family: Option<Family>,
-    /// When enabled, cache checkpoints are inserted into Converse API requests
-    /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
-    /// Marks system content and, when the request sends no reasoning, the
-    /// final message. Disabled by default.
-    pub prompt_caching: bool,
     /// The `guardrailConfig` of unary Converse requests, if any.
     /// Set through [`Converse::with_guardrail`].
     pub guardrail: Option<Value>,
@@ -163,7 +159,6 @@ impl Converse {
         Self {
             model: model.into(),
             family: None,
-            prompt_caching: false,
             guardrail: None,
         }
     }
@@ -192,15 +187,6 @@ impl Converse {
         }
     }
 
-    /// Enables checkpoints after system content and the final message.
-    /// A request that sends reasoning gets no message checkpoint: Bedrock
-    /// rejects one anywhere after a reasoning turn. Tool definitions are
-    /// not marked; model-specific caching limits apply.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
     /// Apply a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)
     /// to unary Converse requests. Streaming requests do not apply this setting.
     ///
@@ -226,7 +212,7 @@ impl Converse {
 #[derive(Clone, Debug)]
 pub struct ConverseRequest {
     pub model: String,
-    pub body: Value,
+    pub body: FinalBody,
 }
 
 /// One unit of a Converse reply, as the JSON Bedrock sent.
@@ -256,7 +242,7 @@ impl Wire for Converse {
         mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let body = request::body(self, request, &model, mode == Mode::Unary)?;
+        let body = request::body(self, &request, &model, mode == Mode::Unary)?;
         Ok(ConverseRequest { model, body })
     }
 
@@ -275,12 +261,15 @@ const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-
     qwen.qwen3-next writer.palmyra zai.glm";
 
 impl ReplayTarget for Converse {
+    /// Section 6.5 of the typed-options design: reasoning in the model's
+    /// own request fields, by family and Claude class.
     fn map_options(
         &self,
-        _request: &rig_core::completion::CompletionRequest,
+        request: &CompletionRequest,
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
-        rig_core::completion::options::unmapped(fields)
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        crate::options::converse(self.family(model), model, request, fields)
     }
 
     fn api(&self) -> Api {

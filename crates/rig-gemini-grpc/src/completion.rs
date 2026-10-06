@@ -79,12 +79,14 @@ impl Wire for GenerateContent {
 }
 
 impl rig_core::completion::ReplayTarget for GenerateContent {
+    /// The GenerateContent mapping, for what the gRPC request declares.
     fn map_options(
         &self,
-        _request: &rig_core::completion::CompletionRequest,
+        request: &rig_core::completion::CompletionRequest,
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
-        rig_core::completion::options::unmapped(fields)
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        rest::generate_content_options(model, rest::Route::Grpc, fields)
     }
 
     fn api(&self) -> rig_core::message::Api {

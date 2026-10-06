@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use rig_core::completion::CompletionRequest;
+use rig_core::completion::options::{FinalBody, RawAt, request_params};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::message::AssistantContent;
@@ -285,7 +286,7 @@ type CandleStreamItem = Result<GenerationEvent, ProviderError>;
 #[cfg(not(target_family = "wasm"))]
 fn stream_infer(
     loaded: &LoadedModel,
-    request: &CompletionRequest,
+    request: &CandleRequest,
     cancellation: &CancellationSignal,
     sender: &tokio::sync::mpsc::Sender<CandleStreamItem>,
 ) -> Result<(), CandleError> {
@@ -331,6 +332,17 @@ impl Generation {
     }
 }
 
+/// A local generation's payload: the prepared request, and its options and
+/// `additional_params` merged into the generation overrides they name
+/// (`top_p`, `seed`, `top_k`, `repeat_penalty`, `repeat_last_n`).
+#[derive(Clone, Debug)]
+pub struct CandleRequest {
+    /// The prepared request.
+    pub request: CompletionRequest,
+    /// The merged generation overrides.
+    pub params: FinalBody,
+}
+
 /// One unit of a local generation's reply.
 pub enum CandleFrame {
     /// A whole unary turn: the local response record and its parsed content.
@@ -341,7 +353,7 @@ pub enum CandleFrame {
 
 impl rig_core::wire::Wire for Generation {
     type Op = rig_core::operation::Completion;
-    type Payload = CompletionRequest;
+    type Payload = CandleRequest;
     type Frame = CandleFrame;
     type Decoder<'id> = CandleAdapter<'id>;
 
@@ -352,13 +364,29 @@ impl rig_core::wire::Wire for Generation {
     }
 
     /// The prompt protocol decides which reasoning a local model can render
-    /// and refuses the rest, so the request passes as it is.
+    /// and refuses the rest, so the request passes as it is, beside its
+    /// merged generation overrides. A raw `tools` stays in them, for the
+    /// generator to refuse.
     fn encode(
         &self,
         request: CompletionRequest,
         _mode: Mode,
-    ) -> Result<CompletionRequest, rig_core::error::EncodeError> {
-        Ok(request)
+    ) -> Result<CandleRequest, rig_core::error::EncodeError> {
+        let params = request_params(
+            self,
+            &request,
+            |input| {
+                let tools = input.raw_tools()?;
+                let mut base = serde_json::Map::new();
+                if !tools.is_empty() {
+                    base.insert("tools".to_owned(), serde_json::Value::Array(tools));
+                }
+                Ok(base)
+            },
+            RawAt::Top,
+            &[],
+        )?;
+        Ok(CandleRequest { request, params })
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -367,12 +395,55 @@ impl rig_core::wire::Wire for Generation {
 }
 
 impl rig_core::completion::ReplayTarget for Generation {
+    /// A local generation's settings: `top_p` and `seed` are generation
+    /// overrides; thinking is off in every prompt protocol's default
+    /// rendering, and nothing is cached across requests.
     fn map_options(
         &self,
-        _request: &rig_core::completion::CompletionRequest,
+        _request: &CompletionRequest,
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
-        rig_core::completion::options::unmapped(fields)
+        use rig_core::completion::options::{Mapping, OptionFields, OptionMap};
+        use rig_core::completion::{CacheRetention, Reasoning};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        const LOCAL: &str = "a local generation has no such setting";
+        OptionMap {
+            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+                Reasoning::Off => Mapping::Omit(
+                    "Qwen3 renders its no-thinking mode by default; other models do not reason",
+                ),
+                _ => Mapping::unsupported("a local model takes no reasoning level or budget"),
+            }),
+            cache: Mapping::of(cache, |cache| match cache {
+                CacheRetention::None => Mapping::Omit("nothing is cached across requests"),
+                _ => Mapping::unsupported("a local generation keeps no prompt cache"),
+            }),
+            service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(LOCAL)),
+            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(LOCAL)),
+            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| Mapping::unsupported(LOCAL)),
+            top_p: Mapping::of(top_p, |top_p| {
+                if top_p.is_finite() && 0.0 < top_p && top_p <= 1.0 {
+                    Mapping::Send(serde_json::json!({ "top_p": top_p }))
+                } else {
+                    Mapping::unsupported("`top_p` must be in (0, 1]")
+                }
+            }),
+            seed: Mapping::of(seed, |seed| {
+                Mapping::Send(serde_json::json!({ "seed": seed }))
+            }),
+            stop: Mapping::of_stop(stop, |_| {
+                Mapping::unsupported("local generation stops only on end tokens")
+            }),
+        }
     }
 
     // A local runtime has no finish vocabulary: its decoder states a stop.
@@ -502,7 +573,7 @@ fn whole(out: &mut Out<'_, Completion>, content: AssistantContent) -> Result<(),
 }
 
 impl Transport<Generation> for CandleModel {
-    fn send(&self, request: CompletionRequest, exchange: Exchange) -> Opening<CandleFrame> {
+    fn send(&self, request: CandleRequest, exchange: Exchange) -> Opening<CandleFrame> {
         let mode = exchange.mode;
         // A closed admission controller refuses before anything runs, as
         // opening a completion or a stream always has.
@@ -531,7 +602,7 @@ impl Transport<Generation> for CandleModel {
 impl CandleModel {
     async fn infer_completion(
         &self,
-        request: CompletionRequest,
+        request: CandleRequest,
     ) -> Result<crate::generation::InferredCompletion, ProviderError> {
         let loaded = &self.state;
 
@@ -565,7 +636,7 @@ impl CandleModel {
     /// signals cancellation between forward passes.
     async fn open_stream(
         &self,
-        request: CompletionRequest,
+        request: CandleRequest,
     ) -> Result<
         rig_core::wasm_compat::WasmBoxedStream<'static, Result<GenerationEvent, ProviderError>>,
         ProviderError,

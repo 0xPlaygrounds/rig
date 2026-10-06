@@ -140,7 +140,7 @@ fn sent_body(payload: ConverseRequest, mode: Mode) -> Value {
         Mode::Unary => "converse",
         Mode::Streaming => "converse-stream",
     };
-    let mut body = payload.body;
+    let mut body = serde_json::to_value(&payload.body).expect("the body serializes");
     body["$path"] = json!(format!("/model/{}/{operation}", payload.model));
     body
 }
@@ -620,9 +620,12 @@ fn the_transport_sends_the_encoded_body() {
                 event_stream(&events(&[json!({ "text": "ok" })], "end_turn")),
             ),
         };
-        let mut request = CompletionRequest::new("hi");
+        let mut request = CompletionRequest::new("hi").options(
+            rig_core::completion::GenerationOptions::default()
+                .cache(rig_core::completion::CacheRetention::Short),
+        );
         request.temperature = Some(0.5);
-        let wire = Converse::new(CLAUDE).with_prompt_caching();
+        let wire = Converse::new(CLAUDE);
         let prepared = rig_core::operation::Completion::prepare(request.clone(), &wire.describe())
             .expect("prepares");
         let expected = sent_body(wire.encode(prepared, mode).expect("encodes"), mode);

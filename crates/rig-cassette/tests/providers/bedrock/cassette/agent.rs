@@ -57,11 +57,13 @@ async fn prompt_caching_completion_smoke() {
         "agent/prompt_caching_completion_smoke",
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
-            let model = rig::Model::new(
-                bedrock::completion::Converse::with_prompt_caching(model.wire),
-                model.transport,
-            );
-            let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
+            let agent = AgentBuilder::new(model)
+                .options(
+                    rig::completion::GenerationOptions::default()
+                        .cache(rig::completion::CacheRetention::Short),
+                )
+                .preamble(BASIC_PREAMBLE)
+                .build();
 
             let response = agent
                 .prompt(BASIC_PROMPT)

@@ -169,12 +169,17 @@ impl Wire for CohereChat {
 /// Every request names its route, so these are only what the replay of a
 /// history adapted to the wire as a whole reads: the Compatibility API's.
 impl ReplayTarget for CohereChat {
+    /// The answer of the API `request` goes to.
     fn map_options(
         &self,
-        _request: &crate::completion::CompletionRequest,
+        request: &CompletionRequest,
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
-        crate::completion::options::unmapped(fields)
+        if self.native_for(request) {
+            self.native_api.map_options(request, fields)
+        } else {
+            self.compatibility_api.map_options(request, fields)
+        }
     }
 
     fn api(&self) -> crate::message::Api {

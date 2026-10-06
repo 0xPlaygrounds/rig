@@ -341,6 +341,7 @@ fn raw_layer(request: &CompletionRequest) -> Result<Map<String, Value>, EncodeEr
 fn placed(raw: Map<String, Value>, raw_at: RawAt) -> Map<String, Value> {
     match raw_at {
         RawAt::Top => raw,
+        RawAt::Under(_) if raw.is_empty() => Map::new(),
         RawAt::Under(pointer) => {
             let mut value = Value::Object(raw);
             for key in pointer.rsplit('/').filter(|key| !key.is_empty()) {

@@ -210,16 +210,6 @@ fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleErro
                 .to_string(),
         ));
     }
-    if request
-        .additional_params
-        .as_ref()
-        .and_then(serde_json::Value::as_object)
-        .is_some_and(|parameters| parameters.contains_key("tools"))
-    {
-        return Err(CandleError::UnsupportedFeature(
-            "provider-native hosted tools".to_string(),
-        ));
-    }
     Ok(())
 }
 

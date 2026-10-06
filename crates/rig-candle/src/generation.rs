@@ -8,6 +8,7 @@
 
 use candle_transformers::generation::Sampling;
 use rig_core::completion::CompletionRequest;
+use rig_core::completion::options::FinalBody;
 use serde::Deserialize;
 
 use crate::CandleError;
@@ -88,16 +89,18 @@ struct RequestGenerationOverrides {
     repeat_last_n: Option<usize>,
 }
 
+/// The generation settings for `request`: its typed fields over the
+/// model's `defaults`, then `params`, the merged option and raw overrides.
+/// `params` holds no key but the overrides: an unknown key is refused.
 pub(crate) fn effective_generation(
     request: &CompletionRequest,
+    params: &FinalBody,
     defaults: &GenerationConfig,
     vocab_size: usize,
 ) -> Result<GenerationConfig, CandleError> {
-    let overrides = match &request.additional_params {
-        Some(value) => RequestGenerationOverrides::deserialize(value)
-            .map_err(|error| CandleError::InvalidGeneration(error.to_string()))?,
-        None => RequestGenerationOverrides::default(),
-    };
+    let overrides = params
+        .deserialize::<RequestGenerationOverrides>()
+        .map_err(|error| CandleError::InvalidGeneration(error.to_string()))?;
     let generation = GenerationConfig {
         max_tokens: request.max_tokens.unwrap_or(defaults.max_tokens),
         temperature: request.temperature.unwrap_or(defaults.temperature),
@@ -241,6 +244,7 @@ use tokenizers::{
 use web_time::{Duration, Instant};
 
 use crate::loader::{LoadedModel, LoadedWeights};
+use crate::model::CandleRequest;
 use crate::profile::ConversationProtocol;
 use crate::runtime::{CancellationSignal, check_cancellation};
 use crate::types::{CandleCompletionResponse, FinishReason};
@@ -366,9 +370,16 @@ impl SessionWeights<'_> {
 impl<'a> GenerationSession<'a> {
     pub(crate) fn new(
         loaded: &'a LoadedModel,
-        request: &CompletionRequest,
+        payload: &CandleRequest,
         cancellation: &'a CancellationSignal,
     ) -> Result<Self, CandleError> {
+        let CandleRequest { request, params } = payload;
+        // Hosted tools have no local form.
+        if params.get("tools").is_some() {
+            return Err(CandleError::UnsupportedFeature(
+                "provider-native hosted tools".to_string(),
+            ));
+        }
         // A prepared request names the loaded checkpoint; any other model is
         // an override this runtime cannot serve.
         if let Some(model) = request
@@ -381,8 +392,12 @@ impl<'a> GenerationSession<'a> {
             )));
         }
         let prompt = crate::protocol::render_prompt(request, loaded.profile.definition.protocol)?;
-        let generation =
-            effective_generation(request, &loaded.generation, loaded.profile.vocab_size)?;
+        let generation = effective_generation(
+            request,
+            params,
+            &loaded.generation,
+            loaded.profile.vocab_size,
+        )?;
         let encoding = loaded
             .tokenizer
             .encode(prompt, false)
@@ -540,7 +555,7 @@ fn duration_millis(duration: Duration) -> u64 {
 
 pub(crate) fn generate(
     loaded: &LoadedModel,
-    request: &CompletionRequest,
+    request: &CandleRequest,
     cancellation: &CancellationSignal,
     mut emit: impl FnMut(String) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
@@ -565,13 +580,13 @@ pub(crate) fn generate(
 
 pub(crate) fn infer(
     loaded: &LoadedModel,
-    request: &CompletionRequest,
+    request: &CandleRequest,
     cancellation: &CancellationSignal,
 ) -> Result<InferredCompletion, CandleError> {
     let mut raw_response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
         &raw_response.text,
-        request,
+        &request.request,
         loaded.profile.definition.protocol,
     )?;
     raw_response.text = parsed.visible_text;
@@ -612,7 +627,7 @@ pub enum GenerationEvent {
 
 pub(crate) fn stream_generate(
     loaded: &LoadedModel,
-    request: &CompletionRequest,
+    request: &CandleRequest,
     cancellation: &CancellationSignal,
     mut emit: impl FnMut(GenerationEvent) -> Result<(), CandleError>,
 ) -> Result<CandleCompletionResponse, CandleError> {
@@ -628,7 +643,7 @@ pub(crate) fn stream_generate(
     let mut response = generate(loaded, request, cancellation, |_| Ok(()))?;
     let parsed = crate::protocol::parse_assistant(
         &response.text,
-        request,
+        &request.request,
         loaded.profile.definition.protocol,
     )?;
     response.text = parsed.visible_text;

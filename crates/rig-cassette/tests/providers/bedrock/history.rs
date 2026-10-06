@@ -69,7 +69,8 @@ pub(super) fn assert_recorded_history(model: &str, response: &CompletionResponse
         })
         .collect();
     let request = Completion::prepare(request, &wire.describe()).expect("prepares");
-    let body = wire.encode(request, Mode::Unary).expect("encodes").body;
+    let body = serde_json::to_value(wire.encode(request, Mode::Unary).expect("encodes").body)
+        .expect("serializes");
     let recorded: Vec<Value> = content
         .into_iter()
         .filter(|block| {

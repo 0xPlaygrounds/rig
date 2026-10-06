@@ -31,7 +31,7 @@ fn tool(tool: &str) -> ToolDefinition {
 /// prepares it.
 fn encoded(wire: &Converse, request: CompletionRequest, mode: Mode) -> Value {
     let request = Completion::prepare(request, &wire.describe()).expect("prepares");
-    wire.encode(request, mode).expect("encodes").body
+    serde_json::to_value(wire.encode(request, mode).expect("encodes").body).expect("serializes")
 }
 
 /// The body `history` sends to `model`, with a definition for every tool
@@ -182,13 +182,22 @@ fn a_later_system_message_stays_in_place() {
     );
 }
 
-/// Prompt caching marks the system prompt and the last message, unless the
-/// request sends reasoning: Bedrock rejects a cache point anywhere after a
-/// reasoning turn (#1673). Reasoning another model made goes as text, so it
-/// does not.
+/// A short cache marks the system prompt and the last message. Bedrock
+/// rejects a cache point anywhere after a reasoning turn (#1673), so that
+/// one is skipped with a warning under `Ignore` and refused otherwise.
+/// Reasoning another model made goes as text, so it does not.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    let wire = Converse::new(CLAUDE).with_prompt_caching();
+    use rig_core::completion::{CacheRetention, GenerationOptions, OnUnsupported};
+    let cached = |history: Vec<Message>| {
+        CompletionRequest::from(history).options(
+            GenerationOptions::default()
+                .cache(CacheRetention::Short)
+                .on_unsupported(OnUnsupported::Ignore),
+        )
+    };
+    let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
+    let wire = Converse::new(CLAUDE);
     let point = json!({ "cachePoint": { "type": "default" } });
     let body = sent_on(&wire, vec![Message::system("s"), Message::user("q")]);
     assert_eq!(body["system"], json!([{ "text": "s" }, point]));
@@ -208,7 +217,7 @@ fn cache_points_follow_what_the_request_sends() {
     ];
     let body = sent_on(&wire, history.clone());
     assert_eq!(body["messages"][2]["content"], json!([{ "text": "more" }]));
-    let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5).with_prompt_caching();
+    let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5);
     let body = sent_on(&other, history);
     assert_eq!(body["messages"][1]["content"][0], json!({ "text": "hm" }));
     assert_eq!(
@@ -754,10 +763,13 @@ fn adversarial_histories_encode_to_requests_converse_takes() {
                     continue;
                 }
             };
-            let body = Converse::new(CLAUDE)
-                .encode(request, Mode::Unary)
-                .expect("encodes")
-                .body;
+            let body = serde_json::to_value(
+                Converse::new(CLAUDE)
+                    .encode(request, Mode::Unary)
+                    .expect("encodes")
+                    .body,
+            )
+            .expect("serializes");
             let v = converse_violations(&body);
             if !v.is_empty() {
                 failures.push(format!(
