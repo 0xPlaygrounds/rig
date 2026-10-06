@@ -29,6 +29,7 @@ mod loaders;
 mod no_random_ids;
 mod prompt_response_messages;
 mod reasoning_stream_stats;
+mod request_bodies;
 #[cfg(feature = "derive")]
 mod rig_tool_facade;
 mod streaming_conformance;
