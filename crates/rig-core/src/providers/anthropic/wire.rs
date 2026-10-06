@@ -215,7 +215,7 @@ pub const MOONSHOT: Dialect = Dialect {
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
     "xiaomimimo",
-    "https://api.xiaomimimo.com/anthropic/v1",
+    "https://api.xiaomimimo.com/anthropic",
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
@@ -245,11 +245,12 @@ impl AnthropicConfig {
     }
 
     /// `dialect` with `api_key`, at the dialect's default base URL and
-    /// with default settings.
+    /// with default settings. The base URL is normalized as
+    /// [`with_base_url`](Self::with_base_url) does.
     pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
         Self {
             api_key: api_key.into(),
-            base_url: dialect.base_url.to_owned(),
+            base_url: normalize_base_url(dialect.base_url),
             version: super::completion::ANTHROPIC_VERSION_LATEST.to_owned(),
             betas: Vec::new(),
             dialect: *dialect,

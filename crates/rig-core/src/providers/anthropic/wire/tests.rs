@@ -6,6 +6,7 @@
 //! failure names the decoder rather than the harness.
 
 use super::*;
+use crate::wire::Operation;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 #[test]
@@ -108,4 +109,41 @@ fn every_dialect_defaults_to_eager_tool_input() {
         );
     }
     assert_eq!(Quirks::gateway().max_tokens, MaxTokens::Fixed(4096));
+}
+
+/// The path `config` posts a completion to.
+fn messages_path(config: AnthropicConfig) -> String {
+    let wire = config.completion("a-model");
+    let mut request = CompletionRequest::new("hello");
+    request.max_tokens = Some(64);
+    let request = Completion::prepare(request, &wire.describe()).expect("the request prepares");
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    encoded.request.uri().path().to_owned()
+}
+
+/// Every preset posts to exactly one `/v1/messages`.
+#[test]
+fn every_dialect_posts_to_one_v1_messages() {
+    for dialect in all() {
+        let path = messages_path(AnthropicConfig::with_key(dialect, "sk-test"));
+        assert!(path.ends_with("/v1/messages"), "{}: {path}", dialect.name);
+        assert_eq!(path.matches("/v1").count(), 1, "{}: {path}", dialect.name);
+    }
+}
+
+/// A dialect whose default base URL names the endpoint is normalized like
+/// a caller-supplied one.
+#[test]
+fn a_dialect_base_url_is_normalized() {
+    let dialect = compatible(
+        "custom",
+        "https://gateway.example/anthropic/v1/",
+        "CUSTOM_API_KEY",
+        None,
+    );
+    let config = AnthropicConfig::with_key(&dialect, "sk-test");
+    assert_eq!(config.base_url, "https://gateway.example/anthropic");
+    assert_eq!(messages_path(config), "/anthropic/v1/messages");
 }
