@@ -1121,9 +1121,24 @@ fn priced(usage: Usage, origin: &Origin) -> Usage {
     usage.cost(cost)
 }
 
+/// The providers whose replies the catalog does not price: ChatGPT and
+/// Copilot bill a subscription, not the per-token API rates the catalog
+/// lists, and an Ollama server is usually local, while the catalog's
+/// `ollama` prices are Ollama Cloud's and the reply does not say which
+/// served it.
+const UNPRICED: [&str; 3] = [
+    crate::providers::chatgpt::PROVIDER_NAME,
+    crate::providers::copilot::PROVIDER_NAME,
+    crate::providers::ollama::PROVIDER_NAME,
+];
+
 /// What `usage` costs at the built-in catalog's pricing for `origin`'s
-/// model, or `None` when the catalog has no price for it.
+/// model, or `None` when the catalog has no price for it or the provider
+/// is one it does not price ([`UNPRICED`]).
 fn catalog_cost(origin: &Origin, usage: &Usage) -> Option<crate::completion::Cost> {
+    if UNPRICED.contains(&origin.provider.as_str()) {
+        return None;
+    }
     crate::catalog::lookup(&origin.provider, &origin.model)
         .or_else(|| crate::catalog::lookup_snapshot(&origin.provider, &origin.model))
         .and_then(|spec| spec.pricing.as_ref())

@@ -1084,3 +1084,46 @@ fn a_cost_is_none_without_a_price_or_counters() {
         assert_eq!(response.usage.cost, None, "{origin:?}");
     }
 }
+
+/// A subscription or a local server is not billed at the catalog's API
+/// rates: Copilot, ChatGPT and Ollama replies have no catalog cost, even
+/// for a model the catalog prices under that provider, and a cost they
+/// report themselves is kept.
+#[test]
+fn subscription_and_local_providers_have_no_catalog_cost() {
+    assert!(
+        crate::catalog::lookup("copilot", "gpt-5.3-codex")
+            .and_then(|spec| spec.pricing.as_ref())
+            .is_some(),
+        "the catalog prices Copilot's API rate"
+    );
+    assert!(
+        crate::catalog::lookup("ollama", "gpt-oss:20b")
+            .and_then(|spec| spec.pricing.as_ref())
+            .is_some(),
+        "the catalog prices Ollama Cloud"
+    );
+    for origin in [
+        origin("copilot", "gpt-5.3-codex"),
+        origin("ollama", "gpt-oss:20b"),
+        origin("chatgpt", "gpt-5.3-codex"),
+    ] {
+        let end = Finish {
+            usage: tokens(1_000_000, 100_000),
+            ..Finish::default()
+        };
+        let response = write_from(origin.clone(), end, |_| Ok(()));
+        assert_eq!(response.usage.cost, None, "{origin:?}");
+
+        let end = Finish {
+            usage: tokens(10, 10).cost(Cost::from_total(0.5)),
+            ..Finish::default()
+        };
+        let response = write_from(origin.clone(), end, |_| Ok(()));
+        assert_eq!(
+            response.usage.cost,
+            Some(Cost::from_total(0.5)),
+            "{origin:?}"
+        );
+    }
+}

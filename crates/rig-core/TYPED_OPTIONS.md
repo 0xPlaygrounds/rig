@@ -1868,12 +1868,12 @@ byte for byte, and an edited or foreign turn is rebuilt from `text` alone.
 | Perplexity | yes | `usage.cost { input_tokens_cost, output_tokens_cost, request_cost, total_cost }`, USD | input, output, total; request fees are not token-derivable | |
 | an OpenAI-compatible gateway's top-level `cost` (string or number) | yes [unverified: undocumented, seen in one capture] | top-level `cost` | total | |
 | Anthropic and its dialects | no | tokens only; `usage.cache_creation` splits 5 min and 1 h writes | | catalog |
-| OpenAI, Azure, ChatGPT, Copilot | no | tokens only | | catalog (none for ChatGPT and Copilot subscriptions) |
+| OpenAI, Azure, ChatGPT, Copilot | no | tokens only | | catalog (none for ChatGPT and Copilot subscriptions: the fold skips the `chatgpt` and `copilot` providers, whose catalog rows are API rates) |
 | DeepSeek, Mistral, Groq, Together, Moonshot, Z.AI, MiniMax, MiMo, llama.cpp | no | tokens only | | catalog |
 | Gemini (GenerateContent, Interactions, Vertex, gRPC) | no | tokens; served tier in `usageMetadata.serviceTier` / `trafficType` | | catalog |
 | Bedrock | no | tokens; `usage.cacheDetails` splits write TTLs | | catalog |
 | Cohere | no | `usage.billed_units` (billed) and `usage.tokens` | | catalog over `billed_units`: the native decoder prices them through the fold's catalog lookup and sets the result as the reply's cost, since `usage` reports the larger `tokens`; without both billed counters the fold prices `tokens`. The Compatibility API is priced over its usage |
-| Ollama, Candle | no | local | | `None` (no pricing row) |
+| Ollama, Candle | no | local | | `None`: Candle has no pricing row, and the catalog's `ollama` rows are Ollama Cloud's prices, which the fold does not apply because a reply does not say whether a local server or Ollama Cloud served it |
 
 The existing caller-side calculator `CacheRates`/`CacheCost`
 (`crates/rig-core/src/completion/cache_cost.rs:23-68`) prices cache reads,
