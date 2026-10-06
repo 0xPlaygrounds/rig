@@ -421,6 +421,7 @@ pub const OLLAMA: Dialect = Dialect {
     quirks: Quirks {
         // A local daemon takes no credential; a proxied one takes a token.
         auth: Auth::OptionalBearer,
+        rewrite: BodyRewrite::Ollama,
         ..Quirks::openai()
     },
     ..Dialect::gateway("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY")

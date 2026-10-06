@@ -14,6 +14,7 @@ mod cassette {
     mod agentic;
     mod history_survival_matrix;
     mod models;
+    mod native;
     mod portability_matrix;
     mod raw_capture_agent_matrix;
     mod raw_capture_matrix;

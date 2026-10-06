@@ -76,6 +76,11 @@ pub fn canonical_prefix_blocks(path: &str, body: &Value) -> Option<Vec<PrefixBlo
     } else if path.ends_with("/chat/completions") {
         add("tools", body.get("tools"));
         add("messages", body.get("messages"));
+    } else if path.ends_with("/api/chat") {
+        // Ollama. Carries its system prompt as a `system`-role entry inside
+        // `messages`, like the OpenAI-compatible wires.
+        add("tools", body.get("tools"));
+        add("messages", body.get("messages"));
     } else if path.ends_with("/responses") {
         add("tools", body.get("tools"));
         add("instructions", body.get("instructions"));

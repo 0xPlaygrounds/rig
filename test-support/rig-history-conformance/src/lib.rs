@@ -74,6 +74,7 @@ pub const HISTORY_WIRES: &[&str] = &[
     "cohere",
     "cohere_native",
     "ollama",
+    "ollama_native",
     "gemini_rest",
     "gemini_interactions",
     "vertexai",

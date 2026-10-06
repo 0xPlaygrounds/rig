@@ -369,6 +369,11 @@ impl OllamaModels {
         self.client().completion(model)
     }
 
+    /// The chat model for `model`, on the daemon's native `/api/chat`.
+    pub fn native_completion(&self, model: impl Into<String>) -> Model<ollama::Chat> {
+        self.client().native_completion(model)
+    }
+
     /// The embedding model for `model`.
     pub fn embedding(
         &self,

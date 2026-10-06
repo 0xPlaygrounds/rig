@@ -191,6 +191,19 @@ fn a_stream_reply_is_the_set_of_its_event_skeletons() {
     );
 }
 
+#[test]
+fn an_ndjson_reply_is_the_set_of_its_record_skeletons() {
+    let body = "{\"message\":{\"content\":\"a\"},\"done\":false}\n\
+                {\"message\":{\"content\":\"b\"},\"done\":false}\n\
+                {\"done\":true,\"done_reason\":\"stop\"}\n";
+    let reply = exchange("application/x-ndjson", body);
+    assert_eq!(
+        reply_shape(&reply),
+        "200 ndjson[{done:bool,done_reason:\"stop\"}|{done:bool,message:{content:str}}]"
+    );
+    assert_eq!(reply_documents(&reply).len(), 3);
+}
+
 fn frame(event: &str, payload: &str) -> Vec<u8> {
     let mut headers = Vec::new();
     let name = ":event-type";

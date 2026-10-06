@@ -6,7 +6,7 @@ use crate::driver::Model;
 use crate::error::ProviderError;
 use crate::model::ModelList;
 
-use crate::providers::ollama::{Embeddings, OllamaConfig};
+use crate::providers::ollama::{self, Embeddings, OllamaConfig};
 use crate::providers::openai::wire::Chat;
 
 http_client!(
@@ -37,9 +37,18 @@ impl Ollama {
         Ok(OllamaConfig::from_env()?.client())
     }
 
-    /// The chat model for `model`, on the daemon's OpenAI-compatible API.
+    /// The chat model for `model`, on the daemon's OpenAI-compatible API. It
+    /// takes `keep_alive` and `think` (sent as `reasoning_effort`), and
+    /// refuses `num_ctx` and `options`, which only
+    /// [`native_completion`](Self::native_completion) can send.
     pub fn completion(&self, model: impl Into<String>) -> Model<Chat> {
         self.model(self.config.completion(model))
+    }
+
+    /// The chat model for `model`, on the daemon's native `/api/chat`, which
+    /// takes `think`, `keep_alive` and model `options` such as `num_ctx`.
+    pub fn native_completion(&self, model: impl Into<String>) -> Model<ollama::Chat> {
+        self.model(self.config.native_completion(model))
     }
 
     /// The embedding model for `model`. `ndims` is the width it reports,

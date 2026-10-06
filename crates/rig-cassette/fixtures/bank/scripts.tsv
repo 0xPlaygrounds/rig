@@ -1713,6 +1713,11 @@ ollama/agentic/streaming_structured_output_with_tools.yaml	POST /v1/chat/complet
 ollama/agentic/structured_output_with_tools.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;get_weather	POST /v1/chat/completions;22f6c59516ace485;
 ollama/history_survival_matrix/streaming.yaml	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;lookup_record	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;71673396efbe4767;verify_code	POST /v1/chat/completions;b9fbdfee0b00af54;	POST /v1/chat/completions;b9fbdfee0b00af54;
 ollama/history_survival_matrix/unary.yaml	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;lookup_record	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;ef9fb6bb0bbe8828;verify_code	POST /v1/chat/completions;22f6c59516ace485;	POST /v1/chat/completions;22f6c59516ace485;
+ollama/native/inline_think_streamed.yaml	POST /api/chat;db3c060e1ab5040c;
+ollama/native/inline_think_whole.yaml	POST /api/chat;f28a1de54878a342;
+ollama/native/options_and_keep_alive.yaml	POST /api/chat;67ff536ee85477a6;
+ollama/native/streamed_tool_call.yaml	POST /api/chat;38fa26a1af4ed7df;add
+ollama/native/think_level.yaml	POST /api/chat;ca566cb30a835bc5;
 ollama/portability_matrix/from_anthropic.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_gemini.yaml	POST /v1/chat/completions;c388bd63f494e85e;
 ollama/portability_matrix/from_openai_responses.yaml	POST /v1/chat/completions;c388bd63f494e85e;

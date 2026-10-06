@@ -41,7 +41,8 @@ pub enum Dialect {
     /// OpenAI Responses and its dialects: `reasoning` items with
     /// `encrypted_content`, `function_call` items with `call_id`.
     OpenAiResponses,
-    /// Chat Completions and its dialects: `tool_calls[].id`.
+    /// Chat Completions and its dialects, and Ollama's `/api/chat`, whose
+    /// calls and results carry the same ids: `tool_calls[].id`.
     ChatCompletions,
     /// Bedrock Converse: `reasoningText.signature`, `toolUse.toolUseId`.
     BedrockConverse,
@@ -60,7 +61,7 @@ impl Dialect {
             Self::GeminiInteractions
         } else if path.ends_with("/responses") {
             Self::OpenAiResponses
-        } else if path.ends_with("/chat/completions") {
+        } else if path.ends_with("/chat/completions") || path.ends_with("/api/chat") {
             Self::ChatCompletions
         } else if path.contains("/converse") {
             Self::BedrockConverse

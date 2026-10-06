@@ -1589,6 +1589,23 @@ mistralrs	POST /v1/responses	request	$.input[].content[] {text:str,type:"output_
 mistralrs	POST /v1/responses	reply	b822b8a39fd2c63b	2	mistralrs/responses_api/responses_api_multi_turn_replays_history.yaml#0
 ollama	GET /api/tags	request	$ empty	1	ollama/models/list_models_smoke.yaml#0
 ollama	GET /api/tags	reply	b78b1057c501b58f	1	ollama/models/list_models_smoke.yaml#0
+ollama	POST /api/chat	request	$ {keep_alive:str,messages:[{}],model:str,options:{},stream:bool,think:bool}	1	ollama/native/options_and_keep_alive.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:bool,tools:[{}]}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:bool}	2	ollama/native/inline_think_streamed.yaml#0
+ollama	POST /api/chat	request	$ {messages:[{}],model:str,options:{},stream:bool,think:str}	1	ollama/native/think_level.yaml#0
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"system"}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$.messages[] {content:str,role:"user"}	5	ollama/native/inline_think_streamed.yaml#0
+ollama	POST /api/chat	request	$.options {num_ctx:num,num_predict:num,seed:num,temperature:num,top_k:num}	1	ollama/native/options_and_keep_alive.yaml#0
+ollama	POST /api/chat	request	$.options {seed:num,temperature:num}	4	ollama/native/inline_think_streamed.yaml#0
+ollama	POST /api/chat	request	$.tools[] {function:{},type:"function"}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$.tools[].function {description:str,name:str,parameters:{}}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters {properties:{},required:[str],type:"object"}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	request	$.tools[].function.parameters.properties.* {description:str,type:"number"}	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	reply	38fa26a1af4ed7df	1	ollama/native/streamed_tool_call.yaml#0
+ollama	POST /api/chat	reply	67ff536ee85477a6	1	ollama/native/options_and_keep_alive.yaml#0
+ollama	POST /api/chat	reply	ca566cb30a835bc5	1	ollama/native/think_level.yaml#0
+ollama	POST /api/chat	reply	db3c060e1ab5040c	1	ollama/native/inline_think_streamed.yaml#0
+ollama	POST /api/chat	reply	f28a1de54878a342	1	ollama/native/inline_think_whole.yaml#0
 ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str,stream:bool,stream_options:{}}	1	ollama/raw_capture_agent_matrix/hooks_observe_raw_streamed.yaml#0
 ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str,tools:[{}]}	1	ollama/portability_matrix/from_openai_responses.yaml#0
 ollama	POST /v1/chat/completions	request	$ {max_tokens:num,messages:[{}],model:str,reasoning_effort:str}	1	ollama/agent/max_tokens.yaml#0
