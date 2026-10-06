@@ -224,10 +224,9 @@ async fn five_turn_reasoning_metadata_roundtrip() {
 
                 stored_turns.push(StoredResponseTurn {
                     user: user_message,
-                    assistant: Message::Assistant(rig::message::AssistantMessage {
-                        content: response.choice.clone(),
-                        ..response.head()
-                    }),
+                    assistant: Message::Assistant(
+                        response.head().with_content(response.choice.clone()),
+                    ),
                     raw_response,
                 });
                 let stored_json =

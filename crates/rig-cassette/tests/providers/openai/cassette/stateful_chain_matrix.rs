@@ -33,19 +33,11 @@ fn lookup_tool() -> ToolDefinition {
 }
 
 fn request(history: Vec<Message>, tools: Vec<ToolDefinition>, params: Value) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools,
-        temperature: None,
-        max_tokens: Some(2048),
-        tool_choice: None,
-        additional_params: Some(params),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = tools;
+    request.max_tokens = Some(2048);
+    request.additional_params = Some(params);
+    request
 }
 
 fn text(choice: &[AssistantContent]) -> String {
@@ -315,10 +307,7 @@ async fn file_id_chain() {
                 .expect("turn one reads the file by id");
             let history = vec![
                 document,
-                Message::Assistant(rig_core::message::AssistantMessage {
-                    content: first.choice.clone(),
-                    ..first.head()
-                }),
+                Message::Assistant(first.head().with_content(first.choice.clone())),
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];
             let second = model

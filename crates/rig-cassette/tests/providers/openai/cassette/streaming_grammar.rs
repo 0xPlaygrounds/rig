@@ -225,10 +225,11 @@ async fn tool_call_then_followup_text_across_turns() {
                 })
                 .expect("aggregated first turn should contain the lookup_harbor_label call");
 
-            let assistant_message = Message::Assistant(rig_core::message::AssistantMessage {
-                content: vec![AssistantContent::ToolCall(tool_call.clone())],
-                ..first.head()
-            });
+            let assistant_message = Message::Assistant(
+                first
+                    .head()
+                    .with_content(vec![AssistantContent::ToolCall(tool_call.clone())]),
+            );
             let tool_result = Message::from(UserContent::tool_result(
                 tool_call.id.clone(),
                 tool_call.function.name.clone(),
@@ -340,10 +341,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             // Turn 2: the full aggregated choice — reasoning items with their
             // recorded rs_* ids included — goes back through the provenance
             // gate together with the tool result.
-            let first_assistant = Message::Assistant(rig_core::message::AssistantMessage {
-            content: first.choice.clone(),
-            ..first.head()
-        });
+            let first_assistant = Message::Assistant(first.head().with_content(first.choice.clone()));
             let tool_result = Message::from(UserContent::tool_result(tool_call.id.clone(), tool_call.function.name.clone(), vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)]));
             let second_request = CompletionRequest::new(
                     "Answer in one short sentence that includes the exact tool output. \
@@ -370,10 +368,7 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
             );
 
             // Turn 3: both prior assistant turns' rs_* items replay together.
-            let second_assistant = Message::Assistant(rig_core::message::AssistantMessage {
-            content: second.choice.clone(),
-            ..second.head()
-        });
+            let second_assistant = Message::Assistant(second.head().with_content(second.choice.clone()));
             let third_request = CompletionRequest::new(
                     "Repeat the exact tool output one more time, alone on a single line.",
                 )
