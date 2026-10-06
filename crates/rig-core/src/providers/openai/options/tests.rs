@@ -86,6 +86,20 @@ fn an_unlisted_openai_reasoning_id_reasons_by_its_name() {
     assert_eq!(body["reasoning_effort"], "none");
 }
 
+/// The `max_completion_tokens` rename reads the full id: a vendor-prefixed
+/// id (a proxy behind `OPENAI_BASE_URL`) is sent `max_tokens`, as before the
+/// catalog.
+#[test]
+fn a_vendor_prefixed_id_keeps_max_tokens() {
+    for model in ["openai/gpt-5", "openai/o3-mini", "litellm/gpt-5.4"] {
+        let body = sent(&chat(&OPENAI, model), GenerationOptions::default()).expect(model);
+        assert_eq!(body["max_tokens"], 16, "{model}");
+        assert!(body.get("max_completion_tokens").is_none(), "{model}");
+    }
+    let body = sent(&chat(&OPENAI, "gpt-5"), GenerationOptions::default()).expect("gpt-5");
+    assert_eq!(body["max_completion_tokens"], 16);
+}
+
 /// On xAI's Chat route the encoder refuses a reasoning option exactly when
 /// `ModelSpec::validate` does, for every xAI row: Grok 4.3 turns reasoning
 /// off with `reasoning_effort: "none"`.
@@ -820,4 +834,37 @@ fn gpt_6_rules_follow_a_per_request_model_override() {
     let request = gpt_6_request(None).model(GPT_6_SOL).temperature(0.2);
     assert!(on_chat("gpt-5.6-sol", request.clone()).is_err());
     assert!(on_responses("gpt-5.6-sol", request).is_err());
+}
+
+/// GPT-5.1 and later take `temperature`, `top_p` and `logprobs` only at
+/// effort `none` (OpenAI's model guidance for GPT-5.2 and GPT-5.4): an effort
+/// set to anything else, typed or raw, refuses them on both routes. With no
+/// effort set the model is not checked, since its default is `none`.
+#[test]
+fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
+    for model in ["gpt-5.1", "gpt-5.4", "gpt-5.6-sol"] {
+        let chat_request =
+            gpt_6_request(Some(json!({"reasoning_effort": "high"}))).temperature(0.2);
+        let error = on_chat(model, chat_request).expect_err("chat temperature");
+        assert!(error.contains("`temperature`"), "{error}");
+        let error = on_chat(
+            model,
+            gpt_6_request(Some(json!({"reasoning_effort": "low", "top_p": 0.9}))),
+        )
+        .expect_err("chat top_p");
+        assert!(error.contains("`top_p`"), "{error}");
+        let responses_request =
+            gpt_6_request(Some(json!({"reasoning": {"effort": "medium"}}))).temperature(0.2);
+        let error = on_responses(model, responses_request).expect_err("responses temperature");
+        assert!(error.contains("`temperature`"), "{error}");
+
+        let body = on_chat(model, gpt_6_request(None).temperature(0.2)).expect("no effort set");
+        assert_eq!(body["temperature"], json!(0.2), "{model}");
+        let body = on_chat(
+            model,
+            gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2),
+        )
+        .expect("effort none samples");
+        assert_eq!(body["temperature"], json!(0.2), "{model}");
+    }
 }

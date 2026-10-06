@@ -1,16 +1,24 @@
 //! Every public model constant has a catalog entry.
 //!
-//! The constants are public `&str` items (`const`, `static`, associated
+//! The constants are public string items (`const`, `static`, associated
 //! `const` in an inherent impl, any `const` in a trait impl, a `pub` trait's
-//! default `const`, and a `pub use` of any of these) in rig-core's provider
+//! default `const`, and a `pub use` of any of these, named or glob, followed
+//! through the target module's own `pub use` items) in rig-core's provider
 //! modules and the companion provider crates, and the catalog is data, so no
-//! type links them. This guard walks the sources, resolves each constant's
-//! value (a literal, or another constant's path through the module tree, its
-//! `use` items and `rig_core::`), and looks it up in `Catalog::builtin()`
-//! under the vendor that serves the re-exporting or defining module. A value
-//! it cannot read or resolve fails the guard. A constant that names no model
-//! (a base URL, an environment variable, a version) is told apart by its
-//! name.
+//! type links them. An item is a string constant when its type is spelled as
+//! a reference to `str` (by any path) or to a `type` alias of one, or when
+//! its value is a string literal or a path that resolves to a string
+//! constant, whatever its type is spelled as. This guard walks the sources,
+//! resolves each constant's value (a literal, or another constant's path
+//! through the module tree, its `use` items and `rig_core::`), and looks it
+//! up in `Catalog::builtin()` under the vendor that serves the re-exporting
+//! or defining module. A value it cannot read or resolve fails the guard, and
+//! so does an item-level macro call it has not reviewed, whose expansion it
+//! cannot see. A constant that names no model (a base URL, an environment
+//! variable, a version) is told apart by its name.
+//!
+//! Known limit: a model id inside a constant of another type (an
+//! `Option<&str>`, an array, a struct) is not read.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -61,6 +69,19 @@ const MODULES: [(&str, &str); 26] = [
     ("zai", "zai"),
 ];
 
+/// The item-level macros this guard has read, whose expansions define no
+/// public string constant that names a model: the two vendor-constructor
+/// macros (functions only), rig-gemini-grpc's `rest_messages!` (each
+/// message's protobuf `NAME`) and `tonic::include_proto!` (the generated
+/// protobuf types, whose only strings are service and message names). Any
+/// other macro call at item level in a scanned module fails the guard.
+const KNOWN_MACROS: [&str; 4] = [
+    "openai_vendor",
+    "anthropic_vendor",
+    "rest_messages",
+    "include_proto",
+];
+
 /// Whether a constant named `name` holds something other than a model id.
 fn names_no_model(name: &str) -> bool {
     name.ends_with("_URL")
@@ -79,13 +100,58 @@ struct Constant {
     module: Vec<String>,
     name: String,
     value: Value,
+    /// How its type is spelled.
+    ty: Spelled,
 }
 
 /// What a constant is set to.
+#[derive(Clone)]
 enum Value {
     Literal(String),
     /// Another constant, by the path the source writes.
     Alias(Vec<String>),
+    /// Anything else, such as `concat!(..)` or a parenthesised literal.
+    Unreadable,
+}
+
+/// How a constant's type is spelled.
+#[derive(Clone, PartialEq)]
+enum Spelled {
+    /// A reference to `str`, by any path (`&str`, `&'static str`,
+    /// `&core::primitive::str`).
+    Str,
+    /// A plain path, which may be a `type` alias of `&str`, by its last
+    /// segment.
+    Named(String),
+    /// Anything else.
+    Other,
+}
+
+/// How `ty` is spelled.
+fn spelled(ty: &syn::Type) -> Spelled {
+    match ty {
+        syn::Type::Paren(inner) => spelled(&inner.elem),
+        syn::Type::Group(inner) => spelled(&inner.elem),
+        syn::Type::Reference(reference) => match &*reference.elem {
+            syn::Type::Path(path)
+                if path.qself.is_none()
+                    && path
+                        .path
+                        .segments
+                        .last()
+                        .is_some_and(|segment| segment.ident == "str") =>
+            {
+                Spelled::Str
+            }
+            _ => Spelled::Other,
+        },
+        syn::Type::Path(path) if path.qself.is_none() => {
+            path.path.segments.last().map_or(Spelled::Other, |segment| {
+                Spelled::Named(segment.ident.to_string())
+            })
+        }
+        _ => Spelled::Other,
+    }
 }
 
 /// The items of one source file that the guard reads.
@@ -100,6 +166,8 @@ struct Constants {
     globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
     /// Each `pub use` binding and `pub use` glob, as written.
     reexports: Vec<Reexport>,
+    /// The names of the `type` aliases of `&str` the files declare.
+    str_aliases: std::collections::BTreeSet<String>,
     /// Whether the visitor is in a trait impl, whose consts are public with
     /// the trait.
     in_trait_impl: bool,
@@ -119,12 +187,11 @@ struct Reexport {
 }
 
 impl Constants {
-    /// Record the public `&str` item `name: ty = expr`, failing on a value
-    /// the guard cannot read rather than skipping it.
+    /// Record the public item `name: ty = expr`. Whether it is a string
+    /// constant is decided once every file is read (see [`Spelled`]); a value
+    /// the guard cannot read fails it then, rather than being skipped.
     fn record(&mut self, public: bool, name: &syn::Ident, ty: &syn::Type, expr: &syn::Expr) {
-        let is_str = matches!(ty, syn::Type::Reference(reference)
-            if matches!(&*reference.elem, syn::Type::Path(path) if path.path.is_ident("str")));
-        if !public || !is_str {
+        if !public {
             return;
         }
         let value = match expr {
@@ -139,18 +206,36 @@ impl Constants {
                     .map(|segment| segment.ident.to_string())
                     .collect(),
             ),
-            _ => panic!(
-                "{}: the value of {name} is neither a string literal nor a constant's path; \
-                 write it as one so this guard can check it",
-                self.file
-            ),
+            syn::Expr::Lit(_) => return,
+            _ => Value::Unreadable,
         };
         self.found.push(Constant {
             file: self.file.clone(),
             module: self.module.clone(),
             name: name.to_string(),
             value,
+            ty: spelled(ty),
         });
+    }
+
+    /// Fail on the item-level macro call `mac` unless it is one this guard
+    /// has read: its expansion could define a constant the walk cannot see.
+    fn check_macro(&self, mac: &syn::Macro) {
+        let name = mac
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .unwrap_or_default();
+        if name != "macro_rules" && !KNOWN_MACROS.contains(&name.as_str()) {
+            panic!(
+                "{}: the item-level macro call `{name}!` in `{}` may define a public string \
+                 constant this guard cannot see; write the constants out, or read the macro \
+                 and add it to KNOWN_MACROS",
+                self.file,
+                self.module.join("::")
+            );
+        }
     }
 
     /// Record what `tree` binds, and, for a `pub use`, what it re-exports.
@@ -240,6 +325,24 @@ impl<'ast> Visit<'ast> for Constants {
         self.record_use(is_public(&item.vis), &mut Vec::new(), &item.tree);
     }
 
+    fn visit_item_type(&mut self, item: &'ast syn::ItemType) {
+        if spelled(&item.ty) == Spelled::Str {
+            self.str_aliases.insert(item.ident.to_string());
+        }
+    }
+
+    fn visit_item_macro(&mut self, item: &'ast syn::ItemMacro) {
+        self.check_macro(&item.mac);
+    }
+
+    fn visit_impl_item_macro(&mut self, item: &'ast syn::ImplItemMacro) {
+        self.check_macro(&item.mac);
+    }
+
+    fn visit_trait_item_macro(&mut self, item: &'ast syn::TraitItemMacro) {
+        self.check_macro(&item.mac);
+    }
+
     fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
         let test_only = module.attrs.iter().any(|attr| {
             attr.path().is_ident("cfg")
@@ -304,6 +407,9 @@ struct Crate<'core> {
     values: BTreeMap<(Vec<String>, String), Value>,
     uses: BTreeMap<(Vec<String>, String), Vec<String>>,
     globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    /// Each module's `pub use` items: the name bound (`None` for a glob)
+    /// and the path.
+    reexports: BTreeMap<Vec<String>, Vec<(Option<String>, Vec<String>)>>,
     core: Option<&'core Crate<'core>>,
 }
 
@@ -326,6 +432,7 @@ impl Crate<'_> {
             [name] => match self.values.get(&(module.to_vec(), name.clone())) {
                 Some(Value::Literal(text)) => Some(text.clone()),
                 Some(Value::Alias(alias)) => self.resolve(module, alias, depth + 1),
+                Some(Value::Unreadable) => None,
                 None => match self.uses.get(&(module.to_vec(), name.clone())) {
                     Some(target) => self.resolve(module, target, depth + 1),
                     None => self.globs.get(module)?.iter().find_map(|glob| {
@@ -376,13 +483,37 @@ impl Crate<'_> {
         }
     }
 
-    /// The names of the constants `module` defines.
-    fn constants_of(&self, module: &[String]) -> Vec<String> {
-        self.values
+    /// The string constants `module` makes public, by name and value: those
+    /// it defines, and those its own `pub use` items re-export, followed
+    /// through each glob's target module in turn.
+    fn exported(&self, module: &[String], depth: usize) -> Vec<(String, String)> {
+        if depth > 32 {
+            return Vec::new();
+        }
+        let mut found: Vec<(String, String)> = self
+            .values
             .keys()
             .filter(|(owner, _)| owner == module)
-            .map(|(_, name)| name.clone())
-            .collect()
+            .filter_map(|(_, name)| {
+                let value = self.resolve(module, std::slice::from_ref(name), 0)?;
+                Some((name.clone(), value))
+            })
+            .collect();
+        for (name, target) in self.reexports.get(module).into_iter().flatten() {
+            match name {
+                Some(name) => {
+                    if let Some(value) = self.resolve(module, target, 0) {
+                        found.push((name.clone(), value));
+                    }
+                }
+                None => {
+                    if let Some((owner, inner)) = self.module(module, target, 0) {
+                        found.extend(owner.exported(&inner, depth + 1));
+                    }
+                }
+            }
+        }
+        found
     }
 }
 
@@ -392,6 +523,7 @@ struct Read {
     uses: BTreeMap<(Vec<String>, String), Vec<String>>,
     globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
     reexports: Vec<Reexport>,
+    str_aliases: std::collections::BTreeSet<String>,
 }
 
 fn read_crate(root: &Path, dir: &str) -> Read {
@@ -400,6 +532,7 @@ fn read_crate(root: &Path, dir: &str) -> Read {
         uses: BTreeMap::new(),
         globs: BTreeMap::new(),
         reexports: Vec::new(),
+        str_aliases: std::collections::BTreeSet::new(),
     };
     for path in rust_files(&root.join(dir)) {
         let source = std::fs::read_to_string(&path).expect("a readable source file");
@@ -417,6 +550,7 @@ fn read_crate(root: &Path, dir: &str) -> Read {
             uses: BTreeMap::new(),
             globs: BTreeMap::new(),
             reexports: Vec::new(),
+            str_aliases: std::collections::BTreeSet::new(),
             in_trait_impl: false,
             in_pub_trait: false,
         };
@@ -424,6 +558,7 @@ fn read_crate(root: &Path, dir: &str) -> Read {
         read.constants.extend(visitor.found);
         read.uses.extend(visitor.uses);
         read.reexports.extend(visitor.reexports);
+        read.str_aliases.extend(visitor.str_aliases);
         for (module, paths) in visitor.globs {
             read.globs.entry(module).or_default().extend(paths);
         }
@@ -438,15 +573,22 @@ impl Read {
                 .constants
                 .iter()
                 .map(|constant| {
-                    let value = match &constant.value {
-                        Value::Literal(text) => Value::Literal(text.clone()),
-                        Value::Alias(path) => Value::Alias(path.clone()),
-                    };
-                    ((constant.module.clone(), constant.name.clone()), value)
+                    let key = (constant.module.clone(), constant.name.clone());
+                    (key, constant.value.clone())
                 })
                 .collect(),
             uses: self.uses.clone(),
             globs: self.globs.clone(),
+            reexports: self.reexports.iter().fold(
+                BTreeMap::new(),
+                |mut reexports: BTreeMap<_, Vec<_>>, reexport| {
+                    reexports
+                        .entry(reexport.module.clone())
+                        .or_default()
+                        .push((reexport.name.clone(), reexport.target.clone()));
+                    reexports
+                },
+            ),
             core,
         }
     }
@@ -460,20 +602,37 @@ fn model_constants(
     known: &Crate<'_>,
     dir: &str,
     vendor: Option<&str>,
+    str_aliases: &std::collections::BTreeSet<String>,
 ) -> Vec<(Constant, String)> {
     let mut found: Vec<(String, Vec<String>, String, String)> = Vec::new();
     for constant in &read.constants {
+        // Spelled as a string: its value must be readable and resolve.
+        // Otherwise it is a string constant only if its value is a string
+        // literal or resolves to one.
+        let string = match &constant.ty {
+            Spelled::Str => true,
+            Spelled::Named(name) => str_aliases.contains(name),
+            Spelled::Other => false,
+        };
         let value = match &constant.value {
             Value::Literal(text) => text.clone(),
-            Value::Alias(path) => known.resolve(&constant.module, path, 0).unwrap_or_else(|| {
-                panic!(
+            Value::Alias(path) => match known.resolve(&constant.module, path, 0) {
+                Some(value) => value,
+                None if !string => continue,
+                None => panic!(
                     "{}: {} names `{}`, which this guard cannot resolve to a string \
-                         constant of the same crate",
+                     constant of the same crate",
                     constant.file,
                     constant.name,
                     path.join("::")
-                )
-            }),
+                ),
+            },
+            Value::Unreadable if !string => continue,
+            Value::Unreadable => panic!(
+                "{}: the value of {} is neither a string literal nor a constant's path; \
+                 write it as one so this guard can check it",
+                constant.file, constant.name
+            ),
         };
         found.push((
             constant.file.clone(),
@@ -501,10 +660,8 @@ fn model_constants(
                 else {
                     continue;
                 };
-                for name in owner.constants_of(&module) {
-                    if let Some(value) = owner.resolve(&module, std::slice::from_ref(&name), 0) {
-                        found.push((reexport.file.clone(), reexport.module.clone(), name, value));
-                    }
+                for (name, value) in owner.exported(&module, 0) {
+                    found.push((reexport.file.clone(), reexport.module.clone(), name, value));
                 }
             }
         }
@@ -539,6 +696,7 @@ fn model_constants(
                 module,
                 name,
                 value: Value::Literal(value),
+                ty: Spelled::Str,
             },
             vendor,
         ));
@@ -564,7 +722,12 @@ fn every_public_model_constant_has_a_catalog_entry() {
             Some(read) => (read, read.known(Some(&core))),
             None => (&core_read, core_read.known(None)),
         };
-        for (constant, vendor) in model_constants(read, &known, dir, vendor) {
+        let str_aliases = core_read
+            .str_aliases
+            .union(&read.str_aliases)
+            .cloned()
+            .collect();
+        for (constant, vendor) in model_constants(read, &known, dir, vendor, &str_aliases) {
             let Value::Literal(model) = &constant.value else {
                 continue;
             };

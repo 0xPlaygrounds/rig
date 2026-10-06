@@ -230,19 +230,27 @@ impl Chat {
     /// The field every assistant message carries its reasoning under,
     /// empty when the turn has none (pi's
     /// `requiresReasoningContentOnAssistantMessages`): the dialect's own,
-    /// `reasoning_content` for DeepSeek at any base URL, and the field the
-    /// model's catalog entry names, on this dialect or, for a model a
-    /// gateway serves under its vendor's path, on Moonshot's own API.
+    /// `reasoning_content` for DeepSeek at any base URL, and the field a
+    /// catalog entry names for the model on this dialect, on Moonshot's own
+    /// API under its last path segment (Kimi K3 behind any gateway), or on
+    /// OpenRouter under its full id (`moonshotai/kimi-k2.6` behind any
+    /// gateway). Each lookup is asked for the field, not just the entry, so a
+    /// gateway's own row without one does not hide the vendor's.
     fn reasoning_field(&self, model: &str) -> Option<&'static str> {
+        use crate::providers::openai::wire::{MOONSHOT, OPENROUTER};
         let deepseek = self
             .provider
             .base_url
             .to_ascii_lowercase()
             .contains("deepseek.com");
         let name = model.rsplit('/').next().unwrap_or(model);
-        let listed = crate::catalog::lookup(self.provider.dialect.name, model)
-            .or_else(|| crate::catalog::lookup(crate::providers::openai::wire::MOONSHOT.name, name))
-            .and_then(|spec| spec.compat.reasoning_field.as_deref());
+        let field = |vendor: &str, id: &str| {
+            crate::catalog::lookup(vendor, id)
+                .and_then(|spec| spec.compat.reasoning_field.as_deref())
+        };
+        let listed = field(self.provider.dialect.name, model)
+            .or_else(|| field(MOONSHOT.name, name))
+            .or_else(|| field(OPENROUTER.name, model));
         self.provider
             .dialect
             .quirks

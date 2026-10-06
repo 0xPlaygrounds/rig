@@ -356,6 +356,20 @@ async fn a_model_spec_checks_every_runs_options_before_it_starts() {
             ProviderError::UnsupportedOption(_)
         )))
     ));
+    let typed = agent
+        .prompt_typed::<Vec<String>>("go")
+        .retries(2)
+        .await
+        .expect_err("refused");
+    assert!(
+        matches!(
+            &typed,
+            crate::completion::StructuredOutputError::Prompt(
+                crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(_))
+            )
+        ),
+        "an unsupported option: {typed:?}"
+    );
     assert!(model.requests().is_empty(), "nothing was sent");
 
     agent

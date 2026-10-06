@@ -12,7 +12,8 @@ use crate::message::{
     StopReason, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
 };
 use crate::providers::openai::wire::{
-    DEEPSEEK, Dialect, MISTRAL, MOONSHOT, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY, XIAOMIMIMO,
+    DEEPSEEK, Dialect, MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY,
+    TOGETHER, VENICE, XIAOMIMIMO,
 };
 use crate::test_utils::history::decode;
 use crate::test_utils::json_body;
@@ -575,6 +576,11 @@ fn reasoning_content_follows_the_model() {
         wire(&MOONSHOT, "kimi-k3"),
         wire(&OPENAI, "accounts/fireworks/models/kimi-k3"),
         wire(&OPENROUTER, "moonshotai/kimi-k2.6"),
+        // A gateway's own row for Kimi K3 names no field; Moonshot's does.
+        wire(&OPENROUTER, "moonshotai/kimi-k3"),
+        wire(&VENICE, "kimi-k3"),
+        wire(&OLLAMA, "kimi-k3"),
+        wire(&TOGETHER, "moonshotai/kimi-k2.6"),
     ] {
         let body = sent(&wire, history());
         assert_eq!(

@@ -171,6 +171,42 @@ fn legacy_models_refuse_an_effort_newer_ones_take_it() {
     }
 }
 
+/// Claude Opus 4, Opus 4.1 and Sonnet 4 take no effort level (the effort
+/// page's supported models list none of them): every level is refused, as
+/// for the other budget-only models, and a budget is still sent.
+#[test]
+fn claude_4_0_and_4_1_refuse_an_effort_and_take_a_budget() {
+    for model in [
+        "claude-opus-4-0",
+        "claude-opus-4-1",
+        "claude-sonnet-4-0",
+        "claude-opus-4-1-20250805",
+        "claude-sonnet-4-20250514",
+    ] {
+        for effort in [
+            Effort::Low,
+            Effort::Medium,
+            Effort::High,
+            Effort::XHigh,
+            Effort::Max,
+        ] {
+            let result = sent(
+                &wire(model),
+                request(GenerationOptions::default().reasoning(effort)),
+                Mode::Unary,
+            );
+            assert_eq!(refused(result), "reasoning", "{model}");
+        }
+        let body = sent(
+            &wire(model),
+            request(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 })),
+            Mode::Unary,
+        )
+        .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body["thinking"]["budget_tokens"], 1024, "{model}");
+    }
+}
+
 #[test]
 fn the_remaining_options_take_their_documented_cells() {
     let one =

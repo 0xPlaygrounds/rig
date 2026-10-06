@@ -518,11 +518,14 @@ fn apply(
 ) -> Result<(), EncodeError> {
     match rewrite {
         Rewrite::OutputCapRename => {
+            // Read on the full id: a `vendor/model` id (a LiteLLM-style
+            // proxy behind `OPENAI_BASE_URL`) keeps `max_tokens`.
             let reasoning = body
                 .get("model")
                 .and_then(Value::as_str)
                 .is_some_and(|model| {
-                    crate::providers::openai::options::reasons(model) == Some(true)
+                    !model.contains('/')
+                        && crate::providers::openai::options::reasons(model) == Some(true)
                 });
             if reasoning && let Some(max_tokens) = body.shift_remove("max_tokens") {
                 body.entry("max_completion_tokens").or_insert(max_tokens);
