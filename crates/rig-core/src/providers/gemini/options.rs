@@ -1,8 +1,8 @@
 //! How the Gemini wires answer
 //! [`GenerationOptions`](crate::completion::GenerationOptions): one mapping
 //! for every GenerateContent route (the Gemini API, Vertex AI, gRPC), and
-//! one for Interactions. Which thinking a model takes is model data the
-//! catalog replaces once it lands.
+//! one for Interactions. Which thinking a model takes is its catalog
+//! entry's.
 
 use serde_json::json;
 
@@ -22,57 +22,37 @@ pub enum Route {
     Grpc,
 }
 
-/// The thinking a Gemini model takes.
+/// The thinking a Gemini model takes, from its catalog entry.
 enum Thinking {
-    /// Gemini 3: these levels, and no way to turn thinking off.
+    /// These levels (Gemini 3), and no way to turn thinking off.
     Levels(&'static [Effort]),
-    /// Gemini 2.5: a token budget in this range, and whether `0` turns it
+    /// A token budget in this range (Gemini 2.5), and whether `0` turns it
     /// off.
     Budget {
         range: std::ops::RangeInclusive<u32>,
         can_disable: bool,
     },
-    /// A model before Gemini 2.5, which does not think.
+    /// A model that does not think.
     None,
-    /// A model the table does not name.
+    /// A model the catalog does not list.
     Unknown,
 }
-
-const LOW_TO_HIGH: &[Effort] = &[Effort::Low, Effort::Medium, Effort::High];
-const MINIMAL_TO_HIGH: &[Effort] = &[Effort::Minimal, Effort::Low, Effort::Medium, Effort::High];
 
 /// The thinking `model` takes, by its id past a `models/` prefix.
 fn thinking(model: &str) -> Thinking {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
-    let levels: [(&str, &'static [Effort]); 10] = [
-        ("gemini-3.8-flash", LOW_TO_HIGH),
-        ("gemini-3.7-flash", LOW_TO_HIGH),
-        ("gemini-3.6-flash", MINIMAL_TO_HIGH),
-        ("gemini-3.5-flash-lite", MINIMAL_TO_HIGH),
-        ("gemini-3.5-flash", MINIMAL_TO_HIGH),
-        ("gemini-3.1-pro", LOW_TO_HIGH),
-        ("gemini-3.1-flash-lite", MINIMAL_TO_HIGH),
-        ("gemini-3-flash-preview", MINIMAL_TO_HIGH),
-        ("gemini-3-pro-preview", &[Effort::Low, Effort::High]),
-        ("gemini-3-pro", &[Effort::Low, Effort::High]),
-    ];
-    if let Some((_, levels)) = levels.iter().find(|(id, _)| model.starts_with(id)) {
-        return Thinking::Levels(levels);
-    }
-    let budgets = [
-        ("gemini-2.5-flash-lite", 512..=24_576, true),
-        ("gemini-2.5-flash", 0..=24_576, true),
-        ("gemini-2.5-pro", 128..=32_768, false),
-    ];
-    if let Some((_, range, can_disable)) =
-        budgets.into_iter().find(|(id, ..)| model.starts_with(id))
-    {
-        return Thinking::Budget { range, can_disable };
-    }
-    match super::completion::gemini_major(model) {
-        Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
-        _ => Thinking::Unknown,
+    let Some(spec) = crate::catalog::lookup(super::PROVIDER_NAME, model) else {
+        return Thinking::Unknown;
+    };
+    let support = &spec.reasoning;
+    match &support.budget {
+        _ if !support.supported => Thinking::None,
+        Some(range) if support.levels.is_empty() => Thinking::Budget {
+            range: range.clone(),
+            can_disable: support.can_disable,
+        },
+        _ => Thinking::Levels(&support.levels),
     }
 }
 

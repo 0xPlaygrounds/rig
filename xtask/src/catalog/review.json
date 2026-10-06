@@ -1485,6 +1485,40 @@
           "reasoning_default": "high"
         }
       },
+      "gemini-3-pro-preview": {
+        "source": "https://ai.google.dev/gemini-api/docs/thinking",
+        "name": "Gemini 3 Pro Preview",
+        "reasoning": true,
+        "reasoning_options": [
+          {
+            "type": "effort",
+            "values": [
+              "low",
+              "high"
+            ]
+          }
+        ],
+        "tool_call": true,
+        "structured_output": true,
+        "temperature": true,
+        "modalities": {
+          "input": [
+            "text",
+            "image",
+            "audio",
+            "video",
+            "pdf"
+          ]
+        },
+        "limit": {
+          "context": 1048576,
+          "output": 65536
+        },
+        "status": "deprecated",
+        "rig": {
+          "reasoning_default": "high"
+        }
+      },
       "gemini-3.1-pro-preview": {
         "source": "https://ai.google.dev/gemini-api/docs/thinking https://ai.google.dev/gemini-api/docs/pricing",
         "rig": {
