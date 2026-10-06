@@ -89,6 +89,128 @@ fn generate_content_reasoning_follows_the_models_thinking() {
     }
 }
 
+/// On GenerateContent the encoder refuses a reasoning option exactly when
+/// `ModelSpec::validate` does, for every Gemini API row.
+#[test]
+fn generate_content_reasoning_agrees_with_validate() {
+    let reasonings = [
+        Reasoning::Off,
+        Reasoning::Effort(Effort::Minimal),
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::Medium),
+        Reasoning::Effort(Effort::High),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Budget { tokens: 0 },
+        Reasoning::Budget { tokens: 1024 },
+        Reasoning::Budget { tokens: 30_000 },
+    ];
+    let mut checked = 0;
+    for spec in crate::catalog::Catalog::builtin()
+        .iter()
+        .filter(|spec| spec.provider.vendor() == "gcp.gemini")
+    {
+        for reasoning in &reasonings {
+            let options = GenerationOptions::default().reasoning(*reasoning);
+            let encoded = sent(&rest(&spec.id), with(options.clone()));
+            assert_eq!(
+                refused(encoded).is_some(),
+                spec.validate(&options).is_err(),
+                "{}: {reasoning:?}",
+                spec.id
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 300, "{checked}");
+}
+
+/// Gemma 4 turns thinking on with level `high` and off with `minimal`; the
+/// image models think as their model pages say.
+#[test]
+fn gemma_and_the_image_models_think_as_documented() {
+    for model in ["gemma-4-26b-a4b-it", "gemma-4-31b-it"] {
+        let body = sent(
+            &rest(model),
+            with(GenerationOptions::default().reasoning(Reasoning::Off)),
+        )
+        .expect("Gemma 4 turns thinking off");
+        assert_eq!(
+            body["generationConfig"]["thinkingConfig"],
+            json!({"thinkingLevel": "minimal"})
+        );
+        let body = sent(
+            &rest(model),
+            with(GenerationOptions::default().reasoning(Effort::High)),
+        )
+        .expect("Gemma 4 thinks at `high`");
+        assert_eq!(
+            body["generationConfig"]["thinkingConfig"],
+            json!({"thinkingLevel": "high"})
+        );
+    }
+    let body = sent(
+        &rest("gemini-3-pro-image-preview"),
+        with(GenerationOptions::default().reasoning(Effort::Low)),
+    )
+    .expect("the preview takes the GA model's levels");
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"],
+        json!({"thinkingLevel": "low"})
+    );
+    let body = sent(
+        &rest("gemini-2.5-flash-image"),
+        with(GenerationOptions::default().reasoning(Reasoning::Off)),
+    )
+    .expect("2.5 Flash Image does not think");
+    assert!(
+        body["generationConfig"].get("thinkingConfig").is_none(),
+        "{body}"
+    );
+}
+
+/// An id the catalog does not list takes the thinking of the model it
+/// versions: a `-001` revision or a dated preview.
+#[test]
+fn a_versioned_gemini_id_takes_its_models_thinking() {
+    let body = sent(
+        &rest("gemini-2.5-flash-preview-09-2025"),
+        with(GenerationOptions::default().reasoning(Reasoning::Off)),
+    )
+    .expect("a 2.5 Flash preview turns thinking off");
+    assert_eq!(
+        body["generationConfig"]["thinkingConfig"],
+        json!({"thinkingBudget": 0})
+    );
+    assert_eq!(
+        refused(sent(
+            &rest("models/gemini-2.5-flash-lite-preview-06-17"),
+            with(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 100 })),
+        )),
+        Some("reasoning"),
+        "2.5 Flash-Lite's budget starts at 512"
+    );
+    let body = sent(
+        &rest("gemini-2.0-flash-001"),
+        with(GenerationOptions::default().reasoning(Reasoning::Off)),
+    )
+    .expect("2.0 Flash does not think");
+    assert!(
+        body.get("generationConfig")
+            .is_none_or(|config| config.get("thinkingConfig").is_none()),
+        "{body}"
+    );
+    let body = sent(
+        &rest("gemini-1.5-pro-002"),
+        with(GenerationOptions::default().reasoning(Reasoning::Off)),
+    )
+    .expect("an unlisted model before 2.5 does not think");
+    assert!(
+        body.get("generationConfig")
+            .is_none_or(|config| config.get("thinkingConfig").is_none()),
+        "{body}"
+    );
+}
+
 /// A raw `generationConfig` merges over the typed fields and the mapped
 /// options, key by key: a key set both ways is the raw one.
 #[test]

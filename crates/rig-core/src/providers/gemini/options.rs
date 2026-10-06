@@ -24,8 +24,12 @@ pub enum Route {
 
 /// The thinking a Gemini model takes, from its catalog entry.
 enum Thinking {
-    /// These levels (Gemini 3), and no way to turn thinking off.
-    Levels(&'static [Effort]),
+    /// These levels, and whether thinking turns off (Gemma 4, by level
+    /// `minimal`). Gemini 3 cannot turn it off.
+    Levels {
+        levels: &'static [Effort],
+        can_disable: bool,
+    },
     /// A token budget in this range (Gemini 2.5), and whether `0` turns it
     /// off.
     Budget {
@@ -38,12 +42,19 @@ enum Thinking {
     Unknown,
 }
 
-/// The thinking `model` takes, by its id past a `models/` prefix.
+/// The thinking `model` takes, by its id past a `models/` prefix. An id
+/// the catalog does not list is looked up as the model it versions: without
+/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, a model
+/// before Gemini 2.5 does not think.
 fn thinking(model: &str) -> Thinking {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
-    let Some(spec) = crate::catalog::lookup(super::PROVIDER_NAME, model) else {
-        return Thinking::Unknown;
+    let lookup = |model: &str| crate::catalog::lookup(super::PROVIDER_NAME, model);
+    let Some(spec) = lookup(model).or_else(|| lookup(versioned_model(model)?)) else {
+        return match super::completion::gemini_major(model) {
+            Some(major) if major < 2 || model.starts_with("gemini-2.0") => Thinking::None,
+            _ => Thinking::Unknown,
+        };
     };
     let support = &spec.reasoning;
     match &support.budget {
@@ -52,8 +63,27 @@ fn thinking(model: &str) -> Thinking {
             range: range.clone(),
             can_disable: support.can_disable,
         },
-        _ => Thinking::Levels(&support.levels),
+        _ => Thinking::Levels {
+            levels: &support.levels,
+            can_disable: support.can_disable,
+        },
     }
+}
+
+/// The model a Gemini id versions: `gemini-2.0-flash-001` to
+/// `gemini-2.0-flash`, `gemini-2.5-flash-preview-09-2025` to
+/// `gemini-2.5-flash`. `None` when the id has no such suffix.
+fn versioned_model(model: &str) -> Option<&str> {
+    if let Some((base, revision)) = model.rsplit_once('-')
+        && revision.len() == 3
+        && revision.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Some(base);
+    }
+    ["-preview", "-exp"]
+        .iter()
+        .filter_map(|tag| model.find(tag).map(|at| &model[..at]))
+        .find(|base| !base.is_empty())
 }
 
 /// `value` under `generationConfig`.
@@ -84,6 +114,12 @@ pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<
                     can_disable: true, ..
                 },
             ) => config(json!({"thinkingConfig": {"thinkingBudget": 0}})),
+            (
+                Reasoning::Off,
+                Thinking::Levels {
+                    can_disable: true, ..
+                },
+            ) => config(json!({"thinkingConfig": {"thinkingLevel": "minimal"}})),
             (Reasoning::Off, Thinking::None) => Mapping::Omit("the model does not think"),
             (Reasoning::Off, _) => Mapping::unsupported("this model cannot turn thinking off"),
             (Reasoning::Effort(Effort::XHigh | Effort::Max), _) => {
@@ -92,10 +128,12 @@ pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<
             (Reasoning::Effort(_), _) if route == Route::Grpc => Mapping::unsupported(
                 "unverified for gemini-grpc: Google's proto has no thinking level",
             ),
-            (Reasoning::Effort(effort), Thinking::Levels(levels)) if levels.contains(effort) => {
+            (Reasoning::Effort(effort), Thinking::Levels { levels, .. })
+                if levels.contains(effort) =>
+            {
                 config(json!({"thinkingConfig": {"thinkingLevel": effort.as_str()}}))
             }
-            (Reasoning::Effort(effort), Thinking::Levels(_)) => Mapping::unsupported(format!(
+            (Reasoning::Effort(effort), Thinking::Levels { .. }) => Mapping::unsupported(format!(
                 "this model has no `{}` thinking level",
                 effort.as_str()
             )),
@@ -119,8 +157,8 @@ pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<
                     ))
                 }
             }
-            (Reasoning::Budget { .. }, Thinking::Levels(_)) => {
-                Mapping::unsupported("Gemini 3 takes a thinking level, not a budget")
+            (Reasoning::Budget { .. }, Thinking::Levels { .. }) => {
+                Mapping::unsupported("this model takes a thinking level, not a budget")
             }
             (Reasoning::Budget { .. }, Thinking::None) => {
                 Mapping::unsupported("the model does not think")
@@ -202,13 +240,16 @@ pub(super) fn interactions(model: &str, fields: OptionFields<'_>) -> OptionMap {
                 Mapping::unsupported("Gemini's thinking levels stop at `high`")
             }
             Reasoning::Effort(effort) => match &thinking {
-                Thinking::Levels(levels) if !levels.contains(effort) => Mapping::unsupported(
-                    format!("this model has no `{}` thinking level", effort.as_str()),
-                ),
+                Thinking::Levels { levels, .. } if !levels.contains(effort) => {
+                    Mapping::unsupported(format!(
+                        "this model has no `{}` thinking level",
+                        effort.as_str()
+                    ))
+                }
                 Thinking::Budget { .. } | Thinking::None => {
                     Mapping::unsupported("this model takes no thinking level")
                 }
-                Thinking::Levels(_) | Thinking::Unknown => {
+                Thinking::Levels { .. } | Thinking::Unknown => {
                     generation_config(json!({"thinking_level": effort.as_str()}))
                 }
             },
