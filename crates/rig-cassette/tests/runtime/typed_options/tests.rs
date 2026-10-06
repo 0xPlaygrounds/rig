@@ -100,7 +100,7 @@ mod harness_switch {
         let wire = Converse::new(ANTHROPIC_CLAUDE_SONNET_5);
         let request = prepared(&wire, request);
         wire.encode(request, Mode::Unary)
-            .map(|request| request.body)
+            .map(|request| serde_json::to_value(&request.body).expect("a FinalBody serializes"))
     }
 
     #[test]
@@ -299,40 +299,42 @@ mod no_silent_drop {
 // P2 removes this gate.
 #[cfg(any())]
 mod option_matrix {
-    //! Each option set alone on each wire is sent, omitted or refused by
-    //! name; no other outcome exists. A wire that binds a field and never
-    //! acts on it fails here, because `request_params` rejects a non-default
-    //! field that was neither set, omitted nor refused, and that error is not
-    //! an `UnsupportedOption`.
+    //! A golden of section 6: each option set alone on each wire gives
+    //! exactly the body delta or the refusal its cell names. `omit` passes
+    //! only where the cell says "omit", because any other cell expects a
+    //! change or an error; a wire that binds a token and never consumes it
+    //! fails with a non-`UnsupportedOption` error.
     //!
-    //! Encode-only. P2 extends `wires` to every completion wire and dialect
-    //! of section 6.
+    //! Encode-only. P2 extends `cells` to every completion wire and dialect
+    //! of section 6, `InteractionResume` included.
 
     use rig::completion::{
         CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ServiceTier,
         Verbosity,
     };
     use rig_core::error::EncodeError;
-    use serde_json::Value;
+    use serde_json::{Value, json};
 
     use super::harness_switch::{anthropic, bedrock, encode, gemini, openai_responses, openrouter};
     use super::no_silent_drop::{cohere, deepseek};
 
     type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, EncodeError>>;
 
-    fn wires() -> Vec<(&'static str, Encode)> {
-        vec![
-            ("anthropic", Box::new(|r| encode(&anthropic(), r))),
-            ("openai", Box::new(|r| encode(&openai_responses(), r))),
-            ("gcp.gemini", Box::new(|r| encode(&gemini(), r))),
-            ("aws_bedrock", Box::new(bedrock)),
-            ("openrouter", Box::new(|r| encode(&openrouter(), r))),
-            ("cohere", Box::new(|r| encode(&cohere(), r))),
-            ("deepseek", Box::new(|r| encode(&deepseek(), r))),
-        ]
+    /// What one cell of section 6 says the wire does.
+    enum Cell {
+        /// The body equals the baseline with this object deep-merged in.
+        Merge(Value),
+        /// The body equals the baseline with this value pushed onto the
+        /// array at the pointer (a block-level cache marker).
+        Push(&'static str, Value),
+        /// The body equals the baseline.
+        Omit,
+        /// `UnsupportedOption` naming the field and the provider.
+        Refuse,
     }
+    use Cell::{Merge, Omit, Push, Refuse};
 
-    /// Every `GenerationOptions` field but the policy, each set alone.
+    /// The values each field is set to, in `cells` column order.
     fn one_field_each() -> Vec<(&'static str, GenerationOptions)> {
         let base = GenerationOptions::default().on_unsupported(OnUnsupported::Error);
         vec![
@@ -353,26 +355,252 @@ mod option_matrix {
         ]
     }
 
+    /// One row per wire, one cell per field of `one_field_each`, read from
+    /// section 6 for the model each wire uses. The request has no tools and
+    /// no preamble.
+    fn cells() -> Vec<(&'static str, Encode, [Cell; 8])> {
+        vec![
+            (
+                // 6.1, class A3 (`claude-opus-4-8`).
+                "anthropic",
+                Box::new(|r| encode(&anthropic(), r)),
+                [
+                    Merge(
+                        json!({"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}),
+                    ),
+                    Merge(json!({"cache_control": {"type": "ephemeral"}})),
+                    Merge(json!({"service_tier": "standard_only"})),
+                    Refuse,
+                    Omit,   // no tools to bind
+                    Refuse, // A3
+                    Refuse,
+                    Merge(json!({"stop_sequences": ["END"]})),
+                ],
+            ),
+            (
+                // 6.3, `gpt-5.5`: 24 h cache only; `top_p` depends on an
+                // effective effort that is unverified, so it is refused.
+                "openai",
+                Box::new(|r| encode(&openai_responses(), r)),
+                [
+                    Merge(
+                        json!({"reasoning": {"effort": "high"}, "include": ["reasoning.encrypted_content"]}),
+                    ),
+                    Refuse,
+                    Merge(json!({"service_tier": "default"})),
+                    Merge(json!({"text": {"verbosity": "low"}})),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                // 6.4 GC, `gemini-3-flash-preview`.
+                "gcp.gemini",
+                Box::new(|r| encode(&gemini(), r)),
+                [
+                    Merge(
+                        json!({"generationConfig": {"thinkingConfig": {"thinkingLevel": "high"}}}),
+                    ),
+                    Omit,
+                    Merge(json!({"serviceTier": "standard"})),
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"generationConfig": {"topP": 0.5}})),
+                    Merge(json!({"generationConfig": {"seed": 7}})),
+                    Merge(json!({"generationConfig": {"stopSequences": ["END"]}})),
+                ],
+            ),
+            (
+                // 6.5, Claude Sonnet 5 (class A4).
+                "aws_bedrock",
+                Box::new(bedrock),
+                [
+                    Merge(
+                        json!({"additionalModelRequestFields": {"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}}),
+                    ),
+                    Push(
+                        "/messages/0/content",
+                        json!({"cachePoint": {"type": "default"}}),
+                    ),
+                    Merge(json!({"serviceTier": {"type": "default"}})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"inferenceConfig": {"stopSequences": ["END"]}})),
+                ],
+            ),
+            (
+                // 6.2, an Anthropic upstream.
+                "openrouter",
+                Box::new(|r| encode(&openrouter(), r)),
+                [
+                    Merge(json!({"reasoning": {"effort": "high"}})),
+                    Merge(json!({"cache_control": {"type": "ephemeral"}})),
+                    Merge(json!({"service_tier": "default"})),
+                    Merge(json!({"verbosity": "low"})),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                // 6.2, the Compatibility route.
+                "cohere",
+                Box::new(|r| encode(&cohere(), r)),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                // 6.2.
+                "deepseek",
+                Box::new(|r| encode(&deepseek(), r)),
+                [
+                    Merge(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "high"})),
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+        ]
+    }
+
     fn request(options: GenerationOptions) -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
             .max_tokens(16)
             .options(options)
     }
 
-    #[test]
-    fn every_option_alone_is_sent_omitted_or_refused_by_name() {
-        for (wire, encode) in wires() {
-            for (field, options) in one_field_each() {
-                if let Err(error) = encode(request(options)) {
-                    let unsupported = error.unsupported_option().unwrap_or_else(|| {
-                        panic!("{wire}: `{field}` failed without naming an option: {error}")
-                    });
-                    assert_eq!(unsupported.option, field, "{wire}");
-                    assert_eq!(unsupported.provider, wire, "{wire}");
-                    assert!(!unsupported.reason.is_empty(), "{wire}: {field}");
+    /// `patch` deep-merged into `body`, objects key by key, anything else
+    /// replacing, as `request_params` merges layers.
+    fn merged(mut body: Value, patch: &Value) -> Value {
+        match (&mut body, patch) {
+            (Value::Object(target), Value::Object(patch)) => {
+                for (key, value) in patch {
+                    let slot = target.remove(key).unwrap_or(Value::Null);
+                    target.insert(key.clone(), merged(slot, value));
                 }
+                body
+            }
+            _ => patch.clone(),
+        }
+    }
+
+    #[test]
+    fn every_option_alone_gives_its_section_6_cell() {
+        for (wire, encode, row) in cells() {
+            let baseline = encode(request(GenerationOptions::default()))
+                .unwrap_or_else(|error| panic!("{wire}: the baseline encodes: {error}"));
+            for ((field, options), cell) in one_field_each().into_iter().zip(row) {
+                let result = encode(request(options));
+                let expected = match cell {
+                    Merge(patch) => merged(baseline.clone(), &patch),
+                    Push(pointer, value) => {
+                        let mut body = baseline.clone();
+                        body.pointer_mut(pointer)
+                            .and_then(Value::as_array_mut)
+                            .unwrap_or_else(|| panic!("{wire}: {pointer} is an array"))
+                            .push(value);
+                        body
+                    }
+                    Omit => baseline.clone(),
+                    Refuse => {
+                        let error = result.expect_err(&format!("{wire}: `{field}` is refused"));
+                        let unsupported = error.unsupported_option().unwrap_or_else(|| {
+                            panic!("{wire}: `{field}` failed without naming an option: {error}")
+                        });
+                        assert_eq!(unsupported.option, field, "{wire}");
+                        assert_eq!(unsupported.provider, wire, "{wire}");
+                        assert!(!unsupported.reason.is_empty(), "{wire}: {field}");
+                        continue;
+                    }
+                };
+                let body =
+                    result.unwrap_or_else(|error| panic!("{wire}: `{field}` encodes: {error}"));
+                assert_eq!(body, expected, "{wire}: `{field}`");
             }
         }
+    }
+}
+
+// P2 removes this gate.
+#[cfg(any())]
+mod option_layers {
+    //! An agent's options and a run's options merge field by field through
+    //! `GenerationOptions::overlay`, the one function rig-agent and rig-ecs
+    //! call: what the run sets wins, the rest keeps the agent's value.
+
+    use rig::completion::{CacheRetention, Effort, GenerationOptions, OnUnsupported, Reasoning};
+
+    #[test]
+    fn a_run_field_beats_the_agent_field_and_leaves_the_rest() {
+        let agent = GenerationOptions::default()
+            .reasoning(Effort::High)
+            .seed(7)
+            .stop(["AGENT"])
+            .on_unsupported(OnUnsupported::Ignore);
+        let run = GenerationOptions::default()
+            .cache(CacheRetention::Long)
+            .seed(9)
+            .stop(["RUN"]);
+
+        let resolved = agent.clone().overlay(&run);
+        assert_eq!(resolved.reasoning, Some(Reasoning::Effort(Effort::High)));
+        assert_eq!(resolved.cache, Some(CacheRetention::Long));
+        assert_eq!(resolved.seed, Some(9));
+        assert_eq!(resolved.stop, vec!["RUN".to_owned()]);
+        assert_eq!(resolved.on_unsupported, OnUnsupported::Ignore);
+
+        // A run that sets nothing leaves the agent's options as they are.
+        assert_eq!(agent.clone().overlay(&GenerationOptions::default()), agent);
+    }
+}
+
+// P2 removes this gate.
+#[cfg(any())]
+mod precedence {
+    //! `null` in `additional_params` is a value and is sent, as `body.extend`
+    //! sends it today; clearing a key is `remove_param`, never `null`.
+
+    use rig::completion::{CompletionRequest, GenerationOptions};
+    use serde_json::{Value, json};
+
+    use super::harness_switch::{encode, openrouter};
+
+    fn request() -> CompletionRequest {
+        CompletionRequest::new("Reply with the single word: pong")
+            .max_tokens(16)
+            .options(GenerationOptions::default().top_p(0.5))
+    }
+
+    #[test]
+    fn null_is_sent_and_remove_param_clears() {
+        let sent = encode(
+            &openrouter(),
+            request().additional_params(json!({"top_p": null, "user": null})),
+        )
+        .expect("the request encodes");
+        assert_eq!(sent.get("top_p"), Some(&Value::Null), "{sent}");
+        assert_eq!(sent.get("user"), Some(&Value::Null), "{sent}");
+
+        let cleared =
+            encode(&openrouter(), request().remove_param("/top_p")).expect("the request encodes");
+        assert!(cleared.get("top_p").is_none(), "{cleared}");
     }
 }
 
