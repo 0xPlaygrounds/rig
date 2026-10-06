@@ -563,20 +563,25 @@ fn xai_spec(model: &str) -> Option<&'static ModelSpec> {
 }
 
 /// Whether xAI's `model` reasons, as its catalog entry says; a Grok model
-/// the catalog does not list is taken to reason, as every Grok model since
-/// Grok 4 does.
+/// the catalog does not list reasons unless its id says `non-reasoning`.
 fn grok_reasons(model: &str) -> bool {
-    xai_spec(model).is_none_or(|spec| spec.reasoning.supported)
+    xai_spec(model).map_or(!model.contains("non-reasoning"), |spec| {
+        spec.reasoning.supported
+    })
 }
 
-/// xAI's `reasoning` on either route: `effort` spells the level as the
-/// route takes it. The levels a model takes are its catalog entry's.
+/// xAI's `reasoning` on either route: `effort` spells a level (`none` for
+/// `Off` on a model whose catalog entry can turn reasoning off) as the route
+/// takes it. The levels a model takes are its catalog entry's.
 pub(crate) fn xai_reasoning(
     model: &str,
     reasoning: &Reasoning,
-    effort: impl FnOnce(&Effort) -> Mapping,
+    effort: impl FnOnce(&str) -> Mapping,
 ) -> Mapping {
     match reasoning {
+        Reasoning::Off if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable) => {
+            effort("none")
+        }
         Reasoning::Off if grok_reasons(model) => {
             Mapping::unsupported("a reasoning Grok model cannot turn reasoning off")
         }
@@ -585,7 +590,7 @@ pub(crate) fn xai_reasoning(
             Mapping::unsupported(format!("xAI has no `{}` effort level", level.as_str()))
         }
         Reasoning::Effort(level) => {
-            effort_refusal(xai_spec(model), level).unwrap_or_else(|| effort(level))
+            effort_refusal(xai_spec(model), level).unwrap_or_else(|| effort(level.as_str()))
         }
         Reasoning::Budget { .. } => Mapping::unsupported("xAI takes an effort level, not a budget"),
     }
@@ -615,7 +620,7 @@ fn xai(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            xai_reasoning(model, reasoning, reasoning_effort)
+            xai_reasoning(model, reasoning, |effort| send("reasoning_effort", effort))
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, xai_tier),
@@ -1178,13 +1183,8 @@ fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable) => {
-                reasoning_object("none")
-            }
-            reasoning => {
-                xai_reasoning(model, reasoning, |effort| reasoning_object(effort.as_str()))
-            }
+        reasoning: Mapping::of(reasoning, |reasoning| {
+            xai_reasoning(model, reasoning, reasoning_object)
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, xai_tier),

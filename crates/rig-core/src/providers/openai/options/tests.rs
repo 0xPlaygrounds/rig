@@ -43,6 +43,71 @@ fn openai_model_facts_come_from_the_catalog() {
     assert!(caches_by_options("gpt-6-sol") && !caches_by_options("gpt-5.5"));
 }
 
+/// On xAI's Chat route the encoder refuses a reasoning option exactly when
+/// `ModelSpec::validate` does, for every xAI row: Grok 4.3 turns reasoning
+/// off with `reasoning_effort: "none"`.
+#[test]
+fn xai_chat_reasoning_agrees_with_validate() {
+    let reasonings = [
+        Reasoning::Off,
+        Reasoning::Effort(Effort::Minimal),
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::Medium),
+        Reasoning::Effort(Effort::High),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Effort(Effort::Max),
+        Reasoning::Budget { tokens: 1024 },
+    ];
+    let mut checked = 0;
+    for spec in crate::catalog::Catalog::builtin()
+        .iter()
+        .filter(|spec| spec.provider.vendor() == "xai")
+    {
+        for reasoning in &reasonings {
+            let options = GenerationOptions::default().reasoning(*reasoning);
+            let encoded = sent(
+                &chat(&crate::providers::xai::DIALECT, &spec.id),
+                options.clone(),
+            );
+            assert_eq!(
+                refused(encoded).is_some(),
+                spec.validate(&options).is_err(),
+                "{}: {reasoning:?}",
+                spec.id
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "{checked}");
+    let body = sent(
+        &chat(&crate::providers::xai::DIALECT, "grok-4.3"),
+        GenerationOptions::default().reasoning(Reasoning::Off),
+    )
+    .expect("Grok 4.3 turns reasoning off");
+    assert_eq!(body["reasoning_effort"], "none");
+}
+
+/// A Grok id the catalog does not list reasons unless its id says
+/// `non-reasoning`, so `Off` is sent as nothing there and refused elsewhere.
+#[test]
+fn an_unlisted_grok_id_reasons_by_its_name() {
+    for model in ["grok-4-fast-non-reasoning", "grok-4-1-fast-non-reasoning"] {
+        let body = sent(
+            &chat(&crate::providers::xai::DIALECT, model),
+            GenerationOptions::default().reasoning(Reasoning::Off),
+        )
+        .expect("a non-reasoning model is already off");
+        assert!(body.get("reasoning_effort").is_none(), "{body}");
+    }
+    assert_eq!(
+        refused(sent(
+            &chat(&crate::providers::xai::DIALECT, "grok-4-fast-reasoning"),
+            GenerationOptions::default().reasoning(Reasoning::Off),
+        )),
+        Some("reasoning")
+    );
+}
+
 #[test]
 fn openai_chat_cells() {
     let gpt = |model| chat(&OPENAI, model);
