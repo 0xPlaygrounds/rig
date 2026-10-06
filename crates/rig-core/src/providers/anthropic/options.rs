@@ -126,10 +126,8 @@ pub(super) fn map_options(
             wire.provider.dialect.default_max_tokens(model)
         }
     });
-    let has_tools = !request.tools.is_empty()
-        || crate::completion::options::param(wire, request, "tools")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|tools| !tools.is_empty());
+    // Not `options::param`, which calls `map_options`.
+    let has_tools = crate::completion::history::declares_tools(request);
     match wire.provider.dialect.name {
         name if name == ANTHROPIC.name => {
             anthropic(wire, request, model, max_tokens, has_tools, fields)

@@ -13,6 +13,7 @@ use super::message::{
     AssistantContent, AssistantMessage, DocumentMediaType, Origin, StopReason, ToolCall,
 };
 use super::options::GenerationOptions;
+use super::provider_options::{ProviderExtension, ProviderOptions, ReplyExtras};
 use crate::error::ProviderError;
 use crate::message::ToolChoice;
 use crate::{
@@ -257,6 +258,17 @@ impl CompletionResponse {
     /// The provider descriptor name (`"openai"`).
     pub fn provider(&self) -> &str {
         &self.origin.provider
+    }
+
+    /// `P`'s typed view of [`Self::raw`]. `None` unless `P` is the provider
+    /// that produced the reply.
+    ///
+    /// # Errors
+    ///
+    /// The inner result fails when `raw` does not hold `P`'s extras.
+    pub fn extras<P: ProviderExtension>(&self) -> Option<Result<P::Extras, serde_json::Error>> {
+        (self.origin.provider == P::PROVIDER)
+            .then(|| P::Extras::from_reply(&self.origin.api, &self.raw))
     }
 
     /// The model the provider reported, when it reported one.
@@ -780,9 +792,13 @@ pub struct CompletionRequest {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub accept_unknown_finish_reasons: bool,
     /// Portable generation options. Precedence, lowest first: the mapped
-    /// options, then `additional_params`.
+    /// options, then [`Self::provider_options`], then `additional_params`.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
     pub options: GenerationOptions,
+    /// Typed per-provider options. The wire reads only the entry of its own
+    /// provider, above the mapped options and below `additional_params`.
+    #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
+    pub provider_options: ProviderOptions,
 }
 
 impl CompletionRequest {
@@ -986,6 +1002,7 @@ impl CompletionRequest {
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
             options: GenerationOptions::default(),
+            provider_options: ProviderOptions::default(),
         }
     }
 
@@ -1136,6 +1153,12 @@ impl CompletionRequest {
     /// Replace the portable generation options.
     pub fn options(mut self, options: GenerationOptions) -> Self {
         self.options = options;
+        self
+    }
+
+    /// Replace the typed per-provider options.
+    pub fn provider_options(mut self, options: ProviderOptions) -> Self {
+        self.provider_options = options;
         self
     }
 

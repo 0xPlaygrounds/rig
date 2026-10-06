@@ -28,7 +28,10 @@ fn sent(chat: &Chat, options: GenerationOptions) -> Result<Value, ProviderError>
 
 fn refused(result: Result<Value, ProviderError>) -> Option<&'static str> {
     match result {
-        Err(ProviderError::UnsupportedOption(option)) => Some(option.option),
+        Err(ProviderError::UnsupportedOption(option)) => match option.option {
+            std::borrow::Cow::Borrowed(name) => Some(name),
+            std::borrow::Cow::Owned(name) => panic!("a GenerationOptions field, got {name}"),
+        },
         _ => None,
     }
 }
@@ -433,7 +436,10 @@ mod responses {
 
     fn refused(result: Result<Value, ProviderError>) -> Option<&'static str> {
         match result {
-            Err(ProviderError::UnsupportedOption(option)) => Some(option.option),
+            Err(ProviderError::UnsupportedOption(option)) => match option.option {
+                std::borrow::Cow::Borrowed(name) => Some(name),
+                std::borrow::Cow::Owned(name) => panic!("a GenerationOptions field, got {name}"),
+            },
             _ => None,
         }
     }

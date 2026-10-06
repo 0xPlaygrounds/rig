@@ -301,6 +301,15 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Overlay `options` on the agent's provider options for this run: each
+    /// provider entry `options` holds replaces the agent's, every other
+    /// entry keeps the agent's
+    /// ([`ProviderOptions::overlay`](rig_core::completion::ProviderOptions::overlay)).
+    pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.config.provider_options = self.config.provider_options.clone().overlay(&options);
+        self
+    }
+
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);

@@ -1211,3 +1211,145 @@ fn a_file_with_a_completion_wire_is_found() {
     let tested = "#[cfg(test)] impl ReplayTarget for Fake {}";
     assert_eq!(holds_a_completion_wire(tested), Ok(false));
 }
+
+#[test]
+fn a_wire_reads_and_sets_no_provider_options() {
+    for source in [
+        "fn encode(request: &CompletionRequest) -> bool { request.provider_options.is_empty() }",
+        "fn encode(request: CompletionRequest) { let CompletionRequest { provider_options, .. } = request; }",
+        "fn encode(request: CompletionRequest) { let copy = request.provider_options(ProviderOptions::new()); }",
+        "fn encode(mut request: CompletionRequest) { request.provider_options = ProviderOptions::new(); }",
+    ] {
+        assert!(fails_precedence(source), "{source}");
+    }
+}
+
+/// The findings of the `extras-off-decode-path` guard in `source`, as the
+/// decode-path file `file`.
+fn decoding(file: &str, source: &str) -> Vec<String> {
+    super::extras::offenders(file, source, true)
+        .unwrap_or_else(|error| panic!("the source parses: {error}"))
+}
+
+const CHAT: &str = "crates/rig-core/src/providers/openai/wire/chat.rs";
+
+#[test]
+fn a_decoder_names_no_extension_module_in_any_import_form() {
+    for source in [
+        "use crate::providers::openrouter::{extension as ext};",
+        "use crate::providers::openrouter::{self, extension::*};",
+        "use super::super::openrouter::extension;",
+        "use crate::providers::openrouter::extension::OpenRouterExtras as Extras;",
+        "use crate::providers::openrouter as or;
+         fn read(extras: or::extension::OpenRouterExtras) {}",
+        "use crate::providers::*;
+         fn read(extras: openrouter::extension::OpenRouterExtras) {}",
+        "type Extras = crate::providers::openrouter::extension::OpenRouterExtras;",
+        "fn read(reply: &CompletionResponse) {
+             let extras = reply.extras::<crate::providers::openrouter::extension::OpenRouter>();
+         }",
+        "macro_rules! extras { ($i:ident) => { crate::providers::openrouter::extension::$i } }",
+        "macro_rules! extras { ($i:ident) => { super::extension::$i } }",
+        "pub use super::extension::OpenRouter;",
+    ] {
+        let findings = decoding(CHAT, source);
+        assert!(!findings.is_empty(), "{source}");
+        assert!(
+            findings
+                .iter()
+                .all(|finding| finding.starts_with("extras-off-decode-path: ")),
+            "{findings:?}"
+        );
+    }
+}
+
+#[test]
+fn a_decoder_names_no_extension_trait_in_any_import_form() {
+    for source in [
+        "use crate::completion::provider_options::ProviderExtension as Ext;",
+        "use crate::completion::{ReplyExtras, CompletionResponse};",
+        "use crate::completion::provider_options::{self as po};
+         fn read<P: po::ProviderExtension>(raw: &Value) {}",
+        "use crate::completion::*;
+         fn read<P: ProviderExtension>(raw: &Value) {}",
+        "use crate::completion::*;
+         impl ReplyExtras for Usage {}",
+    ] {
+        assert!(!decoding(CHAT, source).is_empty(), "{source}");
+    }
+    // An alias is followed to its use.
+    let aliased = decoding(
+        CHAT,
+        "use crate::completion::provider_options::ProviderExtension as Ext;
+         fn read<P: Ext>(raw: &Value) {}",
+    );
+    assert_eq!(aliased.len(), 2, "{aliased:?}");
+}
+
+#[test]
+fn a_companion_crates_extension_is_off_its_decode_path_too() {
+    let findings = decoding(
+        "crates/rig-bedrock/src/completion.rs",
+        "use crate::extension::Bedrock;",
+    );
+    assert_eq!(findings.len(), 1, "{findings:?}");
+    assert!(
+        findings[0].contains("crates/rig-bedrock/src/completion.rs:1"),
+        "{findings:?}"
+    );
+    use super::extras::in_extension_module;
+    for file in [
+        "crates/rig-bedrock/src/extension.rs",
+        "crates/rig-bedrock/src/extension/options.rs",
+        "crates/rig-core/src/providers/openrouter/extension.rs",
+        "crates/rig-core/src/providers/openai/extension/responses.rs",
+    ] {
+        assert!(in_extension_module(file), "{file}");
+    }
+    assert!(!in_extension_module(
+        "crates/rig-core/src/providers/openrouter/mod.rs"
+    ));
+}
+
+#[test]
+fn what_the_decode_path_may_still_write() {
+    for source in [
+        "pub mod extension;",
+        "mod extension {
+             use crate::completion::{ProviderExtension, ReplyExtras};
+             pub struct OpenRouter;
+         }",
+        "fn suffix(path: &std::path::Path) -> bool {
+             let extension = path.extension();
+             extension.is_some()
+         }",
+        "#[cfg(test)]
+         mod tests { use super::extension::OpenRouter; }",
+        "use crate::completion::{CompletionResponse, ProviderOptions};",
+    ] {
+        assert_eq!(decoding(CHAT, source), Vec::<String>::new(), "{source}");
+    }
+}
+
+#[test]
+fn an_extension_item_is_re_exported_nowhere() {
+    let reexports = |source: &str| {
+        super::extras::offenders("src/lib.rs", source, false)
+            .unwrap_or_else(|error| panic!("the source parses: {error}"))
+    };
+    for source in [
+        "pub use rig_core::providers::openrouter::extension::OpenRouter;",
+        "pub use rig_core::providers::openrouter::{extension::*};",
+        "pub(crate) use rig_core::providers::openrouter::extension;",
+        "pub type OpenRouter = rig_core::providers::openrouter::extension::OpenRouter;",
+    ] {
+        assert_eq!(reexports(source).len(), 1, "{source}");
+    }
+    for source in [
+        "use rig_core::providers::openrouter::extension::OpenRouter;",
+        "pub use rig_core::completion::{ProviderExtension, ReplyExtras};",
+        "pub use rig_core::providers;",
+    ] {
+        assert!(reexports(source).is_empty(), "{source}");
+    }
+}

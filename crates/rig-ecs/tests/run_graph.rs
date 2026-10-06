@@ -10,6 +10,7 @@
 //! | the second slot: a `Patch` system rewrites the folded effect and the record holds the patch | `a_patch_system_rewrites_the_folded_request_and_the_record_holds_it` |
 //! | the first slot: a system before `Assemble` rewrites an utterance and the request carries it | `a_system_before_assemble_rewrites_an_utterance` |
 //! | options are components: the run's overlay the agent's field by field | `a_runs_options_overlay_the_agents` |
+//! | provider options are components: the run's entries replace the agent's per provider | `a_runs_provider_options_overlay_the_agents` |
 
 use crate::run_support;
 
@@ -22,8 +23,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Context, DocumentId, DocumentText, Grant, MessageParts, Options, RunResult, Settled,
-        UsesModel, Utterance,
+        Context, DocumentId, DocumentText, Grant, MessageParts, Options, ProviderOptions,
+        RunResult, Settled, UsesModel, Utterance,
     },
     bus::{PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
@@ -374,4 +375,46 @@ fn a_runs_options_overlay_the_agents() {
     );
     assert_eq!(second.options.cache, Some(CacheRetention::Long));
     assert_eq!(second.options.seed, Some(9));
+}
+
+#[test]
+fn a_runs_provider_options_overlay_the_agents() {
+    fn entries(value: serde_json::Value) -> rig_core::completion::ProviderOptions {
+        serde_json::from_value(value).expect("provider options")
+    }
+
+    let mut app = app();
+    let (agent, requests) = capturing_agent(&mut app, MODEL, MODEL, "ok");
+    let agents = entries(serde_json::json!({
+        "alpha": {"*": {"top_k": 4}},
+        "beta": {"*": {"min_p": 0.1}},
+    }));
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(ProviderOptions(agents.clone()));
+    let plain = app
+        .world_mut()
+        .spawn_run(agent, &[], "first?", false, Some(1));
+    settle(&mut app, plain, "the agent's provider options");
+    let overlaid = app
+        .world_mut()
+        .spawn_run(agent, &[], "second?", false, Some(1));
+    app.world_mut()
+        .entity_mut(overlaid)
+        .insert(ProviderOptions(entries(
+            serde_json::json!({"alpha": {"*": {"top_k": 8}}}),
+        )));
+    settle(&mut app, overlaid, "the run's provider options");
+    let requests = requests.lock().expect("requests");
+    let [first, second] = requests.as_slice() else {
+        panic!("two requests: {}", requests.len());
+    };
+    assert_eq!(first.provider_options, agents);
+    assert_eq!(
+        second.provider_options,
+        entries(serde_json::json!({
+            "alpha": {"*": {"top_k": 8}},
+            "beta": {"*": {"min_p": 0.1}},
+        }))
+    );
 }

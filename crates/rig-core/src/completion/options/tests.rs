@@ -184,7 +184,10 @@ fn a_refused_option_is_an_error_or_a_warning_and_cleared() {
     )
     .expect_err("stop is refused");
     let refused = error.unsupported_option().cloned();
-    assert_eq!(refused.as_ref().map(|refused| refused.option), Some("stop"));
+    assert_eq!(
+        refused.as_ref().map(|refused| refused.option.as_ref()),
+        Some("stop")
+    );
     assert_eq!(
         refused.as_ref().map(|refused| refused.provider.as_str()),
         Some("fake")
@@ -293,21 +296,17 @@ fn the_raw_layer_lands_where_the_wire_says() {
 }
 
 #[test]
-fn mapped_param_reads_the_options_and_the_raw_layer_above_them() {
+fn param_reads_the_options_and_the_raw_layer_above_them() {
     let target = Fake(answers);
     let mut mapped = request(GenerationOptions::default().reasoning(Effort::High));
     assert_eq!(
-        mapped_param(&target, &mapped, "thinking"),
+        param(&target, &mapped, "thinking"),
         Some(json!({"type": "enabled"}))
     );
     mapped.additional_params = Some(json!({"thinking": {"type": "disabled"}}));
     assert_eq!(
-        mapped_param(&target, &mapped, "thinking"),
-        Some(json!({"type": "disabled"}))
-    );
-    assert_eq!(
         param(&target, &mapped, "thinking"),
-        Some(&json!({"type": "disabled"}))
+        Some(json!({"type": "disabled"}))
     );
 }
 

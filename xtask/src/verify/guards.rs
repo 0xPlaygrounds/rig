@@ -4,8 +4,9 @@
 //! an `OptionFields` pattern names each field (no `..`, no `_` binding), an
 //! `OptionMap` literal has no `..base`, and no wire file builds or rewrites a
 //! request's options. `options-precedence` keeps the merge in
-//! `request_params`: no wire file reads `additional_params` as a field or
-//! through a pattern, builds or opens request bytes but from
+//! `request_params`: no wire file reads `additional_params` or
+//! `provider_options` as a field or through a pattern, sets a request's
+//! provider options, builds or opens request bytes but from
 //! `FinalBody::into_body` (or sends none: `Body::empty()`, a WebSocket
 //! handshake's `NoBody`), names `Body` where a variant can follow unseen (an
 //! `impl` on it, `<Body>::..`, a macro's tokens), or calls `.body_mut()`.
@@ -73,7 +74,7 @@ const ADDITIONAL_PARAMS_ALLOWED: &[(&str, &str)] = &[
 
 /// Where a file holding a completion wire may live: rig-core's providers and
 /// the companion provider crates.
-const WIRE_ROOTS: &[&str] = &[
+pub(super) const WIRE_ROOTS: &[&str] = &[
     "crates/rig-core/src/providers",
     "crates/rig-bedrock/src",
     "crates/rig-candle/src",
@@ -81,7 +82,8 @@ const WIRE_ROOTS: &[&str] = &[
     "crates/rig-vertexai/src",
 ];
 
-/// Run both guards over the workspace at `root`.
+/// Run both guards, and the `extras-off-decode-path` guard, over the
+/// workspace at `root`.
 pub(crate) fn check(root: &Path) -> Result<(), String> {
     let mut findings = Vec::new();
     for file in COMPLETION_WIRE_FILES {
@@ -113,6 +115,7 @@ pub(crate) fn check(root: &Path) -> Result<(), String> {
             }
         }
     }
+    findings.extend(super::extras::check(root)?);
     if findings.is_empty() {
         Ok(())
     } else {
@@ -120,7 +123,7 @@ pub(crate) fn check(root: &Path) -> Result<(), String> {
     }
 }
 
-fn is_test_file(relative: &str) -> bool {
+pub(super) fn is_test_file(relative: &str) -> bool {
     relative.ends_with("tests.rs") || relative.contains("/tests/")
 }
 
@@ -183,9 +186,9 @@ pub(super) fn offenders(file: &str, source: &str) -> Result<Vec<String>, String>
 /// Local names to the full paths `use` items and `type` aliases give them,
 /// and the prefixes of glob imports.
 #[derive(Default)]
-struct Imports {
-    map: BTreeMap<String, Vec<String>>,
-    globs: Vec<Vec<String>>,
+pub(super) struct Imports {
+    pub(super) map: BTreeMap<String, Vec<String>>,
+    pub(super) globs: Vec<Vec<String>>,
 }
 
 impl Imports {
@@ -243,7 +246,7 @@ impl<'ast> Visit<'ast> for Imports {
 }
 
 /// The attributes of `item`, for the `#[cfg(test)]` check.
-fn item_attrs(item: &syn::Item) -> &[syn::Attribute] {
+pub(super) fn item_attrs(item: &syn::Item) -> &[syn::Attribute] {
     match item {
         syn::Item::Fn(item) => &item.attrs,
         syn::Item::Impl(item) => &item.attrs,
@@ -258,7 +261,7 @@ fn item_attrs(item: &syn::Item) -> &[syn::Attribute] {
     }
 }
 
-fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+pub(super) fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path().is_ident("cfg")
             && attr
@@ -494,6 +497,13 @@ impl<'ast> Visit<'ast> for Guard<'_> {
             if matches!(&field.member, syn::Member::Named(name) if name == "additional_params") {
                 self.check_additional_params(&receiver, field.span());
             }
+            if matches!(&field.member, syn::Member::Named(name) if name == "provider_options") {
+                self.report(
+                    "options-precedence",
+                    field.span(),
+                    "reads provider_options outside request_params",
+                );
+            }
         }
         visit::visit_pat_struct(self, pattern);
     }
@@ -656,6 +666,11 @@ impl<'ast> Visit<'ast> for Guard<'_> {
                 call.span(),
                 "sets a request's options, which the wire must take as given",
             ),
+            "provider_options" if call.args.len() == 1 => self.report(
+                "options-precedence",
+                call.span(),
+                "sets a request's provider options, which the wire must take as given",
+            ),
             "deserialize" => {
                 let to_json = call.turbofish.as_ref().is_some_and(|turbofish| {
                     turbofish.args.iter().any(|argument| {
@@ -702,6 +717,13 @@ impl<'ast> Visit<'ast> for Guard<'_> {
                     "reads a request's options outside OptionFields",
                 );
             }
+            if name == "provider_options" {
+                self.report(
+                    "options-precedence",
+                    field.span(),
+                    "reads provider_options outside request_params",
+                );
+            }
         }
         visit::visit_expr_field(self, field);
     }
@@ -725,7 +747,7 @@ fn snake_case(name: &str) -> String {
 
 /// Every run of `ident :: ident ...` in `tokens`, with the span of its last
 /// segment, into `paths`.
-fn token_paths(
+pub(super) fn token_paths(
     tokens: proc_macro2::TokenStream,
     current: &mut Vec<(String, proc_macro2::Span)>,
     paths: &mut Vec<(Vec<String>, proc_macro2::Span)>,
@@ -768,7 +790,7 @@ fn token_paths(
 
 /// `segments` with its first one read through `imports`, repeatedly, so an
 /// alias of an import resolves too.
-fn read_through(
+pub(super) fn read_through(
     imports: &BTreeMap<String, Vec<String>>,
     segments: Vec<String>,
     depth: usize,

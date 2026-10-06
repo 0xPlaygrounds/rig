@@ -42,7 +42,10 @@ fn schema() -> crate::schemars::Schema {
 
 fn refused(result: Result<Value, ProviderError>) -> &'static str {
     match result {
-        Err(ProviderError::UnsupportedOption(option)) => option.option,
+        Err(ProviderError::UnsupportedOption(option)) => match option.option {
+            std::borrow::Cow::Borrowed(name) => name,
+            std::borrow::Cow::Owned(name) => panic!("a GenerationOptions field, got {name}"),
+        },
         other => panic!("expected a refusal, got {other:?}"),
     }
 }

@@ -134,8 +134,8 @@ listed with what covers it.
   that is an opaque call, and the guard does not see it. On the SDK-backed
   wires and Candle the copy can be sent directly. In both cases nothing but
   review stops it.
-- **Guarantee 2.** Code reads raw keys through `options::param`,
-  `options::mapped_param` and `BaseInput::param` (section 2.1). Reading cannot change rank, and
+- **Guarantee 2.** Code reads raw keys through `options::param` and
+  `BaseInput::param` (section 2.1). Reading cannot change rank, and
   `BaseInput::raw_tools` can take out only `tools`, which every wire
   appends today.
 - **Guarantee 3.** The guard resolves names within a file. A macro that
@@ -236,7 +236,7 @@ Unsupported options:
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("`{option}` is not supported by {provider} model `{model}`: {reason}")]
 pub struct UnsupportedOption {
-    pub option: &'static str,   // the GenerationOptions field name: "reasoning", "cache", ...
+    pub option: Cow<'static, str>,  // the GenerationOptions field name ("reasoning", "cache", ...) or "<provider>.<section>.<field>" (P4)
     pub provider: String,       // ReplayTarget::provider()
     pub model: String,          // the resolved request model
     pub reason: String,
@@ -384,17 +384,15 @@ pub enum Rewrite {
     GeminiCachedContent(Option<String>),
 }
 
-/// The value top-level `key` gets from the layers above the base: the
-/// provider options for `target` (P4), then `additional_params`. Read only,
-/// so it cannot rank anything. The one sanctioned reader of raw keys.
-pub fn param<'a>(target: &dyn ReplayTarget, request: &'a CompletionRequest, key: &str) -> Option<&'a Value>;
-
-/// The value top-level `key` gets from the mapped options and the layers
-/// above them, merged as `request_params` merges them, with no base. For a
-/// reader that runs before encoding and must agree with the body (Anthropic
-/// `drops_unbound_items`). Reports nothing: an `Unsupported` slot adds
-/// nothing here.
-pub fn mapped_param(target: &dyn ReplayTarget, request: &CompletionRequest, key: &str) -> Option<Value>;
+/// The value top-level `key` gets from the mapped options, the provider
+/// options for `target` (P4) and `additional_params`, merged as
+/// `request_params` merges them, with no base. Owned, read only, so it
+/// cannot rank anything. For a reader that runs before encoding and must
+/// agree with the body (Anthropic `drops_unbound_items`, the
+/// `continues_stored` and `declares_tools` readers). Reports nothing: an
+/// `Unsupported` slot or a refused provider field adds nothing here. It
+/// calls `map_options`, so a `map_options` never calls it.
+pub fn param(target: &dyn ReplayTarget, request: &CompletionRequest, key: &str) -> Option<Value>;
 
 /// Calls `target.map_options` on `request.options.fields()` and reports
 /// each `Unsupported` slot through `on_unsupported`: an error under `Error`;
@@ -788,15 +786,23 @@ spells the same, and a section named by an `Api` string (`"openai.chat"`,
 - `ProviderOptions::insert::<P>(&P::Options)` keys the entry by `P::PROVIDER`,
   never by a caller string.
 - At encode time `request_params` takes the entry under `target.provider()`,
-  merges `"*"`, then the section named `target.api()`, under
-  `additional_params`. The route is whatever wire actually encodes; the caller
-  never predicts it.
+  merges `"*"`, then the section named `target.api()`, at the top level of
+  the body on every wire (Bedrock included), above the mapped options and
+  under `additional_params`. The route is whatever wire actually encodes; the
+  caller never predicts it. A section named for another route is skipped
+  with a `tracing::debug!`: that is how one entry serves every route.
 - `CompletionResponse::extras::<P>()` returns `None` unless
   `origin.provider == P::PROVIDER`.
-- An entry or section the route actually taken cannot send is reported
-  through `on_unsupported` (an error by default), not merely warned. This
-  replaces the hand-written refusal in `finalize_ollama`
-  (`crates/rig-core/src/providers/openai/wire/chat.rs:692-701`).
+- A field in `"*"` or in the taken route's section that the route or model
+  cannot send is reported through `on_unsupported` (an error by default, a
+  warning and the field left out under `Ignore`), named
+  `"<provider>.<section>.<field>"` (`"openrouter.*.provider"`). The check is
+  the `Options` type's own `ExtensionOptions::unsupported(&self, target,
+  request) -> Vec<(&'static str, String)>`, the body keys it refuses with
+  their reasons; it defaults to none. `options::check` runs it in
+  `Completion::prepare`, and under `Ignore` takes the field out of the
+  request, so it is reported once. A `ProviderOptions` read back from JSON
+  has no typed options behind it, so its fields are sent as written.
 - An `Options` type never carries a field `GenerationOptions` or
   `CompletionRequest` owns. A per-extension test serializes a fully-set
   `Options` and checks no reserved key appears.
@@ -809,23 +815,30 @@ pub const SHARED: &str = "*";
 
 pub trait ProviderExtension {
     const PROVIDER: &'static str;   // == ReplayTarget::provider()
-    type Options: Serialize;        // an object of sections: "*" and Api names
+    type Options: ExtensionOptions; // an object of sections: "*" and Api names
     type Extras: ReplyExtras;
+}
+pub trait ExtensionOptions: Serialize + Clone + Debug + Send + Sync + 'static {
+    fn unsupported(&self, target: &dyn ReplayTarget, request: &CompletionRequest)
+        -> Vec<(&'static str, String)> { Vec::new() }
 }
 pub trait ReplyExtras: Sized {
     fn from_reply(api: &Api, raw: &serde_json::Value) -> Result<Self, serde_json::Error>;
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ProviderOptions(/* private */ BTreeMap<String, Map<String, Value>>);
+// Clone, Debug, Default, PartialEq, Serialize, Deserialize: the sections
+pub struct ProviderOptions(/* private: provider -> sections, and the typed options */);
 impl ProviderOptions {
     pub fn new() -> Self;
     pub fn insert<P: ProviderExtension>(&mut self, options: &P::Options) -> Result<&mut Self, OptionsError>;
     pub fn with<P: ProviderExtension>(self, options: &P::Options) -> Result<Self, OptionsError>;
+    pub fn get<P: ProviderExtension>(&self) -> Option<&Map<String, Value>>;
     pub fn remove<P: ProviderExtension>(&mut self);
     pub fn contains<P: ProviderExtension>(&self) -> bool;
     pub fn is_empty(&self) -> bool;
+    /// Each entry of `over` in place of `self`'s for the same provider
+    /// (rig-agent runs, rig-ecs runs).
+    pub fn overlay(self, over: &ProviderOptions) -> ProviderOptions;
 }
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
@@ -882,7 +895,7 @@ merge must be deep, which section 2.1 adopts.
 **Weaknesses.**
 - Provider names become API: `"gcp.gemini"`, `"gemini-grpc"`, `"vertexai"`, `"aws_bedrock"`, `"azure.openai"` freeze as they are.
 - Gemini REST and gRPC are one API under two names, so a harness inserts the same `GeminiOptions` twice (`GeminiGrpc` declares `type Options = GeminiOptions`).
-- A section for a route not taken is skipped; `for_target` warns when an entry has route sections but none for the running route and an empty `"*"`.
+- A section for a route not taken is skipped with a `tracing::debug!`, so a typo in a section name is skipped the same way.
 - Section names are strings; a typo in a hand-written `#[serde(rename)]` is caught by the per-extension test only.
 
 **Not covered: headers and encoder directives.** `ProviderOptions` is a
@@ -1889,7 +1902,7 @@ until it is listed here and the golden is regenerated.
 | Anthropic `CacheTtl` as the automatic-caching TTL | `crates/rig-core/src/providers/anthropic/completion.rs:63-73` | `CacheRetention`; `CacheTtl` stays public as the type of `with_static_prefix_cache_ttl` |
 | Anthropic `top_level_cache_control` (a wire-local precedence merge) | `crates/rig-core/src/providers/anthropic/completion.rs:661-692` | `request_params` merges the top marker (raw beats mapped). The base builder reads it through `BaseInput::param("cache_control")`, keeps today's payload validation and error, and uses it for placement and the budget of four as today: with `with_prompt_caching()` a raw marker still suppresses the last-message marker (`:761`) and sets the tool and system markers' TTL (section 2.1). The 1 h-before-5 min check reads the final body. The typed-versus-raw TTL conflict error (`:681-688`) goes with the deleted automatic-caching knobs: a raw marker beats `cache` by rank |
 | Anthropic `body.extend(params)` | `crates/rig-core/src/providers/anthropic/completion.rs:256` | `request_params` (deep merge of `output_config`, `thinking`, `tool_choice`) |
-| Anthropic `drops_unbound_thinking` reading raw JSON; `drops_unbound_items` reading `additional_params["thinking"]` | `crates/rig-core/src/providers/anthropic/completion.rs:157-182`, `:257-259`; `crates/rig-core/src/providers/anthropic/wire.rs:523-530`, `:646-653` | `drops_unbound_thinking` and `Rewrite::DropUnboundThinking` read the merged `FinalBody`'s `thinking`, as today. `drops_unbound_items` runs in `prepare`, before any body exists, and reads `options::mapped_param(target, request, "thinking")`: the mapped `reasoning` with the provider and raw layers on top. So with `reasoning(Off)` replay sees the `disabled` the body sends, and a raw `thinking` still wins, so replay and encoding agree |
+| Anthropic `drops_unbound_thinking` reading raw JSON; `drops_unbound_items` reading `additional_params["thinking"]` | `crates/rig-core/src/providers/anthropic/completion.rs:157-182`, `:257-259`; `crates/rig-core/src/providers/anthropic/wire.rs:523-530`, `:646-653` | `drops_unbound_thinking` and `Rewrite::DropUnboundThinking` read the merged `FinalBody`'s `thinking`, as today. `drops_unbound_items` runs in `prepare`, before any body exists, and reads `options::param(target, request, "thinking")`: the mapped `reasoning` with the provider and raw layers on top. So with `reasoning(Off)` replay sees the `disabled` the body sends, and a raw `thinking` still wins, so replay and encoding agree |
 | Chat `prompt_caching` field and `with_prompt_caching` (a no-op on every dialect but OpenRouter) | `crates/rig-core/src/providers/openai/wire/chat.rs:49-51`, `:248`, `:265-269` | `cache`; `UnsupportedOption` where a dialect cannot cache on request |
 | `OpenAiWire::with_prompt_caching` (a no-op on the Responses route) | `crates/rig-core/src/providers/openai/wire/route.rs:107-111` | `cache` |
 | OpenRouter `BodyRewrite::OpenRouter` caching rewrite | `crates/rig-core/src/providers/openai/wire.rs:165-167`, `crates/rig-core/src/providers/openai/wire/chat.rs:613`, `:816-843` | the documented top-level `cache_control` |

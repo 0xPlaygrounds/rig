@@ -184,6 +184,8 @@ pub struct Settings<'w, 's> {
     pub params: Query<'w, 's, &'static AdditionalParams>,
     /// The portable generation options.
     pub options: Query<'w, 's, &'static Options>,
+    /// The typed per-provider options.
+    pub provider_options: Query<'w, 's, &'static crate::agent::ProviderOptions>,
     /// The tool choice.
     pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
     /// The output mode.
@@ -1386,6 +1388,7 @@ struct Resolved {
     accept_unknown_finish_reasons: bool,
     additional_params: Option<serde_json::Value>,
     options: rig_core::completion::GenerationOptions,
+    provider_options: rig_core::completion::ProviderOptions,
     tool_choice: Option<ToolChoice>,
     output: Output,
     output_tool_config: Option<OutputToolConfig>,
@@ -1427,6 +1430,17 @@ impl Settings<'_, '_> {
                     .map(|options| options.0.clone())
                     .unwrap_or_default();
                 match self.options.get(run) {
+                    Ok(over) if run != agent => base.overlay(&over.0),
+                    _ => base,
+                }
+            },
+            provider_options: {
+                let base = self
+                    .provider_options
+                    .get(agent)
+                    .map(|options| options.0.clone())
+                    .unwrap_or_default();
+                match self.provider_options.get(run) {
                     Ok(over) if run != agent => base.overlay(&over.0),
                     _ => base,
                 }
@@ -1582,6 +1596,7 @@ pub fn fold_turn(
             accept_unknown_finish_reasons: resolved.accept_unknown_finish_reasons,
             additional_params: resolved.additional_params.as_ref(),
             options: &resolved.options,
+            provider_options: &resolved.provider_options,
             tool_choice: resolved.tool_choice.as_ref(),
             output: mode,
             schema: resolved.output.schema.as_ref(),

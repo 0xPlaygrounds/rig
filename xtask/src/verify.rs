@@ -3,6 +3,7 @@
 //! selected check executes; nothing is reused or certified across runs.
 mod checks;
 mod execute;
+mod extras;
 pub(crate) mod guards;
 mod preflight;
 mod selection;

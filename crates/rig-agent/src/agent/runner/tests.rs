@@ -199,6 +199,97 @@ async fn the_agents_options_reach_the_request_and_a_runs_options_overlay_them() 
     assert_eq!(second.options.seed, Some(9));
 }
 
+/// A test-only provider extension: a shared section of free-form fields.
+mod extension {
+    use rig_core::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
+    use rig_core::message::Api;
+    use serde_json::{Map, Value};
+
+    #[derive(Clone, Debug, serde::Serialize)]
+    pub(super) struct Shared {
+        #[serde(rename = "*")]
+        pub(super) fields: Map<String, Value>,
+    }
+
+    impl ExtensionOptions for Shared {}
+
+    pub(super) struct NoExtras;
+
+    impl ReplyExtras for NoExtras {
+        fn from_reply(_api: &Api, _raw: &Value) -> Result<Self, serde_json::Error> {
+            Ok(Self)
+        }
+    }
+
+    pub(super) struct Alpha;
+
+    impl ProviderExtension for Alpha {
+        const PROVIDER: &'static str = "alpha";
+        type Options = Shared;
+        type Extras = NoExtras;
+    }
+
+    pub(super) struct Beta;
+
+    impl ProviderExtension for Beta {
+        const PROVIDER: &'static str = "beta";
+        type Options = Shared;
+        type Extras = NoExtras;
+    }
+
+    pub(super) fn shared(fields: Value) -> Shared {
+        Shared {
+            fields: match fields {
+                Value::Object(fields) => fields,
+                _ => Map::new(),
+            },
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_agents_provider_options_reach_the_request_and_a_run_replaces_an_entry() {
+    use extension::{Alpha, Beta, shared};
+    use rig_core::completion::ProviderOptions;
+
+    let agent_options = ProviderOptions::new()
+        .with::<Alpha>(&shared(json!({"top_k": 4})))
+        .and_then(|options| options.with::<Beta>(&shared(json!({"min_p": 0.1}))))
+        .expect("the agent's options serialize");
+    let run_options = ProviderOptions::new()
+        .with::<Alpha>(&shared(json!({"top_k": 8})))
+        .expect("the run's options serialize");
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone())
+        .provider_options(agent_options.clone())
+        .build();
+    agent
+        .prompt("go")
+        .run()
+        .await
+        .expect("the agent's request succeeds");
+    agent
+        .prompt("again")
+        .provider_options(run_options.clone())
+        .run()
+        .await
+        .expect("the run's request succeeds");
+
+    let requests = model.requests();
+    let [first, second] = requests.as_slice() else {
+        panic!("two requests: {requests:?}");
+    };
+    assert_eq!(first.provider_options, agent_options);
+    assert_eq!(
+        second.provider_options.get::<Alpha>(),
+        run_options.get::<Alpha>()
+    );
+    assert_eq!(
+        second.provider_options.get::<Beta>(),
+        agent_options.get::<Beta>()
+    );
+}
+
 #[tokio::test]
 async fn runner_can_clear_configured_request_defaults() {
     let model = MockCompletionModel::text("done");

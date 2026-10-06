@@ -124,6 +124,7 @@ pub fn install_reflect(world: &mut World) {
             agent::AcceptUnknownFinishReasons,
             agent::AdditionalParams,
             agent::Options,
+            agent::ProviderOptions,
             agent::ToolChoiceSpec,
             agent::Output,
             agent::OutputToolConfig,

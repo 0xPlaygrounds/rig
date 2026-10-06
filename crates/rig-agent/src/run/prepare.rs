@@ -11,7 +11,8 @@
 use std::collections::BTreeSet;
 
 use rig_core::completion::{
-    CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ToolDefinition,
+    CompletionRequest, Document, GenerationOptions, Message, ProviderCapabilities, ProviderOptions,
+    ToolDefinition,
 };
 use rig_core::error::ProviderError;
 use rig_core::message::{ToolChoice, ToolName};
@@ -75,6 +76,9 @@ pub struct PreparedRequest {
     /// The spec's portable generation options.
     #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
     pub options: GenerationOptions,
+    /// The spec's typed per-provider options.
+    #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
+    pub provider_options: ProviderOptions,
     /// The provider-native structured-output constraint, set only when the
     /// resolved mode is [`OutputMode::Native`].
     pub output_schema: Option<rig_core::schemars::Schema>,
@@ -108,6 +112,7 @@ impl PreparedRequest {
             .max_tokens(self.max_tokens)
             .additional_params(self.additional_params)
             .options(self.options)
+            .provider_options(self.provider_options)
             .documents(self.documents)
             .tools(self.tools)
             .output_schema(self.output_schema);
@@ -319,6 +324,7 @@ pub fn prepare_request(
         additional_params,
         tool_choice: tool_choice.cloned(),
         options: spec.options.clone(),
+        provider_options: spec.provider_options.clone(),
         output_schema: native_schema,
         output_mode: resolved_mode,
         executable_tool_names,

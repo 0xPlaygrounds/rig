@@ -90,7 +90,7 @@ The request the model sees is derived, never authored: a run entity, utterances 
 
 | Entity | Components |
 |---|---|
-| Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `Options`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
+| Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `Options`, `ProviderOptions`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
 | Utterance | `Utterance`, `Role`, `AssistantHead` for assistants; `ChildOf` the run, with ordered content children |
 | Content part | `ContentPart`; `ChildOf` an utterance or a `ContentPart::ToolResult` entity; optionally `ToolResultStatus` on a tool result |

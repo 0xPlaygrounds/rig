@@ -620,7 +620,7 @@ impl crate::completion::ReplayTarget for Messages {
     /// with `additional_params` over it.
     fn drops_unbound_items(&self, request: &CompletionRequest) -> bool {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        let thinking = crate::completion::options::mapped_param(self, request, "thinking");
+        let thinking = crate::completion::options::param(self, request, "thinking");
         super::completion::drops_unbound_thinking(self, model, thinking.as_ref())
     }
 

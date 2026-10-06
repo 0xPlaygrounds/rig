@@ -245,6 +245,8 @@ pub(crate) struct AgentConfig {
     pub(crate) additional_params: Option<serde_json::Value>,
     /// Portable generation options every request carries.
     pub(crate) options: rig_core::completion::GenerationOptions,
+    /// Typed per-provider options every request carries.
+    pub(crate) provider_options: rig_core::completion::ProviderOptions,
     /// The catalog entry of the agent's model, which each model call's
     /// options are checked against when the call goes to that model.
     pub(crate) model_spec: Option<rig_core::catalog::ModelSpec>,
@@ -310,6 +312,7 @@ impl AgentConfig {
             static_context: vec![],
             additional_params: None,
             options: rig_core::completion::GenerationOptions::default(),
+            provider_options: rig_core::completion::ProviderOptions::default(),
             model_spec: None,
             model_spec_key: None,
             pending_model_ids: Vec::new(),
@@ -414,13 +417,13 @@ impl AgentConfig {
             match options.on_unsupported {
                 OnUnsupported::Ignore => {
                     tracing::warn!(
-                        option = refused.option,
+                        option = refused.option.as_ref(),
                         provider = %refused.provider,
                         model = %refused.model,
                         reason = %refused.reason,
                         "unsupported option ignored"
                     );
-                    match refused.option {
+                    match refused.option.as_ref() {
                         "reasoning" => options.reasoning = None,
                         "cache" => options.cache = None,
                         _ => return Err(ProviderError::UnsupportedOption(refused)),
@@ -464,6 +467,7 @@ impl AgentConfig {
             static_context: self.static_context.clone(),
             additional_params: self.additional_params.clone(),
             options: self.options.clone(),
+            provider_options: self.provider_options.clone(),
             max_tokens: self.max_tokens,
             temperature: self.temperature,
             tool_choice: self.tool_choice.clone(),

@@ -277,6 +277,15 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Set the typed per-provider options every request of this agent
+    /// carries. A run's
+    /// [`AgentRunner::provider_options`](crate::agent::AgentRunner::provider_options)
+    /// replaces the entry of each provider it names.
+    pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.config.provider_options = options;
+        self
+    }
+
     /// Check the generation options of every model call against the
     /// catalog entry of the model the call goes to, before it is sent:
     /// `spec` (the agent's own model's entry) for a call to the model the

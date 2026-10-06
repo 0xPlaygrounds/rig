@@ -1,8 +1,10 @@
 //! The one merge of a completion request body: the wire's own encoding of
-//! the request, then the mapped options, then `additional_params`, then the
-//! closed list of [`Rewrite`]s. [`request_params`] is the only function that
-//! builds a [`FinalBody`], and [`check`] reports every refused option before
-//! a wire encodes.
+//! the request, then the mapped options, then the provider options, then
+//! `additional_params`, then the closed list of [`Rewrite`]s.
+//! [`request_params`] is the only function that builds a [`FinalBody`], and
+//! [`check`] reports every refused option before a wire encodes.
+
+use std::borrow::Cow;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -10,6 +12,7 @@ use serde_json::{Map, Value};
 
 use super::mapping::Mapping;
 use super::{CacheRetention, GenerationOptions, OnUnsupported, UnsupportedOption};
+use crate::completion::provider_options::SHARED;
 use crate::completion::{CompletionRequest, ReplayTarget};
 use crate::error::EncodeError;
 use crate::providers::openai::wire::BodyRewrite;
@@ -152,8 +155,9 @@ impl BaseInput<'_> {
     }
 
     /// The value top-level `key` gets from the layers above the base: the
-    /// mapped options, then `additional_params`, merged as the body merges
-    /// them. Read only, so it cannot rank anything.
+    /// mapped options, then the provider options, then `additional_params`,
+    /// merged as the body merges them. Read only, so it cannot rank
+    /// anything.
     pub fn param(&self, key: &str) -> Option<&Value> {
         self.upper.get(key)
     }
@@ -200,9 +204,10 @@ fn model_of<'a>(target: &'a dyn ReplayTarget, request: &'a CompletionRequest) ->
 fn refuse(
     target: &dyn ReplayTarget,
     request: &CompletionRequest,
-    option: &'static str,
+    option: impl Into<Cow<'static, str>>,
     reason: String,
 ) -> Result<(), EncodeError> {
+    let option = option.into();
     let provider = target.provider();
     let model = model_of(target, request);
     match request.options.on_unsupported {
@@ -211,7 +216,7 @@ fn refuse(
         ))),
         OnUnsupported::Ignore => {
             tracing::warn!(
-                option,
+                option = option.as_ref(),
                 provider,
                 model,
                 reason = reason.as_str(),
@@ -325,7 +330,99 @@ pub fn check(
 ) -> Result<(), EncodeError> {
     let settled = settle(target, request)?;
     clear(&mut request.options, &settled.ignored);
+    let layer = provider_layer(target, request);
+    for refusal in &layer.refused {
+        refuse(
+            target,
+            request,
+            refusal.name(target),
+            refusal.reason.clone(),
+        )?;
+    }
+    let api = target.api();
+    for refusal in layer.refused {
+        request.provider_options.remove_field(
+            target.provider(),
+            &[SHARED, api.as_str()],
+            refusal.field,
+        );
+    }
     Ok(())
+}
+
+/// A provider field the target cannot send: its body key, the section it
+/// came from and why.
+struct Refused {
+    field: &'static str,
+    section: String,
+    reason: String,
+}
+
+impl Refused {
+    /// The field's name, `"<provider>.<section>.<field>"`.
+    fn name(&self, target: &dyn ReplayTarget) -> String {
+        format!("{}.{}.{}", target.provider(), self.section, self.field)
+    }
+}
+
+/// The provider options `target` reads from `request`, with the fields it
+/// cannot send taken out.
+struct ProviderLayer {
+    fields: Map<String, Value>,
+    refused: Vec<Refused>,
+}
+
+/// The entry of `request`'s provider options named by `target`'s provider:
+/// its [`SHARED`] section, then the section named by `target`'s API, merged.
+/// A section for another route is skipped. Each set field the entry's
+/// typed options refuse for `target` is taken out and listed.
+fn provider_layer(target: &dyn ReplayTarget, request: &CompletionRequest) -> ProviderLayer {
+    let provider = target.provider();
+    let api = target.api();
+    let mut layer = ProviderLayer {
+        fields: Map::new(),
+        refused: Vec::new(),
+    };
+    let Some(sections) = request.provider_options.sections(provider) else {
+        return layer;
+    };
+    let mut route = None;
+    for (name, section) in sections {
+        let Value::Object(section) = section else {
+            continue;
+        };
+        if name == SHARED {
+            deep_merge(&mut layer.fields, section.clone());
+        } else if name == api.as_str() {
+            route = Some(section);
+        } else {
+            tracing::debug!(
+                provider,
+                section = name.as_str(),
+                api = api.as_str(),
+                "provider options section skipped: the request takes another route"
+            );
+        }
+    }
+    if let Some(route) = route {
+        deep_merge(&mut layer.fields, route.clone());
+    }
+    for (field, reason) in request.provider_options.refusals(provider, target, request) {
+        if layer.fields.shift_remove(field).is_none() {
+            continue;
+        }
+        let section = if route.is_some_and(|route| route.contains_key(field)) {
+            api.as_str().to_owned()
+        } else {
+            SHARED.to_owned()
+        };
+        layer.refused.push(Refused {
+            field,
+            section,
+            reason,
+        });
+    }
+    layer
 }
 
 /// `additional_params` as an object, or empty.
@@ -394,40 +491,32 @@ pub(crate) fn deep_merge(body: &mut Map<String, Value>, upper: Map<String, Value
     }
 }
 
-/// The layers above the base, merged: the mapped options, then the raw
-/// layer as placed.
-fn upper_layers(sends: &[Value], raw: &Map<String, Value>) -> Map<String, Value> {
+/// The layers above the base, merged: the mapped options, then the
+/// provider options, then the raw layer as placed.
+fn upper_layers(
+    sends: &[Value],
+    provider: &Map<String, Value>,
+    raw: &Map<String, Value>,
+) -> Map<String, Value> {
     let mut upper = Map::new();
     for send in sends {
         if let Value::Object(send) = send {
             deep_merge(&mut upper, send.clone());
         }
     }
+    deep_merge(&mut upper, provider.clone());
     deep_merge(&mut upper, raw.clone());
     upper
 }
 
-/// The value top-level `key` gets from `additional_params`, the layer above
-/// the mapped options. Read only, so it cannot rank anything. The one
-/// sanctioned reader of raw keys on the completion path.
-pub fn param<'a>(
-    target: &dyn ReplayTarget,
-    request: &'a CompletionRequest,
-    key: &str,
-) -> Option<&'a Value> {
-    let _ = target;
-    request.additional_params.as_ref()?.get(key)
-}
-
-/// The value top-level `key` gets from the mapped options and the layers
-/// above them, merged as [`request_params`] merges them, with no base. For a
-/// reader that runs before encoding and must agree with the body. Reports
-/// nothing: a refused option adds nothing here.
-pub fn mapped_param(
-    target: &dyn ReplayTarget,
-    request: &CompletionRequest,
-    key: &str,
-) -> Option<Value> {
+/// The value top-level `key` gets from the mapped options, the provider
+/// options and `additional_params`, merged as [`request_params`] merges
+/// them, with no base. For a reader that runs before encoding and must
+/// agree with the body. Read only, so it cannot rank anything, and it
+/// reports nothing: a refused option adds nothing here. The one sanctioned
+/// reader of these layers on the completion path outside the merge. A
+/// wire's `map_options` must not call it, since it calls `map_options`.
+pub fn param(target: &dyn ReplayTarget, request: &CompletionRequest, key: &str) -> Option<Value> {
     let map = target.map_options(request, request.options.fields());
     let mut upper = Map::new();
     for (_, mapping) in map.into_slots() {
@@ -435,6 +524,7 @@ pub fn mapped_param(
             deep_merge(&mut upper, send);
         }
     }
+    deep_merge(&mut upper, provider_layer(target, request).fields);
     if let Some(Value::Object(raw)) = &request.additional_params {
         deep_merge(&mut upper, raw.clone());
     }
@@ -443,14 +533,16 @@ pub fn mapped_param(
 
 /// The body `target` sends for `request`. Reports each refused option
 /// (after `Completion::prepare` none is left), then calls `base` for the
-/// wire's own encoding of the request, merges the mapped options and then
-/// `additional_params` into it as `raw_at` places them, and applies
-/// `rewrites` in order. The only reader of the request's options and of
-/// `additional_params` on the completion path.
+/// wire's own encoding of the request, merges the mapped options, then the
+/// provider options at the top level, then `additional_params` as `raw_at`
+/// places them, and applies `rewrites` in order. The only reader of the
+/// request's options, provider options and `additional_params` on the
+/// completion path.
 ///
 /// # Errors
 ///
-/// When an option is refused under [`OnUnsupported::Error`],
+/// When an option or a provider field is refused under
+/// [`OnUnsupported::Error`],
 /// `additional_params` is not an object or holds a malformed `tools` or
 /// cached-content handle, `base` fails, or a rewrite refuses the body.
 pub fn request_params(
@@ -461,6 +553,11 @@ pub fn request_params(
     rewrites: &[Rewrite],
 ) -> Result<FinalBody, EncodeError> {
     let settled = settle(target, request)?;
+    let provider = provider_layer(target, request);
+    for refusal in provider.refused {
+        refuse(target, request, refusal.name(target), refusal.reason)?;
+    }
+    let provider = provider.fields;
     let mut raw = raw_layer(request)?;
     let raw_tools = match raw_at {
         RawAt::Top | RawAt::Split { .. } => raw.shift_remove("tools"),
@@ -489,7 +586,7 @@ pub fn request_params(
         }
     }
     let raw = placed(raw, raw_at);
-    let upper = upper_layers(&settled.sends, &raw);
+    let upper = upper_layers(&settled.sends, &provider, &raw);
     let mut input = BaseInput {
         target,
         request,
@@ -503,6 +600,7 @@ pub fn request_params(
             deep_merge(&mut body, send);
         }
     }
+    deep_merge(&mut body, provider);
     deep_merge(&mut body, raw);
     for rewrite in rewrites {
         apply(rewrite, &mut body, &handles)?;

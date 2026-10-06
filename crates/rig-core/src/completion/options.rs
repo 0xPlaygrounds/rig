@@ -14,13 +14,15 @@
 //! assert!(!request.options.is_default());
 //! ```
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 mod mapping;
 mod merge;
 
 pub use mapping::{Mapping, OptionFields, OptionMap};
-pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, mapped_param, param, request_params};
+pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, param, request_params};
 
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is
@@ -309,8 +311,10 @@ pub enum OnUnsupported {
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("`{option}` is not supported by {provider} model `{model}`: {reason}")]
 pub struct UnsupportedOption {
-    /// The [`GenerationOptions`] field name, such as `"reasoning"`.
-    pub option: &'static str,
+    /// The [`GenerationOptions`] field name, such as `"reasoning"`, or a
+    /// provider option's `"<provider>.<section>.<field>"`, such as
+    /// `"openrouter.*.provider"`.
+    pub option: Cow<'static, str>,
     /// The provider that refused it.
     pub provider: String,
     /// The model the request resolved to.
@@ -322,13 +326,13 @@ pub struct UnsupportedOption {
 impl UnsupportedOption {
     /// The refusal of `option` by `provider` for `model`, because of `reason`.
     pub fn new(
-        option: &'static str,
+        option: impl Into<Cow<'static, str>>,
         provider: impl Into<String>,
         model: impl Into<String>,
         reason: impl Into<String>,
     ) -> Self {
         Self {
-            option,
+            option: option.into(),
             provider: provider.into(),
             model: model.into(),
             reason: reason.into(),

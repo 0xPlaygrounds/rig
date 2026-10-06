@@ -22,6 +22,7 @@ fn bare(chat_history: Vec<Message>) -> CompletionRequest {
         record_telemetry_content: false,
         accept_unknown_finish_reasons: false,
         options: GenerationOptions::default(),
+        provider_options: crate::completion::ProviderOptions::default(),
     }
 }
 

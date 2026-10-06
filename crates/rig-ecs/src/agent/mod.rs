@@ -79,6 +79,15 @@ pub struct AdditionalParams(
 #[reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Options(pub rig_core::completion::GenerationOptions);
 
+/// Typed per-provider options the request carries. A run's overlay the
+/// agent's per provider
+/// ([`ProviderOptions::overlay`](rig_core::completion::ProviderOptions::overlay)):
+/// each provider entry the run holds replaces the agent's, every other
+/// entry keeps the agent's.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOptions(pub rig_core::completion::ProviderOptions);
+
 /// The program's tool choice: what the request's `tool_choice` starts
 /// from before the output mode has its say.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]

@@ -79,6 +79,10 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         .get::<Options>(agent)
         .map(|options| options.0.clone())
         .filter(|options| !options.is_default());
+    let provider_options = world
+        .get::<rig_ecs::agent::ProviderOptions>(agent)
+        .map(|options| options.0.clone())
+        .filter(|options| !options.is_empty());
     let mut spec = serde_json::json!({
         "preamble": preamble,
         "static_context": context,
@@ -99,7 +103,27 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
     if let (Some(options), Some(fields)) = (options, spec.as_object_mut()) {
         fields.insert("options".into(), serde_json::json!(options));
     }
+    if let (Some(options), Some(fields)) = (provider_options, spec.as_object_mut()) {
+        fields.insert("provider_options".into(), serde_json::json!(options));
+    }
     spec
+}
+
+/// The provider options a run's requests carry: the run's entries over the
+/// agent's.
+fn effective_provider_options(
+    world: &World,
+    subject: Entity,
+    agent: Entity,
+) -> rig_core::completion::ProviderOptions {
+    let base = world
+        .get::<rig_ecs::agent::ProviderOptions>(agent)
+        .map(|options| options.0.clone())
+        .unwrap_or_default();
+    match world.get::<rig_ecs::agent::ProviderOptions>(subject) {
+        Some(over) if subject != agent => base.overlay(&over.0),
+        _ => base,
+    }
 }
 
 /// The options a run's requests carry: the run's overlaid on the agent's.
@@ -163,6 +187,15 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
             fields.shift_remove("options");
         } else {
             fields.insert("options".into(), serde_json::json!(options));
+        }
+        let provider_options = effective_provider_options(world, subject, agent);
+        if provider_options.is_empty() {
+            fields.shift_remove("provider_options");
+        } else {
+            fields.insert(
+                "provider_options".into(),
+                serde_json::json!(provider_options),
+            );
         }
         fields.insert(
             "max_turns".into(),
