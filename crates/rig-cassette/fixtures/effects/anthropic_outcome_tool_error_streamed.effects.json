@@ -155,19 +155,41 @@
           "provider_request_id": "req_011CfikWftBjSpMfWteVM4QP",
           "finish_reason": "tool_calls",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_01JVgj6Y6Hquf4Mk4Q4PwFyJ",
+                "input": {
+                  "x": 17,
+                  "y": 25
+                },
+                "name": "add",
+                "type": "tool_use"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikWgGVxxoYrJKfmegtJ",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 69,
-              "input_tokens": 611,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfikWgGVxxoYrJKfmegtJ",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 611,
+              "output_tokens": 69,
+              "service_tier": "standard"
+            }
           }
         }
       },
@@ -425,19 +447,33 @@
           "provider_request_id": "req_011CfikWmiuT2qbGq6TxnqEq",
           "finish_reason": "stop",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "I'm sorry, but the add tool returned an error and was unable to compute the result. Please try again later!",
+                "type": "text"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikWn7yEiJZUJqxAV5cs",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 27,
-              "input_tokens": 705,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfikWn7yEiJZUJqxAV5cs",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 705,
+              "output_tokens": 27,
+              "service_tier": "standard"
+            }
           }
         }
       },

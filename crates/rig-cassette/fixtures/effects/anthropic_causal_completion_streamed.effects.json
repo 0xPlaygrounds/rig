@@ -150,19 +150,40 @@
           "provider_request_id": "req_011CfikL54eG6mF2d5J5x9N2",
           "finish_reason": "tool_calls",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_015iwaRaVEkyyiQRanv5FCvv",
+                "input": {
+                  "q": "What is the capital of France?"
+                },
+                "name": "lookup",
+                "type": "tool_use"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikL6G55Y4u1MuKdc5xu",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 58,
-              "input_tokens": 624,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfikL6G55Y4u1MuKdc5xu",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 624,
+              "output_tokens": 58,
+              "service_tier": "standard"
+            }
           }
         }
       },
@@ -498,19 +519,33 @@
           "provider_request_id": "req_011CfikLEtFHKifwbDLHpxRN",
           "finish_reason": "stop",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "Paris",
+                "type": "text"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikLFJHmvE4YSMeuCeRJ",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 4,
-              "input_tokens": 695,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfikLFJHmvE4YSMeuCeRJ",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 695,
+              "output_tokens": 4,
+              "service_tier": "standard"
+            }
           }
         }
       },

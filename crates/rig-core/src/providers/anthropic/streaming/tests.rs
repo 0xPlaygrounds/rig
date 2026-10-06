@@ -484,7 +484,7 @@ fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
     ];
     let decoded = crate::driver::feed_frames!(
         MessagesDecoder::new(false),
-        document::TerminalRecord::default(),
+        document::Message::default(),
         "anthropic",
         frames.map(|frame| WireFrame::Text(frame.to_owned()))
     );

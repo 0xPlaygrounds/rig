@@ -75,21 +75,37 @@ const PAIRS: &[Pair] = &[
         unary: "raw_capture_matrix/raw_exposes_stop_sequence.yaml",
         streamed: "raw_stream_capture_matrix/raw_exposes_stop_sequence.yaml",
         minted: &[],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "anthropic",
         unary: "raw_capture_matrix/raw_exposes_thinking_block_and_signature.yaml",
         streamed: "raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream.yaml",
-        minted: &["/content/0/thinking", "/content/0/signature", "/usage"],
-        rebuilt: false,
+        minted: &["/content/0/signature"],
+        rebuilt: true,
     },
     Pair {
         provider: "anthropic",
         unary: "raw_capture_matrix/raw_exposes_tool_use_block.yaml",
         streamed: "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream.yaml",
-        minted: &["/usage"],
-        rebuilt: false,
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "anthropic",
+        unary: "raw_capture_matrix/raw_round_trips_into_provider_type.yaml",
+        streamed: "raw_stream_capture_matrix/terminal_raw_round_trips_into_provider_type.yaml",
+        // The two recordings ask for different words.
+        minted: &["/content/0/text", "/usage"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "anthropic",
+        unary: "raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml",
+        streamed: "raw_stream_capture_matrix/normalized_terminal_matches_raw_renormalized.yaml",
+        // The two recordings ask for different words.
+        minted: &["/content/0/text", "/usage"],
+        rebuilt: true,
     },
     Pair {
         provider: "cohere",

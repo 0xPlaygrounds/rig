@@ -3,29 +3,29 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The wire's decoder assembles the provider-native
-//! terminal — `anthropic::streaming::StreamingCompletionResponse` — and the
-//! driver serializes it onto the terminal `CompletionResponse::raw` before mapping it
-//! to the normalized terminal. So `raw` is the **terminal record only**: the
-//! provider's own final record, not the stream's frames. Anthropic's terminal is
-//! assembled from `message_start` (id, model) and the closing `message_delta`
-//! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
-//! header the driver stamps. `raw` is `Value::Null` only on a `CompletionResponse`
-//! built by hand, with no provider terminal behind it; `Value::Null` never
-//! means "not requested". Cells 1–3 pin the terminal round trip, a
-//! terminal-only field, and normalized/raw agreement on text streams; cells 4
-//! and 5 repeat the round trip on an extended-thinking stream and a forced
-//! tool-call stream.
+//! Capture is always on. The wire's reassembler rebuilds the `Message` a
+//! unary reply would have been from the stream's frames, and the driver
+//! records it as the terminal `CompletionResponse::raw`. So `raw` is the
+//! **unary document**, not the frames: `message_start.message` with each
+//! content block placed at its index, the deltas applied, and the closing
+//! `message_delta` (`stop_reason`, `stop_sequence`, usage) folded over it.
+//! The transport `request-id` header is stamped on the normalized terminal,
+//! never on `raw`. `raw` is `Value::Null` only on a `CompletionResponse`
+//! built by hand; `Value::Null` never means "not requested". Cells 1–3 pin
+//! the document's shape, a terminal-only field, and normalized/raw agreement
+//! on text streams; cells 4 and 5 repeat the round trip on an
+//! extended-thinking stream and a forced tool-call stream, whose blocks the
+//! document carries as their unary twins in `raw_capture_matrix.rs` do.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; deserializes into the Anthropic terminal type and re-serializes equal; terminal-only shape (no frames) | recorded |
+//! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; exactly the unary `Message` keys, the streamed text as its one `text` block, no frame keys | recorded |
 //! | 2 | `raw_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
 //! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | reading `raw` back into `StreamingCompletionResponse` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
-//! | 4 | `terminal_raw_round_trips_for_thinking_stream` | streamed twin of the `thinking.enabled` request | terminal `raw` round-trips; `raw["usage"]["output_tokens_details"]["thinking_tokens"]` is the terminal `message_delta`'s, verbatim; normalized terminal folds it into `reasoning_tokens` and never spells `thinking`; the stream yielded the `thinking` block as `Reasoning` | recorded |
-//! | 5 | `terminal_raw_round_trips_for_tool_use_stream` | streamed twin of the forced tool call | terminal `raw` round-trips; `raw["stop_reason"] == "tool_use"` verbatim; normalized terminal `finish_reason == ToolCalls`; the stream yielded the `tool_use` block as a `ToolCall` whose provider id is the frame's | recorded |
+//! | 4 | `terminal_raw_round_trips_for_thinking_stream` | streamed twin of the `thinking.enabled` request | terminal `raw` round-trips; `raw["content"][0]` is the `thinking` block with the streamed text and signature; `raw["usage"]["output_tokens_details"]["thinking_tokens"]` is the terminal `message_delta`'s, verbatim; normalized terminal folds it into `reasoning_tokens` and never spells `thinking`; the stream yielded the `thinking` block as `Reasoning` | recorded |
+//! | 5 | `terminal_raw_round_trips_for_tool_use_stream` | streamed twin of the forced tool call | terminal `raw` round-trips; `raw["content"][0]` is the `tool_use` block with the assembled `input` object; `raw["stop_reason"] == "tool_use"` verbatim; normalized terminal `finish_reason == ToolCalls`; the stream yielded the `tool_use` block as a `ToolCall` whose provider id is the frame's | recorded |
 //!
 //! Every recorded cell re-derives its premise from its own SSE frames: the
 //! stream opens with a `message_start` naming a `msg_…` id, closes with a
@@ -38,13 +38,11 @@
 //! off the text-only path, with the request shapes their blocking twins in
 //! `raw_capture_matrix.rs` use (the `thinking.enabled` request from
 //! `reasoning_usage_matrix.rs`; the `weather_tool` + `tool_choice` pattern
-//! from `empty_stop_sequence_matrix.rs`). Because `raw` is the terminal
-//! record only, the reasoning block and the tool-call block themselves are
-//! not in it — the frames are; so each cell premise-asserts its frames carry
-//! the block (`content_block_start` of `type: "thinking"` with a
-//! `signature_delta`; `content_block_start` of `type: "tool_use"`), and pins
-//! what the terminal *does* carry: the usage bucket and the verbatim
-//! `stop_reason`.
+//! from `empty_stop_sequence_matrix.rs`). Each cell premise-asserts its
+//! frames carry the block (`content_block_start` of `type: "thinking"` with
+//! a `signature_delta`; `content_block_start` of `type: "tool_use"`), and
+//! pins that `raw` carries the block rebuilt from them beside the usage
+//! bucket and the verbatim `stop_reason`.
 
 use rig::completion::CompletionResponse;
 use rig::message::AssistantContent;
@@ -159,14 +157,14 @@ async fn streamed_body(
 }
 
 /// Cells 4 and 5 share this: terminal `raw` is populated, and is
-/// Anthropic's terminal record, with its usage and stop reason.
+/// Anthropic's `Message`, with its usage and stop reason.
 fn assert_raw_round_trips(raw: &Value) -> &Value {
     assert!(
         !raw.is_null(),
         "every terminal `stream()` yields carries `raw`"
     );
     assert!(
-        raw["usage"].is_object() && raw["stop_reason"].is_string(),
+        raw["type"] == "message" && raw["usage"].is_object() && raw["stop_reason"].is_string(),
         "{raw}"
     );
     raw
@@ -307,11 +305,10 @@ async fn terminal_raw_round_trips_into_provider_type() {
         "every terminal `stream()` yields carries `raw`"
     );
 
-    // Terminal record only. Pin the exact key set: the fields the Anthropic
-    // terminal type carries for an `end_turn` text stream (no
-    // `stop_sequence`, which is skipped when absent, and no
-    // `provider_request_id` — the transport stamps that onto the normalized
-    // record, not the provider's) — and nothing frame-shaped.
+    // The unary document. Pin the exact key set: the fields a unary
+    // `Message` carries (no `provider_request_id`: the transport stamps
+    // that onto the normalized record, not the provider's), and nothing
+    // frame-shaped.
     let mut keys: Vec<&str> = raw
         .as_object()
         .expect("terminal raw is an object")
@@ -321,21 +318,42 @@ async fn terminal_raw_round_trips_into_provider_type() {
     keys.sort_unstable();
     assert_eq!(
         keys,
-        ["message_id", "model", "stop_reason", "usage"],
-        "the terminal record's own fields, and only those"
+        [
+            "container",
+            "content",
+            "id",
+            "model",
+            "role",
+            "stop_details",
+            "stop_reason",
+            "stop_sequence",
+            "type",
+            "usage"
+        ],
+        "the unary `Message`'s fields, and only those"
     );
+    assert_eq!(raw["type"], "message");
     for frame_key in [
         "content_block_delta",
         "content_block_start",
-        "content",
         "delta",
-        "type",
+        "index",
     ] {
         assert!(
             raw.get(frame_key).is_none(),
-            "`raw` is the terminal record, not the frames: found `{frame_key}`"
+            "`raw` is the unary document, not the frames: found `{frame_key}`"
         );
     }
+    let recorded_text: String = recorded_frames(ROUND_TRIP_SCENARIO)
+        .iter()
+        .filter(|frame| frame["delta"]["type"] == "text_delta")
+        .filter_map(|frame| frame["delta"]["text"].as_str())
+        .collect();
+    assert_eq!(
+        raw["content"],
+        json!([{ "type": "text", "text": recorded_text }]),
+        "the streamed text is the document's one text block"
+    );
 
     // Wire-derived fields equal what the recorded frames say; the transport
     // id is the header the driver stamped.
@@ -348,7 +366,7 @@ async fn terminal_raw_round_trips_into_provider_type() {
         "premise: the recorded stream did carry frames `raw` must not contain"
     );
     assert_ids_match_recording(
-        &[raw["message_id"].as_str().map(str::to_string)],
+        &[raw["id"].as_str().map(str::to_string)],
         std::slice::from_ref(&recorded.response_id),
         ROUND_TRIP_SCENARIO,
     );
@@ -468,7 +486,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
     );
 
     assert_eq!(
-        raw["message_id"].as_str(),
+        raw["id"].as_str(),
         terminal.response_id(),
         "the message id is the record's"
     );
@@ -490,12 +508,12 @@ async fn normalized_terminal_matches_raw_renormalized() {
 // ---------------------------------------------------------------------------
 
 /// The streamed twin of `raw_capture_matrix::raw_exposes_thinking_block_and_signature`.
-/// `raw` is the terminal record, so the thinking block itself is not in it —
-/// it was streamed as frames and delivered as `Reasoning` items. What the
-/// terminal does carry from the thinking turn is the usage bucket, and `raw`
-/// carries it in the provider's spelling: `usage.output_tokens_details.thinking_tokens`,
-/// verbatim from the terminal `message_delta`. The normalized terminal folds
-/// it into `reasoning_tokens` and never spells `thinking`.
+/// `raw` is the unary document, so it carries the thinking block rebuilt
+/// from its deltas, text and signature, as the unary twin does, and the
+/// usage bucket in the provider's spelling:
+/// `usage.output_tokens_details.thinking_tokens`, verbatim from the
+/// terminal `message_delta`. The normalized terminal folds it into
+/// `reasoning_tokens` and never spells `thinking`.
 #[tokio::test]
 async fn terminal_raw_round_trips_for_thinking_stream() {
     let sink = Observed::default();
@@ -565,6 +583,14 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     );
     assert_eq!(recorded.stop_reason.as_deref(), Some("end_turn"), "premise");
 
+    // `raw` carries the thinking block as the unary reply states it.
+    assert_eq!(raw["content"][0]["type"], "thinking");
+    assert_eq!(raw["content"][0]["thinking"], json!(recorded_thinking_text));
+    assert_eq!(
+        raw["content"][0]["signature"].as_str(),
+        recorded_signature.as_deref()
+    );
+
     // `raw` carries the provider's usage breakdown, verbatim.
     assert_eq!(
         raw["usage"]["output_tokens_details"]["thinking_tokens"],
@@ -593,8 +619,8 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     );
     assert_terminal_matches_fixture(THINKING_SCENARIO, &terminal, &recorded);
 
-    // And the block `raw` does not carry was delivered as normalized items:
-    // the stream's `Reasoning` text is the frames' `thinking_delta` text.
+    // And the block was delivered as normalized items too: the stream's
+    // `Reasoning` text is the frames' `thinking_delta` text.
     let streamed_reasoning = items
         .iter()
         .filter_map(|item| match item {
@@ -617,10 +643,11 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
 // ---------------------------------------------------------------------------
 
 /// The streamed twin of `raw_capture_matrix::raw_exposes_tool_use_block`. The
-/// terminal `raw` round-trips and names the stop reason as the wire spelled
-/// it — `tool_use` — while the normalized terminal reports
-/// `FinishReason::ToolCalls`; the `tool_use` block itself was streamed as
-/// frames and delivered as a `ToolCall` item whose provider id is the frame's.
+/// terminal `raw` round-trips, carries the `tool_use` block with its input
+/// assembled from the streamed fragments, and names the stop reason as the
+/// wire spelled it — `tool_use` — while the normalized terminal reports
+/// `FinishReason::ToolCalls`; the block was also delivered as a `ToolCall`
+/// item whose provider id is the frame's.
 #[tokio::test]
 async fn terminal_raw_round_trips_for_tool_use_stream() {
     let sink = Observed::default();
@@ -683,6 +710,17 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
         "premise: the recorded stream stopped to call a tool"
     );
 
+    // `raw` carries the call as the unary reply states it: the block the
+    // stream opened, its `input` the assembled fragments.
+    assert_eq!(raw["content"][0]["type"], "tool_use");
+    assert_eq!(raw["content"][0]["name"], "get_weather");
+    assert_eq!(raw["content"][0]["input"], recorded_input);
+    assert_ids_match_recording(
+        &[raw["content"][0]["id"].as_str().map(str::to_string)],
+        std::slice::from_ref(&recorded_tool_id),
+        TOOL_USE_SCENARIO,
+    );
+
     // `raw` names the stop reason as the wire spelled it; the normalized
     // terminal maps it onto `ToolCalls` and never spells `tool_use`.
     assert_eq!(raw["stop_reason"], "tool_use");
@@ -696,9 +734,9 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     );
     assert_terminal_matches_fixture(TOOL_USE_SCENARIO, &terminal, &recorded);
 
-    // And the block `raw` does not carry was delivered as a normalized item:
-    // one `ToolCall` for the forced tool, its arguments the assembled input,
-    // its provider id the frame's `toolu_…`.
+    // And the block was delivered as a normalized item too: one `ToolCall`
+    // for the forced tool, its arguments the assembled input, its provider
+    // id the frame's `toolu_…`.
     let streamed_calls = items
         .iter()
         .filter_map(|item| match item {

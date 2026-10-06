@@ -134,19 +134,32 @@
           "provider_request_id": "req_011CfLcfFkqgdatP3YWCyFcy",
           "finish_reason": "stop",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun's light from reaching certain parts of Earth's surface. During a total solar eclipse, the Moon completely covers the Sun's disk, casting a shadow on Earth and briefly turning day into an eerie twilight, allowing observers in the path of totality to see the Sun's outer atmosphere, called the corona. Partial and annular eclipses occur when the alignment is not perfect, resulting in only a portion of the Sun being covered or a ring of sunlight remaining visible around the Moon's silhouette.",
+                "type": "text"
+              }
+            ],
+            "id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 127,
-              "input_tokens": 33,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfLcfGCsfC8dkJMJzGEZD",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 33,
+              "output_tokens": 127,
+              "service_tier": "standard"
+            }
           }
         }
       },

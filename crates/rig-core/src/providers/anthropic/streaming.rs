@@ -128,22 +128,6 @@ impl Counts {
             cost: None,
         }
     }
-
-    /// The counters as a stream's terminal record spells them.
-    fn record(&self) -> Value {
-        let details = |thinking| json!({ "thinking_tokens": thinking });
-        Value::Object(object([
-            ("output_tokens", Some(json!(self.output.unwrap_or(0)))),
-            ("input_tokens", Some(json!(self.input))),
-            (
-                "cache_creation_input_tokens",
-                Some(json!(self.cache_creation)),
-            ),
-            ("cache_read_input_tokens", Some(json!(self.cache_read))),
-            ("cache_creation", self.cache_creation_split.clone()),
-            ("output_tokens_details", self.thinking.map(details)),
-        ]))
-    }
 }
 
 /// How a Messages `stop_reason` ends the turn, and the error a refusal

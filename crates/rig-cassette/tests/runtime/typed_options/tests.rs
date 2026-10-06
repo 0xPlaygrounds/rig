@@ -1428,6 +1428,100 @@ mod typed_extras_unary {
     }
 }
 
+mod anthropic_extras_both_ways {
+    //! Anthropic's extras from recorded pairs, one prompt answered unary and
+    //! streamed: a streamed reply's `raw` is the unary `Message`, so one
+    //! `Extras` type reads both.
+
+    use bytes::Bytes;
+    use futures::StreamExt;
+    use rig::completion::{CompletionRequest, CompletionResponse};
+    use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
+    use rig::providers::anthropic::extension::{Anthropic, AnthropicExtras, CacheCreation};
+    use rig::providers::anthropic::wire::AnthropicConfig;
+    use rig::test_utils::MockStreamingClient;
+    use rig_test_support::cassette_models::AnthropicModels;
+
+    use super::typed_extras_unary::{KEY, recorded_body, unary};
+
+    fn messages(model: &str) -> rig::providers::anthropic::Messages {
+        AnthropicModels::new(AnthropicConfig::new(KEY), crate::cassettes::local_http())
+            .completion(model)
+            .wire
+    }
+
+    /// `body`, a recorded event stream, folded by `wire` as a live stream is.
+    async fn streamed(
+        wire: rig::providers::anthropic::Messages,
+        body: String,
+    ) -> CompletionResponse {
+        let model = rig::Model::new(
+            wire,
+            MockStreamingClient {
+                sse_bytes: Bytes::from(body),
+            },
+        );
+        let mut stream = model
+            .stream(CompletionRequest::new("extras"))
+            .expect("the recorded stream opens");
+        while let Some(item) = stream.next().await {
+            item.expect("the recorded stream yields no error");
+        }
+        stream.finish().await.expect("the recorded stream ends")
+    }
+
+    /// The extras of the unary and the streamed recording of one turn.
+    async fn both_ways(
+        model: &str,
+        unary_scenario: &str,
+        streamed_scenario: &str,
+    ) -> [AnthropicExtras; 2] {
+        let from_body = unary(
+            messages(model),
+            recorded_body("anthropic", unary_scenario, 0),
+            CompletionRequest::new("extras"),
+        )
+        .await;
+        let from_stream = streamed(
+            messages(model),
+            recorded_body("anthropic", streamed_scenario, 0),
+        )
+        .await;
+        [from_body, from_stream].map(|reply| {
+            reply
+                .extras::<Anthropic>()
+                .expect("an Anthropic reply has Anthropic extras")
+                .expect("the extras deserialize")
+        })
+    }
+
+    #[tokio::test]
+    async fn the_same_anthropic_extras_from_both_recordings() {
+        let [from_body, from_stream] = both_ways(
+            CLAUDE_HAIKU_4_5,
+            "raw_capture_matrix/raw_exposes_stop_sequence",
+            "raw_stream_capture_matrix/raw_exposes_stop_sequence",
+        )
+        .await;
+        assert_eq!(from_stream.stop_reason.as_deref(), Some("stop_sequence"));
+        assert_eq!(from_stream.stop_sequence.as_deref(), Some("alpha"));
+        assert_eq!(from_stream.service_tier.as_deref(), Some("standard"));
+        assert_eq!(from_stream.inference_geo.as_deref(), Some("not_available"));
+        assert_eq!(from_stream.cache_creation, Some(CacheCreation::default()));
+        assert_eq!(from_stream, from_body);
+
+        let [from_body, from_stream] = both_ways(
+            CLAUDE_SONNET_4_6,
+            "raw_capture_matrix/raw_exposes_thinking_block_and_signature",
+            "raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream",
+        )
+        .await;
+        assert_eq!(from_stream.stop_reason.as_deref(), Some("end_turn"));
+        assert_eq!(from_stream.inference_geo.as_deref(), Some("global"));
+        assert_eq!(from_stream, from_body);
+    }
+}
+
 // P5 removes this gate.
 #[cfg(any())]
 mod typed_extras_streamed {
