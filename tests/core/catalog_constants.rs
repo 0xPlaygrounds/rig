@@ -1,14 +1,16 @@
 //! Every public model constant has a catalog entry.
 //!
-//! The constants are public `&str` items (`const`, `static` and associated
-//! `const`) in rig-core's provider modules and the companion provider crates,
-//! and the catalog is data, so no type links them. This guard walks the
-//! sources, resolves each constant's value (a literal, or another constant's
-//! path through the module tree and its `use` items), and looks it up in
-//! `Catalog::builtin()` under the vendor that serves the module's models. A
-//! value it cannot read or resolve fails the guard. A constant that names no
-//! model (a base URL, an environment variable, a version) is told apart by
-//! its name.
+//! The constants are public `&str` items (`const`, `static`, associated
+//! `const` in an inherent impl, any `const` in a trait impl, a `pub` trait's
+//! default `const`, and a `pub use` of any of these) in rig-core's provider
+//! modules and the companion provider crates, and the catalog is data, so no
+//! type links them. This guard walks the sources, resolves each constant's
+//! value (a literal, or another constant's path through the module tree, its
+//! `use` items and `rig_core::`), and looks it up in `Catalog::builtin()`
+//! under the vendor that serves the re-exporting or defining module. A value
+//! it cannot read or resolve fails the guard. A constant that names no model
+//! (a base URL, an environment variable, a version) is told apart by its
+//! name.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -96,6 +98,24 @@ struct Constants {
     uses: BTreeMap<(Vec<String>, String), Vec<String>>,
     /// Each module's glob imports, by the path before the `*`.
     globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    /// Each `pub use` binding and `pub use` glob, as written.
+    reexports: Vec<Reexport>,
+    /// Whether the visitor is in a trait impl, whose consts are public with
+    /// the trait.
+    in_trait_impl: bool,
+    /// Whether the visitor is in a `pub` trait, whose default consts are
+    /// public.
+    in_pub_trait: bool,
+}
+
+/// A `pub use` in `module`: one binding `name` of `target`, or (`name`
+/// `None`) a glob of the module `target`.
+#[derive(Clone)]
+struct Reexport {
+    file: String,
+    module: Vec<String>,
+    name: Option<String>,
+    target: Vec<String>,
 }
 
 impl Constants {
@@ -133,36 +153,50 @@ impl Constants {
         });
     }
 
-    fn record_use(&mut self, prefix: &mut Vec<String>, tree: &syn::UseTree) {
-        match tree {
+    /// Record what `tree` binds, and, for a `pub use`, what it re-exports.
+    fn record_use(&mut self, public: bool, prefix: &mut Vec<String>, tree: &syn::UseTree) {
+        let (name, target) = match tree {
             syn::UseTree::Path(path) => {
                 prefix.push(path.ident.to_string());
-                self.record_use(prefix, &path.tree);
+                self.record_use(public, prefix, &path.tree);
                 prefix.pop();
-            }
-            syn::UseTree::Name(name) => {
-                let mut target = prefix.clone();
-                target.push(name.ident.to_string());
-                self.uses
-                    .insert((self.module.clone(), name.ident.to_string()), target);
-            }
-            syn::UseTree::Rename(rename) => {
-                let mut target = prefix.clone();
-                target.push(rename.ident.to_string());
-                self.uses
-                    .insert((self.module.clone(), rename.rename.to_string()), target);
+                return;
             }
             syn::UseTree::Group(group) => {
                 for tree in &group.items {
-                    self.record_use(prefix, tree);
+                    self.record_use(public, prefix, tree);
                 }
+                return;
             }
-            syn::UseTree::Glob(_) => self
-                .globs
-                .entry(self.module.clone())
-                .or_default()
-                .push(prefix.clone()),
+            syn::UseTree::Glob(_) => {
+                self.globs
+                    .entry(self.module.clone())
+                    .or_default()
+                    .push(prefix.clone());
+                if public {
+                    self.reexports.push(Reexport {
+                        file: self.file.clone(),
+                        module: self.module.clone(),
+                        name: None,
+                        target: prefix.clone(),
+                    });
+                }
+                return;
+            }
+            syn::UseTree::Name(name) => (name.ident.to_string(), name.ident.to_string()),
+            syn::UseTree::Rename(rename) => (rename.rename.to_string(), rename.ident.to_string()),
+        };
+        let mut path = prefix.clone();
+        path.push(target);
+        if public {
+            self.reexports.push(Reexport {
+                file: self.file.clone(),
+                module: self.module.clone(),
+                name: Some(name.clone()),
+                target: path.clone(),
+            });
         }
+        self.uses.insert((self.module.clone(), name), path);
     }
 }
 
@@ -179,12 +213,31 @@ impl<'ast> Visit<'ast> for Constants {
         self.record(is_public(&item.vis), &item.ident, &item.ty, &item.expr);
     }
 
+    fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
+        let outer = std::mem::replace(&mut self.in_trait_impl, item.trait_.is_some());
+        syn::visit::visit_item_impl(self, item);
+        self.in_trait_impl = outer;
+    }
+
     fn visit_impl_item_const(&mut self, item: &'ast syn::ImplItemConst) {
-        self.record(is_public(&item.vis), &item.ident, &item.ty, &item.expr);
+        let public = is_public(&item.vis) || self.in_trait_impl;
+        self.record(public, &item.ident, &item.ty, &item.expr);
+    }
+
+    fn visit_item_trait(&mut self, item: &'ast syn::ItemTrait) {
+        let outer = std::mem::replace(&mut self.in_pub_trait, is_public(&item.vis));
+        syn::visit::visit_item_trait(self, item);
+        self.in_pub_trait = outer;
+    }
+
+    fn visit_trait_item_const(&mut self, item: &'ast syn::TraitItemConst) {
+        if let Some((_, expr)) = &item.default {
+            self.record(self.in_pub_trait, &item.ident, &item.ty, expr);
+        }
     }
 
     fn visit_item_use(&mut self, item: &'ast syn::ItemUse) {
-        self.record_use(&mut Vec::new(), &item.tree);
+        self.record_use(is_public(&item.vis), &mut Vec::new(), &item.tree);
     }
 
     fn visit_item_mod(&mut self, module: &'ast syn::ItemMod) {
@@ -204,6 +257,7 @@ impl<'ast> Visit<'ast> for Constants {
     // A function body's constants are local, never public API.
     fn visit_item_fn(&mut self, _: &'ast syn::ItemFn) {}
     fn visit_impl_item_fn(&mut self, _: &'ast syn::ImplItemFn) {}
+    fn visit_trait_item_fn(&mut self, _: &'ast syn::TraitItemFn) {}
 }
 
 fn rust_files(dir: &Path) -> Vec<PathBuf> {
@@ -244,23 +298,27 @@ fn file_module(relative: &str) -> Vec<String> {
     module
 }
 
-/// The crate's constants and `use` bindings, keyed by module and name.
-struct Crate {
+/// The crate's constants and `use` bindings, keyed by module and name, and
+/// rig-core's when the crate is a companion crate that names `rig_core::`.
+struct Crate<'core> {
     values: BTreeMap<(Vec<String>, String), Value>,
     uses: BTreeMap<(Vec<String>, String), Vec<String>>,
     globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    core: Option<&'core Crate<'core>>,
 }
 
-impl Crate {
+impl Crate<'_> {
     /// The literal the path `path`, written in `module`, names: through
-    /// `crate::`, `self::`, `super::`, child modules and `use` bindings.
-    /// `None` when the path leaves the crate or names no constant.
+    /// `crate::`, `self::`, `super::`, `rig_core::`, child modules and `use`
+    /// bindings. `None` when the path leaves the crates read or names no
+    /// constant.
     fn resolve(&self, module: &[String], path: &[String], depth: usize) -> Option<String> {
         if depth > 32 {
             return None;
         }
         match path {
             [first, rest @ ..] if first == "crate" => self.resolve(&[], rest, depth + 1),
+            [first, rest @ ..] if first == "rig_core" => self.core?.resolve(&[], rest, depth + 1),
             [first, rest @ ..] if first == "self" => self.resolve(module, rest, depth + 1),
             [first, rest @ ..] if first == "super" => {
                 self.resolve(module.split_last()?.1, rest, depth + 1)
@@ -288,16 +346,62 @@ impl Crate {
             [] => None,
         }
     }
+
+    /// The crate and module the module path `path`, written in `module`,
+    /// names, read as [`Crate::resolve`] reads a constant's path.
+    fn module<'a>(
+        &'a self,
+        module: &[String],
+        path: &[String],
+        depth: usize,
+    ) -> Option<(&'a Crate<'a>, Vec<String>)> {
+        if depth > 32 {
+            return None;
+        }
+        match path {
+            [] => Some((self, module.to_vec())),
+            [first, rest @ ..] if first == "crate" => self.module(&[], rest, depth + 1),
+            [first, rest @ ..] if first == "rig_core" => self.core?.module(&[], rest, depth + 1),
+            [first, rest @ ..] if first == "self" => self.module(module, rest, depth + 1),
+            [first, rest @ ..] if first == "super" => {
+                self.module(module.split_last()?.1, rest, depth + 1)
+            }
+            [first, rest @ ..] => match self.uses.get(&(module.to_vec(), first.clone())) {
+                Some(target) => self.module(module, &[target.as_slice(), rest].concat(), depth + 1),
+                None => {
+                    let child = [module, std::slice::from_ref(first)].concat();
+                    self.module(&child, rest, depth + 1)
+                }
+            },
+        }
+    }
+
+    /// The names of the constants `module` defines.
+    fn constants_of(&self, module: &[String]) -> Vec<String> {
+        self.values
+            .keys()
+            .filter(|(owner, _)| owner == module)
+            .map(|(_, name)| name.clone())
+            .collect()
+    }
 }
 
-/// Every model constant of the crate under `dir`, with the vendor it is
-/// filed under.
-fn model_constants(root: &Path, dir: &str, vendor: Option<&str>) -> Vec<(Constant, String)> {
-    let base = root.join(dir);
-    let mut constants = Vec::new();
-    let mut uses = BTreeMap::new();
-    let mut globs: BTreeMap<Vec<String>, Vec<Vec<String>>> = BTreeMap::new();
-    for path in rust_files(&base) {
+/// The source files under `dir`, read: their constants and `use` bindings.
+struct Read {
+    constants: Vec<Constant>,
+    uses: BTreeMap<(Vec<String>, String), Vec<String>>,
+    globs: BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    reexports: Vec<Reexport>,
+}
+
+fn read_crate(root: &Path, dir: &str) -> Read {
+    let mut read = Read {
+        constants: Vec::new(),
+        uses: BTreeMap::new(),
+        globs: BTreeMap::new(),
+        reexports: Vec::new(),
+    };
+    for path in rust_files(&root.join(dir)) {
         let source = std::fs::read_to_string(&path).expect("a readable source file");
         let file =
             syn::parse_file(&source).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
@@ -312,33 +416,53 @@ fn model_constants(root: &Path, dir: &str, vendor: Option<&str>) -> Vec<(Constan
             found: Vec::new(),
             uses: BTreeMap::new(),
             globs: BTreeMap::new(),
+            reexports: Vec::new(),
+            in_trait_impl: false,
+            in_pub_trait: false,
         };
         visitor.visit_file(&file);
-        constants.extend(visitor.found);
-        uses.extend(visitor.uses);
+        read.constants.extend(visitor.found);
+        read.uses.extend(visitor.uses);
+        read.reexports.extend(visitor.reexports);
         for (module, paths) in visitor.globs {
-            globs.entry(module).or_default().extend(paths);
+            read.globs.entry(module).or_default().extend(paths);
         }
     }
-    let known = Crate {
-        values: constants
-            .iter()
-            .map(|constant| {
-                let value = match &constant.value {
-                    Value::Literal(text) => Value::Literal(text.clone()),
-                    Value::Alias(path) => Value::Alias(path.clone()),
-                };
-                ((constant.module.clone(), constant.name.clone()), value)
-            })
-            .collect(),
-        uses,
-        globs,
-    };
-    let mut models = Vec::new();
-    for constant in constants {
-        if names_no_model(&constant.name) {
-            continue;
+    read
+}
+
+impl Read {
+    fn known<'core>(&self, core: Option<&'core Crate<'core>>) -> Crate<'core> {
+        Crate {
+            values: self
+                .constants
+                .iter()
+                .map(|constant| {
+                    let value = match &constant.value {
+                        Value::Literal(text) => Value::Literal(text.clone()),
+                        Value::Alias(path) => Value::Alias(path.clone()),
+                    };
+                    ((constant.module.clone(), constant.name.clone()), value)
+                })
+                .collect(),
+            uses: self.uses.clone(),
+            globs: self.globs.clone(),
+            core,
         }
+    }
+}
+
+/// Every model constant of the crate `read` from `dir`, with the vendor it
+/// is filed under: the constants it defines, and those its `pub use` items
+/// re-export, filed under the re-exporting module's vendor.
+fn model_constants(
+    read: &Read,
+    known: &Crate<'_>,
+    dir: &str,
+    vendor: Option<&str>,
+) -> Vec<(Constant, String)> {
+    let mut found: Vec<(String, Vec<String>, String, String)> = Vec::new();
+    for constant in &read.constants {
         let value = match &constant.value {
             Value::Literal(text) => text.clone(),
             Value::Alias(path) => known.resolve(&constant.module, path, 0).unwrap_or_else(|| {
@@ -351,22 +475,59 @@ fn model_constants(root: &Path, dir: &str, vendor: Option<&str>) -> Vec<(Constan
                 )
             }),
         };
+        found.push((
+            constant.file.clone(),
+            constant.module.clone(),
+            constant.name.clone(),
+            value,
+        ));
+    }
+    // A `pub use` of something other than a string constant (a type, a
+    // function, a module) re-exports no model.
+    for reexport in &read.reexports {
+        match &reexport.name {
+            Some(name) => {
+                if let Some(value) = known.resolve(&reexport.module, &reexport.target, 0) {
+                    found.push((
+                        reexport.file.clone(),
+                        reexport.module.clone(),
+                        name.clone(),
+                        value,
+                    ));
+                }
+            }
+            None => {
+                let Some((owner, module)) = known.module(&reexport.module, &reexport.target, 0)
+                else {
+                    continue;
+                };
+                for name in owner.constants_of(&module) {
+                    if let Some(value) = owner.resolve(&module, std::slice::from_ref(&name), 0) {
+                        found.push((reexport.file.clone(), reexport.module.clone(), name, value));
+                    }
+                }
+            }
+        }
+    }
+    let mut models = Vec::new();
+    for (file, module, name, value) in found {
+        if names_no_model(&name) {
+            continue;
+        }
         let vendor = match vendor {
             Some(vendor) => vendor.to_owned(),
             None => {
-                let module = constant
-                    .file
+                let first = file
                     .strip_prefix(&format!("{dir}/"))
                     .and_then(|rest| rest.split(['/', '.']).next())
                     .unwrap_or_default();
                 MODULES
                     .iter()
-                    .find_map(|(name, vendor)| (*name == module).then_some(*vendor))
+                    .find_map(|(module, vendor)| (*module == first).then_some(*vendor))
                     .unwrap_or_else(|| {
                         panic!(
-                            "{}: {} is a model constant of a provider module this guard does not \
-                             map to a vendor; add `{module}` to MODULES",
-                            constant.file, constant.name
+                            "{file}: {name} is a model constant of a provider module this guard \
+                             does not map to a vendor; add `{first}` to MODULES"
                         )
                     })
                     .to_owned()
@@ -374,8 +535,10 @@ fn model_constants(root: &Path, dir: &str, vendor: Option<&str>) -> Vec<(Constan
         };
         models.push((
             Constant {
+                file,
+                module,
+                name,
                 value: Value::Literal(value),
-                ..constant
             },
             vendor,
         ));
@@ -388,9 +551,20 @@ fn every_public_model_constant_has_a_catalog_entry() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let catalog = Catalog::builtin();
     let mut checked = 0;
-    let mut missing = Vec::new();
+    let mut missing = std::collections::BTreeSet::new();
+    let (core_dir, _) = CRATES[0];
+    let core_read = read_crate(root, core_dir);
+    let core = core_read.known(None);
     for (dir, vendor) in CRATES {
-        for (constant, vendor) in model_constants(root, dir, vendor) {
+        let read = match dir == core_dir {
+            true => None,
+            false => Some(read_crate(root, dir)),
+        };
+        let (read, known) = match &read {
+            Some(read) => (read, read.known(Some(&core))),
+            None => (&core_read, core_read.known(None)),
+        };
+        for (constant, vendor) in model_constants(read, &known, dir, vendor) {
             let Value::Literal(model) = &constant.value else {
                 continue;
             };
@@ -398,7 +572,7 @@ fn every_public_model_constant_has_a_catalog_entry() {
                 .unwrap_or_else(|| panic!("`{vendor}` is no vendor the catalog knows"));
             checked += 1;
             if catalog.get(provider, model).is_none() {
-                missing.push(format!(
+                missing.insert(format!(
                     "{}: {} ({model:?}) has no catalog entry under `{vendor}`",
                     constant.file, constant.name
                 ));
@@ -411,6 +585,6 @@ fn every_public_model_constant_has_a_catalog_entry() {
         "{} model constants have no catalog entry; add each to \
          xtask/src/catalog/review.json and run `cargo xtask catalog sync`:\n{}",
         missing.len(),
-        missing.join("\n")
+        missing.into_iter().collect::<Vec<_>>().join("\n")
     );
 }
