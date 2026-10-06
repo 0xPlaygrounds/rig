@@ -16,7 +16,6 @@
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
-use aws_sdk_bedrockruntime::types::GuardrailTrace;
 use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::completion::options::FinalBody;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
@@ -27,7 +26,7 @@ use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Mode, Wire};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::capture::{self, Capture, Events};
 use crate::client::BedrockRuntime;
@@ -151,9 +150,6 @@ pub struct Converse {
     /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
     /// the model id decides.
     pub family: Option<Family>,
-    /// The `guardrailConfig` of unary Converse requests, if any.
-    /// Set through [`Converse::with_guardrail`].
-    pub guardrail: Option<Value>,
 }
 
 impl Converse {
@@ -161,7 +157,6 @@ impl Converse {
         Self {
             model: model.into(),
             family: None,
-            guardrail: None,
         }
     }
 
@@ -187,26 +182,6 @@ impl Converse {
             Some(family) if model == self.model => family,
             _ => Family::of(model),
         }
-    }
-
-    /// Apply a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)
-    /// to unary Converse requests. Streaming requests do not apply this setting.
-    ///
-    /// `identifier` is the guardrail ID or ARN; `version` is a version or `DRAFT`.
-    /// The normalized finish reason reports guardrail intervention as content
-    /// filtering.
-    pub fn with_guardrail(
-        mut self,
-        identifier: impl Into<String>,
-        version: impl Into<String>,
-        trace: GuardrailTrace,
-    ) -> Self {
-        self.guardrail = Some(json!({
-            "guardrailIdentifier": identifier.into(),
-            "guardrailVersion": version.into(),
-            "trace": trace.as_str(),
-        }));
-        self
     }
 }
 
@@ -241,10 +216,10 @@ impl Wire for Converse {
     fn encode(
         &self,
         request: CompletionRequest,
-        mode: Mode,
+        _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let body = request::body(self, &request, &model, mode == Mode::Unary)?;
+        let body = request::body(self, &request, &model)?;
         Ok(ConverseRequest { model, body })
     }
 

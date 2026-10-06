@@ -4,6 +4,7 @@ use rig_core::message::{
     Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind as Source, Image,
     ImageMediaType, Video, VideoMediaType,
 };
+use serde_json::json;
 
 const PROFILE: &str =
     "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3d4";

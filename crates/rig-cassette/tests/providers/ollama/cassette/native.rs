@@ -7,8 +7,11 @@
 //! `cargo xtask cassette record ollama/native/<scenario>.yaml`.
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, FinishReason};
+use rig::completion::{
+    CompletionRequest, FinishReason, GenerationOptions, ProviderOptions, Reasoning,
+};
 use rig::message::AssistantContent;
+use rig::providers::ollama::extension::{KeepAlive, Ollama, OllamaOptions};
 use rig::streaming::{Item, PartKind, StreamEvent};
 use serde_json::{Value, json};
 
@@ -82,6 +85,54 @@ async fn options_reach_the_daemon() {
     assert_eq!(sent["keep_alive"], "5m");
     assert_eq!(sent["think"], false);
     assert_eq!(sent["stream"], false);
+}
+
+/// The same request as [`options_reach_the_daemon`] made with typed
+/// options sends the recorded body, and the typed extras read the reply's
+/// timings and counts.
+#[tokio::test]
+async fn typed_options_reach_the_daemon_and_extras_read_the_reply() {
+    with_ollama_cassette("native/options_and_keep_alive", |client| async move {
+        let options = OllamaOptions::default()
+            .keep_alive(KeepAlive::duration("5m"))
+            .num_ctx(4096)
+            .top_k(20);
+        let response = client
+            .native_completion(CASSETTE_MODEL)
+            .call(
+                CompletionRequest::new("Reply with exactly the single word: pong")
+                    .temperature(0.0)
+                    .max_tokens(64)
+                    .options(
+                        GenerationOptions::default()
+                            .reasoning(Reasoning::Off)
+                            .seed(7),
+                    )
+                    .provider_options(
+                        ProviderOptions::new()
+                            .with::<Ollama>(&options)
+                            .expect("the options serialize"),
+                    ),
+            )
+            .await
+            .expect("the request succeeds");
+        let extras = response
+            .extras::<Ollama>()
+            .expect("an Ollama reply")
+            .expect("the extras read");
+        assert_eq!(extras.model.as_deref(), Some("qwen3:4b"));
+        assert_eq!(extras.created_at.as_deref(), Some("1970-01-01T00:00:00Z"));
+        assert_eq!(extras.done_reason.as_deref(), Some("length"));
+        assert_eq!(extras.total_duration, Some(5_497_823_250));
+        assert_eq!(extras.load_duration, Some(1_068_742));
+        assert_eq!(extras.prompt_eval_count, Some(18));
+        assert_eq!(extras.prompt_eval_cached_count, Some(1));
+        assert_eq!(extras.prompt_eval_duration, Some(76_722_000));
+        assert_eq!(extras.eval_count, Some(64));
+        assert_eq!(extras.eval_duration, Some(5_412_245_000));
+        assert_eq!(extras.logprobs, None);
+    })
+    .await;
 }
 
 /// A thinking level is sent as `think` and the reply's `thinking` comes back

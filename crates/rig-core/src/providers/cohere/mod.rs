@@ -24,6 +24,7 @@
 
 pub mod chat;
 pub mod embeddings;
+pub mod extension;
 pub mod streaming;
 pub mod wire;
 
@@ -36,7 +37,7 @@ pub use embeddings::{
 pub use wire::{ChatRoute, CohereChat, CohereConfig};
 
 /// Stable descriptor name recorded on normalized responses and telemetry.
-pub(crate) const PROVIDER_NAME: &str = "cohere";
+pub const PROVIDER_NAME: &str = "cohere";
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";

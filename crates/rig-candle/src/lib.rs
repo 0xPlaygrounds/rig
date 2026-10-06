@@ -10,6 +10,7 @@
 //! ```
 
 mod artifacts;
+pub mod extension;
 mod generation;
 mod loader;
 mod model;

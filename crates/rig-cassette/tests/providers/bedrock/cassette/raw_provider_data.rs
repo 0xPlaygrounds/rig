@@ -7,12 +7,11 @@
 //! only the trace says which policy fired and on what text.
 
 use rig::bedrock;
-use rig::bedrock::completion::Converse;
-use rig::driver::Model;
+use rig::bedrock::extension::{Bedrock, BedrockOptions, Guardrail, GuardrailTrace};
+use rig::completion::{CompletionRequest, ProviderOptions};
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
-use rig::completion::CompletionRequest;
 
 /// The guardrail this scenario was recorded against. It is an account-scoped
 /// resource name, not a credential, and the guardrail itself was deleted after
@@ -22,24 +21,25 @@ const GUARDRAIL_VERSION: &str = "DRAFT";
 
 /// Recorded against a guardrail that blocks a specific phrase: Bedrock stops
 /// the turn with `guardrail_intervened` and explains itself in `trace`,
-/// which `raw` carries as Bedrock sent it (#2311).
+/// which `raw` carries as Bedrock sent it (#2311), and the typed extras
+/// read.
 #[tokio::test]
 async fn guardrail_trace_survives_into_raw() {
     with_bedrock_cassette(
         "raw_provider_data/guardrail_trace_survives_into_raw_completion",
         |client| async move {
-            let model = Model::new(
-                Converse::new(bedrock::completion::AMAZON_NOVA_LITE).with_guardrail(
-                    GUARDRAIL_ID,
-                    GUARDRAIL_VERSION,
-                    aws_sdk_bedrockruntime::types::GuardrailTrace::Enabled,
-                ),
-                client.0,
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
+            let guardrail = BedrockOptions::default().guardrail(
+                Guardrail::new(GUARDRAIL_ID, GUARDRAIL_VERSION).trace(GuardrailTrace::Enabled),
             );
-
             let request =
                 CompletionRequest::new("Explain a gravitational singularity in one sentence.")
-                    .max_tokens(64);
+                    .max_tokens(64)
+                    .provider_options(
+                        ProviderOptions::new()
+                            .with::<Bedrock>(&guardrail)
+                            .expect("the options serialize"),
+                    );
 
             let response = model
                 .call(request)
@@ -60,6 +60,29 @@ async fn guardrail_trace_survives_into_raw() {
                 !input_assessment.is_empty(),
                 "expected the input assessment naming the policy that fired"
             );
+
+            let extras = response
+                .extras::<Bedrock>()
+                .expect("a Bedrock reply")
+                .expect("the extras read");
+            assert_eq!(extras.stop_reason.as_deref(), Some("guardrail_intervened"));
+            assert_eq!(extras.latency_ms, Some(271));
+            let trace = extras.trace.expect("the guardrail trace");
+            assert_eq!(
+                trace.pointer("/guardrail/actionReason"),
+                Some(&Value::from("Guardrail blocked."))
+            );
+            assert!(
+                trace
+                    .pointer(&format!("/guardrail/inputAssessment/{GUARDRAIL_ID}"))
+                    .is_some(),
+                "{trace}"
+            );
+            assert_eq!(extras.service_tier, None);
+            assert_eq!(extras.performance_latency, None);
+            assert_eq!(extras.cache_details, None);
+            assert_eq!(extras.invoked_model_id, None);
+            assert_eq!(extras.additional_model_response_fields, None);
         },
     )
     .await;

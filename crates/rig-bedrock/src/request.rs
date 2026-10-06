@@ -33,19 +33,17 @@ const BASE64: GeneralPurpose = GeneralPurpose::new(
 const EMPTY_TEXT: &str = "<empty>";
 
 /// The Converse body of `request` for `model` on `wire`: the wire's encoding
-/// of the request, then the mapped options, then `additional_params`, which
-/// merge under `additionalModelRequestFields`. A guardrail applies to a
-/// `unary` request only.
+/// of the request, then the mapped options, then the provider options, then
+/// `additional_params`, which merge under `additionalModelRequestFields`.
 pub(crate) fn body(
     wire: &Converse,
     request: &CompletionRequest,
     model: &str,
-    unary: bool,
 ) -> Result<FinalBody, EncodeError> {
     request_params(
         wire,
         request,
-        |input| base(wire, request, model, unary, input),
+        |input| base(wire, request, model, input),
         RawAt::Under("/additionalModelRequestFields"),
         &[],
     )
@@ -65,7 +63,6 @@ fn base(
     wire: &Converse,
     request: &CompletionRequest,
     model: &str,
-    unary: bool,
     input: &mut BaseInput<'_>,
 ) -> Result<Map<String, Value>, EncodeError> {
     let family = wire.family(model);
@@ -167,7 +164,6 @@ fn base(
         "inferenceConfig": present(inference),
         "toolConfig": tool_config(request),
         "outputConfig": output,
-        "guardrailConfig": wire.guardrail.as_ref().filter(|_| unary),
         "messages": messages,
     }));
     Ok(match body {

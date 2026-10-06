@@ -114,8 +114,8 @@ fn tool_choice_has_its_converse_form() {
 }
 
 /// The inference configuration is always sent, with the temperature as the
-/// 32-bit float Converse reads; the additional fields, the structured
-/// output schema and a unary request's guardrail go as given.
+/// 32-bit float Converse reads; the additional fields and the structured
+/// output schema go as given.
 #[test]
 fn request_fields_have_their_converse_form() {
     let mut request = CompletionRequest::new("q");
@@ -127,12 +127,7 @@ fn request_fields_have_their_converse_form() {
     request.max_tokens = Some(64);
     request.additional_params = Some(json!({ "top_k": 5 }));
     request.output_schema = Some(schemars::json_schema!({ "title": "answer", "type": "object" }));
-    let wire = Converse::new(NOVA).with_guardrail(
-        "g1",
-        "DRAFT",
-        aws_sdk_bedrockruntime::types::GuardrailTrace::Enabled,
-    );
-    let body = encoded(&wire, request.clone(), Mode::Unary);
+    let body = encoded(&Converse::new(NOVA), request, Mode::Unary);
     assert_eq!(
         body["inferenceConfig"],
         json!({ "temperature": f64::from(0.7f32), "maxTokens": 64 })
@@ -144,15 +139,6 @@ fn request_fields_have_their_converse_form() {
             "schema": r#"{"title":"answer","type":"object"}"#,
             "name": "answer",
         } } } })
-    );
-    assert_eq!(
-        body["guardrailConfig"],
-        json!({ "guardrailIdentifier": "g1", "guardrailVersion": "DRAFT", "trace": "enabled" })
-    );
-    assert!(
-        encoded(&wire, request, Mode::Streaming)
-            .get("guardrailConfig")
-            .is_none()
     );
 }
 

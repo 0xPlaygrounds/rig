@@ -7,7 +7,9 @@ use std::collections::HashMap;
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionResponse, Document, Message};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
+use rig::providers::cohere::extension::{Cohere, CohereExtras};
 use rig::providers::cohere::{ChatRoute, CohereChat};
+use rig::providers::ollama::extension::Ollama;
 use rig::streaming::{Item, StreamEvent};
 use rig::tool::Tool;
 use serde_json::Value;
@@ -165,10 +167,19 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
     .await;
 }
 
+/// The typed extras of `reply`, a Cohere reply.
+fn extras(reply: &CompletionResponse) -> CohereExtras {
+    reply
+        .extras::<Cohere>()
+        .expect("a Cohere reply")
+        .expect("the extras read")
+}
+
 /// A conversation the `Auto` route moves between the APIs replays on each:
 /// a native turn grounded in documents, a Compatibility API turn without
 /// them that reads the first canonically, and a native turn that sends the
-/// first back with its citations and the second canonically.
+/// first back with its citations and the second canonically. Each reply's
+/// typed extras read what its route returns.
 #[tokio::test]
 async fn a_conversation_switching_routes_replays() {
     with_cohere_cassette(
@@ -193,6 +204,30 @@ async fn a_conversation_switching_routes_replays() {
                 .expect("the native turn succeeds");
             assert_eq!(first.origin.api.as_str(), "cohere.chat");
             assert!(!cited_documents(&first).is_empty(), "{:?}", first.choice);
+            let first_extras = extras(&first);
+            assert_eq!(
+                first_extras.id.as_deref(),
+                Some("203d7b74-eb9e-4de8-a159-7684818071fe")
+            );
+            assert_eq!(first_extras.finish_reason.as_deref(), Some("COMPLETE"));
+            let billed = first_extras.billed_units.expect("billed units");
+            assert_eq!(
+                (
+                    billed.input_tokens,
+                    billed.output_tokens,
+                    billed.search_units
+                ),
+                (Some(39.0), Some(9.0), None)
+            );
+            let tokens = first_extras.tokens.expect("tokens");
+            assert_eq!(
+                (tokens.input_tokens, tokens.output_tokens),
+                (Some(1690.0), Some(23.0))
+            );
+            assert_eq!(first_extras.cached_tokens, Some(704.0));
+            assert_eq!(first_extras.tool_plan, None);
+            assert_eq!(first_extras.logprobs, None);
+            assert!(first.extras::<Ollama>().is_none());
             history.push(Message::user(question));
             history.push(first.message().expect("an assistant turn"));
 
@@ -202,6 +237,16 @@ async fn a_conversation_switching_routes_replays() {
                 .await
                 .expect("the Compatibility API turn succeeds");
             assert_eq!(second.origin.api.as_str(), "openai.chat");
+            // A Compatibility API reply carries only the id.
+            let second_extras = extras(&second);
+            assert_eq!(
+                second_extras.id.as_deref(),
+                Some("8bb2c505-4106-4988-9a52-24fb0bb78cd7")
+            );
+            assert_eq!(second_extras.finish_reason, None);
+            assert_eq!(second_extras.billed_units, None);
+            assert_eq!(second_extras.tokens, None);
+            assert_eq!(second_extras.cached_tokens, None);
             history.push(Message::user(question));
             history.push(second.message().expect("an assistant turn"));
 
@@ -210,6 +255,22 @@ async fn a_conversation_switching_routes_replays() {
                 .await
                 .expect("the native turn after a switch succeeds");
             assert_eq!(third.origin.api.as_str(), "cohere.chat");
+            let third_extras = extras(&third);
+            assert_eq!(
+                third_extras.id.as_deref(),
+                Some("bb085c96-3b3f-4531-b6d2-724501c09272")
+            );
+            assert_eq!(
+                third_extras
+                    .billed_units
+                    .and_then(|units| units.input_tokens),
+                Some(68.0)
+            );
+            assert_eq!(
+                third_extras.tokens.and_then(|tokens| tokens.input_tokens),
+                Some(1735.0)
+            );
+            assert_eq!(third_extras.cached_tokens, Some(112.0));
             let text = third
                 .choice
                 .iter()
