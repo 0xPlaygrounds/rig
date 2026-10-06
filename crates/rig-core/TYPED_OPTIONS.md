@@ -142,6 +142,12 @@ listed with what covers it.
   expands to an extension path is not seen. No provider module defines such
   a macro today, and the guard rejects `macro_rules!` that mention
   `extension`.
+- **Guarantee 3.** The guard reads every path only on the decode path
+  (rig-core's `providers` tree and the companion provider crates' `src`).
+  Elsewhere it checks `pub use` and `pub type` alone, so a crate-private
+  helper outside those roots (for example under `completion/`) may call
+  `extras::<P>()` or name a marker, and a decoder could call that helper.
+  Nothing but review stops it.
 - **Guarantee 4.** The guard reads source, not types. A model id held in a
   constant of another type (an `Option<&str>`, an array, a struct) is not
   read, and a `pub use` of an external crate's item is read as no constant.
@@ -897,7 +903,7 @@ merge must be deep, which section 2.1 adopts.
 
 **Weaknesses.**
 - Provider names become API: `"gcp.gemini"`, `"gemini-grpc"`, `"vertexai"`, `"aws_bedrock"`, `"azure.openai"` freeze as they are.
-- Gemini REST and gRPC are one API under two names, so a harness inserts the same `GeminiOptions` twice (`GeminiGrpc` declares `type Options = GeminiOptions`).
+- Gemini REST and gRPC are one API under two names, so a harness that targets both inserts its `GeminiOptions` twice: once under `Gemini`, and once wrapped as `GeminiGrpcOptions::from(..)` under `GeminiGrpc`. `GeminiGrpcOptions` is a newtype over `GeminiOptions` that serializes the same fields and refuses, through its own `unsupported`, what the gRPC proto does not declare (`store`, `labels`, `HARM_CATEGORY_JAILBREAK`).
 - A section for a route not taken is skipped with a `tracing::debug!`, so a typo in a section name is skipped the same way.
 - Section names are strings; a typo in a hand-written `#[serde(rename)]` is caught by the per-extension test only.
 
@@ -1962,7 +1968,7 @@ struct literal and drops the two deleted fields.
 | knob | where | replaced by |
 |---|---|---|
 | Interactions `previous_interaction_id`, `agent`, `agent_config` read from raw | `crates/rig-core/src/providers/gemini/interactions_api/mod.rs:136-142`, `:346`, `:396-399` | `GeminiOptions` Interactions section; the readers go through `options::param`, which sees the typed option and the raw key alike |
-| Responses `store`, `previous_response_id`, `conversation` read from raw JSON | `crates/rig-core/src/providers/openai/responses_api/mod.rs:386-389`; `crates/rig-core/src/providers/openai/responses_api/wire.rs:257-263` | `OpenAiOptions` Responses section; the readers go through `options::param`. The WebSocket session keeps writing the chain's `previous_response_id` to `additional_params` (section 2.1) |
+| Responses `store`, `previous_response_id`, `conversation` read from raw JSON | `crates/rig-core/src/providers/openai/responses_api/mod.rs:386-389`; `crates/rig-core/src/providers/openai/responses_api/wire.rs:257-263` | `store` → `OpenAiOptions` `"*"` (`OpenAiShared`); `conversation` → `OpenAiOptions` Responses section; `previous_response_id` stays raw, because the WebSocket chain owns it and keeps writing it to `additional_params` (section 2.1). The readers go through `options::param` |
 | Bedrock `guardrail`, `with_guardrail` (sent on unary only: a silent drop on streams) | `crates/rig-bedrock/src/completion.rs:156-158`, `:210-222`; `crates/rig-bedrock/src/request.rs:135` | `BedrockOptions.guardrail`, sent on both modes |
 | Candle `RequestGenerationOverrides` non-portable fields | `crates/rig-candle/src/generation.rs:81-89` | `CandleOptions` |
 
