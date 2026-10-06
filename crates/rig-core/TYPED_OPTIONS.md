@@ -27,8 +27,9 @@ on the one before it:
 | P6 | citations and cost in core types | no | decision E; `Usage.cost` |
 
 The acceptance tests live in `crates/rig-cassette/tests/runtime/typed_options/tests.rs`
-(section 13). Each group is compiled out with `#[cfg(any())]`; the phase
-named on the gate deletes it, and the tests must then pass unchanged.
+(section 13). P0 compiled each group out with `#[cfg(any())]`; the phase
+named on the gate deleted it, and the tests then passed unchanged. No gate
+remains.
 
 Notation: `file:line` is relative to the repository root at `7dfd8a422`
 unless it starts with `references/`. "[unverified]" marks a cell no vendor
@@ -2079,8 +2080,9 @@ reassembler as the HTTP stream and settles with what it finishes with.
 
 All live in `crates/rig-cassette/tests/runtime/typed_options/tests.rs`, in the
 `runtime` target of `rig-cassette`: it is the cross-provider replay target,
-and its `rig` dev-dependency includes Bedrock. Each group is an inline module
-gated by `#[cfg(any())]` with a comment naming its phase.
+and its `rig` dev-dependency includes Bedrock. Each group is an inline module.
+P0 gated each one by `#[cfg(any())]` with a comment naming its phase, and that
+phase removed the gate.
 
 | test | phase | what it pins |
 |---|---|---|

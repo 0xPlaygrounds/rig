@@ -1607,8 +1607,6 @@ mod typed_extras_streamed {
     }
 }
 
-// P6 removes this gate.
-#[cfg(any())]
 mod citations_and_cost {
     //! Citations and cost in core types: a recorded citation reply decodes
     //! with citations and replays its native citations unchanged; a reply's
