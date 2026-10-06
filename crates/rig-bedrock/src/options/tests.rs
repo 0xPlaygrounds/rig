@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use crate::completion::{
     AMAZON_NOVA_LITE, ANTHROPIC_CLAUDE_HAIKU_4_5, ANTHROPIC_CLAUDE_OPUS_4_5,
-    ANTHROPIC_CLAUDE_SONNET_5, Converse, LLAMA_3_8B_INSTRUCT,
+    ANTHROPIC_CLAUDE_SONNET_5, Converse, Family, LLAMA_3_8B_INSTRUCT,
 };
 
 fn sent(model: &str, request: CompletionRequest) -> Result<Value, ProviderError> {
@@ -82,6 +82,22 @@ fn reasoning_goes_in_the_models_own_fields() {
             "{model}: {reasoning:?}"
         );
     }
+}
+
+#[test]
+fn off_on_a_claude_profile_the_table_does_not_name_sends_disabled() {
+    let profile = "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3";
+    let wire = Converse::new(profile).with_family(Family::Claude);
+    let request = with(GenerationOptions::default().reasoning(Reasoning::Off));
+    let request = Completion::prepare(request, &wire.describe()).expect("Off is answered");
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let body = serde_json::to_value(&encoded.body).expect("the body serializes");
+    assert_eq!(
+        body["additionalModelRequestFields"],
+        json!({"thinking": {"type": "disabled"}})
+    );
 }
 
 #[test]

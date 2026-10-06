@@ -32,8 +32,11 @@ fn claude_reasoning(
         Reasoning::Off => match class {
             Some(A7 | A8) => Mapping::unsupported("thinking cannot be disabled on this model"),
             Some(A6) => model_fields(json!({"thinking": {"type": "between_tools"}})),
-            Some(A0 | A1) | None => Mapping::Omit("thinking is off unless the request asks for it"),
-            Some(_) => model_fields(json!({"thinking": {"type": "disabled"}})),
+            Some(A0 | A1) => Mapping::Omit("thinking is off unless the request asks for it"),
+            // A model the table does not name (an application inference
+            // profile, say) may think by default: it gets the newest
+            // models' shape, which A0 and A1 take too.
+            Some(_) | None => model_fields(json!({"thinking": {"type": "disabled"}})),
         },
         Reasoning::Effort(effort @ (Effort::Low | Effort::Medium | Effort::High)) => match class {
             Some(A0) | None => {
