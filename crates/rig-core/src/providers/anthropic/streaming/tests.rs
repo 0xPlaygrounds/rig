@@ -1,4 +1,4 @@
-use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_SONNET_4_6};
+use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
@@ -957,4 +957,129 @@ fn a_delta_for_a_block_that_never_started_opens_it() {
         "{:?}",
         response.choice
     );
+}
+
+// Progress-update thinking blocks, in the documented shape of a turn that
+// answers a `tool_result` on Claude Opus 5.5: a reasoning block, a
+// progress-update block, then the `tool_use` it introduces. Both thinking
+// blocks are empty unless the display shows updates. No recording holds a
+// progress-update block, so the shapes are built here.
+// Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#progress-updates>
+
+const PROGRESS_UPDATE_TEXT: &str = "Confirmed the retry path never refreshes the expired token. Editing auth.py to add the refresh call.";
+
+fn progress_update_content(update_text: &str) -> Value {
+    json!([
+        {"type": "thinking", "thinking": "", "signature": "EqMBCkYICxIM-reasoning"},
+        {"type": "thinking", "thinking": update_text, "signature": "Es8CCkYICxIM-update"},
+        {
+            "type": "tool_use",
+            "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+            "name": "edit_file",
+            "input": {"path": "auth.py", "content": "..."}
+        }
+    ])
+}
+
+/// The turn decoded from the whole message or its stream on Opus 5.5.
+fn progress_update_reply(update_text: &str, mode: Mode) -> crate::completion::CompletionResponse {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_5_5);
+    let frames: Vec<Value> = match mode {
+        Mode::Unary => vec![json!({
+            "type": "message", "id": "msg_progress", "model": CLAUDE_OPUS_5_5,
+            "role": "assistant", "content": progress_update_content(update_text),
+            "stop_reason": "tool_use", "stop_sequence": null,
+            "usage": {"input_tokens": 120, "output_tokens": 80}
+        })],
+        _ => {
+            let thinking = |index, text: &str, signature: &str| {
+                block(
+                    index,
+                    json!({"type": "thinking", "thinking": "", "signature": ""}),
+                    &[
+                        json!({"type": "thinking_delta", "thinking": text}),
+                        json!({"type": "signature_delta", "signature": signature}),
+                    ],
+                )
+            };
+            std::iter::once(json!({"type": "message_start", "message": {
+                "type": "message", "id": "msg_progress", "model": CLAUDE_OPUS_5_5,
+                "role": "assistant", "content": [], "stop_reason": null, "stop_sequence": null,
+                "usage": {"input_tokens": 120, "output_tokens": 1}
+            }}))
+            .chain(thinking(0, "", "EqMBCkYICxIM-reasoning"))
+            .chain(thinking(1, update_text, "Es8CCkYICxIM-update"))
+            .chain(block(
+                2,
+                json!({"type": "tool_use", "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+                    "name": "edit_file", "input": {}}),
+                &[json!({"type": "input_json_delta",
+                    "partial_json": "{\"path\": \"auth.py\", \"content\": \"...\"}"})],
+            ))
+            .chain([
+                json!({"type": "message_delta",
+                    "delta": {"stop_reason": "tool_use", "stop_sequence": null},
+                    "usage": {"output_tokens": 80}}),
+                json!({"type": "message_stop"}),
+            ])
+            .collect()
+        }
+    };
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        mode,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+        Value::Null,
+    )
+    .expect("the reply folds")
+}
+
+/// Ported from #2616: both thinking blocks survive decoding unmerged and in
+/// order, whole and streamed, under either display, and the turn replays to
+/// its model exactly as received.
+#[test]
+fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
+    use crate::wire::{Operation, Wire};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_5_5);
+    for update_text in ["", PROGRESS_UPDATE_TEXT] {
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let response = progress_update_reply(update_text, mode);
+            let items: Vec<Value> = response.choice.iter().filter_map(item).cloned().collect();
+            assert_eq!(
+                Value::Array(items),
+                progress_update_content(update_text),
+                "{mode:?}: each block decodes as received"
+            );
+            let turn = response.message().expect("an assistant turn");
+            let mut request = CompletionRequest::from(vec![
+                RigMessage::user("The login test fails after an hour of uptime."),
+                turn,
+            ]);
+            request.chat_history.push(RigMessage::tool_result(
+                crate::message::CallId::from_wire("toolu_01D7FLrfh4GYq7yT1ULFeyMV"),
+                crate::message::ToolName::new("edit_file").expect("a tool name"),
+                "saved",
+            ));
+            request.tools = vec![crate::completion::ToolDefinition {
+                name: crate::message::ToolName::new("edit_file").expect("a tool name"),
+                description: "Edit a file.".to_owned(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }];
+            let request =
+                Completion::prepare(request, &wire.describe()).expect("the history adapts");
+            let encoded = wire
+                .encode(request, Mode::Unary)
+                .expect("the request encodes");
+            let body = crate::test_utils::json_body(&encoded.request);
+            assert_eq!(
+                body["messages"][1]["content"],
+                progress_update_content(update_text),
+                "the {mode:?} turn replays exactly as received"
+            );
+        }
+    }
 }

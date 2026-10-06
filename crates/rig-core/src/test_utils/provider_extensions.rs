@@ -252,6 +252,9 @@ where
     };
     assert!(!sections.is_empty(), "the options set no field");
     for (section, fields) in &sections {
+        if fields.as_object().is_some_and(|fields| fields.is_empty()) {
+            continue;
+        }
         let mut written = BTreeSet::new();
         leaves(fields, "", &mut written);
         for leaf in &written {

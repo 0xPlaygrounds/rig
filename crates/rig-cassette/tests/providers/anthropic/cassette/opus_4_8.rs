@@ -4,6 +4,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Message, ProviderToolDefinition,
 };
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
+use rig::providers::anthropic::extension::Anthropic;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -64,6 +65,28 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                     .is_some_and(|text| !text.trim().is_empty()),
                 "dynamic web-search response should contain assistant text",
             );
+
+            let extras = response
+                .extras::<Anthropic>()
+                .expect("an Anthropic reply")
+                .expect("the extras read the recorded reply");
+            assert_eq!(extras.stop_reason.as_deref(), Some("end_turn"));
+            assert_eq!(extras.stop_sequence, None);
+            assert_eq!(extras.stop_details, None);
+            assert_eq!(extras.service_tier.as_deref(), Some("standard"));
+            assert_eq!(extras.inference_geo.as_deref(), Some("global"));
+            assert_eq!(extras.speed, None);
+            assert_eq!(extras.fallback_model, None);
+            assert_eq!(
+                extras.server_tool_use.map(|tools| (
+                    tools.web_search_requests,
+                    tools.web_fetch_requests
+                )),
+                Some((2, 0))
+            );
+            let container = extras.container.expect("the reply ran in a container");
+            assert_eq!(container.id, "container_01L1N4CD1Sc9WMM81fQweA9p");
+            assert_eq!(container.expires_at, "2026-09-22T18:07:11.235261Z");
         },
     )
     .await;

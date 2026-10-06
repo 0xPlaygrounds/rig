@@ -423,6 +423,18 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
             let text = response_text(&response);
             assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
             assert_cache_created_or_read(&response.usage, "marker-budget-limit request");
+            // The typed view splits the recorded cache writes by lifetime.
+            let extras = response
+                .extras::<rig::providers::anthropic::extension::Anthropic>()
+                .expect("an Anthropic reply")
+                .expect("the extras read the recorded reply");
+            assert_eq!(
+                extras.cache_creation.map(|cache| (
+                    cache.ephemeral_5m_input_tokens,
+                    cache.ephemeral_1h_input_tokens
+                )),
+                Some((336, 9441))
+            );
         },
     )
     .await;

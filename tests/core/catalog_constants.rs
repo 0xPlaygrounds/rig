@@ -83,10 +83,12 @@ const KNOWN_MACROS: [&str; 4] = [
 ];
 
 /// Whether a constant named `name` holds something other than a model id.
-/// `PROVIDER` is a `ProviderExtension`'s provider key.
+/// `PROVIDER` is a `ProviderExtension`'s provider key, and a `_BETA`
+/// constant is a beta header value.
 fn names_no_model(name: &str) -> bool {
     name.ends_with("_URL")
         || name.ends_with("_ENV")
+        || name.ends_with("_BETA")
         || name.starts_with("ANTHROPIC_VERSION")
         || matches!(
             name,

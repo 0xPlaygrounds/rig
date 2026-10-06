@@ -1,5 +1,7 @@
-//! Z.AI's typed request options and reply extras on its OpenAI-format API
-//! (<https://docs.z.ai/api-reference/llm/chat-completion>).
+//! Z.AI's typed request options and reply extras. One entry serves its
+//! OpenAI-format API (<https://docs.z.ai/api-reference/llm/chat-completion>)
+//! and its Anthropic-format Messages API, which takes no Z.AI field of its
+//! own.
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
@@ -20,6 +22,8 @@ use serde_json::Value;
 use crate::completion::provider_options::reply_field;
 use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
+use crate::providers::anthropic::extension::MessagesStop;
+use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// Z.AI's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -126,15 +130,31 @@ impl ZaiChat {
 pub struct ZaiExtras {
     /// The request's id. OpenAI-format API only.
     pub request_id: Option<String>,
+    /// `stop_reason`, verbatim. Messages route.
+    pub stop_reason: Option<String>,
+    /// `stop_sequence`: the stop sequence the turn ended on. Messages route.
+    pub stop_sequence: Option<String>,
 }
 
 impl ReplyExtras for ZaiExtras {
     fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error> {
+        if api.as_str() == MESSAGES_API {
+            let MessagesStop {
+                stop_reason,
+                stop_sequence,
+            } = MessagesStop::read("Z.AI", api, raw)?;
+            return Ok(Self {
+                stop_reason,
+                stop_sequence,
+                ..Self::default()
+            });
+        }
         if api.as_str() != "openai.chat" {
             return Ok(Self::default());
         }
         Ok(Self {
             request_id: reply_field(raw, "/request_id")?,
+            ..Self::default()
         })
     }
 }

@@ -50,6 +50,8 @@
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
+use rig::providers::anthropic::extension::Anthropic;
+use rig::providers::minimax::extension::MiniMax;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -328,6 +330,26 @@ async fn raw_exposes_stop_sequence() {
     // …and `raw` carries it, verbatim from the wire.
     assert_eq!(raw["stop_sequence"], "alpha");
     assert_eq!(raw["stop_reason"], "stop_sequence");
+
+    // The typed view reads the same recorded fields, and only for the
+    // provider that produced them.
+    let extras = response
+        .extras::<Anthropic>()
+        .expect("an Anthropic reply")
+        .expect("the extras read the recorded reply");
+    assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
+    assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
+    assert_eq!(extras.stop_details, None);
+    assert_eq!(extras.service_tier.as_deref(), Some("standard"));
+    assert_eq!(extras.inference_geo.as_deref(), Some("not_available"));
+    assert_eq!(
+        extras.cache_creation.map(|cache| (
+            cache.ephemeral_5m_input_tokens,
+            cache.ephemeral_1h_input_tokens
+        )),
+        Some((0, 0))
+    );
+    assert!(response.extras::<MiniMax>().is_none());
 }
 
 // ---------------------------------------------------------------------------

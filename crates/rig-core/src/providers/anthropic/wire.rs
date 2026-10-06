@@ -115,9 +115,12 @@ pub enum MaxTokens {
     Fixed(u64),
 }
 
+/// The API name the Messages wire reports for every dialect.
+pub(crate) const MESSAGES_API: &str = "anthropic.messages";
+
 /// Anthropic itself.
 pub const ANTHROPIC: Dialect = Dialect {
-    name: "anthropic",
+    name: super::PROVIDER_NAME,
     base_url: "https://api.anthropic.com",
     api_key_env: "ANTHROPIC_API_KEY",
     base_url_env: Some("ANTHROPIC_BASE_URL"),
@@ -183,7 +186,7 @@ impl Dialect {
 
 /// Z.AI's Anthropic-format endpoint.
 pub const ZAI: Dialect = compatible(
-    "zai",
+    crate::providers::zai::PROVIDER_NAME,
     "https://api.z.ai/api/anthropic",
     "ZAI_API_KEY",
     Some("ZAI_ANTHROPIC_API_BASE"),
@@ -191,7 +194,7 @@ pub const ZAI: Dialect = compatible(
 
 /// MiniMax's Anthropic-format endpoint.
 pub const MINIMAX: Dialect = compatible(
-    "minimax",
+    crate::providers::minimax::PROVIDER_NAME,
     "https://api.minimax.io/anthropic",
     "MINIMAX_API_KEY",
     Some("MINIMAX_ANTHROPIC_API_BASE"),
@@ -205,7 +208,7 @@ pub const MOONSHOT: Dialect = Dialect {
         ..Quirks::gateway()
     },
     ..compatible(
-        "moonshot",
+        crate::providers::moonshot::PROVIDER_NAME,
         "https://api.moonshot.ai/anthropic",
         "MOONSHOT_API_KEY",
         Some("MOONSHOT_ANTHROPIC_API_BASE"),
@@ -214,7 +217,7 @@ pub const MOONSHOT: Dialect = Dialect {
 
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
-    "xiaomimimo",
+    crate::providers::xiaomimimo::PROVIDER_NAME,
     "https://api.xiaomimimo.com/anthropic",
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
@@ -527,7 +530,7 @@ impl crate::completion::ReplayTarget for Messages {
     }
 
     fn api(&self) -> crate::message::Api {
-        crate::message::Api::from_static("anthropic.messages")
+        crate::message::Api::from_static(MESSAGES_API)
     }
 
     fn provider(&self) -> &str {

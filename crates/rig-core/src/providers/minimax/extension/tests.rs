@@ -3,21 +3,29 @@
 //! options. No MiniMax recording exists, so the extras test decodes a reply
 //! built here.
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
+use crate::completion::{CompletionRequest, CompletionResponse, ProviderOptions};
+use crate::error::ProviderError;
+use crate::operation::Completion;
+use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::wire::{AnthropicConfig, MINIMAX as MESSAGES_MINIMAX, Messages};
 use crate::providers::minimax::{MINIMAX_M2_5, MINIMAX_M2_7};
 use crate::providers::openai::wire::{Chat, MINIMAX, OpenAIConfig};
 use crate::test_utils::provider_extensions::{
     assert_no_reserved_leaf, body_with, chat_reply, reply_of,
 };
+use crate::wire::{Body, Mode, Operation, Wire, WireFrame};
 
 fn chat_wire(model: &str) -> Chat {
     OpenAIConfig::with_key(&MINIMAX, "key").chat(model)
 }
 
 fn options() -> MiniMaxOptions {
-    MiniMaxOptions::new().chat(MiniMaxChat::new().reasoning_split(true))
+    MiniMaxOptions::new()
+        .chat(MiniMaxChat::new().reasoning_split(true))
+        .messages(MiniMaxMessages::new().metadata_user_id("u-1"))
 }
 
 #[test]
@@ -63,4 +71,62 @@ async fn extras_from_a_built_reply() {
             .and_then(|status| status.get("status_code")),
         Some(&json!(0))
     );
+}
+
+fn messages_wire() -> Messages {
+    AnthropicConfig::with_key(&MESSAGES_MINIMAX, "sk-test")
+        .completion(crate::providers::minimax::MINIMAX_M2_7)
+}
+
+/// The response `reply` folds into on MiniMax's Messages wire.
+fn folded(reply: &Value) -> CompletionResponse {
+    crate::test_utils::decode_reply(
+        &messages_wire(),
+        &CompletionRequest::new("hi"),
+        Mode::Unary,
+        [WireFrame::Text(reply.to_string())],
+        reply.clone(),
+    )
+    .expect("the reply folds")
+}
+
+/// The body the wire sends for `request`.
+fn sent(request: CompletionRequest) -> Result<Value, ProviderError> {
+    let wire = messages_wire();
+    let request = Completion::prepare(request, &wire.describe())?;
+    let encoded = wire.encode(request, Mode::Unary)?;
+    let Body::Bytes(bytes) = encoded.request.body() else {
+        return Err(ProviderError::request("a Messages body is JSON"));
+    };
+    Ok(serde_json::from_slice(bytes)?)
+}
+
+#[test]
+fn messages_metadata_user_id_is_sent_on_the_messages_route() {
+    let options = ProviderOptions::new()
+        .with::<MiniMax>(
+            &MiniMaxOptions::new().messages(MiniMaxMessages::new().metadata_user_id("u-1")),
+        )
+        .expect("MiniMax options are sections");
+    let body = sent(CompletionRequest::new("hi").provider_options(options)).expect("encodes");
+    assert_eq!(body["metadata"], json!({"user_id": "u-1"}));
+}
+
+/// Built here, not recorded: no MiniMax Messages reply is recorded.
+#[test]
+fn extras_read_the_messages_stop_fields() {
+    let reply = json!({
+        "type": "message", "id": "msg_1", "model": crate::providers::minimax::MINIMAX_M2_7, "role": "assistant",
+        "content": [{"type": "text", "text": "alpha"}],
+        "stop_reason": "stop_sequence", "stop_sequence": "alpha",
+        "usage": {"input_tokens": 1, "output_tokens": 1}
+    });
+    let response = folded(&reply);
+    let extras = response
+        .extras::<MiniMax>()
+        .expect("a MiniMax reply")
+        .expect("the extras read");
+    assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
+    assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
+    assert!(response.extras::<Anthropic>().is_none());
 }

@@ -3,16 +3,18 @@
 //! options. No Moonshot recording exists, so the extras test decodes a
 //! reply built here.
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{GenerationOptions, Reasoning};
+use crate::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Reasoning};
+use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::wire::{AnthropicConfig, MOONSHOT as MESSAGES_MOONSHOT, Messages};
 use crate::providers::moonshot::{KIMI_K2_6, KIMI_K3};
 use crate::providers::openai::wire::{Chat, MOONSHOT, OpenAIConfig};
 use crate::test_utils::provider_extensions::{
     assert_no_reserved_leaf, body_with, chat_reply, encoded_body, reply_of, request_with,
 };
-use crate::wire::Mode;
+use crate::wire::{Mode, WireFrame};
 
 fn chat_wire(model: &str) -> Chat {
     OpenAIConfig::with_key(&MOONSHOT, "key").chat(model)
@@ -77,4 +79,40 @@ async fn extras_from_a_built_reply() {
         extras.prompt_tokens_details,
         Some(json!({"cached_tokens": 0}))
     );
+}
+
+fn messages_wire() -> Messages {
+    AnthropicConfig::with_key(&MESSAGES_MOONSHOT, "sk-test")
+        .completion(crate::providers::moonshot::KIMI_K2_6)
+}
+
+/// The response `reply` folds into on Moonshot's Messages wire.
+fn folded(reply: &Value) -> CompletionResponse {
+    crate::test_utils::decode_reply(
+        &messages_wire(),
+        &CompletionRequest::new("hi"),
+        Mode::Unary,
+        [WireFrame::Text(reply.to_string())],
+        reply.clone(),
+    )
+    .expect("the reply folds")
+}
+
+/// Built here, not recorded: no Moonshot Messages reply is recorded.
+#[test]
+fn extras_read_the_messages_stop_fields() {
+    let reply = json!({
+        "type": "message", "id": "msg_1", "model": crate::providers::moonshot::KIMI_K2_6, "role": "assistant",
+        "content": [{"type": "text", "text": "alpha"}],
+        "stop_reason": "stop_sequence", "stop_sequence": "alpha",
+        "usage": {"input_tokens": 1, "output_tokens": 1}
+    });
+    let response = folded(&reply);
+    let extras = response
+        .extras::<Moonshot>()
+        .expect("a Moonshot reply")
+        .expect("the extras read");
+    assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
+    assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
+    assert!(response.extras::<Anthropic>().is_none());
 }
