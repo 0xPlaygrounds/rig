@@ -1,12 +1,12 @@
-//! Matrix for raw terminal-record capture on Bedrock's ConverseStream path
+//! Matrix for raw capture on Bedrock's ConverseStream path
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
-//! Capture is always on. The terminal record of every stream the seam yields
-//! carries `raw`: the JSON Bedrock sent for the stream's message-level events,
-//! `{"messageStart": .., "messageStop": .., "metadata": ..}`, read off the
-//! event-stream body the SDK decoded. Nothing about it is sent to Bedrock.
+//! Capture is always on. Every stream the seam yields carries `raw`: the
+//! `ConverseOutput` a unary call returns, rebuilt from the events read off
+//! the event-stream body the SDK decoded, so `messageStop` and `metadata`
+//! fields sit at its top level. Nothing about it is sent to Bedrock.
 //! `raw == Value::Null` means only that a `CompletionResponse` was built by
 //! hand without a provider terminal behind it, which no cell here can
 //! produce.
@@ -26,8 +26,8 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_is_the_recorded_terminal_events` | provider JSON | `raw.messageStop` and `raw.metadata` equal the recorded events | unrecorded (no valid AWS credentials in this environment) |
-//! | 2 | `stream_raw_exposes_bedrock_stop_reason` | terminal-only field | `raw.messageStop.stopReason` is Bedrock's own spelling; the normalized terminal lacks it | unrecorded (no valid AWS credentials in this environment) |
+//! | 1 | `stream_raw_is_the_recorded_terminal_events` | provider JSON | `raw.stopReason` and `raw.usage` equal the recorded events' | unrecorded (no valid AWS credentials in this environment) |
+//! | 2 | `stream_raw_exposes_bedrock_stop_reason` | terminal-only field | `raw.stopReason` is Bedrock's own spelling; the normalized terminal lacks it | unrecorded (no valid AWS credentials in this environment) |
 //!
 //! Every cell is unrecorded: no valid AWS credentials were available when
 //! this matrix was written, and a fixture is never fabricated. To record once
@@ -109,7 +109,7 @@ fn recorded_terminal_events(scenario: &str) -> (Value, Value) {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the JSON Bedrock sent for the terminal events
+// 1: raw holds what Bedrock sent in the terminal events
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -130,8 +130,8 @@ async fn stream_raw_is_the_recorded_terminal_events() {
 
     let terminal = captured.take();
     let (stop, metadata) = recorded_terminal_events(scenario);
-    assert_eq!(terminal.raw["messageStop"], stop);
-    assert_eq!(terminal.raw["metadata"], metadata);
+    assert_eq!(terminal.raw["stopReason"], stop["stopReason"]);
+    assert_eq!(terminal.raw["usage"], metadata["usage"]);
     assert_eq!(
         terminal.usage.total_tokens,
         metadata
@@ -173,5 +173,5 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
         stop["stopReason"], "end_turn",
         "{scenario}: premise: the recorded turn ended on end_turn"
     );
-    assert_eq!(terminal.raw["messageStop"]["stopReason"], "end_turn");
+    assert_eq!(terminal.raw["stopReason"], "end_turn");
 }

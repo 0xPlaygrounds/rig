@@ -261,25 +261,158 @@ fn an_in_band_exception_fails_the_stream() {
     assert!(error.is_retryable());
 }
 
-/// A stream's `raw` is its message-level events as Bedrock sent them.
+/// The document the Converse reassembler rebuilds from `events`.
+fn rebuilt(events: &[Value]) -> Value {
+    let mut document = document::ConverseOutput::default();
+    for event in events {
+        rig_core::wire::document::Reassemble::absorb(
+            &mut document,
+            &ConverseFrame::Event(event.clone()),
+        );
+    }
+    rig_core::wire::document::Reassemble::finish(document)
+}
+
+/// `event` with the padding ConverseStream adds to every event.
+fn padded(mut event: Value) -> Value {
+    if let Some(payload) = event
+        .as_object_mut()
+        .and_then(|event| event.values_mut().next())
+        .and_then(Value::as_object_mut)
+    {
+        payload.insert("p".to_owned(), json!("abcdefgh"));
+    }
+    event
+}
+
+/// A stream rebuilds the `ConverseOutput` a unary call returns, block by
+/// block: signed and redacted reasoning, cited text, a hosted tool's use
+/// and result, text and a client call. The message-level fields land where
+/// the unary reply has them, and the stream's padding is dropped.
 #[test]
-fn a_streams_raw_is_bedrocks_json() {
-    let events = vec![
+fn a_stream_rebuilds_the_unary_converse_output() {
+    let thought =
+        |field: &str, text: &str| delta(0, json!({ "reasoningContent": { field: text } }));
+    let redacted = BASE64_STANDARD
+        .decode("AGNpcGhlcnRleHT/")
+        .expect("the fixture is base64");
+    let (head, tail) = redacted.split_at(4);
+    let chunk = |bytes: &[u8]| {
+        delta(
+            1,
+            json!({ "reasoningContent": { "redactedContent": BASE64_STANDARD.encode(bytes) } }),
+        )
+    };
+    let events: Vec<Value> = [
         json!({ "messageStart": { "role": "assistant" } }),
+        thought("text", "let me "),
+        thought("text", "think"),
+        thought("signature", "sig-abc"),
+        stop(0),
+        chunk(head),
+        chunk(tail),
+        stop(1),
+        delta(2, json!({ "text": "The harbor opens at nine." })),
+        delta(2, json!({ "citation": { "title": "hours", "location": { "documentChar": { "documentIndex": 0, "start": 0, "end": 24 } } } })),
+        stop(2),
+        start(3, json!({ "toolUse": { "toolUseId": "srv_1", "name": "nova_grounding", "type": "server_tool_use" } })),
+        delta(3, json!({ "toolUse": { "input": "{\"q\": \"harbor\"}" } })),
+        stop(3),
+        start(4, json!({ "toolResult": { "toolUseId": "srv_1" } })),
+        delta(4, json!({ "toolResult": [{ "text": "nine" }] })),
+        stop(4),
+        delta(5, json!({ "text": "Calling." })),
+        stop(5),
+        start(6, json!({ "toolUse": { "toolUseId": "tooluse_1", "name": "lookup" } })),
+        delta(6, json!({ "toolUse": { "input": "{\"q\":" } })),
+        delta(6, json!({ "toolUse": { "input": " \"harbor\"}" } })),
+        stop(6),
+        json!({ "messageStop": { "stopReason": "tool_use" } }),
+        json!({ "metadata": { "usage": usage(), "metrics": { "latencyMs": 5 } } }),
+    ]
+    .into_iter()
+    .map(padded)
+    .collect();
+    let unary = document(rich(), "tool_use");
+    assert_eq!(rebuilt(&events), unary);
+
+    let response = streamed(CLAUDE, events).expect("decodes");
+    assert_eq!(response.raw, unary);
+    assert_eq!(response.raw, whole(CLAUDE, rich(), "tool_use").raw);
+}
+
+/// The fields only `messageStop` and `metadata` carry land at the top
+/// level, as the unary reply states them, and a block that opens with a
+/// delta needs no start.
+#[test]
+fn message_level_fields_land_where_the_unary_reply_has_them() {
+    let events = vec![
+        json!({ "messageStart": { "role": "assistant", "p": "ab" } }),
         delta(0, json!({ "text": "hi" })),
         stop(0),
-        json!({ "messageStop": { "stopReason": "end_turn", "additionalModelResponseFields": { "x": 1 } } }),
-        json!({ "metadata": { "usage": usage(), "trace": { "promptRouter": { "invokedModelId": NOVA } } } }),
+        json!({ "messageStop": { "stopReason": "end_turn", "additionalModelResponseFields": { "x": 1 }, "p": "abc" } }),
+        json!({ "metadata": {
+            "usage": usage(),
+            "metrics": { "latencyMs": 5 },
+            "trace": { "promptRouter": { "invokedModelId": NOVA } },
+            "performanceConfig": { "latency": "optimized" },
+            "serviceTier": { "type": "priority" },
+            "p": "abcd",
+        } }),
     ];
-    let response = streamed(NOVA, events.clone()).expect("decodes");
+    let response = streamed(NOVA, events).expect("decodes");
     assert_eq!(
         response.raw,
         json!({
-            "messageStart": events[0]["messageStart"],
-            "messageStop": events[3]["messageStop"],
-            "metadata": events[4]["metadata"],
+            "output": { "message": { "role": "assistant", "content": [{ "text": "hi" }] } },
+            "stopReason": "end_turn",
+            "additionalModelResponseFields": { "x": 1 },
+            "usage": usage(),
+            "metrics": { "latencyMs": 5 },
+            "trace": { "promptRouter": { "invokedModelId": NOVA } },
+            "performanceConfig": { "latency": "optimized" },
+            "serviceTier": { "type": "priority" },
         })
     );
+}
+
+/// An image's chunks join as bytes, a tool result's content collects, a
+/// call with no input has an empty object, and a stream cut by an
+/// exception rebuilds what arrived.
+#[test]
+fn images_results_and_cut_streams_rebuild_what_arrived() {
+    let events = vec![
+        start(0, json!({ "image": { "format": "png" } })),
+        delta(
+            0,
+            json!({ "image": { "source": { "bytes": BASE64_STANDARD.encode(b"pn") } } }),
+        ),
+        delta(
+            0,
+            json!({ "image": { "source": { "bytes": BASE64_STANDARD.encode(b"g") } } }),
+        ),
+        start(
+            1,
+            json!({ "toolResult": { "toolUseId": "srv_1", "status": "success" } }),
+        ),
+        delta(1, json!({ "toolResult": [{ "text": "nine" }] })),
+        delta(1, json!({ "toolResult": [{ "json": { "opens": 9 } }] })),
+        start(
+            2,
+            json!({ "toolUse": { "toolUseId": "t2", "name": "now" } }),
+        ),
+        json!({ "throttlingException": { "message": "slow down" } }),
+    ];
+    assert_eq!(
+        rebuilt(&events),
+        json!({ "output": { "message": { "content": [
+            { "image": { "format": "png", "source": { "bytes": BASE64_STANDARD.encode(b"png") } } },
+            { "toolResult": { "toolUseId": "srv_1", "status": "success",
+                "content": [{ "text": "nine" }, { "json": { "opens": 9 } }] } },
+            { "toolUse": { "toolUseId": "t2", "name": "now", "input": {} } },
+        ] } } })
+    );
+    assert_eq!(rebuilt(&[]), Value::Null);
 }
 
 /// Rig's input counts Bedrock's cache reads and writes, and its total is

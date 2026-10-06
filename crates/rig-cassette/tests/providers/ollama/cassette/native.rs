@@ -8,7 +8,8 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    CompletionRequest, FinishReason, GenerationOptions, ProviderOptions, Reasoning,
+    CompletionRequest, CompletionResponse, FinishReason, GenerationOptions, ProviderOptions,
+    Reasoning,
 };
 use rig::message::AssistantContent;
 use rig::providers::ollama::extension::{KeepAlive, Ollama, OllamaOptions};
@@ -49,6 +50,20 @@ fn recorded_content(scenario: &str) -> String {
                 .map(str::to_owned)
         })
         .collect()
+}
+
+/// The reason and counts a reply's typed extras read.
+fn counted(response: &CompletionResponse) -> (Option<String>, Option<u64>, Option<u64>) {
+    let extras = response
+        .extras::<Ollama>()
+        .expect("an Ollama reply")
+        .expect("the extras read");
+    assert_eq!(extras.model.as_deref(), Some("qwen3:4b"));
+    (
+        extras.done_reason,
+        extras.prompt_eval_count,
+        extras.eval_count,
+    )
 }
 
 /// Model parameters go in `options`, `max_tokens` as `num_predict` beside
@@ -186,6 +201,10 @@ async fn reasoning_without_an_opening_tag_is_text_whole() {
         let (text, reasoning) = texts(&response.choice);
         assert!(reasoning.is_empty(), "{reasoning}");
         assert_eq!(text, recorded_content(scenario));
+        assert_eq!(
+            counted(&response),
+            (Some("stop".to_owned()), Some(23), Some(246))
+        );
     })
     .await;
     let content = recorded_content(scenario);
@@ -221,6 +240,11 @@ async fn reasoning_without_an_opening_tag_is_text_streamed() {
         assert_eq!(text, recorded_content(scenario));
         // Nothing is held: the first record's content streams on its own.
         assert_eq!(first.as_deref(), Some("Okay"));
+        // The streamed reply's extras read what the unary reply's do.
+        assert_eq!(
+            counted(&response),
+            (Some("stop".to_owned()), Some(23), Some(246))
+        );
     })
     .await;
     assert!(

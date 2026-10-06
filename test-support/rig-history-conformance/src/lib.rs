@@ -250,7 +250,7 @@ pub const TESTS: &[(&str, &str, &str)] = &[
     ),
     (
         "crates/rig-bedrock/src/streaming/tests.rs",
-        "a_streams_raw_is_bedrocks_json",
+        "a_stream_rebuilds_the_unary_converse_output",
         "#2311",
     ),
     (

@@ -397,7 +397,7 @@ impl Wire for NativeChat {
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
-    type Reassembler = super::streaming::document::TerminalRecord;
+    type Reassembler = super::streaming::document::ChatResponse;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)

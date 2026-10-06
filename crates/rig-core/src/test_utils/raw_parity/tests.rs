@@ -195,6 +195,21 @@ const PAIRS: &[Pair] = &[
         ],
         rebuilt: true,
     },
+    // The native `/api/chat` route.
+    Pair {
+        provider: "ollama",
+        unary: "native/inline_think_whole.yaml",
+        streamed: "native/inline_think_streamed.yaml",
+        // The daemon's timings and its prompt cache differ between runs.
+        minted: &[
+            "/total_duration",
+            "/load_duration",
+            "/prompt_eval_duration",
+            "/eval_duration",
+            "/prompt_eval_cached_count",
+        ],
+        rebuilt: true,
+    },
     Pair {
         provider: "openai",
         unary: "raw_capture_matrix/chat_raw_round_trips_typed.yaml",
@@ -536,6 +551,10 @@ async fn decoded(pair: &Pair) -> (Value, Value) {
         ("cohere", _) => {
             let dialect = &crate::providers::openai::wire::COHERE;
             raw_pair(chat(dialect).chat("command-a-03-2025"), unary, streamed).await
+        }
+        ("ollama", unary_path) if unary_path.starts_with("native/") => {
+            let wire = crate::providers::ollama::OllamaConfig::new().native_completion("qwen3:4b");
+            raw_pair(wire, unary, streamed).await
         }
         ("ollama", _) => {
             let dialect = &crate::providers::openai::wire::OLLAMA;

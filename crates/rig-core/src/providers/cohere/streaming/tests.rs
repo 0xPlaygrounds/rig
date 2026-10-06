@@ -3,18 +3,28 @@ use crate::completion::{AssistantContent, CompletionResponse};
 use crate::driver::{Decoded, feed_frames};
 use crate::streaming::{Item, StreamEvent};
 use crate::wire::AdapterEvent;
+use crate::wire::document::Reassemble;
 use serde_json::json;
 
 /// `frames` decoded, classifier included, as one native reply.
 fn fed(frames: &[Value]) -> Decoded<Completion> {
     feed_frames!(
         ChatDecoder::default(),
-        document::TerminalRecord::default(),
+        document::ChatResponse::default(),
         "cohere",
         frames
             .iter()
             .map(|frame| WireFrame::Text(frame.to_string()))
     )
+}
+
+/// The document the native reassembler rebuilds from `frames`.
+fn rebuilt(frames: &[Value]) -> Value {
+    let mut document = document::ChatResponse::default();
+    for frame in frames {
+        document.absorb(&WireFrame::Text(frame.to_string()));
+    }
+    document.finish()
 }
 
 /// The response `frames` fold into.
@@ -340,7 +350,7 @@ fn finish_reasons_map_to_rig_endings() {
     ])
     .expect("the stream folds");
     assert_eq!(stated.error.as_deref(), Some("overloaded"));
-    assert_eq!(stated.raw.at("/delta/error"), Some(&json!("overloaded")));
+    assert_eq!(stated.raw.at("/error"), Some(&json!("overloaded")));
 }
 
 /// Usage without `tokens` falls back to the billed units.
@@ -637,5 +647,84 @@ fn an_unknown_finish_reason_fails_unless_accepted() {
             accepted.finish_reason().as_ref()
         ),
         None
+    );
+}
+
+/// A stream rebuilds the chat response a unary call returns: parts with
+/// their appended text, the plan, calls with their appended arguments,
+/// citations, log probabilities, the finish reason and usage.
+#[test]
+fn a_stream_rebuilds_the_unary_chat_response() {
+    let first = citation(0, 3, "doc-1", json!({"content_index": 1}));
+    let second = citation(4, 8, "doc-2", json!({"content_index": 1}));
+    let logprob = |text: &str| json!({"token_ids": [7], "text": text, "logprobs": [-0.5]});
+    let mut delta = content_delta(1, "text", "Sky is ");
+    delta["logprobs"] = logprob("Sky is ");
+    let mut more = content_delta(1, "text", "green.");
+    more["logprobs"] = logprob("green.");
+    let streamed = rebuilt(&stream(
+        vec![
+            content_start(0, "thinking"),
+            content_delta(0, "thinking", "I need"),
+            content_delta(0, "thinking", " to look."),
+            content_end(0),
+            content_start(1, "text"),
+            delta,
+            citation_start(0, first.clone()),
+            json!({"type": "citation-end", "index": 0}),
+            more,
+            citation_start(1, second.clone()),
+            content_end(1),
+            plan_delta("I will"),
+            plan_delta(" look."),
+            call_start(0, "get_weather_1", "get_weather"),
+            call_delta(0, "{\"city\""),
+            call_delta(0, ": \"Paris\"}"),
+            call_end(0),
+            json!({"type": "debug", "event": "ignored"}),
+        ],
+        "TOOL_CALL",
+    ));
+    assert_eq!(
+        streamed,
+        json!({
+            "id": "resp_1",
+            "finish_reason": "TOOL_CALL",
+            "usage": usage(),
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "I need to look."},
+                    {"type": "text", "text": "Sky is green."},
+                ],
+                "tool_plan": "I will look.",
+                "tool_calls": [{"id": "get_weather_1", "type": "function",
+                    "function": {"name": "get_weather", "arguments": "{\"city\": \"Paris\"}"}}],
+                "citations": [first, second],
+            },
+            "logprobs": [logprob("Sky is "), logprob("green.")],
+        })
+    );
+}
+
+/// A whole reply is its own document, and a stream cut short rebuilds what
+/// arrived.
+#[test]
+fn a_whole_reply_is_its_document_and_a_cut_stream_keeps_what_arrived() {
+    let reply = whole(
+        json!({"content": [{"type": "text", "text": "hi"}]}),
+        "COMPLETE",
+    );
+    assert_eq!(Some(&rebuilt(&reply)), reply.first());
+
+    let mut cut = stream(
+        vec![content_start(0, "text"), content_delta(0, "text", "par")],
+        "COMPLETE",
+    );
+    cut.pop();
+    assert_eq!(
+        rebuilt(&cut),
+        json!({"id": "resp_1", "message": {"role": "assistant", "content": [{"type": "text", "text": "par"}],
+            "tool_plan": "", "tool_calls": [], "citations": []}})
     );
 }

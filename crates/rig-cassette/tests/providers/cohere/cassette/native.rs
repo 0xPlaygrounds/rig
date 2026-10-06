@@ -93,6 +93,24 @@ async fn documents_ground_a_streamed_answer_with_citations() {
                 "the answer cites the documents: {:?}",
                 response.choice
             );
+            // The streamed reply's extras read what a unary reply's do.
+            let extras = extras(&response);
+            assert_eq!(
+                extras.id.as_deref(),
+                Some("6f0073cc-024b-4df8-866e-2d4712519fca")
+            );
+            assert_eq!(extras.finish_reason.as_deref(), Some("COMPLETE"));
+            let billed = extras.billed_units.expect("billed units");
+            assert_eq!(
+                (billed.input_tokens, billed.output_tokens),
+                (Some(45.0), Some(17.0))
+            );
+            let tokens = extras.tokens.expect("tokens");
+            assert_eq!(
+                (tokens.input_tokens, tokens.output_tokens),
+                (Some(1696.0), Some(41.0))
+            );
+            assert_eq!(extras.cached_tokens, Some(112.0));
         },
     )
     .await;
@@ -135,6 +153,11 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
                 })
                 .expect("the turn plans its call");
             assert!(!plan.text.is_empty());
+            // The streamed reply's raw is the chat response, so its extras
+            // read the plan where a unary reply states it.
+            let turn_extras = extras(&turn);
+            assert_eq!(turn_extras.tool_plan.as_deref(), Some(plan.text.as_str()));
+            assert_eq!(turn_extras.finish_reason.as_deref(), Some("TOOL_CALL"));
             let call = turn
                 .choice
                 .iter()

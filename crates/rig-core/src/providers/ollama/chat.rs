@@ -339,7 +339,7 @@ impl Wire for Chat {
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
-    type Reassembler = super::streaming::document::TerminalRecord;
+    type Reassembler = super::streaming::document::ChatResponse;
 
     /// The output schema is deferred while tools are unanswered, so it
     /// composes with tools.

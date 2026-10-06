@@ -1579,3 +1579,36 @@ fn options_become_generation_overrides() -> Result<(), CandleError> {
     ));
     Ok(())
 }
+
+/// Guarantee 5 for Candle: a stream's `raw` is the document a unary call of
+/// the same greedy generation records, but for its wall-clock timings.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn a_streams_raw_is_the_unary_document()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = CandleModel::builder(model_data()?)
+        .temperature(0.0)
+        .max_tokens(2)
+        .build()?;
+    let unary = generation(&model)
+        .call(request(vec![Message::user("hello")]))
+        .await?
+        .raw;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
+    while let Some(item) = stream.next().await {
+        item?;
+    }
+    let streamed = stream.finish().await?.raw;
+    let timings = [
+        "/prefill_duration_ms",
+        "/time_to_first_token_ms",
+        "/generation_duration_ms",
+        "/tokens_per_second",
+    ];
+    assert!(!unary.is_null());
+    assert_eq!(
+        rig_core::test_utils::raw_parity::comparable(&streamed, &timings),
+        rig_core::test_utils::raw_parity::comparable(&unary, &timings),
+    );
+    Ok(())
+}
