@@ -17,6 +17,7 @@ use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
 use aws_sdk_bedrockruntime::types::GuardrailTrace;
+use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::completion::options::FinalBody;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
@@ -24,6 +25,7 @@ use rig_core::error::{EncodeError, ProviderError};
 use rig_core::json_utils::Lenient;
 use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use serde_json::{Value, json};
 
@@ -251,14 +253,13 @@ impl Wire for Converse {
     }
 }
 
-/// Model families pi's catalog lists as text-only on Bedrock, separated by
-/// spaces.
-const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-70b \
-    meta.llama3-1- meta.llama3-3- minimax. mistral.devstral mistral.mistral-7b \
-    mistral.mistral-large-2402 mistral.mistral-small-2402 mistral.mixtral mistral.voxtral \
-    moonshot.kimi-k2-thinking nvidia.nemotron-nano-3 nvidia.nemotron-nano-9b \
-    nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
-    qwen.qwen3-next writer.palmyra zai.glm";
+/// The catalog entry of the Bedrock `model`: a base model id or system
+/// inference profile, or the last part of its ARN. `None` for a model the
+/// catalog does not list.
+pub fn spec(model: &str) -> Option<&'static ModelSpec> {
+    let id = model.rsplit('/').next().unwrap_or(model);
+    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
+}
 
 impl ReplayTarget for Converse {
     /// Section 6.5 of the typed-options design: reasoning in the model's
@@ -286,12 +287,10 @@ impl ReplayTarget for Converse {
 
     /// Converse reads images in user turns and tool results, never in
     /// assistant turns. Claude reads them; so does every other model but
-    /// the text-only families.
+    /// those the catalog lists as reading no images.
     fn accepts(&self, model: &str) -> Accepts {
-        let images = self.family(model) == Family::Claude
-            || !TEXT_ONLY
-                .split_whitespace()
-                .any(|family| model.contains(family));
+        let images =
+            self.family(model) == Family::Claude || spec(model).is_none_or(|spec| spec.input.image);
         Accepts {
             user_images: images,
             assistant_images: false,
@@ -304,7 +303,7 @@ impl ReplayTarget for Converse {
     /// on Converse as on Anthropic's own API.
     fn binds_context(&self, model: &str) -> bool {
         self.family(model) == Family::Claude
-            && rig_core::providers::anthropic::completion::binds_context(model)
+            && spec(model).is_some_and(|spec| spec.compat.binds_context)
     }
 
     /// Converse rejects a conversation that does not start with a user

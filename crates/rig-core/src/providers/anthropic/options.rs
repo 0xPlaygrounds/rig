@@ -1,120 +1,63 @@
 //! How each Messages-format dialect answers [`GenerationOptions`]: the JSON
 //! it merges into the request body, the default it relies on, or the reason
-//! it refuses. Anthropic's own answers depend on the model's class, which
-//! [`claude_class`] reads from the model id however the serving API spells
-//! it.
+//! it refuses. Anthropic's own answers depend on the model's catalog entry:
+//! the effort levels and budget it takes, whether thinking turns off and
+//! how, and whether it fixes its sampling.
 //!
 //! [`GenerationOptions`]: crate::completion::GenerationOptions
 
 use serde_json::json;
 
+use crate::catalog::{ModelSpec, Sampling};
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
 use crate::message::ToolChoice;
 
 use super::wire::{ANTHROPIC, MINIMAX, MOONSHOT, Messages, XIAOMIMIMO, ZAI};
 
-/// The thinking and sampling behaviour of a Claude model, by the class the
-/// option mapping table names. Ordered oldest first.
-#[doc(hidden)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ClaudeClass {
-    /// Claude Haiku 4.5 and Sonnet 4.5: a thinking budget, no effort.
-    A0,
-    /// Claude Opus 4.5: a budget, and `low` to `high` effort.
-    A1,
-    /// Claude Opus 4.6 and Sonnet 4.6: adaptive thinking, `low` to `max`
-    /// effort but `xhigh`, a deprecated budget.
-    A2,
-    /// Claude Opus 4.7 and 4.8: adaptive thinking, every effort level, no
-    /// budget, a fixed `top_p`.
-    A3,
-    /// Claude Sonnet 5.
-    A4,
-    /// Claude Opus 5.
-    A5,
-    /// Claude Sonnet 5.5: off is `between_tools`.
-    A6,
-    /// Claude Opus 5.5: thinking cannot be turned off.
-    A7,
-    /// Claude Fable 5 and 5.1: thinking is always on.
-    A8,
-}
-
-/// Every model id the class table names.
-const CLASSES: [(&str, ClaudeClass); 13] = [
-    ("claude-haiku-4-5", ClaudeClass::A0),
-    ("claude-sonnet-4-5", ClaudeClass::A0),
-    ("claude-opus-4-5", ClaudeClass::A1),
-    ("claude-opus-4-6", ClaudeClass::A2),
-    ("claude-sonnet-4-6", ClaudeClass::A2),
-    ("claude-opus-4-7", ClaudeClass::A3),
-    ("claude-opus-4-8", ClaudeClass::A3),
-    ("claude-sonnet-5-5", ClaudeClass::A6),
-    ("claude-sonnet-5", ClaudeClass::A4),
-    ("claude-opus-5-5", ClaudeClass::A7),
-    ("claude-opus-5", ClaudeClass::A5),
-    ("claude-fable-5-1", ClaudeClass::A8),
-    ("claude-fable-5", ClaudeClass::A8),
-];
-
-/// The class of the Claude `model`, spelled as Anthropic
-/// (`claude-opus-5-5`), OpenRouter (`anthropic/claude-opus-5.5`) or Bedrock
-/// (`us.anthropic.claude-opus-5-5-v1:0`) spell it, or one of its dated
-/// snapshots. `None` for a model the table does not name.
-#[doc(hidden)]
-pub fn claude_class(model: &str) -> Option<ClaudeClass> {
-    let model = model
-        .rsplit_once("anthropic.")
-        .map_or(model, |(_, rest)| rest);
-    let model = model.strip_prefix("anthropic/").unwrap_or(model);
-    let model = model.split_once("-v1:").map_or(model, |(id, _)| id);
-    let model = model.replace('.', "-");
-    CLASSES.iter().find_map(|(id, class)| {
-        let rest = model.strip_prefix(id)?;
-        (rest.is_empty() || rest.starts_with("-20")).then_some(*class)
-    })
-}
-
 /// The `thinking` and `output_config` Anthropic's Messages API takes for
-/// `reasoning` on a model of `class` (`None`: a model the table does not
-/// name, which gets the newest models' shapes), with `max_tokens` the
-/// request's output cap.
+/// `reasoning` on the model `spec` describes (`None`: a model the catalog
+/// does not list, which gets the newest models' shapes), with `max_tokens`
+/// the request's output cap.
 fn claude_reasoning(
-    class: Option<ClaudeClass>,
+    spec: Option<&ModelSpec>,
     reasoning: &Reasoning,
     max_tokens: Option<u64>,
 ) -> Mapping {
-    use ClaudeClass::{A0, A1, A2, A3, A6, A7, A8};
-    let adaptive = |effort: &Effort| {
-        Mapping::Send(json!({
-            "thinking": {"type": "adaptive"},
-            "output_config": {"effort": effort.as_str()},
-        }))
-    };
+    let support = spec.map(|spec| &spec.reasoning);
     match reasoning {
-        Reasoning::Off => match class {
-            Some(A7 | A8) => Mapping::unsupported("thinking cannot be disabled on this model"),
-            Some(A6) => Mapping::Send(json!({"thinking": {"type": "between_tools"}})),
-            _ => Mapping::Send(json!({"thinking": {"type": "disabled"}})),
+        Reasoning::Off => match spec {
+            Some(spec) if !spec.reasoning.can_disable => {
+                Mapping::unsupported("thinking cannot be disabled on this model")
+            }
+            _ => {
+                let off = spec
+                    .and_then(|spec| spec.compat.thinking_off.as_deref())
+                    .unwrap_or("disabled");
+                Mapping::Send(json!({"thinking": {"type": off}}))
+            }
         },
         Reasoning::Effort(Effort::Minimal) => {
             Mapping::unsupported("Claude has no `minimal` effort level")
         }
-        Reasoning::Effort(effort) => match (class, effort) {
-            (Some(A0), _) => {
+        Reasoning::Effort(effort) => match spec {
+            Some(spec) if spec.reasoning.levels.is_empty() => {
                 Mapping::unsupported("this model takes a thinking budget, not an effort level")
             }
-            (Some(A1), Effort::Low | Effort::Medium | Effort::High) => {
+            Some(spec) if !spec.reasoning.levels.contains(effort) => Mapping::unsupported(format!(
+                "this model has no `{}` effort level",
+                effort.as_str()
+            )),
+            Some(spec) if !spec.compat.adaptive_thinking => {
                 Mapping::Send(json!({"output_config": {"effort": effort.as_str()}}))
             }
-            (Some(A1 | A2), Effort::XHigh) | (Some(A1), Effort::Max) => Mapping::unsupported(
-                format!("this model has no `{}` effort level", effort.as_str()),
-            ),
-            (_, effort) => adaptive(effort),
+            _ => Mapping::Send(json!({
+                "thinking": {"type": "adaptive"},
+                "output_config": {"effort": effort.as_str()},
+            })),
         },
-        Reasoning::Budget { tokens } => match class {
-            Some(class) if class >= A3 => {
+        Reasoning::Budget { tokens } => match support {
+            Some(support) if support.budget.is_none() => {
                 Mapping::unsupported("this model takes an effort level, not a thinking budget")
             }
             _ if *tokens < 1024 => {
@@ -130,13 +73,11 @@ fn claude_reasoning(
     }
 }
 
-/// `top_p` on a model of `class`, which some classes fix and the rest take
-/// only without `temperature`.
-fn claude_top_p(class: Option<ClaudeClass>, top_p: f64, temperature: bool) -> Mapping {
-    match class {
-        Some(class) if class >= ClaudeClass::A3 => {
-            Mapping::unsupported("this model does not take `top_p`")
-        }
+/// `top_p` on the model `spec` describes, which some models fix and the
+/// rest take only without `temperature`.
+fn claude_top_p(spec: Option<&ModelSpec>, top_p: f64, temperature: bool) -> Mapping {
+    match spec.and_then(|spec| spec.sampling) {
+        Some(Sampling::Never) => Mapping::unsupported("this model does not take `top_p`"),
         _ if temperature => {
             Mapping::unsupported("this model takes `temperature` or `top_p`, not both")
         }
@@ -219,11 +160,11 @@ fn anthropic(
         seed,
         stop,
     } = fields;
-    let class = claude_class(model);
+    let spec = super::completion::spec(model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            claude_reasoning(class, reasoning, max_tokens)
+            claude_reasoning(spec, reasoning, max_tokens)
         }),
         cache: Mapping::of(cache, |cache| match cache {
             CacheRetention::None if places => Mapping::unsupported(
@@ -252,7 +193,7 @@ fn anthropic(
             parallel_tool_calls(request, has_tools, parallel)
         }),
         top_p: Mapping::of(top_p, |top_p| {
-            claude_top_p(class, top_p, request.temperature.is_some())
+            claude_top_p(spec, top_p, request.temperature.is_some())
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Anthropic has no seed parameter")

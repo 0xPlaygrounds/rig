@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 #[doc(hidden)]
-pub use super::options::{ClaudeClass, claude_class};
 use super::wire::Messages;
+use crate::catalog::ModelSpec;
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{self, CompletionRequest, Replay};
 use crate::error::EncodeError;
@@ -75,71 +75,35 @@ pub enum CacheTtl {
     OneHour,
 }
 
-/// What Anthropic publishes of each model with a 128K synchronous output
-/// limit: whether it takes `role: "system"` inside `messages` (the
-/// mid-conversation system messages page; Claude Sonnet 5 does not), whether
-/// it answers a forced `tool_choice` with a 400 (the what's-new pages), and
-/// whether its thinking binds to the request's tools and system prompt (the
-/// recorded 400 on Claude Opus 5.5, and the models pi sends `drop_block` for).
-const MODELS: [(&str, [bool; 3]); 10] = [
-    (CLAUDE_FABLE_5_1, [true, true, true]),
-    (CLAUDE_FABLE_5, [true, false, false]),
-    (CLAUDE_OPUS_5_5, [true, true, true]),
-    (CLAUDE_OPUS_5, [true, false, true]),
-    (CLAUDE_SONNET_5_5, [true, true, true]),
-    (CLAUDE_SONNET_5, [false; 3]),
-    (CLAUDE_OPUS_4_8, [true, false, false]),
-    (CLAUDE_OPUS_4_7, [false; 3]),
-    (CLAUDE_OPUS_4_6, [false; 3]),
-    (CLAUDE_SONNET_4_6, [false; 3]),
-];
-
-/// `model`'s row of [`MODELS`]: the model, or one of its dated snapshots
-/// (`<id>-YYYYMMDD`), never a later model whose id merely starts with one.
-fn listed(model: &str) -> Option<[bool; 3]> {
-    MODELS.iter().find_map(|(id, flags)| {
-        let rest = model.strip_prefix(id)?;
-        (rest.is_empty() || rest.starts_with("-20")).then_some(*flags)
-    })
+/// The catalog entry of Anthropic's `model`, or of the model a dated
+/// snapshot (`<id>-YYYYMMDD`) names. `None` for a model the catalog does not
+/// list, which gets the newest models' behaviour.
+pub(super) fn spec(model: &str) -> Option<&'static ModelSpec> {
+    crate::catalog::lookup(super::ANTHROPIC.name, model)
 }
 
-/// The published synchronous output limit of a recognized model. Unknown
+/// The published synchronous output limit of a listed model. Unlisted
 /// models require an explicit `max_tokens` value.
 pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    let older = ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"];
-    match listed(model) {
-        Some(_) => Some(128_000),
-        None => older
-            .iter()
-            .any(|prefix| model.starts_with(prefix))
-            .then_some(64_000),
-    }
+    spec(model)?.max_output_tokens.map(u64::from)
 }
 
 /// Whether `model` rejects a forced tool choice.
 pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
-    listed(model).is_some_and(|[_, rejects, _]| rejects)
+    spec(model).is_some_and(|spec| spec.compat.rejects_forced_tool_choice)
 }
 
 /// Whether `model` takes `role: "system"` inside `messages` (the
-/// mid-conversation system messages page). A model the table does not list
-/// takes system text only in the request's `system`.
+/// mid-conversation system messages page). A model the catalog does not
+/// list takes system text only in the request's `system`.
 pub(super) fn takes_mid_conversation_system(model: &str) -> bool {
-    listed(model).is_some_and(|[mid, _, _]| mid)
+    spec(model).is_some_and(|spec| spec.compat.mid_conversation_system)
 }
 
 /// Whether the Claude `model` binds its thinking blocks to the request's
-/// tools and system prompt, however the serving API spells it: Anthropic's
-/// `claude-opus-5-5`, OpenRouter's `anthropic/claude-opus-5.5`, or Bedrock's
-/// `us.anthropic.claude-opus-5-5-v1:0`. Every wire that serves Claude reads
-/// this one table.
-pub fn binds_context(model: &str) -> bool {
-    let model = model
-        .rsplit_once("anthropic.")
-        .map_or(model, |(_, rest)| rest);
-    let model = model.strip_prefix("anthropic/").unwrap_or(model);
-    let model = model.split_once("-v1:").map_or(model, |(id, _)| id);
-    listed(&model.replace('.', "-")).is_some_and(|[_, _, binds]| binds)
+/// tools and system prompt.
+pub(super) fn binds_context(model: &str) -> bool {
+    spec(model).is_some_and(|spec| spec.compat.binds_context)
 }
 
 /// The beta that lets a request ask Anthropic to drop a thinking block bound

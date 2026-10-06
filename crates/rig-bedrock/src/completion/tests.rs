@@ -121,3 +121,23 @@ fn hosted_items_pair_and_calls_have_an_id_slot() {
     assert_eq!(wire.hosted_pair(&json!({ "image": {} })), None);
     assert_eq!(wire.call_id_slot(), Some("/toolUse/toolUseId"));
 }
+
+/// Bedrock finds a model's catalog entry by its id or the last part of its
+/// ARN, and a Claude row carries the Anthropic model's thinking facts.
+#[test]
+fn bedrock_models_take_their_facts_from_the_catalog() {
+    let opus = super::spec("us.anthropic.claude-opus-5-5").expect("listed");
+    assert!(opus.compat.binds_context && !opus.reasoning.can_disable);
+    let arn =
+        "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5";
+    assert_eq!(
+        super::spec(arn).map(|spec| spec.id.as_str()),
+        Some("us.anthropic.claude-opus-5-5")
+    );
+    let haiku = super::spec(ANTHROPIC_CLAUDE_HAIKU_4_5).expect("listed");
+    assert!(!haiku.compat.adaptive_thinking && haiku.reasoning.budget.is_some());
+    assert!(
+        super::spec("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3")
+            .is_none()
+    );
+}

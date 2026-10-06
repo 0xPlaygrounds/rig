@@ -47,30 +47,39 @@ fn refused(result: Result<Value, ProviderError>) -> &'static str {
     }
 }
 
+/// The catalog holds what each model's encoding reads, found by its id or a
+/// dated snapshot of it, never by a later model whose id merely starts with
+/// one.
 #[test]
-fn claude_class_reads_every_spelling_of_a_model() {
-    assert_eq!(claude_class(CLAUDE_HAIKU_4_5), Some(ClaudeClass::A0));
+fn the_catalog_holds_each_models_thinking_facts() {
+    let spec = |model: &str| super::super::completion::spec(model);
+    let haiku = spec("claude-haiku-4-5-20251001").expect("listed");
+    assert!(haiku.reasoning.levels.is_empty() && haiku.reasoning.budget.is_some());
+    assert!(haiku.reasoning.can_disable && !haiku.compat.adaptive_thinking);
+    let opus_4_5 = spec("claude-opus-4-5").expect("listed");
+    assert_eq!(opus_4_5.reasoning.levels.len(), 3);
+    assert!(!opus_4_5.compat.adaptive_thinking);
+    let sonnet_4_6 = spec("claude-sonnet-4-6").expect("listed");
+    assert!(sonnet_4_6.compat.adaptive_thinking && sonnet_4_6.reasoning.budget.is_some());
+    assert!(!sonnet_4_6.reasoning.levels.contains(&Effort::XHigh));
+    let opus_4_8 = spec(CLAUDE_OPUS_4_8).expect("listed");
+    assert!(opus_4_8.reasoning.budget.is_none());
+    assert_eq!(opus_4_8.sampling, Some(crate::catalog::Sampling::Never));
+    let sonnet_5_5 = spec(CLAUDE_SONNET_5_5).expect("listed");
     assert_eq!(
-        claude_class("claude-haiku-4-5-20251001"),
-        Some(ClaudeClass::A0)
+        sonnet_5_5.compat.thinking_off.as_deref(),
+        Some("between_tools")
     );
-    assert_eq!(
-        claude_class("us.anthropic.claude-haiku-4-5-20251001-v1:0"),
-        Some(ClaudeClass::A0)
+    assert!(
+        !spec("claude-opus-5-5-20260101")
+            .expect("a snapshot")
+            .reasoning
+            .can_disable
     );
-    assert_eq!(
-        claude_class("anthropic/claude-opus-5.5"),
-        Some(ClaudeClass::A7)
-    );
-    assert_eq!(
-        claude_class("us.anthropic.claude-sonnet-5"),
-        Some(ClaudeClass::A4)
-    );
-    assert_eq!(claude_class(CLAUDE_SONNET_5_5), Some(ClaudeClass::A6));
-    assert_eq!(claude_class(CLAUDE_OPUS_5), Some(ClaudeClass::A5));
-    assert_eq!(claude_class(CLAUDE_FABLE_5), Some(ClaudeClass::A8));
-    assert_eq!(claude_class("claude-opus-5-50"), None);
-    assert_eq!(claude_class("custom-model"), None);
+    assert!(!spec(CLAUDE_FABLE_5).expect("listed").reasoning.can_disable);
+    assert!(spec(CLAUDE_OPUS_5).expect("listed").reasoning.can_disable);
+    assert!(spec("claude-opus-5-50").is_none());
+    assert!(spec("custom-model").is_none());
 }
 
 /// Ported from #2616 (`typed_thinking_and_effort_serialize_to_the_documented_wire_values`):

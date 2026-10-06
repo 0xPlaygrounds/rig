@@ -1,12 +1,12 @@
 //! How Bedrock Converse answers
 //! [`GenerationOptions`](rig_core::completion::GenerationOptions): reasoning
 //! goes in the model's own request fields (`additionalModelRequestFields`)
-//! and depends on the model's family and Claude class; the rest are
+//! and depends on the model's family and catalog entry; the rest are
 //! Converse fields or checkpoints the base builder places.
 
+use rig_core::catalog::{ModelSpec, Sampling};
 use rig_core::completion::options::{Mapping, OptionFields, OptionMap};
 use rig_core::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
-use rig_core::providers::anthropic::completion::{ClaudeClass, claude_class};
 use serde_json::json;
 
 use crate::completion::Family;
@@ -21,32 +21,40 @@ fn nova_2(model: &str) -> bool {
     model.contains("nova-2")
 }
 
-/// Claude's reasoning on Bedrock, by class.
+/// Claude's reasoning on Bedrock, for the model `spec` describes (`None`: a
+/// model the catalog does not list, such as an application inference
+/// profile).
 fn claude_reasoning(
-    class: Option<ClaudeClass>,
+    spec: Option<&ModelSpec>,
     reasoning: &Reasoning,
     max_tokens: Option<u64>,
 ) -> Mapping {
-    use ClaudeClass::{A0, A1, A3, A6, A7, A8};
     match reasoning {
-        Reasoning::Off => match class {
-            Some(A7 | A8) => Mapping::unsupported("thinking cannot be disabled on this model"),
-            Some(A6) => model_fields(json!({"thinking": {"type": "between_tools"}})),
-            Some(A0 | A1) => Mapping::Omit("thinking is off unless the request asks for it"),
-            // A model the table does not name (an application inference
-            // profile, say) may think by default: it gets the newest
-            // models' shape, which A0 and A1 take too.
-            Some(_) | None => model_fields(json!({"thinking": {"type": "disabled"}})),
-        },
-        Reasoning::Effort(effort @ (Effort::Low | Effort::Medium | Effort::High)) => match class {
-            Some(A0) | None => {
-                Mapping::unsupported("this model takes a thinking budget, not an effort level")
+        Reasoning::Off => match spec {
+            Some(spec) if !spec.reasoning.can_disable => {
+                Mapping::unsupported("thinking cannot be disabled on this model")
             }
-            Some(A1) => model_fields(json!({"output_config": {"effort": effort.as_str()}})),
-            Some(_) => model_fields(json!({
+            Some(spec) if !spec.compat.adaptive_thinking => {
+                Mapping::Omit("thinking is off unless the request asks for it")
+            }
+            // A model the catalog does not list may think by default: it
+            // gets the newest models' shape.
+            _ => {
+                let off = spec
+                    .and_then(|spec| spec.compat.thinking_off.as_deref())
+                    .unwrap_or("disabled");
+                model_fields(json!({"thinking": {"type": off}}))
+            }
+        },
+        Reasoning::Effort(effort @ (Effort::Low | Effort::Medium | Effort::High)) => match spec {
+            Some(spec) if !spec.reasoning.levels.is_empty() && !spec.compat.adaptive_thinking => {
+                model_fields(json!({"output_config": {"effort": effort.as_str()}}))
+            }
+            Some(spec) if !spec.reasoning.levels.is_empty() => model_fields(json!({
                 "thinking": {"type": "adaptive"},
                 "output_config": {"effort": effort.as_str()},
             })),
+            _ => Mapping::unsupported("this model takes a thinking budget, not an effort level"),
         },
         Reasoning::Effort(Effort::Minimal) => {
             Mapping::unsupported("no Bedrock model lists a `minimal` effort level")
@@ -55,8 +63,8 @@ fn claude_reasoning(
             "unverified for aws_bedrock: which Claude models take `{}` on Bedrock",
             effort.as_str()
         )),
-        Reasoning::Budget { tokens } => match class {
-            Some(class) if class >= A3 => {
+        Reasoning::Budget { tokens } => match spec {
+            Some(spec) if spec.reasoning.budget.is_none() => {
                 Mapping::unsupported("this model takes an effort level, not a thinking budget")
             }
             _ if *tokens < 1024 => {
@@ -119,8 +127,8 @@ pub(crate) fn converse(
         seed,
         stop,
     } = fields;
-    let class = (family == Family::Claude)
-        .then(|| claude_class(model))
+    let spec = (family == Family::Claude)
+        .then(|| crate::completion::spec(model))
         .flatten();
     let always_reasons = model.contains("deepseek.r1");
     let caches = family == Family::Claude || family == Family::Nova;
@@ -129,7 +137,7 @@ pub(crate) fn converse(
         .any(|id| model.contains(id));
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match family {
-            Family::Claude => claude_reasoning(class, reasoning, request.max_tokens),
+            Family::Claude => claude_reasoning(spec, reasoning, request.max_tokens),
             Family::Nova if nova_2(model) => nova_reasoning(request, reasoning),
             _ if always_reasons => {
                 Mapping::unsupported("this model always reasons and takes no setting")
@@ -161,8 +169,8 @@ pub(crate) fn converse(
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
             Mapping::unsupported("Converse's `toolConfig` has no parallel tool call switch")
         }),
-        top_p: Mapping::of(top_p, |top_p| match class {
-            Some(class) if class >= ClaudeClass::A3 => {
+        top_p: Mapping::of(top_p, |top_p| match spec.and_then(|spec| spec.sampling) {
+            Some(Sampling::Never) => {
                 Mapping::unsupported("this Claude model does not take `top_p`")
             }
             _ => Mapping::Send(json!({"inferenceConfig": {"topP": top_p}})),
