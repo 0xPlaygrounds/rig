@@ -92,7 +92,9 @@ impl Operation for Completion {
     /// with [`CompletionRequest::validate_message_content`], then
     /// [`adapt`](crate::completion::adapt)ed for that model on the wire's
     /// replay target and checked again. Encoders, the fold and replay all
-    /// read the one resolved model.
+    /// read the one resolved model. Each option the routed target refuses
+    /// is reported first, through
+    /// [`options::check`](crate::completion::options::check).
     fn prepare(
         mut request: Self::Request,
         wire: &Descriptor<'_>,
@@ -114,6 +116,9 @@ impl Operation for Completion {
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
         let target = target.route(&request).unwrap_or(target);
+        // Every option the routed wire cannot honour is reported here, before
+        // any wire encodes, whatever its encoder does.
+        crate::completion::options::check(target, &mut request)?;
         // Documents join the history before it is adapted, so the adapter's
         // rules apply to them, unless the encoder sends them itself.
         if !target.takes_documents() {

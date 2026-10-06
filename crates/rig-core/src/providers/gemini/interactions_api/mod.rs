@@ -110,6 +110,14 @@ impl crate::wire::Wire for Interactions {
 }
 
 impl ReplayTarget for Interactions {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         API
     }
@@ -280,6 +288,14 @@ impl crate::wire::Wire for InteractionResume {
 }
 
 impl ReplayTarget for InteractionResume {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         API
     }

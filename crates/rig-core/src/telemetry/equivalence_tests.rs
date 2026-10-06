@@ -295,6 +295,14 @@ fn spans_match_the_replaced_builders() {
 struct Scripted(Finish);
 
 impl crate::completion::ReplayTarget for Scripted {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("prov.chat")
     }

@@ -327,13 +327,17 @@ fn tool_choice(choice: message::ToolChoice) -> Result<Value, EncodeError> {
 
 /// Ask for the reasoning ciphertext, without which reasoning replays only
 /// from stored state.
-fn include_ciphertext(body: &mut Value) {
+pub(crate) fn include_ciphertext(body: &mut Map<String, Value>) {
     const CIPHERTEXT: &str = "reasoning.encrypted_content";
-    let mut include = body.arr("include").to_vec();
+    let mut include = body
+        .get("include")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if !include.iter().any(|item| item == CIPHERTEXT) {
         include.push(json!(CIPHERTEXT));
     }
-    set(body, "include", Value::Array(include));
+    body.insert("include".to_owned(), Value::Array(include));
 }
 
 impl wire::Responses {
@@ -490,7 +494,9 @@ impl wire::Responses {
         }
         // Reasoning replays without stored state only with its ciphertext.
         if codex || body.get("reasoning").is_some() || body.get("store") == Some(&json!(false)) {
-            include_ciphertext(&mut body);
+            if let Some(fields) = body.as_object_mut() {
+                include_ciphertext(fields);
+            }
         }
         Ok(body)
     }

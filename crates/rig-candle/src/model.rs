@@ -367,6 +367,14 @@ impl rig_core::wire::Wire for Generation {
 }
 
 impl rig_core::completion::ReplayTarget for Generation {
+    fn map_options(
+        &self,
+        _request: &rig_core::completion::CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        rig_core::completion::options::unmapped(fields)
+    }
+
     // A local runtime has no finish vocabulary: its decoder states a stop.
     fn states_finish_reason(&self) -> bool {
         false

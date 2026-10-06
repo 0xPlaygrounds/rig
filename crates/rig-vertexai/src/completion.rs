@@ -149,6 +149,14 @@ fn referenced_media(content: &mut serde_json::Value, images: &mut usize) {
 }
 
 impl rig_core::completion::ReplayTarget for GenerateContent {
+    fn map_options(
+        &self,
+        _request: &rig_core::completion::CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        rig_core::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> rig_core::message::Api {
         rig_core::message::Api::from_static("vertexai.generate_content")
     }

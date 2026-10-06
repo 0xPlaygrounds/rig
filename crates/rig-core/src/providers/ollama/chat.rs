@@ -413,6 +413,14 @@ impl Wire for Chat {
 }
 
 impl ReplayTarget for Chat {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("ollama.chat")
     }

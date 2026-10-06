@@ -17,6 +17,7 @@ mod tracing_isolation;
 
 pub use completion::{
     MOCK_API, MOCK_MODEL, MockCompletionModel, MockError, MockRuntime, MockScript, MockTurn,
+    refuse_options,
 };
 pub use embeddings::{MockEmbeddingModel, MockEmbeddings, MockMultiTextDocument, MockTextDocument};
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};

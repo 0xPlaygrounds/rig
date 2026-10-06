@@ -9,6 +9,14 @@ use crate::message::{Api, ToolCall, ToolFunction, ToolResult};
 struct Target;
 
 impl ReplayTarget for Target {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }

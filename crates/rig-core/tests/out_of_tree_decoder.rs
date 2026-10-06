@@ -95,6 +95,39 @@ impl ReplayTarget for Vendor {
     fn accepts(&self, _model: &str) -> rig_core::completion::Accepts {
         rig_core::completion::Accepts::ALL
     }
+
+    /// The vendor takes no option, so each set one is refused.
+    fn map_options(
+        &self,
+        _request: &CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        use rig_core::completion::options::{Mapping, OptionFields, OptionMap};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        let refused = |set: bool| match set {
+            true => Mapping::unsupported("the vendor takes no options"),
+            false => Mapping::Nothing,
+        };
+        OptionMap {
+            reasoning: refused(reasoning.is_some()),
+            cache: refused(cache.is_some()),
+            service_tier: refused(service_tier.is_some()),
+            verbosity: refused(verbosity.is_some()),
+            parallel_tool_calls: refused(parallel_tool_calls.is_some()),
+            top_p: refused(top_p.is_some()),
+            seed: refused(seed.is_some()),
+            stop: refused(!stop.is_empty()),
+        }
+    }
 }
 
 impl Wire for Vendor {

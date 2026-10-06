@@ -165,7 +165,7 @@ pub(super) fn drops_unbound_thinking(
 
 /// `body`'s `thinking` with `drop_block` set: the caller's adaptive
 /// settings, or the model's default adaptive thinking when it names none.
-fn drop_unbound_thinking(body: &mut Map<String, Value>) {
+pub(crate) fn drop_unbound_thinking(body: &mut Map<String, Value>) {
     let binding = json!({ "prefix_mismatch_behavior": "drop_block" });
     match body.get_mut("thinking") {
         Some(Value::Object(thinking)) => {

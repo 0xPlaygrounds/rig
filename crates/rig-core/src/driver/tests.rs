@@ -228,6 +228,14 @@ impl EchoDecoder<'_> {
 }
 
 impl crate::completion::ReplayTarget for Echo {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("echo.chat")
     }
@@ -517,6 +525,14 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
     #[derive(Clone, Debug)]
     struct Multipart;
     impl crate::completion::ReplayTarget for Multipart {
+        fn map_options(
+            &self,
+            _request: &crate::completion::CompletionRequest,
+            fields: crate::completion::options::OptionFields<'_>,
+        ) -> crate::completion::options::OptionMap {
+            crate::test_utils::refuse_options(fields)
+        }
+
         fn api(&self) -> crate::message::Api {
             crate::message::Api::from_static("echo.chat")
         }

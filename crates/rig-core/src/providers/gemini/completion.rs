@@ -207,6 +207,14 @@ impl Wire for GenerateContent {
 }
 
 impl ReplayTarget for GenerateContent {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("gemini.generate_content")
     }

@@ -275,6 +275,14 @@ const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-
     qwen.qwen3-next writer.palmyra zai.glm";
 
 impl ReplayTarget for Converse {
+    fn map_options(
+        &self,
+        _request: &rig_core::completion::CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        rig_core::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("bedrock.converse")
     }

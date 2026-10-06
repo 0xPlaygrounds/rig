@@ -550,71 +550,84 @@ impl Chat {
         has_content.then_some(Value::Object(message))
     }
 
-    /// The dialect's rewrite of the finished body ([`BodyRewrite`]): a
-    /// refusal where the provider would answer with an error or silently do
-    /// something else, Moonshot's steering for `required`, and each
-    /// dialect's spellings and content shapes.
+    /// The dialect's rewrite of the finished body ([`BodyRewrite`]), then
+    /// OpenRouter's prompt caching when it is on.
     fn rewrite(&self, map: &mut Map<String, Value>) -> Result<(), EncodeError> {
-        let forced = map
-            .get("tool_choice")
-            .and_then(|choice| choice.at("/function/name"))
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        match self.provider.dialect.quirks.rewrite {
-            BodyRewrite::LlamaCpp => {
-                if let Some(name) = forced {
-                    return Err(EncodeError::request(format!(
-                        "llama.cpp cannot force a specific tool: `llama-server` accepts only \
-                         `auto`, `none` or `required` for tool_choice and silently treats \
-                         anything else as `auto`, so requesting `{name}` would return whichever \
-                         tool the model picked. Use `ToolChoice::Required` to force a call, or \
-                         advertise only `{name}` in `tools`."
-                    )));
-                }
-            }
-            BodyRewrite::Moonshot => {
-                if forced.is_some() {
-                    return Err(EncodeError::request(
-                        "Moonshot does not support forcing a specific tool",
-                    ));
-                }
-                if map.get("tool_choice").and_then(Value::as_str) == Some("required") {
-                    tracing::warn!(
-                        "Moonshot does not support tool_choice=required; coercing to auto with an \
-                         additional steering message"
-                    );
-                    map.insert("tool_choice".to_owned(), Value::from("auto"));
-                    if let Some(Value::Array(messages)) = map.get_mut("messages") {
-                        messages.push(json!({"role": "user",
-                            "content": "Please select a tool to handle the current issue."}));
-                    }
-                }
-            }
-            // The gateway takes every message's content as one string.
-            // Perplexity spends output budget on a text-part array (a short
-            // `max_tokens` comes back empty at `length`, checked live), so
-            // text-only arrays go as one string; the gateway takes every
-            // content as one string.
-            BodyRewrite::Perplexity | BodyRewrite::Mira => {
-                let all = self.provider.dialect.quirks.rewrite == BodyRewrite::Mira;
-                for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
-                    if let Value::Array(parts) = content
-                        && (all || parts.iter().all(|part| part.str("type") == Some("text")))
-                    {
-                        let texts: Vec<&str> =
-                            parts.iter().filter_map(|part| part.str("text")).collect();
-                        *content = Value::String(texts.join("\n"));
-                    }
-                }
-            }
-            BodyRewrite::DeepSeek => finalize_deepseek(map),
-            BodyRewrite::Mistral => finalize_mistral(map),
-            BodyRewrite::Ollama => finalize_ollama(map)?,
-            BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
-            BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
+        let kind = self.provider.dialect.quirks.rewrite;
+        rewrite_body(kind, map)?;
+        if kind == BodyRewrite::OpenRouter && self.prompt_caching {
+            apply_openrouter_prompt_caching(map);
         }
         Ok(())
     }
+}
+
+/// The dialect's rewrite of the finished body ([`BodyRewrite`]): a refusal
+/// where the provider would answer with an error or silently do something
+/// else, Moonshot's steering for `required`, and each dialect's spellings and
+/// content shapes. It runs after the merge and reads the merged body.
+pub(crate) fn rewrite_body(
+    kind: BodyRewrite,
+    map: &mut Map<String, Value>,
+) -> Result<(), EncodeError> {
+    let forced = map
+        .get("tool_choice")
+        .and_then(|choice| choice.at("/function/name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    match kind {
+        BodyRewrite::LlamaCpp => {
+            if let Some(name) = forced {
+                return Err(EncodeError::request(format!(
+                    "llama.cpp cannot force a specific tool: `llama-server` accepts only \
+                     `auto`, `none` or `required` for tool_choice and silently treats \
+                     anything else as `auto`, so requesting `{name}` would return whichever \
+                     tool the model picked. Use `ToolChoice::Required` to force a call, or \
+                     advertise only `{name}` in `tools`."
+                )));
+            }
+        }
+        BodyRewrite::Moonshot => {
+            if forced.is_some() {
+                return Err(EncodeError::request(
+                    "Moonshot does not support forcing a specific tool",
+                ));
+            }
+            if map.get("tool_choice").and_then(Value::as_str) == Some("required") {
+                tracing::warn!(
+                    "Moonshot does not support tool_choice=required; coercing to auto with an \
+                     additional steering message"
+                );
+                map.insert("tool_choice".to_owned(), Value::from("auto"));
+                if let Some(Value::Array(messages)) = map.get_mut("messages") {
+                    messages.push(json!({"role": "user",
+                        "content": "Please select a tool to handle the current issue."}));
+                }
+            }
+        }
+        // The gateway takes every message's content as one string.
+        // Perplexity spends output budget on a text-part array (a short
+        // `max_tokens` comes back empty at `length`, checked live), so
+        // text-only arrays go as one string; the gateway takes every
+        // content as one string.
+        BodyRewrite::Perplexity | BodyRewrite::Mira => {
+            let all = kind == BodyRewrite::Mira;
+            for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
+                if let Value::Array(parts) = content
+                    && (all || parts.iter().all(|part| part.str("type") == Some("text")))
+                {
+                    let texts: Vec<&str> =
+                        parts.iter().filter_map(|part| part.str("text")).collect();
+                    *content = Value::String(texts.join("\n"));
+                }
+            }
+        }
+        BodyRewrite::DeepSeek => finalize_deepseek(map),
+        BodyRewrite::Mistral => finalize_mistral(map),
+        BodyRewrite::Ollama => finalize_ollama(map)?,
+        BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
+    }
+    Ok(())
 }
 
 /// `call` as the item the wire sends, from what replay hands the encoder:
@@ -871,6 +884,14 @@ impl Wire for Chat {
 }
 
 impl crate::completion::ReplayTarget for Chat {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("openai.chat")
     }

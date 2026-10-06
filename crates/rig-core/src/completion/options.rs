@@ -16,6 +16,12 @@
 
 use serde::{Deserialize, Serialize};
 
+mod mapping;
+mod merge;
+
+pub use mapping::{Mapping, OptionFields, OptionMap, unmapped};
+pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, mapped_param, param, request_params};
+
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is
 /// reported through [`Self::on_unsupported`], never silently dropped.
@@ -110,6 +116,70 @@ impl GenerationOptions {
     pub fn on_unsupported(mut self, policy: OnUnsupported) -> Self {
         self.on_unsupported = policy;
         self
+    }
+
+    /// Every option but the policy, borrowed, as a wire maps it.
+    /// Destructures `self` with no `..`, so a new field fails to compile
+    /// here first.
+    pub fn fields(&self) -> OptionFields<'_> {
+        let Self {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+            on_unsupported: _,
+        } = self;
+        OptionFields {
+            reasoning: reasoning.as_ref(),
+            cache: cache.as_ref(),
+            service_tier: service_tier.as_ref(),
+            verbosity: verbosity.as_ref(),
+            parallel_tool_calls: *parallel_tool_calls,
+            top_p: *top_p,
+            seed: *seed,
+            stop,
+        }
+    }
+
+    /// `self` with every field `over` sets put on top: a `Some` option, a
+    /// non-empty `stop` list, a non-default `on_unsupported`. Every other
+    /// field keeps `self`'s value. An agent's options overlaid with a run's
+    /// give the run's where it sets one.
+    pub fn overlay(self, over: &GenerationOptions) -> GenerationOptions {
+        let GenerationOptions {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+            on_unsupported,
+        } = over;
+        GenerationOptions {
+            reasoning: reasoning.or(self.reasoning),
+            cache: cache.or(self.cache),
+            service_tier: service_tier.or(self.service_tier),
+            verbosity: verbosity.or(self.verbosity),
+            parallel_tool_calls: parallel_tool_calls.or(self.parallel_tool_calls),
+            top_p: top_p.or(self.top_p),
+            seed: seed.or(self.seed),
+            stop: if stop.is_empty() {
+                self.stop
+            } else {
+                stop.clone()
+            },
+            on_unsupported: if *on_unsupported == OnUnsupported::default() {
+                self.on_unsupported
+            } else {
+                *on_unsupported
+            },
+        }
     }
 }
 

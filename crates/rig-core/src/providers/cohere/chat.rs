@@ -441,6 +441,14 @@ impl Wire for NativeChat {
 const REQUEST_ID_HEADER: &str = "x-debug-trace-id";
 
 impl crate::completion::ReplayTarget for NativeChat {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::completion::options::unmapped(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static(API)
     }
