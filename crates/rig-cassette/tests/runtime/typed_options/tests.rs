@@ -1,5 +1,3 @@
-// P2 removes this gate.
-#[cfg(any())]
 mod harness_switch {
     //! One `GenerationOptions` value, applied to five providers by a harness
     //! that switches between them, encodes to each provider's own JSON. The
@@ -54,9 +52,11 @@ mod harness_switch {
     ) -> Result<Value, ProviderError> {
         let encoded = wire.encode(prepared(wire, request)?, Mode::Unary)?;
         let Body::Bytes(bytes) = encoded.request.body() else {
-            panic!("a completion body is JSON, not multipart");
+            return Err(ProviderError::request(
+                "a completion body is JSON, not multipart",
+            ));
         };
-        Ok(serde_json::from_slice(bytes).expect("the body is JSON"))
+        Ok(serde_json::from_slice(bytes)?)
     }
 
     /// The string at `pointer` in `body`.
@@ -114,7 +114,7 @@ mod harness_switch {
         let wire = bedrock_wire();
         let request = prepared(&wire, request)?;
         let encoded = wire.encode(request, Mode::Unary)?;
-        Ok(serde_json::to_value(&encoded.body).expect("a FinalBody serializes"))
+        Ok(serde_json::to_value(&encoded.body)?)
     }
 
     #[test]
@@ -212,8 +212,6 @@ mod harness_switch {
     }
 }
 
-// P2 removes this gate.
-#[cfg(any())]
 mod no_silent_drop {
     //! A cache asked of a dialect that cannot cache on request is refused,
     //! or skipped with a warning under `Ignore`; it is never dropped
@@ -337,8 +335,6 @@ mod no_silent_drop {
     }
 }
 
-// P2 removes this gate.
-#[cfg(any())]
 mod option_matrix {
     //! A golden of section 6: each option set alone on each wire gives
     //! exactly the body delta or the refusal its cell names. `omit` passes
@@ -346,18 +342,34 @@ mod option_matrix {
     //! change or an error; a wire that answers `Mapping::Nothing` for a set
     //! option fails with a non-`UnsupportedOption` error.
     //!
-    //! Encode-only. P2 extends `cells` to every completion wire and dialect
-    //! of section 6, `InteractionResume` included.
+    //! Encode-only. The rows cover every completion wire and dialect in
+    //! rig-core and Bedrock, `InteractionResume` included; Vertex AI, gRPC
+    //! and Candle pin their cells in their own crates, which this target
+    //! does not build.
 
     use rig::completion::{
         CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ServiceTier,
         Verbosity,
     };
+    use rig::providers::anthropic;
+    use rig::providers::chatgpt;
+    use rig::providers::gemini::GeminiConfig;
+    use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
+    use rig::providers::gemini::interactions_api::{InteractionResume, Interactions};
+    use rig::providers::openai::responses_api::wire::Responses;
+    use rig::providers::openai::wire::{
+        AZURE, Chat, DOUBLEWORD, Dialect, GROQ, HUGGINGFACE, HYPERBOLIC, LLAMACPP, MINIMAX, MIRA,
+        MISTRAL, MOONSHOT, OLLAMA, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY, TOGETHER, VENICE,
+        XIAOMIMIMO, ZAI,
+    };
     use rig_core::error::ProviderError;
+    use rig_core::wire::{Body, Mode, Wire};
+    use rig_test_support::cassette_models::AnthropicModels;
     use serde_json::{Value, json};
 
     use super::harness_switch::{
-        anthropic, bedrock, encode, gemini, openai_responses, openrouter, unsupported,
+        KEY, anthropic, bedrock, encode, gemini, openai_responses, openrouter, prepared,
+        unsupported,
     };
     use super::no_silent_drop::{cohere, deepseek};
 
@@ -402,7 +414,7 @@ mod option_matrix {
     /// section 6 for the model each wire uses. The request has no tools and
     /// no preamble.
     fn cells() -> Vec<(&'static str, Encode, [Cell; 8])> {
-        vec![
+        let mut rows: Vec<(&'static str, Encode, [Cell; 8])> = vec![
             (
                 // 6.1, class A3 (`claude-opus-4-8`).
                 "anthropic",
@@ -520,6 +532,459 @@ mod option_matrix {
                     Merge(json!({"stop": ["END"]})),
                 ],
             ),
+        ];
+        rows.extend(chat_dialects());
+        rows.extend(responses_dialects());
+        rows.extend(messages_dialects());
+        rows.extend(other_wires());
+        rows
+    }
+
+    fn chat(dialect: &'static Dialect, model: &'static str) -> Encode {
+        Box::new(move |r| encode(&Chat::new(OpenAIConfig::with_key(dialect, KEY), model), r))
+    }
+
+    fn responses(dialect: &'static Dialect, model: &'static str) -> Encode {
+        Box::new(move |r| {
+            encode(
+                &Responses::new(OpenAIConfig::with_key(dialect, KEY), model),
+                r,
+            )
+        })
+    }
+
+    fn messages(dialect: &'static anthropic::Dialect, model: &'static str) -> Encode {
+        Box::new(move |r| {
+            let wire = AnthropicModels::new(
+                anthropic::AnthropicConfig::with_key(dialect, KEY),
+                crate::cassettes::local_http(),
+            )
+            .completion(model)
+            .wire;
+            encode(&wire, r)
+        })
+    }
+
+    /// Every option refused, as a wire with no confirmed field answers.
+    fn refused() -> [Cell; 8] {
+        [
+            Refuse, Refuse, Refuse, Refuse, Refuse, Refuse, Refuse, Refuse,
+        ]
+    }
+
+    /// 6.2: the Chat Completions dialects the rows above leave out.
+    fn chat_dialects() -> Vec<(&'static str, Encode, [Cell; 8])> {
+        let openai_like = |reasoning: Cell, cache: Cell, tier: Cell, verbosity: Cell| {
+            [
+                reasoning,
+                cache,
+                tier,
+                verbosity,
+                Merge(json!({"parallel_tool_calls": false})),
+                Merge(json!({"top_p": 0.5})),
+                Merge(json!({"seed": 7})),
+                Merge(json!({"stop": ["END"]})),
+            ]
+        };
+        vec![
+            (
+                "openai",
+                chat(&OPENAI, "gpt-5.2"),
+                openai_like(
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Merge(json!({"prompt_cache_retention": "in_memory"})),
+                    Merge(json!({"service_tier": "default"})),
+                    Merge(json!({"verbosity": "low"})),
+                ),
+            ),
+            (
+                // rig's default `api-version` predates the newer fields.
+                "azure.openai",
+                chat(&AZURE, "prod-deployment"),
+                openai_like(Refuse, Refuse, Refuse, Refuse),
+            ),
+            (
+                "groq",
+                chat(&GROQ, "qwen/qwen3.8-27b"),
+                openai_like(
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Omit,
+                    Merge(json!({"service_tier": "on_demand"})),
+                    Refuse,
+                ),
+            ),
+            (
+                "mistral",
+                chat(&MISTRAL, "mistral-medium-latest"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Omit,
+                    Merge(json!({"service_tier": "standard_only"})),
+                    Refuse,
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"random_seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "xai",
+                chat(&rig::providers::xai::DIALECT, "grok-4.7"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Omit,
+                    Merge(json!({"service_tier": "default"})),
+                    Refuse,
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                "together",
+                chat(&TOGETHER, "deepseek-ai/DeepSeek-R1"),
+                [
+                    Merge(json!({"reasoning": {"enabled": true}, "reasoning_effort": "high"})),
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "venice",
+                chat(&VENICE, "venice-uncensored"),
+                openai_like(
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Merge(json!({"prompt_cache_retention": "default"})),
+                    Refuse,
+                    Refuse,
+                ),
+            ),
+            (
+                "moonshot",
+                chat(&MOONSHOT, "kimi-k3"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Merge(json!({"prompt_cache_options": {"mode": "implicit", "ttl": "5m"}})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "zai",
+                chat(&ZAI, "glm-5"),
+                [
+                    Merge(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "high"})),
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "llamacpp",
+                chat(&LLAMACPP, "qwen3"),
+                openai_like(
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Omit,
+                    Refuse,
+                    Refuse,
+                ),
+            ),
+            (
+                "ollama",
+                chat(&OLLAMA, "qwen3:4b"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "perplexity",
+                chat(&PERPLEXITY, "sonar-deep-research"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                // MiniMax M2 thinks always and takes no level.
+                "minimax",
+                chat(&MINIMAX, "MiniMax-M2.7"),
+                [
+                    Refuse,
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                // MiMo fixes `top_p` while it thinks, which it does unless
+                // the request turns thinking off.
+                "xiaomimimo",
+                chat(&XIAOMIMIMO, "mimo-v2.5"),
+                [
+                    Refuse,
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"stop": ["END"]})),
+                ],
+            ),
+            (
+                "copilot",
+                chat(&rig::providers::copilot::wire::DIALECT, "gpt-4.1"),
+                refused(),
+            ),
+            (
+                "huggingface",
+                chat(&HUGGINGFACE, "meta-llama/Llama-3.3-70B-Instruct"),
+                refused(),
+            ),
+            (
+                "hyperbolic",
+                chat(&HYPERBOLIC, "meta-llama/Llama-3.3-70B-Instruct"),
+                refused(),
+            ),
+            (
+                "doubleword",
+                chat(&DOUBLEWORD, "Qwen/Qwen3-235B-A22B"),
+                refused(),
+            ),
+            ("mira", chat(&MIRA, "claude-3.5-sonnet"), refused()),
+        ]
+    }
+
+    /// 6.3: the Responses dialects the rows above leave out.
+    fn responses_dialects() -> Vec<(&'static str, Encode, [Cell; 8])> {
+        let reasoning = || {
+            Merge(
+                json!({"reasoning": {"effort": "high"}, "include": ["reasoning.encrypted_content"]}),
+            )
+        };
+        vec![
+            (
+                "xai",
+                responses(&rig::providers::xai::DIALECT, "grok-4.7"),
+                [
+                    reasoning(),
+                    Omit,
+                    Merge(json!({"service_tier": "default"})),
+                    Refuse,
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                "openrouter",
+                responses(&OPENROUTER, "anthropic/claude-sonnet-4.5"),
+                [
+                    reasoning(),
+                    Merge(json!({"cache_control": {"type": "ephemeral"}})),
+                    Merge(json!({"service_tier": "default"})),
+                    Merge(json!({"text": {"verbosity": "low"}})),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                // The backend gets the ciphertext asked for on every request.
+                "chatgpt",
+                responses(&chatgpt::DIALECT, chatgpt::GPT_5_4),
+                [
+                    Merge(json!({"reasoning": {"effort": "high"}})),
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"text": {"verbosity": "low"}})),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                "copilot",
+                responses(&rig::providers::copilot::wire::DIALECT, "gpt-5.3-codex"),
+                [
+                    reasoning(),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+        ]
+    }
+
+    /// 6.1: the Messages-format dialects.
+    fn messages_dialects() -> Vec<(&'static str, Encode, [Cell; 8])> {
+        vec![
+            (
+                "zai",
+                messages(&anthropic::wire::ZAI, "glm-5"),
+                [Refuse, Omit, Refuse, Refuse, Refuse, Refuse, Refuse, Refuse],
+            ),
+            (
+                // A short cache places a block marker on the last message.
+                "minimax",
+                messages(&anthropic::wire::MINIMAX, "MiniMax-M2.7"),
+                [
+                    Refuse,
+                    Merge(json!({"messages": [{"role": "user", "content": [{
+                        "type": "text",
+                        "text": "Reply with the single word: pong",
+                        "cache_control": {"type": "ephemeral"},
+                    }]}]})),
+                    Merge(json!({"service_tier": "standard"})),
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Refuse,
+                ],
+            ),
+            (
+                "moonshot",
+                messages(&anthropic::wire::MOONSHOT, "kimi-k3"),
+                [Refuse, Omit, Refuse, Refuse, Refuse, Refuse, Refuse, Refuse],
+            ),
+            (
+                "xiaomimimo",
+                messages(&anthropic::wire::XIAOMIMIMO, "mimo-v2.5"),
+                [
+                    Refuse,
+                    Omit,
+                    Refuse,
+                    Refuse,
+                    Omit, // no tools to bind
+                    Merge(json!({"top_p": 0.5})),
+                    Refuse,
+                    Merge(json!({"stop_sequences": ["END"]})),
+                ],
+            ),
+        ]
+    }
+
+    /// 6.4 and 6.5: Interactions, a resumed interaction, Cohere's native API
+    /// and Ollama's `/api/chat`.
+    fn other_wires() -> Vec<(&'static str, Encode, [Cell; 8])> {
+        vec![
+            (
+                "gcp.gemini",
+                Box::new(|r| {
+                    encode(
+                        &Interactions::new(GeminiConfig::new(KEY), GEMINI_3_FLASH_PREVIEW),
+                        r,
+                    )
+                }),
+                [
+                    Merge(json!({"generation_config": {"thinking_level": "high"}})),
+                    Omit,
+                    Merge(json!({"service_tier": "standard"})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"generation_config": {"seed": 7}})),
+                    Merge(json!({"generation_config": {"stop_sequences": ["END"]}})),
+                ],
+            ),
+            (
+                // A resumed interaction sends no body; its baseline is `null`.
+                "gcp.gemini",
+                Box::new(|r| {
+                    let wire = InteractionResume::new(GeminiConfig::new(KEY), "interaction-1");
+                    let encoded = wire.encode(prepared(&wire, r)?, Mode::Unary)?;
+                    match encoded.request.body() {
+                        Body::Bytes(bytes) if bytes.is_empty() => Ok(Value::Null),
+                        _ => Err(ProviderError::request(
+                            "a resumed interaction sends no body",
+                        )),
+                    }
+                }),
+                refused(),
+            ),
+            (
+                "cohere",
+                Box::new(|r| {
+                    encode(
+                        &rig::providers::cohere::NativeChat::new(
+                            rig::providers::cohere::CohereConfig::new(KEY),
+                            rig::providers::cohere::COMMAND_A_03_2025,
+                        ),
+                        r,
+                    )
+                }),
+                [
+                    Merge(json!({"thinking": {"type": "enabled"}})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop_sequences": ["END"]})),
+                ],
+            ),
+            (
+                "ollama",
+                Box::new(|r| {
+                    encode(
+                        &rig::providers::ollama::Chat::new(
+                            rig::providers::ollama::OllamaConfig::new(),
+                            "qwen3:4b",
+                        ),
+                        r,
+                    )
+                }),
+                [
+                    Merge(json!({"think": "high"})),
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"options": {"top_p": 0.5}})),
+                    Merge(json!({"options": {"seed": 7}})),
+                    Merge(json!({"options": {"stop": ["END"]}})),
+                ],
+            ),
         ]
     }
 
@@ -581,8 +1046,6 @@ mod option_matrix {
     }
 }
 
-// P2 removes this gate.
-#[cfg(any())]
 mod option_layers {
     //! An agent's options and a run's options merge field by field through
     //! `GenerationOptions::overlay`, the one function rig-agent and rig-ecs
@@ -614,8 +1077,6 @@ mod option_layers {
     }
 }
 
-// P2 removes this gate.
-#[cfg(any())]
 mod precedence {
     //! The merge keeps three behaviours every wire has today: tools in
     //! `additional_params.tools` join rig's own tools rather than replacing

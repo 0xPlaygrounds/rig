@@ -1530,3 +1530,52 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
     }
     Ok(())
 }
+
+/// `top_p` and `seed` become generation overrides above a raw `top_k`;
+/// thinking off is the protocols' default; the rest is refused.
+#[test]
+fn options_become_generation_overrides() -> Result<(), CandleError> {
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{
+        CacheRetention, GenerationOptions, Reasoning, ServiceTier, options::Mapping,
+    };
+
+    let mut options_request = request(vec![Message::user("hello")]).options(
+        GenerationOptions::default()
+            .top_p(0.7)
+            .seed(11)
+            .reasoning(Reasoning::Off),
+    );
+    options_request.additional_params = Some(serde_json::json!({"top_k": 4, "seed": 3}));
+    let generation = settings(&options_request, &GenerationConfig::default(), 8)?;
+    assert_eq!(generation.top_p, Some(0.7));
+    assert_eq!(generation.top_k, Some(4));
+    // `additional_params` is above the mapped options.
+    assert_eq!(generation.seed, 3);
+
+    let answers = |options: GenerationOptions| {
+        let request = request(vec![Message::user("hello")]).options(options);
+        scripted().map_options(&request, request.options.fields())
+    };
+    assert!(matches!(
+        answers(GenerationOptions::default().reasoning(Reasoning::Off)).reasoning,
+        Mapping::Omit(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().cache(CacheRetention::Short)).cache,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().service_tier(ServiceTier::Auto)).service_tier,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().stop(["END"])).stop,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().top_p(1.5)).top_p,
+        Mapping::Unsupported(_)
+    ));
+    Ok(())
+}

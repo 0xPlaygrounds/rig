@@ -349,3 +349,44 @@ fn a_part_with_its_own_media_resolution_is_refused() {
         "the refusal names the field: {error}"
     );
 }
+
+/// gRPC takes the GenerateContent cells for what its proto declares: no
+/// service tier, and no thinking level, which Google's proto does not name.
+#[test]
+fn options_take_the_cells_the_proto_declares() {
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{
+        CompletionRequest, Effort, GenerationOptions, ServiceTier, options::Mapping,
+    };
+    use rig_core::wire::{Mode, Wire as _};
+
+    let wire = GenerateContent::new("gemini-2.5-flash");
+    let request = CompletionRequest::new("hi").options(
+        GenerationOptions::default()
+            .top_p(0.5)
+            .seed(7)
+            .stop(["END"]),
+    );
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.top_p, Some(0.5));
+    assert_eq!(config.seed, Some(7));
+    assert_eq!(config.stop_sequences, vec!["END".to_owned()]);
+
+    let answers = |options: GenerationOptions| {
+        let request = CompletionRequest::new("hi").options(options);
+        wire.map_options(&request, request.options.fields())
+    };
+    assert!(matches!(
+        answers(GenerationOptions::default().service_tier(ServiceTier::Default)).service_tier,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().reasoning(Effort::High)).reasoning,
+        Mapping::Unsupported(_)
+    ));
+}
