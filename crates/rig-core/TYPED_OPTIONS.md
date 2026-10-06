@@ -1295,8 +1295,10 @@ unsupported ("cannot be manually disabled"); `Auto` `"auto"`, `Default`
 unsupported; `parallel_tool_calls`, `top_p`, `seed` as OpenAI; `stop` at most 4.
 
 **xAI** (`"xai"`, Chat route; https://docs.x.ai/developers/model-capabilities/text/reasoning, https://docs.x.ai/docs/api-reference):
-`Off` unsupported on reasoning models ("cannot be disabled"), omit on
-`*-non-reasoning`; `Effort(Low..XHigh)` `"reasoning_effort":..` (grok-4.6+;
+`Off` `"reasoning_effort":"none"` on a model whose catalog levels include
+`none` (grok-4.3), unsupported on other reasoning models ("cannot be
+disabled"), omit on models that do not reason (the catalog's `reasoning`;
+an unlisted id reasons unless it says `non-reasoning`); `Effort(Low..XHigh)` `"reasoning_effort":..` (grok-4.6+;
 grok-4.5 low..high, and xAI silently treats `xhigh` as `high` there, so the
 catalog must refuse it); `Max`, `Minimal`, `Budget` unsupported; cache
 `Short` omit, `None` and `Long` unsupported; `Default` `"default"`, `Priority`
@@ -1430,7 +1432,7 @@ The Responses API has no `seed` and no `stop` parameter.
 | `seed`, `stop` | unsupported: no such parameter | | [RC] |
 
 **xAI** (`"xai"`): `Off` unsupported on grok-4.5, 4.6, 4.7 (`{"effort":"none"}`
-on grok-4.3 only; omit on `*-non-reasoning`); `Effort(Low/Medium/High)`
+on grok-4.3 only; omit on models that do not reason); `Effort(Low/Medium/High)`
 `"reasoning":{"effort":..}`; `XHigh` grok-4.6+ only; `Minimal`, `Max`,
 `Budget` unsupported; cache `Short` omit, `None`, `Long` unsupported; `Default`
 `"default"`, `Priority` `"priority"`, `Auto`, `Flex` unsupported; `verbosity`,
@@ -1837,6 +1839,8 @@ row below).
 | P3 | OpenAI Chat: the `max_tokens` to `max_completion_tokens` rename reads the catalog's `reasoning` instead of the GPT-5-and-later and o-series name rule (`is_openai_reasoning_model`, deleted). Listed models whose answer differs: `gpt-5.3-chat-latest` (models.dev: no reasoning) now sends `max_tokens`; `gpt-daybreak-blue-latest`, `gpt-daybreak-red-latest` and `gpt-realtime-2.1` now send `max_completion_tokens`. An id the catalog does not list (a fine-tune, a model newer than the data) sends `max_tokens` | OpenAI Chat callers of those models, or of an unlisted reasoning model, who set `max_tokens` | "On OpenAI Chat Completions, whether `max_tokens` is sent as `max_completion_tokens` now follows the model catalog. For a model the catalog does not list, put `max_completion_tokens` in `additional_params` instead of setting `max_tokens`." |
 | P3 | Anthropic: the default `max_tokens` is the catalog's `max_output_tokens` instead of 128000 for the ten listed models and 64000 for the `claude-opus-4`, `claude-sonnet-4` and `claude-haiku-4-5` prefixes. `claude-opus-4-0`, `claude-opus-4-1` and their snapshots now send 32000, their documented limit, where 64000 was refused by the API; an unlisted id under those prefixes now needs an explicit `max_tokens` | Anthropic callers who set no `max_tokens` | "Claude Opus 4 and 4.1 now default to 32000 output tokens, their documented limit. A Claude model the catalog does not list needs an explicit `max_tokens`." |
 | P3 | Chat dialects, Responses, the Anthropic dialects and Cohere native: whether a model reads user images comes from the catalog's `input.image`; a model the catalog does not list reads them, so an image to an unlisted text-only model (`gpt-4-0314`, a GPT-3.5 snapshot, an unlisted Groq, Codestral or Devstral id) reaches the API, which answers with its own error, where the name rules refused it locally | callers sending images to unlisted text-only models | "Image input is now checked against the model catalog; a model it does not list is sent the image as asked." |
+| P3 | xAI Chat: whether a Grok model reasons, and which levels it takes, come from the catalog instead of the `non-reasoning` name rule, which stays only for ids the catalog does not list. `Reasoning::Off` on grok-4.3 (levels include `none`) now sends `"reasoning_effort":"none"`, as the Responses route already did, where it was refused; on listed models that do not reason (grok-2 and grok-3 ids, `grok-3-fast`) it now sends nothing where it was refused, and their `stop` is now sent where it was refused | xAI Chat callers asking grok-4.3, grok-2 or grok-3 for `Reasoning::Off` or `stop` | "On xAI Chat, `Reasoning::Off` turns reasoning off on Grok 4.3 and is accepted on models that do not reason, as the model catalog says." |
+| P3 | Gemini GenerateContent (REST, Vertex, gRPC): thinking follows the catalog instead of the prefix table; an id it does not list is looked up as the model it versions (`gemini-2.0-flash-001` as `gemini-2.0-flash`, `gemini-2.5-flash-preview-09-2025` as `gemini-2.5-flash`), and an unlisted id before 2.5 still does not think. Rows that differ from the prefix table: `gemini-2.5-flash-image` does not think (its model page), so `Off` sends nothing where it sent `thinkingBudget: 0` and a budget is refused; Gemma 4 (`gemma-4-26b-a4b-it`, `gemma-4-31b-it`) takes `Off` as `thinkingLevel: "minimal"` and `Effort(High)` as `"high"`, where `Off` was refused and every level and budget was sent; `-tts` and `computer-use` previews and other listed rows with no thinking options now refuse an effort or budget the table let through | Gemini callers of those models with `reasoning` set | "Gemini thinking now follows the model catalog: Gemma 4 turns thinking off with `Reasoning::Off`, and Gemini 2.5 Flash Image, which does not think, no longer takes a budget." |
 | P4 | Bedrock: the guardrail is sent on streams as well as unary requests (`crates/rig-bedrock/src/request.rs:135` filters it to unary today) | streaming callers of `with_guardrail` | "A Bedrock guardrail now also applies to streamed requests." |
 
 ### 12.1 P2: options
