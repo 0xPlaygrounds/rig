@@ -29,6 +29,7 @@ it has no normal dependency on cassette or the classic agent runtime.
 | `tool_choice` | `ToolChoiceSpec`, unchanged (`"none"`, `"required"`, `{"specific":{"function_names":[…]}}`) | — | `anthropic_request_shape_tool_choice_none`; `anthropic_output_tool_choice_required`; `anthropic_output_tool_choice_specific_output` |
 | `additional_params` | `AdditionalParams`, verbatim | — | `anthropic_request_shape_thinking_unary` (`{"thinking":{"type":"enabled","budget_tokens":1024}}`) |
 | `output_schema` | `Output.schema` when the resolved mode is `Native`; `null` otherwise | — | `anthropic_request_shape_output_schema_unary` (the schema verbatim, unsorted); `anthropic_output_prompted_unary` (`null`); `anthropic_output_tool_under_none_degrades` (the schema: `Tool` degraded to `Native`) |
+| `accept_unknown_finish_reasons` | `AcceptUnknownFinishReasons` (run, else agent); `false` when neither has one. Serialized only when `true` | — | `tool_batch::an_accepted_unknown_finish_reason_runs_the_call` (`true` on every request); `tool_batch::an_answer_with_an_unknown_finish_reason_fails_the_run` (`false`) |
 | `stream` (the effect's, beside the request) | the run's `StreamRequested` | — | every `*_streamed` golden |
 
 The fold is the only constructor of a `CompletionRequest` in the crate (`policy::fold_request`; `tests/core/dependency_graph.rs` guards what rig-ecs may depend on).

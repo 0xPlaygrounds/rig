@@ -68,7 +68,9 @@ pub mod bus {
     pub use rig_agent::bus::*;
 }
 
-/// Effect-log recording and replay; optional runtime and native HTTP integrations.
+/// Effect-log recording and replay. With `agent`, also the classic-agent
+/// adapter (`rig::cassette::agent`). The `cassette-http` feature adds the
+/// native provider HTTP cassette engine (`rig::cassette::http`).
 #[cfg(feature = "cassette")]
 #[cfg_attr(docsrs, doc(cfg(feature = "cassette")))]
 pub use rig_cassette as cassette;

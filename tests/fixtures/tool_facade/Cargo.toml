@@ -23,6 +23,7 @@ all_root = [
     "rig/bedrock",
     "rig/candle",
     "rig/cassette",
+    "rig/cassette-http",
     "rig/fastembed",
     "rig/fastembed-hf-hub",
     "rig/fastembed-ort-download-binaries",

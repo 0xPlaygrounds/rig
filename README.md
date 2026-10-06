@@ -160,7 +160,8 @@ With the `cassette` feature, `rig::cassette::effect_log` provides logs,
 recorders, replay handlers and checkpoints. Keep an `EffectLogRecorder` handle
 and attach its clone with `AgentBuilder::record_to`; import
 `rig::cassette::agent::AgentReplayExt` to stamp the resulting log or check
-replay compatibility.
+replay compatibility. The `cassette-http` feature adds the native provider
+HTTP cassette engine as `rig::cassette::http`.
 
 For transport-free consumers, depend directly on `rig-cassette` with default
 features disabled. Its optional `agent` and `ecs` adapters are independent of

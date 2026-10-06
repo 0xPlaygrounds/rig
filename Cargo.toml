@@ -67,6 +67,7 @@ features = [
     "bedrock",
     "candle",
     "cassette",
+    "cassette-http",
     "derive",
     "epub",
     "facade-build-tests",
@@ -478,6 +479,9 @@ agent = ["dep:rig-agent", "rig-cassette?/agent"]
 # `rig::cassette`: effect-log recording and replay. With `agent`, also the
 # classic-agent adapter (`rig::cassette::agent`).
 cassette = ["dep:rig-cassette"]
+# `rig::cassette` with the native provider HTTP cassette engine
+# (`rig::cassette::http`). Native only; it brings in tokio and an HTTP mock server.
+cassette-http = ["cassette", "rig-cassette?/http"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
 # Internal: opt in to the slow nested-`cargo check` facade build tests
 # (`tests/tool_facade_features.rs`). Not in `default`; `--all-features` (CI's
