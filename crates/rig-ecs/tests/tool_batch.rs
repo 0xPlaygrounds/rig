@@ -1253,7 +1253,7 @@ fn an_accepted_unknown_finish_reason_runs_the_call() {
             rig_core::completion::FinishReason::Other("weird".to_owned()),
             None,
         )
-        .with_unknown_finish_reasons_accepted(true),
+        .accept_unknown_finish_reasons(true),
         reply(vec![AssistantContent::text("3")]),
     ]);
     let accept: rig_ecs::agent::AcceptUnknownFinishReasons = serde_json::from_value(

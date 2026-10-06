@@ -346,7 +346,7 @@ mod unknown_finish_reasons {
     async fn turn(accept: bool, turn: MockTurn) -> (Message, Option<String>, bool) {
         let model = MockCompletionModel::from_turns([turn, MockTurn::text("next")]);
         let response = model
-            .call(CompletionRequest::new("hi").accepting_unknown_finish_reasons(accept))
+            .call(CompletionRequest::new("hi").accept_unknown_finish_reasons(accept))
             .await
             .expect("the reply folds");
         assert_eq!(response.accepts_unknown_finish_reasons(), accept);
@@ -426,7 +426,7 @@ mod unknown_finish_reasons {
                 serde_json::Value::Null,
             )
             .with_finish_reason(reason)
-            .with_unknown_finish_reasons_accepted(true)
+            .accept_unknown_finish_reasons(true)
         };
         assert!(accepted(FinishReason::ContentFilter).stop().is_failure());
         let mut reported = accepted(FinishReason::Other("weird".to_owned()));
@@ -442,7 +442,7 @@ mod unknown_finish_reasons {
     /// writes it when it is off.
     #[test]
     fn the_choice_round_trips_and_is_omitted_when_off() {
-        let request = CompletionRequest::new("hi").accepting_unknown_finish_reasons(true);
+        let request = CompletionRequest::new("hi").accept_unknown_finish_reasons(true);
         let json = serde_json::to_value(&request).expect("serializes");
         assert_eq!(json["accept_unknown_finish_reasons"], true);
         let back: CompletionRequest = serde_json::from_value(json).expect("parses");
@@ -458,8 +458,8 @@ mod unknown_finish_reasons {
         );
         let off = serde_json::to_value(&response).expect("serializes");
         assert!(off.get("accepts_unknown_finish_reasons").is_none());
-        let on = serde_json::to_value(response.with_unknown_finish_reasons_accepted(true))
-            .expect("serializes");
+        let on =
+            serde_json::to_value(response.accept_unknown_finish_reasons(true)).expect("serializes");
         let back: super::CompletionResponse = serde_json::from_value(on).expect("parses");
         assert!(back.accepts_unknown_finish_reasons());
     }

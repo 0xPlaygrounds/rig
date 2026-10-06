@@ -137,7 +137,7 @@ pub(crate) async fn build_prepared_completion_request(
     // carries the telemetry flag off: one span, no double recording.
     let request = prepared
         .apply(CompletionRequest::new(prompt))
-        .accepting_unknown_finish_reasons(runner.config.accept_unknown_finish_reasons);
+        .accept_unknown_finish_reasons(runner.config.accept_unknown_finish_reasons);
     let telemetry_messages = if record_telemetry_content {
         request.messages_for_telemetry()
     } else {

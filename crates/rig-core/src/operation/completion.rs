@@ -223,6 +223,8 @@ pub struct Turn {
     call_id_slot: Option<&'static str>,
     /// Whether the request accepts an unknown finish reason as a normal stop
     /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
+    ///
+    /// [`CompletionRequest::accept_unknown_finish_reasons`]: field@CompletionRequest::accept_unknown_finish_reasons
     accept_unknown_finish: bool,
     /// The first position whose item closed without the provider stating it
     /// complete. An item there may be the partner a later one needs, so
@@ -1014,7 +1016,7 @@ impl Turn {
         });
         let mut response = CompletionResponse::new(self.snapshot(), usage, origin, reply.raw)
             .with_optional_finish_reason(reason)
-            .with_unknown_finish_reasons_accepted(self.accept_unknown_finish);
+            .accept_unknown_finish_reasons(self.accept_unknown_finish);
         response.error = error;
         response.provider_request_id = reported(reply.provider_request_id);
         response

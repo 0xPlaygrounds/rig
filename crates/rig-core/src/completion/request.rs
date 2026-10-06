@@ -274,13 +274,15 @@ impl CompletionResponse {
     /// Whether a finish reason outside the normalized vocabulary ends the
     /// turn as a normal stop, as the request asked
     /// ([`CompletionRequest::accept_unknown_finish_reasons`]).
+    ///
+    /// [`CompletionRequest::accept_unknown_finish_reasons`]: field@CompletionRequest::accept_unknown_finish_reasons
     pub fn accepts_unknown_finish_reasons(&self) -> bool {
         self.accepts_unknown_finish_reasons
     }
 
     /// Accept, or refuse, [`FinishReason::Other`] as a normal stop in
     /// [`Self::stop`]. Filtered content and a reported failure still fail.
-    pub fn with_unknown_finish_reasons_accepted(mut self, accept: bool) -> Self {
+    pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
         self.accepts_unknown_finish_reasons = accept;
         self
     }
@@ -969,7 +971,9 @@ impl CompletionRequest {
     /// Accept, or with `false` refuse, finish reasons outside the normalized
     /// vocabulary as a normal stop. See
     /// [`Self::accept_unknown_finish_reasons`] for what that lets through.
-    pub fn accepting_unknown_finish_reasons(mut self, accept: bool) -> Self {
+    ///
+    /// [`Self::accept_unknown_finish_reasons`]: field@Self::accept_unknown_finish_reasons
+    pub fn accept_unknown_finish_reasons(mut self, accept: bool) -> Self {
         self.accept_unknown_finish_reasons = accept;
         self
     }
