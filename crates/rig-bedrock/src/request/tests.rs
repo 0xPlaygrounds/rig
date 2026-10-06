@@ -265,6 +265,65 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
     assert_eq!(body["messages"].as_array().map(Vec::len), Some(1));
 }
 
+/// The body `history` encodes to on `wire` without being prepared, as a
+/// request read back from storage reaches the encoder.
+fn unprepared(history: Vec<Message>) -> Result<Value, EncodeError> {
+    let mut request = CompletionRequest::new("unused");
+    request.chat_history = history;
+    let encoded = Converse::new(CLAUDE).encode(request, Mode::Unary)?;
+    Ok(serde_json::to_value(encoded.body).expect("serializes"))
+}
+
+/// A document given as raw bytes sends the same base64 source as one given
+/// as base64, a later system message goes as user text, and audio, which
+/// Converse has no block for, is refused, when the request reaches the
+/// encoder unprepared.
+#[test]
+fn unprepared_content_is_encoded_or_refused() {
+    use rig_core::message::{Audio, Document};
+    let document = |data| {
+        unprepared(vec![Message::User {
+            content: vec![UserContent::Document(Document {
+                data,
+                media_type: Some(DocumentMediaType::PDF),
+                additional_params: None,
+            })],
+        }])
+        .expect("encodes")
+    };
+    let raw = document(DocumentSourceKind::Raw(b"hello".to_vec()));
+    assert_eq!(
+        raw.pointer("/messages/0/content/1/document/source"),
+        Some(&json!({ "bytes": "aGVsbG8=" })),
+        "{raw}"
+    );
+    assert_eq!(raw, document(DocumentSourceKind::base64("aGVsbG8=")));
+
+    let later = unprepared(vec![
+        Message::user("q"),
+        Message::assistant("a"),
+        Message::system("steer"),
+    ])
+    .expect("encodes");
+    assert_eq!(
+        later.pointer("/messages/2"),
+        Some(&json!({ "role": "user", "content": [{ "text": "steer" }] })),
+        "{later}"
+    );
+
+    let audio = unprepared(vec![Message::User {
+        content: vec![UserContent::Audio(Audio {
+            data: DocumentSourceKind::base64("aGVsbG8="),
+            media_type: None,
+        })],
+    }])
+    .expect_err("audio is refused");
+    assert!(
+        audio.to_string().contains("Converse takes no audio"),
+        "{audio}"
+    );
+}
+
 /// A failed result states it with `status: error` to Nova and Claude, which
 /// Converse documents the field for; any other result has no status.
 #[test]

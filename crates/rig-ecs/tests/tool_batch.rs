@@ -313,6 +313,8 @@ fn in_flight_tools(world: &mut World) -> usize {
 
 #[test]
 fn tool_policy_sets_how_many_calls_are_in_flight() {
+    // The `concurrency: 1` case is the default policy's.
+    assert_eq!(ToolPolicy::default(), ToolPolicy { concurrency: 1 });
     for concurrency in [1, 2] {
         for capacity in [1, 16] {
             for reverse in [false, true] {

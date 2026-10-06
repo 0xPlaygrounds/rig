@@ -1440,9 +1440,11 @@ impl Settings<'_, '_> {
                     .get(agent)
                     .map(|options| options.0.clone())
                     .unwrap_or_default();
+                // When the run is its own agent, overlaying its entries on
+                // themselves changes nothing.
                 match self.provider_options.get(run) {
-                    Ok(over) if run != agent => base.overlay(&over.0),
-                    _ => base,
+                    Ok(over) => base.overlay(&over.0),
+                    Err(_) => base,
                 }
             },
             tool_choice: patch

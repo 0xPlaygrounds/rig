@@ -120,9 +120,11 @@ fn effective_provider_options(
         .get::<rig_ecs::agent::ProviderOptions>(agent)
         .map(|options| options.0.clone())
         .unwrap_or_default();
+    // When the subject is the agent, overlaying its entries on themselves
+    // changes nothing.
     match world.get::<rig_ecs::agent::ProviderOptions>(subject) {
-        Some(over) if subject != agent => base.overlay(&over.0),
-        _ => base,
+        Some(over) => base.overlay(&over.0),
+        None => base,
     }
 }
 

@@ -416,14 +416,15 @@ impl AgentConfig {
         while let Err(refused) = spec.validate(options) {
             match options.on_unsupported {
                 OnUnsupported::Ignore => {
+                    let option: &str = refused.option.as_ref();
                     tracing::warn!(
-                        option = refused.option.as_ref(),
+                        option,
                         provider = %refused.provider,
                         model = %refused.model,
                         reason = %refused.reason,
                         "unsupported option ignored"
                     );
-                    match refused.option.as_ref() {
+                    match option {
                         "reasoning" => options.reasoning = None,
                         "cache" => options.cache = None,
                         _ => return Err(ProviderError::UnsupportedOption(refused)),
