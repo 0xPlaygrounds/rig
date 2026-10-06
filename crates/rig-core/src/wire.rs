@@ -709,8 +709,9 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     /// transport reports no whole document, as for a stream. The driver
     /// feeds it every frame and records what it finishes with as `raw`.
     /// A wire whose operation's decoders record `raw` themselves names
-    /// [`document::Unreassembled`].
-    type Reassembler: document::Reassemble<Self::Frame>;
+    /// [`document::Unreassembled`]; a completion wire cannot, because it
+    /// does not [`Serve`](document::Serves) completions.
+    type Reassembler: document::Reassemble<Self::Frame> + document::Serves<Self::Op>;
 
     /// What the wire says about itself.
     fn describe(&self) -> Descriptor<'_>;

@@ -486,6 +486,8 @@ impl rig_core::completion::ReplayTarget for Generation {
 #[derive(Debug, Default)]
 pub struct CandleDocument(Option<serde_json::Value>);
 
+impl rig_core::wire::document::Serves<rig_core::operation::Completion> for CandleDocument {}
+
 impl rig_core::wire::document::Reassemble<CandleFrame> for CandleDocument {
     fn absorb(&mut self, frame: &CandleFrame) {
         let response = match frame {

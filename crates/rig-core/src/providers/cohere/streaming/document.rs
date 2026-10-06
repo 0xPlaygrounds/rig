@@ -58,6 +58,8 @@ fn listed<T: Into<Value>>(slots: BTreeMap<u64, T>) -> Value {
     Value::Array(slots.into_values().map(Into::into).collect())
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for ChatResponse {}
+
 impl Reassemble<WireFrame> for ChatResponse {
     fn absorb(&mut self, frame: &WireFrame) {
         let WireEvent::Known(event) = self.classifier.classify(frame.clone()) else {

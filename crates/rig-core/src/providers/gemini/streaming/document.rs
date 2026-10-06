@@ -232,6 +232,8 @@ fn slot<'a, T: Default>(
     slot
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for GenerateContentResponse {}
+
 impl Reassemble<WireFrame> for GenerateContentResponse {
     fn absorb(&mut self, frame: &WireFrame) {
         // The driver reports what does not classify.

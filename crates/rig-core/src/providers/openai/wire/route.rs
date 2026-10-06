@@ -211,6 +211,8 @@ impl Default for OpenAiReassembler {
     }
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for OpenAiReassembler {}
+
 impl Reassemble<WireFrame> for OpenAiReassembler {
     fn absorb(&mut self, frame: &WireFrame) {
         on_route!(self, document => document.absorb(frame));

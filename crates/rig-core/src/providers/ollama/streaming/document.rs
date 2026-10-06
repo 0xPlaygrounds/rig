@@ -52,6 +52,8 @@ fn fold(into: &mut Map<String, Value>, fields: Map<String, Value>, appended: &[&
     }
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for ChatResponse {}
+
 impl Reassemble<WireFrame> for ChatResponse {
     fn absorb(&mut self, frame: &WireFrame) {
         // The driver reports what does not classify.

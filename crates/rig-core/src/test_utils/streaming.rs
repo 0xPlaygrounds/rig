@@ -240,6 +240,8 @@ pub struct MockDocument {
     failed: bool,
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for MockDocument {}
+
 impl crate::wire::document::Reassemble<MockFrame> for MockDocument {
     fn absorb(&mut self, frame: &MockFrame) {
         if self.document.is_some() || self.failed {

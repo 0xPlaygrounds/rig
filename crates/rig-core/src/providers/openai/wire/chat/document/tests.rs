@@ -133,6 +133,89 @@ fn tool_calls_merge_by_index_and_close_as_the_unary_body_states_them() {
     );
 }
 
+/// The calls the message of `frames`, each a chunk's `tool_calls`, rebuilds.
+fn rebuilt_calls(frames: &[Value]) -> Value {
+    let chunks: Vec<Value> = frames
+        .iter()
+        .map(|calls| chunk(json!({"tool_calls": calls}), json!({})))
+        .collect();
+    rebuilt(&chat(&OPENAI), &chunks)
+        .pointer("/choices/0/message/tool_calls")
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// A whole function call fragment.
+fn call(index: Option<u64>, id: &str, name: &str, arguments: &str) -> Value {
+    let mut call = json!({"id": id, "type": "function",
+        "function": {"name": name, "arguments": arguments}});
+    if let Some(index) = index {
+        call["index"] = json!(index);
+    }
+    call
+}
+
+#[test]
+fn a_new_id_under_a_held_index_starts_a_new_call_once_the_held_one_is_whole() {
+    let calls = rebuilt_calls(&[
+        json!([call(Some(0), "c3", "weather", "{\"city\":\"Oslo\"}")]),
+        json!([call(Some(0), "d4", "weather", "{\"city\":\"Bern\"}")]),
+    ]);
+    assert_eq!(
+        calls,
+        json!([
+            call(None, "c3", "weather", "{\"city\":\"Oslo\"}"),
+            call(None, "d4", "weather", "{\"city\":\"Bern\"}")
+        ])
+    );
+}
+
+#[test]
+fn a_new_id_under_an_index_continues_a_call_whose_arguments_are_incomplete() {
+    // Some providers (GLM) send a fresh id, and no name, with every chunk of
+    // one call.
+    let calls = rebuilt_calls(&[
+        json!([call(Some(0), "a", "weather", "{\"city\":")]),
+        json!([{"index": 0, "id": "b", "function": {"arguments": "\"Oslo\"}"}}]),
+    ]);
+    assert_eq!(
+        calls,
+        json!([call(None, "b", "weather", "{\"city\":\"Oslo\"}")])
+    );
+}
+
+#[test]
+fn index_less_fragments_with_new_ids_are_new_calls() {
+    let calls = rebuilt_calls(&[
+        json!([call(None, "a1", "weather", "{\"city\":")]),
+        json!([{"function": {"arguments": "\"Paris\"}"}}]),
+        json!([call(None, "b2", "weather", "{\"city\":\"Rome\"}")]),
+        json!([{"id": "a1", "function": {"arguments": ""}}]),
+    ]);
+    assert_eq!(
+        calls,
+        json!([
+            call(None, "a1", "weather", "{\"city\":\"Paris\"}"),
+            call(None, "b2", "weather", "{\"city\":\"Rome\"}")
+        ])
+    );
+}
+
+#[test]
+fn an_index_less_fragment_with_no_id_starts_a_call_after_a_whole_one() {
+    let calls = rebuilt_calls(&[
+        json!([{"type": "function", "function": {"name": "weather", "arguments": "{}"}}]),
+        json!([{"type": "function", "function": {"name": "time", "arguments": "{}"}}]),
+    ]);
+    assert_eq!(
+        calls,
+        json!([
+            {"type": "function", "function": {"name": "weather", "arguments": "{}"}},
+            {"type": "function", "function": {"name": "time", "arguments": "{}"}}
+        ])
+    );
+}
+
 #[test]
 fn every_choice_is_kept_by_its_index() {
     let second = |delta: Value, extra: Value| {

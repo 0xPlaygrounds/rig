@@ -9,7 +9,7 @@
 
 use serde_json::{Map, Value};
 
-use super::{ChatDecoder, ChatEvent, Quirks, REASONING_DETAILS, merge_details};
+use super::{CallKind, ChatDecoder, ChatEvent, Quirks, REASONING_DETAILS, merge_details};
 use crate::wire::document::Reassemble;
 use crate::wire::{Decoder, WireEvent, WireFrame};
 
@@ -129,6 +129,8 @@ impl ChatCompletion {
     }
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for ChatCompletion {}
+
 impl Reassemble<WireFrame> for ChatCompletion {
     fn absorb(&mut self, frame: &WireFrame) {
         match self.classifier.classify(frame.clone()) {
@@ -240,35 +242,78 @@ fn merge_delta(message: &mut Map<String, Value>, delta: &Map<String, Value>) {
     }
 }
 
-/// Fold one tool-call fragment into the call at its `index`.
+/// Fold one tool-call fragment into the call it continues, told apart as
+/// the decoder tells calls apart. A fragment with an `index` goes to the
+/// latest call holding that index, unless it states a new id and that call
+/// already has whole arguments or the fragment names a tool: then it starts
+/// a new call. A fragment without one goes to the call that states its id,
+/// or, stating none, continues the latest call while that call is opaque,
+/// its arguments are not yet a whole object, or the fragment brings nothing
+/// new; otherwise it starts a new call.
 fn merge_call(message: &mut Map<String, Value>, fragment: &Value) {
     let Value::Object(fragment) = fragment else {
         return;
     };
-    let index = fragment.get("index").and_then(Value::as_u64).unwrap_or(0);
     if !matches!(message.get("tool_calls"), Some(Value::Array(_))) {
         message.insert("tool_calls".to_owned(), Value::Array(Vec::new()));
     }
     let Some(Value::Array(calls)) = message.get_mut("tool_calls") else {
         return;
     };
-    let position = calls
-        .iter()
-        .position(|call| call.get("index").and_then(Value::as_u64) == Some(index));
-    let call = match position.and_then(|position| calls.get_mut(position)) {
-        Some(call) => call,
-        None => {
-            calls.push(Value::Object(Map::from_iter([(
-                "index".to_owned(),
-                Value::from(index),
-            )])));
-            match calls.last_mut() {
-                Some(call) => call,
-                None => return,
-            }
-        }
+    let index = fragment.get("index").and_then(Value::as_u64);
+    let id = stated_id(fragment);
+    let named = |part: &str| {
+        fragment
+            .get(part)
+            .and_then(|part| part.get("name"))
+            .and_then(Value::as_str)
+            .is_some_and(|name| !name.is_empty())
     };
-    let Value::Object(call) = call else {
+    let names = named("function") || named("custom");
+    let position = match index {
+        Some(index) => calls
+            .iter()
+            .rposition(|call| call.get("index").and_then(Value::as_u64) == Some(index))
+            .filter(|&position| {
+                calls.get(position).is_none_or(|held| {
+                    let replaced = id.as_ref().is_some_and(|id| {
+                        held.as_object()
+                            .and_then(stated_id)
+                            .is_some_and(|held| held != *id)
+                    });
+                    !(replaced && (arguments_complete(held) || names))
+                })
+            }),
+        None => match &id {
+            Some(id) => calls
+                .iter()
+                .rposition(|call| call.as_object().and_then(stated_id).as_ref() == Some(id)),
+            None => {
+                let starts = names
+                    || fragment
+                        .get("function")
+                        .and_then(|function| function.get("arguments"))
+                        .map(crate::json_utils::value_to_json_string)
+                        .is_some_and(|arguments| !arguments.is_empty());
+                calls.len().checked_sub(1).filter(|&last| {
+                    calls.get(last).is_some_and(|latest| {
+                        CallKind::of(latest) == CallKind::Unknown
+                            || !arguments_complete(latest)
+                            || !starts
+                    })
+                })
+            }
+        },
+    };
+    let position = position.unwrap_or_else(|| {
+        let mut call = Map::new();
+        if let Some(index) = index {
+            call.insert("index".to_owned(), Value::from(index));
+        }
+        calls.push(Value::Object(call));
+        calls.len() - 1
+    });
+    let Some(Value::Object(call)) = calls.get_mut(position) else {
         return;
     };
     for (key, value) in fragment {
@@ -285,6 +330,28 @@ fn merge_call(message: &mut Map<String, Value>, fragment: &Value) {
             _ => keep(call, key, value),
         }
     }
+}
+
+/// The id a fragment or a rebuilt call states, as the decoder reads it:
+/// some providers send `""` or `"null"` for a call they gave no id.
+fn stated_id(call: &Map<String, Value>) -> Option<String> {
+    match call.get("id") {
+        Some(Value::String(id)) if !id.is_empty() && id != "null" => Some(id.clone()),
+        Some(id @ Value::Number(_)) => Some(id.to_string()),
+        _ => None,
+    }
+}
+
+/// Whether a rebuilt call's arguments are already a whole JSON object.
+fn arguments_complete(call: &Value) -> bool {
+    call.pointer("/function/arguments")
+        .and_then(Value::as_str)
+        .is_some_and(|arguments| {
+            matches!(
+                crate::json_utils::parse_tool_arguments(arguments),
+                Ok(Value::Object(_))
+            )
+        })
 }
 
 /// Append a chunk's token log probabilities to the choice's.

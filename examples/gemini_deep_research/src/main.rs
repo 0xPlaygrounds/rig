@@ -136,8 +136,7 @@ struct StreamState {
     interaction_id: Option<String>,
     is_complete: bool,
     saw_text: bool,
-    /// The interaction document off the terminal record, when the stream
-    /// reached one.
+    /// The interaction document the stream rebuilt, when it sent one.
     interaction: Option<Value>,
 }
 
@@ -157,13 +156,13 @@ fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
 }
 
 /// The finished stream's response carries the interaction id rig normalizes
-/// and, under `interaction` in its `raw`, Gemini's own document for the
-/// finished run.
+/// and, as its `raw`, Gemini's own interaction document for the finished run,
+/// its steps rebuilt from the stream.
 fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
     if let Some(response_id) = response.response_id() {
         state.interaction_id = Some(response_id.to_owned());
     }
-    state.interaction = response.raw.get("interaction").cloned();
+    state.interaction = Some(response.raw).filter(|raw| !raw.is_null());
 
     println!("\nResearch complete.");
     if !state.saw_text {

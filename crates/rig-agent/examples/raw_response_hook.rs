@@ -14,9 +14,9 @@
 //! same parity the pre-normalization `raw_response` had.
 //!
 //! The hook below runs unchanged on both surfaces. It reads `raw` as JSON and
-//! prints the fields Rig does not normalize. What `raw` holds depends on the
-//! surface, and `HookContext::is_streaming` says which: the reply document on
-//! the blocking surface, the stream's terminal record on the streamed one.
+//! prints the fields Rig does not normalize. `raw` is the provider's reply
+//! document on both: the body itself on the blocking surface, and the same
+//! document rebuilt from the stream's chunks on the streamed one.
 //!
 //! ```not_rust
 //! OPENAI_API_KEY=... cargo run -p rig-agent --example raw_response_hook
@@ -37,26 +37,18 @@ use rig_core::providers::openai::{OpenAIConfig, Route};
 struct PrintOpenAiFields;
 
 impl AgentHook for PrintOpenAiFields {
-    /// On the blocking surface `raw` is the Chat Completions reply document.
-    /// On the streamed surface it is the stream's terminal record, whose
-    /// envelope fields sit under `additional_params`.
+    /// `raw` is the Chat Completions reply document on both surfaces.
     async fn on_outcome(&self, ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
         let Some(response) = event.completion() else {
             return OutcomeAction::proceed();
         };
         let raw = &response.raw;
-        let field = |value: Option<&serde_json::Value>, key: &str| {
-            value.and_then(|value| value.get(key)).cloned()
-        };
-        let (id, envelope) = if ctx.is_streaming() {
-            (raw.get("response_id"), raw.get("additional_params"))
-        } else {
-            (raw.get("id"), Some(raw))
-        };
         println!(
-            "  id {id:?} · system_fingerprint {:?} · service_tier {:?}",
-            field(envelope, "system_fingerprint"),
-            field(envelope, "service_tier"),
+            "  streamed {} · id {:?} · system_fingerprint {:?} · service_tier {:?}",
+            ctx.is_streaming(),
+            raw.get("id"),
+            raw.get("system_fingerprint"),
+            raw.get("service_tier"),
         );
         OutcomeAction::proceed()
     }

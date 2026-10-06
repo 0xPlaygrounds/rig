@@ -31,6 +31,8 @@ impl Routed {
     }
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for Routed {}
+
 impl Reassemble<WireFrame> for Routed {
     fn absorb(&mut self, frame: &WireFrame) {
         match shape(&frame.as_str()) {

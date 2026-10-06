@@ -228,6 +228,8 @@ pub struct ConverseOutput {
     whole: Option<Value>,
 }
 
+impl rig_core::wire::document::Serves<rig_core::operation::Completion> for ConverseOutput {}
+
 impl Reassemble<ConverseFrame> for ConverseOutput {
     fn absorb(&mut self, frame: &ConverseFrame) {
         let event = match frame {

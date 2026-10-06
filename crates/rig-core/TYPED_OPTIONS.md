@@ -56,7 +56,7 @@ hidden in it.
 | 2 | Precedence lives in one place. | `options::request_params` is the one merge: base body, mapped options, provider options (P4) and `additional_params`, in that order. It returns a `FinalBody`, whose field is private to `completion::options`, so no wire can construct one. `FinalBody` has no `&mut` access, and `FinalBody::into_body` is how a completion wire gets its request bytes. | The `options-precedence` guard, over the completion-wire files (section 2.1), rejects reading `additional_params` as a field or through a struct pattern, any path to `Body::Bytes` or `Body::Multipart` (an expression or a pattern), an `impl` on `Body` (whose `Self::Bytes` it cannot resolve), a qualified `<Body>::..` path, `Body` itself in a macro's tokens, a `.body_mut()` call, any `.body(..)` call whose argument is not `FinalBody::into_body()` or `Body::empty()`, `FinalBody::deserialize` turbofished to `Value` or `Map`, and `serde_json::to_value`, `to_vec` or `to_string` of a function parameter typed `CompletionRequest`. It sees only the listed files and names, not types, so it does not stop every copy of a `FinalBody` or of the request into JSON, nor a `Body` built by a helper or macro in an unlisted file (section 1.1). | P2 (merge, `FinalBody`, guard), P4 (provider layer) | `body.insert("cache_control".into(), top)` on a `FinalBody`: `error[E0599]: no method named 'insert' found for struct 'FinalBody'`. `FinalBody(map)` in a wire: `error[E0423]: cannot initialize a tuple struct which contains private fields`. `let raw = request.additional_params.clone();` in `anthropic/completion.rs`: `options-precedence: crates/rig-core/src/providers/anthropic/completion.rs:<line>: reads additional_params outside request_params`. `Body::Bytes(serde_json::to_vec(&body)?)` in a completion wire: `options-precedence: <file>:<line>: builds a request body without FinalBody::into_body`. |
 | 3 | The decoding path cannot depend on typed views. | Each provider's `Options` and `Extras` live in `providers::<p>::extension`, a module no other provider module names. Rust has no visibility that hides a module from its siblings while keeping it public, so the prompt makes a source guard this guarantee's mechanism. | The `extras-off-decode-path` guard parses each file with `syn` and resolves every `use` tree (grouped, aliased, glob, `self`, `super`) before matching. Outside an `extension` module, no non-test file under rig-core's `providers` tree or a companion provider crate's `src` may name a path through an `extension` module, or `ReplyExtras` or `ProviderExtension`. A `pub use` or `pub type` of an extension item is rejected everywhere. The guard's own tests cover each import form (section 2.5). | P4 | `use crate::providers::openrouter::{extension as ext};` in `openai/wire/chat.rs`: `source-guards` fails `extras-off-decode-path: crates/rig-core/src/providers/openai/wire/chat.rs:<line>: names crate::providers::openrouter::extension`. `fn read<P: ProviderExtension>(raw: &Value)` in a decoder: `<file>:<line>: names ProviderExtension`. |
 | 4 | Every public model constant has a catalog entry. | The catalog is data, and the constants are `pub const`. No type links them, so this guarantee is a guard test, as the prompt specifies. | A guard test walks every public string model constant in rig-core's provider modules and the companion provider crates (a `pub const` or `pub static`, a `pub` associated `const`, any `const` in a trait impl, a `pub` trait's default `const`, and a `pub use` of any of these, named or glob, a glob followed through its target module's own `pub use` items, filed under the re-exporting module's vendor, with `rig_core::` paths resolved in rig-core) and looks it up in `Catalog::builtin()`. An item is a string constant when its type is a reference to `str` by any path or a `type` alias of one, or when its value is a string literal or resolves to a string constant, whatever its type is spelled as. An item-level macro call the guard has not read fails it. A `pub use` whose target the guard cannot resolve to a constant (an external crate's item) is read as no constant. | P3 | Add `pub const GPT_7: &str = "gpt-7";` with no entry: `every_public_model_constant_has_a_catalog_entry` fails `openai::GPT_7 ("gpt-7") has no catalog entry`. |
-| 5 | Streamed and unary `raw` agree for every API. | `Out::raw` moves behind `Emit = Free`, so a completion decoder cannot write `raw` (E0599). Every `Wire` names an associated `type Reassembler: Reassemble<Self::Frame>`. The driver, not the decoder, feeds it every frame of a stream and records its `finish()` as `raw`, so no decoder can skip a frame. | A whole-document parity test runs over every recorded unary and streamed pair. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`. An `impl Wire` without a `Reassembler`: `error[E0046]: not all trait items implemented, missing: 'Reassembler'`. |
+| 5 | Streamed and unary `raw` agree for every API. | `Out::raw` moves behind `Emit = Free`, so a completion decoder cannot write `raw` (E0599). Every `Wire` names an associated `type Reassembler: Reassemble<Self::Frame> + Serves<Self::Op>`. `Unreassembled`, which records nothing, serves only `Emit = Free` operations, so a completion wire must name a reassembler that rebuilds its document. The driver, not the decoder, feeds it every frame of a stream and records its `finish()` as `raw`, so no decoder can skip a frame. | A whole-document parity test runs over every recorded unary and streamed pair, and a guard test fails when the corpus records a turn both ways (the same request body, streaming switches aside, to the same endpoint) that has no parity row. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`. An `impl Wire` without a `Reassembler`: `error[E0046]: not all trait items implemented, missing: 'Reassembler'`. `type Reassembler = Unreassembled;` on a completion wire: `error[E0271]: type mismatch resolving '<Completion as Operation>::Emit == Free'`. |
 
 Decisions B and E have type checks of their own (sections 3 and 5). B gives
 E0308, E0609 and E0616 on misplaced provider options. E gives E0451 and
@@ -154,10 +154,20 @@ listed with what covers it.
   The item-level macros it allows (`openai_vendor!`, `anthropic_vendor!`,
   `rest_messages!`, `tonic::include_proto!`) were read by hand; a change to
   one that makes it emit a model constant is not seen.
-- **Guarantee 5.** The type ensures every frame reaches the reassembler. It
-  cannot ensure the reassembler folds each frame correctly. That is the
-  parity test's job, and Bedrock, xAI Chat and Interactions have no
-  recorded pair. Their reassemblers are checked by unit tests only.
+- **Guarantee 5.** The type ensures every frame reaches a reassembler that
+  is not `Unreassembled`. It cannot ensure the reassembler folds each frame
+  correctly: a wire may name a fold that drops a field, or one that
+  records nothing at all, and implement `Serves<Completion>` for it. That
+  is the parity test's job, over every recorded pair, and review's for a
+  wire with none. Interactions, xAI Chat and the ChatGPT backend have no
+  recorded pair; their reassemblers are checked by unit tests and
+  hand-built pairs only. The guard finds a pair only when its two requests
+  send the same JSON body, `stream` and `stream_options` aside, to the same
+  endpoint; pairs whose prompts differ are listed by hand.
+- **Guarantee 5.** The driver records `raw` when the reply ends, fails or
+  reaches the end of its frames. A caller that stops polling a stream
+  before then never reaches that point, so `Streamed::partial()` carries
+  no `raw` for it.
 - **Guarantee 5.** `CompletionResponse::raw` stays a public field. Code that
   runs after the driver (a session layer, the caller) can still overwrite
   it. The guarantee covers what the driver records.
@@ -955,7 +965,10 @@ reads both paths.
   already hides `Out::event` from completions (`crates/rig-core/src/wire.rs:613`).
   A completion decoder has no way to write `raw`. Other operations keep it,
   and their wires name `type Reassembler = Unreassembled`, which records
-  nothing.
+  nothing. `Wire::Reassembler` must also implement `Serves<Self::Op>`, and
+  `Unreassembled` serves only operations with `Emit = Free`, so a
+  completion wire cannot name it (E0271). Each completion reassembler
+  implements `Serves<Completion>`.
 - On the unary path `raw` is the document the transport reports, as today
   (`crates/rig-core/src/wire.rs:346-357`): the HTTP wires' whole body, and
   Bedrock's `Opened::with_document` (`crates/rig-bedrock/src/completion.rs:440`).
@@ -987,10 +1000,12 @@ reads both paths.
   (`raw_pair`), and compares them whole after `comparable`, which drops
   `null`, empty lists and objects, minted keys (`id`, `created`,
   `created_at`, `completed_at`) and the JSON pointers a row names for what
-  two answers cannot share. Its tests hold one row per recorded pair, each
-  marked `rebuilt` once its API's reassembler rebuilds the unary document.
-  A rebuilt row that disagrees fails, an unrebuilt row that agrees fails,
-  and a provider with both capture matrices and no row fails.
+  two answers cannot share. Its tests hold one row per recorded pair, and
+  a row that disagrees fails. A guard test reads every cassette and fails
+  for a turn recorded both ways (the same request body, `stream` and
+  `stream_options` aside, to the same endpoint) that has no row, or that
+  another crate's test does not check (Bedrock's pair, in `rig-bedrock`,
+  through `raw_pair_over` and the SDK transport).
 
 **Public API.**
 
@@ -1000,15 +1015,18 @@ pub trait Reassemble<Frame>: Default + WasmCompatSend + 'static {
     fn absorb(&mut self, frame: &Frame);
     fn finish(self) -> serde_json::Value;
 }
+/// The operations whose wires may name a reassembler.
+pub trait Serves<Op: Operation> {}
 /// For wires whose operation is not a completion: records nothing.
 #[derive(Debug, Default)]
 pub struct Unreassembled;
 impl<F> Reassemble<F> for Unreassembled { /* finish() is Value::Null */ }
+impl<Op: Operation<Emit = Free>> Serves<Op> for Unreassembled {}
 
 // rig_core::wire
 pub trait Wire {
     // ...the existing items, then:
-    type Reassembler: Reassemble<Self::Frame>;
+    type Reassembler: Reassemble<Self::Frame> + Serves<Self::Op>;
     fn reassembler(&self) -> Self::Reassembler { Self::Reassembler::default() }
 }
 impl<Op: Operation<Emit = Free>> Out<'_, Op> { pub fn raw(&mut self, raw: serde_json::Value); }
@@ -1037,13 +1055,14 @@ sends `obfuscation`, which unary lacks (dropped), and unary has
 `annotations: []`, which the stream omits (the null, absent and empty
 equivalence).
 
-**Known gaps for P5.** Bedrock, xAI Chat and Interactions have no recording
-of one prompt answered both ways; their reassemblers are checked by unit
-tests only, and the P5 PR says so. DeepSeek and Venice turned out to have
-pairs (`followup_hunt_matrix`, `streaming_logprobs_matrix`,
-`turn_termination_matrix`, `reasoning_matrix`), now parity rows. Gemini part coalescing and
-Interactions `outputs` are the reassemblers most likely to need fixes from
-recordings.
+**Known gaps for P5.** Interactions, xAI Chat and the ChatGPT backend have
+no recording of one prompt answered both ways; their reassemblers are
+checked by unit tests and hand-built pairs only, and the P5 PR says so.
+Bedrock (`tool_choice/specific_add_raw_*`), xAI Responses, OpenRouter's
+and Copilot's Responses routes, DeepSeek and Venice turned out to have
+pairs, now parity rows; Copilot's showed that its terminal event states
+`copilot_usage` beside its `response`, which the Responses reassembler
+now keeps where the unary body has it.
 
 **Alternative considered.** A documented per-API subset (the envelope without
 content). Rejected: it strips content from unary `raw`, a second breaking
@@ -1794,20 +1813,21 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
 
 | API | unary `raw` | streamed `raw` today | rebuild |
 |---|---|---|---|
-| OpenAI Chat, every dialect | `chat.completion` body | `{usage, finish_reason (rig's enum), response_id, model, logprobs, additional_params}` (`crates/rig-core/src/providers/openai/wire/chat.rs:1687-1708`); drops `native_finish_reason`, `annotations`, `refusal`; repeated arrays are extended (Perplexity: 68 citations, 17 distinct) | `openai::wire::chat::document::ChatCompletion`, fed what the decoder classifies as a chunk or a whole reply: top-level keys last non-null wins, `object` renamed `chat.completion`, stream padding (`obfuscation`, Mistral's `p`) dropped; `delta.content`, `refusal`, `reasoning`, `reasoning_content` append; `tool_calls` merge by `index` (`arguments`, `input` append), `index` dropped at finish; `reasoning_details` merge with the decoder's own merge; `annotations`, `images`, `audio.data`, `audio.transcript`, `logprobs.*` arrays append; choices kept by `index` and listed in `index` order; a choice that carries its whole `message` (a whole reply, or Perplexity's message-so-far beside each delta) is kept as its last frame sent it; an empty `content` beside calls or a refusal is `null`; OpenRouter's terminal `usage.cost`, `provider`, `native_finish_reason` land where unary has them; the `[DONE]` sentinel and the in-band error envelope add nothing; a bare-string reply (Mira) has no document |
+| OpenAI Chat, every dialect | `chat.completion` body | `{usage, finish_reason (rig's enum), response_id, model, logprobs, additional_params}` (`crates/rig-core/src/providers/openai/wire/chat.rs:1687-1708`); drops `native_finish_reason`, `annotations`, `refusal`; repeated arrays are extended (Perplexity: 68 citations, 17 distinct) | `openai::wire::chat::document::ChatCompletion`, fed what the decoder classifies as a chunk or a whole reply: top-level keys last non-null wins, `object` renamed `chat.completion`, stream padding (`obfuscation`, Mistral's `p`) dropped; `delta.content`, `refusal`, `reasoning`, `reasoning_content` append; tool-call fragments merge into the call the decoder gives them (`arguments`, `input` append): by `index`, where a new id under an index whose call already has whole arguments, or that names a tool, starts a new call, and without one into the call stating its id or, stating none, the latest call while its arguments are incomplete; `index` dropped at finish; `reasoning_details` merge with the decoder's own merge; `annotations`, `images`, `audio.data`, `audio.transcript`, `logprobs.*` arrays append; choices kept by `index` and listed in `index` order; a choice that carries its whole `message` (a whole reply, or Perplexity's message-so-far beside each delta) is kept as its last frame sent it; an empty `content` beside calls or a refusal is `null`; OpenRouter's terminal `usage.cost`, `provider`, `native_finish_reason` land where unary has them; the `[DONE]` sentinel and the in-band error envelope add nothing; a bare-string reply (Mira) has no document |
 | Anthropic Messages | `Message` | `{usage, stop_reason, stop_sequence, message_id, model}` (`crates/rig-core/src/providers/anthropic/streaming.rs:549-558`), pinned by a key-set test | `message_start.message` is the skeleton; `content_block_start` placed at its index; `text_delta`, `thinking_delta`, `signature_delta` append; `input_json_delta` accumulates and is parsed at `content_block_stop` (`{}` when empty); `citations_delta` appends; `message_delta` sets `stop_reason`, `stop_sequence`, `stop_details`, `container`, and merges its cumulative `usage` over the start usage; server-tool results and `fallback` blocks kept whole |
-| OpenAI Responses (HTTP and WebSocket) | `Response` | the terminal event's `response` (`crates/rig-core/src/providers/openai/responses_api/streaming.rs:795`), already the unary shape | `openai::responses_api::streaming::document::Response`: the latest lifecycle event's `response`, final at the terminal one (`completed`, `incomplete` or `failed`, whose status it states); fill `output` from `response.output_item.added`/`.done` items by `output_index` when the terminal `output` is empty (the Codex backend sends `output: []`) or the stream was cut; `billing` is unary-only and stays `Option` in `Extras`. The WebSocket session feeds the same reassembler |
+| OpenAI Responses (HTTP and WebSocket) | `Response` | the terminal event's `response` (`crates/rig-core/src/providers/openai/responses_api/streaming.rs:795`), already the unary shape | `openai::responses_api::streaming::document::Response`: the latest lifecycle event's `response`, final at the terminal one (`completed`, `incomplete` or `failed`, whose status it states), with the fields an event states beside its `response` (Copilot's `copilot_usage`) at the top level; fill `output` from `response.output_item.added`/`.done` items by `output_index` when the terminal `output` is empty (the Codex backend sends `output: []`) or the stream was cut; `billing` is unary-only and stays `Option` in `Extras`. The WebSocket session feeds the same reassembler |
 | Gemini GenerateContent, Vertex, gRPC | `GenerateContentResponse` | REST: a snake_case summary (`crates/rig-core/src/providers/gemini/streaming.rs:195-207`); gRPC and Vertex: the last chunk through `keep_raw` (`gemini/streaming.rs:73`, `crates/rig-gemini-grpc/src/streaming.rs:52`, `crates/rig-vertexai/src/types/completion_response.rs:34`) | candidates kept by `index`; `candidates[i].content.parts` append; adjacent text parts with equal `thought` coalesce, a signature joining the run unless both parts carry one, and an empty unsigned text part is dropped (derived from recordings: the stream sends a run's signature on a trailing `{"text": ""}` part, the unary body on the run's one part); a part holding only a signature joins the part before it; `citationMetadata.citationSources` append; `groundingMetadata`, `urlContextMetadata`, `safetyRatings`, `finishReason`, `finishMessage`, `usageMetadata`, `modelVersion`, `responseId` last non-null; `promptFeedback` first. Vertex's "stream" re-emits the unary reply, so it is already equal |
 | Gemini Interactions | interaction resource | `{usage, interaction, model_version}` (`crates/rig-core/src/providers/gemini/interactions_api/streaming.rs:342-350`); `interaction.completed` carries no `steps` | the resource fields of `interaction.created`, `status_update` and `interaction.completed`, with `steps` rebuilt from the step events as the decoder folds them: `text` deltas extend a model output's last text item, text `thought_summary` deltas the summary's last text item, and `arguments_delta` fragments become the call's `arguments` at `step.stop`; steps the completed interaction states win |
-| Cohere native | chat response | the `message-end` event (`crates/rig-core/src/providers/cohere/streaming.rs:493`) | `id` from `message-start`; `content-start`/`content-delta` build `message.content[i]`; `tool-plan-delta` appends `message.tool_plan`; `tool-call-*` build `message.tool_calls[i]`; `citation-start` appends `message.citations` with `content_index`; `message-end.delta` gives `finish_reason` and `usage`. The Compatibility route uses the Chat reassembler |
+| Cohere native | chat response | the `message-end` event (`crates/rig-core/src/providers/cohere/streaming.rs:493`) | `id` from `message-start`; `content-start`/`content-delta` build `message.content[i]`; `tool-plan-delta` appends `message.tool_plan`; `tool-call-*` build `message.tool_calls[i]`; `citation-start` places its citation at its index in `message.citations`, as sent; `message-end.delta` gives `finish_reason` and `usage`. The Compatibility route uses the Chat reassembler |
 | Ollama native | `/api/chat` body | the final `done` record (`crates/rig-core/src/providers/ollama/streaming.rs:158`) | the last record with `message.content` and `thinking` appended, `tool_calls` and `images` collected, `logprobs` appended |
 | Bedrock Converse | `ConverseOutput` | `{messageStart, messageStop, metadata}` (`crates/rig-bedrock/src/streaming.rs:412-427`) | `messageStart.role`; `contentBlockStart`/`contentBlockDelta` by index build `output.message.content[i]` (`text`, `toolUse.input` parsed at stop, `reasoningContent`, `citation`); `messageStop` gives `stopReason`, `additionalModelResponseFields`; `metadata` gives `usage`, `metrics`, `trace`, `performanceConfig`, `serviceTier` |
 | Candle | the serialized response | the same record (`crates/rig-candle/src/model.rs:450`) | identity |
 
-Recorded pairs exist for `anthropic`, `cohere`, `gemini`, `ollama`, `openai`,
-`openrouter`, `perplexity`, and on Chat also for `deepseek`, `doubleword`,
-`groq`, `llamacpp`, `mistral` and `venice`; Bedrock, xAI Chat and
-Interactions have no pair. Where a dialect's unary body states a field its
+Recorded pairs exist for `anthropic`, `bedrock`, `cohere`, `copilot`,
+`gemini`, `ollama`, `openai`, `openrouter` (Chat and Responses),
+`perplexity` and `xai` (Responses), and on Chat also for `deepseek`,
+`doubleword`, `groq`, `llamacpp`, `mistral` and `venice`; xAI Chat,
+Interactions and the ChatGPT backend have no pair. Where a dialect's unary body states a field its
 stream never sends (OpenRouter and Mistral keep the stream `index` on calls,
 llama.cpp, Mistral and Venice an empty `content` beside calls, Groq
 `x_groq.seed`, Venice `venice_parameters`, Doubleword `service_tier`), the
@@ -2037,8 +2057,9 @@ interim reassembler:
    `cargo xtask cassette goldens` and `cargo xtask cassette snapshots`, and
    move the assertions that read the old terminal record.
 
-Every family has done so: no `TerminalRecord` remains, and every row of
-`test_utils/raw_parity/tests.rs` is `rebuilt`.
+Every family has done so: no `TerminalRecord` remains, and the rows lost
+their `rebuilt` flag, so every row of `test_utils/raw_parity/tests.rs` must
+agree.
 
 The Responses WebSocket session feeds each turn's messages to the same
 reassembler as the HTTP stream and settles with what it finishes with.

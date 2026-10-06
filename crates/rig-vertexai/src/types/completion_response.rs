@@ -16,6 +16,8 @@ pub const PROVIDER_NAME: &str = "vertexai";
 #[derive(Debug, Default)]
 pub struct VertexDocument(GenerateContentResponse);
 
+impl rig_core::wire::document::Serves<rig_core::operation::Completion> for VertexDocument {}
+
 impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentResponse>
     for VertexDocument
 {

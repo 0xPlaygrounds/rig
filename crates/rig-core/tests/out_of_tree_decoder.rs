@@ -2,7 +2,9 @@
 //! writer only: it writes each call under the vendor's own wire index, and
 //! the writer opens it at its first fragment and closes it with the id and
 //! name that arrived. Two calls interleave by wire index, and the first
-//! call's id arrives after its arguments.
+//! call's id arrives after its arguments. Its reassembler rebuilds the
+//! vendor's reply document from the same frames, so a streamed reply's
+//! `raw` is the document a unary reply would carry.
 
 #![allow(clippy::expect_used, clippy::panic)]
 
@@ -12,7 +14,9 @@ use rig_core::driver::{Exchange, Model, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::message::{Api, AssistantContent};
 use rig_core::operation::{Block, CallFragment, Completion, Finish};
+use rig_core::wire::document::{Reassemble, Serves};
 use rig_core::wire::{Decoder, Descriptor, Flow, Mode, Out, Wire, WireEvent};
+use serde_json::{Map, Value, json};
 
 /// One frame of a made-up vendor's reply.
 #[derive(Debug, Clone)]
@@ -130,12 +134,71 @@ impl ReplayTarget for Vendor {
     }
 }
 
+/// The vendor's reply document, `{"text", "calls": [{"id", "name",
+/// "arguments"}]}`, rebuilt from its frames: text appends, and each call's
+/// fragments merge by wire index.
+#[derive(Default)]
+struct VendorDocument {
+    text: String,
+    /// Each call's wire index and fields, in the order the calls opened.
+    calls: Vec<(u32, Map<String, Value>)>,
+    done: bool,
+}
+
+impl Serves<Completion> for VendorDocument {}
+
+impl Reassemble<Frame> for VendorDocument {
+    fn absorb(&mut self, frame: &Frame) {
+        match frame {
+            Frame::Text(text) => self.text.push_str(text),
+            Frame::Call {
+                index,
+                id,
+                name,
+                arguments,
+            } => {
+                let position = match self.calls.iter().position(|(at, _)| at == index) {
+                    Some(position) => position,
+                    None => {
+                        self.calls.push((*index, Map::new()));
+                        self.calls.len() - 1
+                    }
+                };
+                let Some((_, call)) = self.calls.get_mut(position) else {
+                    return;
+                };
+                for (key, value) in [("id", id), ("name", name)] {
+                    if let Some(value) = value {
+                        call.insert(key.to_owned(), json!(value));
+                    }
+                }
+                let held = call
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let arguments = format!("{held}{arguments}");
+                call.insert("arguments".to_owned(), json!(arguments));
+            }
+            Frame::Done => self.done = true,
+        }
+    }
+
+    fn finish(self) -> Value {
+        let calls: Vec<Value> = self
+            .calls
+            .into_iter()
+            .map(|(_, call)| Value::Object(call))
+            .collect();
+        json!({"text": self.text, "calls": calls, "done": self.done})
+    }
+}
+
 impl Wire for Vendor {
     type Op = Completion;
     type Payload = CompletionRequest;
     type Frame = Frame;
     type Decoder<'id> = VendorDecoder<'id>;
-    type Reassembler = rig_core::wire::document::Unreassembled;
+    type Reassembler = VendorDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("vendor").replay(self)
@@ -248,4 +311,31 @@ async fn interleaved_calls_with_late_ids_fold_with_their_ids() {
         ],
         "each call carries the id that arrived late, in the order the calls closed"
     );
+}
+
+/// The transport reports no whole document, so both a unary and a streamed
+/// reply carry what the reassembler rebuilt from the frames.
+#[tokio::test]
+async fn the_reassembler_rebuilds_the_vendor_document_on_both_paths() {
+    let expected = json!({
+        "text": "Adding and multiplying.",
+        "calls": [
+            {"id": "call_a", "name": "add", "arguments": r#"{"a":1,"b":2}"#},
+            {"id": "call_b", "name": "multiply", "arguments": r#"{"x":2,"y":3}"#}
+        ],
+        "done": true
+    });
+    let unary = model()
+        .call(CompletionRequest::new("add and multiply"))
+        .await
+        .expect("the reply folds");
+    assert_eq!(unary.raw, expected);
+
+    let streamed = model()
+        .stream(CompletionRequest::new("add and multiply"))
+        .expect("the stream opens")
+        .finish()
+        .await
+        .expect("the stream folds");
+    assert_eq!(streamed.raw, expected);
 }

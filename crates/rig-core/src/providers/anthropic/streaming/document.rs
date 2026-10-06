@@ -161,6 +161,8 @@ fn fold(target: &mut Map<String, Value>, key: &str, value: &Value) {
     }
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for Message {}
+
 impl Reassemble<WireFrame> for Message {
     fn absorb(&mut self, frame: &WireFrame) {
         // The driver reports what does not classify.

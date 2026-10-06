@@ -103,21 +103,106 @@ where
     RecordingHttpClient: Transport<W>,
     MockStreamingClient: Transport<W>,
 {
+    let streamed = MockStreamingClient {
+        sse_bytes: streamed.into(),
+    };
+    raw_pair_over(wire, RecordingHttpClient::new(unary.into()), streamed).await
+}
+
+/// [`raw_pair`] for a wire whose transport is not HTTP: the `raw` of one
+/// unary reply over `unary` and one streamed reply over `streamed`, each a
+/// transport that serves the recorded reply.
+///
+/// # Errors
+///
+/// When either reply fails to decode or does not end.
+pub async fn raw_pair_over<W, U, S>(
+    wire: W,
+    unary: U,
+    streamed: S,
+) -> Result<(Value, Value), ProviderError>
+where
+    W: Wire<Op = Completion>,
+    U: Transport<W>,
+    S: Transport<W>,
+{
     let request = || CompletionRequest::new("parity");
-    let unary = Model::new(wire.clone(), RecordingHttpClient::new(unary.into()))
-        .call(request())
-        .await?
-        .raw;
-    let mut stream = Model::new(
-        wire,
-        MockStreamingClient {
-            sse_bytes: streamed.into(),
-        },
-    )
-    .stream(request())?;
+    let unary = Model::new(wire.clone(), unary).call(request()).await?.raw;
+    let mut stream = Model::new(wire, streamed).stream(request())?;
     while stream.next().await.is_some() {}
     let streamed = stream.finish().await?.raw;
     Ok((unary, streamed))
+}
+
+/// The reply body of interaction `interaction` (from 1) of a cassette whose
+/// YAML text is `cassette`: a single-quoted or double-quoted scalar, a
+/// literal block for an event stream, or base64 when the cassette says so.
+/// Read without a YAML dependency, for the shapes the recorder writes.
+pub fn recorded_reply(cassette: &str, interaction: usize) -> Option<Bytes> {
+    let recorded = interactions(cassette).nth(interaction.checked_sub(1)?)?;
+    let (_, reply) = recorded.split_once("\nthen:\n")?;
+    let body = scalar(reply, "body")?;
+    let base64 = reply
+        .lines()
+        .any(|line| line.trim() == "body_encoding: base64");
+    if base64 {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(body.trim())
+            .ok()?;
+        return Some(Bytes::from(bytes));
+    }
+    Some(Bytes::from(body))
+}
+
+/// Each interaction of a cassette's YAML text, every line, its last
+/// included, ending in a newline.
+pub(crate) fn interactions(cassette: &str) -> impl Iterator<Item = &str> {
+    let mut rest = Some(cassette);
+    std::iter::from_fn(move || {
+        let text = rest?;
+        match text.find("\n---\n") {
+            Some(at) => {
+                rest = text.get(at + 5..);
+                text.get(..=at)
+            }
+            None => {
+                rest = None;
+                Some(text)
+            }
+        }
+    })
+}
+
+/// The scalar at `key` among the two-space-indented fields of one section
+/// of a recorded interaction.
+pub(crate) fn scalar(section: &str, key: &str) -> Option<String> {
+    let prefix = format!("  {key}:");
+    let mut lines = section.lines();
+    let value = lines
+        .by_ref()
+        .find_map(|line| line.strip_prefix(prefix.as_str()))?
+        .trim();
+    if let Some(quoted) = value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')) {
+        return Some(quoted.replace("''", "'"));
+    }
+    // A double-quoted scalar escapes as JSON does for what the recorder
+    // writes.
+    if value.starts_with('"') {
+        return serde_json::from_str(value).ok();
+    }
+    if !value.starts_with('|') {
+        return Some(value.to_owned());
+    }
+    let mut block = String::new();
+    for line in lines {
+        if !line.is_empty() && !line.starts_with("    ") {
+            break;
+        }
+        block.push_str(line.get(4..).unwrap_or_default());
+        block.push('\n');
+    }
+    Some(block)
 }
 
 /// Check that a streamed reply's `raw` is the unary document of the same

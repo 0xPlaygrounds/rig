@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::{ResponsesEvent, classify_responses_payload};
 use crate::json_utils::Lenient;
@@ -15,7 +15,9 @@ use crate::wire::{WireEvent, WireFrame};
 /// terminal one (`response.completed`, `.incomplete` or `.failed`) is
 /// final, with the status its event names. When that response states no
 /// `output`, as the ChatGPT backend's terminal does, the output is the
-/// items `response.output_item.done` stated, by output index. A whole
+/// items `response.output_item.done` stated, by output index. Fields a
+/// lifecycle event states beside its `response` (Copilot's `copilot_usage`)
+/// are fields of the document, as the unary body states them. A whole
 /// response body, as a WebSocket `response.done` carries, is the document
 /// as it stands.
 #[derive(Debug, Default)]
@@ -27,6 +29,9 @@ pub struct Response {
     /// The output items the stream stated, by output index: as added, then
     /// as done.
     items: BTreeMap<usize, Value>,
+    /// Fields lifecycle events stated beside their `response`, the latest
+    /// non-null value of each.
+    beside: Map<String, Value>,
 }
 
 impl Response {
@@ -58,6 +63,12 @@ impl Response {
         if self.terminal {
             return;
         }
+        for (key, value) in frame.as_object().into_iter().flatten() {
+            let event_field = matches!(key.as_str(), "type" | "sequence_number" | "response");
+            if !event_field && (!value.is_null() || !self.beside.contains_key(key)) {
+                self.beside.insert(key.clone(), value.clone());
+            }
+        }
         let status = match kind {
             "response.completed" => Some("completed"),
             "response.incomplete" => Some("incomplete"),
@@ -78,6 +89,8 @@ impl Response {
         self.response = Some(response);
     }
 }
+
+impl crate::wire::document::Serves<crate::operation::Completion> for Response {}
 
 impl Reassemble<WireFrame> for Response {
     fn absorb(&mut self, frame: &WireFrame) {
@@ -104,6 +117,11 @@ impl Reassemble<WireFrame> for Response {
         }) else {
             return Value::Null;
         };
+        if let Some(fields) = response.as_object_mut() {
+            for (key, value) in self.beside {
+                fields.entry(key).or_insert(value);
+            }
+        }
         if let Some(fields) = response.as_object_mut()
             && fields
                 .get("output")

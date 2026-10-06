@@ -429,3 +429,82 @@ fn usage_counts_cache_reads_and_writes_in_input() {
     assert_eq!(counted.cached_input_tokens, Some(100));
     assert_eq!(counted.cache_creation_input_tokens, Some(7));
 }
+
+/// Serves one recorded reply to every request the SDK sends.
+#[derive(Clone, Debug)]
+struct Recorded {
+    body: bytes::Bytes,
+    content_type: &'static str,
+}
+
+impl aws_smithy_runtime_api::client::http::HttpConnector for Recorded {
+    fn call(
+        &self,
+        _request: aws_smithy_runtime_api::client::orchestrator::HttpRequest,
+    ) -> aws_smithy_runtime_api::client::http::HttpConnectorFuture {
+        let mut response = aws_smithy_runtime_api::client::orchestrator::HttpResponse::new(
+            aws_smithy_runtime_api::http::StatusCode::try_from(200_u16).expect("200 is a status"),
+            aws_smithy_types::body::SdkBody::from(self.body.clone()),
+        );
+        response
+            .headers_mut()
+            .insert("content-type", self.content_type);
+        aws_smithy_runtime_api::client::http::HttpConnectorFuture::ready(Ok(response))
+    }
+}
+
+impl aws_smithy_runtime_api::client::http::HttpClient for Recorded {
+    fn http_connector(
+        &self,
+        _settings: &aws_smithy_runtime_api::client::http::HttpConnectorSettings,
+        _components: &aws_smithy_runtime_api::client::runtime_components::RuntimeComponents,
+    ) -> aws_smithy_runtime_api::client::http::SharedHttpConnector {
+        aws_smithy_runtime_api::client::http::SharedHttpConnector::new(self.clone())
+    }
+}
+
+/// A runtime whose every call is answered with the reply of the recorded
+/// cassette `relative`, under the Bedrock corpus.
+fn recorded(relative: &str, content_type: &'static str) -> crate::client::BedrockRuntime {
+    use aws_sdk_bedrockruntime::config::{BehaviorVersion, Credentials, Region};
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../rig-cassette/fixtures/cassettes/bedrock")
+        .join(relative);
+    let cassette = std::fs::read_to_string(&file).expect("the cassette is readable");
+    let body = rig_core::test_utils::raw_parity::recorded_reply(&cassette, 1)
+        .expect("the cassette records a reply");
+    let config = aws_sdk_bedrockruntime::Config::builder()
+        .behavior_version(BehaviorVersion::latest())
+        .region(Region::new("us-east-1"))
+        .credentials_provider(Credentials::new("test", "test", None, None, "parity"))
+        .http_client(Recorded { body, content_type })
+        .build();
+    aws_sdk_bedrockruntime::Client::from_conf(config).into()
+}
+
+/// Guarantee 5 on Bedrock's recorded pair, one forced tool call answered by
+/// `/converse` and by `/converse-stream`: through the SDK transport, the
+/// stream rebuilds the unary `ConverseOutput`. Each answer times itself.
+#[tokio::test]
+async fn the_recorded_pair_agrees() {
+    use rig_core::test_utils::raw_parity::{comparable, raw_pair_over};
+    let (unary, streamed) = raw_pair_over(
+        Converse::new(NOVA),
+        recorded(
+            "tool_choice/specific_add_raw_nonstreaming.yaml",
+            "application/json",
+        ),
+        recorded(
+            "tool_choice/specific_add_raw_streaming.yaml",
+            "application/vnd.amazon.eventstream",
+        ),
+    )
+    .await
+    .expect("both replies decode");
+    assert_eq!(
+        unary.pointer("/output/message/content/0/toolUse/input"),
+        Some(&json!({"x": 20, "y": 22}))
+    );
+    let minted = ["/metrics"];
+    assert_eq!(comparable(&unary, &minted), comparable(&streamed, &minted));
+}

@@ -1,14 +1,14 @@
 //! The Responses reassembler over hand-built event streams: what each
 //! lifecycle and item event adds to the rebuilt `Response`, and parity on
-//! the routes no recorded pair covers (xAI, ChatGPT).
+//! the route no recorded pair covers (ChatGPT, which answers both ways with
+//! an event stream).
 
 use serde_json::{Value, json};
 
 use super::Response;
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::openai::wire::OpenAIConfig;
-use crate::providers::xai::DIALECT as XAI;
-use crate::test_utils::raw_parity::{assert_raw_parity, raw_pair};
+use crate::test_utils::raw_parity::raw_pair;
 use crate::wire::WireFrame;
 use crate::wire::document::Reassemble;
 
@@ -225,67 +225,23 @@ fn items_without_a_lifecycle_event_rebuild_a_bare_response() {
     );
 }
 
-/// xAI has no recording of one prompt answered both ways: a hand-built
-/// unary body and the stream of the same turn, shaped as xAI's recorded
-/// stream is, decode to one document through the driver.
-#[tokio::test]
-async fn xai_hand_built_pair_agrees() {
-    let terminal = json!({
-        "id": "084056a2",
-        "object": "response",
-        "created_at": 0,
-        "completed_at": 0,
-        "model": "grok-4.3",
-        "status": "completed",
-        "metadata": {"system_fingerprint": "fp_eb3c003fc66c14ed"},
-        "output": [
-            {"type": "reasoning", "id": "rs_084056a2", "summary": [], "status": "completed"},
-            message("msg_084056a2", "pong")
-        ],
-        "usage": {
-            "input_tokens": 12,
-            "output_tokens": 1,
-            "total_tokens": 13,
-            "input_tokens_details": {"cached_tokens": 0},
-            "output_tokens_details": {"reasoning_tokens": 0},
-            "num_sources_used": 0,
-            "cost_in_usd_ticks": 4300
-        }
-    });
-    let mut created = terminal.clone();
-    created["status"] = json!("in_progress");
-    created["output"] = json!([]);
-    created["usage"] = Value::Null;
-    let stream = sse(&[
-        lifecycle("response.created", created.clone()),
-        lifecycle("response.in_progress", created),
-        item(
-            "response.output_item.added",
-            0,
-            json!({"type": "reasoning", "id": "rs_084056a2", "summary": []}),
-        ),
-        item(
-            "response.output_item.done",
-            0,
-            terminal["output"][0].clone(),
-        ),
-        item(
-            "response.output_item.added",
-            1,
-            json!({"type": "message", "id": "msg_084056a2", "content": []}),
-        ),
-        json!({"type": "response.output_text.delta", "output_index": 1, "content_index": 0, "delta": "pong"}),
-        item(
-            "response.output_item.done",
-            1,
-            terminal["output"][1].clone(),
-        ),
-        lifecycle("response.completed", terminal.clone()),
+/// Copilot states its `copilot_usage` beside the terminal event's
+/// `response`; the unary body states it at the top level.
+#[test]
+fn fields_beside_a_lifecycle_response_are_fields_of_the_document() {
+    let usage = json!({"total_nano_aiu": 614_775_000});
+    let mut terminal = lifecycle(
+        "response.completed",
+        envelope("completed", json!([message("msg_1", "pong")])),
+    );
+    terminal["copilot_usage"] = usage.clone();
+    let document = rebuilt(&[
+        lifecycle("response.created", envelope("in_progress", json!([]))),
+        terminal,
     ]);
-    let wire = OpenAIConfig::with_key(&XAI, "test-key").responses("grok-4.3");
-    assert_raw_parity(wire, terminal.to_string(), stream, &[])
-        .await
-        .unwrap_or_else(|error| panic!("the xAI pair decodes: {error}"));
+    assert_eq!(document["copilot_usage"], usage);
+    assert_eq!(document.get("sequence_number"), None);
+    assert_eq!(document.get("type"), None);
 }
 
 /// ChatGPT answers even a unary request with an event stream whose terminal

@@ -165,6 +165,8 @@ fn list<'a>(step: &'a mut Value, key: &str) -> Option<&'a mut Vec<Value>> {
     slot.as_array_mut()
 }
 
+impl crate::wire::document::Serves<crate::operation::Completion> for Interaction {}
+
 impl Reassemble<WireFrame> for Interaction {
     fn absorb(&mut self, frame: &WireFrame) {
         // The driver reports what does not classify.

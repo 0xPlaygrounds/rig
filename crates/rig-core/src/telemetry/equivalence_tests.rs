@@ -320,12 +320,28 @@ impl crate::completion::ReplayTarget for Scripted {
     }
 }
 
+/// The scripted vendor's reply document: the model its end names.
+#[derive(Default)]
+struct ScriptedDocument(Value);
+
+impl crate::wire::document::Serves<Completion> for ScriptedDocument {}
+
+impl crate::wire::document::Reassemble<Finish> for ScriptedDocument {
+    fn absorb(&mut self, end: &Finish) {
+        self.0 = serde_json::json!({ "model": end.model });
+    }
+
+    fn finish(self) -> Value {
+        self.0
+    }
+}
+
 impl Wire for Scripted {
     type Op = Completion;
     type Payload = ();
     type Frame = Finish;
     type Decoder<'id> = Ends;
-    type Reassembler = crate::wire::document::Unreassembled;
+    type Reassembler = ScriptedDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("prov").model("model").replay(self)
