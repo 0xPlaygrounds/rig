@@ -772,7 +772,7 @@ impl Wire for Chat {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
-    type Reassembler = document::TerminalRecord;
+    type Reassembler = document::ChatCompletion;
 
     /// Format deferral permits tool composition; dialects without schema
     /// support require the agent's tool-mode enforcement instead.
@@ -796,7 +796,7 @@ impl Wire for Chat {
     }
 
     fn reassembler(&self) -> Self::Reassembler {
-        document::TerminalRecord::new(self.provider.dialect.quirks)
+        document::ChatCompletion::new(self.provider.dialect.quirks)
     }
 }
 
@@ -1163,10 +1163,6 @@ pub struct ChatDecoder {
     finish: Option<FinishReason>,
     response_id: Option<String>,
     response_model: Option<String>,
-    /// Accumulated primary-choice token metadata, in the wire's token order.
-    logprobs: Option<Map<String, Value>>,
-    /// Provider-specific top-level fields of every frame.
-    fields: Map<String, Value>,
     /// Whether a finish reason or a whole reply ended the turn.
     ended: bool,
     /// Whether a stream chunk arrived.
@@ -1189,12 +1185,6 @@ impl ChatDecoder {
         }
         if let Some(model) = frame.str("model") {
             self.response_model = Some(model.to_owned());
-        }
-        for (key, value) in frame.as_object().into_iter().flatten() {
-            if !matches!(key.as_str(), "id" | "model" | "choices" | "usage") {
-                let field = Map::from_iter([(key.clone(), value.clone())]);
-                merge_fields(&mut self.fields, &field);
-            }
         }
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
@@ -1228,9 +1218,6 @@ impl ChatDecoder {
         if let Some(reason) = reason {
             self.finish = Some(reason);
             self.ended = true;
-        }
-        if let Some(logprobs) = choice.obj("logprobs") {
-            merge_fields(self.logprobs.get_or_insert_default(), logprobs);
         }
         Some(choice)
     }

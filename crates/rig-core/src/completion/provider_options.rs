@@ -74,8 +74,9 @@ pub trait ReplyExtras: Sized {
 }
 
 /// The value at `pointer` in a reply document, read as `T`: `None` when it
-/// is absent or `null`. The one reader every `Extras` type's `from_reply`
-/// goes through.
+/// is absent, `null` or an empty list, which a unary body may state where
+/// the document a stream rebuilds omits it. The one reader every `Extras`
+/// type's `from_reply` goes through.
 ///
 /// # Errors
 ///
@@ -86,6 +87,7 @@ pub(crate) fn reply_field<T: serde::de::DeserializeOwned>(
 ) -> Result<Option<T>, serde_json::Error> {
     match raw.pointer(pointer) {
         None | Some(Value::Null) => Ok(None),
+        Some(Value::Array(items)) if items.is_empty() => Ok(None),
         Some(value) => T::deserialize(value).map(Some),
     }
 }

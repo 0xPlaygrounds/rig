@@ -333,10 +333,14 @@ async fn hooks_observe_raw_streamed() {
     let raw = &responses[0];
     assert!(!raw.is_null(), "CompletionResponse.raw is populated");
     assert_eq!(&turns[0], raw, "both events observe the same payload");
-    // The streamed payload is the *terminal* record: the stream's accounting,
-    // not its message content.
+    // The streamed payload is the `chat.completion` the stream rebuilt: the
+    // stream's accounting and its message, as a unary body states them.
     assert!(raw.get("usage").is_some_and(Value::is_object));
-    assert!(raw.get("choices").is_none());
+    assert_eq!(raw["object"], "chat.completion");
+    assert!(
+        raw.pointer("/choices/0/message")
+            .is_some_and(Value::is_object)
+    );
     let records = recorded_completed_records(scenario, true);
     assert_eq!(records.len(), 1);
     assert_eq!(fingerprints(&responses), fingerprints(&records));

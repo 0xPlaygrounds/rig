@@ -157,6 +157,37 @@
     "model": "gpt-4.1-mini-2025-04-14",
     "provider_request_id": "req_859f9228f33d4668ad828c5063789af4",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  52,
+                  50
+                ],
+                "logprob": 0.0,
+                "token": "42",
+                "top_logprobs": []
+              }
+            ],
+            "refusal": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDAnw2jbRCmSejXejFRtyioljWKj",
+      "model": "gpt-4.1-mini-2025-04-14",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_46ce4fdcea",
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -171,30 +202,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 24
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-ERDAnw2jbRCmSejXejFRtyioljWKj",
-      "model": "gpt-4.1-mini-2025-04-14",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              52,
-              50
-            ],
-            "logprob": 0.0,
-            "token": "42",
-            "top_logprobs": []
-          }
-        ],
-        "refusal": null
-      },
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "1XnK4ktV8X",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_46ce4fdcea"
       }
     }
   },
@@ -218,6 +225,37 @@
     "model": "gpt-4.1-mini-2025-04-14",
     "provider_request_id": "req_2dee08b1896a4d46a2b7e66f29ed0595",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  52,
+                  50
+                ],
+                "logprob": 0.0,
+                "token": "42",
+                "top_logprobs": []
+              }
+            ],
+            "refusal": null
+          }
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDAon7uJlGVe64zU6L4eqFBmVMuM",
+      "model": "gpt-4.1-mini-2025-04-14",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3f1067e6a1",
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -232,30 +270,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 22
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-ERDAon7uJlGVe64zU6L4eqFBmVMuM",
-      "model": "gpt-4.1-mini-2025-04-14",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              52,
-              50
-            ],
-            "logprob": 0.0,
-            "token": "42",
-            "top_logprobs": []
-          }
-        ],
-        "refusal": null
-      },
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "8tu58fHRbe",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_3f1067e6a1"
       }
     }
   },
@@ -419,6 +433,34 @@
     "model": "gpt-4o-mini-2024-07-18",
     "provider_request_id": "req_7cbc731f2c9d4ed682383cbf98846fb0",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "c",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        },
+        {
+          "message": {
+            "content": "c",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 1,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDIEhGdyciqwQWemmPwz1HEK9Lhr",
+      "model": "gpt-4o-mini-2024-07-18",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_c28ee603a6",
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -433,16 +475,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 22
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-ERDIEhGdyciqwQWemmPwz1HEK9Lhr",
-      "model": "gpt-4o-mini-2024-07-18",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "eoatt6xfmSL",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_c28ee603a6"
       }
     }
   },
@@ -552,6 +584,34 @@
     "model": "gpt-4o-mini-2024-07-18",
     "provider_request_id": "req_b5b34f2802e24132b0342c7c2bbee1ac",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"summary\":\"The cache warmer raced",
+                  "name": "file_report"
+                },
+                "id": "call_BECqI1ZGGJ5aVqFwbagKzt86",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDB6oyhsW3jcrdKOODHw552NXtHy",
+      "model": "gpt-4o-mini-2024-07-18",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_3ac22ab6ab",
       "usage": {
         "completion_tokens": 16,
         "completion_tokens_details": {
@@ -566,16 +626,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 117
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-ERDB6oyhsW3jcrdKOODHw552NXtHy",
-      "model": "gpt-4o-mini-2024-07-18",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "PM1EL9V9",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_3ac22ab6ab"
       }
     }
   },
@@ -613,6 +663,34 @@
     "model": "gpt-4o-2024-08-06",
     "provider_request_id": "req_a3ac054cd446463380d906623c1b0738",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "ping"
+                },
+                "id": "call_nufR9wSC7MBZA3Zi0YUA6LQY",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDB8earlB80JdRqCGscAX75uuaUb",
+      "model": "gpt-4o-2024-08-06",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_8dbe57060b",
       "usage": {
         "completion_tokens": 10,
         "completion_tokens_details": {
@@ -627,16 +705,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 67
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-ERDB8earlB80JdRqCGscAX75uuaUb",
-      "model": "gpt-4o-2024-08-06",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "Shl2LCp70aDG2iz",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_8dbe57060b"
       }
     }
   },
@@ -660,6 +728,24 @@
     "model": "gpt-4o-2024-08-06",
     "provider_request_id": "req_66cc644f1f9540e8a379bf2acf081678",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-EUdzbPcyP99eNksFXJNfuWu8sdUJS",
+      "model": "gpt-4o-2024-08-06",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_5749441603",
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -674,16 +760,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 128
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-EUdzbPcyP99eNksFXJNfuWu8sdUJS",
-      "model": "gpt-4o-2024-08-06",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "hZF0IE3z6G1DoD",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_5749441603"
       }
     }
   },
@@ -780,6 +856,33 @@
     "model": "gpt-5-nano-2025-08-07",
     "provider_request_id": "req_f8658151b37a4fc9878e334eb59277ab",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\":3,\"y\":4}",
+                  "name": "add"
+                },
+                "id": "call_IyONRJGYaFDJ2JXTOeuFHeSp",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-EUeSDjU7MSM0eLggngecMHCoGO30i",
+      "model": "gpt-5-nano-2025-08-07",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": null,
       "usage": {
         "completion_tokens": 154,
         "completion_tokens_details": {
@@ -794,16 +897,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 314
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-EUeSDjU7MSM0eLggngecMHCoGO30i",
-      "model": "gpt-5-nano-2025-08-07",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "t",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": null
       }
     }
   },
@@ -961,6 +1054,23 @@
     "model": "gpt-6-luna",
     "provider_request_id": "req_e9fcbfe157cb40a7b8630b740d5f3306",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "red",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-EUyjdG4LpXhrNNbHOYAMDAwxw0Kla",
+      "model": "gpt-6-luna",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": null,
       "usage": {
         "completion_tokens": 65,
         "completion_tokens_details": {
@@ -975,16 +1085,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 117
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-EUyjdG4LpXhrNNbHOYAMDAwxw0Kla",
-      "model": "gpt-6-luna",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "slPL3XFh1hJkCEX",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": null
       }
     }
   },
@@ -1195,6 +1295,33 @@
     "model": "gpt-6-luna",
     "provider_request_id": "req_c05b44c3e10949b5b210ef0694603835",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"a\":17,\"b\":25}",
+                  "name": "add"
+                },
+                "id": "call_rZpN0qaP5qeDGp8qGRGFE3cq",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-EUyjpf2p5C2suVy12YOjw4JSOF1dz",
+      "model": "gpt-6-luna",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": null,
       "usage": {
         "completion_tokens": 20,
         "completion_tokens_details": {
@@ -1210,16 +1337,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 185
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-EUyjpf2p5C2suVy12YOjw4JSOF1dz",
-      "model": "gpt-6-luna",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "qBhJyLaH",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": null
       }
     }
   },
@@ -1244,6 +1361,23 @@
     "model": "gpt-6-luna",
     "provider_request_id": "req_00934c0bbd6e400d90322e258b2221bb",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-EUyjpppj6Gz3ZJBet5uTOTqnn4j1t",
+      "model": "gpt-6-luna",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": null,
       "usage": {
         "completion_tokens": 4,
         "completion_tokens_details": {
@@ -1259,16 +1393,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 200
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-EUyjpppj6Gz3ZJBet5uTOTqnn4j1t",
-      "model": "gpt-6-luna",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "KorLBvFJ0",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": null
       }
     }
   },
@@ -1547,6 +1671,24 @@
     "model": "gpt-4o-2024-08-06",
     "provider_request_id": "req_0914d91985b74b38af4430bf98147919",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": "I'm sorry, I cannot assist with that request.",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDEnq1ZluevE5Fnhqgw7aQjufCyA",
+      "model": "gpt-4o-2024-08-06",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_40aced2ba4",
       "usage": {
         "completion_tokens": 11,
         "completion_tokens_details": {
@@ -1561,16 +1703,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 60
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-ERDEnq1ZluevE5Fnhqgw7aQjufCyA",
-      "model": "gpt-4o-2024-08-06",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "P392DfmMCsiKNdX",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_40aced2ba4"
       }
     }
   },
@@ -1650,61 +1782,42 @@
     "model": "gpt-4o-2024-08-06",
     "provider_request_id": "req_22beb0a4c5814ab789757d229a1e2cf8",
     "raw": {
-      "usage": {
-        "completion_tokens": 24,
-        "completion_tokens_details": {
-          "accepted_prediction_tokens": 0,
-          "audio_tokens": 0,
-          "reasoning_tokens": 0,
-          "rejected_prediction_tokens": 0
-        },
-        "prompt_tokens": 15,
-        "prompt_tokens_details": {
-          "audio_tokens": 0,
-          "cached_tokens": 0
-        },
-        "total_tokens": 39
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-ERDFBmOnLQxXdFo3vpViflwEfndVz",
-      "model": "gpt-4o-2024-08-06",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              84
-            ],
-            "logprob": -0.000019027791495318525,
-            "token": "T",
-            "top_logprobs": [
+      "choices": [
+        {
+          "message": {
+            "content": "Tides are the periodic rise and fall of ocean water levels caused by the gravitational forces of the Moon and the Sun.",
+            "refusal": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": {
+            "content": [
               {
                 "bytes": [
                   84
                 ],
                 "logprob": -0.000019027791495318525,
-                "token": "T"
+                "token": "T",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      84
+                    ],
+                    "logprob": -0.000019027791495318525,
+                    "token": "T"
+                  },
+                  {
+                    "bytes": [
+                      84,
+                      104,
+                      101
+                    ],
+                    "logprob": -11.187519073486328,
+                    "token": "The"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  84,
-                  104,
-                  101
-                ],
-                "logprob": -11.187519073486328,
-                "token": "The"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              105,
-              100,
-              101,
-              115
-            ],
-            "logprob": -3.173704271830502e-6,
-            "token": "ides",
-            "top_logprobs": [
               {
                 "bytes": [
                   105,
@@ -1713,30 +1826,30 @@
                   115
                 ],
                 "logprob": -3.173704271830502e-6,
-                "token": "ides"
+                "token": "ides",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      105,
+                      100,
+                      101,
+                      115
+                    ],
+                    "logprob": -3.173704271830502e-6,
+                    "token": "ides"
+                  },
+                  {
+                    "bytes": [
+                      105,
+                      100,
+                      97,
+                      108
+                    ],
+                    "logprob": -13.01562786102295,
+                    "token": "idal"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  105,
-                  100,
-                  97,
-                  108
-                ],
-                "logprob": -13.01562786102295,
-                "token": "idal"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              97,
-              114,
-              101
-            ],
-            "logprob": -0.002230667509138584,
-            "token": " are",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -1745,33 +1858,33 @@
                   101
                 ],
                 "logprob": -0.002230667509138584,
-                "token": " are"
+                "token": " are",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      97,
+                      114,
+                      101
+                    ],
+                    "logprob": -0.002230667509138584,
+                    "token": " are"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      114,
+                      101,
+                      115,
+                      117,
+                      108,
+                      116
+                    ],
+                    "logprob": -6.111605644226074,
+                    "token": " result"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  114,
-                  101,
-                  115,
-                  117,
-                  108,
-                  116
-                ],
-                "logprob": -6.111605644226074,
-                "token": " result"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              116,
-              104,
-              101
-            ],
-            "logprob": -0.009970690123736858,
-            "token": " the",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -1780,51 +1893,32 @@
                   101
                 ],
                 "logprob": -0.009970690123736858,
-                "token": " the"
-              },
-              {
-                "bytes": [
-                  32,
-                  99,
-                  97,
-                  117,
-                  115,
-                  101,
-                  100
-                ],
-                "logprob": -5.009970664978027,
-                "token": " caused"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              112,
-              101,
-              114,
-              105,
-              111,
-              100,
-              105,
-              99
-            ],
-            "logprob": -1.1713470220565796,
-            "token": " periodic",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  32,
-                  114,
-                  101,
-                  103,
-                  117,
-                  108,
-                  97,
-                  114
-                ],
-                "logprob": -0.436972051858902,
-                "token": " regular"
+                "token": " the",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      116,
+                      104,
+                      101
+                    ],
+                    "logprob": -0.009970690123736858,
+                    "token": " the"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      99,
+                      97,
+                      117,
+                      115,
+                      101,
+                      100
+                    ],
+                    "logprob": -5.009970664978027,
+                    "token": " caused"
+                  }
+                ]
               },
               {
                 "bytes": [
@@ -1839,21 +1933,39 @@
                   99
                 ],
                 "logprob": -1.1713470220565796,
-                "token": " periodic"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              114,
-              105,
-              115,
-              101
-            ],
-            "logprob": -0.0013908311957493424,
-            "token": " rise",
-            "top_logprobs": [
+                "token": " periodic",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      114,
+                      101,
+                      103,
+                      117,
+                      108,
+                      97,
+                      114
+                    ],
+                    "logprob": -0.436972051858902,
+                    "token": " regular"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      112,
+                      101,
+                      114,
+                      105,
+                      111,
+                      100,
+                      105,
+                      99
+                    ],
+                    "logprob": -1.1713470220565796,
+                    "token": " periodic"
+                  }
+                ]
+              },
               {
                 "bytes": [
                   32,
@@ -1863,33 +1975,34 @@
                   101
                 ],
                 "logprob": -0.0013908311957493424,
-                "token": " rise"
+                "token": " rise",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      114,
+                      105,
+                      115,
+                      101
+                    ],
+                    "logprob": -0.0013908311957493424,
+                    "token": " rise"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      114,
+                      105,
+                      115,
+                      105,
+                      110,
+                      103
+                    ],
+                    "logprob": -6.6107659339904785,
+                    "token": " rising"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  114,
-                  105,
-                  115,
-                  105,
-                  110,
-                  103
-                ],
-                "logprob": -6.6107659339904785,
-                "token": " rising"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              97,
-              110,
-              100
-            ],
-            "logprob": 0.0,
-            "token": " and",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -1898,31 +2011,30 @@
                   100
                 ],
                 "logprob": 0.0,
-                "token": " and"
+                "token": " and",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      97,
+                      110,
+                      100
+                    ],
+                    "logprob": 0.0,
+                    "token": " and"
+                  },
+                  {
+                    "bytes": [
+                      45,
+                      97,
+                      110,
+                      100
+                    ],
+                    "logprob": -19.0390625,
+                    "token": "-and"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  45,
-                  97,
-                  110,
-                  100
-                ],
-                "logprob": -19.0390625,
-                "token": "-and"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              102,
-              97,
-              108,
-              108
-            ],
-            "logprob": 0.0,
-            "token": " fall",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -1932,31 +2044,33 @@
                   108
                 ],
                 "logprob": 0.0,
-                "token": " fall"
+                "token": " fall",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      102,
+                      97,
+                      108,
+                      108
+                    ],
+                    "logprob": 0.0,
+                    "token": " fall"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      102,
+                      97,
+                      108,
+                      108,
+                      115
+                    ],
+                    "logprob": -19.59375,
+                    "token": " falls"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  102,
-                  97,
-                  108,
-                  108,
-                  115
-                ],
-                "logprob": -19.59375,
-                "token": " falls"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              111,
-              102
-            ],
-            "logprob": -1.981667537620524e-6,
-            "token": " of",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -1964,40 +2078,27 @@
                   102
                 ],
                 "logprob": -1.981667537620524e-6,
-                "token": " of"
-              },
-              {
-                "bytes": [
-                  32,
-                  105,
-                  110
-                ],
-                "logprob": -13.187501907348633,
-                "token": " in"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              111,
-              99,
-              101,
-              97,
-              110
-            ],
-            "logprob": -4.418461322784424,
-            "token": " ocean",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  32,
-                  115,
-                  101,
-                  97
-                ],
-                "logprob": -0.012211289256811142,
-                "token": " sea"
+                "token": " of",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      111,
+                      102
+                    ],
+                    "logprob": -1.981667537620524e-6,
+                    "token": " of"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      105,
+                      110
+                    ],
+                    "logprob": -13.187501907348633,
+                    "token": " in"
+                  }
+                ]
               },
               {
                 "bytes": [
@@ -2009,22 +2110,32 @@
                   110
                 ],
                 "logprob": -4.418461322784424,
-                "token": " ocean"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              119,
-              97,
-              116,
-              101,
-              114
-            ],
-            "logprob": -0.6463598012924194,
-            "token": " water",
-            "top_logprobs": [
+                "token": " ocean",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      115,
+                      101,
+                      97
+                    ],
+                    "logprob": -0.012211289256811142,
+                    "token": " sea"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      111,
+                      99,
+                      101,
+                      97,
+                      110
+                    ],
+                    "logprob": -4.418461322784424,
+                    "token": " ocean"
+                  }
+                ]
+              },
               {
                 "bytes": [
                   32,
@@ -2035,36 +2146,35 @@
                   114
                 ],
                 "logprob": -0.6463598012924194,
-                "token": " water"
+                "token": " water",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      119,
+                      97,
+                      116,
+                      101,
+                      114
+                    ],
+                    "logprob": -0.6463598012924194,
+                    "token": " water"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      108,
+                      101,
+                      118,
+                      101,
+                      108,
+                      115
+                    ],
+                    "logprob": -0.7869848012924194,
+                    "token": " levels"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  108,
-                  101,
-                  118,
-                  101,
-                  108,
-                  115
-                ],
-                "logprob": -0.7869848012924194,
-                "token": " levels"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              108,
-              101,
-              118,
-              101,
-              108,
-              115
-            ],
-            "logprob": -0.016673976555466652,
-            "token": " levels",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2076,36 +2186,36 @@
                   115
                 ],
                 "logprob": -0.016673976555466652,
-                "token": " levels"
+                "token": " levels",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      108,
+                      101,
+                      118,
+                      101,
+                      108,
+                      115
+                    ],
+                    "logprob": -0.016673976555466652,
+                    "token": " levels"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      99,
+                      97,
+                      117,
+                      115,
+                      101,
+                      100
+                    ],
+                    "logprob": -4.172924041748047,
+                    "token": " caused"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  99,
-                  97,
-                  117,
-                  115,
-                  101,
-                  100
-                ],
-                "logprob": -4.172924041748047,
-                "token": " caused"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              99,
-              97,
-              117,
-              115,
-              101,
-              100
-            ],
-            "logprob": -0.01147299911826849,
-            "token": " caused",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2117,29 +2227,33 @@
                   100
                 ],
                 "logprob": -0.01147299911826849,
-                "token": " caused"
+                "token": " caused",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      99,
+                      97,
+                      117,
+                      115,
+                      101,
+                      100
+                    ],
+                    "logprob": -0.01147299911826849,
+                    "token": " caused"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      100,
+                      117,
+                      101
+                    ],
+                    "logprob": -5.370848178863525,
+                    "token": " due"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  100,
-                  117,
-                  101
-                ],
-                "logprob": -5.370848178863525,
-                "token": " due"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              98,
-              121
-            ],
-            "logprob": -0.3039398193359375,
-            "token": " by",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2147,36 +2261,35 @@
                   121
                 ],
                 "logprob": -0.3039398193359375,
-                "token": " by"
+                "token": " by",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      98,
+                      121
+                    ],
+                    "logprob": -0.3039398193359375,
+                    "token": " by"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      112,
+                      114,
+                      105,
+                      109,
+                      97,
+                      114,
+                      105,
+                      108,
+                      121
+                    ],
+                    "logprob": -1.3976898193359375,
+                    "token": " primarily"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  112,
-                  114,
-                  105,
-                  109,
-                  97,
-                  114,
-                  105,
-                  108,
-                  121
-                ],
-                "logprob": -1.3976898193359375,
-                "token": " primarily"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              116,
-              104,
-              101
-            ],
-            "logprob": -0.020227916538715363,
-            "token": " the",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2185,50 +2298,40 @@
                   101
                 ],
                 "logprob": -0.020227916538715363,
-                "token": " the"
+                "token": " the",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      116,
+                      104,
+                      101
+                    ],
+                    "logprob": -0.020227916538715363,
+                    "token": " the"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      103,
+                      114,
+                      97,
+                      118,
+                      105,
+                      116,
+                      97,
+                      116,
+                      105,
+                      111,
+                      110,
+                      97,
+                      108
+                    ],
+                    "logprob": -3.9108529090881348,
+                    "token": " gravitational"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  103,
-                  114,
-                  97,
-                  118,
-                  105,
-                  116,
-                  97,
-                  116,
-                  105,
-                  111,
-                  110,
-                  97,
-                  108
-                ],
-                "logprob": -3.9108529090881348,
-                "token": " gravitational"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              103,
-              114,
-              97,
-              118,
-              105,
-              116,
-              97,
-              116,
-              105,
-              111,
-              110,
-              97,
-              108
-            ],
-            "logprob": -0.00007004696090007201,
-            "token": " gravitational",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2247,38 +2350,45 @@
                   108
                 ],
                 "logprob": -0.00007004696090007201,
-                "token": " gravitational"
+                "token": " gravitational",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      103,
+                      114,
+                      97,
+                      118,
+                      105,
+                      116,
+                      97,
+                      116,
+                      105,
+                      111,
+                      110,
+                      97,
+                      108
+                    ],
+                    "logprob": -0.00007004696090007201,
+                    "token": " gravitational"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      99,
+                      111,
+                      109,
+                      98,
+                      105,
+                      110,
+                      101,
+                      100
+                    ],
+                    "logprob": -9.640694618225098,
+                    "token": " combined"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  99,
-                  111,
-                  109,
-                  98,
-                  105,
-                  110,
-                  101,
-                  100
-                ],
-                "logprob": -9.640694618225098,
-                "token": " combined"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              102,
-              111,
-              114,
-              99,
-              101,
-              115
-            ],
-            "logprob": -0.4403199851512909,
-            "token": " forces",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2290,30 +2400,34 @@
                   115
                 ],
                 "logprob": -0.4403199851512909,
-                "token": " forces"
+                "token": " forces",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      102,
+                      111,
+                      114,
+                      99,
+                      101,
+                      115
+                    ],
+                    "logprob": -0.4403199851512909,
+                    "token": " forces"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      112,
+                      117,
+                      108,
+                      108
+                    ],
+                    "logprob": -1.3465700149536133,
+                    "token": " pull"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  112,
-                  117,
-                  108,
-                  108
-                ],
-                "logprob": -1.3465700149536133,
-                "token": " pull"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              111,
-              102
-            ],
-            "logprob": -0.07658235728740692,
-            "token": " of",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2321,32 +2435,31 @@
                   102
                 ],
                 "logprob": -0.07658235728740692,
-                "token": " of"
+                "token": " of",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      111,
+                      102
+                    ],
+                    "logprob": -0.07658235728740692,
+                    "token": " of"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      101,
+                      120,
+                      101,
+                      114,
+                      116
+                    ],
+                    "logprob": -2.795332431793213,
+                    "token": " exert"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  101,
-                  120,
-                  101,
-                  114,
-                  116
-                ],
-                "logprob": -2.795332431793213,
-                "token": " exert"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              116,
-              104,
-              101
-            ],
-            "logprob": -3.128163257315464e-7,
-            "token": " the",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2355,42 +2468,30 @@
                   101
                 ],
                 "logprob": -3.128163257315464e-7,
-                "token": " the"
-              },
-              {
-                "bytes": [
-                  32,
-                  98,
-                  111,
-                  116,
-                  104
-                ],
-                "logprob": -15.4453125,
-                "token": " both"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              77,
-              111,
-              111,
-              110
-            ],
-            "logprob": -3.6208808422088623,
-            "token": " Moon",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  32,
-                  109,
-                  111,
-                  111,
-                  110
-                ],
-                "logprob": -0.02713087387382984,
-                "token": " moon"
+                "token": " the",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      116,
+                      104,
+                      101
+                    ],
+                    "logprob": -3.128163257315464e-7,
+                    "token": " the"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      98,
+                      111,
+                      116,
+                      104
+                    ],
+                    "logprob": -15.4453125,
+                    "token": " both"
+                  }
+                ]
               },
               {
                 "bytes": [
@@ -2401,20 +2502,32 @@
                   110
                 ],
                 "logprob": -3.6208808422088623,
-                "token": " Moon"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              97,
-              110,
-              100
-            ],
-            "logprob": -0.0005487450980581343,
-            "token": " and",
-            "top_logprobs": [
+                "token": " Moon",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      109,
+                      111,
+                      111,
+                      110
+                    ],
+                    "logprob": -0.02713087387382984,
+                    "token": " moon"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      77,
+                      111,
+                      111,
+                      110
+                    ],
+                    "logprob": -3.6208808422088623,
+                    "token": " Moon"
+                  }
+                ]
+              },
               {
                 "bytes": [
                   32,
@@ -2423,27 +2536,27 @@
                   100
                 ],
                 "logprob": -0.0005487450980581343,
-                "token": " and"
+                "token": " and",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      97,
+                      110,
+                      100
+                    ],
+                    "logprob": -0.0005487450980581343,
+                    "token": " and"
+                  },
+                  {
+                    "bytes": [
+                      44
+                    ],
+                    "logprob": -7.508361339569092,
+                    "token": ","
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  44
-                ],
-                "logprob": -7.508361339569092,
-                "token": ","
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              116,
-              104,
-              101
-            ],
-            "logprob": -0.24857443571090698,
-            "token": " the",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2452,30 +2565,30 @@
                   101
                 ],
                 "logprob": -0.24857443571090698,
-                "token": " the"
+                "token": " the",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      116,
+                      104,
+                      101
+                    ],
+                    "logprob": -0.24857443571090698,
+                    "token": " the"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      83,
+                      117,
+                      110
+                    ],
+                    "logprob": -1.5141994953155518,
+                    "token": " Sun"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  83,
-                  117,
-                  110
-                ],
-                "logprob": -1.5141994953155518,
-                "token": " Sun"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              32,
-              83,
-              117,
-              110
-            ],
-            "logprob": -5.080963092041202e-6,
-            "token": " Sun",
-            "top_logprobs": [
               {
                 "bytes": [
                   32,
@@ -2484,56 +2597,82 @@
                   110
                 ],
                 "logprob": -5.080963092041202e-6,
-                "token": " Sun"
+                "token": " Sun",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      32,
+                      83,
+                      117,
+                      110
+                    ],
+                    "logprob": -5.080963092041202e-6,
+                    "token": " Sun"
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      69,
+                      97,
+                      114,
+                      116,
+                      104
+                    ],
+                    "logprob": -12.625004768371582,
+                    "token": " Earth"
+                  }
+                ]
               },
-              {
-                "bytes": [
-                  32,
-                  69,
-                  97,
-                  114,
-                  116,
-                  104
-                ],
-                "logprob": -12.625004768371582,
-                "token": " Earth"
-              }
-            ]
-          },
-          {
-            "bytes": [
-              46
-            ],
-            "logprob": -0.04592279717326164,
-            "token": ".",
-            "top_logprobs": [
               {
                 "bytes": [
                   46
                 ],
                 "logprob": -0.04592279717326164,
-                "token": "."
-              },
-              {
-                "bytes": [
-                  32,
-                  111,
-                  110
-                ],
-                "logprob": -3.1396727561950684,
-                "token": " on"
+                "token": ".",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      46
+                    ],
+                    "logprob": -0.04592279717326164,
+                    "token": "."
+                  },
+                  {
+                    "bytes": [
+                      32,
+                      111,
+                      110
+                    ],
+                    "logprob": -3.1396727561950684,
+                    "token": " on"
+                  }
+                ]
               }
-            ]
+            ],
+            "refusal": null
           }
-        ],
-        "refusal": null
-      },
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "fC3fUXGkFRQTe18",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_636eed499b"
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDFBmOnLQxXdFo3vpViflwEfndVz",
+      "model": "gpt-4o-2024-08-06",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_636eed499b",
+      "usage": {
+        "completion_tokens": 24,
+        "completion_tokens_details": {
+          "accepted_prediction_tokens": 0,
+          "audio_tokens": 0,
+          "reasoning_tokens": 0,
+          "rejected_prediction_tokens": 0
+        },
+        "prompt_tokens": 15,
+        "prompt_tokens_details": {
+          "audio_tokens": 0,
+          "cached_tokens": 0
+        },
+        "total_tokens": 39
       }
     }
   },
@@ -2589,6 +2728,41 @@
     "model": "gpt-4o-2024-08-06",
     "provider_request_id": "req_c7675bc3be0246318b7e4b65a76ff206",
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "call_I5x5g1cciZIUyMJTCf9KMnvh",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "call_7bprMV84qtLEcU8WeIrxvIip",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-ERDFCOtMakBaQheNsLn8KXYxBHGQH",
+      "model": "gpt-4o-2024-08-06",
+      "object": "chat.completion",
+      "service_tier": "default",
+      "system_fingerprint": "fp_8dbe57060b",
       "usage": {
         "completion_tokens": 45,
         "completion_tokens_details": {
@@ -2603,16 +2777,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 202
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-ERDFCOtMakBaQheNsLn8KXYxBHGQH",
-      "model": "gpt-4o-2024-08-06",
-      "additional_params": {
-        "created": 0,
-        "obfuscation": "5rOieBO6T6CFL",
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "system_fingerprint": "fp_8dbe57060b"
       }
     }
   }

@@ -156,10 +156,11 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
                 .finish()
                 .await
                 .context("raw stream should carry a terminal response")?;
-            let serialized = terminal.raw;
+            // The rebuilt document states them where a unary body does.
+            let choice = &terminal.raw["choices"][0];
             Observation {
-                logprobs: serialized["logprobs"].clone(),
-                finish_reason: serialized["finish_reason"].clone(),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
     };

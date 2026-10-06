@@ -77,10 +77,7 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
 
     let raw = &terminal.raw;
     assert_eq!(raw["usage"]["cost"], json!(recorded_cost));
-    assert_eq!(
-        raw["additional_params"]["provider"],
-        json!(recorded_provider)
-    );
+    assert_eq!(raw["provider"], json!(recorded_provider));
     // The normalized terminal has no slot for either: its `provider` is rig's
     // descriptor name, not the routed upstream.
     assert_eq!(terminal.provider(), PROVIDER);

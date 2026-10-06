@@ -81,16 +81,12 @@ async fn stream_raw_exposes_terminal_cost() {
         "exactly the terminal frame carries cost"
     );
 
+    // The rebuilt document states the cost where a unary body does, and
+    // carries the unary tag.
     let raw = &terminal.raw;
-    assert_eq!(
-        raw["additional_params"]["cost"]["usd"],
-        json!(recorded_cost)
-    );
-    assert_eq!(
-        raw["additional_params"]["object"],
-        json!("chat.completion.chunk")
-    );
-    // The normalized terminal has no slot for either.
+    assert_eq!(raw["cost"]["usd"], json!(recorded_cost));
+    assert_eq!(raw["object"], json!("chat.completion"));
+    // The normalized terminal has no slot for the cost.
     let normalized = crate::support::normalized_without_raw(terminal.clone());
-    crate::raw_capture::assert_normalized_lacks(&normalized, &["cost", "additional_params"]);
+    crate::raw_capture::assert_normalized_lacks(&normalized, &["cost"]);
 }

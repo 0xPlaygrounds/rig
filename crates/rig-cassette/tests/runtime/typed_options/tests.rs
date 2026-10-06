@@ -1522,8 +1522,6 @@ mod anthropic_extras_both_ways {
     }
 }
 
-// P5 removes this gate.
-#[cfg(any())]
 mod typed_extras_streamed {
     //! The same extras from recorded streams: a streamed reply's `raw` is the
     //! unary document, so one `Extras` type reads both.

@@ -50,3 +50,38 @@ async fn extras_from_a_unary_recording() {
     );
     assert!(reply.extras::<OpenRouter>().is_none());
 }
+
+/// A stream's `raw` is the unary document, so the extras of the recorded
+/// stream equal those of the recorded unary answer of the same prompt, its
+/// cache counters included.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    const SCENARIO: &str =
+        "followup_hunt_matrix/{}_stop_sequence_reaches_the_wire_and_stops_generation";
+    let wire = || OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL);
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<DeepSeek>()
+            .unwrap_or_else(|| panic!("a DeepSeek reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            wire(),
+            recorded_stream("deepseek", &SCENARIO.replace("{}", "streaming"), 0),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            wire(),
+            recorded_reply("deepseek", &SCENARIO.replace("{}", "blocking"), 0),
+        )
+        .await,
+    );
+    assert_eq!(streamed, unary);
+    assert!(streamed.prompt_cache_hit_tokens.is_some());
+    assert!(streamed.prompt_cache_miss_tokens.is_some());
+}

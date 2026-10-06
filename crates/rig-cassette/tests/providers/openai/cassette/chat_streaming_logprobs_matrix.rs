@@ -145,10 +145,11 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                 .await
                 .context("stream should carry a terminal record")?;
             // The chat-completions terminal record is `CompletionResponse::raw`.
-            let serialized = terminal.raw;
+            // The rebuilt document states them where a unary body does.
+            let choice = &terminal.raw["choices"][0];
             Observation {
-                logprobs: serialized["logprobs"].clone(),
-                finish_reason: serialized["finish_reason"].clone(),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
     };

@@ -92,3 +92,39 @@ async fn chat_extras_from_a_built_reply() {
     assert_eq!(extras.cost_in_usd_ticks, Some(1200));
     assert_eq!(extras.num_sources_used, Some(3));
 }
+
+/// No recording streams xAI's Chat route: a hand-built stream whose last
+/// chunk carries the usage reads as the unary reply stating it.
+#[tokio::test]
+async fn chat_extras_read_alike_from_a_built_stream() {
+    use crate::test_utils::provider_extensions::{chat_stream, streamed_reply_of};
+
+    let usage = json!({"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2,
+        "cost_in_usd_ticks": 1200, "num_sources_used": 3});
+    let chunk = |choices: serde_json::Value, usage: serde_json::Value| {
+        json!({"id": "reply-1", "object": "chat.completion.chunk", "created": 0,
+            "model": MODEL, "choices": choices, "usage": usage})
+    };
+    let stream = chat_stream(&[
+        chunk(
+            json!([{"index": 0, "delta": {"role": "assistant", "content": "pong"}}]),
+            json!(null),
+        ),
+        chunk(
+            json!([{"index": 0, "delta": {}, "finish_reason": "stop"}]),
+            json!(null),
+        ),
+        chunk(json!([]), usage.clone()),
+    ]);
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<Xai>()
+            .unwrap_or_else(|| panic!("an xAI reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(streamed_reply_of(config().chat(MODEL), stream).await);
+    let unary = read(reply_of(config().chat(MODEL), chat_reply(json!({"usage": usage}))).await);
+    assert_eq!(streamed, unary);
+    assert_eq!(streamed.cost_in_usd_ticks, Some(1200));
+    assert_eq!(streamed.num_sources_used, Some(3));
+}

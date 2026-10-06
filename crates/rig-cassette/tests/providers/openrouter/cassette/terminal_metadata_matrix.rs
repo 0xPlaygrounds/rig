@@ -220,28 +220,30 @@ fn last_chunk_field(chunks: &[Value], field: &str) -> Value {
         .unwrap_or(Value::Null)
 }
 
-fn recorded_additional_params(chunks: &[Value]) -> Value {
-    // Each chunk restates the envelope; a later value replaces an earlier
-    // one, and a `null` never erases one.
+/// The top-level fields of a stream's chunks as the document they rebuild
+/// states them: a later value replaces an earlier one, a `null` never
+/// erases one, stream padding is dropped and the tag is the unary one.
+fn recorded_envelope(chunks: &[Value]) -> Value {
     let mut accumulated = serde_json::Map::new();
     for chunk in chunks {
-        let extras = chunk
+        let fields = chunk
             .as_object()
             .expect("recorded SSE frame should be an object");
-        for (key, value) in extras {
-            if ["id", "model", "choices", "usage"].contains(&key.as_str())
+        for (key, value) in fields {
+            if ["obfuscation", "p"].contains(&key.as_str())
                 || (value.is_null() && accumulated.contains_key(key))
             {
                 continue;
             }
-            accumulated.insert(key.clone(), value.clone());
+            let value = if key == "object" {
+                json!("chat.completion")
+            } else {
+                value.clone()
+            };
+            accumulated.insert(key.clone(), value);
         }
     }
-    if accumulated.is_empty() {
-        Value::Null
-    } else {
-        Value::Object(accumulated)
-    }
+    Value::Object(accumulated)
 }
 
 fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
@@ -357,11 +359,11 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
                 .cloned()
                 .unwrap_or_else(|| json!({}));
             assert!(
-                observation.raw["response_id"]
+                observation.raw["id"]
                     .as_str()
                     .is_some_and(|id| !id.is_empty())
                     && response_id.as_deref().is_some_and(|id| !id.is_empty()),
-                "{scenario}: both the native terminal and fixture retain an id"
+                "{scenario}: both the rebuilt document and fixture retain an id"
             );
             assert_eq!(
                 observation.raw["model"],
@@ -370,24 +372,24 @@ fn assert_cell(scenario: &str, cell: Cell, observed: SharedObservation) {
             );
             assert_usage(scenario, &observation.raw["usage"], &usage);
             assert_matches_recorded_document(
-                &observation.raw["additional_params"],
-                &recorded_additional_params(&chunks),
-                &[],
-                &format!("{scenario}: every unmodeled top-level SSE field"),
+                &observation.raw,
+                &recorded_envelope(&chunks),
+                &["choices", "usage"],
+                &format!("{scenario}: every top-level SSE field"),
             );
             assert_eq!(
-                observation.raw["additional_params"]["provider"],
+                observation.raw["provider"],
                 last_chunk_field(&chunks, "provider"),
                 "{scenario}: routed provider"
             );
             assert_eq!(
-                observation.raw["additional_params"]["service_tier"],
+                observation.raw["service_tier"],
                 last_chunk_field(&chunks, "service_tier"),
                 "{scenario}: streaming service tier"
             );
             assert_eq!(
-                observation.raw["finish_reason"], expected_finish,
-                "{scenario}"
+                observation.raw["choices"][0]["finish_reason"], expected_finish,
+                "{scenario}: terminal reason"
             );
         }
     }

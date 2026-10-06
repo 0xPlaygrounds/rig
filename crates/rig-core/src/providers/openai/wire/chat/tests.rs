@@ -379,10 +379,11 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
     assert!(openai.contains("\"file_id\":\"file-abc\""), "{openai}");
 }
 
-/// The terminal record is readable back out of the stream's `raw`, which is
-/// the escape hatch for every provider field this wire does not normalize.
+/// A stream's `raw` is the `chat.completion` its chunks add up to, read by
+/// the paths a unary body is read by: the escape hatch for every provider
+/// field this wire does not normalize.
 #[tokio::test]
-async fn the_streamed_terminal_reads_back_as_the_provider_record() {
+async fn the_streamed_raw_reads_back_as_the_unary_document() {
     let mut response = crate::driver::Model::new(
         wire(),
         MockStreamingClient {
@@ -395,65 +396,35 @@ async fn the_streamed_terminal_reads_back_as_the_provider_record() {
     .stream(prompt("Reply with exactly the single word: pong"))
     .expect("the stream opens");
     while response.next().await.is_some() {}
-    let folded = response
-        .finish()
-        .await
-        .expect("the stream produced a terminal record");
+    let folded = response.finish().await.expect("the stream ends");
 
-    let record = &folded.raw;
-    let usage = &record["usage"];
+    let document = &folded.raw;
+    let usage = &document["usage"];
     assert_eq!(usage["prompt_tokens"], 15);
     assert_eq!(usage["completion_tokens"], 1);
     assert_eq!(usage["total_tokens"], 16);
-    assert_eq!(record["model"], "gpt-4.1-nano-2025-04-14");
-    assert_eq!(record["response_id"], recorded_chunk_field("id"));
+    assert_eq!(document["model"], "gpt-4.1-nano-2025-04-14");
+    assert_eq!(document["id"], recorded_chunk_field("id"));
+    assert_eq!(document["object"], "chat.completion");
+    assert_eq!(document["choices"][0]["finish_reason"], "stop");
+    assert_eq!(document["choices"][0]["message"]["content"], "pong");
+    assert_eq!(document["choices"][0]["message"]["role"], "assistant");
 
-    // The provider-native fields the wire does not normalize reach the caller
-    // here, which is why `raw` is the record and not the parse.
-    let additional = record["additional_params"].clone();
-    assert_eq!(additional["service_tier"], "default");
+    // The provider-native fields the wire does not normalize sit where the
+    // unary body has them.
+    assert_eq!(document["service_tier"], "default");
     assert_eq!(
-        additional["system_fingerprint"],
+        document["system_fingerprint"],
         recorded_chunk_field("system_fingerprint")
+    );
+    assert!(
+        document.get("obfuscation").is_none(),
+        "stream padding is not part of the document: {document}"
     );
 
     // And the normalized view agrees with it.
     assert_eq!(folded.usage.input_tokens, Some(15));
     assert_eq!(folded.model(), Some("gpt-4.1-nano-2025-04-14"));
-}
-
-/// The terminal record accumulates every top-level chunk field, `object`
-/// included — a named field would have consumed the key and dropped it while
-/// its neighbours survived.
-#[tokio::test]
-async fn the_streamed_terminal_keeps_every_envelope_field() {
-    let mut response = crate::driver::Model::new(
-        wire(),
-        MockStreamingClient {
-            sse_bytes: Bytes::from(recorded(
-                "then",
-                "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
-            )),
-        },
-    )
-    .stream(prompt("Reply with exactly the single word: pong"))
-    .expect("the stream opens");
-    while response.next().await.is_some() {}
-    let folded = response
-        .finish()
-        .await
-        .expect("the stream produced a terminal record");
-
-    let additional = folded.raw["additional_params"].clone();
-    assert_eq!(
-        additional["object"], "chat.completion.chunk",
-        "`object` is on every chunk of the fixture and must survive: {additional}"
-    );
-    assert_eq!(additional["service_tier"], "default");
-    assert_eq!(
-        additional["system_fingerprint"],
-        recorded_chunk_field("system_fingerprint")
-    );
 }
 
 /// Mira's gateway can answer a chat request with a bare JSON string instead

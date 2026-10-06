@@ -130,3 +130,46 @@ async fn extras_from_a_unary_recording() {
     assert_eq!(timings.predicted_n, Some(46));
     assert_eq!(timings.predicted_ms, Some(254.504));
 }
+
+/// A stream's `raw` is the unary document: the recorded stream's timings
+/// read as the recorded unary answer of the same prompt states them. Each
+/// answer measures its own milliseconds.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<LlamaCpp>()
+            .unwrap_or_else(|| panic!("a llama.cpp reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+            .timings
+            .unwrap_or_default()
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat_wire(),
+            recorded_stream(
+                "llamacpp",
+                "truncation_matrix/streaming_tool_call_cut_mid_arguments",
+                0,
+            ),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat_wire(),
+            recorded_reply(
+                "llamacpp",
+                "truncation_matrix/tool_call_cut_mid_arguments",
+                0,
+            ),
+        )
+        .await,
+    );
+    assert!(streamed.prompt_ms.is_some() && streamed.predicted_ms.is_some());
+    assert_eq!(streamed.cache_n, unary.cache_n);
+    assert_eq!(streamed.prompt_n, unary.prompt_n);
+    assert_eq!(streamed.predicted_n, unary.predicted_n);
+}

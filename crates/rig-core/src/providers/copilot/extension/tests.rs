@@ -65,3 +65,25 @@ async fn responses_extras_from_a_unary_recording() {
     assert_eq!(usage.total_nano_aiu, Some(726_775_000));
     assert_eq!(extras.prompt_filter_results, None);
 }
+
+/// A stream's `raw` is the unary document, so the prompt filter results a
+/// recorded stream sends read as a unary reply's.
+#[tokio::test]
+async fn chat_extras_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    let reply = streamed_reply_of(
+        copilot().completion(crate::providers::copilot::GPT_4O),
+        recorded_stream("copilot", "streaming/example_streaming_prompt", 0),
+    )
+    .await;
+    let extras = reply
+        .extras::<Copilot>()
+        .unwrap_or_else(|| panic!("a Copilot reply"))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let filters = extras.prompt_filter_results.unwrap_or_default();
+    assert_eq!(
+        filters.first().map(|result| &result["prompt_index"]),
+        Some(&json!(0))
+    );
+}

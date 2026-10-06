@@ -36,6 +36,32 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "I'll run the scenario step by step, one tool call at a time.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "ping_empty"
+                },
+                "id": "call_00_F5Syx6vpsQzeGSFllG1l8635",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "9650c59b-62d1-4df0-bc14-95407b4ba305",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 36,
         "prompt_cache_hit_tokens": 512,
@@ -45,14 +71,6 @@
           "cached_tokens": 512
         },
         "total_tokens": 798
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "9650c59b-62d1-4df0-bc14-95407b4ba305",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -194,6 +212,22 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "ready",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "935900cb-aa60-4baa-a7f1-b31ccbd038b9",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 1,
         "prompt_cache_hit_tokens": 0,
@@ -203,14 +237,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 23
-      },
-      "finish_reason": "stop",
-      "response_id": "935900cb-aa60-4baa-a7f1-b31ccbd038b9",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -306,6 +332,23 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "reasoning_content": "The user asks to reply with exactly \"probe still ready\" and not call",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "6b593998-bbbb-46ef-a099-989a122cd56d",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 16,
         "completion_tokens_details": {
@@ -318,14 +361,6 @@
           "cached_tokens": 4864
         },
         "total_tokens": 5106
-      },
-      "finish_reason": "length",
-      "response_id": "6b593998-bbbb-46ef-a099-989a122cd56d",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -361,6 +396,23 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "391",
+            "reasoning_content": "We need answer only number. 17*23=391. Must reply only number.",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "e7440eb4-289a-4e2d-9538-80addd0574c7",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 20,
         "completion_tokens_details": {
@@ -373,14 +425,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 65
-      },
-      "finish_reason": "stop",
-      "response_id": "e7440eb4-289a-4e2d-9538-80addd0574c7",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -456,6 +500,41 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "I'll check both for Tokyo.",
+            "reasoning_content": "The user wants both weather and air quality for Tokyo. Both calls are independent, so I should call them in the same block.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\": \"Tokyo\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_00_scav8ucK5xp41PyGUyWO9633",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{\"city\": \"Tokyo\"}",
+                  "name": "get_air_quality"
+                },
+                "id": "call_01_y50uJnxoIgPD5iyUFeug8335",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "f507b884-8a3b-4600-a3cb-0a5e0190c161",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 102,
         "completion_tokens_details": {
@@ -468,14 +547,6 @@
           "cached_tokens": 256
         },
         "total_tokens": 531
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "f507b884-8a3b-4600-a3cb-0a5e0190c161",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -588,6 +659,33 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": "We need answer. Must use add tool. Need then reply just number. Let's call add.",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\": 17, \"y\": 25}",
+                  "name": "add"
+                },
+                "id": "call_00_YoKgf5kjEngBBLmLXnbY9542",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "1f0db891-4fca-4bed-8102-5eece7f3c962",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 73,
         "completion_tokens_details": {
@@ -600,14 +698,6 @@
           "cached_tokens": 128
         },
         "total_tokens": 434
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "1f0db891-4fca-4bed-8102-5eece7f3c962",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -631,6 +721,23 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "reasoning_content": "",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "13923399-cdbc-43e6-958f-4bf99042a574",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -643,14 +750,6 @@
           "cached_tokens": 256
         },
         "total_tokens": 449
-      },
-      "finish_reason": "stop",
-      "response_id": "13923399-cdbc-43e6-958f-4bf99042a574",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1048,6 +1147,36 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "ABCD",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  65,
+                  66,
+                  67,
+                  68
+                ],
+                "logprob": -0.017877162,
+                "token": "ABCD",
+                "top_logprobs": []
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "aa0ce3b8-9e41-4a00-b467-aaf07fd94194",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 1,
         "prompt_cache_hit_tokens": 0,
@@ -1057,29 +1186,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 14
-      },
-      "finish_reason": "length",
-      "response_id": "aa0ce3b8-9e41-4a00-b467-aaf07fd94194",
-      "model": "deepseek-flash",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              65,
-              66,
-              67,
-              68
-            ],
-            "logprob": -0.017877162,
-            "token": "ABCD",
-            "top_logprobs": []
-          }
-        ]
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1102,6 +1208,59 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "ABCD",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  65,
+                  66,
+                  67,
+                  68
+                ],
+                "logprob": -0.021281697,
+                "token": "ABCD",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      65,
+                      66,
+                      67,
+                      68
+                    ],
+                    "logprob": -0.021281697,
+                    "token": "ABCD"
+                  },
+                  {
+                    "bytes": [
+                      97,
+                      98,
+                      99,
+                      100,
+                      101,
+                      102
+                    ],
+                    "logprob": -3.8606906,
+                    "token": "abcdef"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "70322b86-e0e2-4d50-9d0f-1ef3b887e29b",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 1,
         "prompt_cache_hit_tokens": 0,
@@ -1111,52 +1270,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 14
-      },
-      "finish_reason": "length",
-      "response_id": "70322b86-e0e2-4d50-9d0f-1ef3b887e29b",
-      "model": "deepseek-flash",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              65,
-              66,
-              67,
-              68
-            ],
-            "logprob": -0.021281697,
-            "token": "ABCD",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  65,
-                  66,
-                  67,
-                  68
-                ],
-                "logprob": -0.021281697,
-                "token": "ABCD"
-              },
-              {
-                "bytes": [
-                  97,
-                  98,
-                  99,
-                  100,
-                  101,
-                  102
-                ],
-                "logprob": -3.8606906,
-                "token": "abcdef"
-              }
-            ]
-          }
-        ]
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1188,6 +1301,35 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "reasoning_content": "We",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": {
+            "reasoning_content": [
+              {
+                "bytes": [
+                  87,
+                  101
+                ],
+                "logprob": -1.1920922e-6,
+                "token": "We",
+                "top_logprobs": []
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "9e38a311-b2c6-4d90-adb4-0371d28a571f",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -1200,27 +1342,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 47
-      },
-      "finish_reason": "length",
-      "response_id": "9e38a311-b2c6-4d90-adb4-0371d28a571f",
-      "model": "deepseek-flash",
-      "logprobs": {
-        "reasoning_content": [
-          {
-            "bytes": [
-              87,
-              101
-            ],
-            "logprob": -1.1920922e-6,
-            "token": "We",
-            "top_logprobs": []
-          }
-        ]
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1252,6 +1373,52 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "reasoning_content": "We",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": {
+            "reasoning_content": [
+              {
+                "bytes": [
+                  87,
+                  101
+                ],
+                "logprob": -1.1920922e-6,
+                "token": "We",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      87,
+                      101
+                    ],
+                    "logprob": -1.1920922e-6,
+                    "token": "We"
+                  },
+                  {
+                    "bytes": [
+                      49,
+                      55
+                    ],
+                    "logprob": -15.085984,
+                    "token": "17"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "created": 0,
+      "id": "35d4cd5f-f99f-4a51-b7ac-fe62cacf8550",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -1264,44 +1431,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 47
-      },
-      "finish_reason": "length",
-      "response_id": "35d4cd5f-f99f-4a51-b7ac-fe62cacf8550",
-      "model": "deepseek-flash",
-      "logprobs": {
-        "reasoning_content": [
-          {
-            "bytes": [
-              87,
-              101
-            ],
-            "logprob": -1.1920922e-6,
-            "token": "We",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  87,
-                  101
-                ],
-                "logprob": -1.1920922e-6,
-                "token": "We"
-              },
-              {
-                "bytes": [
-                  49,
-                  55
-                ],
-                "logprob": -15.085984,
-                "token": "17"
-              }
-            ]
-          }
-        ]
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1338,6 +1467,32 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "ping"
+                },
+                "id": "call_00_c4vCr4N4Y11fqTENRHnk8655",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "0466771a-94f8-48ac-9e3c-714110e80113",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 15,
         "prompt_cache_hit_tokens": 0,
@@ -1347,14 +1502,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 292
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "0466771a-94f8-48ac-9e3c-714110e80113",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1391,6 +1538,32 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "",
+                  "name": "file_report"
+                },
+                "id": "call_00_OLKCNNpBVvi9GSsf1CYz0755",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "7349978a-4914-4223-962d-d592139a38d1",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 16,
         "prompt_cache_hit_tokens": 128,
@@ -1400,14 +1573,6 @@
           "cached_tokens": 128
         },
         "total_tokens": 362
-      },
-      "finish_reason": "length",
-      "response_id": "7349978a-4914-4223-962d-d592139a38d1",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   },
@@ -1570,6 +1735,22 @@
     "model": "deepseek-flash",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Maple trees are known for their distinctive lobed leaves and winged seeds called sam",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "a002b8de-ea4b-440f-97a1-db54fb2aeb66",
+      "model": "deepseek-flash",
+      "object": "chat.completion",
+      "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
       "usage": {
         "completion_tokens": 16,
         "prompt_cache_hit_tokens": 0,
@@ -1579,14 +1760,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 40
-      },
-      "finish_reason": "length",
-      "response_id": "a002b8de-ea4b-440f-97a1-db54fb2aeb66",
-      "model": "deepseek-flash",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669"
       }
     }
   }

@@ -258,3 +258,37 @@ fn a_text_reasoning_reads_as_no_reasoning() {
         OpenAiExtras::default()
     );
 }
+
+/// A stream's `raw` is the unary document, so the extras of the recorded
+/// stream equal those of the recorded unary answer of the same prompt.
+#[tokio::test]
+async fn chat_extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<OpenAi>()
+            .unwrap_or_else(|| panic!("an OpenAI reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat_wire("gpt-4.1-nano"),
+            recorded_stream(
+                "openai",
+                "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed",
+                0,
+            ),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat_wire("gpt-4.1-nano"),
+            recorded_reply("openai", "raw_capture_matrix/chat_raw_round_trips_typed", 0),
+        )
+        .await,
+    );
+    assert_eq!(streamed, unary);
+    assert_eq!(streamed.service_tier.as_deref(), Some("default"));
+}

@@ -126,6 +126,34 @@
     "model": "openai/gpt-4o",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "ping_empty"
+                },
+                "id": "call_m7kNXg2KeusmnQnbD3KApvt9",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK",
+      "model": "openai/gpt-4o",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "system_fingerprint": "fp_ebb746cdfb",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 11,
         "completion_tokens_details": {
@@ -148,16 +176,6 @@
           "video_tokens": 0
         },
         "total_tokens": 363
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790978371-wvTpk41ZJnUqJ8JVZTMK",
-      "model": "openai/gpt-4o",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "system_fingerprint": "fp_ebb746cdfb",
-        "service_tier": "default"
       }
     }
   },
@@ -763,6 +781,24 @@
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "probe still ready",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790917130-GRZ5ofHRDoWJBa0qFdJB",
+      "model": "openai/gpt-4o-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "system_fingerprint": "fp_94ff9edbd5",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 4,
         "completion_tokens_details": {
@@ -785,16 +821,6 @@
           "video_tokens": 0
         },
         "total_tokens": 4628
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790917130-GRZ5ofHRDoWJBa0qFdJB",
-      "model": "openai/gpt-4o-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "system_fingerprint": "fp_94ff9edbd5",
-        "service_tier": "default"
       }
     }
   },
@@ -953,6 +979,24 @@
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "pong",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152518-shs6wMqPzJZdpVdXjZfQ",
+      "model": "openai/gpt-4o-mini",
+      "object": "chat.completion",
+      "provider": "Azure",
+      "system_fingerprint": "fp_369e662417",
+      "service_tier": null,
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -975,16 +1019,6 @@
           "video_tokens": 0
         },
         "total_tokens": 15
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790152518-shs6wMqPzJZdpVdXjZfQ",
-      "model": "openai/gpt-4o-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Azure",
-        "system_fingerprint": "fp_369e662417",
-        "service_tier": null
       }
     }
   },
@@ -1036,6 +1070,39 @@
     "model": "openai/gpt-5.2",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "44",
+            "reasoning": "**Calculating divisible numbers**\n\nI’m trying to find how many numbers below 400 are divisible by 6 but not by 9. First, I calculate the total multiples of 6 under 400, which is 66. Then I look at the multiples of 18 (the least common multiple of 6 and 9), which gives me 22. By subtracting 22 from 66, I arrive at 44. So, the answer is 44 integers that fit the criteria!",
+            "reasoning_details": [
+              {
+                "format": "openai-responses-v1",
+                "index": 0,
+                "summary": "**Calculating divisible numbers**\n\nI’m trying to find how many numbers below 400 are divisible by 6 but not by 9. First, I calculate the total multiples of 6 under 400, which is 66. Then I look at the multiples of 18 (the least common multiple of 6 and 9), which gives me 22. By subtracting 22 from 66, I arrive at 44. So, the answer is 44 integers that fit the criteria!",
+                "type": "reasoning.summary"
+              },
+              {
+                "data": "gAAAAABqsrETSkuvQ9Uwx7FHj01pVumc8YzXhrNTwu9cGtYwki8I2ByDn6K4wyvRgm9dwRB6ByIFC0pPkZiI4DauwMv0orZUeLh_ZrrjV_YZTCB9S24hCI4KkJjrupHknnTsTuy6FTLNnTRYKbx3Cjld5PLEbZgHfX76kzF19UFYNKM-uUmLnXoi1eXIYe6rtWHAX7DhP_IWMbeVangi_qsubLjiVpKJLy4iV5RNQ40EzfYDZS5GonvsmMi6XgKZiclWAk1jNiwG42dgWDn4hha4-6fY8q_QXcDvCF1Oc-MSzu5ZQb0jzFO3yfjuJZsZ-z1CBpykG4pjlaySprak4W_BLhvSrhY7xXe1sYhT8J659H626HKkxw3RgXyric_ACWKhGxjVtrMX9nQny3REEmiKbRdrhzYVSYfwFKTT8bDepedeI2k94IV3FGV1bsL61s2lcmtwRpY7STRS36-OwuDEiyENfI0g35ncLDzMEAVlJJW5psGlFSeEy_mQeJa17-tiyfQc6FUG0tMjcEiSpZcpzl2Zi9RAhCvlEk3o11K9c2Rc8B7Dvk9dT0JYACx28ZukVEi3ReFWhcfxu9naYfYQ61qc42rLJwsybdeAFBuH6Ri9HmTs4-iM4fCkxX-AmA0QbVXWK6vP7kcEE6akEy9ZBWPjdD1tq_PZ5ZeXq68wuu22dMQZtx4QI_NWf02e4_TcHvnl5FZ8TF6eJDdZqMyk_4fXDIzpNUukdo3H7v-yKnPHlt960kjVuAGKYutCWmEmqhAqtKOIdfSUnI_rzeI8s8jnlwKnD4e4pR3p3mdEo-QkjsfcXq6SkOsKdNGJCgR-UeVIYV1B0bgOiuDc_xnrJxLZ1j510N8puaX_MtNhmM_sg8lHZwJp6lXU4dCB_LhhogRNvhQLEcWO81iTtXZTP78TorJRlC2Vo1Mib0CNzbrZzhFJxxccsNg-QE9adztJHL8fHUZtnnZ3Zi5HjEr9igAtHqcFPUQSc77g72l9F_itEE0rAbwrbtsqQodYb1AQE8hp7X7sq8zeRykd4K8RsWVSvlhBmQN4Ku1LfyYWr8dAzyjvPLijSE-A2trruISbuIPelbmpHuDWJzuxT3H_nBmHMsaWBSu7XXs3JUPi4ErAbM8HccQAMK3TV5HyytDvlkP4I3GZvSjE75te3d5LWTCxR5IzbNJlXcY8y8ANlqeg_HmhY-mQ2dZ81Tw2VEJBl9lEND6hyIn4q4SAv_z6HNvSjYF29ZfEuM4_oGyK5ZvN4-uLFkJGKczoGv1bvREwJcFOvPz40avqqzrloMpJrHI8qS_1zBTyRdulNiot9yEGD-1oIIdbqYtDj8t_d89O_Eq_kGcIX8R0g0zthJF5X3YNHhTGuaJlQF0yU9Zlv9hb5hkwi0cj7MZbo19Ywhkyo3E-vpMJp-M4EU9fT2I9e-JZcB4UmvMk0ym8rkgYmnQ_q0oYTC2yx1QeW5UWlbWN_CNjVEEycbJ2Gg0D8-PkZFEdvgtqgA04ZCYXY9u5ljKydjnv42V7hk905i689V852eXlNJpVEvjIDd8ws9fA427jB236lvzYsoT2SbxsMdD2McLrA31jxx3vVjfJFZ78-FVlg1jn.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL2dwdC01LjItMjAyNTEyMTF8b3BlbmFpIn0",
+                "format": "openai-responses-v1",
+                "id": "rs_0093fe422f8dddb8016ab2b111932887d1b6d1c3bf33442ff6",
+                "index": 1,
+                "type": "reasoning.encrypted"
+              }
+            ],
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790095632-IROlmdQkzrzXWYq5TeGC",
+      "model": "openai/gpt-5.2",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 70,
         "completion_tokens_details": {
@@ -1058,15 +1125,6 @@
           "video_tokens": 0
         },
         "total_tokens": 121
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790095632-IROlmdQkzrzXWYq5TeGC",
-      "model": "openai/gpt-5.2",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -1324,6 +1382,23 @@
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "DONE",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790978441-2bv13UF7iTwDs7BPe94m",
+      "model": "anthropic/claude-haiku-4.5",
+      "object": "chat.completion",
+      "provider": "Anthropic",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 5,
         "completion_tokens_details": {
@@ -1346,15 +1421,6 @@
           "video_tokens": 0
         },
         "total_tokens": 786
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790978441-2bv13UF7iTwDs7BPe94m",
-      "model": "anthropic/claude-haiku-4.5",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Anthropic",
-        "service_tier": "default"
       }
     }
   },
@@ -1416,6 +1482,43 @@
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning": "The user wants me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the parameter value set to \"cobalt\". Let me do that.",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "text": "The user wants me to:\n1. Think briefly about the instruction\n2. Call lookup exactly once with value \"cobalt\"\n3. Not answer in prose\n\nThe instruction is clear - I need to call the lookup function with the parameter value set to \"cobalt\". Let me do that.",
+                "type": "reasoning.text",
+                "signature": "EpoECroBCBIYAipAv5DGE2mA3blqwj3Zeuwk924kbHWKVJ50rlOoVkVFGYWwge6ktcdQ6HiSWqXkGaJCNoOn4Q32nOu16T30qSxdBTIZY2xhdWRlLWhhaWt1LTQtNS0yMDI1MTAwMTgAQgh0aGlua2luZ1okMGQ5ODNmM2YtNDlmYS00YTQ2LTgyNTQtYjFiYjI0OTFhMmE5eh51cHJvZl8wMTFDZjRvdVpRNlBUc0xaN3ozS1JWcDKoAdniytUGEgyuv8Fqoy38ua8DeecaDGp/lhPVRLmaoYo3/CIwti1p2MTijco0Nfqs0EoZi/JFEUyVEu1dI/RFvwxRzsoqUa+ePshPJrNPlOjo0od0KowCWhWMa0ibQtZYUNUcKlA8tJmpvVZuVtbDLL9l+rk1z3mm7lpi6QLHoSiRvDsRNhjeNx6ZEJ/YRZCkLlKchc58OU0/y2vJIFEilrsW2iDZsl1aAsV6VmlY0oP2NmAgvEOpAYB4ePxHYFnIJuXnkT/91/HTVYX8I7HZQDz78tuU35TrrVR4p8VBTtwwUzMn4vmBp4Tm+dsw0hJo+/I4i+MzCkJs2p5h6Cktzyv9Ue0NIFsPXi6xMm8D9Oq2IDrjyrAallqfNcRZX2hsMyrJgBXxHxCfNaX4bMFs4OUbY57puVXDLvHV4QXanxJgYKpw2l73aUUbQvCzVSVM+HWTvVjFfFTZDjI0LoR3vUeduxgB"
+              }
+            ],
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"value\": \"cobalt\"}",
+                  "name": "lookup"
+                },
+                "id": "toolu_01BC1hJawCiqryyy3emj8gse",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "tool_use"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790095704-XDIlfECIVdfNajPVDQE3",
+      "model": "anthropic/claude-haiku-4.5",
+      "object": "chat.completion",
+      "provider": "Anthropic",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 113,
         "completion_tokens_details": {
@@ -1438,15 +1541,6 @@
           "video_tokens": 0
         },
         "total_tokens": 532
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790095704-XDIlfECIVdfNajPVDQE3",
-      "model": "anthropic/claude-haiku-4.5",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Anthropic",
-        "service_tier": "default"
       }
     }
   },
@@ -1765,6 +1859,25 @@
     "model": "openai/gpt-4o",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "refusal": "I'm sorry, I cannot assist with that request.",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152545-jXYRXuLCuCh52TQFDBvx",
+      "model": "openai/gpt-4o",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "system_fingerprint": "fp_6359026e51",
+      "service_tier": null,
       "usage": {
         "completion_tokens": 15,
         "completion_tokens_details": {
@@ -1787,16 +1900,6 @@
           "video_tokens": 0
         },
         "total_tokens": 89
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790152545-jXYRXuLCuCh52TQFDBvx",
-      "model": "openai/gpt-4o",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "system_fingerprint": "fp_6359026e51",
-        "service_tier": null
       }
     }
   },
@@ -1980,6 +2083,37 @@
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  52,
+                  50
+                ],
+                "logprob": 0,
+                "token": "42",
+                "top_logprobs": []
+              }
+            ],
+            "refusal": null
+          },
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152564-b2zFAUMMDAxoU29fnsiJ",
+      "model": "openai/gpt-4.1-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -2002,29 +2136,6 @@
           "video_tokens": 0
         },
         "total_tokens": 23
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790152564-b2zFAUMMDAxoU29fnsiJ",
-      "model": "openai/gpt-4.1-mini",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              52,
-              50
-            ],
-            "logprob": 0,
-            "token": "42",
-            "top_logprobs": []
-          }
-        ],
-        "refusal": null
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2049,6 +2160,54 @@
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "42",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": {
+            "content": [
+              {
+                "bytes": [
+                  52,
+                  50
+                ],
+                "logprob": 0,
+                "token": "42",
+                "top_logprobs": [
+                  {
+                    "bytes": [
+                      52,
+                      50
+                    ],
+                    "logprob": 0,
+                    "token": "42"
+                  },
+                  {
+                    "bytes": [
+                      49,
+                      55
+                    ],
+                    "logprob": -22.5,
+                    "token": "17"
+                  }
+                ]
+              }
+            ],
+            "refusal": null
+          },
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152566-3JNUE2f0PNVoTleZ3XIo",
+      "model": "openai/gpt-4.1-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -2071,46 +2230,6 @@
           "video_tokens": 0
         },
         "total_tokens": 23
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790152566-3JNUE2f0PNVoTleZ3XIo",
-      "model": "openai/gpt-4.1-mini",
-      "logprobs": {
-        "content": [
-          {
-            "bytes": [
-              52,
-              50
-            ],
-            "logprob": 0,
-            "token": "42",
-            "top_logprobs": [
-              {
-                "bytes": [
-                  52,
-                  50
-                ],
-                "logprob": 0,
-                "token": "42"
-              },
-              {
-                "bytes": [
-                  49,
-                  55
-                ],
-                "logprob": -22.5,
-                "token": "17"
-              }
-            ]
-          }
-        ],
-        "refusal": null
-      },
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2167,6 +2286,42 @@
     "model": "openai/gpt-4o",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "call_NcNQgk31ThHo5PPSMWpvVsgj",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "call_aQJxmDlFQAZvsMHhBQVPZqpD",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152571-TFke2fN3e963tOceF1eG",
+      "model": "openai/gpt-4o",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "system_fingerprint": "fp_24e955c341",
+      "service_tier": null,
       "usage": {
         "completion_tokens": 45,
         "completion_tokens_details": {
@@ -2189,16 +2344,6 @@
           "video_tokens": 0
         },
         "total_tokens": 202
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790152571-TFke2fN3e963tOceF1eG",
-      "model": "openai/gpt-4o",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "system_fingerprint": "fp_24e955c341",
-        "service_tier": null
       }
     }
   },
@@ -2259,6 +2404,43 @@
     "model": "openai/o4-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning": null,
+            "reasoning_details": [
+              {
+                "data": "gAAAAABqvzp_7RLpOyNKidzFWHq5PqB0Wn0-tpdwatJIQww-L1jmHIJEoBuESVOFi7KayVahlrawl9kEK6sh9T9b-kB_c6dWpTlZBjehacQx4jG-Eg-WXTAJt6-HBI-H94J4XHhwfJlCLNjZFvVxx8n8lwYnyALRbasC-t2Kn4lBAdkRunKrs1rcYs-RVNAvZEHgDnisgCpvgjyqhStu65o-JCqu5xiBpLD62ZkeRpp5oeC5MofM1q1GRdo4l38kGaZ8dy0H6zmRk3yquYYEDxa5ZJZrAU4R_pcimEfJGPiZTmNbOqnioaBRwfcnCVleuyvfIKyAeNW-aXR7EJJwY62zI_00483gKT32nGmNE_hlHWyZpeHn-Dh_B-sASh4xXAj4aE_DPO3b-zdVyniw_0pEA6oc6Rg_ryOsq3Y8TtVLRFHymmSm4iGoIo8DTX86AbvTlBjuHoxyf5Z21neyzOSJx_2hxKLPnbOSXldWCyRpFemrS1467EahhKQVZXlg3Q_Dlj2ywDMsGr1w3FjvQztI-d8NkHGMJQs1J39fWu65vca_PO16MlHwmAtqgfbllD5J0qUdhr-GfuLsIfN5RaZKaWNyxJNgNB3I1kRz5yEnUcCwEitNLq4RmtjiF8h-RBMgQx8lar6JZw1UT8siKXKC5lq2t0dviMzGrkq1Tf2YDRN2d6d6Tpyb-E5VHGmzjeRxTpMvG6ZHM1896nsysRqRsqT6Hb5Kx-Ui19jO8CUoFK-Q-o-jkHiv7Zj5VsI8TqfWWksw8vSeIpK6CIFayKljbLoS4ro3HDrek9mOqphU_iCDt1tCJR9O9EFXCH_7PTp6MH8HWA1Y4duYK-vE2vjeRi3gRqPQ18T4ggtOHh9LD7vdrkPeRfAdFpKRd18WVtB71HvlrKBcKLyEVRQclCQlOePkGadTwnAGBeU_a15Y-vRBhBZDq-sqJJWkmQ7zEFfRZr3UOhFnLHHohMcAAQUr48gdrhk_qMVWoGxLYSV3iE9yO2aaJbptdb2xyvAXXjTlto1AAv8KgNbIBgvdPMAP2wDMVd0CXLkdhq9cNXLB9F5yH4eeU9ySv-RIScLqg8ruFFeqx4yd24wj643Qe9NHtctKYhE551UrFstWT794lFPnoUaMrGSPsvNjUaXWXklrBlqmxQ31CRpl-TzNqrz9MoH3GpvlbMmaKYL5T8fBjSgxYHL1el4BollaDL_DE3idzWfUceuI2ehoGOTl5XVkwR1WOZpOEUT8sLQeMYocsekBrt9t0PbsxImm4-AvEs8XvCU3fPtFACbPeZM0w2NQrsr4vmpJ1aHMqiUkeVWAlSDB516aJ4ueT5eQyusbN0efidrICq2tutqGoN_p-SoPdN1lNmKvBYCAdsrBnODQBfciB2Iq8K7EQ3Sqm3o7ZogxLKjUCt-Fd9_s1WqowW3aO9wJgogSn22eGo_kKQTwDT1ud4Qh0CN6DnXOu4aCx0P260eLchhpQ706uipKmRxFtAePBtfmw30b9dFXT6lRJMILSpPxT3F3Z5qbOXW3_Wn7OBQLb9fRM8xTUfO02eZjK4wEIANeDtpqPadKc94uEQd7xHXcuQZvP0do6qENMPfvFht8dMaA6tO3Yi-HVxNcood1d7301W8I18CwkyAF5HpG5dx1S_Yibz6_9DJaCHRrge1d0ygA4exlXpN0KTQtRr_VNMqv_YFg4bYsY4FmYxoxwrC_Mvo8Q887Y5DXKWGUXwvwqOX2bXUiZGnr6cwlU-2qTL5SDshwWjA1LqjQCQrgDTAGXVd8dRK71ZavFHMEfeKfciC1PkTQcK3DyGs1ZR7s_nWdRDgBBdxB8CDhyBZzB8Ohum742lqef7zwZ-c5BIRmyXlz34aEI9_9pVYx_ELt87UOuF-FGbSP_hZ1ioTRpfCBOnOi2nhf9wtxSwN_scAN4gzCbzQfqfaCmgRq9x1RGWwTSiaMkxZg3RLwKtsvSb8K8_n-cFT_e4ZHpEmJRP0TVl2A3YWxt7ZAWY3auqk02ATXxGgCxSLx2wTATKrCMFQBmWt7e0LsGmokJQdD6Z4AaSnb5chequaUGf4d8brB-l5O4LiP4XwcMITEgm0Mv2Q9Y6tfEZpSOfBRY1arVXK7nM5vA6mIteqQ2qLS_d3R635PB4o2STcbSPdIvQVULZSRZDju8V-P6up88edeoSK8pI6X_IEtSRMLKy-XvmMF8yhNpHkUIUSeI32yHvUB5jZt_oZbmILqWBa5_fKMB7YSDC8A2IzEUkNveDBiYhcfQMX1_uW7m2SXK0CwWI2PtI7VhmK3E1NcMUQztBbw01Wb3L8YMFgAcruXfgIPIz3gzlAwYTYH1uHH5_y4-SvbwOax_JUTKNRaTHLKqwP_B-nyoljQ0XKc0AfX2ZcxJR-HQEqPI3t4kytgEmtKZOhWRUPPt0htUp2Ve5qrX4G8g-33EJxH6IrPIdygrfIDR-SGNsqno3MmXFkgp5GAQLV4-Kr7hzeY_K5Gx3mW_cXqZ5X9XyIguJ7X3XH6UTXuKZq9JFyBoGPlrYXCVbHphyfaUyQQYMjkUMBNBKFsK_hf1QvUvhcAMwjIOFd9o6jesgU-EfCobzM5FToDp9RfH1ttS2Q3wfa6WSy8OzWngpHd6H9ZwNAZTBXjR0zV34pBwpcIZP3fh8VEmxlEJMPJs7QsjBfQUn1tp5hbMswbe3Njoy5Hrh0pJbeBHaKoJlp7m_28dUkDsrGg2nvQLx3gnKb0WW0QQ2i4kWeZi_OIgSO3sE0ALZTz8RiOe0bU4CY_dJFv3RQX4V7VFBpHLz6pK8fFjrFO2Wl9b_PR1gUgn5p0ORjcCCj7ILrRMWEp2DTMuhTewjQsj07Zt2xZ0Q7w8qK6z_ehEFMcq3t8ZYSl_nqQRxcobLZfFPIz7hXkXsJg3N7t14bKMG2spJx2PkbFoq46YFlZUdHtDcCo9GXO3x4UOX70tcqaG6RV0YqSJFZp5OzBnjK3bUd-JIrue7fxqAKfUYxCUPsaEysrn4BwUNa6Fm6sYVciAbKt0xP-yoQ1-pJ69rZd8md6cS0_OgESZR7Z2Uo_Cmw=.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL280LW1pbmktMjAyNS0wNC0xNnxvcGVuYWkifQ",
+                "format": "openai-responses-v1",
+                "id": "rs_08dbf5a62b016cdb016abf3a7d89c887d18851fc221d7d4749",
+                "index": 0,
+                "type": "reasoning.encrypted"
+              }
+            ],
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"Tokyo, Japan\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_1ZXYiRWb1hi1C7NeEdU0b982",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790917244-5gQMAR6Uur1pfIcVO6yd",
+      "model": "openai/o4-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 306,
         "completion_tokens_details": {
@@ -2281,15 +2463,6 @@
           "video_tokens": 0
         },
         "total_tokens": 451
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790917244-5gQMAR6Uur1pfIcVO6yd",
-      "model": "openai/o4-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2334,6 +2507,33 @@
     "model": "openai/o4-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Current weather in Tokyo: 72°F (22°C), mostly sunny with light clouds, 45% humidity, and a northwest breeze at 8 mph.",
+            "reasoning": null,
+            "reasoning_details": [
+              {
+                "data": "gAAAAABqvzqCQbcAxtspq6uVQ2BbLwa7b6e6LFaET4_7AC4Ii24hTI5A-AHLD_P8w4F4wnitoLzPzXWMpRsg7urNY3Tdsx3McaMOl8tVLyCAiSA8sODKelcsEv9MfyPjME8qUx65R6giYvykrIlk0kkKaUwaHSI7x65q4lesGC-t7cbxk3jgXYko_tNo2kcSFtqACc_FgHcVnycAr6GCstPoxJ7UUZUiyH6pHyFVoH8K-NlFtflscfsiEyzq3FOn79yeodrzyAez4bq7u9rOF5Qa07g3Ia0-HJkLVqs9ZjTkLOtROD0ZExMOqlmmcWAFuH2HG_JVi0xXM0rhJ_11M69MggFxhieJ4nPvvmUD6SOm8VbMHg3jbWGUvZte3SUWO81WEtPb31-J1DOHD93ABCJi3bxuMxUTJkMHg_B3bycHEbDrrKpujKZowEM7ijQn5OMhy9LeeHnY7TzrUn_HASBUmHrxNQphe2qli2h7wmjLoRSBk060Bm_s84uM6W28pxxeF3h5B4wAbjhXDKtSX63el5u7ygetgzivoNsSQdEMB99zI-jGZVfCHk6RajXb9NqLv1akwl510FoXhvUT3hPoMXfELYDPReipRI9QBtYcfP016W75J6CeG008zLR5jQvj-Z1_5V5IvFGGHAVL_CIC_rnaLjeQAQ_SAPe57AaOax1lQVhgz9SupSLVNuPMvzyLxq4DG_hszMGzz2VL1JwSrqYES4SNfUxuwClLnSNG22NwZAav2AUZh-KrkJ-kcrwNfV9I680TwFZuCtS1JsXBcM-BGmiy_EO27LPP5c1MJ3bUqFhCQzJpmY8C-JYyVDtGowAcBIx81WNW5YJrqtL5w6SU84VNVdxW4loclwBt4d5Mqj_cmVCHN9B8R-SsbVXWZR39urtEcj21ndtwg3fvvUboyAD9KXC3ZaGy6_d8i_03ClMdl2GqYi53gRPKalT3jhhgWOlFxzc3T8xWBPKaXahoOoXCGwsEDp3OmSTO1GOnRkX1_YUWMx21QpW-g8g4Xzm4wsW1I17cy7HhpnXEWo1K08qSKm-5kQf2rkAGkB3kM59fy6jV4RzWYZIpFvJfYUv1p5nDc4BkcQfIDZF3pVmqcZrkg45lfSQqgf5w8HuPuhhk2nmtahjyTfBBsQDc-S9AZkPlKJQ1eQ25PE6NIsy-qNUuf7Hb9G8Nh_VWXM9l7qWSR-QMl-ELUJPmP-ERuPNEMX4etuWPljJVHhyKk4DIGgWiBL-q0uAuPo7KwcvtqeTauXuzhWbvYYonzPsIadmcF8DjeFmdY5djkgUNNejlgPJVmQTn9rOH-dTeOr0SORYoZbrJfHlYHRau9BZ5F0LhR55Zg1AGHk8yPFPM2QOfyhFn_xFXBO4RIJzvhDa1icEN64-bLTFJKg38a77q9q6CMLbpNsyoOWffwiuON_Fwm3lwcTM2cBk1dpVSdx0rLhjcesXJ_jsERhstPR6fdxWs_3N1UBJgygTxJqo2pTLvcPx_klXZfaujW9m5luOQycD6g4KhKjoj7hXRp4nS6N9jQDlVc39qvaEFSTW-eVXD6u29B50qH0w1MMjy37PqiYg7ZLl_0rNnkkfQGmosAk3lEW3c-Hxi2jzPP1YVaSmLebSbO5qLb26nZu6G8AKtncWtztqhAuGnMlaop6TkVmCFseq42UWo2vRe9emJlzcql7MmU--yu_eL00OMA5KAWZYYx6oPb8GQmXepUn2J_ZVsfW1gAvFF4tzZPIpTTKQDWI5wmbsfS0G0pcCbwgcDd0yxjEmmYDVz6-OrfMQLQ5gGg3_ChcKoUVcvBK9uyvaORv4bwpHeDeha368hkhJ1tnQwR82RRPVbMTAdCIZSoYdq_im7xucHo9etklAjzPndOpY8Z3EjPuN3sS8rMMdRo9bD6e2zSJuvwiFa4AXeRuwWpYiclr2BD3UbbD0o_dfosvqRLqsLmCNR60-Qx-XgfbztK7qWcBpmxG4HO5G3QDn-K4GXF9FS48dwaXo9jOYzFNTR55A99HjrqpsfMSxIy_gmdGTfEJygkQ-n7yDd9RpGxft7B3ZT94QpRZpGdSh-x3CP2Z7jMdQCBxuKDenDep3iuECMVO7axnf6tkpLNpa97j3QHaQnk4qEAUtIKNk7nbzurqb8izRsJQef2QQZ0OWYmYnRIVU6h0zvWDbiSX4hikXigYsg0emRKC6UWU6g2rNq_JaKxOER86Z0moAGkmYOlJnQtVNvKWZDXYmXBBN_Fu2_v27nLaL0aoJg_jg6tLjn4McZLWHBLXQzt6s12lw8TOpwapU3WrQF7waLYZD56y_VvdBJqPMYhXb5nPS44-zunEdYKQiNvq_naJinAya0vk-_wTRAMki9-Yvkq9yKgeuB1QsCcApAkwEk2RrlceKR6GzcFPwf8vbgUky01ceTi9e5gJ9EaYeyyLPaYn0-yneJljc4s4h7oUt42gmNhoVErwgxNhUCCFB_7e5wMsfbieIzN7VXcwjRxJDmCDHIo4GiJ3p6cDkoZ1tQdirmd05x_nDRFU39taNKRCGp78_GnrPTLDseVPQxwVGAHnUzSrbSoUilQcGc-mNpWIbb6kUzljq9p1Gr4zM8adHDSAebeUDpcomIwCMs5luLKEw5tYyzmMnqS_kiiywv7i_HwDR8xP3M4r6Z7MxrK74iIhgLTRuE1Y_mzZCNAlS1Iyod71VQJghlbE6a1agtEUw-hQcPBcpvBbDRGCORQLM5qouwWIB4lwN3XwBdZNFEeu02WygXyYoig3JNQnu1cgZGnsA1ZhJOLwfBOddzf4CChNYBazZagLk2zqCrckYtqpxqDCE5MQcZ3URifWe1aa5dZMYodiA-p5j4G0NVSPZAl6cy3N0=.eyJlbmRwb2ludF9zbHVnIjoib3BlbmFpL280LW1pbmktMjAyNS0wNC0xNnxvcGVuYWkifQ",
+                "format": "openai-responses-v1",
+                "id": "rs_0b136286f41bfc80016abf3a807d2887d195beaab50dc14491",
+                "index": 0,
+                "type": "reasoning.encrypted"
+              }
+            ],
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790917247-17WFiP8mIii8fH0ijgvb",
+      "model": "openai/o4-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 300,
         "completion_tokens_details": {
@@ -2356,15 +2556,6 @@
           "video_tokens": 0
         },
         "total_tokens": 471
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790917247-17WFiP8mIii8fH0ijgvb",
-      "model": "openai/o4-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2523,6 +2714,23 @@
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt cobalt",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "native_finish_reason": "max_output_tokens"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152676-o2ePtYFZR2pNwV8nfnlg",
+      "model": "openai/gpt-4.1-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 16,
         "completion_tokens_details": {
@@ -2545,15 +2753,6 @@
           "video_tokens": 0
         },
         "total_tokens": 36
-      },
-      "finish_reason": "length",
-      "response_id": "gen-1790152676-o2ePtYFZR2pNwV8nfnlg",
-      "model": "openai/gpt-4.1-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2595,6 +2794,33 @@
     "model": "openai/gpt-4.1-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\":17,\"y\":25}",
+                  "name": "add"
+                },
+                "id": "call_2FZUm9B3F3N4UMHSNM34v9Of",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "completed"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152676-bZIDqhoep5rTBTFdjakB",
+      "model": "openai/gpt-4.1-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 10,
         "completion_tokens_details": {
@@ -2617,15 +2843,6 @@
           "video_tokens": 0
         },
         "total_tokens": 92
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790152676-bZIDqhoep5rTBTFdjakB",
-      "model": "openai/gpt-4.1-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "service_tier": "default"
       }
     }
   },
@@ -2650,6 +2867,24 @@
     "model": "openai/gpt-4o-mini",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "c",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "native_finish_reason": "length"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790152678-wQodfq5WEYC8iIFPzrr8",
+      "model": "openai/gpt-4o-mini",
+      "object": "chat.completion",
+      "provider": "OpenAI",
+      "system_fingerprint": "fp_e1b990555f",
+      "service_tier": null,
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -2672,16 +2907,6 @@
           "video_tokens": 0
         },
         "total_tokens": 21
-      },
-      "finish_reason": "length",
-      "response_id": "gen-1790152678-wQodfq5WEYC8iIFPzrr8",
-      "model": "openai/gpt-4o-mini",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "OpenAI",
-        "system_fingerprint": "fp_e1b990555f",
-        "service_tier": null
       }
     }
   },
@@ -2839,6 +3064,43 @@
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "I'll call the lookup_code function to retrieve the code stored for the record \"alpha\".",
+            "reasoning": "The user is asking me to think it through, then call lookup_code for the record \"alpha\". \n\nLet me think about this:\n1. The user wants me to look up a code for a record named \"alpha\"\n2. I have the lookup_code function available that takes a record parameter\n3. The user has explicitly provided the record name as \"alpha\"\n4. I have all the information I need to make the function call\n\nSo I should call lookup_code with the parameter record set to \"alpha\".",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "text": "The user is asking me to think it through, then call lookup_code for the record \"alpha\". \n\nLet me think about this:\n1. The user wants me to look up a code for a record named \"alpha\"\n2. I have the lookup_code function available that takes a record parameter\n3. The user has explicitly provided the record name as \"alpha\"\n4. I have all the information I need to make the function call\n\nSo I should call lookup_code with the parameter record set to \"alpha\".",
+                "type": "reasoning.text",
+                "signature": "EsYFCpwBCBIQARgCKkDBZOSUahGypfhN6KIge4G43S+t2N6+ojJNmzAhZLVV+Te/rjm6fP88+BFUFN7Tr1f3gWBV5GMK06WCsAYvFFfOMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdKhgNYGsAECEgypB7fZCvOpva+OuKwaDEZI9lMweY9dEEi0kiIwxi+ZFTq/8h9WdfvOomZvwNG0MFUcD32Xv/BWTdo6MiPW2I3CKXEHSF43OLcFr1/qKtYDN9waql17CdiHlyd/1EWDc7Y6daL91GpH1M6vOsZRzd3OvECi25vpkc0dhuHObw7qcoJ6196en2fW//46vytSF/UuU7J+bNBjtjqj1X3JmoCSXA5PX3zn1U+umWBfcHDYMXWpZUYvvkkfge+/o0ZRAdsevv04Y+NFoB4ZUlwTxU0q8yfFzOja5cgmZJeG+nPw3VfHUhbI6u2J5QKlZhNrlLeqv1eFlZ9W1L2BCcT3kOBugLghfPw5QJ3HPBITxmJX9SrOC3JbX155FM/yxaWa08QVV/1N1yhXAiG4iMSc4mEtd1iZLhE2mbGCcnhjARcBGxHDlr6xSlalnMVoWG+ChnSnWJ3+PyIxfxvX1pScGvuoOH5TiZr/ZCUnOWMSgKRRkaJU4p7NJtY1Tok7ywIntOa7zSBklCZujwXP1ngclOmBJL5Z+UIbDTgGJkylPv0jOFaLNzb4Y8bDwojuK79OF122SSxcQ7wZa1sJWXmPzez3SgCjOGQwZJjlXbp7wRPioheTQab4uWzUYKhr4FHMRybZV1M53XEK0M5EHEwLLP+zfM62V7mMdqT5np/46rWhAUeuPNFwEr/9NriisaVYFOJtyujtJaAAInCS90GUj1pQtSSGvsUYAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS00LjUtaGFpa3UtMjAyNTEwMDF8YW1hem9uLWJlZHJvY2svZ2xvYmFsIn0"
+              }
+            ],
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"record\": \"alpha\"}",
+                  "name": "lookup_code"
+                },
+                "id": "toolu_bdrk_01SCjQfMoNBsQGW8tXRUz9cY",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "native_finish_reason": "tool_use"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790972113-FDXfHm5VGoivDWF1JyHJ",
+      "model": "anthropic/claude-haiku-4.5",
+      "object": "chat.completion",
+      "provider": "Amazon Bedrock",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 192,
         "completion_tokens_details": {
@@ -2861,15 +3123,6 @@
           "video_tokens": 0
         },
         "total_tokens": 800
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790972113-FDXfHm5VGoivDWF1JyHJ",
-      "model": "anthropic/claude-haiku-4.5",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Amazon Bedrock",
-        "service_tier": "default"
       }
     }
   },
@@ -2913,6 +3166,32 @@
     "model": "google/gemini-3-flash-preview",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "The code for record alpha is amber-5521.",
+            "role": "assistant",
+            "reasoning_details": [
+              {
+                "format": "google-gemini-v1",
+                "index": 0,
+                "signature": "AY89a19QiA2xoKvfVf9xoeiRvpyOPIzSO188TDrn/lJkGATbpvhpjLr/62Z2pxCwkOegYrTKtpgQmdYpeyJaswt4r0VRJCqYtD2JpNNmvsjx/G12bJ3BhA7v",
+                "type": "reasoning.text"
+              }
+            ],
+            "reasoning": null
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "STOP"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790972115-wiOgqpatnKpbX90WIgFj",
+      "model": "google/gemini-3-flash-preview",
+      "object": "chat.completion",
+      "provider": "Google",
+      "service_tier": "provisioned",
       "usage": {
         "completion_tokens": 13,
         "completion_tokens_details": {
@@ -2935,15 +3214,6 @@
           "video_tokens": 0
         },
         "total_tokens": 229
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790972115-wiOgqpatnKpbX90WIgFj",
-      "model": "google/gemini-3-flash-preview",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Google",
-        "service_tier": "provisioned"
       }
     }
   },
@@ -2989,6 +3259,33 @@
     "model": "anthropic/claude-haiku-4.5",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "AMBER-5521",
+            "reasoning": "The user is asking me to repeat the code in uppercase without calling any tool. The code I was given was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".",
+            "reasoning_details": [
+              {
+                "format": "anthropic-claude-v1",
+                "index": 0,
+                "text": "The user is asking me to repeat the code in uppercase without calling any tool. The code I was given was \"amber-5521\". In uppercase, that would be \"AMBER-5521\".",
+                "type": "reasoning.text",
+                "signature": "EqADCpwBCBIQARgCKkDKHoZxCiltICVIrNtqNQN3asR47kjdoQkTwKZ+SEdeAb+P1GPcITghsfwWRk5h/58lKh4gDeVruXYa54hqYCeYMhljbGF1ZGUtaGFpa3UtNC01LTIwMjUxMDAxOABCCHRoaW5raW5nWgw1MzY2OTcyNDk3MjhyEAtyccn5igyPaQmw/MFVzcmIAQGoAdWhgNYGsAECEgy8M+cur75Zk+194ZsaDEhev/nVJiKLGYgMDyIwcOqD3B5ayoZCly9JSsUqyFVTAZyM0U2CHf8FJKAKRvf2U9uUs3wKqf6Vn9CYQtn2KrABONUaqBu4jLpm16QvgXcBpoQm5/9UfFafrJ6d1ANXGVlBCQkfpfeOuyYZisu+rlJ1YKK3slSZpIjkoz57u7/due0+B6A/N4CITPs6ASc++3DzOIN0BpZoiydhpfr/cn0rHaHMPD15fUxkJSabzfu7orYLP07Oqj40aGAZdMgUGXyEYnGADXw4GbQXGiHfRaFc17LJ+4S2ewKIS5dFD3VHXm5XBfKtUTK/IrzhnnO/xf4YAQ==.eyJlbmRwb2ludF9zbHVnIjoiYW50aHJvcGljL2NsYXVkZS00LjUtaGFpa3UtMjAyNTEwMDF8YW1hem9uLWJlZHJvY2svZ2xvYmFsIn0"
+              }
+            ],
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "native_finish_reason": "end_turn"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790972116-4s1H5NRJP3WgpOyZolbU",
+      "model": "anthropic/claude-haiku-4.5",
+      "object": "chat.completion",
+      "provider": "Amazon Bedrock",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 57,
         "completion_tokens_details": {
@@ -3011,15 +3308,6 @@
           "video_tokens": 0
         },
         "total_tokens": 808
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790972116-4s1H5NRJP3WgpOyZolbU",
-      "model": "anthropic/claude-haiku-4.5",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "provider": "Amazon Bedrock",
-        "service_tier": "default"
       }
     }
   },

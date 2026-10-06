@@ -99,3 +99,36 @@ async fn extras_from_a_unary_recording() {
     assert_eq!(details.audio_tokens, Some(375));
     assert_eq!(details.cached_tokens, Some(9));
 }
+
+/// A stream's `raw` is the unary document: the recorded stream's extras
+/// read as the recorded unary answer of the same prompt states them. The
+/// cache was cold for one answer only.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<Mistral>()
+            .unwrap_or_else(|| panic!("a Mistral reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat_wire("model"),
+            recorded_stream("mistral", "history_survival_matrix/streaming", 0),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat_wire("model"),
+            recorded_reply("mistral", "history_survival_matrix/unary", 0),
+        )
+        .await,
+    );
+    assert_eq!(streamed.service_tier, unary.service_tier);
+    assert_eq!(streamed.prompt_audio_seconds, unary.prompt_audio_seconds);
+    assert_eq!(streamed.num_cached_tokens, unary.num_cached_tokens);
+    assert!(streamed.prompt_tokens_details.is_some());
+}

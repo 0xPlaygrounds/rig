@@ -262,6 +262,31 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"q\": \"What is the capital of France?\"}",
+                  "name": "lookup"
+                },
+                "id": "call_dbf06978e02e423abfd40bd5",
+                "type": "function"
+              }
+            ],
+            "content": null
+          },
+          "index": 0,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976037-lIPdoZ3vL6ydGG3GYT6W",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -284,14 +309,6 @@
           "video_tokens": 0
         },
         "total_tokens": 367
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790976037-lIPdoZ3vL6ydGG3GYT6W",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default"
       }
     }
   },
@@ -315,6 +332,21 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Paris",
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976042-9vkv7V6JOpBahXa1vtZf",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -337,14 +369,6 @@
           "video_tokens": 0
         },
         "total_tokens": 387
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790976042-9vkv7V6JOpBahXa1vtZf",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default"
       }
     }
   },
@@ -404,6 +428,38 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "call_b8af4aea21ab49569494d889",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "call_7b14d7f72fb9413487c756a7",
+                "type": "function"
+              }
+            ],
+            "content": "\n"
+          },
+          "index": 0,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976554-Of88HQmmbG7U473Z99RD",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -426,13 +482,6 @@
           "video_tokens": 0
         },
         "total_tokens": 466
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790976554-Of88HQmmbG7U473Z99RD",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -516,6 +565,20 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "A glarb-glarb is an ancient farming tool from the planet Jiro.",
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976622-pOFvx4fBgHopzmqfborQ",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -538,13 +601,6 @@
           "video_tokens": 0
         },
         "total_tokens": 88
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790976622-pOFvx4fBgHopzmqfborQ",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -776,6 +832,21 @@
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "done",
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790146106-u2lt0nHGwFb06QROdTgz",
+      "model": "Qwen/Qwen3.5-9B",
+      "object": "chat.completion",
+      "system_fingerprint": "vllm-0.23.0-ed3ef83f",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -798,14 +869,6 @@
           "video_tokens": 0
         },
         "total_tokens": 19
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790146106-u2lt0nHGwFb06QROdTgz",
-      "model": "Qwen/Qwen3.5-9B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "vllm-0.23.0-ed3ef83f"
       }
     }
   },
@@ -885,6 +948,47 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": "The user wants me to:\n1. Look up the alpha record\n2. Look up the beta record\n3. Verify each returned code\n4. Report both codes with their verification status\n\nI need to use the lookup_record function for both \"alpha\" and \"beta\", then use verify_code for each returned code. Let me start with the lookups.\n",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "The user wants me to:\n1. Look up the alpha record\n2. Look up the beta record\n3. Verify each returned code\n4. Report both codes with their verification status\n\nI need to use the lookup_record function for both \"alpha\" and \"beta\", then use verify_code for each returned code. Let me start with the lookups.\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"record\": \"alpha\"}",
+                  "name": "lookup_record"
+                },
+                "id": "call_3687371d4dc54345915d3462",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{\"record\": \"beta\"}",
+                  "name": "lookup_record"
+                },
+                "id": "call_49ec2353fe5748dc9b241b62",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976788-FWs0AVKYIAH0gaSK15Fk",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -907,13 +1011,6 @@
           "video_tokens": 0
         },
         "total_tokens": 548
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790976788-FWs0AVKYIAH0gaSK15Fk",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -973,6 +1070,40 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": "The beta code verification failed transiently. According to the instructions, I should retry once when a tool reports a transient failure.\n",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "The beta code verification failed transiently. According to the instructions, I should retry once when a tool reports a transient failure.\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\": \"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "call_38f20ccd5af946788b0c4132",
+                "type": "function"
+              }
+            ]
+          },
+          "index": 0,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976794-HQaHDhjIG4moi2dpGtpW",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -995,14 +1126,6 @@
           "video_tokens": 0
         },
         "total_tokens": 788
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790976794-HQaHDhjIG4moi2dpGtpW",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default"
       }
     }
   },
@@ -1046,6 +1169,30 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "**Alpha code**: `alpha-code-7431` — verified ✓ (unchanged)",
+            "reasoning_content": "The alpha code verified successfully again, confirming it is unchanged.\n",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "The alpha code verified successfully again, confirming it is unchanged.\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976802-roSdGLTdhWyaoRW1UF5V",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1068,14 +1215,6 @@
           "video_tokens": 0
         },
         "total_tokens": 840
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790976802-roSdGLTdhWyaoRW1UF5V",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default"
       }
     }
   },
@@ -1119,6 +1258,29 @@
     "model": "Qwen/Qwen3.5-397B-A17B-FP8",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "alpha-code-7431, beta-code-2286",
+            "reasoning_content": "The user wants me to repeat both codes exactly as reported earlier, separated by a comma, and nothing else. The codes were:\n- alpha-code-7431\n- beta-code-2286\n\nI should output them exactly as: alpha-code-7431, beta-code-2286",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "The user wants me to repeat both codes exactly as reported earlier, separated by a comma, and nothing else. The codes were:\n- alpha-code-7431\n- beta-code-2286\n\nI should output them exactly as: alpha-code-7431, beta-code-2286",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976805-peJ39B34VNGu02l5u4PU",
+      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1141,13 +1303,6 @@
           "video_tokens": 0
         },
         "total_tokens": 899
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790976805-peJ39B34VNGu02l5u4PU",
-      "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -1366,6 +1521,29 @@
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "reasoning_content": "The user is asking me to reply with exactly three words: \"cache probe ready",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "The user is asking me to reply with exactly three words: \"cache probe ready",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "length"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790928894-VhZVZlM5JTFngTg1Hz0g",
+      "model": "Qwen/Qwen3.5-9B",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1388,13 +1566,6 @@
           "video_tokens": 0
         },
         "total_tokens": 4881
-      },
-      "finish_reason": "length",
-      "response_id": "gen-1790928894-VhZVZlM5JTFngTg1Hz0g",
-      "model": "Qwen/Qwen3.5-9B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -1782,6 +1953,30 @@
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, temporarily blocking the Sun's rays from reaching specific areas on our planet. During this alignment, the Moon casts a shadow on Earth, causing day to turn darker depending on the viewer's location. While there are various types, such as total or partial eclipses, this natural phenomenon requires proper eye protection to observe safely.",
+            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Solar eclipse.\n    *   Constraint: One short paragraph.\n    *   Format: Plain text.\n    *   Tone: Direct, concise (implied by \"concise assistant\").\n\n2.  **Identify Key Information:**\n    *   What happens? The Moon passes between the Sun and Earth.\n    *   Where does it occur? Visible from Earth.\n    *   What is the result? Moon blocks Sun's light/casts shadow.\n    *   Does it affect Earth? Day becomes dark (total), partial, etc.\n    *   Safety note (optional but good context): Requires eye protection.\n\n3.  **Drafting - Attempt 1:**\n    A solar eclipse occurs when the Moon moves directly between the Sun and the Earth. During this alignment, the Moon blocks some or all of the Sun's light from reaching Earth's surface. People on Earth can see the Sun's light being covered by the Moon. This creates a shadow on Earth. It can be total, partial, or annular. You need eye protection to look at it.\n\n4.  **Refining - Attempt 2 (combining and smoothing):**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, temporarily blocking the Sun's light from reaching Earth's surface. During this alignment, the Moon casts a shadow on Earth, causing day to darken into twilight or total darkness depending on the observer's location and the type of eclipse. It is a celestial event where the Moon's shadow—either penumbral or umbral—moves across the planet, resulting in a partial, partial annular, or total solar eclipse visible to a specific region.\n\n5.  **Critique - Attempt 2:**\n    *   A bit wordy. \"Partial, annular, or total\" was mentioned twice.\n    *   Need to make it more concise.\n\n6.  **Drafting - Attempt 3 (Concise):**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, blocking the Sun's light from reaching parts of our planet. During this alignment, the Moon casts a shadow on Earth, causing the sky to darken as seen from specific locations. While there are different types, including total and partial eclipses, viewers must never look directly at the Sun without proper protection to avoid eye damage.\n\n7.  **Final Polish:**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, temporarily blocking the Sun's rays from reaching specific areas on our planet. During this alignment, the Moon casts a shadow on Earth, causing day to turn darker depending on the viewer's location. While there are various types, such as total or partial eclipses, this natural phenomenon requires proper eye protection to observe safely.\n\n8.  **Word Count Check:** 59 words. Fits \"short paragraph\".\n\n9.  **Final Review against constraints:** One paragraph? Yes. Plain text? Yes. Direct explanation? Yes.\n\n10. **Final Output Generation** (matching the polished draft).\n",
+            "reasoning_details": [
+              {
+                "format": "unknown",
+                "index": 0,
+                "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Solar eclipse.\n    *   Constraint: One short paragraph.\n    *   Format: Plain text.\n    *   Tone: Direct, concise (implied by \"concise assistant\").\n\n2.  **Identify Key Information:**\n    *   What happens? The Moon passes between the Sun and Earth.\n    *   Where does it occur? Visible from Earth.\n    *   What is the result? Moon blocks Sun's light/casts shadow.\n    *   Does it affect Earth? Day becomes dark (total), partial, etc.\n    *   Safety note (optional but good context): Requires eye protection.\n\n3.  **Drafting - Attempt 1:**\n    A solar eclipse occurs when the Moon moves directly between the Sun and the Earth. During this alignment, the Moon blocks some or all of the Sun's light from reaching Earth's surface. People on Earth can see the Sun's light being covered by the Moon. This creates a shadow on Earth. It can be total, partial, or annular. You need eye protection to look at it.\n\n4.  **Refining - Attempt 2 (combining and smoothing):**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, temporarily blocking the Sun's light from reaching Earth's surface. During this alignment, the Moon casts a shadow on Earth, causing day to darken into twilight or total darkness depending on the observer's location and the type of eclipse. It is a celestial event where the Moon's shadow—either penumbral or umbral—moves across the planet, resulting in a partial, partial annular, or total solar eclipse visible to a specific region.\n\n5.  **Critique - Attempt 2:**\n    *   A bit wordy. \"Partial, annular, or total\" was mentioned twice.\n    *   Need to make it more concise.\n\n6.  **Drafting - Attempt 3 (Concise):**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, blocking the Sun's light from reaching parts of our planet. During this alignment, the Moon casts a shadow on Earth, causing the sky to darken as seen from specific locations. While there are different types, including total and partial eclipses, viewers must never look directly at the Sun without proper protection to avoid eye damage.\n\n7.  **Final Polish:**\n    A solar eclipse occurs when the Moon passes directly between the Sun and the Earth, temporarily blocking the Sun's rays from reaching specific areas on our planet. During this alignment, the Moon casts a shadow on Earth, causing day to turn darker depending on the viewer's location. While there are various types, such as total or partial eclipses, this natural phenomenon requires proper eye protection to observe safely.\n\n8.  **Word Count Check:** 59 words. Fits \"short paragraph\".\n\n9.  **Final Review against constraints:** One paragraph? Yes. Plain text? Yes. Direct explanation? Yes.\n\n10. **Final Output Generation** (matching the polished draft).\n",
+                "type": "reasoning.text"
+              }
+            ],
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "stop"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790146153-9DEkkgm3hyeFgRRvORTT",
+      "model": "Qwen/Qwen3.5-9B",
+      "object": "chat.completion",
+      "system_fingerprint": "vllm-0.23.0-ed3ef83f",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1804,14 +1999,6 @@
           "video_tokens": 0
         },
         "total_tokens": 780
-      },
-      "finish_reason": "stop",
-      "response_id": "gen-1790146153-9DEkkgm3hyeFgRRvORTT",
-      "model": "Qwen/Qwen3.5-9B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "vllm-0.23.0-ed3ef83f"
       }
     }
   },
@@ -1835,6 +2022,21 @@
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Maple trees are renowned for their distinctive palmate leaves that turn brilliant shades of",
+            "role": "assistant"
+          },
+          "index": 0,
+          "finish_reason": "length"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
+      "model": "Qwen/Qwen3.5-9B",
+      "object": "chat.completion",
+      "system_fingerprint": "vllm-0.23.0-ed3ef83f",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1857,14 +2059,6 @@
           "video_tokens": 0
         },
         "total_tokens": 52
-      },
-      "finish_reason": "length",
-      "response_id": "gen-1790146094-vllsLDB6zKrHFK7RISP3",
-      "model": "Qwen/Qwen3.5-9B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "vllm-0.23.0-ed3ef83f"
       }
     }
   },
@@ -1905,6 +2099,30 @@
     "model": "Qwen/Qwen3.5-9B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\": 2.0, \"y\": 3.0}",
+                  "name": "add"
+                },
+                "id": "call_587f04067e864e9f9671b361",
+                "type": "function"
+              }
+            ],
+            "content": null
+          },
+          "index": 0,
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "created": 0,
+      "id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg",
+      "model": "Qwen/Qwen3.5-9B",
+      "object": "chat.completion",
       "usage": {
         "cache_creation": {
           "ephemeral_1h_input_tokens": 0,
@@ -1927,13 +2145,6 @@
           "video_tokens": 0
         },
         "total_tokens": 356
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "gen-1790976765-RRP7weOo3epOg1lZw0Mg",
-      "model": "Qwen/Qwen3.5-9B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   }

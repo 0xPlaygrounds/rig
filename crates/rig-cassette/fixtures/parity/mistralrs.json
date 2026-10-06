@@ -29,6 +29,24 @@
     "model": "Qwen/Qwen3-4B",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "\n\n- Tracks input/output token counts for model interactions.  \n- Highlights cost optimization by aligning usage with budget constraints.  \n- Provides real-time insights for tuning prompts or workflows.",
+            "role": "assistant",
+            "tool_calls": null,
+            "reasoning_content": "\nOkay, the user wants three short bullet points about token usage reporting. Let me start by recalling what token usage reporting is. It's about tracking how many tokens (like words or characters) are used in AI interactions. The user specified to be concise and include details for streaming visibility.\n\nFirst, I should mention the key aspects of token usage reporting. Maybe start with monitoring input and output tokens. That's fundamental. Then, the second point could be about optimizing costs, since token usage directly affects pricing. Third, maybe something about real-time insights for performance or efficiency. Let me check if those points are accurate and concise. Yes, each bullet is a short point with a detail. That should meet the user's request.\n"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "6",
+      "model": "Qwen/Qwen3-4B",
+      "object": "chat.completion",
+      "system_fingerprint": "local",
       "usage": {
         "avg_compl_tok_per_sec": 4.9165516,
         "avg_prompt_tok_per_sec": 56.786705,
@@ -39,14 +57,6 @@
         "total_prompt_time_sec": 0.722,
         "total_time_sec": 38.357,
         "total_tokens": 226
-      },
-      "finish_reason": "stop",
-      "response_id": "6",
-      "model": "Qwen/Qwen3-4B",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "local"
       }
     }
   },

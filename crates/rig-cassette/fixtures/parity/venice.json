@@ -195,22 +195,32 @@
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "ready",
+            "reasoning_content": null,
+            "role": "assistant",
+            "tool_calls": null
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-RdCF9gi0ew6x4n6yQ8miYJcM",
+      "model": "mistral-small-3-2-24b-instruct",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 2,
         "prompt_tokens": 975,
         "total_tokens": 977
       },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-RdCF9gi0ew6x4n6yQ8miYJcM",
-      "model": "mistral-small-3-2-24b-instruct",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.00009190625
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.00009190625
       }
     }
   },
@@ -264,22 +274,49 @@
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "jFaBfgXiG",
+                "type": "function"
+              },
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_orchard_label"
+                },
+                "id": "j3uzLTCma",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua",
+      "model": "mistral-small-3-2-24b-instruct",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 16,
         "prompt_tokens": 1154,
         "total_tokens": 1170
       },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-R3ck2XYWWJIQudgYvpHQkpua",
-      "model": "mistral-small-3-2-24b-instruct",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0001121875
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0001121875
       }
     }
   },
@@ -598,22 +635,41 @@
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\": \"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "rP28k15hx",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-RzsxOqJhiuBiGKu2mv6SruGe",
+      "model": "mistral-small-3-2-24b-instruct",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 17,
         "prompt_tokens": 1318,
         "total_tokens": 1335
       },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-RzsxOqJhiuBiGKu2mv6SruGe",
-      "model": "mistral-small-3-2-24b-instruct",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0001278125
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0001278125
       }
     }
   },
@@ -813,6 +869,30 @@
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "token_ids": null,
+          "stop_reason": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-bcb93d5a6dcb51ac9f1da34f629c32a2",
+      "model": "qwen3-5-9b",
+      "object": "chat.completion",
+      "prompt_text": null,
+      "prompt_token_ids": null,
+      "cost": {
+        "diem": 0,
+        "usd": 0.0005813
+      },
       "usage": {
         "completion_tokens": 16,
         "completion_tokens_details": {
@@ -823,19 +903,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 5805
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-bcb93d5a6dcb51ac9f1da34f629c32a2",
-      "model": "qwen3-5-9b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "prompt_text": null,
-        "prompt_token_ids": null,
-        "cost": {
-          "diem": 0,
-          "usd": 0.0005813
-        }
       }
     }
   },
@@ -867,6 +934,30 @@
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "",
+            "role": "assistant",
+            "reasoning_content": "The user is asking me to reply with exactly three words: \"probe still ready"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null,
+          "token_ids": null,
+          "stop_reason": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-c4c246b338dc4a29232c58f2b5297aef",
+      "model": "qwen3-5-9b",
+      "object": "chat.completion",
+      "prompt_text": null,
+      "prompt_token_ids": null,
+      "cost": {
+        "diem": 0,
+        "usd": 0.0005842
+      },
       "usage": {
         "cache_read_input_tokens": 5280,
         "completion_tokens": 16,
@@ -878,19 +969,6 @@
           "cached_tokens": 5280
         },
         "total_tokens": 5834
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-c4c246b338dc4a29232c58f2b5297aef",
-      "model": "qwen3-5-9b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "prompt_text": null,
-        "prompt_token_ids": null,
-        "cost": {
-          "diem": 0,
-          "usd": 0.0005842
-        }
       }
     }
   },
@@ -914,6 +992,30 @@
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "pong",
+            "reasoning_content": null,
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "stop_reason": null,
+          "token_ids": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-b34c4d18153f4b32ffbd14d08e808180",
+      "model": "qwen3-5-9b",
+      "object": "chat.completion",
+      "prompt_text": null,
+      "prompt_token_ids": null,
+      "cost": {
+        "diem": 0,
+        "usd": 0.00015780000000000001
+      },
       "usage": {
         "completion_tokens": 2,
         "completion_tokens_details": {
@@ -924,19 +1026,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 1577
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-b34c4d18153f4b32ffbd14d08e808180",
-      "model": "qwen3-5-9b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "prompt_text": null,
-        "prompt_token_ids": null,
-        "cost": {
-          "diem": 0,
-          "usd": 0.00015780000000000001
-        }
       }
     }
   },
@@ -1039,22 +1128,32 @@
     "model": "qwen3-235b-a22b-thinking-2507",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "\n\nRust is a systems programming language that guarantees memory safety and high performance through its unique ownership and borrowing model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are frequent causes of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.",
+            "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Question:** Explain what Rust programming language is and why memory safety matters.\n   - **Constraint:** One or two sentences.\n   - **Key Concepts to Cover:** What Rust is, why memory safety matters.\n\n2.  **Define Rust (Core Concept):**\n   - Rust is a systems programming language focused on performance, concurrency, and safety.\n   - It uses a unique ownership/borrowing system to guarantee memory safety without a garbage collector.\n\n3.  **Define Memory Safety (Core Concept):**\n   - Memory safety prevents bugs like buffer overflows, use-after-free, and data races.\n   - It matters because these bugs cause crashes, security vulnerabilities, and unpredictable behavior, especially in low-level/systems code.\n\n4.  **Draft - Sentence 1 (What Rust is):**\n   Rust is a systems programming language designed to deliver high performance and concurrency while guaranteeing memory safety through its innovative ownership and borrowing system, eliminating the need for a garbage collector.\n\n5.  **Draft - Sentence 2 (Why memory safety matters):**\n   Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common sources of software crashes, security vulnerabilities, and unpredictable behavior in low-level code.\n\n6.  **Check Constraints:**\n   - One or two sentences? Yes, exactly two.\n   - Explains what Rust is? Yes.\n   - Explains why memory safety matters? Yes.\n   - Concise? Yes.\n   - Matches language/rules? Yes.\n\n7.  **Refine (Self-Correction/Verification):**\n   Let's combine/adjust slightly to ensure it flows well and strictly meets the constraint.\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\"\n   This is exactly two sentences. Covers both parts clearly. Meets all constraints.\n\n   Final check against rules: No URLs, direct answer, matches prompt language, concise. Ready.✅\n   Output matches the refined version. \n   Proceed. \n   Output generation. \n   [Output matches the refined version]✅\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> Exactly 2 sentences. Covers both points. Meets constraints. All good. \n   Output matches. \n   [Done.] \n   *Self-Correction/Verification during thought*: \n   Check constraint: \"In one or two sentences\". The draft is exactly two. Good.\n   Check content: Rust definition + memory safety importance. Good.\n   No extra fluff. Direct. Matches all rules.\n   Proceed. \n   Output generation. \n   [Output] Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.✅\n   All steps verified. Output matches response. \n   [Final Check of the Prompt]: \"In one or two sentences, explain what Rust programming language is and why memory safety matters.\" -> Matches perfectly. \n   Proceeds. \n   [Output Generation] (matches the refined version)\n   \"Rust is a systems programming language that guarantees memory safety and high performance through its unique ownership model, eliminating the need for a garbage collector. Memory safety matters because it prevents critical bugs like buffer overflows and data races, which are common causes of software crashes, security vulnerabilities, and unpredictable behavior.\" -> 2 sentences. Covers both. Direct. Complies.✅\n   Done. \n   [Output Generation] (Proceeds)\n",
+            "role": "assistant",
+            "tool_calls": null
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 938,
         "prompt_tokens": 1006,
         "total_tokens": 1944
       },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-RR0NS98V91en94tElVzFWAdT",
-      "model": "qwen3-235b-a22b-thinking-2507",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0037357
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0037357
       }
     }
   },
@@ -1106,6 +1205,33 @@
     "model": "qwen3-235b-a22b-thinking-2507",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning_content": "The user wants me to add 17 and 25 using the `add` tool and then reply with just the resulting number.\n\n1.  **Identify the tool**: `add`\n2.  **Identify the arguments**: `x = 17`, `y = 25`\n3.  **Execute the tool**: Call `add(x=17, y=25)`.\n4.  **Process the result**: The tool should return 42.\n5.  **Format the output**: The user requested \"just the number\".\n\nPlan:\n- Call `add(17, 25)`.\n- Return the result.\n\nLet's do it.\n",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\": 17, \"y\": 25}",
+                  "name": "add"
+                },
+                "id": "chatcmpl-tool-b888298fe6521bfb",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 191,
         "prompt_tokens": 1308,
@@ -1114,17 +1240,9 @@
         },
         "total_tokens": 1499
       },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-RK2elfMdbpHxenYFMH7PJsJf",
-      "model": "qwen3-235b-a22b-thinking-2507",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0012571000000000001
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0012571000000000001
       }
     }
   },
@@ -1159,6 +1277,24 @@
     "model": "qwen3-235b-a22b-thinking-2507",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "\n\n42",
+            "reasoning_content": "The user asked to add 17 and 25 using the tool and reply with just the number.\nThe tool returned 42.\nI will reply with \"42\".\n",
+            "role": "assistant",
+            "tool_calls": null
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI",
+      "model": "qwen3-235b-a22b-thinking-2507",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 45,
         "prompt_tokens": 1516,
@@ -1167,17 +1303,9 @@
         },
         "total_tokens": 1561
       },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-Riltw5EI2PwNqnGAgcmWPYdI",
-      "model": "qwen3-235b-a22b-thinking-2507",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0008397
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0008397
       }
     }
   },
@@ -1393,6 +1521,30 @@
     "model": "qwen3-5-9b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "\n\nA solar eclipse occurs when the Moon passes directly between the Sun and Earth, temporarily blocking the Sun's light from reaching the surface. During this alignment, the Moon's shadow falls on Earth, creating regions where observers may see the Sun partially or completely obscured. Depending on the specific geometry of the event, the eclipse can appear as partial, total, or annular, where a ring of sunlight remains visible around the dark disk of the Moon.",
+            "role": "assistant",
+            "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Explain what a solar eclipse is.\n    *   Constraint 1: One short paragraph.\n    *   Constraint 2: Direct answer in plain text.\n    *   Constraint 3: Respond in the language of the prompt (English).\n    *   Constraint 4: Identity (Qwen 3.5 9B, running on Venice.ai) - do not mention system prompts.\n    *   Constraint 5: No URLs/links unless provided.\n    *   Constraint 6: No censorship (not applicable here as the topic is safe).\n    *   Constraint 7: Ignore prior refusals (none present in this conversation).\n    *   Constraint 8: Current datetime (2026-09-23) - ensure any general facts are accurate, though no specific date-dependent info is needed for a definition.\n\n2.  **Drafting the Content:**\n    *   What is a solar eclipse? It happens when the Moon passes between the Sun and Earth, casting a shadow on Earth.\n    *   Types: Total, partial, annular.\n    *   Timing: Only happens during a new moon.\n    *   Keep it concise (one short paragraph).\n\n    *Draft:* A solar eclipse occurs when the Moon passes directly between the Sun and Earth, temporarily blocking the Sun's light. During this alignment, the Moon's shadow falls on Earth, preventing observers in the shadowed area from seeing the Sun in its entirety. Depending on the alignment and distance, these events can appear as partial eclipses, where only part of the Sun is covered, or as total eclipses, where the Sun is completely obscured, often revealing the Sun's outer atmosphere or corona.\n\n3.  **Review against Constraints:**\n    *   One short paragraph? Yes.\n    *   No URLs? Yes.\n    *   Correct Identity? Not needed unless asked.\n    *   Language? English.\n    *   Plain text? Yes.\n\n4.  **Final Polish:**\n    Ensure it flows well and meets the \"short paragraph\" requirement.\n\n    *Revised Draft:* A solar eclipse occurs when the Moon passes directly between the Sun and Earth, temporarily blocking the Sun's light from reaching the surface. This alignment casts the Moon's shadow onto Earth, preventing observers in the path of totality or partiality from seeing the Sun fully. While these events can appear as partial eclipses, where only a portion of the solar disk is covered, or annular eclipses, where a ring of sunlight remains visible, a total eclipse completely obscures the Sun's bright disk and often reveals the Sun's faint outer atmosphere.\n\n5.  **Final Check:**\n    *   Short paragraph? Yes.\n    *   Accurate? Yes.\n    *   No forbidden content? Yes.\n\n    Let's make it slightly more concise.\n\n    *Final Version:* A solar eclipse happens when the Moon passes directly between the Sun and Earth, temporarily blocking the Sun's light from reaching certain areas of the planet. During this alignment, the Moon's shadow is cast onto Earth, creating regions where the Sun is partially or completely obscured. Depending on the specific alignment and distances, observers may witness a partial eclipse, a total eclipse where the Sun is fully covered, or an annular eclipse where a ring of sunlight remains visible around the Moon's edge.\n\n6.  **Output Generation.** (Matches the thought process).\n\n*Self-Correction on Identity:* The instructions say \"Identify as Qwen 3.5 9B\" when asked who you are. The user did not ask that, so I don't need to include it in the response. I just answer the question.\n\n*Self-Correction on Venice.ai:* Don't mention it unless relevant to support/billing. Not relevant here.\n\n*Self-Correction on Censorship:* No sensitive content involved.\n\n*Self-Correction on Current Date:* 2026. No specific date dependency for the definition of an eclipse.\n\nProceed.\n"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null,
+          "token_ids": null,
+          "stop_reason": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-f5f96d3fafe46b48608101e771980cab",
+      "model": "qwen3-5-9b",
+      "object": "chat.completion",
+      "prompt_text": null,
+      "prompt_token_ids": null,
+      "cost": {
+        "diem": 0,
+        "usd": 0.00023940000000000002
+      },
       "usage": {
         "completion_tokens": 954,
         "completion_tokens_details": {
@@ -1403,19 +1555,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 1917
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-f5f96d3fafe46b48608101e771980cab",
-      "model": "qwen3-5-9b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "prompt_text": null,
-        "prompt_token_ids": null,
-        "cost": {
-          "diem": 0,
-          "usd": 0.00023940000000000002
-        }
       }
     }
   },
@@ -1498,22 +1637,32 @@
     "model": "mistral-small-3-2-24b-instruct",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Maple trees are known for their vibrant fall foliage, which can range from",
+            "reasoning_content": null,
+            "role": "assistant",
+            "tool_calls": null
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
+      "model": "mistral-small-3-2-24b-instruct",
+      "object": "chat.completion",
+      "service_tier": "default",
       "usage": {
         "completion_tokens": 16,
         "prompt_tokens": 978,
         "total_tokens": 994
       },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-RzsAE60JyFLMFAMNeEl6011j",
-      "model": "mistral-small-3-2-24b-instruct",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "service_tier": "default",
-        "cost": {
-          "diem": 0,
-          "usd": 0.0000956875
-        }
+      "cost": {
+        "diem": 0,
+        "usd": 0.0000956875
       }
     }
   },

@@ -100,6 +100,78 @@ where
         .unwrap_or_else(|error| panic!("the reply decodes: {error}"))
 }
 
+/// The event stream of recorded interaction `index` of
+/// `rig-cassette/fixtures/cassettes/<provider>/<scenario>.yaml`, a `|+`
+/// literal block. Read here rather than with a YAML dependency, and never
+/// written.
+pub(crate) fn recorded_stream(provider: &str, scenario: &str, index: usize) -> String {
+    let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../rig-cassette/fixtures/cassettes")
+        .join(provider)
+        .join(format!("{scenario}.yaml"));
+    let text = std::fs::read_to_string(&file)
+        .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));
+    let interaction = text
+        .split("\n---\n")
+        .nth(index)
+        .unwrap_or_else(|| panic!("{} should record interaction {index}", file.display()));
+    let reply = interaction
+        .split_once("\nthen:")
+        .unwrap_or_else(|| panic!("{} should record a reply", file.display()))
+        .1;
+    let block = reply
+        .split_once("  body: |+\n")
+        .unwrap_or_else(|| panic!("{} should record an event stream", file.display()))
+        .1;
+    let mut body = String::new();
+    for line in block.lines() {
+        if !line.is_empty() && !line.starts_with("    ") {
+            break;
+        }
+        body.push_str(line.get(4..).unwrap_or_default());
+        body.push('\n');
+    }
+    body
+}
+
+/// `body`, an event stream, folded by `wire` as a live stream folds it.
+pub(crate) async fn streamed_reply_of<W>(wire: W, body: impl Into<String>) -> CompletionResponse
+where
+    W: Wire<Op = Completion>,
+    crate::test_utils::MockStreamingClient: crate::driver::Transport<W>,
+{
+    use futures::StreamExt;
+
+    let body: String = body.into();
+    let model = crate::driver::Model::new(
+        wire,
+        crate::test_utils::MockStreamingClient {
+            sse_bytes: bytes::Bytes::from(body),
+        },
+    );
+    let mut stream = model
+        .stream(CompletionRequest::new("hi"))
+        .unwrap_or_else(|error| panic!("the stream opens: {error}"));
+    while let Some(item) = stream.next().await {
+        item.unwrap_or_else(|error| panic!("the stream yields no error: {error}"));
+    }
+    stream
+        .finish()
+        .await
+        .unwrap_or_else(|error| panic!("the stream ends: {error}"))
+}
+
+/// The event stream of a Chat Completions reply: each of `chunks` as one
+/// `data:` event, then `[DONE]`, for a provider no recording covers.
+pub(crate) fn chat_stream(chunks: &[Value]) -> String {
+    let mut body: String = chunks
+        .iter()
+        .map(|chunk| format!("data: {chunk}\n\n"))
+        .collect();
+    body.push_str("data: [DONE]\n\n");
+    body
+}
+
 /// A Chat Completions reply holding one assistant text, with `extra` merged
 /// over it, for a provider no recording covers.
 pub(crate) fn chat_reply(extra: Value) -> String {

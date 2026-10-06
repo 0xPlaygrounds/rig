@@ -71,6 +71,21 @@
     "model": "command-a-03-2025",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "A solar eclipse occurs when the Moon passes between the Sun and the Earth, casting a shadow on the Earth and fully or partially blocking the Sun's light in certain areas. This celestial event can only happen during a new moon, when the Moon is positioned between the Sun and Earth, and the three bodies are aligned in",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "43da33bd-da34-4183-b6b0-4f39c3f6d3b7",
+      "model": "command-a-03-2025",
+      "object": "chat.completion",
       "usage": {
         "completion_tokens": 63,
         "completion_tokens_details": {
@@ -85,13 +100,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 87
-      },
-      "finish_reason": "length",
-      "response_id": "43da33bd-da34-4183-b6b0-4f39c3f6d3b7",
-      "model": "command-a-03-2025",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -115,6 +123,21 @@
     "model": "command-a-03-2025",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "5",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "28556a08-7b5b-44d5-b840-74975eb4f984",
+      "model": "command-a-03-2025",
+      "object": "chat.completion",
       "usage": {
         "completion_tokens": 1,
         "completion_tokens_details": {
@@ -129,13 +152,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 71
-      },
-      "finish_reason": "stop",
-      "response_id": "28556a08-7b5b-44d5-b840-74975eb4f984",
-      "model": "command-a-03-2025",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },
@@ -176,6 +192,30 @@
     "model": "command-a-03-2025",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "name": "subtract",
+                  "arguments": "{\"x\":2,\"y\":5}"
+                },
+                "id": "subtract_1z6130gr5k38",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null
+        }
+      ],
+      "created": 0,
+      "id": "3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498",
+      "model": "command-a-03-2025",
+      "object": "chat.completion",
       "usage": {
         "completion_tokens": 24,
         "completion_tokens_details": {
@@ -190,13 +230,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 149
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "3c48dacd-e4c5-4de0-a3bc-c0d0e60f5498",
-      "model": "command-a-03-2025",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk"
       }
     }
   },

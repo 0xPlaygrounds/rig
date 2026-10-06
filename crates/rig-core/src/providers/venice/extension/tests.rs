@@ -122,3 +122,37 @@ async fn extras_from_a_unary_recording() {
     assert_eq!(echo.disable_thinking, Some(false));
     assert_eq!(echo.web_search_citations, Some(Vec::new()));
 }
+
+/// A stream's `raw` is the unary document: the recorded stream's cost reads
+/// as the recorded unary answer of the same prompt states it. Venice echoes
+/// its parameters in a unary body only.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    const SCENARIO: &str = "turn_termination_matrix/{}_truncated_turn_reports_length_and_cap";
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<Venice>()
+            .unwrap_or_else(|| panic!("a Venice reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat_wire(),
+            recorded_stream("venice", &SCENARIO.replace("{}", "streaming"), 0),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat_wire(),
+            recorded_reply("venice", &SCENARIO.replace("{}", "blocking"), 0),
+        )
+        .await,
+    );
+    assert!(streamed.cost.is_some());
+    assert_eq!(streamed.cost, unary.cost);
+    assert!(unary.venice_parameters.is_some());
+    assert_eq!(streamed.venice_parameters, None);
+}

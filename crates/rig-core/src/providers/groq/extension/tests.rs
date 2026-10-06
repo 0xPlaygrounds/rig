@@ -122,3 +122,39 @@ async fn extras_from_a_unary_recording() {
     assert_eq!(extras.system_fingerprint.as_deref(), Some("fp_57c7e760a9"));
     assert_eq!(extras.executed_tools, None);
 }
+
+/// A stream's `raw` is the unary document: the recorded stream's extras
+/// read as the recorded unary answer of the same prompt states them. Each
+/// answer times itself.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    const SCENARIO: &str = "agent_tool_sessions/parallel_tool_calls_single_turn_{}";
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<Groq>()
+            .unwrap_or_else(|| panic!("a Groq reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat_wire("model"),
+            recorded_stream("groq", &SCENARIO.replace("{}", "streaming"), 0),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat_wire("model"),
+            recorded_reply("groq", &SCENARIO.replace("{}", "nonstreaming"), 0),
+        )
+        .await,
+    );
+    for extras in [&streamed, &unary] {
+        assert!(extras.x_groq.is_some());
+        assert!(extras.queue_time.is_some() && extras.total_time.is_some());
+    }
+    assert_eq!(streamed.service_tier, unary.service_tier);
+    assert_eq!(streamed.system_fingerprint, unary.system_fingerprint);
+}

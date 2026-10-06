@@ -2,15 +2,13 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::completion::CompletionResponse::raw`] carries the decoder's own
-//! terminal record: for DeepSeek the shared chat-completions record, a JSON
-//! object with the keys `usage`, `finish_reason`, `response_id`, `model`,
-//! `logprobs` and `additional_params`. Capture is always on: there is no flag
-//! to request it, nothing about it reaches the wire, and a `Value::Null` only
-//! ever means a terminal built by hand with no provider record behind it. It
-//! is the terminal record only, never the stream's frames.
+//! [`rig::completion::CompletionResponse::raw`] carries the `chat.completion`
+//! document the stream's chunks rebuild, the shape a unary DeepSeek reply
+//! has. Capture is always on: there is no flag to request it, nothing about
+//! it reaches the wire, and a `Value::Null` only ever means a terminal built
+//! by hand with no provider reply behind it.
 //!
-//! The record's `usage` is the provider's usage object, so it keeps whatever
+//! The document's `usage` is the provider's usage object, so it keeps whatever
 //! the dialect sent beside the OpenAI-compatible counters. DeepSeek's
 //! `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` split survives into
 //! `raw`. Only half of it is normalized: the hit count reaches
@@ -19,12 +17,12 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` is the same record and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
+//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` is the rebuilt document and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, which the document states as the message's `reasoning_content` | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is [`chat::recorded_sole_usage_frame`]: the recorded SSE stream
 //! carries usage on exactly one frame, and that frame is the stream's last
-//! data frame — so the raw terminal record's usage is knowable from the bytes
+//! data frame — so the rebuilt document's usage is knowable from the bytes
 //! and a recording whose stream stopped reporting usage, or started
 //! reporting it somewhere other than the close, fails loudly instead of
 //! covering nothing. Cell 3 additionally re-derives that the recorded frames
@@ -117,7 +115,7 @@ fn recorded_reasoning(scenario: &str) -> String {
 }
 
 // ================================================================
-// 1. raw is the terminal record
+// 1. raw is the rebuilt document
 // ================================================================
 
 // ================================================================
@@ -125,8 +123,8 @@ fn recorded_reasoning(scenario: &str) -> String {
 // ================================================================
 
 // ================================================================
-// 3. A thinking-mode stream: raw is the terminal record, reasoning stays on
-//    the frames
+// 3. A thinking-mode stream: raw is the rebuilt document, its reasoning
+//    where a unary body has it
 // ================================================================
 
 #[tokio::test]
@@ -172,11 +170,11 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         "the stream's reasoning is the recorded reasoning_content deltas in wire order"
     );
     assert!(!observation.text.is_empty(), "the turn should still answer");
-    // The reasoning lives on the frames, not the terminal record: raw is the
-    // terminal record only.
-    assert!(
-        terminal.raw.get("reasoning_content").is_none() && terminal.raw.get("choices").is_none(),
-        "the terminal raw carries no frame content: {}",
+    // The document states the reasoning where a unary body does.
+    assert_eq!(
+        terminal.raw["choices"][0]["message"]["reasoning_content"],
+        json!(recorded_reasoning),
+        "the rebuilt message carries the reasoning: {}",
         terminal.raw
     );
 }

@@ -156,9 +156,8 @@ listed with what covers it.
   one that makes it emit a model constant is not seen.
 - **Guarantee 5.** The type ensures every frame reaches the reassembler. It
   cannot ensure the reassembler folds each frame correctly. That is the
-  parity test's job, and Bedrock, DeepSeek, Venice, xAI Chat and
-  Interactions have no recorded pair. Their reassemblers are checked by unit
-  tests only.
+  parity test's job, and Bedrock, xAI Chat and Interactions have no
+  recorded pair. Their reassemblers are checked by unit tests only.
 - **Guarantee 5.** `CompletionResponse::raw` stays a public field. Code that
   runs after the driver (a session layer, the caller) can still overwrite
   it. The guarantee covers what the driver records.
@@ -1038,9 +1037,11 @@ sends `obfuscation`, which unary lacks (dropped), and unary has
 `annotations: []`, which the stream omits (the null, absent and empty
 equivalence).
 
-**Known gaps for P5.** Bedrock, DeepSeek, Venice, xAI and Interactions have no
-recording of one prompt answered both ways; their reassemblers are checked by
-unit tests only, and the P5 PR says so. Gemini part coalescing and
+**Known gaps for P5.** Bedrock, xAI Chat and Interactions have no recording
+of one prompt answered both ways; their reassemblers are checked by unit
+tests only, and the P5 PR says so. DeepSeek and Venice turned out to have
+pairs (`followup_hunt_matrix`, `streaming_logprobs_matrix`,
+`turn_termination_matrix`, `reasoning_matrix`), now parity rows. Gemini part coalescing and
 Interactions `outputs` are the reassemblers most likely to need fixes from
 recordings.
 
@@ -1793,7 +1794,7 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
 
 | API | unary `raw` | streamed `raw` today | rebuild |
 |---|---|---|---|
-| OpenAI Chat, every dialect | `chat.completion` body | `{usage, finish_reason (rig's enum), response_id, model, logprobs, additional_params}` (`crates/rig-core/src/providers/openai/wire/chat.rs:1687-1708`); drops `native_finish_reason`, `annotations`, `refusal`; repeated arrays are extended (Perplexity: 68 citations, 17 distinct) | top-level keys last-wins, `object` renamed `chat.completion`; `delta.content`, `refusal`, `reasoning`, `reasoning_content` append; `tool_calls` merge by `index` (`arguments` append), `index` dropped at finish; `reasoning_details` merge with the decoder's own merge (`chat.rs:1748`); `annotations`, `images`, `audio.data`, `logprobs.content` append; choices kept by `index`; `obfuscation` dropped; OpenRouter's terminal `usage.cost`, `provider`, `native_finish_reason` land where unary has them; a whole `chat.completion` frame replaces the choice's `message`; a bare-string reply (Mira) has no document |
+| OpenAI Chat, every dialect | `chat.completion` body | `{usage, finish_reason (rig's enum), response_id, model, logprobs, additional_params}` (`crates/rig-core/src/providers/openai/wire/chat.rs:1687-1708`); drops `native_finish_reason`, `annotations`, `refusal`; repeated arrays are extended (Perplexity: 68 citations, 17 distinct) | `openai::wire::chat::document::ChatCompletion`, fed what the decoder classifies as a chunk or a whole reply: top-level keys last non-null wins, `object` renamed `chat.completion`, stream padding (`obfuscation`, Mistral's `p`) dropped; `delta.content`, `refusal`, `reasoning`, `reasoning_content` append; `tool_calls` merge by `index` (`arguments`, `input` append), `index` dropped at finish; `reasoning_details` merge with the decoder's own merge; `annotations`, `images`, `audio.data`, `audio.transcript`, `logprobs.*` arrays append; choices kept by `index` and listed in `index` order; a choice that carries its whole `message` (a whole reply, or Perplexity's message-so-far beside each delta) is kept as its last frame sent it; an empty `content` beside calls or a refusal is `null`; OpenRouter's terminal `usage.cost`, `provider`, `native_finish_reason` land where unary has them; the `[DONE]` sentinel and the in-band error envelope add nothing; a bare-string reply (Mira) has no document |
 | Anthropic Messages | `Message` | `{usage, stop_reason, stop_sequence, message_id, model}` (`crates/rig-core/src/providers/anthropic/streaming.rs:549-558`), pinned by a key-set test | `message_start.message` is the skeleton; `content_block_start` placed at its index; `text_delta`, `thinking_delta`, `signature_delta` append; `input_json_delta` accumulates and is parsed at `content_block_stop` (`{}` when empty); `citations_delta` appends; `message_delta` sets `stop_reason`, `stop_sequence`, `stop_details`, `container`, and merges its cumulative `usage` over the start usage; server-tool results and `fallback` blocks kept whole |
 | OpenAI Responses (HTTP and WebSocket) | `Response` | the terminal event's `response` (`crates/rig-core/src/providers/openai/responses_api/streaming.rs:795`), already the unary shape | take the terminal `response`; fill `output` from `response.output_item.done` items when the terminal `output` is empty (the Codex backend sends `output: []`); `billing` is unary-only and stays `Option` in `Extras` |
 | Gemini GenerateContent, Vertex, gRPC | `GenerateContentResponse` | REST: a snake_case summary (`crates/rig-core/src/providers/gemini/streaming.rs:195-207`); gRPC and Vertex: the last chunk through `keep_raw` (`gemini/streaming.rs:73`, `crates/rig-gemini-grpc/src/streaming.rs:52`, `crates/rig-vertexai/src/types/completion_response.rs:34`) | `candidates[i].content.parts` append; adjacent text parts with equal `thought` and no `thoughtSignature` coalesce (derived from recordings, not docs); `citationMetadata.citationSources` append; `groundingMetadata`, `urlContextMetadata`, `safetyRatings`, `finishReason`, `finishMessage`, `usageMetadata`, `modelVersion`, `responseId` last non-null; `promptFeedback` first. Vertex's "stream" re-emits the unary reply, so it is already equal |
@@ -1804,9 +1805,13 @@ Gaps the research found (P3 lists every unverified entry in its PR body):
 | Candle | the serialized response | the same record (`crates/rig-candle/src/model.rs:450`) | identity |
 
 Recorded pairs exist for `anthropic`, `cohere`, `gemini`, `ollama`, `openai`,
-`openrouter` and `perplexity`. DeepSeek has unary and streamed recordings but
-none of one prompt answered both ways; Bedrock, Venice, xAI Chat and
-Interactions have no pair.
+`openrouter`, `perplexity`, and on Chat also for `deepseek`, `doubleword`,
+`groq`, `llamacpp`, `mistral` and `venice`; Bedrock, xAI Chat and
+Interactions have no pair. Where a dialect's unary body states a field its
+stream never sends (OpenRouter and Mistral keep the stream `index` on calls,
+llama.cpp, Mistral and Venice an empty `content` beside calls, Groq
+`x_groq.seed`, Venice `venice_parameters`, Doubleword `service_tier`), the
+parity row names the pointer as one the two answers cannot share.
 
 ## 10. Citations per provider
 

@@ -338,3 +338,44 @@ async fn responses_extras_from_a_unary_recording() {
         Some(&json!(0))
     );
 }
+
+/// A stream's `raw` is the unary document, so the extras of the recorded
+/// stream equal those of the recorded unary answer of the same prompt,
+/// `native_finish_reason` included.
+#[tokio::test]
+async fn chat_extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<OpenRouter>()
+            .unwrap_or_else(|| panic!("an OpenRouter reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            chat(MODEL),
+            recorded_stream(
+                "openrouter",
+                "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
+                0,
+            ),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            chat(MODEL),
+            recorded_reply(
+                "openrouter",
+                "raw_capture_matrix/raw_round_trips_openrouter_type",
+                0,
+            ),
+        )
+        .await,
+    );
+    assert_eq!(streamed, unary);
+    assert_eq!(streamed.provider.as_deref(), Some("Azure"));
+    assert_eq!(streamed.cost, Some(2.7e-6));
+    assert_eq!(streamed.native_finish_reason.as_deref(), Some("stop"));
+}

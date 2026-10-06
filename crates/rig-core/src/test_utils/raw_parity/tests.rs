@@ -9,7 +9,10 @@ use serde_json::{Value, json};
 use super::{comparable, raw_pair};
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::providers::gemini::GeminiConfig;
-use crate::providers::openai::wire::{OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY};
+use crate::providers::openai::wire::{
+    DEEPSEEK, DOUBLEWORD, GROQ, LLAMACPP, MISTRAL, OPENAI, OPENROUTER, OpenAIConfig, PERPLEXITY,
+    VENICE,
+};
 
 /// The cassette corpus, beside this crate.
 fn corpus() -> PathBuf {
@@ -113,7 +116,7 @@ const PAIRS: &[Pair] = &[
         streamed: "raw_stream_capture_matrix/stream_terminal_reproduces_the_usage_chunk.yaml",
         // The two recordings ask for different words.
         minted: &["/choices/0/message/content", "/usage"],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "gemini",
@@ -132,21 +135,21 @@ const PAIRS: &[Pair] = &[
             "/choices/0/message/reasoning",
             "/usage",
         ],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "openai",
         unary: "raw_capture_matrix/chat_raw_round_trips_typed.yaml",
         streamed: "raw_stream_capture_matrix/chat_stream_raw_round_trips_typed.yaml",
         minted: &[],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "openai",
         unary: "raw_capture_matrix/chat_tool_call_raw_round_trips_typed.yaml",
         streamed: "raw_stream_capture_matrix/chat_tool_call_stream_raw_round_trips_typed.yaml",
         minted: &[],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "openai",
@@ -160,14 +163,278 @@ const PAIRS: &[Pair] = &[
         unary: "raw_capture_matrix/raw_round_trips_openrouter_type.yaml",
         streamed: "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider.yaml",
         minted: &[],
-        rebuilt: false,
+        rebuilt: true,
     },
     Pair {
         provider: "perplexity",
         unary: "raw_capture_matrix/normalized_fields_match_raw_renormalized.yaml",
         streamed: "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object.yaml",
         minted: &[],
-        rebuilt: false,
+        rebuilt: true,
+    },
+    Pair {
+        provider: "deepseek",
+        unary: "followup_hunt_matrix/blocking_stop_sequence_reaches_the_wire_and_stops_generation.yaml",
+        streamed: "followup_hunt_matrix/streaming_stop_sequence_reaches_the_wire_and_stops_generation.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "deepseek",
+        unary: "streaming_logprobs_matrix/blocking_disabled_length_top_absent.yaml",
+        streamed: "streaming_logprobs_matrix/streaming_disabled_length_top_absent.yaml",
+        // Each answer samples its own probabilities.
+        minted: &["/choices/0/logprobs/content/0/logprob"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "deepseek",
+        unary: "streaming_logprobs_matrix/blocking_low_length_top_absent.yaml",
+        streamed: "streaming_logprobs_matrix/streaming_low_length_top_absent.yaml",
+        // Each answer samples its own probabilities.
+        minted: &["/choices/0/logprobs/reasoning_content/0/logprob"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "deepseek",
+        unary: "streaming_logprobs_matrix/blocking_low_length_top_two.yaml",
+        streamed: "streaming_logprobs_matrix/streaming_low_length_top_two.yaml",
+        // Each answer samples its own probabilities.
+        minted: &[
+            "/choices/0/logprobs/reasoning_content/0/logprob",
+            "/choices/0/logprobs/reasoning_content/0/top_logprobs/0/logprob",
+            "/choices/0/logprobs/reasoning_content/0/top_logprobs/1/logprob",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "deepseek",
+        unary: "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap.yaml",
+        streamed: "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "doubleword",
+        unary: "finish_reason_matrix/blocking_natural_stop.yaml",
+        streamed: "finish_reason_matrix/streaming_natural_stop.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "doubleword",
+        unary: "finish_reason_matrix/blocking_tool_calls.yaml",
+        streamed: "finish_reason_matrix/streaming_tool_calls.yaml",
+        // The unary answer reasoned before its call and the streamed one did
+        // not.
+        minted: &[
+            "/choices/0/message/reasoning_content",
+            "/choices/0/message/reasoning_details",
+            "/choices/0/message/tool_calls/0/function/arguments",
+            "/usage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "llamacpp",
+        unary: "response_shape_matrix/two_candidates_blocking.yaml",
+        streamed: "response_shape_matrix/two_candidates_streaming.yaml",
+        // Each answer writes its own first candidate and times itself.
+        minted: &["/choices/0/message/content", "/timings", "/usage"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "llamacpp",
+        unary: "truncation_matrix/tool_call_cut_mid_arguments.yaml",
+        streamed: "truncation_matrix/streaming_tool_call_cut_mid_arguments.yaml",
+        // llama.cpp's unary body states an empty `content` beside its calls,
+        // which its stream never sends; each answer times itself.
+        minted: &["/choices/0/message/content", "/timings"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openai",
+        unary: "chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_length_top_zero.yaml",
+        streamed: "chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_length_top_zero.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openai",
+        unary: "chat_streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent.yaml",
+        streamed: "chat_streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_absent.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openai",
+        unary: "chat_terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_two.yaml",
+        streamed: "chat_terminal_metadata_matrix/streaming_gpt_4o_mini_tiny_plain_two.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "reasoning_tool_order_matrix/blocking_single.yaml",
+        streamed: "reasoning_tool_order_matrix/streaming_single.yaml",
+        // Each answer reasons in its own words, and OpenRouter's unary body
+        // keeps the stream `index` on its calls.
+        minted: &[
+            "/choices/0/message/reasoning",
+            "/choices/0/message/reasoning_details/0/text",
+            "/choices/0/message/reasoning_details/0/signature",
+            "/choices/0/message/tool_calls/0/index",
+            "/usage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "refusal_matrix/blocking_refusal_with_tools_in_request.yaml",
+        streamed: "refusal_matrix/streaming_refusal_emits_no_tool_calls.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "streaming_logprobs_matrix/blocking_gpt_4_1_mini_stop_top_absent.yaml",
+        streamed: "streaming_logprobs_matrix/streaming_gpt_4_1_mini_stop_top_absent.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "terminal_metadata_matrix/blocking_gpt_4_1_mini_tiny_plain_two.yaml",
+        streamed: "terminal_metadata_matrix/streaming_gpt_4_1_mini_tiny_plain_two.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "terminal_metadata_matrix/blocking_gpt_4_1_mini_tiny_tool.yaml",
+        streamed: "terminal_metadata_matrix/streaming_gpt_4_1_mini_tiny_tool.yaml",
+        // OpenRouter's unary body keeps the stream `index` on its calls.
+        minted: &["/choices/0/message/tool_calls/0/index"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "terminal_metadata_matrix/blocking_gpt_4o_mini_tiny_plain_one.yaml",
+        streamed: "terminal_metadata_matrix/streaming_gpt_4o_mini_tiny_plain_one.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "venice",
+        unary: "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap.yaml",
+        streamed: "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap.yaml",
+        // Each answer is cut at its own words, and Venice states its
+        // parameters in a unary body only.
+        minted: &["/choices/0/message/content", "/venice_parameters"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "groq",
+        unary: "history_survival_matrix/unary.yaml",
+        streamed: "history_survival_matrix/streaming.yaml",
+        // Each answer reasons and counts in its own words. A gpt-oss stream
+        // names each delta's `channel`, which the unary message does not;
+        // Groq states the seed in a unary body only and repeats the usage
+        // under `x_groq` in a stream only.
+        minted: &[
+            "/choices/0/message/channel",
+            "/choices/0/message/reasoning",
+            "/system_fingerprint",
+            "/usage",
+            "/x_groq/seed",
+            "/x_groq/usage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "groq",
+        unary: "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming.yaml",
+        streamed: "agent_tool_sessions/parallel_tool_calls_single_turn_streaming.yaml",
+        // Each answer times itself. Groq states the seed in a unary body only
+        // and repeats the usage under `x_groq` in a stream only.
+        minted: &[
+            "/usage/completion_time",
+            "/usage/prompt_time",
+            "/usage/queue_time",
+            "/usage/total_time",
+            "/x_groq/seed",
+            "/x_groq/usage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "mistral",
+        unary: "history_survival_matrix/unary.yaml",
+        streamed: "history_survival_matrix/streaming.yaml",
+        // Mistral's unary body states an empty `content` beside its calls and
+        // keeps their stream `index`, which its stream does not; the cache
+        // was cold for one answer only.
+        minted: &[
+            "/choices/0/message/content",
+            "/choices/0/message/tool_calls/0/index",
+            "/choices/0/message/tool_calls/1/index",
+            "/usage/prompt_tokens_details/cached_tokens",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openai",
+        unary: "long_task_matrix/chat_repair.yaml",
+        streamed: "long_task_matrix/chat_repair_streamed.yaml",
+        minted: &[],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "reasoning_roundtrip/nonstreaming.yaml",
+        streamed: "reasoning_roundtrip/streaming.yaml",
+        // Each answer reasons and answers in its own words.
+        minted: &[
+            "/choices/0/message/content",
+            "/choices/0/message/reasoning",
+            "/choices/0/message/reasoning_details/0/summary",
+            "/choices/0/message/reasoning_details/1/data",
+            "/usage",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "openrouter",
+        unary: "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming.yaml",
+        streamed: "agent_tool_sessions/sequential_complex_tool_calls_streaming.yaml",
+        // OpenRouter's unary body keeps the stream `index` on its calls.
+        minted: &["/choices/0/message/tool_calls/0/index"],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "venice",
+        unary: "reasoning_matrix/tool_unary.yaml",
+        streamed: "reasoning_matrix/tool_streamed.yaml",
+        // Each answer reasons in its own words. Venice's unary body states an
+        // empty `content` beside its calls and its parameters, which its
+        // stream does not.
+        minted: &[
+            "/choices/0/message/content",
+            "/choices/0/message/reasoning_content",
+            "/cost",
+            "/usage",
+            "/venice_parameters",
+        ],
+        rebuilt: true,
+    },
+    Pair {
+        provider: "doubleword",
+        unary: "history_survival_matrix/unary.yaml",
+        streamed: "history_survival_matrix/streaming.yaml",
+        // Each answer counts its own reasoning; Doubleword states the service
+        // tier in a unary body only.
+        minted: &["/service_tier", "/usage"],
+        rebuilt: true,
     },
 ];
 
@@ -198,6 +465,14 @@ async fn decoded(pair: &Pair) -> (Value, Value) {
             .await
         }
         ("perplexity", _) => raw_pair(chat(&PERPLEXITY).chat("sonar"), unary, streamed).await,
+        ("deepseek", _) => raw_pair(chat(&DEEPSEEK).chat("deepseek-chat"), unary, streamed).await,
+        ("doubleword", _) => {
+            raw_pair(chat(&DOUBLEWORD).chat("Qwen/Qwen3.5-9B"), unary, streamed).await
+        }
+        ("llamacpp", _) => raw_pair(chat(&LLAMACPP).chat("model"), unary, streamed).await,
+        ("groq", _) => raw_pair(chat(&GROQ).chat("model"), unary, streamed).await,
+        ("mistral", _) => raw_pair(chat(&MISTRAL).chat("model"), unary, streamed).await,
+        ("venice", _) => raw_pair(chat(&VENICE).chat("qwen3-5-9b"), unary, streamed).await,
         // Both recordings went to the OpenAI-compatible Chat route.
         ("cohere", _) => {
             let dialect = &crate::providers::openai::wire::COHERE;

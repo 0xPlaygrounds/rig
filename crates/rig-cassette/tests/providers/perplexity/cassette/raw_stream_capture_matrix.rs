@@ -113,13 +113,18 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
         recorded_usage["completion_tokens"]
     );
     assert_eq!(raw["usage"]["total_tokens"], recorded_usage["total_tokens"]);
-    assert_eq!(raw["additional_params"]["object"], json!(recorded_object));
+    // The rebuilt document carries the unary tag in place of the chunks'.
+    assert!(
+        recorded_object.starts_with("chat.completion."),
+        "{recorded_object}"
+    );
+    assert_eq!(raw["object"], json!("chat.completion"));
     // The normalized terminal has no slot for the tag. The usage block, by
-    // contrast, is the dialect's own: the record keeps the fields no
+    // contrast, is the dialect's own: the document keeps the fields no
     // OpenAI-compatible shape names, so Perplexity's `cost` reaches a caller
     // through `raw`.
     let normalized = normalized_without_raw(terminal.clone());
-    assert_normalized_lacks(&normalized, &["object", "additional_params"]);
+    assert_normalized_lacks(&normalized, &["object"]);
     assert!(
         recorded_usage.get("cost").is_some(),
         "the recorded usage carries Perplexity's cost block: {recorded_usage}"
