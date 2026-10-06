@@ -2037,6 +2037,9 @@ interim reassembler:
    `cargo xtask cassette goldens` and `cargo xtask cassette snapshots`, and
    move the assertions that read the old terminal record.
 
+Every family has done so: no `TerminalRecord` remains, and every row of
+`test_utils/raw_parity/tests.rs` is `rebuilt`.
+
 The Responses WebSocket session feeds each turn's messages to the same
 reassembler as the HTTP stream and settles with what it finishes with.
 
