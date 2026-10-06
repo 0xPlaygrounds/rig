@@ -82,18 +82,20 @@ const KNOWN_MACROS: [&str; 4] = [
     "include_proto",
 ];
 
-/// Whether a constant named `name` holds something other than a model id.
-/// `PROVIDER` is a `ProviderExtension`'s provider key, and a `_BETA`
-/// constant is a beta header value.
-fn names_no_model(name: &str) -> bool {
+/// Whether a constant named `name` in `module` holds something other than a
+/// model id. In an `extension` module, `PROVIDER` is a `ProviderExtension`'s
+/// provider key and a `_BETA` constant is a beta header value; elsewhere
+/// those names are read like any other.
+fn names_no_model(module: &[String], name: &str) -> bool {
+    let extension = module.last().is_some_and(|last| last == "extension");
     name.ends_with("_URL")
         || name.ends_with("_ENV")
-        || name.ends_with("_BETA")
         || name.starts_with("ANTHROPIC_VERSION")
         || matches!(
             name,
-            "PROVIDER_NAME" | "PROVIDER" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
+            "PROVIDER_NAME" | "AZURE_DEFAULT_API_VERSION" | "DEFAULT_LOCATION"
         )
+        || (extension && (name == "PROVIDER" || name.ends_with("_BETA")))
 }
 
 /// One public `&str` constant or static, at module, impl or trait level.
@@ -671,7 +673,7 @@ fn model_constants(
     }
     let mut models = Vec::new();
     for (file, module, name, value) in found {
-        if names_no_model(&name) {
+        if names_no_model(&module, &name) {
             continue;
         }
         let vendor = match vendor {
