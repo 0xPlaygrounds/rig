@@ -342,6 +342,19 @@ where
                             break 'outer;
                         }
                     };
+                    // Checked against the model this call goes to, after
+                    // selection: a refused option fails the run before the
+                    // call is sent.
+                    if let Err(err) = runner
+                        .config
+                        .check_call_options(&selected_label, &mut prepared.request.options)
+                    {
+                        store_error_usage(&runner, &run);
+                        let err = PromptError::from(err);
+                        settle_error!(err);
+                        yield Err(err);
+                        break 'outer;
+                    }
                     if let Some(name) = &prepared.output_tool_name {
                         // Refused after the first turn by design: the name is pinned.
                         let _ = run.commit_output_tool_name(name.clone());

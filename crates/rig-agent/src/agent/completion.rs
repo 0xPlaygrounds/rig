@@ -245,9 +245,15 @@ pub(crate) struct AgentConfig {
     pub(crate) additional_params: Option<serde_json::Value>,
     /// Portable generation options every request carries.
     pub(crate) options: rig_core::completion::GenerationOptions,
-    /// The catalog entry of the agent's model, which each run's options
-    /// are checked against before it starts.
+    /// The catalog entry of the agent's model, which each model call's
+    /// options are checked against when the call goes to that model.
     pub(crate) model_spec: Option<rig_core::catalog::ModelSpec>,
+    /// The key of the model [`Self::model_spec`] describes: the default
+    /// model the agent was built with.
+    pub(crate) model_spec_key: Option<Key<family::Completion>>,
+    /// The provider and model id of each model the builder registers from
+    /// a model value, by key suffix, until build records them on the bus.
+    pub(crate) pending_model_ids: Vec<(String, super::drive::ModelId)>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
@@ -305,6 +311,8 @@ impl AgentConfig {
             additional_params: None,
             options: rig_core::completion::GenerationOptions::default(),
             model_spec: None,
+            model_spec_key: None,
+            pending_model_ids: Vec::new(),
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
             max_tokens: None,
@@ -368,6 +376,81 @@ impl AgentConfig {
         self.memory_key
             .as_ref()
             .map(|key| self.bus.dispatcher().bind(key))
+    }
+}
+
+impl AgentConfig {
+    /// Check `options`, which a call to the model `label` names is about to
+    /// send, against that model's catalog entry ([`AgentBuilder::model_spec`]):
+    /// a refused option fails under `OnUnsupported::Error`, and is dropped
+    /// from the call with a warning under `Ignore`. Nothing is checked
+    /// without a model spec, and a model whose entry cannot be found is let
+    /// through with a warning.
+    ///
+    /// [`AgentBuilder::model_spec`]: crate::agent::AgentBuilder::model_spec
+    pub(crate) fn check_call_options(
+        &self,
+        label: &ModelRef,
+        options: &mut rig_core::completion::GenerationOptions,
+    ) -> Result<(), rig_core::error::ProviderError> {
+        use rig_core::completion::OnUnsupported;
+        use rig_core::error::ProviderError;
+        let Some(declared) = self.model_spec.as_ref() else {
+            return Ok(());
+        };
+        let key = self.bus.model_key(label.as_str());
+        let spec = match &self.model_spec_key {
+            Some(own) if own.raw() == key.raw() => Some(declared),
+            _ => self.catalog_entry(&key, label),
+        };
+        let Some(spec) = spec else {
+            tracing::warn!(
+                model = %label,
+                "the model this call goes to has no catalog entry rig can find; its generation options are not checked"
+            );
+            return Ok(());
+        };
+        while let Err(refused) = spec.validate(options) {
+            match options.on_unsupported {
+                OnUnsupported::Ignore => {
+                    tracing::warn!(
+                        option = refused.option,
+                        provider = %refused.provider,
+                        model = %refused.model,
+                        reason = %refused.reason,
+                        "unsupported option ignored"
+                    );
+                    match refused.option {
+                        "reasoning" => options.reasoning = None,
+                        "cache" => options.cache = None,
+                        _ => return Err(ProviderError::UnsupportedOption(refused)),
+                    }
+                }
+                _ => return Err(ProviderError::UnsupportedOption(refused)),
+            }
+        }
+        Ok(())
+    }
+
+    /// The built-in catalog's entry for the model registered under `key`:
+    /// by the provider and model id it was registered with, else by `label`
+    /// read as a catalog reference (`anthropic/claude-opus-4-8`).
+    fn catalog_entry(
+        &self,
+        key: &Key<family::Completion>,
+        label: &ModelRef,
+    ) -> Option<&'static rig_core::catalog::ModelSpec> {
+        use rig_core::catalog::Catalog;
+        use rig_core::providers::registry::ProviderId;
+        let catalog = Catalog::builtin();
+        match self.bus.model_id(key.raw().as_str()) {
+            Some(super::drive::ModelId {
+                provider,
+                model: Some(model),
+            }) => ProviderId::catalog(&provider).and_then(|provider| catalog.get(provider, &model)),
+            Some(_) => None,
+            None => catalog.resolve(label.as_str()),
+        }
     }
 }
 

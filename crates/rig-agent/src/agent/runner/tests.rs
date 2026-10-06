@@ -397,3 +397,128 @@ async fn a_model_spec_checks_every_runs_options_before_it_starts() {
         "the refused effort was dropped"
     );
 }
+
+/// A selection hook that sends every call to the model labelled `opus`.
+struct SelectOpus;
+
+impl AgentHook for SelectOpus {
+    fn on_model_select(
+        &self,
+        _ctx: &HookContext,
+        _event: crate::agent::ModelSelection<'_>,
+    ) -> crate::agent::ModelSelectionAction {
+        crate::agent::ModelSelectionAction::select("opus")
+    }
+}
+
+/// A run that switches models is checked against the model each call goes
+/// to: the new model's catalog entry, found by the provider and model id it
+/// was registered with, whether `using_model_value`, `using_model` or a
+/// selection hook switched it. A model the catalog does not list is not
+/// checked, and the run says so.
+#[tokio::test]
+async fn a_model_spec_checks_the_model_a_switched_run_calls() {
+    use rig_core::catalog::Catalog;
+    use rig_core::completion::{Effort, GenerationOptions, Reasoning};
+    use rig_core::error::ProviderError;
+    use rig_core::test_utils::MockScript;
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
+    let capture = crate::test_utils::TraceCapture::default();
+    let _default = tracing::subscriber::set_default(capture.subscriber());
+    let scripted = |provider: &str, id: &str| {
+        let mut model = MockCompletionModel::from_turns([MockTurn::text("ok")]);
+        model.wire = MockScript::new(provider).with_id(id);
+        model
+    };
+    let haiku = Catalog::builtin()
+        .resolve("anthropic/claude-haiku-4-5")
+        .expect("listed")
+        .clone();
+    let own = MockCompletionModel::from_turns([MockTurn::text("unused")]);
+    let opus = scripted("anthropic", "claude-opus-4-8");
+    let agent = AgentBuilder::new(own.clone())
+        .model_spec(haiku)
+        .model_route("opus", opus.clone())
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .build();
+    let refused = |error: &crate::completion::PromptError| {
+        matches!(
+            error,
+            crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(_))
+        )
+    };
+
+    // Haiku 4.5, the agent's own model, takes no effort level.
+    let error = agent.prompt("go").run().await.expect_err("refused");
+    assert!(refused(&error), "{error:?}");
+
+    // Opus 4.8 takes `high`, whichever way the run switched to it.
+    let value = scripted("anthropic", "claude-opus-4-8");
+    agent
+        .prompt("go")
+        .using_model_value(value.clone())
+        .run()
+        .await
+        .expect("Opus 4.8 takes `high`");
+    agent
+        .prompt("go")
+        .using_model("opus")
+        .run()
+        .await
+        .expect("the route is Opus 4.8");
+    let opus_by_hook = scripted("anthropic", "claude-opus-4-8");
+    let hooked = AgentBuilder::new(own.clone())
+        .model_spec(
+            Catalog::builtin()
+                .resolve("anthropic/claude-haiku-4-5")
+                .expect("listed")
+                .clone(),
+        )
+        .model_route("opus", opus_by_hook.clone())
+        .add_hook(SelectOpus)
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .build();
+    hooked
+        .prompt("go")
+        .run()
+        .await
+        .expect("the hook selects Opus 4.8");
+
+    // A switch to a listed model that refuses the option fails that call.
+    let error = agent
+        .prompt("go")
+        .using_model_value(scripted("anthropic", "claude-haiku-4-5"))
+        .run()
+        .await
+        .expect_err("Haiku 4.5 by value takes no effort level");
+    assert!(refused(&error), "{error:?}");
+
+    // A model the catalog does not list is let through, with a warning.
+    let unlisted = scripted("anthropic", "claude-unlisted-9");
+    capture.clear();
+    agent
+        .prompt("go")
+        .using_model_value(unlisted.clone())
+        .run()
+        .await
+        .expect("not checked");
+    assert!(
+        capture.events().iter().any(|event| {
+            event.level == tracing::Level::WARN && event.message().contains("not checked")
+        }),
+        "the run says the options were not checked"
+    );
+
+    for model in [&value, &opus, &opus_by_hook, &unlisted] {
+        let requests = model.requests();
+        let [request] = requests.as_slice() else {
+            panic!("one request: {requests:?}");
+        };
+        assert_eq!(
+            request.options.reasoning,
+            Some(Reasoning::Effort(Effort::High))
+        );
+    }
+    assert!(own.requests().is_empty(), "the refused call was not sent");
+}

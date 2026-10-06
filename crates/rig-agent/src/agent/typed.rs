@@ -166,11 +166,6 @@ where
                 source, retries, ..
             },
         ) = self.replace_output(());
-        // Checked once, before the first attempt: a refused option fails the
-        // run with nothing sent, and retrying would not change the answer.
-        let runner = runner
-            .checked_options()
-            .map_err(StructuredOutputError::Prompt)?;
         let mut usage = Usage::default();
         let mut last_error = None;
 
