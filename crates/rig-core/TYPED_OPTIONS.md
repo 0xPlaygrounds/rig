@@ -525,7 +525,8 @@ target `route` names, the one `prepare` and the fold already use.
     content chunks, the Perplexity and Mira content flattening (`:598-609`),
     and the llama.cpp, Moonshot and Ollama `/v1` refusals. The OpenRouter
     caching arm and the Ollama `think` rewrite are deleted (section 12.1);
-    the Ollama arm keeps its `num_ctx`/`options` refusal until P4;
+    the Ollama arm keeps its refusal of a raw `num_ctx`/`options` (ruling R17;
+    a typed `"ollama.chat"` section is skipped on `/v1`, ruling R2);
   - `GeminiCachedContent`: `with_cached_content`, which inserts
     `cachedContent` and checks it against the system instruction, tools and
     tool choice after `body.extend(params)`
@@ -804,8 +805,10 @@ spells the same, and a section named by an `Api` string (`"openai.chat"`,
   request, so it is reported once. A `ProviderOptions` read back from JSON
   has no typed options behind it, so its fields are sent as written.
 - An `Options` type never carries a field `GenerationOptions` or
-  `CompletionRequest` owns. A per-extension test serializes a fully-set
-  `Options` and checks no reserved key appears.
+  `CompletionRequest` owns. Each extension with fields has a test that
+  serializes a fully-set `Options` and checks no reserved leaf (or, for
+  ChatGPT and Candle, no reserved top-level key) appears. Vertex and Gemini
+  gRPC share `GenerationConfig` with Gemini REST and rely on its test.
 
 **Public API.**
 
@@ -871,7 +874,7 @@ and so is `"ollama"`.
 | OpenRouter, DeepSeek and the other Chat dialects share one wire | The Chat wire's `provider()` is the dialect name (`crates/rig-core/src/providers/openai/wire/chat.rs:878-880`), so each dialect reads only its own entry. A user gateway declared with `Dialect::gateway("mygw", ..)` gets typed options from a user `impl ProviderExtension { const PROVIDER = "mygw"; .. }`. |
 | OpenAI Chat and Responses share one provider | One `"openai"` entry. `"*"` goes to whichever route runs; `"openai.chat"` and `"openai.responses"` go only to their route. OpenAI defaults to Responses (`crates/rig-core/src/providers/openai/wire/dialects.rs:35`) and Copilot picks per model (`crates/rig-core/src/providers/copilot/wire.rs:79-85`). |
 | Cohere has two routes | Native (`api "cohere.chat"`) and Compatibility (`api "openai.chat"`) both read `"cohere"`. `ChatRoute::Auto` picks per request (`crates/rig-core/src/providers/cohere/wire.rs:131-137`), and each request takes the right half. |
-| Ollama has two routes | `/v1` (`"openai.chat"`) and native `/api/chat` (`"ollama.chat"`) both read `"ollama"`. Native-only `options.num_ctx` on `/v1` goes through `on_unsupported`. |
+| Ollama has two routes | `/v1` (`"openai.chat"`) and native `/api/chat` (`"ollama.chat"`) both read `"ollama"`. A typed `"ollama.chat"` section (native-only `options.num_ctx`) is not the taken route on `/v1`, so it is skipped with a `tracing::debug!` (R2). A raw `num_ctx` or `options` on `/v1` is still refused by `finalize_ollama` (R17). |
 | Vertex reuses the Gemini wire | The shared body builder already takes the target (`crates/rig-core/src/providers/gemini/completion.rs:388-392`), so REST reads `"gcp.gemini"`, Vertex `"vertexai"` and gRPC `"gemini-grpc"`. Section structs are shared: `VertexOptions` embeds the GenerateContent fields. Only a provider key can say the Developer API takes `serviceTier` and `store` and Vertex takes `modelArmorConfig`. |
 | One vendor on two formats | `anthropic::wire::ZAI` and `openai::wire::ZAI` both say `"zai"` (`crates/rig-core/src/providers/anthropic/wire.rs:185`, `crates/rig-core/src/providers/openai/wire/dialects.rs:346`). `ZaiOptions` has an `"openai.chat"` and an `"anthropic.messages"` section. |
 
@@ -1906,7 +1909,7 @@ until it is listed here and the golden is regenerated.
 | Chat `prompt_caching` field and `with_prompt_caching` (a no-op on every dialect but OpenRouter) | `crates/rig-core/src/providers/openai/wire/chat.rs:49-51`, `:248`, `:265-269` | `cache`; `UnsupportedOption` where a dialect cannot cache on request |
 | `OpenAiWire::with_prompt_caching` (a no-op on the Responses route) | `crates/rig-core/src/providers/openai/wire/route.rs:107-111` | `cache` |
 | OpenRouter `BodyRewrite::OpenRouter` caching rewrite | `crates/rig-core/src/providers/openai/wire.rs:165-167`, `crates/rig-core/src/providers/openai/wire/chat.rs:613`, `:816-843` | the documented top-level `cache_control` |
-| Ollama `/v1` `think` to `reasoning_effort` rewrite | `crates/rig-core/src/providers/openai/wire/chat.rs:688-722`, doc `crates/rig-core/src/providers/openai/wire.rs:168-171`, `crates/rig-core/src/client/ollama.rs:40-43` | `reasoning`; the `num_ctx`/`options` refusal becomes the P4 route-section check |
+| Ollama `/v1` `think` to `reasoning_effort` rewrite | `crates/rig-core/src/providers/openai/wire/chat.rs:688-722`, doc `crates/rig-core/src/providers/openai/wire.rs:168-171`, `crates/rig-core/src/client/ollama.rs:40-43` | `reasoning`; `finalize_ollama` keeps refusing a raw `num_ctx`/`options` (R17), and a typed `"ollama.chat"` section is skipped on `/v1` (R2) |
 | DeepSeek thinking detection from JSON | `crates/rig-core/src/providers/openai/wire/chat.rs:743-760` | kept as `Rewrite::ChatDialect(DeepSeek)`, reading the merged body's `thinking`, so a mapped `reasoning(Off)` and a raw `thinking: {"type": "disabled"}` both keep a forced `tool_choice` |
 | Chat `body.extend(params)` | `crates/rig-core/src/providers/openai/wire/chat.rs:384` | `request_params` |
 | Responses `additional_params` merged only where absent (inverted precedence) | `crates/rig-core/src/providers/openai/responses_api/mod.rs:464-468` | `request_params` |
