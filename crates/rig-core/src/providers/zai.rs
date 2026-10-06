@@ -49,6 +49,12 @@ pub(crate) fn reads_images(model: &str) -> bool {
     })
 }
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "zai";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::ZAI, "Z.AI");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::ZAI,

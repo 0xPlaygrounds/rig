@@ -16,4 +16,10 @@ pub const DEEPSEEK_FLASH: &str = "deepseek-flash";
 pub const DEEPSEEK_V4_FLASH: &str = "deepseek-v4-flash";
 pub const DEEPSEEK_V4_PRO: &str = "deepseek-v4-pro";
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "deepseek";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::DEEPSEEK, "DeepSeek");

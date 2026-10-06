@@ -1,8 +1,8 @@
 //! Venice model identifiers and request parameters.
 //!
 //! [`from_env`] and [`new`] build a client on the [`VENICE`](crate::providers::openai::wire::VENICE) dialect.
-//! Its `venice_parameters` request block goes through `additional_params`;
-//! provider fields of a reply stay in the response's `raw` value.
+//! Its `venice_parameters` request block and the reply's cost and echoed
+//! parameters are typed in [`extension`].
 //!
 //! ```no_run
 //! use rig_core::providers::venice;
@@ -18,6 +18,7 @@ pub const VENICE_API_BASE_URL: &str = "https://api.venice.ai/api/v1";
 pub mod audio_generation;
 pub mod completion;
 pub mod embedding;
+pub mod extension;
 #[cfg(feature = "image")]
 pub mod image_generation;
 pub mod transcription;
@@ -29,5 +30,9 @@ pub use embedding::*;
 #[cfg(feature = "image")]
 pub use image_generation::*;
 pub use transcription::*;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "venice";
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::VENICE, "Venice");

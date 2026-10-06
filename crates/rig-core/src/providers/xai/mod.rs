@@ -15,6 +15,7 @@
 
 #[cfg(feature = "audio")]
 pub mod audio_generation;
+pub mod extension;
 #[cfg(feature = "image")]
 pub mod image_generation;
 
@@ -37,6 +38,10 @@ use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, ImageBody, Quirks, ResponsesContract, ResponsesQuirks, Route, SpeechBody,
 };
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "xai";
 
 /// xAI endpoint and encoding configuration. Responses system messages remain
 /// in `input`; error envelopes may arrive with HTTP 200. Completed function calls
@@ -62,7 +67,7 @@ pub const DIALECT: Dialect = Dialect {
         },
         ..Quirks::openai()
     },
-    ..Dialect::gateway("xai", "https://api.x.ai", "XAI_API_KEY")
+    ..Dialect::gateway(PROVIDER_NAME, "https://api.x.ai", "XAI_API_KEY")
 };
 
 crate::client::macros::openai_vendor!(DIALECT, "xAI");

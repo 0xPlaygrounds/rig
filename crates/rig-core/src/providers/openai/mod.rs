@@ -19,8 +19,13 @@
 //! with the client's transport. A vendor that speaks this format builds its
 //! client from its own module, such as [`crate::providers::deepseek::from_env`].
 
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "openai";
+
 pub mod completion;
 pub mod embedding;
+pub mod extension;
 pub(crate) mod options;
 pub mod responses_api;
 

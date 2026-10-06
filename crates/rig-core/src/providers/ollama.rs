@@ -43,7 +43,7 @@ const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
-const PROVIDER_NAME: &str = "ollama";
+pub(crate) const PROVIDER_NAME: &str = "ollama";
 
 /// The `llama3.2` model.
 pub const LLAMA3_2: &str = "llama3.2";

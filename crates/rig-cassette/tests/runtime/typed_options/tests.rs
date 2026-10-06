@@ -1336,8 +1336,6 @@ mod catalog_validation {
     }
 }
 
-// P4 removes this gate.
-#[cfg(any())]
 mod typed_extras_unary {
     //! Vendor reply fields read through `extras::<P>()` from recorded unary
     //! replies, with no indexing into `raw`.

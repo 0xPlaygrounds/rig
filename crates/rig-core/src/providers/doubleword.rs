@@ -33,4 +33,8 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 /// defined by [`crate::providers::openai::wire::DOUBLEWORD`].
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";
 
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "doubleword";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::DOUBLEWORD, "Doubleword");

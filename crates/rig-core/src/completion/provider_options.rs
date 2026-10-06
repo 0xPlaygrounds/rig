@@ -73,6 +73,23 @@ pub trait ReplyExtras: Sized {
     fn from_reply(api: &Api, raw: &Value) -> Result<Self, serde_json::Error>;
 }
 
+/// The value at `pointer` in a reply document, read as `T`: `None` when it
+/// is absent or `null`. The one reader every `Extras` type's `from_reply`
+/// goes through.
+///
+/// # Errors
+///
+/// When the value is present but is not a `T`.
+pub(crate) fn reply_field<T: serde::de::DeserializeOwned>(
+    raw: &Value,
+    pointer: &str,
+) -> Result<Option<T>, serde_json::Error> {
+    match raw.pointer(pointer) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => T::deserialize(value).map(Some),
+    }
+}
+
 /// Why a provider's options cannot be stored.
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]

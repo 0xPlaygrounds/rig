@@ -46,6 +46,12 @@ pub(crate) fn reads_images(model: &str) -> bool {
         || (model.starts_with("moonshot-v1") && !model.contains("vision")))
 }
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "moonshot";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::MOONSHOT, "Moonshot");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::MOONSHOT,

@@ -48,4 +48,10 @@ pub const GPT_35_TURBO_INSTRUCT: &str = "gpt-3.5-turbo-instruct";
 /// `gpt-3.5-turbo-16k` completion model
 pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "azure.openai";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::AZURE, "Azure OpenAI");

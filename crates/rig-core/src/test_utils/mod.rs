@@ -6,6 +6,8 @@ pub mod history;
 pub mod history_conformance;
 mod memory;
 pub mod observations;
+#[cfg(test)]
+pub(crate) mod provider_extensions;
 mod relay;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

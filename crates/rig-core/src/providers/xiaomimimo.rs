@@ -39,6 +39,12 @@ pub(crate) fn reads_images(model: &str) -> bool {
         || model.starts_with("mimo-v2.5-pro"))
 }
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "xiaomimimo";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::XIAOMIMIMO, "Xiaomi MiMo");
 crate::client::macros::anthropic_vendor!(
     crate::providers::anthropic::wire::XIAOMIMIMO,

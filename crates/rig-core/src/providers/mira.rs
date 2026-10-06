@@ -12,4 +12,8 @@
 //! # }
 //! ```
 
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "mira";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::MIRA, "Mira");
