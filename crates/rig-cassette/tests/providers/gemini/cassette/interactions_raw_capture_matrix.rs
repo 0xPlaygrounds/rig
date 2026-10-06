@@ -38,6 +38,7 @@
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
 use rig::completion::FinishReason;
+use rig::providers::gemini::extension::{Gemini, InteractionStatus};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -168,6 +169,33 @@ async fn raw_exposes_lifecycle_fields() {
             assert!(!json_contains_key(&normalized, "steps"));
             assert!(!json_contains_key(&normalized, "status"));
             assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+
+            // The typed extras read the same recorded interaction.
+            let extras = response
+                .extras::<Gemini>()
+                .expect("an Interactions reply has Gemini extras")
+                .expect("the recorded interaction holds the extras' shape");
+            assert_eq!(
+                extras.id.as_deref(),
+                Some("v1_Chd6YTZ5YXAtVElLYkFxdHNQN28yMnVBaxIXemE2eWFwLVRJS2JBcXRzUDdvMjJ1QWs")
+            );
+            assert_eq!(extras.status, Some(InteractionStatus::Completed));
+            assert_eq!(extras.service_tier.as_deref(), Some("standard"));
+            // The recorder's scrubbed timestamps.
+            assert_eq!(extras.created.as_deref(), Some("1970-01-01T00:00:00Z"));
+            assert_eq!(extras.updated.as_deref(), Some("1970-01-01T00:00:00Z"));
+            let input = extras.input_tokens_by_modality.unwrap_or_default();
+            assert_eq!(
+                input
+                    .iter()
+                    .map(|count| (count.modality.as_deref(), count.tokens))
+                    .collect::<Vec<_>>(),
+                [(Some("text"), Some(12))]
+            );
+            assert_eq!(
+                extras.model_version, None,
+                "a GenerateContent field on an Interactions reply"
+            );
         },
     )
     .await;

@@ -27,8 +27,7 @@ use crate::wire::{Descriptor, Mode};
 /// Streaming helpers for the Interactions API.
 pub mod streaming;
 
-/// Gemini provider name used in normalized records and telemetry.
-pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
+use super::completion::PROVIDER_NAME;
 
 /// The wire format both Interactions wires speak.
 const API: crate::message::Api = crate::message::Api::from_static("gemini.interactions");
@@ -249,8 +248,9 @@ impl crate::wire::Wire for InteractionResume {
     }
 
     /// Reads an existing interaction, so the request carries no body: what
-    /// to read is the wire's own data. A request that sets options or
-    /// `additional_params` is refused, since nothing would send them.
+    /// to read is the wire's own data. A request that sets options,
+    /// provider options or `additional_params` is refused, since nothing
+    /// would send them.
     fn encode(
         &self,
         request: CompletionRequest,
@@ -277,7 +277,8 @@ impl crate::wire::Wire for InteractionResume {
         )?;
         if !params.is_empty() {
             return Err(EncodeError::request(
-                "a resumed interaction takes no `additional_params`: it is read, not created",
+                "a resumed interaction takes no provider options or `additional_params`: it is \
+                 read, not created",
             ));
         }
         let id = &self.interaction_id;
