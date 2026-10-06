@@ -377,13 +377,18 @@ impl wire::Responses {
         }
         // Reasoning replays without stored state only with its ciphertext.
         rewrites.push(Rewrite::ReasoningCiphertext(codex));
-        request_params(
+        let body = request_params(
             self,
             request,
             |layers| self.base(request, codex, layers),
             RawAt::Top,
             &rewrites,
-        )
+        )?;
+        crate::providers::openai::options::check_body(
+            &body,
+            crate::providers::openai::options::Endpoint::Responses,
+        )?;
+        Ok(body)
     }
 
     /// This wire's own encoding of `request`: model, input, instructions,
