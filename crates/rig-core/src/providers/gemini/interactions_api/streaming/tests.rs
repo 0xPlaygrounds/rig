@@ -261,3 +261,86 @@ fn a_tagged_frame_never_passes_for_a_whole_interaction() {
     );
     assert!(outcome.is_err(), "{outcome:?}");
 }
+
+/// A text item's annotations cite bytes of its text, past a multi-byte
+/// dash: a URL, a file page and a place. Annotations streamed after the
+/// text as `text_annotation_delta` join the text item, so the stream cites
+/// and replays what the whole interaction does. Other annotations cite
+/// nothing.
+#[test]
+fn annotations_cite_their_text_item_in_both_modes() {
+    let text = "Spain won 2\u{2013}1 in Berlin.";
+    let at = |part: &str| text.find(part).expect("the text holds it");
+    let span = |part: &str| json!({"start_index": at(part), "end_index": at(part) + part.len()});
+    let annotation = |part: &str, fields: serde_json::Value| {
+        let mut annotation = span(part);
+        if let (Some(annotation), serde_json::Value::Object(fields)) =
+            (annotation.as_object_mut(), fields)
+        {
+            annotation.extend(fields);
+        }
+        annotation
+    };
+    let annotations = json!([
+        annotation(
+            "in Berlin.",
+            json!({"type": "url_citation", "url": "https://example.com", "title": "example.com"})
+        ),
+        annotation(
+            "Spain won",
+            json!({"type": "file_citation", "document_uri": "files/report", "file_name": "report.pdf", "page_number": 3})
+        ),
+        annotation(
+            "Berlin",
+            json!({"type": "place_citation", "place_id": "places/berlin", "name": "Berlin"})
+        ),
+        annotation("Spain", json!({"type": "word_info"})),
+    ]);
+    let output = json!({"type": "model_output", "content": [{"type": "text", "text": text, "annotations": annotations}]});
+    let streamed = [
+        start(0, json!({"type": "model_output"})),
+        delta(0, json!({"type": "text", "text": &text[..at("1 in")]})),
+        delta(0, json!({"type": "text", "text": &text[at("1 in")..]})),
+        delta(
+            0,
+            json!({"type": "text_annotation_delta", "annotations": annotations}),
+        ),
+        stop(0),
+        completed(),
+    ];
+    assert_restated_agrees(&wire(), [whole(vec![output.clone()])], streamed.clone());
+    let response = decode(&wire(), Mode::Streaming, streamed).expect("the stream decodes");
+    let [AssistantContent::Text(block)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    let cited: Vec<_> = block
+        .citations()
+        .iter()
+        .map(|citation| (block.cited(citation), citation.sources.clone()))
+        .collect();
+    let url = Source::new(SourceLocation::Url {
+        url: "https://example.com".to_owned(),
+    })
+    .title("example.com");
+    let file = Source::new(SourceLocation::Document {
+        index: None,
+        id: Some("files/report".to_owned()),
+        within: Some(DocumentRange::Pages(3..4)),
+    })
+    .title("report.pdf");
+    let place = Source::new(SourceLocation::Document {
+        index: None,
+        id: Some("places/berlin".to_owned()),
+        within: None,
+    })
+    .title("Berlin");
+    assert_eq!(
+        cited,
+        [
+            (Some("in Berlin."), vec![url]),
+            (Some("Spain won"), vec![file]),
+            (Some("Berlin"), vec![place]),
+        ]
+    );
+    assert_eq!(replayed(&response), [output]);
+}

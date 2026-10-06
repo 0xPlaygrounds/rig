@@ -465,6 +465,7 @@ message Candidate {
   repeated SafetyRating safety_ratings = 5;
   CitationMetadata citation_metadata = 6;
   int32 token_count = 7;
+  GroundingMetadata grounding_metadata = 9;
   double avg_logprobs = 10;
   LogprobsResult logprobs_result = 11;
 }
@@ -525,6 +526,52 @@ message CitationSource {
   optional int32 end_index = 2;
   optional string uri = 3;
   optional string license = 4;
+}
+
+// Mirrors generative_service.proto: the fields the decoder reads to cite
+// grounding sources.
+message GroundingMetadata {
+  repeated GroundingChunk grounding_chunks = 2;
+  repeated GroundingSupport grounding_supports = 3;
+}
+
+message GroundingChunk {
+  message Web {
+    optional string uri = 1;
+    optional string title = 2;
+  }
+
+  message RetrievedContext {
+    optional string uri = 1;
+    optional string title = 2;
+    optional string text = 3;
+  }
+
+  message Maps {
+    optional string uri = 1;
+    optional string title = 2;
+    optional string text = 3;
+    optional string place_id = 4;
+  }
+
+  oneof chunk_type {
+    Web web = 1;
+    RetrievedContext retrieved_context = 2;
+    Maps maps = 3;
+  }
+}
+
+message Segment {
+  int32 part_index = 1;
+  int32 start_index = 2;
+  int32 end_index = 3;
+  string text = 4;
+}
+
+message GroundingSupport {
+  optional Segment segment = 1;
+  repeated int32 grounding_chunk_indices = 2;
+  repeated float confidence_scores = 3;
 }
 
 message GenerateContentResponse {

@@ -249,3 +249,70 @@ fn several_responses_rebuild_the_whole_one() {
         complete(whole).expect("the reply decodes").raw
     );
 }
+
+/// A hand-built reply, as no Vertex AI recording carries grounding: each
+/// grounding segment cites the bytes of its part with its web sources and
+/// scores, and each `citations` entry, whose offsets Vertex AI states no
+/// unit for, cites the text block whole. The citations never reach the
+/// replayed part.
+#[test]
+fn grounding_and_citations_cite_the_answer() {
+    const ANSWER: &str = "Spain won 2\u{2013}1. Oyarzabal scored late.";
+    let quoted = "Oyarzabal scored late.";
+    let at = ANSWER.find(quoted).expect("the answer holds it");
+    let response: vertexai::model::GenerateContentResponse = serde_json::from_value(json!({
+        "candidates": [{
+            "content": {"role": "model", "parts": [{"text": ANSWER}]},
+            "finishReason": 1,
+            "groundingMetadata": {
+                "groundingChunks": [{"web": {"uri": "https://example.com/a", "title": "example.com", "domain": "example.com"}}],
+                "groundingSupports": [{
+                    "segment": {"startIndex": at, "endIndex": at + quoted.len(), "text": quoted},
+                    "groundingChunkIndices": [0],
+                    "confidenceScores": [0.5],
+                }],
+            },
+            "citationMetadata": {"citations": [{"startIndex": 1, "endIndex": 4, "uri": "https://example.com/c", "title": "C"}]},
+        }],
+    }))
+    .expect("an SDK reply");
+    let response = response.complete().expect("the reply decodes");
+    let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+        panic!("one text block: {:?}", response.choice);
+    };
+    let cited: Vec<_> = text
+        .citations()
+        .iter()
+        .map(|citation| {
+            let [source] = &citation.sources[..] else {
+                panic!("one source: {citation:?}");
+            };
+            let rig_core::message::SourceLocation::Url { url } = &source.location else {
+                panic!("a web source: {source:?}");
+            };
+            (
+                citation.span.as_ref().and_then(|_| text.cited(citation)),
+                url.as_str(),
+                source.title.as_deref(),
+                source.confidence,
+            )
+        })
+        .collect();
+    assert_eq!(
+        cited,
+        [
+            (
+                Some(quoted),
+                "https://example.com/a",
+                Some("example.com"),
+                Some(0.5)
+            ),
+            (None, "https://example.com/c", Some("C"), None),
+        ]
+    );
+    let replayed = replay(response.choice.clone()).expect("the turn replays");
+    assert_eq!(
+        replayed.parts,
+        [vertexai::model::Part::new().set_text(ANSWER.to_owned())]
+    );
+}

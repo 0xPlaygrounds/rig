@@ -36,11 +36,11 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 /// `interaction.completed` set the resource's fields: a non-null value
 /// replaces, and `null` only fills an absent field. The steps are rebuilt
 /// by index as the decoder folds them: `step.start` states a step, a
-/// `text` delta extends a model output's last text item and any other
-/// content delta is an item of its own, a text `thought_summary` extends
-/// the summary's last text item, `arguments_delta` fragments become the
-/// call's `arguments` at `step.stop`, and any other delta merges into its
-/// step. Steps the completed interaction states itself win. A whole
+/// `text` or `text_annotation_delta` delta extends a model output's last
+/// text item and any other content delta is an item of its own, a text
+/// `thought_summary` extends the summary's last text item,
+/// `arguments_delta` fragments become the call's `arguments` at
+/// `step.stop`, and any other delta merges into its step. Steps the completed interaction states itself win. A whole
 /// interaction frame is the document as sent.
 #[derive(Default)]
 pub struct Interaction {
@@ -71,7 +71,9 @@ impl Interaction {
     fn step(&mut self, index: usize, delta: &str) -> &mut Value {
         self.steps.entry(index).or_insert_with(|| {
             let kind = match delta {
-                "text" | "image" | "audio" | "document" | "video" => "model_output",
+                "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
+                    "model_output"
+                }
                 "thought_summary" | "thought_signature" => "thought",
                 "arguments_delta" => "function_call",
                 other => other,
@@ -95,7 +97,10 @@ impl Interaction {
                     return;
                 };
                 match content.last_mut() {
-                    Some(item) if kind == "text" && item.str("type") == Some("text") => {
+                    Some(item)
+                        if matches!(kind.as_str(), "text" | "text_annotation_delta")
+                            && item.str("type") == Some("text") =>
+                    {
                         delta.shift_remove("type");
                         merge(item, &delta);
                     }

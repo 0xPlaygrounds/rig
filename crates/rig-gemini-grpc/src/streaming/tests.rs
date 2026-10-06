@@ -224,3 +224,107 @@ fn a_part_of_an_undeclared_kind_never_replays_without_data() {
         "{parts:?}"
     );
 }
+
+/// The cited text and sources of each citation on the reply's text blocks.
+fn citations(response: &CompletionResponse) -> Vec<(String, Vec<String>, Vec<Option<f32>>)> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            rig_core::message::AssistantContent::Text(text) => Some(text),
+            _ => None,
+        })
+        .flat_map(|text| {
+            text.citations().iter().map(|citation| {
+                let urls = citation
+                    .sources
+                    .iter()
+                    .map(|source| match &source.location {
+                        rig_core::message::SourceLocation::Url { url } => url.clone(),
+                        other => format!("{other:?}"),
+                    });
+                let scores = citation.sources.iter().map(|source| source.confidence);
+                (
+                    text.cited(citation).unwrap_or_default().to_owned(),
+                    urls.collect(),
+                    scores.collect(),
+                )
+            })
+        })
+        .collect()
+}
+
+/// Hand-built replies, as no recording carries grounding: the proto keeps
+/// the candidate's grounding and recitation metadata, so a segment counted
+/// in bytes past a multi-byte dash cites its text and sources, unary or
+/// streamed with the metadata on the last chunk.
+#[tokio::test]
+async fn grounding_and_recitations_cite_the_answer_unary_or_streamed() {
+    const ANSWER: &str = "Spain won 2\u{2013}1. Oyarzabal scored late.";
+    let quoted = "Oyarzabal scored late.";
+    let at = ANSWER.find(quoted).expect("the answer holds it");
+    let text = |text: &str| proto::Part {
+        data: Some(proto::part::Data::Text(text.to_owned())),
+        ..Default::default()
+    };
+    let web = |uri: &str| proto::GroundingChunk {
+        chunk_type: Some(proto::grounding_chunk::ChunkType::Web(
+            proto::grounding_chunk::Web {
+                uri: Some(uri.to_owned()),
+                title: Some("example".to_owned()),
+            },
+        )),
+    };
+    let metadata = |mut response: proto::GenerateContentResponse| {
+        let candidate = response.candidates.first_mut().expect("a candidate");
+        candidate.grounding_metadata = Some(proto::GroundingMetadata {
+            grounding_chunks: vec![web("https://example.com/a"), web("https://example.com/b")],
+            grounding_supports: vec![proto::GroundingSupport {
+                segment: Some(proto::Segment {
+                    part_index: 0,
+                    start_index: at as i32,
+                    end_index: (at + quoted.len()) as i32,
+                    text: quoted.to_owned(),
+                }),
+                grounding_chunk_indices: vec![1, 0],
+                confidence_scores: vec![0.5, 0.25],
+            }],
+        });
+        candidate.citation_metadata = Some(proto::CitationMetadata {
+            citation_sources: vec![proto::CitationSource {
+                start_index: None,
+                end_index: Some(9),
+                uri: Some("https://example.com/c".to_owned()),
+                license: None,
+            }],
+        });
+        response
+    };
+    let expected = vec![
+        (
+            quoted.to_owned(),
+            vec![
+                "https://example.com/b".to_owned(),
+                "https://example.com/a".to_owned(),
+            ],
+            vec![Some(0.5), Some(0.25)],
+        ),
+        (
+            "Spain won".to_owned(),
+            vec!["https://example.com/c".to_owned()],
+            vec![None],
+        ),
+    ];
+
+    let unary = complete(metadata(response(vec![text(ANSWER)], 1))).expect("the reply decodes");
+    assert_eq!(citations(&unary), expected);
+
+    let (head, tail) = ANSWER.split_at(at);
+    let mut stream = stream_from_events(vec![
+        Ok(response(vec![text(head)], 0)),
+        Ok(metadata(response(vec![text(tail)], 1))),
+    ]);
+    while stream.next().await.is_some() {}
+    let streamed = stream.finish().await.expect("the stream completes");
+    assert_eq!(citations(&streamed), expected);
+}

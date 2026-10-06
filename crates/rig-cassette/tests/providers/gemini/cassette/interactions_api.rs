@@ -421,3 +421,94 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
     }
     assert_eq!(turns, 9, "every recorded turn was checked");
 }
+
+/// The recorded Google Search interaction cites its answer: each
+/// `url_citation` covers whole bullet lines when its offsets count bytes,
+/// as the API documents, and the en dash before them would shift them by
+/// two had they counted characters. A stream that sends the annotations
+/// after the text, as `text_annotation_delta`, cites the same and folds
+/// into the same turn.
+#[test]
+fn the_recorded_search_interaction_cites_its_answer_in_both_modes() {
+    use rig_core::wire::{Mode, WireFrame};
+    use serde_json::json;
+
+    let wire = rig::providers::gemini::interactions_api::Interactions::new(
+        rig_core::providers::gemini::GeminiConfig::new("test-key"),
+        "gemini-3-flash-preview",
+    );
+    let [(_, document)] = &crate::cassettes::recorded_json_turns(
+        "gemini",
+        "interactions_api/google_search_tool_interaction",
+    )[..] else {
+        panic!("the scenario records one turn");
+    };
+    // The same stream as `restated`, with each text item's annotations in
+    // a delta of their own after its text.
+    let streamed: Vec<WireFrame> = restated(document)
+        .into_iter()
+        .flat_map(|frame| {
+            let WireFrame::Text(text) = &frame else {
+                return vec![frame];
+            };
+            let mut event: serde_json::Value = serde_json::from_str(text).expect("JSON");
+            let annotations = event["delta"]
+                .as_object_mut()
+                .filter(|delta| delta.get("type") == Some(&json!("text")))
+                .and_then(|delta| delta.shift_remove("annotations"));
+            let Some(annotations) = annotations else {
+                return vec![frame];
+            };
+            let annotation = json!({
+                "event_type": "step.delta",
+                "index": event["index"],
+                "delta": {"type": "text_annotation_delta", "annotations": annotations},
+            });
+            vec![
+                WireFrame::Text(event.to_string()),
+                WireFrame::Text(annotation.to_string()),
+            ]
+        })
+        .collect();
+    let whole = [WireFrame::Text(document.to_string())];
+    rig_core::test_utils::history::assert_restated_agrees(&wire, whole.clone(), streamed.clone());
+    for (mode, frames) in [(Mode::Unary, whole.to_vec()), (Mode::Streaming, streamed)] {
+        let response = rig_core::test_utils::history::decode(&wire, mode, frames)
+            .unwrap_or_else(|error| panic!("{mode:?} decodes: {error}"));
+        let text = response
+            .choice
+            .iter()
+            .find_map(|block| match block {
+                AssistantContent::Text(text) if !text.citations().is_empty() => Some(text),
+                _ => None,
+            })
+            .expect("a cited answer");
+        let cited: Vec<_> = text
+            .citations()
+            .iter()
+            .map(|citation| {
+                let cited = text.cited(citation).expect("a span");
+                let [source] = &citation.sources[..] else {
+                    panic!("one source a citation");
+                };
+                let rig::message::SourceLocation::Url { url } = &source.location else {
+                    panic!("a web source: {source:?}");
+                };
+                assert!(url.starts_with("https://vertexaisearch.cloud.google.com/"));
+                (cited, source.title.as_deref())
+            })
+            .collect();
+        let record = "*   **Record-Breaking Title:** This was Spain's fourth European Championship title (following wins in 1964, 2008, and 2012), making them the most successful team in the tournament's history.";
+        let run = "*   **Perfect Run:** Spain became the first team to win all seven matches in a single European Championship tournament.";
+        assert_eq!(
+            cited,
+            [
+                (record, Some("wikipedia.org")),
+                (run, Some("youtube.com")),
+                (run, Some("youtube.com")),
+                (run, Some("wikipedia.org")),
+            ],
+            "{mode:?}"
+        );
+    }
+}
