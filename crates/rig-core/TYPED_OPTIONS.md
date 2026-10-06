@@ -19,10 +19,10 @@ on the one before it:
 | phase | title | breaking | adds |
 |---|---|---|---|
 | P0 | design and acceptance tests | no | this file; the gated acceptance tests |
-| P1 | make room | yes | `#[non_exhaustive]`, constructors, empty new fields; no behaviour change |
-| P2 | `GenerationOptions` on every completion wire | no | guarantees 1 and 2; deletes the knobs in section 12.1 |
+| P1 | make room | yes | `#[non_exhaustive]`, constructors, empty new fields; `CompletionRequest::additional_params` and `CompletionResponse::raw` made private; no behaviour change |
+| P2 | `GenerationOptions` on every completion wire | yes (section 2.4) | guarantees 1 and 2; deletes the knobs in section 12.1; the wire-body changes in section 12.0 |
 | P3 | model catalog and connect-by-reference | no | guarantee 4; `cargo xtask catalog sync` |
-| P4 | typed provider options and extras | no | guarantee 3; decision B |
+| P4 | typed provider options and extras | yes (section 2.4) | guarantee 3; decision B; deletes the knobs in section 12.3 |
 | P5 | streamed replies carry the unary `raw` shape | yes | guarantee 5; decision D |
 | P6 | citations and cost in core types | no | decision E; `Usage.cost` |
 
@@ -43,11 +43,11 @@ the error it gets.
 
 | # | guarantee | mechanism | phase | attempted code and the error |
 |---|---|---|---|---|
-| 1 | No wire can silently drop an option. | Each wire maps options in one function that destructures `GenerationOptions` (inside rig-core) or `OptionParts` (companion crates) with no `..` and no `_` binding. Adding a field breaks every wire until it maps or refuses it. Refusing goes through `Mapped::unsupported`, the one place that reads `on_unsupported`. A `source-guards` rule rejects `..` and `_` in those patterns. | P2 | add `pub logprobs: Option<bool>` to `GenerationOptions`: every wire fails with `error[E0027]: pattern does not mention field 'logprobs'`. Write `GenerationOptions { reasoning, .. }`: `source-guards` fails `options-destructure: crates/rig-core/src/providers/openai/wire/chat.rs: a GenerationOptions pattern uses '..'`. |
-| 2 | Precedence lives in one place. | `options::request_params` is the only function that merges mapped options, provider options and `additional_params`. A `source-guards` rule rejects `.additional_params` read anywhere under a completion wire outside `completion/request.rs`, `completion/options.rs` and `completion/provider_options.rs`. | P2 (P4 adds the provider layer) | `let raw = request.additional_params.clone();` in `anthropic/completion.rs`: `source-guards` fails `options-precedence: crates/rig-core/src/providers/anthropic/completion.rs:<line> reads additional_params outside request_params`. |
-| 3 | The decoding path cannot depend on typed views. | `Extras` types live in `providers::<p>::extension` modules. A `source-guards` rule rejects any `extension` path in a decoder, streaming or `document.rs` module, and `ReplyExtras` takes `&Value`, which decoders never hold. | P4 | `use crate::providers::openrouter::extension::OpenRouterExtras;` in `openai/wire/chat.rs`: `source-guards` fails `extras-off-decode-path`. |
+| 1 | No wire can silently drop an option. | Every completion wire, the body-less `InteractionResume` included (section 6.4), maps options in the closure it passes to `options::request_params`. The closure receives `OptionParts` and a `Mapped`, both built by `request_params` from the request, and destructures `OptionParts` with no `..`. Adding a field breaks every wire until it sets, omits or refuses it. Three layers: (a) the compiler (E0027); (b) the `options-destructure` guard rejects `..`, a `_` binding, a `_`-prefixed binding and `let _ =` in those closures, and `GenerationOptions::default()`, `OptionParts {` or `.options(` under a provider module outside tests, so a wire cannot substitute the options; (c) `request_params` returns an encode error when a non-default field was neither set, omitted nor refused, and the per-wire matrix test (section 13) sets each field alone on every wire. Refusing goes through `Mapped::unsupported`, the one place that reads `on_unsupported`. | P2 | add `pub logprobs: Option<bool>` to `GenerationOptions`: `parts` and every wire fail with `error[E0027]: pattern does not mention field 'logprobs'`. Write `OptionParts { reasoning, .. }` or bind `stop: _stop`: `source-guards` fails `options-destructure: crates/rig-core/src/providers/openai/wire/chat.rs:<line>: an OptionParts pattern uses '..'` (or `binds '_stop'`). Bind `seed` and never act on it: the encode fails `option 'seed' was neither set, omitted nor refused by openai.chat`, and the matrix test fails. |
+| 2 | Precedence lives in one place. | `options::request_params` takes the wire's base body as its lowest layer and returns the final body: base body, mapped options, provider options (P4), `additional_params`, deep-merged in that order, then only the post-merge rewrites in `options::Rewrite` (section 2.1). P1 makes `CompletionRequest::additional_params` a `pub(in crate::completion)` field, so reading it from a provider module is a compile error. The `options-precedence` guard rejects the string `"additional_params"` under a provider module (the serde round trip) and any mutation of the body `request_params` returned. | P1 (field), P2 (merge), P4 (provider layer) | `let raw = request.additional_params.clone();` in `anthropic/completion.rs`: `error[E0616]: field 'additional_params' of struct 'CompletionRequest' is private`. `body.insert("cache_control".into(), top)` after `request_params`: `source-guards` fails `options-precedence: crates/rig-core/src/providers/anthropic/completion.rs:<line> mutates the body after request_params`. |
+| 3 | The decoding path cannot depend on typed views. | An allowlist, not a denylist. The identifiers of every `impl ReplyExtras for X` type and every `ProviderExtension` marker and `Options` type may be named only in their own `providers::<p>::extension` module, in `completion/provider_options.rs` and `CompletionResponse::extras`, and in tests. `pub use` of an extension item is rejected, so a re-export or glob import cannot carry one into a decoder or a helper it calls. The `extras-off-decode-path` guard collects the identifiers from the `impl` lines and matches them as words, not path text. `ReplyExtras` takes `&Value`, which decoders never hold. | P4 | `use crate::providers::openrouter::extension::OpenRouterExtras;` in `openai/wire/chat.rs`, or `pub use extension::OpenRouterExtras;` in `providers/openrouter/mod.rs`: `source-guards` fails `extras-off-decode-path: <file>:<line> names OpenRouterExtras outside its extension module`. |
 | 4 | Every public model constant has a catalog entry. | A guard test walks every `pub const <NAME>: &str` model constant in rig-core and the companion provider crates and looks it up in `Catalog::builtin()`. | P3 | add `pub const GPT_7: &str = "gpt-7";` with no entry: `every_public_model_constant_has_a_catalog_entry` fails `openai::GPT_7 ("gpt-7") has no catalog entry`. |
-| 5 | Streamed and unary `raw` agree for every API. | `Out::raw` moves behind `Emit = Free`; a completion decoder records `raw` only through `Out::document(Document::rebuilt(R))`, and each API has one `impl Reassemble`. A parity test compares whole documents over every paired recording; a guard requires one parity row per `impl Reassemble`. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`, `<Completion as Operation>::Emit = Free` not satisfied. |
+| 5 | Streamed and unary `raw` agree for every API. | P1 makes `CompletionResponse::raw` private behind `raw(&self) -> &Value`; no public constructor takes `raw`, so no transport or session layer can overwrite it after the fold. `Out::raw` moves behind `Emit = Free`, and the generic JSON decoder that calls `out.raw` for every `Op` (`crates/rig-core/src/wire.rs:736`) splits into a completion arm that records a `Document`; a completion decoder records `raw` only through `Out::document(Document::rebuilt(R))`, and each API has one `impl Reassemble`. A parity test compares whole documents over every paired recording; a guard requires one parity row per `impl Reassemble`. | P5 | `out.raw(json!({"response_id": "x"}))` in a completion decoder: `error[E0599]: the method 'raw' exists for struct 'Out<'_, Completion>', but its trait bounds were not satisfied`, `<Completion as Operation>::Emit = Free` not satisfied. |
 
 Decisions B and E add their own type guarantees (sections 3 and 5): B gives
 E0308, E0609 and E0616 on misplaced provider options; E gives E0451 and
@@ -102,11 +102,12 @@ impl GenerationOptions {
     pub fn seed(self, seed: u64) -> Self;
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self;
     pub fn on_unsupported(self, policy: OnUnsupported) -> Self;
-    /// Every field, for wires outside rig-core.
+    /// Every field, as the mapping closure of every wire receives it.
     pub fn parts(&self) -> OptionParts<'_>;
 }
 
-/// Not `#[non_exhaustive]`: a companion-crate wire destructures it whole.
+/// Not `#[non_exhaustive]`: every wire, in rig-core or a companion crate,
+/// destructures it whole.
 pub struct OptionParts<'a> {
     pub reasoning: Option<Reasoning>,
     pub cache: Option<CacheRetention>,
@@ -123,6 +124,10 @@ pub struct OptionParts<'a> {
 #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
 pub options: GenerationOptions,
 pub fn options(self, options: GenerationOptions) -> Self;
+
+// CompletionRequest from P1: no longer `pub`, so no provider module reads it.
+pub(in crate::completion) additional_params: Option<Value>,
+pub fn additional_params(self, params: Value) -> Self; // the builder stays
 ```
 
 Unsupported options:
@@ -153,35 +158,79 @@ pub struct UnsupportedOption {
 The one mapping entry point (P2):
 
 ```rust
-/// One wire's mapped options. Only `request_params` consumes it.
-pub struct Mapped { /* private */ }
-impl Mapped {
-    pub fn new(options: &GenerationOptions, provider: &str, model: &str) -> Self;
-    /// Set a body field at a JSON pointer ("/output_config/effort").
-    pub fn set(&mut self, pointer: &str, value: impl Into<Value>);
+/// One wire's mapped options. Only `request_params` builds one, from the
+/// request it was given, so a wire cannot fake it or swap the options.
+pub struct Mapped<'a> { /* private: target, model, policy, layer, handled set */ }
+impl Mapped<'_> {
+    /// Send `option` as `value` at a JSON pointer ("/output_config/effort").
+    pub fn set(&mut self, option: &'static str, pointer: &str, value: impl Into<Value>);
+    /// Honour `option` by sending nothing: the provider default already does
+    /// what was asked. Logged at `debug` with `option` and `why`.
+    pub fn omit(&mut self, option: &'static str, why: &'static str);
     /// Refuse `option`: an error under `Error`, a warning under `Ignore`.
     pub fn unsupported(&mut self, option: &'static str, reason: impl Into<String>) -> Result<(), EncodeError>;
 }
 
-/// The body parameters `target` sends for `request`: mapped options, then
-/// provider options (P4), then `additional_params`, deep-merged in that
-/// order. The only reader of `additional_params` on the completion path.
-pub fn request_params(target: &dyn ReplayTarget, request: &CompletionRequest, mapped: Mapped)
-    -> Result<Map<String, Value>, EncodeError>;
+/// A rewrite of the merged body, the only writes allowed after the merge.
+#[non_exhaustive]
+pub enum Rewrite { /* the allowlist below */ }
+
+/// The final body `target` sends for `request`. `base` is the wire's own
+/// encoding of the request (messages, tools, and the typed fields
+/// `temperature`, `max_tokens`, `tool_choice`, `output_schema`). `map`
+/// receives `request.options.parts()` and a fresh `Mapped`. The layers
+/// deep-merge in this order, then `rewrites` apply. The only reader of
+/// `additional_params` on the completion path.
+pub fn request_params(
+    target: &dyn ReplayTarget,
+    request: &CompletionRequest,
+    base: Map<String, Value>,
+    map: impl FnOnce(OptionParts<'_>, &mut Mapped<'_>) -> Result<(), EncodeError>,
+    rewrites: &[Rewrite],
+) -> Result<Map<String, Value>, EncodeError>;
 ```
 
-- **Precedence**, lowest to highest: mapped `GenerationOptions`, typed
-  provider options, raw `additional_params`. `additional_params` stays the
-  documented escape hatch.
+- **One rank**, lowest to highest: the wire's base body (which carries the
+  typed `CompletionRequest` fields `temperature`, `max_tokens`, `tool_choice`
+  and `output_schema`), mapped `GenerationOptions`, typed provider options,
+  raw `additional_params`. `additional_params` stays the documented escape
+  hatch and beats everything below it. A mapped option and a typed request
+  field never write the same scalar: decision A keeps the request's fields
+  out of `GenerationOptions`, and where they interact (Anthropic `top_p` with
+  `temperature`) the mapping refuses rather than overwrites.
 - **Deep merge.** Objects merge key by key, recursively. Any other value
   replaces. So `additional_params.output_config = {"task_budget": ..}` keeps
-  the mapped `output_config.effort` and the schema's `output_config.format`
-  (today `body.extend(params)` replaces the whole key,
-  `crates/rig-core/src/providers/anthropic/completion.rs:256`).
-- A wire may still read named keys of the merged map (Anthropic lifts
-  `tools`, `crates/rig-core/src/providers/anthropic/completion.rs:495-509`; Chat
-  merges `stream_options`, `crates/rig-core/src/providers/openai/wire/chat.rs:190-198`).
-  It never reads `additional_params` itself.
+  the mapped `output_config.effort` and the base `output_config.format`;
+  `parallel_tool_calls: false` adds `disable_parallel_tool_use` to the base
+  `tool_choice` object; Responses `verbosity` joins the base `text.format`;
+  Gemini options join the base `generationConfig`. Today
+  `body.extend(params)` replaces the whole key
+  (`crates/rig-core/src/providers/anthropic/completion.rs:256`).
+- **Every non-default field is accounted for.** After `map` returns,
+  `request_params` checks that each non-default `OptionParts` field was
+  passed to `set`, `omit` or `unsupported`; otherwise it returns
+  `EncodeError` "option `<field>` was neither set, omitted nor refused by
+  `<api>`". This is the runtime backstop for a binding the guard cannot see
+  being ignored.
+- **Post-merge rewrites are a named allowlist.** Today wires write keys after
+  the merge and so beat `additional_params`. Each such write becomes one
+  `Rewrite` variant in `completion/options.rs`, applied by `request_params`
+  after the merge: `OutputCapRename` (Chat `max_tokens` to
+  `max_completion_tokens`, `crates/rig-core/src/providers/openai/wire/chat.rs:391-396`),
+  `DropUnboundThinking` (Anthropic, `crates/rig-core/src/providers/anthropic/completion.rs:257-259`),
+  `ToolChoiceNeedsTools` (Anthropic drops `tool_choice` without tools),
+  `StreamFlag` (`stream: true` and Chat's `stream_options` merge,
+  `crates/rig-core/src/providers/openai/wire/chat.rs:190-198`),
+  `ReasoningCiphertext` (Responses `include`, `crates/rig-core/src/providers/openai/responses_api/mod.rs:491-494`)
+  and `CodexStore` (`store: false`). Anthropic's top-level `cache_control`,
+  inserted after the merge today (`completion.rs:260`), becomes a mapped
+  option, so a raw `additional_params.cache_control` beats it by rank; the
+  1 h-before-5 min and budget-of-4 checks run on the final body and only
+  reject.
+- A wire may still read named keys of the final body (Anthropic lifts
+  `tools`, `crates/rig-core/src/providers/anthropic/completion.rs:495-509`).
+  It never reads `additional_params` itself (a compile error from P1) and
+  never mutates the body after `request_params` returns (the guard).
 - **Model-dependent shapes before P3.** Where a cell's JSON depends on the
   model (Anthropic `Off` as `disabled` or `between_tools`; OpenAI `Long` as
   `prompt_cache_retention` or `prompt_cache_options`), P2 chooses the shape
@@ -286,12 +335,14 @@ pub struct Cost { pub input: f64, pub output: f64, pub cache_read: f64, pub cach
 |---|---|---|
 | `EncodeError` is a struct wrapping `ProviderError` (`crates/rig-core/src/error.rs:659`), not an enum, so `EncodeError::UnsupportedOption { .. }` cannot be a variant. | `ProviderError::UnsupportedOption(UnsupportedOption)` with the fixed field set, kind `Request`, plus `EncodeError::unsupported_option(&self) -> Option<&UnsupportedOption>` and `EncodeError::unsupported(UnsupportedOption) -> Self`. | P1 |
 | `Usage` derives `Eq` (`crates/rig-core/src/completion/request.rs:484`) and `Cost` holds `f64`. | P1 drops `Eq` from `Usage` (keeps `PartialEq`) and from every type that derived it only through `Usage`. Breaking; stated in P1's Migration. `Cost` stays `f64`. | P1 |
-| `#[non_exhaustive]` forbids an exhaustive pattern outside rig-core (E0638), so Bedrock, gRPC and Candle cannot destructure `GenerationOptions` without `..`. | `GenerationOptions::parts() -> OptionParts<'_>`, an exhaustive struct. `parts` destructures `self` exhaustively, so a new option breaks `parts` in rig-core, and the new `OptionParts` field breaks every companion wire. | P2 |
+| `#[non_exhaustive]` forbids an exhaustive pattern outside rig-core (E0638), so Bedrock, gRPC and Candle cannot destructure `GenerationOptions` without `..`. | `GenerationOptions::parts() -> OptionParts<'_>`, an exhaustive struct. `parts` destructures `self` exhaustively, so a new option breaks `parts` in rig-core, and the new `OptionParts` field breaks every wire, in rig-core and companion crates alike: all of them destructure `OptionParts`, never `GenerationOptions`. | P2 |
 | `Catalog::resolve("anthropic/claude-opus-5-5")` collides with `ProviderRef`'s grammar `vendor[/format]:model` (`crates/rig-core/src/providers/registry.rs:623-636`), where `/` separates the format. | `resolve` reads `vendor[/format]:model` when the text holds a `:`, and otherwise splits at the first `/` as `vendor/model` (so `openrouter/anthropic/claude-sonnet-4.5` is OpenRouter's model `anthropic/claude-sonnet-4.5`). | P3 |
 | `ModelSpec.provider: ProviderId` cannot name `aws_bedrock`, `vertexai`, `gemini-grpc` or `candle`: the registry registers the OpenAI, Anthropic and Gemini formats only (`crates/rig-core/src/providers/registry.rs:63-73`). Guarantee 4 still needs entries for rig-bedrock's constants. | Proposed: P3 adds a catalog-only `ProviderId` kind for providers the registry cannot configure. `ProviderId::new` keeps rejecting them, `get` and `validate` work, and `connect` returns an error naming the companion crate. **For the user to confirm.** | P3 |
 | The harness-switch test asks for a long cache on Gemini, and GenerateContent has no request field for it: explicit caching is a separate `cachedContents` resource (`crates/rig-core/src/providers/gemini/cached_content.rs:388-430`). | `CacheRetention::Long` on Gemini GenerateContent, Vertex, gRPC and Interactions is `UnsupportedOption`. The test runs under `OnUnsupported::Ignore` and asserts the warning, and asserts the error under `Error`. Mapping `Long` to the `Caching` transport is a later extension. | P2 |
 | Decision D's text reads extras as one `Deserialize` of `raw`; decision B needs per-route dispatch (`OpenAiExtras::{Chat, Responses}`). | B's `ReplyExtras::from_reply(api, raw)` is the contract. A one-route provider implements it as `serde_json::from_value(raw.clone())`. | P4 |
 | `Pricing` has one `cache_write` price; Anthropic and Bedrock bill 1 h writes at 2x input and 5 min writes at 1.25x, and Anthropic's reply splits them (`usage.cache_creation`). Tier, fast-mode, US-only and context-tier prices are absent too. | P6 prices every write at `cache_write` and documents catalog cost as a lower bound for those cases. `Pricing` is `#[non_exhaustive]`, so a later PR can add `cache_write_1h` and tiers without a break. | P6 |
+| Decision C gives `Pricing` four prices, "input, output, cache_read, cache_write", none optional. models.dev rows often carry `cost.input` and `cost.output` with no `cache_read` or `cache_write`, and a `0.0` would claim cache reads are free. | `Pricing { input: f64, output: f64, cache_read: Option<f64>, cache_write: Option<f64> }`. `None` means unknown, and cost prices those tokens at `input` (section 2.3). **For the user to confirm.** | P3 |
+| The prompt fixes P1 as the only breaking phase, and also requires each phase to delete the knobs it replaces. P2 deletes public API: `Messages::with_automatic_caching`, `with_automatic_caching_1h` (`crates/rig-core/src/providers/anthropic/wire.rs:410`, `:429`), the pub fields `automatic_caching`, `automatic_caching_ttl` (`wire.rs:367-369`), `Chat::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/chat.rs:266`), `OpenAiWire::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/route.rs:109`) and `Converse::with_prompt_caching` (`crates/rig-bedrock/src/completion.rs:199`). P4 deletes `Messages::with_prompt_caching`, the field `prompt_caching` (`wire.rs:391`, `:364`), `with_static_prefix_cache_ttl` (`wire.rs:455`), `Converse::with_guardrail` (`crates/rig-bedrock/src/completion.rs:210`), `GenerateContent::with_cached_content` (`crates/rig-core/src/providers/gemini/completion.rs:121`) and the Cohere setters (`crates/rig-core/src/providers/cohere/wire.rs:123-128`). Both also change wire bodies for callers who set no option (section 12.0). | The deletions win: P2 and P4 are titled `feat(...)!` and carry a Migration entry for every deleted item and every body change in section 12.0. Keeping the knobs until a later breaking phase would leave two ways to set one thing. **For the user to confirm.** | P2, P4 |
 
 Conflicts with open pull requests, which this stack does not build on:
 - a Gemini rewrite on a generated API mirror stops reading `additional_params`, which contradicts decision A's escape hatch;
@@ -434,6 +485,12 @@ reads both paths.
   stream it records the partial document, which is more than today's `Null`.
 - On the unary path nothing changes: the transport's whole body outranks a
   recorded document (`crates/rig-core/src/wire.rs:346-357`).
+- `raw` cannot be rewritten after the fold. `CompletionResponse.raw` is a
+  `pub` field today (`crates/rig-core/src/completion/request.rs:217`); P1, the
+  breaking phase, makes it private behind `CompletionResponse::raw(&self) ->
+  &Value`, and no public constructor takes it. Only the fold sets it, plus
+  deserialization of recorded data. Test doubles get it through
+  `rig::test_utils`, which production code does not enable.
 - Reassemblers are plain JSON folds with no typed provider structs, so they
   import no `Extras` type.
 - Shared folding rules (`wire::document`): a non-null value replaces; `null`
@@ -566,7 +623,8 @@ and the runtimes, and callers read two places.
 ## 6. Option mapping per completion wire and dialect
 
 Each cell is the JSON merged into the request body, "omit" (the provider
-default already does what was asked), or "unsupported" with its reason. An
+default already does what was asked; the wire calls `Mapped::omit`, so an
+omitted option is told apart from a dropped one), or "unsupported" with its reason. An
 unsupported cell is `UnsupportedOption` under `Error` and a warning under
 `Ignore`. "model" means the catalog row decides (section 8). Doc labels are
 defined at the head of each subsection.
@@ -607,8 +665,8 @@ Model classes (rig constants at `crates/rig-core/src/providers/anthropic/complet
 | `Effort(Max)` | A2-A8 as above with `"max"`; A0, A1 unsupported | | [AE] |
 | `Budget { tokens }` | A0-A2: `"thinking":{"type":"enabled","budget_tokens":N}`; A3-A8 unsupported | N >= 1024 and N < `max_tokens`, else unsupported. A2 accepts it though deprecated | [AX] |
 | `CacheRetention::None` | no `cache_control` anywhere | a caller's tool `cache_control` in `additional_params.tools` is kept | [AP] |
-| `CacheRetention::Short` | top-level `"cache_control":{"type":"ephemeral"}` plus `{"type":"ephemeral"}` on the final non-deferred tool and the last system block | today's `with_automatic_caching()` + `with_static_prefix_cache_ttl(FiveMinutes)`; 4 markers at most. Below the model's minimum prefix the API declines to cache; that is the provider's choice, not a drop | [AP] |
-| `CacheRetention::Long` | the same markers with `"ttl":"1h"` | 1 h markers precede 5 min markers (check kept, `crates/rig-core/src/providers/anthropic/completion.rs:771-787`) | [AP] |
+| `CacheRetention::Short` | top-level `"cache_control":{"type":"ephemeral"}` only (automatic caching) | byte for byte what `with_automatic_caching()` sends today. Breakpoint placement is a separate choice, not a retention: until P4, `Messages::with_prompt_caching()` (tool, system and last message block, no top-level marker) and `with_static_prefix_cache_ttl(..)` (tool and system markers) stay as placement-only knobs: manual markers take their TTL from `cache`, prefix markers keep their own. P4 moves them to `AnthropicOptions.cache_breakpoints` and `static_prefix_ttl`. Either knob with `cache` unset or `None` is an encode error naming `cache`, so `cache` is the one way to turn caching on. 4 markers at most. Below the model's minimum prefix the API declines to cache; that is the provider's choice, not a drop | [AP] |
+| `CacheRetention::Long` | top-level `"cache_control":{"type":"ephemeral","ttl":"1h"}`; with manual placement, the placed markers carry `"ttl":"1h"` | byte for byte `with_automatic_caching_1h()`. 1 h markers precede 5 min markers (check kept, `crates/rig-core/src/providers/anthropic/completion.rs:771-787`) | [AP] |
 | `ServiceTier::Auto` | `"service_tier":"auto"` | | [AS] |
 | `ServiceTier::Default` | `"service_tier":"standard_only"` | | [AS] |
 | `ServiceTier::Priority` | unsupported: no "priority only" value; `auto` uses Priority capacity only under a commitment. Also unsupported by model on A4-A7 and Fable 5.1 | the served tier is `usage.service_tier` | [AS] |
@@ -739,7 +797,8 @@ reasoning models take only `max_completion_tokens`.
 | `cache None` | omit | unsupported on automatic-cache upstreams (OpenAI, DeepSeek, Grok, Groq), by `vendor/` prefix | [ORC] |
 | `cache Short` | top-level `"cache_control":{"type":"ephemeral"}`; automatic upstreams: omit | replaces today's system-message marker (`chat.rs:816-843`) | [ORC] |
 | `cache Long` | top-level `"cache_control":{"type":"ephemeral","ttl":"1h"}` | meaningful on Anthropic upstreams | [ORC] |
-| `service_tier` | `"service_tier":"auto"\|"default"\|"flex"\|"priority"` | | [ORT] |
+| `ServiceTier::Auto` | omit (requests use the standard tier unless one is named) | OpenRouter accepts only `default`, `flex`, `priority` (alias `fast`) and `ultrafast`; `auto` is not a value | [ORT] |
+| `Default` / `Flex` / `Priority` | `"service_tier":"default"\|"flex"\|"priority"` | `ultrafast` is a provider option (section 7) | [ORT] |
 | `verbosity` | `"verbosity":"low"\|"medium"\|"high"` | | [OR] |
 | `parallel_tool_calls`, `top_p`, `seed` | `"parallel_tool_calls":bool`, `"top_p":p`, `"seed":n` | | [OR] |
 | `stop` | `"stop":[..]`, at most 4 | | [OR] |
@@ -767,8 +826,11 @@ reasoning models take only `max_completion_tokens`.
 
 **Groq** (`"groq"`; https://console.groq.com/docs/api-reference, https://console.groq.com/docs/reasoning, https://console.groq.com/docs/prompt-caching):
 `Off` `"reasoning_effort":"none"` (Qwen only; GPT-OSS cannot disable);
-`Effort(Low/Medium/High)` `"reasoning_effort":..`, `Minimal`, `XHigh`, `Max`
-unsupported; `Budget` unsupported; cache `Short` omit, `None` and `Long`
+`Effort(e)` `"reasoning_effort":"<e>"` for every level, model: the API
+lists `none`, `default`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`
+and rejects a value outside the model's set with a 400 (GPT-OSS takes
+low..high; `qwen/qwen3.8-27b` takes low..high and maps `high` to its native
+`xhigh`), so the catalog decides; `Budget` unsupported; cache `Short` omit, `None` and `Long`
 unsupported ("cannot be manually disabled"); `Auto` `"auto"`, `Default`
 `"on_demand"`, `Flex` `"flex"`, `Priority` `"performance"`; `verbosity`
 unsupported; `parallel_tool_calls`, `top_p`, `seed` as OpenAI; `stop` at most 4.
@@ -912,7 +974,8 @@ on grok-4.3 only; omit on `*-non-reasoning`); `Effort(Low/Medium/High)`
 on implicit upstreams, `"prompt_cache_options":{"mode":"explicit"}` on gpt-5.6+
 upstreams; `Short` `"cache_control":{"type":"ephemeral"}` on Anthropic
 upstreams, omit on OpenAI upstreams; `Long` `"cache_control":{"type":"ephemeral","ttl":"1h"}`
-on Anthropic upstreams; `service_tier` as OpenAI; `verbosity`
+on Anthropic upstreams; `Auto` omit, `Default`, `Flex`, `Priority` as
+OpenRouter Chat (`auto` is not an OpenRouter value, [ORT]); `verbosity`
 `"text":{"verbosity":..}`; `parallel_tool_calls`, `top_p` as OpenAI; `seed`,
 `stop` unsupported. [OO].
 
@@ -992,6 +1055,19 @@ Model data (with models.dev `reasoning_options`):
 | `top_p` | `{"generationConfig":{"topP":p}}` | as GC | `{"generation_config":{"top_p":p}}` [unverified: no longer listed in [GX]] | as GC | [GR], [GX] |
 | `seed` | `{"generationConfig":{"seed":n}}`; `n > i32::MAX` unsupported | as GC | `{"generation_config":{"seed":n}}` | as GC | [GR], [GPR] |
 | `stop` | `{"generationConfig":{"stopSequences":[..]}}`, at most 5 | as GC | `{"generation_config":{"stop_sequences":[..]}}` | as GC | [GR] |
+
+**Resume** (`InteractionResume`, `"gcp.gemini"`, `gemini.interactions`,
+`crates/rig-core/src/providers/gemini/interactions_api/mod.rs:229-247`) is a
+completion wire with no request body: it reads a stored interaction by id, and
+its `encode` takes `_request: CompletionRequest` and uses none of it. Every
+`GenerationOptions` field on it is `UnsupportedOption`, reason "a resumed
+interaction is read, not created; its options were fixed when it was
+created", and `additional_params` or provider options on it are refused the
+same way. It still calls `request_params` with an empty base and a closure
+that destructures `OptionParts` exhaustively and refuses each non-default
+field, and it discards the empty body. So guarantee 1 holds for it as for any
+wire: a new field fails to compile there too, and a set option is an error
+under `Error` and a warning under `Ignore`, never dropped.
 
 Today typed fields override `additionalParams.generationConfig` and
 `generation_config` (`crates/rig-core/src/providers/gemini/completion.rs:428-437`,
@@ -1080,7 +1156,7 @@ docs. Every `Options` type is serialize-only; every `Extras` type reads
 | `zai`, `minimax`, `moonshot`, `xiaomimimo` | `"*"`, `"openai.chat"`, `"anthropic.messages"` | Z.AI: `do_sample`, `request_id`, `user_id`, `tool_stream`, `clear_thinking`; MiniMax: `reasoning_split`; Moonshot: `thinking_keep`, `prompt_cache_key`; MiMo: web search tool config | Z.AI `web_search`, `request_id` [unverified keys]; MiniMax `reasoning_details`, `base_resp`; MiMo `message.annotations`; Moonshot choice-level `usage` | dialect docs in 6.1 and 6.2 |
 | `openai` | `"*"`, `"openai.chat"`, `"openai.responses"` | `"*"`: `store`, `metadata`, `prompt_cache_key`, `safety_identifier`. Chat: `logit_bias`, `prediction`, `logprobs`, `top_logprobs`, penalties, `n`, `modalities`, `audio`, `web_search_options`, `include_obfuscation`. Responses: `reasoning_summary`, `reasoning_mode`, `reasoning_context`, `include`, `previous_response_id`, `conversation`, `truncation`, `context_management`, `prompt_cache_options { mode, prewarm, comparison_response_id }`, `cache_breakpoints`, `background`, `max_tool_calls`, `top_logprobs`, `service_tier_extra` (`scale`, `ultrafast`), `access_programs` | `OpenAiExtras::{Chat, Responses}` with shared `service_tier()`. Chat: `system_fingerprint`, `service_tier`, `prompt_tokens_details`, `completion_tokens_details`. Responses: `service_tier`, effective `reasoning`, `prompt_cache_retention`, `prompt_cache_options`, `incomplete_details.reason`, `phase` per item, `billing` (unary only) | v0.43 `crates/rig-core/src/providers/openai/responses_api/mod.rs` 1378-1422, 1563-1610, 1659-1895; [OC], [RC] |
 | `azure.openai` | as `openai` | the `openai` set, `data_sources` | `prompt_filter_results`, `content_filter_results`, `message.context.citations` [unverified fields] | Azure docs in 6.2 |
-| `openrouter` | `"*"`, `"openai.chat"`, `"openai.responses"` | `"*"`: `provider: ProviderPreferences { order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, sort, preferred_min_throughput, preferred_max_latency, max_price, quantizations }`, `models` (fallbacks), `route`, `plugins`, `session_id`, `trace`, `metadata`, `reasoning_exclude`, `reasoning_summary`, `top_k`, `min_p`, `top_a`, `repetition_penalty`, `user` | `provider`, `native_finish_reason`, `service_tier`, `system_fingerprint`, `cost`, `cost_details`, `is_byok`, `prompt_tokens_details`, `server_tool_use_details`, `openrouter_metadata`, `annotations` | v0.43 `crates/rig-core/src/providers/openrouter/completion.rs` 30-621; [OR], https://openrouter.ai/docs/guides/routing/provider-selection |
+| `openrouter` | `"*"`, `"openai.chat"`, `"openai.responses"` | `"*"`: `provider: ProviderPreferences { order, only, ignore, allow_fallbacks, require_parameters, data_collection, zdr, sort, preferred_min_throughput, preferred_max_latency, max_price, quantizations }`, `models` (fallbacks), `route`, `plugins`, `session_id`, `trace`, `metadata`, `reasoning_exclude`, `reasoning_summary`, `top_k`, `min_p`, `top_a`, `repetition_penalty`, `user`, `service_tier_extra` (`ultrafast`) | `provider`, `native_finish_reason`, `service_tier`, `system_fingerprint`, `cost`, `cost_details`, `is_byok`, `prompt_tokens_details`, `server_tool_use_details`, `openrouter_metadata`, `annotations` | v0.43 `crates/rig-core/src/providers/openrouter/completion.rs` 30-621; [OR], https://openrouter.ai/docs/guides/routing/provider-selection |
 | `deepseek` | `"*"` | none: `thinking` and `reasoning_effort` are portable | `prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, `reasoning_tokens`, `system_fingerprint` | v0.43 `crates/rig-core/src/providers/deepseek.rs` 20-55; [DS] |
 | `mistral` | `"*"` | `prompt_mode`, `safe_prompt`, `guardrails`, `prompt_cache_key`, penalties, `n`, `prediction` | `usage.service_tier`, `prompt_audio_seconds`, `num_cached_tokens`, `prompt_tokens_details` | v0.43 `crates/rig-core/src/providers/mistral/completion.rs` 120-160 |
 | `groq` | `"*"` | `reasoning_format`, `include_reasoning`, `search_settings`, `citation_options`, `compound_custom` | `x_groq`, `queue_time`, `prompt_time`, `completion_time`, `total_time`, `usage_breakdown`, `service_tier`, `executed_tools` | https://console.groq.com/docs/api-reference |
@@ -1244,13 +1320,32 @@ extension.
 A phase that replaces a knob deletes it in the same PR; there is never a
 second way to set the same thing.
 
+### 12.0 Wire-body changes for callers who set no option
+
+These change what an existing caller sends without touching
+`GenerationOptions`. Each is a wire-body change: its phase lists it under
+Migration and names every cassette, golden or snapshot that moves (none is
+expected; the corpus sets none of these keys in the affected shapes, and the
+phase's `--check` runs prove it).
+
+| phase | change | who is affected | Migration line |
+|---|---|---|---|
+| P2 | Gemini GenerateContent and Interactions: raw `additionalParams.generationConfig` / `generation_config` keys now beat the typed fields (`crates/rig-core/src/providers/gemini/completion.rs:428-437`, `gemini/interactions_api/mod.rs:352-370`) | callers who set a typed field and the same key in `additional_params` | "`additional_params` now overrides `temperature`, `max_tokens` and other typed fields on Gemini; remove the duplicate key to keep the typed value." |
+| P2 | OpenAI Responses flips from base-wins to raw-wins (`crates/rig-core/src/providers/openai/responses_api/mod.rs:464-468`): `additional_params.temperature`, `tool_choice`, `text` and any other key now override the typed field | Responses callers whose `additional_params` repeat a typed field | "On OpenAI Responses, `additional_params` now overrides typed request fields, as on every other wire." |
+| P2 | Shallow `extend` becomes a deep merge on Anthropic (`completion.rs:256`), Chat (`chat.rs:384`), Cohere native (`cohere/chat.rs:146-151`) and Bedrock (`crates/rig-bedrock/src/request.rs:133`): an object in `additional_params` such as `output_config`, `thinking`, `tool_choice` or `generationConfig` now merges into the wire's object instead of replacing it | callers who relied on an object in `additional_params` replacing the wire's whole object (for example to drop `output_config.format`) | "`additional_params` objects now merge key by key into the request body; set a key to `null` in its own object to clear it." P2 decides whether `null` clears a key and states it |
+| P2 | Ollama `/v1`: the `think` to `reasoning_effort` rewrite is deleted (`crates/rig-core/src/providers/openai/wire/chat.rs:688-722`), so an existing `additional_params.think` is sent raw | `/v1` callers using `think` | "On Ollama's OpenAI-compatible route, set `GenerationOptions::reasoning` instead of `additional_params.think`, which is now sent as written." |
+| P2 | OpenAI Responses, Codex: the `UNACCEPTED` strip list is deleted (`responses_api/mod.rs:479-490`), so a caller's `temperature`, `top_p`, `metadata`, `user`, `background` or `max_output_tokens` now reach the ChatGPT backend instead of being stripped | ChatGPT callers who set those fields or `additional_params` keys | "The ChatGPT backend no longer strips unaccepted fields; remove `temperature`, `top_p`, `metadata` and `user` from ChatGPT requests or expect the backend's error." |
+| P2 | Bedrock: `cache(Short/Long)` after a reasoning turn reports the skipped message checkpoint through `on_unsupported`, an error by default, where `with_prompt_caching` skipped it silently (`crates/rig-bedrock/src/request.rs:106-114`) | Bedrock callers caching a conversation with reasoning in its history | "On Bedrock, a cache checkpoint that cannot follow a reasoning turn is an `UnsupportedOption` error; set `OnUnsupported::Ignore` to skip it with a warning." |
+| P2 | OpenRouter Chat: `cache(Short)` sends the documented top-level `cache_control` where `with_prompt_caching` marked the system message (`chat.rs:816-843`) | OpenRouter callers of `with_prompt_caching` | "OpenRouter caching now uses the top-level `cache_control` marker." |
+| P4 | Bedrock: the guardrail is sent on streams as well as unary requests (`crates/rig-bedrock/src/request.rs:135` filters it to unary today) | streaming callers of `with_guardrail` | "A Bedrock guardrail now also applies to streamed requests." |
+
 ### 12.1 P2: options
 
 | knob | where | replaced by |
 |---|---|---|
-| Anthropic `Messages::prompt_caching`, `with_prompt_caching` | `crates/rig-core/src/providers/anthropic/wire.rs:364`, `:391-394`; placement `crates/rig-core/src/providers/anthropic/completion.rs:734-770` | `cache` (MiniMax keeps explicit placement as its dialect mapping) |
+| Anthropic `Messages::prompt_caching`, `with_prompt_caching` as an on-switch | `crates/rig-core/src/providers/anthropic/wire.rs:364`, `:391-394`; placement `crates/rig-core/src/providers/anthropic/completion.rs:734-770` | `cache` turns caching on; the flag stays until P4 as placement only (section 6.1) and is an encode error without `cache`. MiniMax keeps explicit placement as its dialect mapping |
 | Anthropic `automatic_caching`, `with_automatic_caching`, `with_automatic_caching_1h`, `automatic_caching_ttl` | `crates/rig-core/src/providers/anthropic/wire.rs:367-369`, `:410-413`, `:429-433` | `CacheRetention::Short`, `Long` |
-| Anthropic `CacheTtl` as public API | `crates/rig-core/src/providers/anthropic/completion.rs:63-73` | `CacheRetention`; `CacheTtl` stays as the P4 `static_prefix_ttl` type |
+| Anthropic `CacheTtl` as the automatic-caching TTL | `crates/rig-core/src/providers/anthropic/completion.rs:63-73` | `CacheRetention`; `CacheTtl` stays public as the type of `with_static_prefix_cache_ttl` and then of P4's `static_prefix_ttl` |
 | Anthropic `top_level_cache_control` (a wire-local precedence merge) | `crates/rig-core/src/providers/anthropic/completion.rs:661-692` | `request_params`; the 1 h-before-5 min and budget-of-4 checks run after it |
 | Anthropic `body.extend(params)` | `crates/rig-core/src/providers/anthropic/completion.rs:256` | `request_params` (deep merge of `output_config`, `thinking`, `tool_choice`) |
 | Anthropic `drops_unbound_thinking` reading raw JSON; `drops_unbound_items` reading `additional_params["thinking"]` | `crates/rig-core/src/providers/anthropic/completion.rs:157-182`, `:257-259`; `crates/rig-core/src/providers/anthropic/wire.rs:523-530`, `:646-653` | the merged reasoning value, so replay and encoding agree |
@@ -1273,13 +1368,25 @@ second way to set the same thing.
 | Candle `top_p` and `seed` read from `additional_params` | `crates/rig-candle/src/generation.rs:81-112` | `top_p`, `seed`; `deny_unknown_fields` stays for the rest |
 | Docs that steer reasoning to `additional_params` | `crates/rig-core/src/providers/groq.rs:3-4`, `crates/rig-core/src/providers/openai/completion/mod.rs:8-29` | `GenerationOptions::reasoning` |
 
-Callers that move with the Anthropic flags are listed by the research and
-include `test-support/rig-test-support/src/model_session.rs:685`,
-`tests/core/history_conformance/anthropic.rs:161` and the
-`crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs`
-cells. Their encoded bodies must stay byte-identical: `Short` plus the
-prefix marker reproduces `with_automatic_caching().with_static_prefix_cache_ttl(..)`,
-so no cassette or snapshot moves.
+Each existing caching placement and how P2 expresses it. Every row sends
+the same body as today, so no cassette moves. Error texts that name a deleted
+method change, and the tests asserting them
+(`crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs:337-359`)
+are updated with them.
+
+| today | markers sent | P2 | callers |
+|---|---|---|---|
+| `with_automatic_caching()` | top-level, no TTL | `cache(Short)` | `crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs:61`, `long_run_workloads.rs:43`, `strict_schema_streaming.rs:174`, `test-support/rig-test-support/src/model_session.rs:685`, `crates/rig-cassette/tests/common/ecs_matrix/world/tests.rs:30` |
+| `with_automatic_caching_1h()` | top-level `1h` | `cache(Long)` | `prompt_caching.rs:64`, `ecs_matrix_long_loop.rs:38`, `strict_schema_integrations.rs:97`, `crates/rig-cassette/tests/common/ecs_matrix/long_tasks/cache/tests.rs:23` |
+| `with_prompt_caching()` | final tool, last system block, last message block; no top-level | `cache(Short)` plus `with_prompt_caching()` (kept as placement until P4) | `prompt_caching.rs:57` (with `_1h`, next row), `ecs_prompt_caching.rs:20`, `ecs_matrix_long_loop.rs:24`, `long_tasks/cache/tests.rs:16` |
+| `with_prompt_caching().with_automatic_caching_1h()` | top-level `1h`; tool and system `1h` (with a top-level marker, manual placement adds no message marker, `completion.rs:761`) | `cache(Long)` plus `with_static_prefix_cache_ttl(OneHour)` | `prompt_caching.rs` `ManualAutomatic1h` |
+| `with_automatic_caching().with_static_prefix_cache_ttl(t)` (or `_1h()`) | top-level; tool and system with `t` | `cache(Short)` (or `Long`) plus `with_static_prefix_cache_ttl(t)` | `prompt_caching.rs:69`, `strict_schema_integrations.rs:57-58`, `ecs_matrix_long_loop.rs:53`, `long_tasks/cache/tests.rs:30` |
+| `with_static_prefix_cache_ttl(t)` alone | tool and system with `t` | an encode error naming `cache` until P4's `cache_breakpoints`; no caller uses it | none |
+| Bedrock `Converse::with_prompt_caching()` | `cachePoint` after the system blocks and at the end of the last message, skipped after a reasoning turn | `cache(Short)`; the skip goes through `on_unsupported` (section 12.0) | `crates/rig-cassette/tests/providers/bedrock/cassette/agent.rs:61`, `crates/rig-bedrock/tests/history_conformance.rs:625`, `tests/integrations/bedrock/adaptive_thinking.rs:28` |
+| Chat `with_prompt_caching()` | OpenRouter: a system-message marker; elsewhere nothing | `cache(Short)`: OpenRouter's documented top-level marker, `UnsupportedOption` elsewhere (section 12.0) | `crates/rig-cassette/tests/common/ecs_matrix/world/tests.rs:68`, on OpenAI where it is a no-op; the call is removed. No OpenRouter cassette uses it |
+
+`tests/core/history_conformance/anthropic.rs:161` builds `Messages` by
+struct literal and drops the two deleted fields.
 
 ### 12.2 P3: the catalog
 
@@ -1296,6 +1403,7 @@ so no cassette or snapshot moves.
 | knob | where | replaced by |
 |---|---|---|
 | Anthropic `static_prefix_cache_ttl`, `with_static_prefix_cache_ttl` | `crates/rig-core/src/providers/anthropic/wire.rs:372`, `:455-458` | `AnthropicOptions.static_prefix_ttl` |
+| Anthropic `prompt_caching`, `with_prompt_caching` (placement only since P2) | `crates/rig-core/src/providers/anthropic/wire.rs:364`, `:391-394` | `AnthropicOptions.cache_breakpoints = Manual` |
 | Gemini `GenerateContent::thought_replay` and the copied state in the caching transport | `crates/rig-core/src/providers/gemini/completion.rs:73`, `:113-116`, `:131-134`, `:140-155`, `:177-181`; `crates/rig-core/src/client/gemini_caching.rs:69`, `:84-92`, `:354-359` | `GeminiOptions.thought_replay`, read by the transport from each request, so the "call it before `caching`" ordering rule goes away |
 | Gemini `with_cached_content` and raw `cachedContent` | `crates/rig-core/src/providers/gemini/completion.rs:68-70`, `:121-124`, `:403-416` | `GeminiOptions.cached_content` |
 | Gemini `safetySettings` always `null` | `crates/rig-core/src/providers/gemini/completion.rs:479` | `GeminiOptions.safety_settings` |
@@ -1315,7 +1423,11 @@ The terminal records in section 9: `crates/rig-core/src/providers/openai/wire/ch
 `crates/rig-core/src/providers/cohere/streaming.rs:493`,
 `crates/rig-core/src/providers/ollama/streaming.rs:158`,
 `crates/rig-bedrock/src/streaming.rs:412-427`. The public `Out::raw` for
-completions goes away (`crates/rig-core/src/wire.rs:600`).
+completions goes away (`crates/rig-core/src/wire.rs:600`). The generic JSON
+decoder that calls `out.raw(document)` for every `Op`
+(`crates/rig-core/src/wire.rs:736`) splits: completions record a `Document`,
+other operations keep `Out::raw`. P1 already made `CompletionResponse::raw`
+private (section 4).
 
 ### 12.5 P6: citations and cost
 
@@ -1333,10 +1445,11 @@ gated by `#[cfg(any())]` with a comment naming its phase.
 
 | test | phase | what it pins |
 |---|---|---|
-| `harness_switch::one_options_value_drives_five_wires` | P2 | one `GenerationOptions` (reasoning `High`, cache `Long`, tier `Default`) encoded for Anthropic `claude-opus-4-8`, OpenAI Responses `gpt-5.5`, Gemini `gemini-3-flash-preview`, Bedrock `us.anthropic.claude-sonnet-5` and OpenRouter `anthropic/claude-sonnet-4.5`; asserts each body against section 6 and that the only warning is Gemini's `cache`. No JSON is written on the request side |
+| `harness_switch::one_options_value_drives_five_wires` | P2 | one `GenerationOptions` (reasoning `High`, cache `Long`, tier `Default`) encoded for Anthropic `claude-opus-4-8`, OpenAI Responses `gpt-5.5`, Gemini `gemini-3-flash-preview`, Bedrock `us.anthropic.claude-sonnet-5` and OpenRouter `anthropic/claude-sonnet-4.5`; asserts each body against section 6 (Anthropic: one top-level 1 h marker, none placed by hand) and that the only warning is Gemini's `cache`. No JSON is written on the request side |
 | `harness_switch::long_cache_on_gemini_is_an_error_under_the_default_policy` | P2 | Gemini `Long` under `Error` returns `UnsupportedOption { option: "cache", provider: "gcp.gemini", .. }` |
 | `no_silent_drop::caching_on_a_dialect_that_cannot_cache_is_refused` | P2 | `Short` on Cohere's Compatibility route and `Long` on DeepSeek return `UnsupportedOption` naming `cache` and the provider |
 | `no_silent_drop::under_ignore_the_option_is_skipped_with_a_warning` | P2 | the same under `Ignore`: the body has no cache field and one warning names `cache` and the provider |
+| `option_matrix::every_option_alone_is_sent_omitted_or_refused_by_name` | P2 | each `GenerationOptions` field set alone on Anthropic, Responses, Gemini, Bedrock, OpenRouter, Cohere and DeepSeek either encodes or fails with `UnsupportedOption` naming that field and provider; any other error (the "neither set, omitted nor refused" check) fails it. P2 extends the list to every completion wire and dialect, `InteractionResume` included |
 | `catalog_validation::validate_rejects_a_reasoning_level_the_model_lacks` | P3 | Gemini 3.8 Flash rejects `Minimal` and takes `High`; Claude Haiku 4.5 rejects any effort and takes a budget inside 1024 and up |
 | `typed_extras_unary::openrouter_and_deepseek_extras_from_unary_recordings` | P4 | `extras::<OpenRouter>()` gives `provider = "Azure"`, `cost = 2.7e-6`, `native_finish_reason = "stop"`; `extras::<DeepSeek>()` gives 256 cache hits; each is `None` on the other's reply |
 | `typed_extras_streamed::the_same_extras_from_streamed_recordings` | P5 | the same fields from the streamed recordings, and OpenRouter's agree across paths; DeepSeek gives 4864 hits |

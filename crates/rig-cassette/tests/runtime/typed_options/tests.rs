@@ -78,25 +78,25 @@ mod harness_switch {
             .options(options(policy))
     }
 
-    fn anthropic() -> rig::providers::anthropic::Messages {
+    pub(super) fn anthropic() -> rig::providers::anthropic::Messages {
         AnthropicModels::new(AnthropicConfig::new(KEY), crate::cassettes::local_http())
             .completion(CLAUDE_OPUS_4_8)
             .wire
     }
 
-    fn openai_responses() -> Responses {
+    pub(super) fn openai_responses() -> Responses {
         Responses::new(OpenAIConfig::new(KEY), GPT_5_5)
     }
 
-    fn gemini() -> GenerateContent {
+    pub(super) fn gemini() -> GenerateContent {
         GenerateContent::new(GeminiConfig::new(KEY), GEMINI_3_FLASH_PREVIEW)
     }
 
-    fn openrouter() -> Chat {
+    pub(super) fn openrouter() -> Chat {
         Chat::new(OpenAIConfig::with_key(&OPENROUTER, KEY), OPENROUTER_MODEL)
     }
 
-    fn bedrock(request: CompletionRequest) -> Result<Value, EncodeError> {
+    pub(super) fn bedrock(request: CompletionRequest) -> Result<Value, EncodeError> {
         let wire = Converse::new(ANTHROPIC_CLAUDE_SONNET_5);
         let request = prepared(&wire, request);
         wire.encode(request, Mode::Unary)
@@ -121,15 +121,15 @@ mod harness_switch {
             });
 
         // Anthropic, class A3: adaptive thinking sent explicitly, effort in
-        // `output_config`, the 1 h markers at the top level and on the last
-        // system block, the standard tier only.
+        // `output_config`, one automatic 1 h marker at the top level and none
+        // placed by hand, the standard tier only.
         assert_eq!(text(&anthropic, "/thinking/type"), Some("adaptive"));
         assert_eq!(text(&anthropic, "/output_config/effort"), Some("high"));
         assert_eq!(text(&anthropic, "/cache_control/type"), Some("ephemeral"));
         assert_eq!(text(&anthropic, "/cache_control/ttl"), Some("1h"));
-        assert_eq!(
-            text(last(&anthropic, "/system"), "/cache_control/ttl"),
-            Some("1h")
+        assert!(
+            last(&anthropic, "/system").get("cache_control").is_none(),
+            "{anthropic}"
         );
         assert_eq!(text(&anthropic, "/service_tier"), Some("standard_only"));
 
@@ -228,11 +228,11 @@ mod no_silent_drop {
     }
 
     /// Cohere's Compatibility route, the default `CohereChat` route.
-    fn cohere() -> rig::providers::cohere::CohereChat {
+    pub(super) fn cohere() -> rig::providers::cohere::CohereChat {
         CohereConfig::new(KEY).completion(COMMAND_A_03_2025)
     }
 
-    fn deepseek() -> Chat {
+    pub(super) fn deepseek() -> Chat {
         Chat::new(OpenAIConfig::with_key(&DEEPSEEK, KEY), DEEPSEEK_FLASH)
     }
 
@@ -293,6 +293,86 @@ mod no_silent_drop {
             })
             .collect();
         assert_eq!(skipped.len(), 1, "{warnings:?}");
+    }
+}
+
+// P2 removes this gate.
+#[cfg(any())]
+mod option_matrix {
+    //! Each option set alone on each wire is sent, omitted or refused by
+    //! name; no other outcome exists. A wire that binds a field and never
+    //! acts on it fails here, because `request_params` rejects a non-default
+    //! field that was neither set, omitted nor refused, and that error is not
+    //! an `UnsupportedOption`.
+    //!
+    //! Encode-only. P2 extends `wires` to every completion wire and dialect
+    //! of section 6.
+
+    use rig::completion::{
+        CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ServiceTier,
+        Verbosity,
+    };
+    use rig_core::error::EncodeError;
+    use serde_json::Value;
+
+    use super::harness_switch::{anthropic, bedrock, encode, gemini, openai_responses, openrouter};
+    use super::no_silent_drop::{cohere, deepseek};
+
+    type Encode = Box<dyn Fn(CompletionRequest) -> Result<Value, EncodeError>>;
+
+    fn wires() -> Vec<(&'static str, Encode)> {
+        vec![
+            ("anthropic", Box::new(|r| encode(&anthropic(), r))),
+            ("openai", Box::new(|r| encode(&openai_responses(), r))),
+            ("gcp.gemini", Box::new(|r| encode(&gemini(), r))),
+            ("aws_bedrock", Box::new(bedrock)),
+            ("openrouter", Box::new(|r| encode(&openrouter(), r))),
+            ("cohere", Box::new(|r| encode(&cohere(), r))),
+            ("deepseek", Box::new(|r| encode(&deepseek(), r))),
+        ]
+    }
+
+    /// Every `GenerationOptions` field but the policy, each set alone.
+    fn one_field_each() -> Vec<(&'static str, GenerationOptions)> {
+        let base = GenerationOptions::default().on_unsupported(OnUnsupported::Error);
+        vec![
+            ("reasoning", base.clone().reasoning(Effort::High)),
+            ("cache", base.clone().cache(CacheRetention::Short)),
+            (
+                "service_tier",
+                base.clone().service_tier(ServiceTier::Default),
+            ),
+            ("verbosity", base.clone().verbosity(Verbosity::Low)),
+            (
+                "parallel_tool_calls",
+                base.clone().parallel_tool_calls(false),
+            ),
+            ("top_p", base.clone().top_p(0.5)),
+            ("seed", base.clone().seed(7)),
+            ("stop", base.stop(["END"])),
+        ]
+    }
+
+    fn request(options: GenerationOptions) -> CompletionRequest {
+        CompletionRequest::new("Reply with the single word: pong")
+            .max_tokens(16)
+            .options(options)
+    }
+
+    #[test]
+    fn every_option_alone_is_sent_omitted_or_refused_by_name() {
+        for (wire, encode) in wires() {
+            for (field, options) in one_field_each() {
+                if let Err(error) = encode(request(options)) {
+                    let unsupported = error.unsupported_option().unwrap_or_else(|| {
+                        panic!("{wire}: `{field}` failed without naming an option: {error}")
+                    });
+                    assert_eq!(unsupported.option, field, "{wire}");
+                    assert_eq!(unsupported.provider, wire, "{wire}");
+                    assert!(!unsupported.reason.is_empty(), "{wire}: {field}");
+                }
+            }
+        }
     }
 }
 
