@@ -7,21 +7,22 @@ use serde_json::{Map, Value};
 
 use crate::proto::GenerateContentResponse;
 use crate::rest::to_rest;
+use rig_core::error::ProviderError;
 use rig_core::providers::gemini::streaming::document::GenerateContentResponse as Document;
 use rig_core::wire::document::Reassemble;
 
 /// `response` as its REST JSON object, the document a unary reply reports.
-/// `None` when it does not transcode, which fails its decoding too.
-pub(crate) fn rest_document(response: &GenerateContentResponse) -> Option<Value> {
-    match to_rest(response).ok()? {
-        chunk @ Value::Object(_) => Some(chunk),
-        _ => Some(Value::Object(Map::new())),
-    }
+/// A message that does not transcode fails its decoding too.
+pub(crate) fn rest_document(response: &GenerateContentResponse) -> Result<Value, ProviderError> {
+    Ok(match to_rest(response)? {
+        chunk @ Value::Object(_) => chunk,
+        _ => Value::Object(Map::new()),
+    })
 }
 
 impl Reassemble<GenerateContentResponse> for Document {
     fn absorb(&mut self, frame: &GenerateContentResponse) {
-        if let Some(Value::Object(chunk)) = rest_document(frame) {
+        if let Ok(Value::Object(chunk)) = rest_document(frame) {
             self.chunk(chunk);
         }
     }

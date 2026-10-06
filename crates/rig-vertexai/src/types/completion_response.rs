@@ -22,9 +22,11 @@ impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentRespon
     for VertexDocument
 {
     fn absorb(&mut self, frame: &vertexai::model::GenerateContentResponse) {
-        if let Ok(chunk) = rest_chunk(frame) {
-            self.0.chunk(chunk);
-        }
+        // A response that does not transcode adds nothing; its decoding
+        // fails the reply.
+        rest_chunk(frame)
+            .into_iter()
+            .for_each(|chunk| self.0.chunk(chunk));
     }
 
     fn finish(self) -> Value {

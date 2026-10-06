@@ -21,10 +21,17 @@ impl Transport<GenerateContent> for Scripted {
     fn send(
         &self,
         _request: GenerateContentRequest,
-        _exchange: Exchange,
+        exchange: Exchange,
     ) -> Opening<GenerateContentResponse> {
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        Opening::ready(Opened::new(futures::stream::iter(replies)))
+        // A unary reply is one message, opened as the endpoint opens it.
+        match (exchange.mode, replies.as_slice()) {
+            (Mode::Unary, [Ok(response)]) => match unary(response.clone()) {
+                Ok(opened) => Opening::ready(opened),
+                Err(error) => Opening::failed(error),
+            },
+            _ => Opening::ready(Opened::new(futures::stream::iter(replies))),
+        }
     }
 }
 

@@ -607,13 +607,11 @@ impl Transport<Generation> for CandleModel {
             Ok(match mode {
                 // The local response record is the response's `raw`.
                 Mode::Unary => match model.infer_completion(request).await {
-                    Ok(inferred) => match serde_json::to_value(&inferred.response) {
-                        Ok(document) => {
-                            Opened::new(futures::stream::iter([Ok(CandleFrame::Whole(inferred))]))
-                                .with_document(document)
-                        }
-                        Err(error) => Opened::failed(error.into()),
-                    },
+                    Ok(inferred) => {
+                        let document = serde_json::to_value(&inferred.response)?;
+                        Opened::new(futures::stream::iter([Ok(CandleFrame::Whole(inferred))]))
+                            .with_document(document)
+                    }
                     Err(error) => Opened::failed(error),
                 },
                 Mode::Streaming => match model.open_stream(request).await {

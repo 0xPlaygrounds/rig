@@ -1612,3 +1612,43 @@ async fn a_streams_raw_is_the_unary_document()
     );
     Ok(())
 }
+
+/// The reassembler keeps the local response record a whole turn or a
+/// stream's final event carries, and nothing else.
+#[test]
+fn the_document_is_the_final_response_record() -> Result<(), Box<dyn std::error::Error>> {
+    use rig_core::wire::document::Reassemble;
+
+    let response = CandleCompletionResponse {
+        text: "done".to_string(),
+        prompt_tokens: 5,
+        generated_tokens: 2,
+        requested_max_tokens: 4,
+        effective_max_tokens: 3,
+        finish_reason: FinishReason::Eos,
+        prefill_duration_ms: 8,
+        time_to_first_token_ms: Some(10),
+        generation_duration_ms: 20,
+        tokens_per_second: None,
+    };
+    let record = serde_json::to_value(&response)?;
+
+    assert!(CandleDocument::default().finish().is_null());
+
+    let mut streamed = CandleDocument::default();
+    streamed.absorb(&CandleFrame::Event(GenerationEvent::Text(
+        "done".to_owned(),
+    )));
+    streamed.absorb(&CandleFrame::Event(GenerationEvent::Final(
+        response.clone(),
+    )));
+    assert_eq!(streamed.finish(), record);
+
+    let mut whole = CandleDocument::default();
+    whole.absorb(&CandleFrame::Whole(crate::generation::InferredCompletion {
+        response,
+        choice: Vec::new(),
+    }));
+    assert_eq!(whole.finish(), record);
+    Ok(())
+}

@@ -148,17 +148,8 @@ impl Transport<GenerateContent> for GeminiGrpc {
         let mut client = self.grpc_client();
         Opening::new(async move {
             Ok(match mode {
-                // The reply's REST JSON is the response's `raw`.
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => {
-                        let response = response.into_inner();
-                        let document = crate::streaming::document::rest_document(&response);
-                        let opened = Opened::new(futures::stream::iter([Ok(response)]));
-                        match document {
-                            Some(document) => opened.with_document(document),
-                            None => opened,
-                        }
-                    }
+                    Ok(response) => unary(response.into_inner())?,
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {
@@ -182,6 +173,15 @@ impl Transport<GenerateContent> for GeminiGrpc {
             })
         })
     }
+}
+
+/// A unary reply: its one message, whose REST JSON is the response's `raw`.
+/// A message that does not transcode fails as its decoding would.
+pub(crate) fn unary(
+    response: GenerateContentResponse,
+) -> Result<Opened<GenerateContentResponse>, ProviderError> {
+    let document = crate::streaming::document::rest_document(&response)?;
+    Ok(Opened::new(futures::stream::iter([Ok(response)])).with_document(document))
 }
 
 /// Stable descriptor name reported on normalized responses from this provider.

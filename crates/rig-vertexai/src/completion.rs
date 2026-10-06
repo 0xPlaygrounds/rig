@@ -243,13 +243,10 @@ impl Transport<GenerateContent> for VertexAi {
                         "Vertex AI completion response: {response:?}"
                     );
                     // The reply's REST JSON is the response's `raw`, in both
-                    // modes.
-                    let document = rest_chunk(&response).ok().map(serde_json::Value::Object);
-                    let opened = Opened::new(futures::stream::iter([Ok(response)]));
-                    Ok(match document {
-                        Some(document) => opened.with_document(document),
-                        None => opened,
-                    })
+                    // modes. One that does not transcode fails as its
+                    // decoding would.
+                    let document = serde_json::Value::Object(rest_chunk(&response)?);
+                    Ok(Opened::new(futures::stream::iter([Ok(response)])).with_document(document))
                 }
                 Err(error) => Ok(Opened::failed(rpc_error(&error))),
             }

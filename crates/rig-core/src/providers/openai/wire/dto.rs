@@ -95,3 +95,6 @@ fn merge_content(existing: &mut serde_json::Value, more: &serde_json::Value) {
     }
     *existing = Value::Array(merged);
 }
+
+#[cfg(test)]
+mod tests;
