@@ -181,8 +181,6 @@
       "cost": {
         "input": 0.00002,
         "output": 0.00005,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00508
       }
     },
@@ -566,8 +564,6 @@
       "cost": {
         "input": 0.00014,
         "output": 0.00003,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00517
       }
     },
@@ -966,8 +962,6 @@
       "cost": {
         "input": 0.00437,
         "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00937
       }
     },
@@ -1397,8 +1391,6 @@
       "cost": {
         "input": 0.00001,
         "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00501
       }
     },

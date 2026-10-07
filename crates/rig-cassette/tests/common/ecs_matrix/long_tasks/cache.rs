@@ -77,16 +77,19 @@ pub(crate) fn assert_totals(usages: &[Usage], actual: Usage) {
             cost.output,
             cost.cache_read,
             cost.cache_write,
-            cost.total,
+            Some(cost.total),
         ]
     };
     match (actual.cost, expected.cost) {
         (Some(actual), Some(expected)) => {
             for (actual, expected) in parts(actual).into_iter().zip(parts(expected)) {
-                assert!(
-                    (actual - expected).abs() <= expected.abs() * 1e-9,
-                    "cumulative cost: {actual} against {expected}"
-                );
+                let close = match (actual, expected) {
+                    (Some(actual), Some(expected)) => {
+                        (actual - expected).abs() <= expected.abs() * 1e-9
+                    }
+                    (actual, expected) => actual == expected,
+                };
+                assert!(close, "cumulative cost: {actual:?} against {expected:?}");
             }
         }
         (actual, expected) => assert_eq!(actual, expected, "cumulative cost"),

@@ -26,10 +26,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 1007,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0002562
       }
     },
@@ -127,10 +123,6 @@
       "output_tokens": 10,
       "total_tokens": 1720,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0001628125
       }
     },
@@ -204,10 +196,6 @@
       "output_tokens": 2,
       "total_tokens": 977,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00009190625
       }
     },
@@ -290,10 +278,6 @@
       "output_tokens": 16,
       "total_tokens": 1170,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0001121875
       }
     },
@@ -391,10 +375,6 @@
       "output_tokens": 129,
       "total_tokens": 1475,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0010572000000000001
       }
     },
@@ -468,10 +448,6 @@
       "output_tokens": 3,
       "total_tokens": 1033,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0000973125
       }
     },
@@ -568,10 +544,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 60,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00015235
       }
     },
@@ -679,10 +651,6 @@
       "output_tokens": 17,
       "total_tokens": 1335,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0001278125
       }
     },
@@ -743,10 +711,6 @@
       "total_tokens": 1587,
       "cached_input_tokens": 1488,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00017297000000000002
       }
     },
@@ -838,10 +802,6 @@
       "cached_input_tokens": 5808,
       "reasoning_tokens": 55,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00059095
       }
     },
@@ -934,10 +894,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 16,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0005813
       }
     },
@@ -1006,10 +962,6 @@
       "cached_input_tokens": 5280,
       "reasoning_tokens": 16,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0005842
       }
     },
@@ -1071,10 +1023,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00015780000000000001
       }
     },
@@ -1141,10 +1089,6 @@
       "output_tokens": 16,
       "total_tokens": 1022,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0005087
       }
     },
@@ -1221,10 +1165,6 @@
       "output_tokens": 938,
       "total_tokens": 1944,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0037357
       }
     },
@@ -1305,10 +1245,6 @@
       "total_tokens": 1499,
       "cached_input_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0012571000000000001
       }
     },
@@ -1384,10 +1320,6 @@
       "total_tokens": 1561,
       "cached_input_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0008397
       }
     },
@@ -1471,10 +1403,6 @@
       "total_tokens": 1501,
       "cached_input_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0012641
       }
     },
@@ -1564,10 +1492,6 @@
       "total_tokens": 1539,
       "cached_input_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0007566
       }
     },
@@ -1649,10 +1573,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 863,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.00023940000000000002
       }
     },
@@ -1711,10 +1631,6 @@
       "output_tokens": 16,
       "total_tokens": 994,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0000956875
       }
     },
@@ -1779,10 +1695,6 @@
       "output_tokens": 16,
       "total_tokens": 994,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0000956875
       }
     },
@@ -1835,10 +1747,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0002398
       }
     },
@@ -1924,10 +1832,6 @@
       "cached_input_tokens": 0,
       "reasoning_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0001581
       }
     },
@@ -2012,10 +1916,6 @@
       "cached_input_tokens": 1056,
       "reasoning_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0001585
       }
     },
@@ -2223,10 +2123,6 @@
       "cached_input_tokens": 1056,
       "reasoning_tokens": 0,
       "cost": {
-        "input": 0.0,
-        "output": 0.0,
-        "cache_read": 0.0,
-        "cache_write": 0.0,
         "total": 0.0105599
       }
     },

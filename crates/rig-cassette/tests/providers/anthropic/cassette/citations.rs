@@ -82,10 +82,13 @@ fn assert_cost(actual: Option<Cost>, expected: [f64; 5]) {
         actual.output,
         actual.cache_read,
         actual.cache_write,
-        actual.total,
+        Some(actual.total),
     ];
     for (part, want) in parts.into_iter().zip(expected) {
-        assert!((part - want).abs() < 1e-9, "{parts:?} != {expected:?}");
+        assert!(
+            part.is_some_and(|part| (part - want).abs() < 1e-9),
+            "{parts:?} != {expected:?}"
+        );
     }
 }
 

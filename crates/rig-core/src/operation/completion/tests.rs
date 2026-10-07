@@ -1014,10 +1014,16 @@ fn an_unreported_cost_comes_from_the_catalog() {
     };
     let response = write_from(origin("anthropic", "claude-sonnet-4-6"), end, |_| Ok(()));
     let cost = response.usage.cost.expect("the catalog prices the model");
-    assert!(close(cost.input, 2.1), "{cost:?}");
-    assert!(close(cost.output, 1.5), "{cost:?}");
-    assert!(close(cost.cache_read, 0.06), "{cost:?}");
-    assert!(close(cost.cache_write, 0.375), "{cost:?}");
+    assert!(cost.input.is_some_and(|part| close(part, 2.1)), "{cost:?}");
+    assert!(cost.output.is_some_and(|part| close(part, 1.5)), "{cost:?}");
+    assert!(
+        cost.cache_read.is_some_and(|part| close(part, 0.06)),
+        "{cost:?}"
+    );
+    assert!(
+        cost.cache_write.is_some_and(|part| close(part, 0.375)),
+        "{cost:?}"
+    );
     assert!(close(cost.total, 4.035), "{cost:?}");
     assert_eq!(
         response.usage.input_tokens,
@@ -1049,14 +1055,20 @@ fn an_unreported_cost_comes_from_the_catalog() {
     };
     let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
     let cost = response.usage.cost.expect("the catalog prices the model");
-    assert!(close(cost.cache_read, 0.003), "{cost:?}");
+    assert!(
+        cost.cache_read.is_some_and(|part| close(part, 0.003)),
+        "{cost:?}"
+    );
     let end = Finish {
         usage: tokens(1_000_000, 0).cache_creation_input_tokens(1_000_000),
         ..Finish::default()
     };
     let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
     let cost = response.usage.cost.expect("the catalog prices the model");
-    assert!(close(cost.cache_write, 0.15), "{cost:?}");
+    assert!(
+        cost.cache_write.is_some_and(|part| close(part, 0.15)),
+        "{cost:?}"
+    );
 }
 
 /// No cost is made up: an unlisted model, a model with no price, or a

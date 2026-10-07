@@ -1810,22 +1810,24 @@ mod citations_and_cost {
         let read = cached_input_tokens.unwrap_or(0);
         let written = cache_creation_input_tokens.unwrap_or(0);
         let per_token = |price: f64| price / 1_000_000.0;
-        assert!(close(
-            cost.input,
+        assert!(cost.input.is_some_and(|part| close(
+            part,
             (input - read - written) as f64 * per_token(pricing.input)
-        ));
-        assert!(close(
-            cost.output,
-            output as f64 * per_token(pricing.output)
-        ));
-        assert!(close(
-            cost.cache_read,
+        )));
+        assert!(
+            cost.output
+                .is_some_and(|part| close(part, output as f64 * per_token(pricing.output)))
+        );
+        assert!(cost.cache_read.is_some_and(|part| close(
+            part,
             read as f64 * per_token(pricing.cache_read.unwrap_or(pricing.input))
-        ));
-        assert!(close(
-            cost.total,
-            cost.input + cost.output + cost.cache_read + cost.cache_write
-        ));
+        )));
+        let parts = [cost.input, cost.output, cost.cache_read, cost.cache_write];
+        assert!(close(cost.total, parts.into_iter().flatten().sum::<f64>()));
+        assert!(
+            parts.iter().all(Option::is_some),
+            "a catalog cost knows every part"
+        );
 
         // A model the catalog does not list has no cost.
         let unlisted = unary(
@@ -1868,7 +1870,10 @@ mod usage_cost_sum {
     fn cost_sums_only_when_every_turn_has_one() {
         let both = priced(1.0, 2.0) + priced(0.5, 0.25);
         let cost = both.cost.expect("both turns are priced");
-        assert_eq!((cost.input, cost.output, cost.total), (1.5, 2.25, 3.75));
+        assert_eq!(
+            (cost.input, cost.output, cost.total),
+            (Some(1.5), Some(2.25), 3.75)
+        );
         assert_eq!(both.input_tokens, Some(20));
 
         let unpriced = usage(json!({"input_tokens": 10, "output_tokens": 5}));

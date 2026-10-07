@@ -132,10 +132,7 @@ pub(super) fn cost(usage: Option<&Value>, fields: &Map<String, Value>) -> Option
             let (input, output) = (part("input_tokens_cost"), part("output_tokens_cost"));
             let total = part("total_cost")
                 .or_else(|| Some(input? + output? + part("request_cost").unwrap_or(0.0)))?;
-            Some(Cost {
-                total,
-                ..Cost::from_parts(input.unwrap_or(0.0), output.unwrap_or(0.0), 0.0, 0.0)
-            })
+            Some(Cost::from_total(total).input(input).output(output))
         }
         Some(_) => usage.f64("cost").and_then(finite).map(Cost::from_total),
         None => None,

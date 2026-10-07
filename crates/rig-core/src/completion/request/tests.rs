@@ -515,7 +515,81 @@ mod empty_new_fields_are_not_serialized {
     fn a_cost_from_parts_totals_them() {
         let cost = Cost::from_parts(1.0, 2.0, 0.25, 0.5);
         assert_eq!(cost.total, 3.75);
-        assert_eq!((cost + Cost::from_total(1.0)).total, 4.75);
+        assert_eq!(
+            (cost.input, cost.output, cost.cache_read, cost.cache_write),
+            (Some(1.0), Some(2.0), Some(0.25), Some(0.5))
+        );
+    }
+
+    #[test]
+    fn a_cost_from_its_total_knows_no_part() {
+        let cost = Cost::from_total(1.5);
+        assert_eq!(cost.total, 1.5);
+        assert_eq!(
+            (cost.input, cost.output, cost.cache_read, cost.cache_write),
+            (None, None, None, None)
+        );
+    }
+
+    #[test]
+    fn cost_part_setters_leave_the_total() {
+        let cost = Cost::from_total(1.0)
+            .input(0.25)
+            .output(0.5)
+            .cache_read(0.125)
+            .cache_write(0.0625);
+        assert_eq!(cost.total, 1.0);
+        assert_eq!(
+            (cost.input, cost.output, cost.cache_read, cost.cache_write),
+            (Some(0.25), Some(0.5), Some(0.125), Some(0.0625))
+        );
+        assert_eq!(cost.input(None).input, None);
+    }
+
+    /// The total always sums; a part sums only when both sides know it.
+    #[test]
+    fn summing_a_known_part_with_an_unknown_one_is_unknown() {
+        let split = Cost::from_parts(1.0, 2.0, 0.25, 0.5);
+        let both = split + split;
+        assert_eq!(both, Cost::from_parts(2.0, 4.0, 0.5, 1.0));
+
+        let mixed = split + Cost::from_total(1.0);
+        assert_eq!(mixed.total, 4.75);
+        assert_eq!(
+            (
+                mixed.input,
+                mixed.output,
+                mixed.cache_read,
+                mixed.cache_write
+            ),
+            (None, None, None, None)
+        );
+
+        let partial = Cost::from_total(1.0).input(0.5) + split;
+        assert_eq!(partial.input, Some(1.5));
+        assert_eq!(partial.output, None);
+        assert_eq!(partial.total, 4.75);
+    }
+
+    #[test]
+    fn unknown_cost_parts_are_absent_on_the_wire() {
+        let total = serde_json::to_value(Cost::from_total(0.5)).expect("serializes");
+        assert_eq!(total, json!({ "total": 0.5 }));
+        assert_eq!(
+            serde_json::from_value::<Cost>(total).expect("deserializes"),
+            Cost::from_total(0.5)
+        );
+
+        let split = Cost::from_parts(1.0, 2.0, 0.0, 0.0);
+        let value = serde_json::to_value(split).expect("serializes");
+        assert_eq!(
+            value,
+            json!({ "input": 1.0, "output": 2.0, "cache_read": 0.0, "cache_write": 0.0, "total": 3.0 })
+        );
+        assert_eq!(
+            serde_json::from_value::<Cost>(value).expect("deserializes"),
+            split
+        );
     }
 
     #[test]

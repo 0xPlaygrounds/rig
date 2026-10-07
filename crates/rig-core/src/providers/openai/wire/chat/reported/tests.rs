@@ -87,9 +87,11 @@ async fn perplexity_cites_its_url_list_and_reports_its_cost() {
     );
 
     let cost = response.usage.cost.expect("Perplexity reports a cost");
-    assert_eq!(cost.input, 0.00003);
-    assert_eq!(cost.output, 0.00007);
+    assert_eq!(cost.input, Some(0.00003));
+    assert_eq!(cost.output, Some(0.00007));
     assert_eq!(cost.total, 0.0051);
+    // Perplexity prices no cache, so those parts are unknown, not free.
+    assert_eq!((cost.cache_read, cost.cache_write), (None, None));
     // Cost is no token arithmetic: the counters are the recorded ones.
     assert_eq!(response.usage.input_tokens, Some(27));
     assert_eq!(response.usage.output_tokens, Some(74));
@@ -116,7 +118,7 @@ async fn a_perplexity_stream_cites_its_url_list_once() {
     let cost = response.usage.cost.expect("Perplexity reports a cost");
     assert_eq!(
         (cost.input, cost.output, cost.total),
-        (0.00001, 0.0, 0.00501)
+        (Some(0.00001), Some(0.0), 0.00501)
     );
 }
 

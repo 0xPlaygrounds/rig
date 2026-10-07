@@ -794,7 +794,12 @@ pub cost: Option<Cost>,
 
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Cost { pub input: f64, pub output: f64, pub cache_read: f64, pub cache_write: f64, pub total: f64 } // USD
+pub struct Cost {
+    // Each part `#[serde(default, skip_serializing_if = "Option::is_none")]`.
+    pub input: Option<f64>, pub output: Option<f64>,
+    pub cache_read: Option<f64>, pub cache_write: Option<f64>,
+    pub total: f64,
+} // USD
 ```
 
 - A cost the provider reports wins. A decoder reports it in the
@@ -814,7 +819,11 @@ pub struct Cost { pub input: f64, pub output: f64, pub cache_read: f64, pub cach
 - Cost is never part of token arithmetic: no counter is derived from it and
   it is derived from no counter except through `Pricing`.
 - A provider that reports only a total gives `total` its figure and the
-  parts `0.0`. Section 11 lists which providers split.
+  parts `None` (`Cost::from_total`), as `Pricing` writes `None` for an
+  unknown price; a part is never a guessed `0.0`. A `None` part is absent
+  when serialized and an absent part reads back as `None`. Section 11
+  lists which providers split. Perplexity reports input and output parts
+  and no cache parts, so its cache parts are `None`.
 - Uncached input is `input_tokens - cached_input_tokens -
   cache_creation_input_tokens`, because `Usage::input_tokens` counts cache
   reads and writes (`crates/rig-core/src/completion/request.rs:470-485`).
@@ -826,7 +835,7 @@ which sum only the token counters today). P1 extends them to `cost`:
 
 | `self.cost` | `other.cost` | result |
 |---|---|---|
-| `Some(a)` | `Some(b)` | `Some`, each of `input`, `output`, `cache_read`, `cache_write` and `total` summed |
+| `Some(a)` | `Some(b)` | `Some`: `total` summed; each of `input`, `output`, `cache_read` and `cache_write` summed when both sides know it, else `None` |
 | `Some(_)` | `None` | `None` |
 | `None` | `Some(_)` | `None` |
 | `None` | `None` | `None` |
@@ -837,7 +846,9 @@ included. So a fold that starts from `Usage::default()` keeps the cost of
 its first turn.
 
 `Some + None` is `None` because the `None` side is a turn whose cost is
-unknown. A partial sum would read as the cost of every turn and understate
+unknown. The same rule holds part by part inside `Cost`'s `Add`: a known
+part plus an unknown one is unknown, while `total`, which every cost has,
+always sums. A partial sum would read as the cost of every turn and understate
 it. The token counters keep today's rule, where an unreported side adds
 nothing. P1 lands this
 with `cost` always `None`, so every existing sum is unchanged. The
@@ -848,7 +859,7 @@ with `cost` always `None`, so every existing sum is unchanged. The
 | conflict | resolution | phase |
 |---|---|---|
 | `EncodeError` is a struct wrapping `ProviderError` (`crates/rig-core/src/error.rs:659`), not an enum, so `EncodeError::UnsupportedOption { .. }` cannot be a variant. | `ProviderError::UnsupportedOption(UnsupportedOption)` with the fixed field set, kind `Request`, plus `EncodeError::unsupported_option(&self) -> Option<&UnsupportedOption>` and `EncodeError::unsupported(UnsupportedOption) -> Self`. | P1 |
-| `Usage` derives `Eq` (`crates/rig-core/src/completion/request.rs:484`) and `Cost` holds `f64`. | P1 drops `Eq` from `Usage` (keeps `PartialEq`) and from every type that derived it only through `Usage`. Breaking; stated in P1's Migration. `Cost` stays `f64`. | P1 |
+| `Usage` derives `Eq` (`crates/rig-core/src/completion/request.rs:484`) and `Cost` holds `f64`. | P1 drops `Eq` from `Usage` (keeps `PartialEq`) and from every type that derived it only through `Usage`. Breaking; stated in P1's Migration. `Cost` keeps `f64` amounts: `total: f64` and `Option<f64>` parts. | P1 |
 | `#[non_exhaustive]` forbids an exhaustive pattern outside rig-core (E0638), so Bedrock, gRPC and Candle cannot destructure `GenerationOptions` without `..`. | `OptionFields<'_>`, a plain struct of borrowed options with no policy, built by `GenerationOptions::fields`. `fields` destructures `self` exhaustively in rig-core, so a new option breaks it first. The new `OptionFields` and `OptionMap` fields then break every wire, in rig-core and companion crates alike: all of them destructure `OptionFields` and build `OptionMap`, never `GenerationOptions`. | P2 |
 | `Catalog::resolve("anthropic/claude-opus-5-5")` collides with `ProviderRef`'s grammar `vendor[/format]:model` (`crates/rig-core/src/providers/registry.rs:623-636`), where `/` separates the format. | `resolve` reads `vendor[/format]:model` when the text holds a `:`, and otherwise splits at the first `/` as `vendor/model` (so `openrouter/anthropic/claude-sonnet-4.5` is OpenRouter's model `anthropic/claude-sonnet-4.5`). | P3 |
 | `ModelSpec.provider: ProviderId` cannot name `aws_bedrock`, `vertexai`, `gemini-grpc` or `candle`: the registry registers the OpenAI, Anthropic and Gemini formats only (`crates/rig-core/src/providers/registry.rs:63-73`). Guarantee 4 still needs entries for rig-bedrock's constants. | Settled in P3: a catalog-only `ProviderId` kind for `aws_bedrock`, `vertexai`, `gemini-grpc`, `candle` and `voyageai`, made only by `ProviderId::catalog` and the catalog. `ProviderId::new` and `resolve` keep rejecting them, `ProviderRef::registered` refuses them, `get` and `validate` work, and `connect` returns `ConnectError::CatalogOnly` naming where the models are served. It has no format and no preset, so `ProviderId::format`, `config` and `api_key_env` return `Option`; `ProviderRef` keeps its registered preset privately, so `ProviderRef::config` stays total and `ProviderRef::provider` returns its `Provider` by value. | P3 |

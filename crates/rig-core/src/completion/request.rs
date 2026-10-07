@@ -637,53 +637,98 @@ impl Usage {
     }
 }
 
-/// What one or more turns cost, in USD. `total` is what was charged; a
-/// provider that reports only a total leaves the parts at `0.0`.
+/// What one or more turns cost, in USD. `total` is what was charged. A part
+/// is `None` when it is unknown, as for a provider that reports only a
+/// total; it is never a guessed `0.0`. A `None` part is left out when
+/// serialized, and an absent one reads back as `None`.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
     /// Uncached input tokens.
-    pub input: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<f64>,
     /// Output tokens, reasoning included.
-    pub output: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<f64>,
     /// Input tokens read from a cache.
-    pub cache_read: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read: Option<f64>,
     /// Input tokens written to a cache.
-    pub cache_write: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<f64>,
     /// The whole charge.
     pub total: f64,
 }
 
 impl Cost {
-    /// A cost split into its parts; `total` is their sum.
+    /// A cost split into its parts, each known; `total` is their sum.
     pub fn from_parts(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Self {
         Self {
-            input,
-            output,
-            cache_read,
-            cache_write,
+            input: Some(input),
+            output: Some(output),
+            cache_read: Some(cache_read),
+            cache_write: Some(cache_write),
             total: input + output + cache_read + cache_write,
         }
     }
 
-    /// A cost known only as its total; every part is `0.0`.
+    /// A cost known only as its total; every part is `None`.
     pub fn from_total(total: f64) -> Self {
         Self {
+            input: None,
+            output: None,
+            cache_read: None,
+            cache_write: None,
             total,
-            ..Self::default()
         }
+    }
+
+    /// Set, or with `None` clear, [`Self::input`](field@Self::input).
+    /// `total` is left as it is.
+    pub fn input(mut self, input: impl Into<Option<f64>>) -> Self {
+        self.input = input.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::output`](field@Self::output).
+    /// `total` is left as it is.
+    pub fn output(mut self, output: impl Into<Option<f64>>) -> Self {
+        self.output = output.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::cache_read`](field@Self::cache_read).
+    /// `total` is left as it is.
+    pub fn cache_read(mut self, cache_read: impl Into<Option<f64>>) -> Self {
+        self.cache_read = cache_read.into();
+        self
+    }
+
+    /// Set, or with `None` clear, [`Self::cache_write`](field@Self::cache_write).
+    /// `total` is left as it is.
+    pub fn cache_write(mut self, cache_write: impl Into<Option<f64>>) -> Self {
+        self.cache_write = cache_write.into();
+        self
     }
 }
 
+/// Sum one part of two costs: unknown when either side's is unknown, since
+/// a known part plus an unknown one is not known.
+fn add_part(lhs: Option<f64>, rhs: Option<f64>) -> Option<f64> {
+    Some(lhs? + rhs?)
+}
+
+/// `total` always sums. Each part sums only when both sides know it, and is
+/// `None` otherwise, so a summed part never understates what it covers.
 impl Add for Cost {
     type Output = Self;
 
     fn add(self, other: Self) -> Self::Output {
         Self {
-            input: self.input + other.input,
-            output: self.output + other.output,
-            cache_read: self.cache_read + other.cache_read,
-            cache_write: self.cache_write + other.cache_write,
+            input: add_part(self.input, other.input),
+            output: add_part(self.output, other.output),
+            cache_read: add_part(self.cache_read, other.cache_read),
+            cache_write: add_part(self.cache_write, other.cache_write),
             total: self.total + other.total,
         }
     }
