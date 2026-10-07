@@ -266,3 +266,55 @@ fn redacted_reasoning_without_its_item_is_blank() {
         redacted.with_native(serde_json::json!({"type": "redacted_thinking", "data": "x"}));
     assert!(!with_item.is_blank());
 }
+
+/// A document's text and its file keep the JSON they have always had: a
+/// file is its source's spelling, text is `text`, and the old `string`
+/// spelling loads as text for a document and as base64 data for media.
+#[test]
+fn document_data_keeps_its_json_and_reads_the_string_spelling() {
+    use super::{DocumentData, DocumentSourceKind};
+    use serde_json::json;
+
+    let file = DocumentData::File(DocumentSourceKind::Base64("JVBERi0=".into()));
+    let spelled = json!({"type": "base64", "value": "JVBERi0="});
+    assert_eq!(serde_json::to_value(&file).ok(), Some(spelled.clone()));
+    assert_eq!(
+        serde_json::from_value::<DocumentData>(spelled).ok(),
+        Some(file)
+    );
+    for source in [
+        DocumentSourceKind::Url("https://example.com/a.pdf".into()),
+        DocumentSourceKind::FileId("file_1".into()),
+        DocumentSourceKind::Raw(vec![1, 2]),
+        DocumentSourceKind::Unknown,
+    ] {
+        let as_source = serde_json::to_value(&source).ok();
+        let data = DocumentData::from(source);
+        let as_data = serde_json::to_value(&data).ok();
+        assert_eq!(as_data, as_source);
+        let back = as_data.and_then(|value| serde_json::from_value::<DocumentData>(value).ok());
+        assert_eq!(back, Some(data));
+    }
+
+    let text = DocumentData::Text("notes".into());
+    let spelled = json!({"type": "text", "value": "notes"});
+    assert_eq!(serde_json::to_value(&text).ok(), Some(spelled.clone()));
+    assert_eq!(
+        serde_json::from_value::<DocumentData>(spelled).ok(),
+        Some(text.clone())
+    );
+
+    let legacy = json!({"type": "string", "value": "notes"});
+    assert_eq!(
+        serde_json::from_value::<DocumentData>(legacy.clone()).ok(),
+        Some(text)
+    );
+    assert_eq!(
+        serde_json::from_value::<DocumentSourceKind>(legacy).ok(),
+        Some(DocumentSourceKind::Base64("notes".into()))
+    );
+    assert_eq!(
+        DocumentData::default(),
+        DocumentData::File(DocumentSourceKind::Unknown)
+    );
+}
