@@ -636,11 +636,8 @@ impl MessagesDecoder {
         };
         let response_id = fields.str("id").map(|id| sink.scrub(id));
         sink.provider(verdict, response_id);
-        if let Some(error) = payload
-            .get("error")
-            .and_then(|error| serde::Deserialize::deserialize(error).ok())
-        {
-            ObservedError::emit(error, sink);
+        if let Some(error) = ObservedError::of(&payload) {
+            error.emit(sink);
         }
     }
 }

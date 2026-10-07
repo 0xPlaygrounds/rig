@@ -881,3 +881,59 @@ fn terminal_observes_nothing_without_an_open_attempt() {
         )
     )));
 }
+
+/// Every wire's observed error envelope comes from the one locator its
+/// `ProviderResponseError` reads: (document, code, kind, message).
+#[test]
+fn observed_errors_are_located_like_the_reported_error() {
+    use serde_json::json;
+    let cases = [
+        (
+            json!({"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}),
+            None,
+            Some("overloaded_error"),
+            Some("Overloaded"),
+        ),
+        (
+            json!({"type": "response.failed", "response": {"error": {"code": "server_error", "message": "m"}}}),
+            Some(json!("server_error")),
+            None,
+            Some("m"),
+        ),
+        (
+            json!({"error": {"code": 503, "status": "UNAVAILABLE", "message": "m"}}),
+            Some(json!(503)),
+            Some("UNAVAILABLE"),
+            Some("m"),
+        ),
+        // An error event's own `type` is its tag, not a kind.
+        (
+            json!({"type": "error", "code": "server_error", "message": "m"}),
+            Some(json!("server_error")),
+            None,
+            Some("m"),
+        ),
+        // An `error` string is the message alone.
+        (
+            json!({"error": "model failed to load"}),
+            None,
+            None,
+            Some("model failed to load"),
+        ),
+    ];
+    for (doc, code, kind, message) in cases {
+        let Some(error) = ObservedError::of(&doc) else {
+            panic!("an envelope: {doc}");
+        };
+        assert_eq!(error.code, code, "{doc}");
+        assert_eq!(error.kind.as_deref(), kind, "{doc}");
+        assert_eq!(error.message.as_deref(), message, "{doc}");
+    }
+    for doc in [
+        json!({"error": null}),
+        json!({"error": {}}),
+        json!({"id": "x"}),
+    ] {
+        assert!(ObservedError::of(&doc).is_none(), "{doc}");
+    }
+}

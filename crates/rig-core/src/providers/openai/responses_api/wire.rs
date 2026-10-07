@@ -320,25 +320,12 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
         return;
     };
-    let envelope = |error: &Value| ObservedError {
-        code: error.get("code").filter(|code| !code.is_null()).cloned(),
-        kind: error
-            .str("type")
-            .or_else(|| error.str("status"))
-            .map(str::to_owned),
-        message: error.str("message").map(str::to_owned),
-    };
+    let error = ObservedError::of(&payload);
     if payload.str("type") == Some("error") {
-        // The event carries its envelope either nested under `error` or as
-        // its own top-level fields; the nested form names the error type.
-        match payload.get("error").filter(|error| error.is_object()) {
-            Some(error) => envelope(error),
-            None => ObservedError {
-                kind: None,
-                ..envelope(&payload)
-            },
+        // An error event carries its envelope and nothing else.
+        if let Some(error) = error {
+            error.emit(sink);
         }
-        .emit(sink);
         return;
     }
     let object = payload
@@ -361,8 +348,8 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     };
     let response_id = object.str("id").map(|value| sink.scrub(value));
     sink.provider(verdict, response_id);
-    if let Some(error) = object.get("error").filter(|error| error.is_object()) {
-        envelope(error).emit(sink);
+    if let Some(error) = error {
+        error.emit(sink);
     }
 }
 

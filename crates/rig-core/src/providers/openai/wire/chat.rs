@@ -1885,10 +1885,7 @@ impl ChatDecoder {
         };
         let response_id = payload.str("id").map(|value| sink.scrub(value));
         sink.provider(verdict, response_id);
-        if let Some(error) = payload
-            .get("error")
-            .and_then(|error| ObservedError::deserialize(error).ok())
-        {
+        if let Some(error) = ObservedError::of(&payload) {
             error.emit(sink);
         }
     }

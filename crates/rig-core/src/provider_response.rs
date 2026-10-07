@@ -252,6 +252,12 @@ struct Envelope<'a> {
     nested: bool,
 }
 
+/// The error `doc` carries, where [`envelope`] locates it, and whether it
+/// nests in the document rather than being the document itself.
+pub(crate) fn located_error(doc: &serde_json::Value) -> Option<(&serde_json::Value, bool)> {
+    envelope(doc).and_then(|envelope| Some((envelope.error?, envelope.nested)))
+}
+
 /// Codes naming a transient condition, in any case, from every transport:
 /// HTTP envelopes, gRPC status names, AWS exception types.
 const TRANSIENT: &[&str] = &[

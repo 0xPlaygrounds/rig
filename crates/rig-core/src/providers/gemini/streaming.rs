@@ -372,13 +372,7 @@ impl GenerateContentDecoder {
         };
         let response_id = scrub(reply.str("responseId"));
         sink.provider(verdict, response_id);
-        if let Some(error) = reply.get("error").filter(|error| error.is_object()) {
-            let text = |key: &str| error.str(key).map(str::to_owned);
-            let error = crate::observe::ObservedError {
-                code: error.get("code").cloned(),
-                kind: text("status").or_else(|| text("type")),
-                message: text("message"),
-            };
+        if let Some(error) = crate::observe::ObservedError::of(&reply) {
             error.emit(sink);
         }
     }
