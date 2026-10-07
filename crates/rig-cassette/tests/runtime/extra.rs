@@ -48,8 +48,11 @@ async fn deepseek_error_facts(scenario: &str, streamed: bool) {
         ErrorProbe {
             prompt: "hi",
             max_tokens: Some(8),
-            additional_params: Some(serde_json::json!({ "thinking": { "type": "disabled" } })),
-            options: None,
+            additional_params: None,
+            options: Some(crate::ecs_matrix::corpus::TypedOptions::generation(
+                rig::completion::GenerationOptions::default()
+                    .reasoning(rig::completion::Reasoning::Off),
+            )),
             streamed,
             status: 400,
             code: Some("invalid_request_error"),
