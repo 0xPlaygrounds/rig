@@ -293,9 +293,9 @@ impl<O> AgentRunner<O> {
     /// Overlay `options` on the agent's generation options for this run:
     /// each field `options` sets wins, every other field keeps the agent's
     /// ([`GenerationOptions::overlay`](rig_core::completion::GenerationOptions::overlay)).
-    /// The policy cannot go back to
+    /// A policy `options` sets wins too, so a run can restore
     /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error)
-    /// over an agent's `Ignore`; set it on the agent.
+    /// over an agent's `Ignore`.
     ///
     /// Calls apply in order: this overlays only the fields `options` sets,
     /// so it wins over a shortcut such as [`Self::seed`] called before it

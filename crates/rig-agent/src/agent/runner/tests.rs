@@ -414,6 +414,29 @@ async fn generation_option_shortcuts_on_the_agent_and_the_run_equal_their_long_f
     assert_eq!(short, run);
 }
 
+/// A run's options restore `Error` over an agent's `Ignore`, through
+/// `options` and through the shortcut alike.
+#[tokio::test]
+async fn a_run_restores_the_error_policy_over_an_agents_ignore() {
+    use rig_core::completion::{GenerationOptions, OnUnsupported};
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone())
+        .seed(1)
+        .on_unsupported(OnUnsupported::Ignore)
+        .build();
+    let error = GenerationOptions::new().on_unsupported(OnUnsupported::Error);
+    let through_options = sent_options(&model, agent.prompt("go").options(error)).await;
+    assert_eq!(through_options.unsupported_policy(), OnUnsupported::Error);
+    assert_eq!(through_options.seed, Some(1));
+    let through_shortcut = sent_options(
+        &model,
+        agent.prompt("go").on_unsupported(OnUnsupported::Error),
+    )
+    .await;
+    assert_eq!(through_shortcut, through_options);
+}
+
 #[tokio::test]
 async fn generation_option_calls_apply_in_order() {
     use rig_core::completion::{Effort, GenerationOptions};
