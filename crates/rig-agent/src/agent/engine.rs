@@ -204,17 +204,17 @@ where
         let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
         // Tool items stream only as the projection of what the run committed
         // past `cursor`, which starts at `projection_start`. `executed` holds
-        // the settled batch's calls whose bodies ran; both surfaces check it.
+        // the settled batch's slots in commit order; both surfaces check it.
         let mut cursor = run.projection_start();
-        let mut executed: Vec<ToolCall> = Vec::new();
+        let mut executed: Vec<Option<ToolCall>> = Vec::new();
         macro_rules! project {
             ($label:lifetime) => {{
                 let committed = run.messages().get(cursor..).unwrap_or_default();
                 match committed_stream_items(committed, &std::mem::take(&mut executed)) {
                     Ok(items) => yield Ok(DriveItem::Projected(items)),
-                    Err(id) => fail!(run.cancel_error(format!(
-                        "agent run driver protocol violation: tool call {id} ran \
-                         but no committed result answers it"
+                    Err(at) => fail!(run.cancel_error(format!(
+                        "agent run driver protocol violation: tool batch \
+                         does not line up with its committed results at {at}"
                     )), break $label),
                 }
                 cursor = run.messages().len();
@@ -467,15 +467,10 @@ where
     }
 }
 
-/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces,
-/// and return the effective call of each call whose body ran.
-///
-/// The batch commits all-or-nothing, and streams nothing itself: the engine
-/// projects what it commits. On the stream, a
-/// [`ToolCall`](crate::agent::MultiTurnStreamItem::ToolCall) means the call is committed to
-/// history, and
-/// [`ToolExecutionCommitted`](crate::agent::MultiTurnStreamItem::ToolExecutionCommitted)
-/// (a returned call) means its body ran.
+/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
+/// It streams nothing: the engine projects what it commits. It returns one
+/// slot per committed result, in commit order, holding the effective call when
+/// that body ran (a [`ToolExecutionCommitted`](crate::agent::MultiTurnStreamItem::ToolExecutionCommitted)).
 ///
 /// - Every tool runs (sequentially at `tool_concurrency <= 1`, else
 ///   concurrently bounded by it), with outcomes collected.
@@ -498,7 +493,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     is_streaming: bool,
-) -> WasmBoxedFuture<'a, Result<Vec<ToolCall>, PromptError>>
+) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
@@ -600,7 +595,7 @@ where
         };
         let (committed, executed): (Vec<_>, Vec<_>) = settled.into_iter().unzip();
         run.tool_results(committed)?;
-        Ok(executed.into_iter().flatten().collect())
+        Ok(executed)
     })
 }
 

@@ -1,7 +1,7 @@
 //! The engine's tool stream items, built only here from committed history.
 
 use rig_core::completion::Message;
-use rig_core::message::{CallId, ToolCall};
+use rig_core::message::ToolCall;
 
 use crate::agent::MultiTurnStreamItem;
 use crate::run::{CommittedItem, project};
@@ -20,15 +20,17 @@ impl IntoIterator for ProjectedItems {
     }
 }
 
-/// Each tool call and result in `committed`; the result answering each call
-/// in `executed` (the settled batch's calls whose bodies ran) by id follows a
-/// [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted).
-/// A ran call that no committed result answers is refused with its id.
+/// Each tool call and result in `committed`. A non-empty `batch` has one
+/// slot per committed result of the settled tool batch, in commit order
+/// (provider ids may repeat): the i-th result pairs with the i-th slot, and
+/// follows a [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted)
+/// when that slot's body ran. A batch that does not line up is refused with
+/// the first unmatched result's id.
 pub(crate) fn committed_stream_items(
     committed: &[Message],
-    executed: &[ToolCall],
-) -> Result<ProjectedItems, CallId> {
-    let mut ran: Vec<&ToolCall> = executed.iter().collect();
+    batch: &[Option<ToolCall>],
+) -> Result<ProjectedItems, String> {
+    let mut slots = batch.iter();
     let mut items = Vec::new();
     for item in project(committed) {
         match item {
@@ -36,10 +38,15 @@ pub(crate) fn committed_stream_items(
                 tool_call: tool_call.clone(),
             }),
             CommittedItem::ToolResult(tool_result) => {
-                if let Some(index) = ran.iter().position(|call| call.id == tool_result.call) {
-                    items.push(MultiTurnStreamItem::ToolExecutionCommitted {
-                        tool_call: ran.remove(index).clone(),
-                    });
+                match slots.next() {
+                    Some(Some(ran)) if ran.id == tool_result.call => {
+                        items.push(MultiTurnStreamItem::ToolExecutionCommitted {
+                            tool_call: ran.clone(),
+                        });
+                    }
+                    Some(None) => {}
+                    None if batch.is_empty() => {}
+                    _ => return Err(tool_result.call.to_string()),
                 }
                 items.push(MultiTurnStreamItem::ToolResult {
                     tool_result: tool_result.clone(),
@@ -47,8 +54,8 @@ pub(crate) fn committed_stream_items(
             }
         }
     }
-    ran.first()
-        .map_or(Ok(ProjectedItems(items)), |call| Err(call.id.clone()))
+    let unmatched = slots.next().map(|_| "a slot with no result".to_owned());
+    unmatched.map_or(Ok(ProjectedItems(items)), Err)
 }
 
 #[cfg(test)]

@@ -1,5 +1,5 @@
 use super::*;
-use rig_core::message::{ToolFunction, ToolName, ToolResultContent, UserContent};
+use rig_core::message::{CallId, ToolFunction, ToolName, ToolResultContent, UserContent};
 use serde_json::json;
 
 fn call(id: &str) -> ToolCall {
@@ -43,24 +43,40 @@ fn kinds(items: ProjectedItems) -> Vec<String> {
 }
 
 #[test]
-fn an_execution_commit_precedes_the_result_of_the_call_whose_body_ran() {
-    let items = committed_stream_items(&results(&["a", "b"]), &[call("b")]).expect("answered");
+fn an_execution_commit_precedes_the_result_of_the_slot_whose_body_ran() {
+    let items =
+        committed_stream_items(&results(&["a", "b"]), &[None, Some(call("b"))]).expect("answered");
     assert_eq!(kinds(items), ["result:a", "ran:b", "result:b"]);
 }
 
 #[test]
-fn an_execution_commit_pairs_with_its_result_by_id_not_position() {
-    // Committed in the opposite order to the batch: the ran call still tags
-    // its own result.
-    let items = committed_stream_items(&results(&["b", "a"]), &[call("b")]).expect("answered");
-    assert_eq!(kinds(items), ["ran:b", "result:b", "result:a"]);
+fn a_repeated_id_tags_the_result_of_the_call_that_ran_not_its_skipped_twin() {
+    // One batch answers provider id `x` twice: the first `x` was skipped
+    // (hook or malformed arguments), the second ran. Only the second result
+    // carries the execution commit.
+    let items =
+        committed_stream_items(&results(&["x", "x"]), &[None, Some(call("x"))]).expect("answered");
+    assert_eq!(kinds(items), ["result:x", "ran:x", "result:x"]);
 }
 
 #[test]
-fn a_ran_call_no_committed_result_answers_is_refused() {
-    assert_eq!(
-        committed_stream_items(&results(&["a", "b"]), &[call("c")]).err(),
-        Some(CallId::from_wire("c")),
+fn a_projection_outside_a_tool_batch_tags_nothing() {
+    let items = committed_stream_items(&results(&["a"]), &[]).expect("projected");
+    assert_eq!(kinds(items), ["result:a"]);
+}
+
+#[test]
+fn a_batch_that_does_not_line_up_with_the_committed_results_is_refused() {
+    assert!(
+        committed_stream_items(&results(&["a", "b"]), &[Some(call("c")), None]).is_err(),
         "a ran call must not tag some other call's result"
+    );
+    assert!(
+        committed_stream_items(&results(&["a"]), &[None, Some(call("b"))]).is_err(),
+        "a slot with no committed result is refused"
+    );
+    assert!(
+        committed_stream_items(&results(&["a", "b"]), &[None]).is_err(),
+        "a committed result with no slot is refused"
     );
 }

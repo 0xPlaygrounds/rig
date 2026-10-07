@@ -4109,3 +4109,102 @@ async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
         .collect();
     assert_eq!(tool_items, ["call:call_1", "ran:call_1", "result:call_1"]);
 }
+
+/// Skips any dispatch whose arguments name `100`.
+struct SkipHundredHook;
+
+impl AgentHook for SkipHundredHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        match event.tool_args() {
+            Some(args) if args.contains("100") => DispatchAction::skip("blocked by policy"),
+            _ => DispatchAction::proceed(),
+        }
+    }
+}
+
+/// A host-built turn may repeat a provider id; `AgentRun::tool_results`
+/// answers such a batch as a multiset. Resumed mid-batch, the first `x` is
+/// hook-skipped and the second runs: the execution commit must tag the
+/// second result, with that call's arguments, not the first result that
+/// merely shares its id.
+#[tokio::test]
+async fn a_repeated_call_id_tags_the_result_whose_body_ran() {
+    let add = |args: serde_json::Value| {
+        AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
+            "x",
+            rig_core::message::ToolFunction::new(
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                args,
+            ),
+        ))
+    };
+    let mut run = AgentRun::new("use the tool").max_turns(3);
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallModel { .. })
+    ));
+    run.model_response(crate::run::ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![
+            add(serde_json::json!({"x": 100, "y": 0})),
+            add(serde_json::json!({"x": 1, "y": 2})),
+        ],
+        Usage::default(),
+        crate::run::TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
+        serde_json::json!({}),
+    ))
+    .expect("the turn is ingested");
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallTools { .. })
+    ));
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("continued"),
+        MockStreamEvent::final_response_with_total_tokens(6),
+    ]]))
+    .tool(MockAddTool)
+    .add_hook(SkipHundredHook)
+    .build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .resume(run)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the resumed run streams");
+
+    let tool_items: Vec<String> = items
+        .iter()
+        .filter_map(|item| match item {
+            MultiTurnStreamItem::ToolCall { tool_call } => Some(format!(
+                "call:{}",
+                serde_json::json!(tool_call.function.arguments)
+            )),
+            MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => Some(format!(
+                "ran:{}",
+                serde_json::json!(tool_call.function.arguments)
+            )),
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                let body = serde_json::to_string(tool_result).unwrap_or_default();
+                Some(if body.contains("blocked by policy") {
+                    "result:skipped".to_owned()
+                } else {
+                    "result:ran".to_owned()
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        tool_items,
+        [
+            r#"call:{"x":100,"y":0}"#,
+            r#"call:{"x":1,"y":2}"#,
+            "result:skipped",
+            r#"ran:{"x":1,"y":2}"#,
+            "result:ran",
+        ],
+        "the execution commit must precede the result of the call that ran"
+    );
+}
