@@ -3820,3 +3820,155 @@ async fn the_streamed_invalid_call_context_reports_the_patched_tool_choice() {
     assert!(error.is_none(), "the skip is accepted, got {error:?}");
     assert_eq!(hook.seen(), vec![Some(ToolChoice::Required)]);
 }
+
+/// What a stream consumer (a TUI keyed by call id) learns about tool calls,
+/// next to what the run committed to history.
+#[derive(Debug, Default)]
+struct StreamedToolLedger {
+    /// Call ids the stream announced: a tool-call `End` part or a
+    /// `ToolCall` item.
+    announced: BTreeSet<rig_core::message::CallId>,
+    /// Call ids the stream delivered a `ToolResult` for.
+    streamed_results: BTreeSet<rig_core::message::CallId>,
+    /// Call ids that history (`FinalResponse::messages`) holds a result for.
+    committed_results: BTreeSet<rig_core::message::CallId>,
+    /// Call ids that history holds an assistant tool call for.
+    committed_calls: BTreeSet<rig_core::message::CallId>,
+}
+
+async fn collect_streamed_tool_ledger(
+    mut stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Unpin,
+) -> StreamedToolLedger {
+    let mut ledger = StreamedToolLedger::default();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            }))) => {
+                ledger.announced.insert(call.id);
+            }
+            Ok(MultiTurnStreamItem::ToolCall { tool_call }) => {
+                ledger.announced.insert(tool_call.id);
+            }
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
+                ledger.streamed_results.insert(tool_result.call);
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                for message in response.messages() {
+                    match message {
+                        Message::User { content } => {
+                            for item in content.iter() {
+                                if let UserContent::ToolResult(result) = item {
+                                    ledger.committed_results.insert(result.call.clone());
+                                }
+                            }
+                        }
+                        Message::Assistant(assistant) => {
+                            for item in assistant.content.iter() {
+                                if let AssistantContent::ToolCall(call) = item {
+                                    ledger.committed_calls.insert(call.id.clone());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                break;
+            }
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+    ledger
+}
+
+/// The stream is a projection of what the run commits: every call the
+/// stream announces is eventually answered on the stream, every streamed
+/// result answers an announced call, and the results on the stream are the
+/// results in history.
+fn assert_stream_projects_history(ledger: &StreamedToolLedger) {
+    let unanswered: Vec<_> = ledger
+        .announced
+        .difference(&ledger.streamed_results)
+        .collect();
+    let orphaned: Vec<_> = ledger
+        .streamed_results
+        .difference(&ledger.announced)
+        .collect();
+    let committed_not_streamed: Vec<_> = ledger
+        .committed_results
+        .difference(&ledger.streamed_results)
+        .collect();
+    let committed_calls_not_announced: Vec<_> = ledger
+        .committed_calls
+        .difference(&ledger.announced)
+        .collect();
+    assert!(
+        unanswered.is_empty()
+            && orphaned.is_empty()
+            && committed_not_streamed.is_empty()
+            && committed_calls_not_announced.is_empty(),
+        "stream disagrees with history:\n  announced on stream but never answered on stream: \
+         {unanswered:?}\n  result streamed for a call the stream never announced: {orphaned:?}\n  \
+         result committed to history but never streamed: {committed_not_streamed:?}\n  call \
+         committed to history but never announced: {committed_calls_not_announced:?}\n  \
+         ledger: {ledger:#?}"
+    );
+}
+
+fn mixed_valid_and_invalid_tool_turn_model() -> MockCompletionModel {
+    MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("checking "),
+            MockStreamEvent::tool_call("tool_call_1", "add", serde_json::json!({"x": 2, "y": 3}))
+                .with_call_id("call_1"),
+            MockStreamEvent::tool_call(
+                "tool_call_2",
+                "default_api",
+                serde_json::json!({"x": 4, "y": 5}),
+            )
+            .with_call_id("call_2"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("continued"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ])
+}
+
+#[tokio::test]
+async fn invalid_tool_call_skip_streams_the_tool_results_history_commits() {
+    let agent = AgentBuilder::new(mixed_valid_and_invalid_tool_turn_model())
+        .tool(MockAddTool)
+        .build();
+    let stream = agent
+        .prompt("use the tool")
+        .add_hook(SkipDefaultApiHook)
+        .max_turns(3)
+        .history(Vec::<Message>::new())
+        .stream();
+
+    let ledger = collect_streamed_tool_ledger(stream).await;
+
+    assert_stream_projects_history(&ledger);
+}
+
+#[tokio::test]
+async fn invalid_tool_call_retry_streams_the_tool_results_history_commits() {
+    let agent = AgentBuilder::new(mixed_valid_and_invalid_tool_turn_model())
+        .tool(MockAddTool)
+        .build();
+    let stream = agent
+        .prompt("use the tool")
+        .add_hook(RetryDefaultApiHook)
+        .max_turns(3)
+        .history(Vec::<Message>::new())
+        .max_invalid_tool_call_retries(1)
+        .stream();
+
+    let ledger = collect_streamed_tool_ledger(stream).await;
+
+    assert_stream_projects_history(&ledger);
+}
