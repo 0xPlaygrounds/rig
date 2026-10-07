@@ -222,6 +222,7 @@ Builders and the request:
 
 ```rust
 impl GenerationOptions {
+    pub fn new() -> Self; // == default()
     pub fn reasoning(self, reasoning: impl Into<Reasoning>) -> Self; // From<Effort> for Reasoning
     pub fn cache(self, cache: CacheRetention) -> Self;
     pub fn service_tier(self, tier: ServiceTier) -> Self;
@@ -247,7 +248,30 @@ impl GenerationOptions {
 #[serde(default, skip_serializing_if = "GenerationOptions::is_default")]
 pub options: GenerationOptions,
 pub fn options(self, options: GenerationOptions) -> Self;
+// and one shortcut per field, with the GenerationOptions builder's signature:
+pub fn reasoning(self, reasoning: impl Into<Reasoning>) -> Self; // cache, service_tier, verbosity,
+// parallel_tool_calls, top_p, seed, stop, on_unsupported alike
 ```
+
+`GenerationOptions` is the reusable value: an agent's options
+(`AgentBuilder::options`), the base and the overlay of a run
+(`GenerationOptions::overlay`), and the serialized form a stored request
+carries. For one call, `CompletionRequest`, `AgentBuilder` and `AgentRunner`
+each have a shortcut per field (`.reasoning(Effort::High).seed(7)`), so a
+caller need not know which knobs are request fields (`temperature`,
+`max_tokens`) and which are options. A shortcut writes its one field into
+that value and keeps the others; it equals
+`.options(GenerationOptions::new().<field>(..))` on a fresh request.
+
+Calls apply in order. `CompletionRequest::options` and
+`AgentBuilder::options` replace every field, so a shortcut called before
+them is lost and one called after sets its field on top.
+`AgentRunner::options` overlays only the fields it sets (as before), so it
+wins over an earlier shortcut for those fields; a later shortcut sets its
+field on top. No method name clashed: `CompletionRequest`, `AgentBuilder`
+and `AgentRunner` had none of these names (`CompletionResponse::stop` and
+`::reasoning` are on the reply). `RequestPatch` (per-turn hook patches) has
+no options field and gets no shortcuts.
 
 `CompletionRequest::additional_params` stays a public field with its
 builder, as decision A requires of the escape hatch.

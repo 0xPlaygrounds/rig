@@ -28,6 +28,13 @@ pub(crate) use merge::{CatalogRefusal, catalog_refusals};
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is
 /// reported through [`Self::unsupported_policy`], never silently dropped.
+///
+/// This is the reusable value: build it once and hand it to an agent
+/// (`AgentBuilder::options`), overlay a run's on an agent's
+/// ([`Self::overlay`]), or store it serialized with a request. For a single
+/// request, `CompletionRequest`, `AgentBuilder` and `AgentRunner` also have
+/// a shortcut per field (`.seed(7)`) that writes that one field into their
+/// options.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct GenerationOptions {
@@ -64,6 +71,11 @@ pub struct GenerationOptions {
 }
 
 impl GenerationOptions {
+    /// No option set and no policy set; the same as [`Self::default`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     /// Whether every field holds its default: no option set, and no
     /// policy set. A request whose options are default is not checked
     /// against its model's catalog rules; setting any field, the policy

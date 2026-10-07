@@ -530,3 +530,110 @@ mod empty_new_fields_are_not_serialized {
         assert_eq!(Usage::default() + Usage::default(), Usage::default());
     }
 }
+
+/// The generation-option shortcuts write the field their long form writes.
+mod generation_option_shortcuts {
+    use super::CompletionRequest;
+    use crate::completion::{
+        CacheRetention, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier, Verbosity,
+    };
+
+    /// The request as JSON.
+    fn json(request: &CompletionRequest) -> serde_json::Value {
+        serde_json::to_value(request).unwrap_or_default()
+    }
+
+    #[test]
+    fn each_shortcut_equals_its_long_form() {
+        type Pair = (
+            fn(CompletionRequest) -> CompletionRequest,
+            fn(GenerationOptions) -> GenerationOptions,
+        );
+        let pairs: [Pair; 10] = [
+            (|r| r.reasoning(Effort::High), |o| o.reasoning(Effort::High)),
+            (
+                |r| r.reasoning(Reasoning::Budget { tokens: 512 }),
+                |o| o.reasoning(Reasoning::Budget { tokens: 512 }),
+            ),
+            (
+                |r| r.cache(CacheRetention::Long),
+                |o| o.cache(CacheRetention::Long),
+            ),
+            (
+                |r| r.service_tier(ServiceTier::Flex),
+                |o| o.service_tier(ServiceTier::Flex),
+            ),
+            (
+                |r| r.verbosity(Verbosity::Low),
+                |o| o.verbosity(Verbosity::Low),
+            ),
+            (
+                |r| r.parallel_tool_calls(false),
+                |o| o.parallel_tool_calls(false),
+            ),
+            (|r| r.top_p(0.9), |o| o.top_p(0.9)),
+            (|r| r.seed(7), |o| o.seed(7)),
+            (|r| r.stop(["END", "STOP"]), |o| o.stop(["END", "STOP"])),
+            (
+                |r| r.on_unsupported(OnUnsupported::Ignore),
+                |o| o.on_unsupported(OnUnsupported::Ignore),
+            ),
+        ];
+        for (short, long) in pairs {
+            let short = short(CompletionRequest::new("hi"));
+            let long = CompletionRequest::new("hi").options(long(GenerationOptions::new()));
+            assert!(!short.options.is_default());
+            assert_eq!(short.options, long.options);
+            assert_eq!(json(&short), json(&long));
+        }
+    }
+
+    #[test]
+    fn shortcuts_keep_the_other_fields() {
+        let request = CompletionRequest::new("hi")
+            .reasoning(Effort::Low)
+            .cache(CacheRetention::Short)
+            .service_tier(ServiceTier::Priority)
+            .verbosity(Verbosity::High)
+            .parallel_tool_calls(true)
+            .top_p(0.5)
+            .seed(3)
+            .stop(["x"])
+            .on_unsupported(OnUnsupported::Error);
+        let options = GenerationOptions::new()
+            .reasoning(Effort::Low)
+            .cache(CacheRetention::Short)
+            .service_tier(ServiceTier::Priority)
+            .verbosity(Verbosity::High)
+            .parallel_tool_calls(true)
+            .top_p(0.5)
+            .seed(3)
+            .stop(["x"])
+            .on_unsupported(OnUnsupported::Error);
+        assert_eq!(request.options, options);
+        assert_eq!(
+            json(&request),
+            json(&CompletionRequest::new("hi").options(options))
+        );
+    }
+
+    #[test]
+    fn calls_apply_in_order() {
+        let shared = GenerationOptions::new().reasoning(Effort::High).seed(1);
+        // `options` after a shortcut replaces every field, the shortcut's too.
+        let request = CompletionRequest::new("hi")
+            .seed(7)
+            .top_p(0.2)
+            .options(shared.clone());
+        assert_eq!(request.options, shared);
+        // A shortcut after `options` sets its one field on top.
+        let request = CompletionRequest::new("hi").options(shared.clone()).seed(7);
+        assert_eq!(request.options, shared.seed(7));
+    }
+
+    #[test]
+    fn new_is_the_default() {
+        assert_eq!(GenerationOptions::new(), GenerationOptions::default());
+        assert!(GenerationOptions::new().is_default());
+    }
+}

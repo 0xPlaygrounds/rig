@@ -339,6 +339,120 @@ async fn provider_option_on_the_agent_and_the_run_equals_the_long_form() {
     assert!(short.iter().all(|options| options.contains::<Beta>()));
 }
 
+/// The generation options of the last request `model` received, once `run`
+/// has run.
+async fn sent_options(
+    model: &MockCompletionModel,
+    run: crate::agent::AgentRunner,
+) -> rig_core::completion::GenerationOptions {
+    run.run().await.expect("the run's request succeeds");
+    model
+        .requests()
+        .pop()
+        .map(|request| request.options)
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn generation_option_shortcuts_on_the_agent_and_the_run_equal_their_long_forms() {
+    use rig_core::completion::{
+        CacheRetention, Effort, GenerationOptions, OnUnsupported, ServiceTier, Verbosity,
+    };
+
+    let long = GenerationOptions::new()
+        .reasoning(Effort::Low)
+        .cache(CacheRetention::Short)
+        .service_tier(ServiceTier::Flex)
+        .verbosity(Verbosity::Low)
+        .parallel_tool_calls(false)
+        .top_p(0.5)
+        .seed(3)
+        .stop(["x"])
+        .on_unsupported(OnUnsupported::Ignore);
+    let model = MockCompletionModel::text("done");
+    let agent = AgentBuilder::new(model.clone())
+        .reasoning(Effort::Low)
+        .cache(CacheRetention::Short)
+        .service_tier(ServiceTier::Flex)
+        .verbosity(Verbosity::Low)
+        .parallel_tool_calls(false)
+        .top_p(0.5)
+        .seed(3)
+        .stop(["x"])
+        .on_unsupported(OnUnsupported::Ignore)
+        .build();
+    assert_eq!(sent_options(&model, agent.prompt("go")).await, long);
+
+    let run = GenerationOptions::new()
+        .reasoning(Effort::High)
+        .cache(CacheRetention::Long)
+        .service_tier(ServiceTier::Priority)
+        .verbosity(Verbosity::High)
+        .parallel_tool_calls(true)
+        .top_p(0.9)
+        .seed(9)
+        .stop(["y", "z"])
+        .on_unsupported(OnUnsupported::Error);
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone())
+        .options(long.clone())
+        .build();
+    let short = agent
+        .prompt("go")
+        .reasoning(Effort::High)
+        .cache(CacheRetention::Long)
+        .service_tier(ServiceTier::Priority)
+        .verbosity(Verbosity::High)
+        .parallel_tool_calls(true)
+        .top_p(0.9)
+        .seed(9)
+        .stop(["y", "z"])
+        .on_unsupported(OnUnsupported::Error);
+    let short = sent_options(&model, short).await;
+    let long = sent_options(&model, agent.prompt("go").options(run.clone())).await;
+    assert_eq!(short, long);
+    assert_eq!(short, run);
+}
+
+#[tokio::test]
+async fn generation_option_calls_apply_in_order() {
+    use rig_core::completion::{Effort, GenerationOptions};
+
+    let shared = GenerationOptions::new().reasoning(Effort::High).seed(1);
+    // On the agent `options` replaces every field.
+    let model = MockCompletionModel::text("done");
+    let agent = AgentBuilder::new(model.clone())
+        .seed(7)
+        .top_p(0.2)
+        .options(shared.clone())
+        .build();
+    assert_eq!(sent_options(&model, agent.prompt("go")).await, shared);
+    let model = MockCompletionModel::text("done");
+    let agent = AgentBuilder::new(model.clone())
+        .options(shared.clone())
+        .seed(7)
+        .build();
+    assert_eq!(
+        sent_options(&model, agent.prompt("go")).await,
+        shared.clone().seed(7)
+    );
+    // On a run `options` overlays the fields it sets, over a shortcut
+    // called before it; a shortcut called after sets its field on top.
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone()).build();
+    let before = agent
+        .prompt("go")
+        .seed(7)
+        .top_p(0.2)
+        .options(shared.clone());
+    assert_eq!(
+        sent_options(&model, before).await,
+        shared.clone().top_p(0.2)
+    );
+    let after = agent.prompt("go").options(shared.clone()).seed(7);
+    assert_eq!(sent_options(&model, after).await, shared.seed(7));
+}
+
 #[tokio::test]
 async fn runner_can_clear_configured_request_defaults() {
     let model = MockCompletionModel::text("done");
