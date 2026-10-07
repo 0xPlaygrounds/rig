@@ -49,12 +49,15 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use futures::{Stream, StreamExt};
-use rig::completion::CompletionRequest;
 use rig::completion::Usage;
+use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
+use rig::providers::gemini::extension::{
+    GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
+};
 use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 
 const MODEL: &str = "gemini-2.5-flash";
@@ -317,12 +320,14 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
 /// 2.5-flash spends seconds generating hidden thoughts (no chunks sent), which
 /// is indistinguishable from a stall and would trip the read timeout before any
 /// real partial output — masking the injected disruptions.
-fn no_thinking_params() -> serde_json::Value {
-    serde_json::json!({
-        "generationConfig": {
-            "thinkingConfig": { "thinkingBudget": 0, "includeThoughts": false }
-        }
-    })
+fn no_thinking(request: CompletionRequest) -> anyhow::Result<CompletionRequest> {
+    let no_thoughts = GeminiOptions::new().generate_content(
+        GenerateContentOptions::new()
+            .generation_config(GenerationConfig::new().include_thoughts(false)),
+    );
+    Ok(request
+        .options(GenerationOptions::default().reasoning(Reasoning::Off))
+        .provider_options(ProviderOptions::new().with::<GeminiExt>(&no_thoughts)?))
 }
 
 async fn run_scenario(
@@ -334,12 +339,11 @@ async fn run_scenario(
 ) -> anyhow::Result<Report> {
     let model = Gemini::from_env()?.completion(MODEL);
 
-    let stream = model.stream(
+    let stream = model.stream(no_thinking(
         CompletionRequest::new(prompt)
             .temperature(0.7)
-            .max_tokens(2000)
-            .additional_params(no_thinking_params()),
-    )?;
+            .max_tokens(2000),
+    )?)?;
 
     let disrupted = Disrupt::new(stream.into_relay(), mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

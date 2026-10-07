@@ -4,7 +4,9 @@ use std::cell::RefCell;
 
 use rig::{
     agent::{Agent, AgentBuilder},
+    candle::extension::{CandleExt, CandleOptions},
     candle::{CandleModel, GgufModelData},
+    completion::ProviderOptions,
     message::Message,
 };
 use wasm_bindgen::prelude::*;
@@ -73,6 +75,9 @@ pub fn initialize() -> Result<(), JsValue> {
         weights: WEIGHTS,
     })
     .map_err(|error| js_error(BrowserModelError::Initialization(error.to_string())))?;
+    let sampler = ProviderOptions::new()
+        .with::<CandleExt>(&CandleOptions::default().repeat_penalty(1.0))
+        .map_err(|error| js_error(BrowserModelError::Initialization(error.to_string())))?;
     let agent = AgentBuilder::new(model.completion())
         .preamble(
             "Repeat facts the user asks you to remember. Use those facts in later answers. \
@@ -80,7 +85,7 @@ pub fn initialize() -> Result<(), JsValue> {
         )
         .temperature(0.0)
         .max_tokens(32)
-        .additional_params(serde_json::json!({"repeat_penalty": 1.0}))
+        .provider_options(sampler)
         .build();
     CHAT_STATE.with(|state| {
         state.replace(Some(ChatState {

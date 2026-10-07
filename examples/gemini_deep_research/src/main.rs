@@ -1,9 +1,13 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, CompletionResponse, ProviderOptions};
 use rig::providers::gemini::Gemini;
+use rig::providers::gemini::extension::{
+    AgentConfig, GeminiExt, GeminiOptions, InteractionStatus, InteractionsOptions,
+    ThinkingSummaries,
+};
 use rig::streaming::{Item, StreamEvent};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing_subscriber::EnvFilter;
@@ -27,32 +31,29 @@ fn deep_research_agent() -> String {
 
 /// The Deep Research request.
 ///
-/// The Interactions wire reads the fields rig does not model from
-/// `additional_params`, so `agent`, `background` and `agent_config` ride there;
+/// `agent`, `background` and `agent_config` are typed Interactions options;
 /// `stream` is not among them, because the wire takes that from whether the
 /// caller asked for `completion` or `stream`.
 fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> CompletionRequest {
+) -> Result<CompletionRequest> {
     // Deep Research is selected by `agent`, which suppresses `model` in the
     // outgoing body — matching the official Gemini Deep Research examples.
-    let mut params = serde_json::Map::from_iter([
-        ("agent".to_owned(), json!(agent.into())),
-        ("background".to_owned(), json!(true)),
-    ]);
+    let mut interactions = InteractionsOptions::new().agent(agent).background(true);
 
     if stream {
         // The Gemini docs recommend enabling thinking summaries for Deep
         // Research streams; otherwise a stream may only include final text.
-        params.insert(
-            "agent_config".to_owned(),
-            json!({ "type": "deep-research", "thinking_summaries": "auto" }),
-        );
+        interactions = interactions.agent_config(AgentConfig::DeepResearch {
+            thinking_summaries: Some(ThinkingSummaries::Auto),
+        });
     }
 
-    CompletionRequest::new(prompt.into()).additional_params(serde_json::Value::Object(params))
+    let options = GeminiOptions::new().interactions(interactions);
+    Ok(CompletionRequest::new(prompt.into())
+        .provider_options(ProviderOptions::new().with::<GeminiExt>(&options)?))
 }
 
 /// The text items of a model output step's `content`, one per line.
@@ -81,51 +82,75 @@ fn last_model_output_text(interaction: &Value) -> Option<String> {
     })
 }
 
-/// The interaction's lifecycle `status`, as the API spells it.
-fn status(interaction: &Value) -> Option<&str> {
-    interaction["status"].as_str()
+/// An interaction as one reply reports it: its lifecycle `status`, read from
+/// the typed reply extras, and its document, whose `steps` carry the output.
+struct Interaction {
+    status: Option<InteractionStatus>,
+    document: Value,
 }
 
-/// Whether the interaction stopped running. `requires_action` is terminal
-/// too: it waits on caller-supplied tool results, not on further polling.
-fn is_terminal(interaction: &Value) -> bool {
-    status(interaction).is_some_and(|status| !matches!(status, "in_progress" | "queued"))
-}
+impl Interaction {
+    fn from_response(response: CompletionResponse) -> Result<Self> {
+        let status = response
+            .extras::<GeminiExt>()
+            .transpose()?
+            .and_then(|extras| extras.status);
+        Ok(Self {
+            status,
+            document: response.raw,
+        })
+    }
 
-fn print_interaction_result(interaction: &Value) {
-    match status(interaction) {
-        Some("completed") => match last_model_output_text(interaction) {
-            Some(text) => println!("{text}"),
-            None => println!("No text output returned."),
-        },
-        Some(status) => println!("Research ended with status: {status}"),
-        None => println!("Research ended without a status."),
+    /// Whether the interaction stopped running. `requires_action` is
+    /// terminal too: it waits on caller-supplied tool results, not on
+    /// further polling. `queued` has no variant of its own.
+    fn is_terminal(&self) -> bool {
+        self.status.as_ref().is_some_and(|status| {
+            !matches!(status, InteractionStatus::InProgress)
+                && !matches!(status, InteractionStatus::Unknown(name) if name == "queued")
+        })
+    }
+
+    fn status_label(&self) -> String {
+        self.status
+            .as_ref()
+            .map_or_else(|| "in_progress".to_owned(), |status| format!("{status:?}"))
+    }
+
+    fn print_result(&self) {
+        match &self.status {
+            Some(InteractionStatus::Completed) => match last_model_output_text(&self.document) {
+                Some(text) => println!("{text}"),
+                None => println!("No text output returned."),
+            },
+            Some(status) => println!("Research ended with status: {status:?}"),
+            None => println!("Research ended without a status."),
+        }
     }
 }
 
 /// Poll a background interaction until it reaches a terminal state.
 ///
 /// The poll wire's reply is the interaction document, so it arrives whole on
-/// [`CompletionResponse::raw`](rig::completion::CompletionResponse::raw): the
-/// normalized halves (`choice`, `usage`) are the folded turn, and the
-/// provider's own lifecycle fields, `status` and `steps`, are read out of
-/// that JSON.
+/// [`CompletionResponse::raw`]: the normalized halves (`choice`, `usage`) are
+/// the folded turn, the lifecycle `status` is a typed reply extra, and the
+/// `steps`, which no typed field covers, are read out of that JSON.
 async fn poll_until_terminal(
     gemini: &Gemini,
     interaction_id: &str,
     request: &CompletionRequest,
-) -> Result<Value> {
+) -> Result<Interaction> {
     let model = gemini.interaction(interaction_id);
 
     loop {
-        let interaction = model.call(request.clone()).await?.raw;
-        if is_terminal(&interaction) {
+        let interaction = Interaction::from_response(model.call(request.clone()).await?)?;
+        if interaction.is_terminal() {
             return Ok(interaction);
         }
 
         println!(
             "Status: {}. Polling again in {POLL_INTERVAL_SECS}s...",
-            status(&interaction).unwrap_or("in_progress")
+            interaction.status_label()
         );
         sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
     }
@@ -158,7 +183,7 @@ fn handle_stream_item(state: &mut StreamState, item: Item<StreamEvent>) {
 /// The finished stream's response carries the interaction id rig normalizes
 /// and, as its `raw`, Gemini's own interaction document for the finished run,
 /// its steps rebuilt from the stream.
-fn finish_research(state: &mut StreamState, response: rig::completion::CompletionResponse) {
+fn finish_research(state: &mut StreamState, response: CompletionResponse) {
     if let Some(response_id) = response.response_id() {
         state.interaction_id = Some(response_id.to_owned());
     }
@@ -184,7 +209,7 @@ async fn main() -> Result<()> {
     let agent = deep_research_agent();
     let gemini = Gemini::from_env()?;
 
-    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming);
+    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
     // The wire that opens an interaction, built once for either surface.
     let interactions = gemini.interactions(agent.as_str());
 
@@ -246,17 +271,17 @@ async fn main() -> Result<()> {
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
             let probe = gemini.interaction(interaction_id.as_str());
-            let interaction = probe.call(request.clone()).await?.raw;
-            if is_terminal(&interaction) {
+            let interaction = Interaction::from_response(probe.call(request.clone()).await?)?;
+            if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
-                print_interaction_result(&interaction);
+                interaction.print_result();
                 break;
             }
 
             attempt += 1;
             println!(
                 "\nStream interrupted while status was {}. Reconnecting in {STREAM_RETRY_DELAY_SECS}s...",
-                status(&interaction).unwrap_or("in_progress")
+                interaction.status_label()
             );
             sleep(Duration::from_secs(STREAM_RETRY_DELAY_SECS)).await;
         }
@@ -266,7 +291,7 @@ async fn main() -> Result<()> {
         {
             println!("Switching to polling for interaction {interaction_id}...");
             let interaction = poll_until_terminal(&gemini, interaction_id, &request).await?;
-            print_interaction_result(&interaction);
+            interaction.print_result();
         }
 
         if let Some(interaction_id) = state.interaction_id {
@@ -288,7 +313,7 @@ async fn main() -> Result<()> {
     println!("Research started: {interaction_id}");
 
     let interaction = poll_until_terminal(&gemini, interaction_id, &request).await?;
-    print_interaction_result(&interaction);
+    interaction.print_result();
 
     Ok(())
 }
