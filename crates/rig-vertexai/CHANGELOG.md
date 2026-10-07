@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.43.0...rig-vertexai-v0.44.0) - 2026-10-07
+
+### Added
+
+- typed generation options, model catalog, provider extensions and normalized replies ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2750
+
+### Fixed
+
+- [**breaking**] unknown finish reasons are one outcome, a caller's choice, and never silent ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2726
+
+### Other
+
+- shape-matched cassettes, encoder snapshots, and a coverage gate ([#2720](https://github.com/0xPlaygrounds/rig/pull/2720)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2720
+- *(message)* [**breaking**] item-shaped assistant history with provenance ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] derive PromptResponse output from content, tighten extractor ([#2690](https://github.com/0xPlaygrounds/rig/pull/2690)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- [**breaking**] consistent provider client constructors (Anthropic dialect, Bedrock builder, Vertex errors) ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2691
+- [**breaking**] drop mirror types kept in step by hand-written conversions ([#2656](https://github.com/0xPlaygrounds/rig/pull/2656)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2656
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.42.0...rig-vertexai-v0.43.0) - 2026-09-30
 
 ### Added

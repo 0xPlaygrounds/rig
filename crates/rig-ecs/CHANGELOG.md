@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.43.0...rig-ecs-v0.44.0) - 2026-10-07
+
+### Added
+
+- typed generation options, model catalog, provider extensions and normalized replies ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2750
+- [**breaking**] stream tool-call arguments as they arrive ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2721
+
+### Fixed
+
+- [**breaking**] unknown finish reasons are one outcome, a caller's choice, and never silent ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2726
+
+### Other
+
+- *(core)* [**breaking**] one name for the unknown-finish-reason setting ([#2734](https://github.com/0xPlaygrounds/rig/pull/2734)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- shape-matched cassettes, encoder snapshots, and a coverage gate ([#2720](https://github.com/0xPlaygrounds/rig/pull/2720)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2720
+- *(message)* [**breaking**] item-shaped assistant history with provenance ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- *(ecs)* [**breaking**] typed checkpoint save/restore errors ([#2692](https://github.com/0xPlaygrounds/rig/pull/2692)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] stop flattening tool and MCP failures into strings ([#2687](https://github.com/0xPlaygrounds/rig/pull/2687)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2687
+- *(tests)* share request fixtures and golden helpers outside provider tests ([#2677](https://github.com/0xPlaygrounds/rig/pull/2677)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* [**breaking**] one request-assembly pass and no hand-kept mirrors in rig-ecs ([#2672](https://github.com/0xPlaygrounds/rig/pull/2672)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] share structured-output policy between rig-agent and rig-ecs ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2660
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-ecs-v0.0.1...rig-ecs-v0.43.0) - 2026-09-30
 
 ### Added

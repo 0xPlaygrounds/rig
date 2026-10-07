@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.43.0...rig-agent-v0.44.0) - 2026-10-07
+
+### Added
+
+- typed generation options, model catalog, provider extensions and normalized replies ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2750
+- *(rig-agent)* [**breaking**] offer malformed tool arguments to the invalid-call hook and bound their retries ([#2727](https://github.com/0xPlaygrounds/rig/pull/2727)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] stream tool-call arguments as they arrive ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2721
+
+### Fixed
+
+- *(rig-agent)* [**breaking**] RunSpec carries accept_unknown_finish_reasons; one clearable malformed-call limit; RunSpec::default matches new ([#2733](https://github.com/0xPlaygrounds/rig/pull/2733)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* record streaming as gen_ai.request.stream, not an operation ([#2724](https://github.com/0xPlaygrounds/rig/pull/2724)) (by [mateobelanger](https://github.com/mateobelanger))
+- [**breaking**] unknown finish reasons are one outcome, a caller's choice, and never silent ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2726
+- deserialize StreamEvent and MultiTurnStreamItem again ([#2723](https://github.com/0xPlaygrounds/rig/pull/2723)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2723
+- restore main's build after #2690 and #2688 ([#2706](https://github.com/0xPlaygrounds/rig/pull/2706)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2706
+- *(agent)* stream reads the run's unhandled tool-call policy ([#2697](https://github.com/0xPlaygrounds/rig/pull/2697)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] non-exhaustive enums that are expected to grow ([#2735](https://github.com/0xPlaygrounds/rig/pull/2735)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2735
+- *(core)* [**breaking**] one name for the unknown-finish-reason setting ([#2734](https://github.com/0xPlaygrounds/rig/pull/2734)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- shape-matched cassettes, encoder snapshots, and a coverage gate ([#2720](https://github.com/0xPlaygrounds/rig/pull/2720)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2720
+- *(message)* [**breaking**] item-shaped assistant history with provenance ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* [**breaking**] derive PromptResponse output from content, tighten extractor ([#2690](https://github.com/0xPlaygrounds/rig/pull/2690)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(engine)* share completion dispatch, turn settlement and tool-call step across both turn sources ([#2695](https://github.com/0xPlaygrounds/rig/pull/2695)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] named VectorStoreIndex search results ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- *(vector_store)* [**breaking**] tighten the VectorSearchRequest surface ([#2683](https://github.com/0xPlaygrounds/rig/pull/2683)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] stop flattening tool and MCP failures into strings ([#2687](https://github.com/0xPlaygrounds/rig/pull/2687)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2687
+- *(agent)* [**breaking**] plain run results and streamed tool results ([#2686](https://github.com/0xPlaygrounds/rig/pull/2686)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- leftovers sweep (bedrock text helper, derive trybuild, one-impl traits) ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2680
+- *(tests)* share request fixtures and golden helpers outside provider tests ([#2677](https://github.com/0xPlaygrounds/rig/pull/2677)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* TypedRun shares AgentRunner's setters instead of forwarding them ([#2670](https://github.com/0xPlaygrounds/rig/pull/2670)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(embeddings)* [**breaking**] share embedding and rerank reply plumbing across providers ([#2666](https://github.com/0xPlaygrounds/rig/pull/2666)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(auth)* collapse ChatGPT/Copilot auth platform scaffolding and wasm stream alias forks ([#2667](https://github.com/0xPlaygrounds/rig/pull/2667)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] share structured-output policy between rig-agent and rig-ecs ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2660
+- *(test-utils)* one tracing capture layer for span and event assertions ([#2659](https://github.com/0xPlaygrounds/rig/pull/2659)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] drop mirror types kept in step by hand-written conversions ([#2656](https://github.com/0xPlaygrounds/rig/pull/2656)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2656
+- *(rig-agent)* [**breaking**] one agent-run error type that keeps what it knows ([#2644](https://github.com/0xPlaygrounds/rig/pull/2644)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [mateobelanger](https://github.com/mateobelanger)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.42.0...rig-agent-v0.43.0) - 2026-09-30
 
 ### Added

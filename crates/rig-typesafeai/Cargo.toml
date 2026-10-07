@@ -12,13 +12,13 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 http.workspace = true
 # The bundled HTTP transport a client built with no transport named sends
 # through (`Jev::from_env()`).
-rig-reqwest = { path = "../rig-reqwest", version = "0.43.0", optional = true, default-features = false }
+rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", optional = true, default-features = false }
 
 [features]
 # `rustls` adds no dependency by itself: it selects the TLS stack of the
@@ -30,7 +30,7 @@ rustls = ["rig-reqwest?/rustls"]
 native-tls = ["rig-reqwest?/native-tls"]
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
 anyhow.workspace = true
 rig-reqwest.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
