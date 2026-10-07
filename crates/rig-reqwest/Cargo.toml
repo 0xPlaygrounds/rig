@@ -17,7 +17,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-http = { path = "../rig-http", version = "0.43.0" }
+rig-http = { path = "../rig-http", version = "0.44.0" }
 reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
 reqwest-middleware = { workspace = true, optional = true, features = [
   "json",

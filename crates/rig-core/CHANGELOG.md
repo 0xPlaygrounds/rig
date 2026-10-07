@@ -6,6 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.43.0...rig-core-v0.44.0) - 2026-10-07
+
+### Added
+
+- typed generation options, model catalog, provider extensions and normalized replies ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2750
+- *(ollama)* [**breaking**] native `/api/chat` route with `options`, `num_ctx`, `keep_alive`, `think` and the inline `<think>` split ([#2730](https://github.com/0xPlaygrounds/rig/pull/2730)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cohere)* [**breaking**] native documents, citations and tool_plan ([#2729](https://github.com/0xPlaygrounds/rig/pull/2729)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai)* opt-in quirk ending a [DONE] stream without finish_reason ([#2725](https://github.com/0xPlaygrounds/rig/pull/2725)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] stream tool-call arguments as they arrive ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2721
+- *(rig-core)* add transcript::answer_unanswered ([#2699](https://github.com/0xPlaygrounds/rig/pull/2699)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* add ProviderConfig::base_url and with_base_url ([#2700](https://github.com/0xPlaygrounds/rig/pull/2700)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-core)* add Gemini 3.8 Flash and DeepSeek Flash model constants ([#2704](https://github.com/0xPlaygrounds/rig/pull/2704)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(anthropic)* Xiaomi MiMo's Messages preset no longer posts to /v1/v1/messages ([#2738](https://github.com/0xPlaygrounds/rig/pull/2738)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* record streamed response id and model once, not per chunk ([#2732](https://github.com/0xPlaygrounds/rig/pull/2732)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(telemetry)* record streaming as gen_ai.request.stream, not an operation ([#2724](https://github.com/0xPlaygrounds/rig/pull/2724)) (by [mateobelanger](https://github.com/mateobelanger))
+- [**breaking**] unknown finish reasons are one outcome, a caller's choice, and never silent ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2726
+- deserialize StreamEvent and MultiTurnStreamItem again ([#2723](https://github.com/0xPlaygrounds/rig/pull/2723)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2723
+- *(postgres)* [**breaking**] bind like/similar_to/between values and stop renumbering $ inside spliced SQL ([#2698](https://github.com/0xPlaygrounds/rig/pull/2698)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] non-exhaustive enums that are expected to grow ([#2735](https://github.com/0xPlaygrounds/rig/pull/2735)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2735
+- *(core)* [**breaking**] one name for the unknown-finish-reason setting ([#2734](https://github.com/0xPlaygrounds/rig/pull/2734)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- shape-matched cassettes, encoder snapshots, and a coverage gate ([#2720](https://github.com/0xPlaygrounds/rig/pull/2720)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2720
+- *(message)* [**breaking**] item-shaped assistant history with provenance ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] named VectorStoreIndex search results ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type tool definition and tool choice names as ToolName ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2689
+- [**breaking**] consistent provider client constructors (Anthropic dialect, Bedrock builder, Vertex errors) ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2691
+- *(sqlite)* render filters through SqlCondition and delete SqliteRenderedFilter ([#2693](https://github.com/0xPlaygrounds/rig/pull/2693)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(vector_store)* [**breaking**] tighten the VectorSearchRequest surface ([#2683](https://github.com/0xPlaygrounds/rig/pull/2683)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] consistent media content constructors ([#2685](https://github.com/0xPlaygrounds/rig/pull/2685)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2685
+- [**breaking**] stop flattening tool and MCP failures into strings ([#2687](https://github.com/0xPlaygrounds/rig/pull/2687)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2687
+- *(agent)* [**breaking**] plain run results and streamed tool results ([#2686](https://github.com/0xPlaygrounds/rig/pull/2686)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(driver)* decode and fold every reply through one step, one EOF rule and one fold ([#2681](https://github.com/0xPlaygrounds/rig/pull/2681)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- leftovers sweep (bedrock text helper, derive trybuild, one-impl traits) ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2680
+- *(tests)* share request fixtures and golden helpers outside provider tests ([#2677](https://github.com/0xPlaygrounds/rig/pull/2677)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* share provider unit-test request and body fixtures ([#2669](https://github.com/0xPlaygrounds/rig/pull/2669)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openrouter)* [**breaking**] read OpenRouter replies through OpenAI's chat types ([#2664](https://github.com/0xPlaygrounds/rig/pull/2664)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(embeddings)* [**breaking**] share embedding and rerank reply plumbing across providers ([#2666](https://github.com/0xPlaygrounds/rig/pull/2666)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(auth)* collapse ChatGPT/Copilot auth platform scaffolding and wasm stream alias forks ([#2667](https://github.com/0xPlaygrounds/rig/pull/2667)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* [**breaking**] fix wrong-way dependencies between operation, driver and providers ([#2663](https://github.com/0xPlaygrounds/rig/pull/2663)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] read DeepSeek and Mistral replies through OpenAI's chat types ([#2661](https://github.com/0xPlaygrounds/rig/pull/2661)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2661
+- [**breaking**] share structured-output policy between rig-agent and rig-ecs ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2660
+- *(test-utils)* one tracing capture layer for span and event assertions ([#2659](https://github.com/0xPlaygrounds/rig/pull/2659)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] drop mirror types kept in step by hand-written conversions ([#2656](https://github.com/0xPlaygrounds/rig/pull/2656)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2656
+- share the tool-id spelling loop across request builders ([#2655](https://github.com/0xPlaygrounds/rig/pull/2655)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2655
+- *(streaming)* stop hand-rolling the open text part in every stream decoder ([#2653](https://github.com/0xPlaygrounds/rig/pull/2653)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- relax in-memory vector-store document and callback bounds ([#2645](https://github.com/0xPlaygrounds/rig/pull/2645)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2645
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [mateobelanger](https://github.com/mateobelanger)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-core-v0.42.0...rig-core-v0.43.0) - 2026-09-30
 
 ### Added

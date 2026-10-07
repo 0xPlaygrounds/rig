@@ -13,7 +13,7 @@ workspace = true
 doctest = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = [
   "derive",
 ] }
 rusqlite = { workspace = true, features = ["bundled"] }
@@ -25,7 +25,7 @@ tokio-rusqlite = { workspace = true, features = ["bundled"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.43.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
 anyhow = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true }

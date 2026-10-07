@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.43.0...rig-sqlite-v0.44.0) - 2026-10-07
+
+### Other
+
+- *(vector_store)* [**breaking**] named VectorStoreIndex search results ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(sqlite)* render filters through SqlCondition and delete SqliteRenderedFilter ([#2693](https://github.com/0xPlaygrounds/rig/pull/2693)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-sqlite-v0.42.0...rig-sqlite-v0.43.0) - 2026-09-30
 
 ### Added
