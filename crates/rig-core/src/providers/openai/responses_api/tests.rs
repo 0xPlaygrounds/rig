@@ -762,3 +762,47 @@ fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
         .and_then(|prepared| json_of(&wire, prepared).map_err(Into::into));
     assert!(error.is_err(), "{error:?}");
 }
+
+/// Whether `value` holds a part whose `text` is exactly `text`.
+fn carries_text(value: &Value, text: &str) -> bool {
+    match value {
+        Value::Object(fields) => {
+            fields.get("text").and_then(Value::as_str) == Some(text)
+                || fields.values().any(|field| carries_text(field, text))
+        }
+        Value::Array(items) => items.iter().any(|item| carries_text(item, text)),
+        _ => false,
+    }
+}
+
+/// A string-sourced PDF is PDF data, as Anthropic sends it: it never
+/// reaches the model as a text part holding its base64.
+///
+/// Not a cassette test: the defect is the request body built before any
+/// HTTP, which no recorded reply exercises.
+#[test]
+fn a_string_pdf_is_never_sent_as_text() -> anyhow::Result<()> {
+    use crate::wire::{Operation, Wire};
+    let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
+    let request = completion::CompletionRequest::new(message::Message::User {
+        content: vec![
+            message::UserContent::text("Summarize the file."),
+            message::UserContent::Document(message::Document {
+                data: DocumentSourceKind::string(pdf),
+                media_type: Some(message::DocumentMediaType::PDF),
+                additional_params: None,
+            }),
+        ],
+    });
+    let wire = openai_wire("gpt-5");
+    let sent = crate::operation::Completion::prepare(request, &wire.describe())
+        .map_err(anyhow::Error::from)
+        .and_then(|request| Ok(json_of(&wire, request)?));
+    if let Ok(body) = sent {
+        anyhow::ensure!(
+            !carries_text(&body, pdf),
+            "the PDF's base64 goes to the model as text: {body:#}"
+        );
+    }
+    Ok(())
+}
