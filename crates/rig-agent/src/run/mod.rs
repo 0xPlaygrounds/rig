@@ -11,7 +11,7 @@
 //! # Ok::<(), rig_agent::run::PromptError>(())
 //! ```
 
-pub mod committed;
+mod committed;
 pub mod output;
 pub mod patch;
 pub mod prepare;
@@ -314,7 +314,7 @@ pub struct AgentRun {
     max_output_retries: usize,
     output_retries: usize,
     chat_history: Option<Vec<Message>>,
-    /// Append-only: see [`committed::project`].
+    /// Append-only: see [`project`].
     #[serde(rename = "new_messages")]
     history: committed::CommittedLog,
     current_turn: usize,
@@ -452,7 +452,8 @@ impl AgentRun {
         prompt: impl Into<Message>,
     ) -> Result<(), PromptError> {
         let started = self.current_turn != 0 || !matches!(self.state, RunState::PreparingRequest);
-        if !started && self.history.replace_unstarted_prompt(prompt.into()) {
+        if let (false, Some(slot)) = (started, self.history.unstarted_prompt()) {
+            *slot = prompt.into();
             return Ok(());
         }
         Err(PromptError::cancelled(
@@ -643,6 +644,15 @@ impl AgentRun {
         &self.history
     }
 
+    /// Where a driver starts to [`project`] [`messages`](Self::messages): the
+    /// end, or the message holding a pending [`AgentRunStep::CallTools`]
+    /// batch, so a resumed run announces the calls whose results it streams.
+    pub fn projection_start(&self) -> usize {
+        let pending = matches!(self.state, RunState::ExecutingTools(..));
+        let holder = |message: &Message| pending && matches!(message, Message::Assistant(_));
+        (self.history.iter().rposition(holder)).unwrap_or(self.history.len())
+    }
+
     /// Canonical content for the accepted model turn awaiting advancement.
     pub fn accepted_turn_choice(&self) -> Option<Vec<AssistantContent>> {
         let RunState::AwaitingAdvance(turn) = &self.state else {
@@ -720,9 +730,8 @@ impl AgentRun {
             RetryRequest::Feedback(feedback) => {
                 // Feedback may retry an empty answer, but empty assistant messages
                 // must not enter provider history.
-                self.history
-                    .commit_all(assistant_turn(turn.head, turn.items));
-                self.history.commit(Message::user(feedback));
+                self.history.commit(assistant_turn(turn.head, turn.items));
+                self.history.commit([Message::user(feedback)]);
             }
         }
 
@@ -831,7 +840,7 @@ impl AgentRun {
                     .and_then(|call| call.finish_reason.as_ref());
                 if let Some(message) = turn_failure(&items, head.stop.as_ref(), finish) {
                     if has_tool_calls {
-                        self.history.commit_all(assistant_turn(head, items));
+                        self.history.commit(assistant_turn(head, items));
                     }
                     return Err(ProviderError::Response(message).into());
                 }
@@ -865,8 +874,7 @@ impl AgentRun {
                     // the model is told why while the budget lasts.
                     if let Some(raw) = &tool_call.function.invalid_arguments {
                         if self.can_reprompt_for_output() {
-                            self.history
-                                .commit_all(assistant_message(head, items.clone()));
+                            self.history.commit(assistant_message(head, items.clone()));
                             let feedback = rig_core::transcript::invalid_arguments_feedback(
                                 &output_tool_name,
                                 raw,
@@ -874,7 +882,7 @@ impl AgentRun {
                             if let Some(user_message) =
                                 invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                             {
-                                self.history.commit(user_message);
+                                self.history.commit([user_message]);
                             }
                             return self.reprompt_for_output();
                         }
@@ -891,14 +899,13 @@ impl AgentRun {
                         .map(|schema| structured_output::missing_required_fields(schema, &args))
                         .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
-                        self.history
-                            .commit_all(assistant_message(head, items.clone()));
+                        self.history.commit(assistant_message(head, items.clone()));
                         let feedback =
                             structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
                             invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
-                            self.history.commit(user_message);
+                            self.history.commit([user_message]);
                         }
                         return self.reprompt_for_output();
                     }
@@ -912,7 +919,7 @@ impl AgentRun {
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
                     self.history
-                        .commit_all(assistant_message(head, final_items.clone()));
+                        .commit(assistant_message(head, final_items.clone()));
 
                     let content = response::finalize_output_tool_choice(&items, &output)
                         .unwrap_or_else(|| vec![AssistantContent::text(output)]);
@@ -920,7 +927,7 @@ impl AgentRun {
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.
-                self.history.commit_all(assistant_turn(head, items.clone()));
+                self.history.commit(assistant_turn(head, items.clone()));
 
                 if has_tool_calls {
                     // Output retries are budgeted per finalization attempt, not per run.
@@ -950,9 +957,9 @@ impl AgentRun {
                             &assistant_text_from_choice(&items),
                         )
                     {
-                        self.history.commit(Message::user(
+                        self.history.commit([Message::user(
                             structured_output::reprompt_text_answer(output_tool_name),
-                        ));
+                        )]);
                         return self.reprompt_for_output();
                     }
 
@@ -1233,7 +1240,7 @@ impl AgentRun {
 
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
-                self.history.commit_all(assistant_message(
+                self.history.commit(assistant_message(
                     resolving.head.clone(),
                     resolving.original_choice.clone(),
                 ));
@@ -1247,7 +1254,7 @@ impl AgentRun {
                         "invalid tool call retry produced no retry messages",
                     ));
                 };
-                self.history.commit(user_message);
+                self.history.commit([user_message]);
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
@@ -1359,7 +1366,7 @@ impl AgentRun {
         }
 
         // Not empty: an empty batch failed the run above.
-        self.history.commit(Message::User { content: results });
+        self.history.commit([Message::User { content: results }]);
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1561,7 +1568,7 @@ impl AgentRun {
                 no_messages_reason,
             ));
         };
-        self.history.commit_all([assistant_message, user_message]);
+        self.history.commit([assistant_message, user_message]);
         self.rollback_pending = true;
         self.state = RunState::PreparingRequest;
         Ok(StreamedResolution::TurnAbandoned)

@@ -37,7 +37,6 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        committed::committed_stream_items,
         response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
         transcript::{
             assistant_text_from_choice, is_empty_assistant_turn, tool_result_message,
@@ -45,7 +44,6 @@ use super::{
         },
     },
     runner::AgentRunner,
-    streaming::MultiTurnStreamItem,
     telemetry::{build_chat_span, new_execute_tool_span},
 };
 use crate::run::UnhandledInvalidToolCall;
@@ -55,36 +53,39 @@ use crate::{
     tool::{ToolCatalog, ToolResult},
 };
 use dispatch::{CompletionScope, DispatchScope, model_step};
+use projection::{ProjectedItems, committed_stream_items};
 
 mod dispatch;
+mod projection;
 
 /// A boxed, medium-specific item stream for one model turn. Boxed so a generic
 /// [`drive_agent`] can forward it without the per-step future leaking into the
 /// engine's own (`Send`) inference.
 pub(crate) type DriveStream<'a> = WasmBoxedStream<'a, Result<Surfaced, PromptError>>;
 
-/// What a model turn surfaces directly: every stream item that is not a tool
-/// item. Tool calls and results reach the stream only as a projection of
-/// committed history ([`committed_stream_items`]), so a turn source cannot
-/// announce one.
+/// What a model turn surfaces directly. It has no tool variants: tool items
+/// reach the stream only as [`ProjectedItems`] of committed history.
 pub(crate) enum Surfaced {
-    /// See [`MultiTurnStreamItem::StreamAssistantItem`].
+    /// See [`MultiTurnStreamItem::StreamAssistantItem`](crate::agent::MultiTurnStreamItem::StreamAssistantItem).
     Provider(Item<StreamEvent>),
-    /// See [`MultiTurnStreamItem::CompletionCall`].
+    /// See [`MultiTurnStreamItem::CompletionCall`](crate::agent::MultiTurnStreamItem::CompletionCall).
     CompletionCall(CompletionCall),
-    /// See [`MultiTurnStreamItem::ModelTurnRetried`].
+    /// See [`MultiTurnStreamItem::ModelTurnRetried`](crate::agent::MultiTurnStreamItem::ModelTurnRetried).
     ModelTurnRetried { turn: usize },
-    /// See [`MultiTurnStreamItem::FinalResponse`].
+    /// See [`MultiTurnStreamItem::FinalResponse`](crate::agent::MultiTurnStreamItem::FinalResponse).
     Final(PromptResponse),
 }
 
-/// Engine output: stream items for forwarding or a canonical terminal response.
+/// Engine output: stream items for forwarding (no bare tool item: only
+/// [`committed_stream_items`] builds [`ProjectedItems`]) or the terminal response.
 pub(crate) enum DriveItem {
-    /// Stream event, including the streaming surface's final response item.
-    Item(MultiTurnStreamItem),
+    /// A non-tool item, including the streaming surface's final response.
+    Surfaced(Surfaced),
+    /// The tool items of what the run committed since the last projection.
+    Projected(ProjectedItems),
     /// The run finished; carries the canonical response the blocking fold
-    /// returns. The streaming surface has already received the final item as the
-    /// preceding `Item` and ignores this.
+    /// returns. The streaming surface has already received the final item as
+    /// the preceding `Surfaced` and ignores this.
     Done(PromptResponse),
 }
 
@@ -92,10 +93,6 @@ pub(crate) enum DriveItem {
 /// construction. Implementations resolve invalid calls during model ingestion
 /// and feed accepted turns back into the run; the engine runs tool calls.
 pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
-    /// Whether the surface forwards intermediate items. The blocking fold
-    /// discards them, so its source skips building them.
-    const FORWARDS_ITEMS: bool;
-
     /// Whether this source's completions are dispatched as streams.
     const STREAMS: bool;
 
@@ -206,27 +203,19 @@ where
         // Restore routing history so resumed hooks see the last issued model.
         let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
         // Tool items stream only as the projection of what the run committed
-        // past `cursor`; a resumed run starts past its history, so nothing
-        // replays. `executed` is the settled batch's effective calls.
-        let mut cursor = run.messages().len();
-        let mut executed: Vec<Option<ToolCall>> = Vec::new();
+        // past `cursor`, which starts at `projection_start`. `executed` holds
+        // the settled batch's calls whose bodies ran; both surfaces check it.
+        let mut cursor = run.projection_start();
+        let mut executed: Vec<ToolCall> = Vec::new();
         macro_rules! project {
             ($label:lifetime) => {{
-                let batch = std::mem::take(&mut executed);
-                if S::FORWARDS_ITEMS {
-                    let committed = run.messages().get(cursor..).unwrap_or_default();
-                    match committed_stream_items(committed, &batch) {
-                        Ok(items) => {
-                            for item in items {
-                                yield Ok(DriveItem::Item(item));
-                            }
-                        }
-                        Err(results) => fail!(run.cancel_error(format!(
-                            "agent run driver protocol violation: {results} tool result(s) \
-                             committed for a batch of {} call(s)",
-                            batch.len()
-                        )), break $label),
-                    }
+                let committed = run.messages().get(cursor..).unwrap_or_default();
+                match committed_stream_items(committed, &std::mem::take(&mut executed)) {
+                    Ok(items) => yield Ok(DriveItem::Projected(items)),
+                    Err(id) => fail!(run.cancel_error(format!(
+                        "agent run driver protocol violation: tool call {id} ran \
+                         but no committed result answers it"
+                    )), break $label),
                 }
                 cursor = run.messages().len();
             }};
@@ -382,7 +371,7 @@ where
                     );
                     let turn_error = loop {
                         match turn_stream.next().await {
-                            Some(Ok(item)) => yield Ok(DriveItem::Item(item.into())),
+                            Some(Ok(item)) => yield Ok(DriveItem::Surfaced(item)),
                             Some(Err(err)) => break Some(err),
                             None => break None,
                         }
@@ -467,7 +456,7 @@ where
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
                     if let Some(final_item) = source.final_item(&response) {
-                        yield Ok(DriveItem::Item(final_item.into()));
+                        yield Ok(DriveItem::Surfaced(final_item));
                     }
                     yield Ok(DriveItem::Done(response));
                     break 'outer;
@@ -479,14 +468,14 @@ where
 }
 
 /// Execute a turn's tool calls **atomically per batch**, shared by both surfaces,
-/// and return each call's effective call when its body ran, by call position.
+/// and return the effective call of each call whose body ran.
 ///
 /// The batch commits all-or-nothing, and streams nothing itself: the engine
 /// projects what it commits. On the stream, a
-/// [`ToolCall`](MultiTurnStreamItem::ToolCall) means the call is committed to
+/// [`ToolCall`](crate::agent::MultiTurnStreamItem::ToolCall) means the call is committed to
 /// history, and
-/// [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted)
-/// (the returned `Some`) means its body ran.
+/// [`ToolExecutionCommitted`](crate::agent::MultiTurnStreamItem::ToolExecutionCommitted)
+/// (a returned call) means its body ran.
 ///
 /// - Every tool runs (sequentially at `tool_concurrency <= 1`, else
 ///   concurrently bounded by it), with outcomes collected.
@@ -509,7 +498,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     is_streaming: bool,
-) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
+) -> WasmBoxedFuture<'a, Result<Vec<ToolCall>, PromptError>>
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
@@ -611,7 +600,7 @@ where
         };
         let (committed, executed): (Vec<_>, Vec<_>) = settled.into_iter().unzip();
         run.tool_results(committed)?;
-        Ok(executed)
+        Ok(executed.into_iter().flatten().collect())
     })
 }
 
@@ -679,7 +668,6 @@ impl StreamingTurnSource {
 }
 
 impl TurnSource for StreamingTurnSource {
-    const FORWARDS_ITEMS: bool = true;
     const STREAMS: bool = true;
 
     fn open_chat_span(
@@ -1494,7 +1482,6 @@ impl UnaryTurnSource {
 }
 
 impl TurnSource for UnaryTurnSource {
-    const FORWARDS_ITEMS: bool = false;
     const STREAMS: bool = false;
 
     /// Chain `span` onto the previous step's span and record it as the new chain

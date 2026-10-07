@@ -567,6 +567,27 @@ fn tool_results_validates_against_pending_calls() {
 }
 
 #[test]
+fn projection_start_reprojects_only_a_pending_tool_batch() {
+    let mut run = AgentRun::new("add things").max_turns(2);
+    assert_eq!(run.projection_start(), run.messages().len());
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(tool_call_turn("call_1", "add"))
+            .expect("model_response should succeed"),
+    );
+    expect_call_tools(&mut run);
+    let start = run.projection_start();
+    assert!(
+        matches!(&run.messages()[start..], [Message::Assistant(_)]),
+        "a pending batch starts at its assistant message: {:?}",
+        run.messages()
+    );
+    run.tool_results(vec![tool_result("call_1", "2")])
+        .expect("tool_results should succeed");
+    assert_eq!(run.projection_start(), run.messages().len());
+}
+
+#[test]
 fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,

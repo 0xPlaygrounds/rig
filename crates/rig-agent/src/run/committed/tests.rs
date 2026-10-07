@@ -162,32 +162,3 @@ fn a_final_output_turn_projects_no_call() {
     assert!(matches!(run.next_step(), Ok(AgentRunStep::Done(_))));
     assert!(projected(run.messages()).is_empty(), "{:?}", run.messages());
 }
-
-#[test]
-fn an_execution_commit_precedes_the_result_of_the_call_whose_body_ran() {
-    let effective = call("b", "add", json!({"patched": true}));
-    let log = vec![Message::User {
-        content: vec![result("a"), result("b")],
-    }];
-
-    let items = committed_stream_items(&log, &[None, Some(effective)]).expect("aligned");
-    let kinds: Vec<_> = items
-        .iter()
-        .map(|item| match item {
-            MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => {
-                format!("ran:{}", tool_call.id)
-            }
-            MultiTurnStreamItem::ToolResult { tool_result } => {
-                format!("result:{}", tool_result.call)
-            }
-            other => panic!("unexpected item {other:?}"),
-        })
-        .collect();
-    assert_eq!(kinds, ["result:a", "ran:b", "result:b"]);
-
-    assert_eq!(
-        committed_stream_items(&log, &[None]).err(),
-        Some(2),
-        "a batch that does not line up with its results is refused"
-    );
-}

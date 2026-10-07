@@ -4019,6 +4019,9 @@ async fn a_preresolved_result_streams_exactly_once() {
         .await
         .expect("the resumed run streams");
 
+    let ledger =
+        collect_streamed_tool_ledger(futures::stream::iter(items.iter().cloned().map(Ok))).await;
+    assert_stream_projects_history(&ledger);
     let streamed: Vec<_> = items
         .iter()
         .filter_map(|item| match item {
@@ -4033,4 +4036,76 @@ async fn a_preresolved_result_streams_exactly_once() {
             .any(|item| matches!(item, MultiTurnStreamItem::ToolExecutionCommitted { .. })),
         "a preresolved result ran no tool body"
     );
+}
+
+/// A host persists a run while an ordinary tool batch is pending and resumes
+/// it on the streaming surface: the stream re-announces the pending call
+/// before its result, and the result is tagged as executed.
+#[tokio::test]
+async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
+    let mut run = AgentRun::new("use the tool").max_turns(3);
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallModel { .. })
+    ));
+    let outcome = run
+        .model_response(crate::run::ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![AssistantContent::ToolCall(
+                rig_core::message::ToolCall::from_wire(
+                    "call_1",
+                    rig_core::message::ToolFunction::new(
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                        serde_json::json!({"x": 2, "y": 3}),
+                    ),
+                ),
+            )],
+            Usage::default(),
+            crate::run::TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
+            serde_json::json!({}),
+        ))
+        .expect("the turn is ingested");
+    assert!(matches!(
+        outcome,
+        crate::run::ModelTurnOutcome::Continue { .. }
+    ));
+    let AgentRunStep::CallTools { calls } = run.next_step().expect("the tool step") else {
+        panic!("expected the tool step");
+    };
+    assert!(calls.iter().all(|call| call.preresolved_result.is_none()));
+    assert_eq!(run.projection_start(), run.messages().len() - 1);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    let saved = serde_json::to_string(&run).expect("run serializes");
+    let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("continued"),
+        MockStreamEvent::final_response_with_total_tokens(6),
+    ]]))
+    .tool(MockAddTool)
+    .build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .resume(restored)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the resumed run streams");
+
+    let ledger =
+        collect_streamed_tool_ledger(futures::stream::iter(items.iter().cloned().map(Ok))).await;
+    assert_stream_projects_history(&ledger);
+    let tool_items: Vec<_> = items
+        .iter()
+        .filter_map(|item| match item {
+            MultiTurnStreamItem::ToolCall { tool_call } => Some(format!("call:{}", tool_call.id)),
+            MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => {
+                Some(format!("ran:{}", tool_call.id))
+            }
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                Some(format!("result:{}", tool_result.call))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tool_items, ["call:call_1", "ran:call_1", "result:call_1"]);
 }

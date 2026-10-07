@@ -52,7 +52,9 @@ pub enum MultiTurnStreamItem {
     /// ([`project`](crate::run::project)): every call history holds is
     /// reported, and later answered by a [`ToolResult`](Self::ToolResult),
     /// whether it ran, a hook skipped it, or invalid-call recovery or an
-    /// output reprompt answered it. It is **not** an execution-lifecycle event
+    /// output reprompt answered it; a run resumed mid-batch reports the batch's
+    /// calls again ([`projection_start`](crate::run::AgentRun::projection_start)).
+    /// It is **not** an execution-lifecycle event
     /// (see [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)). A
     /// structured-output Tool-mode output-tool call that finalizes the run is
     /// committed as text, so it is reported in the
@@ -260,12 +262,14 @@ impl AgentRunner {
             memory_handle,
             hook_ctx,
         )
-        .filter_map(|item| {
-            std::future::ready(match item {
-                Ok(DriveItem::Item(item)) => Some(Ok(item)),
-                Ok(DriveItem::Done(_)) => None,
-                Err(err) => Some(Err(err)),
-            })
+        .flat_map(|item| {
+            let (head, tools) = match item {
+                Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
+                Ok(DriveItem::Projected(items)) => (None, Some(items)),
+                Ok(DriveItem::Done(_)) => (None, None),
+                Err(err) => (Some(Err(err)), None),
+            };
+            futures::stream::iter(head.into_iter().chain(tools.into_iter().flatten().map(Ok)))
         });
         // The consumer of this stream drives the agent's bus: every poll that
         // leaves the run pending polls the driver.
