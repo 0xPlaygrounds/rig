@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn anthropic_cache_oracle_checks_actual_encoded_modes() {
     use rig_core::{
-        completion::{CompletionRequest, ToolDefinition},
+        completion::{CacheRetention, CompletionRequest, GenerationOptions, ToolDefinition},
         message::Message,
         providers::anthropic::{completion::CacheTtl, wire::AnthropicConfig},
         wire::{Body, Mode, Wire as _},
@@ -14,24 +14,23 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
         (
             "repair",
             provider.completion("model").wire.with_prompt_caching(),
+            None,
         ),
         (
             "repair_streamed",
-            provider
-                .completion("model")
-                .wire
-                .with_automatic_caching_1h(),
+            provider.completion("model").wire,
+            Some(CacheRetention::Long),
         ),
         (
             "inventory",
             provider
                 .completion("model")
                 .wire
-                .with_automatic_caching()
                 .with_static_prefix_cache_ttl(CacheTtl::OneHour),
+            Some(CacheRetention::Short),
         ),
     ];
-    for (scenario, model) in cases {
+    for (scenario, model, cache) in cases {
         for extra_turns in 0..3 {
             let mut history = vec![
                 Message::system("Stable task contracts"),
@@ -41,23 +40,16 @@ fn anthropic_cache_oracle_checks_actual_encoded_modes() {
                 history.push(Message::assistant("Continue checking"));
                 history.push(Message::user("Apply the next verified update"));
             }
-            let request = CompletionRequest {
-                model: None,
-                chat_history: history,
-                documents: vec![],
-                tools: vec![ToolDefinition {
-                    name: rig_core::message::ToolName::new("probe").expect("tool name"),
-                    description: "Inspect state".into(),
-                    parameters: json!({"type":"object","properties":{}}),
-                }],
-                temperature: None,
-                max_tokens: Some(32),
-                tool_choice: None,
-                additional_params: None,
-                output_schema: None,
-                record_telemetry_content: false,
-                accept_unknown_finish_reasons: false,
-            };
+            let mut request = CompletionRequest::from(history);
+            request.tools = vec![ToolDefinition {
+                name: rig_core::message::ToolName::new("probe").expect("tool name"),
+                description: "Inspect state".into(),
+                parameters: json!({"type":"object","properties":{}}),
+            }];
+            request.max_tokens = Some(32);
+            if let Some(cache) = cache {
+                request.options = GenerationOptions::default().cache(cache);
+            }
             let encoded = model
                 .encode(request, Mode::Unary)
                 .expect("encode Anthropic request");
@@ -84,11 +76,7 @@ fn anthropic_accounting_oracle_checks_existing_native_cache_usage() {
 #[should_panic(expected = "raw cache counters must match")]
 fn wrong_cache_counter_is_rejected() {
     assert_prompt_usage(
-        &Usage {
-            input_tokens: Some(100),
-            cached_input_tokens: Some(91),
-            ..Usage::default()
-        },
+        &Usage::new().input_tokens(100).cached_input_tokens(91),
         (Some(100), Some(90), None),
     );
 }
@@ -103,13 +91,7 @@ fn duplicate_turn_is_rejected() {
 
 #[test]
 fn unknown_counters_are_not_zero() {
-    let rows = [
-        Usage {
-            cached_input_tokens: Some(12),
-            ..Usage::default()
-        },
-        Usage::default(),
-    ];
+    let rows = [Usage::new().cached_input_tokens(12), Usage::default()];
     assert_eq!(
         total_counter(&rows, |u| u.cached_input_tokens),
         json!({"reported_sum":12,"missing_turns":1,"complete_total":null})
@@ -123,20 +105,9 @@ fn unknown_counters_are_not_zero() {
 #[test]
 #[should_panic(expected = "cumulative reported usage")]
 fn wrong_cumulative_cache_total_is_rejected() {
-    let first = Usage {
-        input_tokens: Some(100),
-        cached_input_tokens: Some(40),
-        ..Usage::default()
-    };
-    let second = Usage {
-        input_tokens: Some(200),
-        ..Usage::default()
-    };
-    let wrong = Usage {
-        input_tokens: Some(300),
-        cached_input_tokens: Some(80),
-        ..Usage::default()
-    };
+    let first = Usage::new().input_tokens(100).cached_input_tokens(40);
+    let second = Usage::new().input_tokens(200);
+    let wrong = Usage::new().input_tokens(300).cached_input_tokens(80);
     super::assert_totals(&[first, second], wrong);
 }
 
@@ -157,16 +128,7 @@ fn changing_the_recorded_system_prefix_is_detected() {
 
 #[test]
 fn complete_totals_count_each_reported_turn_once() {
-    let rows = [
-        Usage {
-            input_tokens: Some(40),
-            ..Usage::default()
-        },
-        Usage {
-            input_tokens: Some(50),
-            ..Usage::default()
-        },
-    ];
+    let rows = [Usage::new().input_tokens(40), Usage::new().input_tokens(50)];
     assert_eq!(
         total_counter(&rows, |u| u.input_tokens),
         json!({"reported_sum":90,"missing_turns":0,"complete_total":90})

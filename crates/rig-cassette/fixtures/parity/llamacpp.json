@@ -218,6 +218,32 @@
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "cache probe ready",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-rHft0iMmnqsVLvgp1yLzwrGfCSgEbZw9",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 2824,
+        "predicted_ms": 49.782,
+        "predicted_n": 8,
+        "predicted_per_second": 140.6130729982725,
+        "predicted_per_token_ms": 7.111714285714285,
+        "prompt_ms": 12.883,
+        "prompt_n": 1,
+        "prompt_per_second": 77.62167197081426,
+        "prompt_per_token_ms": 12.883
+      },
       "usage": {
         "completion_tokens": 8,
         "prompt_tokens": 2825,
@@ -225,25 +251,6 @@
           "cached_tokens": 2824
         },
         "total_tokens": 2833
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-rHft0iMmnqsVLvgp1yLzwrGfCSgEbZw9",
-      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 2824,
-          "predicted_ms": 49.782,
-          "predicted_n": 8,
-          "predicted_per_second": 140.6130729982725,
-          "predicted_per_token_ms": 7.111714285714285,
-          "prompt_ms": 12.883,
-          "prompt_n": 1,
-          "prompt_per_second": 77.62167197081426,
-          "prompt_per_token_ms": 12.883
-        }
       }
     }
   },
@@ -274,6 +281,33 @@
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "reasoning_content": "Okay, the user wants me to reply with \"probe still ready\""
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-Re9gUrqq8OES0XQyd2cskl5mO7CnJjOw",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 2825,
+        "predicted_ms": 99.874,
+        "predicted_n": 16,
+        "predicted_per_second": 150.18923844043496,
+        "predicted_per_token_ms": 6.658266666666666,
+        "prompt_ms": 37.97,
+        "prompt_n": 29,
+        "prompt_per_second": 763.7608638398735,
+        "prompt_per_token_ms": 1.3093103448275862
+      },
       "usage": {
         "completion_tokens": 16,
         "prompt_tokens": 2854,
@@ -281,25 +315,6 @@
           "cached_tokens": 2825
         },
         "total_tokens": 2870
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-Re9gUrqq8OES0XQyd2cskl5mO7CnJjOw",
-      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 2825,
-          "predicted_ms": 99.874,
-          "predicted_n": 16,
-          "predicted_per_second": 150.18923844043496,
-          "predicted_per_token_ms": 6.658266666666666,
-          "prompt_ms": 37.97,
-          "prompt_n": 29,
-          "prompt_per_second": 763.7608638398735,
-          "prompt_per_token_ms": 1.3093103448275862
-        }
       }
     }
   },
@@ -959,6 +974,43 @@
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "reasoning_content": "Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There's a subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"x\": 2, \"y\": 5}",
+                  "name": "subtract"
+                },
+                "id": "Xak4BdT2BzzP0Ym0Xgvd8mCm6Pl7jcsc",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-4LOJAjQP8ZNin8PMKl7pfCrpUqIMxOe3",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 0,
+        "predicted_ms": 571.209,
+        "predicted_n": 97,
+        "predicted_per_second": 168.06457881440946,
+        "predicted_per_token_ms": 5.95009375,
+        "prompt_ms": 131.388,
+        "prompt_n": 306,
+        "prompt_per_second": 2328.9798155082653,
+        "prompt_per_token_ms": 0.42937254901960786
+      },
       "usage": {
         "completion_tokens": 97,
         "prompt_tokens": 306,
@@ -966,25 +1018,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 403
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-4LOJAjQP8ZNin8PMKl7pfCrpUqIMxOe3",
-      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 0,
-          "predicted_ms": 571.209,
-          "predicted_n": 97,
-          "predicted_per_second": 168.06457881440946,
-          "predicted_per_token_ms": 5.95009375,
-          "prompt_ms": 131.388,
-          "prompt_n": 306,
-          "prompt_per_second": 2328.9798155082653,
-          "prompt_per_token_ms": 0.42937254901960786
-        }
       }
     }
   },
@@ -1019,6 +1052,33 @@
     "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "The result of 2 minus 5 is -3.",
+            "role": "assistant",
+            "reasoning_content": "Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. I need to present the answer clearly. Let me check if there's any further action needed. The user didn't ask for anything else, so I'll just state the result.\n"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-lu0sOBxcVx9e5BsgqaePkqABDZvIgcjf",
+      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 402,
+        "predicted_ms": 655.928,
+        "predicted_n": 86,
+        "predicted_per_second": 129.58739373833714,
+        "predicted_per_token_ms": 7.7168,
+        "prompt_ms": 25.672,
+        "prompt_n": 16,
+        "prompt_per_second": 623.2471174820816,
+        "prompt_per_token_ms": 1.6045
+      },
       "usage": {
         "completion_tokens": 86,
         "prompt_tokens": 418,
@@ -1026,25 +1086,6 @@
           "cached_tokens": 402
         },
         "total_tokens": 504
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-lu0sOBxcVx9e5BsgqaePkqABDZvIgcjf",
-      "model": "models/Qwen3-1.7B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 402,
-          "predicted_ms": 655.928,
-          "predicted_n": 86,
-          "predicted_per_second": 129.58739373833714,
-          "predicted_per_token_ms": 7.7168,
-          "prompt_ms": 25.672,
-          "prompt_n": 16,
-          "prompt_per_second": 623.2471174820816,
-          "prompt_per_token_ms": 1.6045
-        }
       }
     }
   },
@@ -1081,6 +1122,42 @@
     "model": "Qwen3-1.7B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{}",
+                  "name": "lookup_harbor_label"
+                },
+                "id": "QwndgKRyDKyKfShNnUVUDWmagoYsyflu",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-hLKTTWVjOcENnxYsRVJsbypYy6vVa2JV",
+      "model": "Qwen3-1.7B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 0,
+        "predicted_ms": 122.903,
+        "predicted_n": 23,
+        "predicted_per_second": 179.00295354873356,
+        "predicted_per_token_ms": 5.5865,
+        "prompt_ms": 93.295,
+        "prompt_n": 208,
+        "prompt_per_second": 2229.4871107776407,
+        "prompt_per_token_ms": 0.44853365384615385
+      },
       "usage": {
         "completion_tokens": 23,
         "prompt_tokens": 208,
@@ -1088,25 +1165,6 @@
           "cached_tokens": 0
         },
         "total_tokens": 231
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-hLKTTWVjOcENnxYsRVJsbypYy6vVa2JV",
-      "model": "Qwen3-1.7B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 0,
-          "predicted_ms": 122.903,
-          "predicted_n": 23,
-          "predicted_per_second": 179.00295354873356,
-          "predicted_per_token_ms": 5.5865,
-          "prompt_ms": 93.295,
-          "prompt_n": 208,
-          "prompt_per_second": 2229.4871107776407,
-          "prompt_per_token_ms": 0.44853365384615385
-        }
       }
     }
   },
@@ -1135,6 +1193,42 @@
     "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"note\": \"The",
+                  "name": "record"
+                },
+                "id": "V4qB8yCqUhYSSntX6H2qqe5Ak1rfrQgE",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-16YXiKe3zNgt7YOsOvGsZIRTiYqd1fAZ",
+      "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 164,
+        "predicted_ms": 475.278,
+        "predicted_n": 20,
+        "predicted_per_second": 39.97660316698858,
+        "predicted_per_token_ms": 25.01463157894737,
+        "prompt_ms": 29.027,
+        "prompt_n": 1,
+        "prompt_per_second": 34.45068384607434,
+        "prompt_per_token_ms": 29.027
+      },
       "usage": {
         "completion_tokens": 20,
         "prompt_tokens": 165,
@@ -1142,25 +1236,6 @@
           "cached_tokens": 164
         },
         "total_tokens": 185
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-16YXiKe3zNgt7YOsOvGsZIRTiYqd1fAZ",
-      "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 164,
-          "predicted_ms": 475.278,
-          "predicted_n": 20,
-          "predicted_per_second": 39.97660316698858,
-          "predicted_per_token_ms": 25.01463157894737,
-          "prompt_ms": 29.027,
-          "prompt_n": 1,
-          "prompt_per_second": 34.45068384607434,
-          "prompt_per_token_ms": 29.027
-        }
       }
     }
   },
@@ -1254,6 +1329,32 @@
     "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Maple trees are known for their vibrant fall foliage, displaying shades of red, orange, and yellow",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-MwP38YZD42vYV8XzTwqGVnPtig0ansNs",
+      "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
+      "object": "chat.completion",
+      "system_fingerprint": "b10964-b29c606e2",
+      "timings": {
+        "cache_n": 34,
+        "predicted_ms": 623.437,
+        "predicted_n": 24,
+        "predicted_per_second": 36.892260164218676,
+        "predicted_per_token_ms": 27.10595652173913,
+        "prompt_ms": 18.749,
+        "prompt_n": 1,
+        "prompt_per_second": 53.33617792948958,
+        "prompt_per_token_ms": 18.749
+      },
       "usage": {
         "completion_tokens": 24,
         "prompt_tokens": 35,
@@ -1261,25 +1362,6 @@
           "cached_tokens": 34
         },
         "total_tokens": 59
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-MwP38YZD42vYV8XzTwqGVnPtig0ansNs",
-      "model": "/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "b10964-b29c606e2",
-        "timings": {
-          "cache_n": 34,
-          "predicted_ms": 623.437,
-          "predicted_n": 24,
-          "predicted_per_second": 36.892260164218676,
-          "predicted_per_token_ms": 27.10595652173913,
-          "prompt_ms": 18.749,
-          "prompt_n": 1,
-          "prompt_per_second": 53.33617792948958,
-          "prompt_per_token_ms": 18.749
-        }
       }
     }
   },

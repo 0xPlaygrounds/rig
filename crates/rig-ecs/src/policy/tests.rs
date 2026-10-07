@@ -161,6 +161,8 @@ fn a_graph_without_a_conversation_does_not_fold() {
         max_tokens: None,
         accept_unknown_finish_reasons: false,
         additional_params: None,
+        options: &rig_core::completion::GenerationOptions::default(),
+        provider_options: &rig_core::completion::ProviderOptions::default(),
         tool_choice: None,
         output: OutputKind::Native,
         schema: None,
@@ -194,6 +196,8 @@ fn documents_and_tools_fold_from_the_graph() {
         max_tokens: None,
         accept_unknown_finish_reasons: false,
         additional_params: None,
+        options: &rig_core::completion::GenerationOptions::default(),
+        provider_options: &rig_core::completion::ProviderOptions::default(),
         tool_choice: None,
         output: OutputKind::Native,
         schema: None,
@@ -234,6 +238,8 @@ fn documents_and_tools_fold_from_the_graph() {
         max_tokens: None,
         accept_unknown_finish_reasons: false,
         additional_params: None,
+        options: &rig_core::completion::GenerationOptions::default(),
+        provider_options: &rig_core::completion::ProviderOptions::default(),
         tool_choice: Some(&ToolChoice::None),
         output: OutputKind::Native,
         schema: None,
@@ -339,4 +345,14 @@ fn the_tool_result_cut_takes_a_zero_budget_and_a_marker_wider_than_the_budget() 
     );
     // A zero-length text under a zero budget is within the limit.
     assert_eq!(limit_tool_result_text("", &limit(0, marker)), None);
+}
+
+/// The assembled request graph and the components carrying a request stay
+/// unwind safe with provider options in them.
+#[test]
+fn the_request_graph_stays_unwind_safe() {
+    fn unwind_safe<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    unwind_safe::<RequestGraph<'static>>();
+    unwind_safe::<crate::bus::effect::PendingEffect>();
+    unwind_safe::<crate::systems::NotRetrieval>();
 }

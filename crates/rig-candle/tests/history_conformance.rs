@@ -95,11 +95,11 @@ impl HistoryFixture for CandleHistory {
         request: CompletionRequest,
         mode: Mode,
     ) -> Result<Value, EncodeError> {
-        let request = wire.encode(request, mode)?;
+        let payload = wire.encode(request, mode)?;
         let prompt = wire
-            .prompt(&request)
+            .prompt(&payload.request)
             .map_err(|error| EncodeError::request(error.to_string()))?;
-        Ok(serde_json::json!({"model": request.model, "prompt": prompt}))
+        Ok(serde_json::json!({"model": payload.request.model, "prompt": prompt}))
     }
 
     /// The generator restates nothing: a whole reply is its events, read at

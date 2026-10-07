@@ -156,10 +156,7 @@ fn finish_lookup(
                     .iter()
                     .filter_map(|content| match content {
                         AssistantContent::Text(text) => Some(text.text.trim().to_owned()),
-                        AssistantContent::ToolCall(_)
-                        | AssistantContent::Reasoning(_)
-                        | AssistantContent::Image(_)
-                        | AssistantContent::Opaque(_) => None,
+                        _ => None,
                     })
                     .collect::<Vec<_>>()
                     .join(" "),

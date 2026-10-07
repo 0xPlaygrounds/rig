@@ -192,7 +192,14 @@
             "total_tokens": 221,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0004675,
+              "output": 0.00034,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0008075000000000001
+            }
           },
           "origin": {
             "api": "openai.responses",
@@ -532,7 +539,14 @@
             "total_tokens": 228,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000525,
+              "output": 0.00018,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000705
+            }
           },
           "origin": {
             "api": "openai.responses",
@@ -924,7 +938,14 @@
             "total_tokens": 239,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00059,
+              "output": 0.00003,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00062
+            }
           },
           "origin": {
             "api": "openai.responses",

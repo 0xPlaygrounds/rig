@@ -15,7 +15,7 @@ use rig_core::effect::{EffectFamily, EffectRow};
 use rig_ecs::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
-        DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Output, OutputKind,
+        DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Options, Output, OutputKind,
         OutputToolConfig, PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves,
         Route, RunOf, StreamRequested, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
@@ -75,7 +75,15 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         OutputKind::Tool => "Tool",
         OutputKind::Prompted => "Prompted",
     };
-    serde_json::json!({
+    let options = world
+        .get::<Options>(agent)
+        .map(|options| options.0.clone())
+        .filter(|options| !options.is_default());
+    let provider_options = world
+        .get::<rig_ecs::agent::ProviderOptions>(agent)
+        .map(|options| options.0.clone())
+        .filter(|options| !options.is_empty());
+    let mut spec = serde_json::json!({
         "preamble": preamble,
         "static_context": context,
         "additional_params": additional_params,
@@ -90,7 +98,50 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         "output_tool_description": output_tool.description,
         "augment_output_preamble": output_tool.augment_preamble,
         "unhandled_invalid_tool_call": "fail",
-    })
+    });
+    // Default options are left out, as the rig-agent spec leaves them out.
+    if let (Some(options), Some(fields)) = (options, spec.as_object_mut()) {
+        fields.insert("options".into(), serde_json::json!(options));
+    }
+    if let (Some(options), Some(fields)) = (provider_options, spec.as_object_mut()) {
+        fields.insert("provider_options".into(), serde_json::json!(options));
+    }
+    spec
+}
+
+/// The provider options a run's requests carry: the run's entries over the
+/// agent's.
+fn effective_provider_options(
+    world: &World,
+    subject: Entity,
+    agent: Entity,
+) -> rig_core::completion::ProviderOptions {
+    let base = world
+        .get::<rig_ecs::agent::ProviderOptions>(agent)
+        .map(|options| options.0.clone())
+        .unwrap_or_default();
+    // When the subject is the agent, overlaying its entries on themselves
+    // changes nothing.
+    match world.get::<rig_ecs::agent::ProviderOptions>(subject) {
+        Some(over) => base.overlay(&over.0),
+        None => base,
+    }
+}
+
+/// The options a run's requests carry: the run's overlaid on the agent's.
+fn effective_options(
+    world: &World,
+    subject: Entity,
+    agent: Entity,
+) -> rig_core::completion::GenerationOptions {
+    let base = world
+        .get::<Options>(agent)
+        .map(|options| options.0.clone())
+        .unwrap_or_default();
+    match world.get::<Options>(subject) {
+        Some(over) if subject != agent => base.overlay(&over.0),
+        _ => base,
+    }
 }
 
 fn effective<T: Component>(world: &World, subject: Entity) -> Option<&T> {
@@ -133,6 +184,21 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
                 effective::<ToolChoiceSpec>(world, subject).and_then(|v| v.0.as_ref())
             ),
         );
+        let options = effective_options(world, subject, agent);
+        if options.is_default() {
+            fields.shift_remove("options");
+        } else {
+            fields.insert("options".into(), serde_json::json!(options));
+        }
+        let provider_options = effective_provider_options(world, subject, agent);
+        if provider_options.is_empty() {
+            fields.shift_remove("provider_options");
+        } else {
+            fields.insert(
+                "provider_options".into(),
+                serde_json::json!(provider_options),
+            );
+        }
         fields.insert(
             "max_turns".into(),
             serde_json::json!(effective::<MaxTurns>(world, subject).map_or(1, |v| v.0)),

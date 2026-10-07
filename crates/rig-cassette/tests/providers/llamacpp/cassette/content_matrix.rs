@@ -42,7 +42,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_is_an_empty_turn() {
                         // this matches the model's very first emitted token
                         // and the whole answer is consumed before a character
                         // of it exists.
-                        .additional_params(json!({ "stop": ["<think>"] })),
+                        .stop(["<think>"]),
                 )
                 .await
                 .expect("an empty turn that ended cleanly decodes");

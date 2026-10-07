@@ -7,7 +7,18 @@ use serde_json::json;
 fn body_of(request: CompletionRequest) -> Value {
     let wire =
         crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-2.5-flash");
-    create_request_body(&wire, request, None).expect("request should build")
+    json_of(&wire, request, None).expect("request should build")
+}
+
+/// The body `wire` builds for `request`, as JSON.
+fn json_of(
+    wire: &Interactions,
+    request: CompletionRequest,
+    stream: Option<bool>,
+) -> Result<Value, EncodeError> {
+    Ok(serde_json::to_value(create_request_body(
+        wire, &request, stream,
+    )?)?)
 }
 
 /// The first `function_result` step of `body`.
@@ -39,7 +50,7 @@ fn test_create_request_body_simple() {
 
     let wire =
         crate::providers::gemini::GeminiConfig::new("test-key").interactions("gemini-2.5-flash");
-    let result = create_request_body(&wire, request, Some(false)).expect("request should build");
+    let result = json_of(&wire, request, Some(false)).expect("request should build");
 
     assert_eq!(result["model"], "gemini-2.5-flash");
     assert!(result.get("agent").is_none());
@@ -297,7 +308,7 @@ fn encoded_steps(wire: &Interactions, history: Vec<Message>) -> Vec<Value> {
         &wire.describe(),
     )
     .expect("the request is valid");
-    match create_request_body(wire, request, None).expect("the request builds") {
+    match json_of(wire, request, None).expect("the request builds") {
         Value::Object(mut body) => match body.shift_remove("input") {
             Some(Value::Array(steps)) => steps,
             other => panic!("the body's input is a list: {other:?}"),

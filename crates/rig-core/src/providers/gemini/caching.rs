@@ -125,7 +125,8 @@ const MIN_IDLE_SECS: u64 = 60;
 /// The `Auto` policy's parameters. The price ratios default to
 /// gemini-3.8-flash standard prices relative to its input price (cached read
 /// $0.075 and storage $0.50 per 1M tokens per hour, against $0.75 input);
-/// set them for other models or tiers. Nothing here reads a model name.
+/// [`AutoCache::for_model`] reads the cached-read ratio of another model
+/// from the built-in catalog. The catalog holds no storage price.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AutoCache {
     /// The shortest TTL a new cache gets.
@@ -156,6 +157,33 @@ impl Default for AutoCache {
             min_gain: 256,
             cached_ratio: 0.1,
             storage_ratio_per_hour: 0.5 / 0.75,
+        }
+    }
+}
+
+impl AutoCache {
+    /// The default policy with the cached-read ratio of the Gemini API's
+    /// `model` from the built-in catalog's pricing. A model the catalog
+    /// does not price keeps the default ratio.
+    pub fn for_model(model: &str) -> Self {
+        Self::priced(
+            crate::catalog::lookup(super::PROVIDER_NAME, model)
+                .and_then(|spec| spec.pricing.as_ref()),
+        )
+    }
+
+    /// The default policy with the cached-read ratio of `pricing`. Without
+    /// a cached-read price, with a negative one, or with no positive input
+    /// price to divide by, the default ratio stays.
+    fn priced(pricing: Option<&crate::catalog::Pricing>) -> Self {
+        let ratio = pricing
+            .and_then(|pricing| Some((pricing.cache_read?, pricing.input)))
+            .filter(|(read, input)| *read >= 0.0 && *input > 0.0)
+            .map(|(read, input)| read / input);
+        let default = Self::default();
+        Self {
+            cached_ratio: ratio.unwrap_or(default.cached_ratio),
+            ..default
         }
     }
 }
@@ -966,3 +994,6 @@ impl CacheBook {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -12,6 +12,14 @@ struct Target {
 }
 
 impl ReplayTarget for Target {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }
@@ -134,6 +142,14 @@ fn another_model_replays_canonical_fields_only() {
 struct InlineOnly;
 
 impl ReplayTarget for InlineOnly {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }
@@ -309,6 +325,14 @@ struct Narrow {
 }
 
 impl ReplayTarget for Narrow {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }
@@ -481,6 +505,14 @@ fn a_store_that_reorders_keys_keeps_the_native() {
 struct Slotted;
 
 impl ReplayTarget for Slotted {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }
@@ -594,6 +626,14 @@ fn results_split_by_a_system_message_answer_their_calls() {
 struct Paired;
 
 impl ReplayTarget for Paired {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("test.api")
     }
@@ -701,6 +741,14 @@ fn a_hosted_use_pairs_with_its_result_in_a_later_turn() {
 struct UserFirst;
 
 impl ReplayTarget for UserFirst {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         TARGET.api()
     }
@@ -776,6 +824,14 @@ fn the_context_is_the_same_before_and_after_adapt() {
 struct LeadingSystemOnly;
 
 impl ReplayTarget for LeadingSystemOnly {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> Api {
         TARGET.api()
     }

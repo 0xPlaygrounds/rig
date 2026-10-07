@@ -20,16 +20,14 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     };
     assert!(
         wire.binding().is_some(),
         "default model options fit the recipe"
     );
     let cached = Wire {
-        model: rig::Model::new(
-            wire.model.wire.with_automatic_caching(),
-            wire.model.transport,
-        ),
+        model: rig::Model::new(wire.model.wire.with_prompt_caching(), wire.model.transport),
         ..wire
     };
     assert!(
@@ -56,6 +54,7 @@ fn model_level_options_require_intact_host_bindings() {
             route: None,
             temperature: None,
             additional_params: None,
+            options: None,
         };
         assert!(
             wire.binding().is_none(),
@@ -65,7 +64,7 @@ fn model_level_options_require_intact_host_bindings() {
     let http = SequencedHttpClient::new(vec![]);
     let provider = OpenAIConfig::new("local-test-key").connect(http.clone());
     let mut chat = provider.chat("model");
-    chat.wire = chat.wire.with_prompt_caching();
+    chat.wire = chat.wire.with_tool_result_array_content();
     check(chat, ThinkingWire::OpenAiChat);
     let mut responses = provider.responses("model");
     responses.wire = responses.wire.with_strict_tools();

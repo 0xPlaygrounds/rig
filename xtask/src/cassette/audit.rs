@@ -7,8 +7,10 @@
 //! the same content, in the same order, as its typed replacement is a
 //! migrated stream; a count that follows the stream items (a delivery
 //! batch, a stream error's position, a validated offset) moves only in a
-//! migrated golden. A change outside these kinds, or a part that disagrees
-//! with its fragments, fails the audit.
+//! migrated golden. A `cost` added to a usage, or `citations` added to a
+//! text block, is the fold normalizing what the reply already held. A change
+//! outside these kinds, or a part that disagrees with its fragments, fails
+//! the audit.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -48,6 +50,10 @@ pub(crate) enum Change {
     /// A deleted golden no test names any more, or one the cassette prune
     /// lists.
     Retired,
+    /// A usage that gained a `cost`, reported or priced from the catalog.
+    CostAdded,
+    /// A text block that gained the `citations` its reply stated.
+    CitationsAdded,
 }
 
 impl fmt::Display for Change {
@@ -62,6 +68,8 @@ impl fmt::Display for Change {
             Self::Rebatched => "delivery rebatched",
             Self::CountShift => "count shift",
             Self::Retired => "golden retired",
+            Self::CostAdded => "cost added to usage",
+            Self::CitationsAdded => "citations added to text",
         })
     }
 }
@@ -156,6 +164,28 @@ impl Audit {
 }
 
 /// The event an item carries, when it is one.
+/// The one key `new` adds to `old` that the fold now normalizes: a usage's
+/// `cost`, or a text block's `citations`.
+fn normalized(
+    old: &serde_json::Map<String, Value>,
+    new: &serde_json::Map<String, Value>,
+    at: &str,
+) -> Option<(Change, &'static str)> {
+    let mut added = new.keys().filter(|key| !old.contains_key(*key));
+    let (Some(key), None) = (added.next(), added.next()) else {
+        return None;
+    };
+    match key.as_str() {
+        "cost" if at.ends_with("/usage") || at.ends_with("::Usage") => {
+            Some((Change::CostAdded, "cost"))
+        }
+        "citations" if new.get("type").and_then(Value::as_str) == Some("text") => {
+            Some((Change::CitationsAdded, "citations"))
+        }
+        _ => None,
+    }
+}
+
 fn event_of(item: &Value) -> Option<&Value> {
     (item.get("item").and_then(Value::as_str) == Some("event"))
         .then(|| item.get("value"))
@@ -433,6 +463,13 @@ impl<'a> File<'a> {
         match (base, head) {
             (Value::Object(old), Value::Object(new)) => {
                 if self.restored_call(base, head, at) {
+                    return;
+                }
+                if let Some((change, key)) = normalized(old, new, at) {
+                    self.audit.count(change, 1);
+                    let mut rest = new.clone();
+                    rest.shift_remove(key);
+                    self.compare(base, &Value::Object(rest), at, validated);
                     return;
                 }
                 if old.keys().ne(new.keys()) {

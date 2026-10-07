@@ -10,6 +10,7 @@
 //! ```
 
 mod artifacts;
+pub mod extension;
 mod generation;
 mod loader;
 mod model;
@@ -22,7 +23,9 @@ mod validation;
 
 pub use artifacts::{GgufModelData, ModelArtifacts, ModelData};
 pub use generation::{GenerationConfig, GenerationEvent};
-pub use model::{CandleAdapter, CandleFrame, CandleModel, CandleModelBuilder, Generation};
+pub use model::{
+    CandleAdapter, CandleFrame, CandleModel, CandleModelBuilder, CandleRequest, Generation,
+};
 pub use profile::{ConversationProtocol, ModelArchitecture, Quantization};
 pub use types::{CandleCompletionResponse, CandleError, FinishReason};
 

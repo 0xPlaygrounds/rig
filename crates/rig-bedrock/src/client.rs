@@ -92,8 +92,9 @@ impl BedrockRuntime {
         Builder::default().build()
     }
 
-    /// The Converse model for `model`. Wire options such as a guardrail go
-    /// on the wire: `Model::new(Converse::new(model).with_guardrail(..), runtime)`.
+    /// The Converse model for `model`. Request options such as a guardrail
+    /// go in the request's provider options
+    /// ([`BedrockOptions`](crate::extension::BedrockOptions)).
     pub fn completion(&self, model: impl Into<String>) -> Model<Converse, Self> {
         Model::new(Converse::new(model), self.clone())
     }

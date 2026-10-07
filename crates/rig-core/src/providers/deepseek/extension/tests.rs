@@ -1,0 +1,87 @@
+//! DeepSeek's extras read from a recorded unary reply, and its empty
+//! options. The options test is a unit test because DeepSeek has no typed
+//! option to record.
+
+use super::*;
+use crate::completion::{CompletionRequest, ProviderOptions};
+use crate::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
+use crate::providers::openrouter::extension::OpenRouterExt;
+use crate::test_utils::provider_extensions::{encoded_body, recorded_reply, reply_of};
+use crate::wire::Mode;
+
+const MODEL: &str = crate::providers::deepseek::DEEPSEEK_FLASH;
+
+#[test]
+fn empty_options_change_nothing() {
+    let wire = OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL);
+    let options = ProviderOptions::new()
+        .with::<DeepSeekExt>(&DeepSeekOptions::new())
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert!(options.is_empty());
+    let with = encoded_body(
+        &wire,
+        CompletionRequest::new("hi").provider_options(options),
+        Mode::Unary,
+    );
+    let without = encoded_body(&wire, CompletionRequest::new("hi"), Mode::Unary);
+    assert_eq!(
+        with.unwrap_or_else(|error| panic!("{error}")),
+        without.unwrap_or_else(|error| panic!("{error}"))
+    );
+}
+
+#[tokio::test]
+async fn extras_from_a_unary_recording() {
+    let reply = reply_of(
+        OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL),
+        recorded_reply("deepseek", "portability_matrix/from_openai_responses", 0),
+    )
+    .await;
+    let extras = reply
+        .extras::<DeepSeekExt>()
+        .unwrap_or_else(|| panic!("a DeepSeek reply"))
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(extras.prompt_cache_hit_tokens, Some(256));
+    assert_eq!(extras.prompt_cache_miss_tokens, Some(247));
+    assert_eq!(extras.reasoning_tokens, Some(25));
+    assert_eq!(
+        extras.system_fingerprint.as_deref(),
+        Some("aeb56401ca74e127821c4f9126dcb669")
+    );
+    assert!(reply.extras::<OpenRouterExt>().is_none());
+}
+
+/// A stream's `raw` is the unary document, so the extras of the recorded
+/// stream equal those of the recorded unary answer of the same prompt, its
+/// cache counters included.
+#[tokio::test]
+async fn extras_read_alike_from_a_recorded_stream() {
+    use crate::test_utils::provider_extensions::{recorded_stream, streamed_reply_of};
+
+    const SCENARIO: &str =
+        "followup_hunt_matrix/{}_stop_sequence_reaches_the_wire_and_stops_generation";
+    let wire = || OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL);
+    let read = |reply: crate::completion::CompletionResponse| {
+        reply
+            .extras::<DeepSeekExt>()
+            .unwrap_or_else(|| panic!("a DeepSeek reply"))
+            .unwrap_or_else(|error| panic!("{error}"))
+    };
+    let streamed = read(
+        streamed_reply_of(
+            wire(),
+            recorded_stream("deepseek", &SCENARIO.replace("{}", "streaming"), 0),
+        )
+        .await,
+    );
+    let unary = read(
+        reply_of(
+            wire(),
+            recorded_reply("deepseek", &SCENARIO.replace("{}", "blocking"), 0),
+        )
+        .await,
+    );
+    assert_eq!(streamed, unary);
+    assert!(streamed.prompt_cache_hit_tokens.is_some());
+    assert!(streamed.prompt_cache_miss_tokens.is_some());
+}

@@ -43,10 +43,7 @@ impl Serve for FinishingName {
         let Some(gate) = gate else {
             return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("done")],
-                ProviderUsage {
-                    total_tokens: Some(3),
-                    ..ProviderUsage::default()
-                },
+                ProviderUsage::new().total_tokens(3),
                 rig_core::message::Origin::new("test.api", "boundary", ""),
                 serde_json::json!({}),
             ))));
@@ -62,10 +59,7 @@ impl Serve for FinishingName {
                 gate.await.expect("test releases producer");
                 writer
                     .finish(rig_core::operation::Finish {
-                        usage: ProviderUsage {
-                            total_tokens: Some(7),
-                            ..ProviderUsage::default()
-                        },
+                        usage: ProviderUsage::new().total_tokens(7),
                         ..rig_core::operation::Finish::default()
                     })
                     .await

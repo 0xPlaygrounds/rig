@@ -29,10 +29,8 @@ struct Gpt55Event {
     summary: String,
 }
 
-fn gpt_5_5_reasoning_params() -> serde_json::Value {
-    serde_json::json!({
-        "reasoning": { "effort": "xhigh" }
-    })
+fn gpt_5_5_reasoning_options() -> rig::completion::GenerationOptions {
+    super::super::support::effort(rig::completion::Effort::XHigh)
 }
 
 #[tokio::test]
@@ -196,10 +194,10 @@ async fn responses_image_input_smoke() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_nonstreaming_smoke() {
     let client = OpenAiModels::from_env().expect("config should build from env");
-    reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-        client.completion(openai::GPT_5_5),
-        Some(gpt_5_5_reasoning_params()),
-    ))
+    reasoning::run_reasoning_roundtrip_nonstreaming(
+        ReasoningRoundtripAgent::new(client.completion(openai::GPT_5_5), None)
+            .with_options(gpt_5_5_reasoning_options()),
+    )
     .await;
 }
 
@@ -207,10 +205,10 @@ async fn responses_reasoning_nonstreaming_smoke() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_reasoning_streaming_smoke() {
     let client = OpenAiModels::from_env().expect("config should build from env");
-    reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
-        client.completion(openai::GPT_5_5),
-        Some(gpt_5_5_reasoning_params()),
-    ))
+    reasoning::run_reasoning_roundtrip_streaming(
+        ReasoningRoundtripAgent::new(client.completion(openai::GPT_5_5), None)
+            .with_options(gpt_5_5_reasoning_options()),
+    )
     .await;
 }
 
@@ -223,7 +221,7 @@ async fn responses_reasoning_tool_roundtrip_smoke() {
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
-        .additional_params(gpt_5_5_reasoning_params())
+        .options(gpt_5_5_reasoning_options())
         .build();
 
     let result = agent
@@ -244,7 +242,7 @@ async fn responses_reasoning_streaming_tool_roundtrip_smoke() {
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
-        .additional_params(gpt_5_5_reasoning_params())
+        .options(gpt_5_5_reasoning_options())
         .build();
 
     let stream = agent

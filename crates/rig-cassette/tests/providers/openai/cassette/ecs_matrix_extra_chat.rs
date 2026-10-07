@@ -24,6 +24,7 @@ async fn error_facts_unary() {
                         prompt: "Never validated",
                         max_tokens: None,
                         additional_params: Some(serde_json::json!({"temperature": 99.0})),
+                        options: None,
                         streamed: false,
                         status: 400,
                         code: Some("decimal_above_max_value"),

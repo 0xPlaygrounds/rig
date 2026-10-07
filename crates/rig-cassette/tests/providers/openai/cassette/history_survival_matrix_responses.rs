@@ -1,11 +1,18 @@
 //! Responses history survival: encrypted reasoning, reasoning item ids and
 //! function-call ids across three prompts, plus an image tool result.
 
-use super::super::support::{OpenAiCassette, with_openai_cassette};
+use rig::completion::Effort;
+
+use super::super::support::{OpenAiCassette, effort, stateless, with_openai_cassette};
+use crate::history_survival::Options;
 use crate::history_survival::driver::{Cell, Expect, Transport};
 
 fn params() -> Option<serde_json::Value> {
-    Some(serde_json::json!({ "reasoning": { "effort": "low" }, "store": false }))
+    None
+}
+
+fn options() -> Options {
+    Options::new(effort(Effort::Low), stateless())
 }
 
 fn model(
@@ -23,6 +30,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "openai",
         model: "gpt-5-mini",
         params,
+        options,
         max_tokens: 4096,
         transport,
         expect,

@@ -16,4 +16,10 @@
 pub const SONAR_PRO: &str = "sonar_pro";
 pub const SONAR: &str = "sonar";
 
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "perplexity";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::PERPLEXITY, "Perplexity");

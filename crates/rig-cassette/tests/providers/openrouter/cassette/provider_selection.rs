@@ -1,6 +1,8 @@
 //! Cassette-backed OpenRouter provider selection scenarios.
 
-use serde_json::json;
+use rig::providers::openrouter::extension::{
+    MaxPrice, OpenRouterOptions, ProviderPreferences, ProviderSortStrategy,
+};
 
 use crate::support::assert_nonempty_response;
 
@@ -16,27 +18,33 @@ async fn provider_selection_scenarios() {
             let scenarios = [
                 (
                     "hello",
-                    json!({"provider": {
-                        "order": ["DeepInfra", "DeepSeek", "Chutes"],
-                        "allow_fallbacks": true,
-                    }}),
+                    ProviderPreferences::new()
+                        .order(["DeepInfra", "DeepSeek", "Chutes"])
+                        .allow_fallbacks(true),
                 ),
-                ("planet", json!({"provider": {"ignore": ["Google Vertex"]}})),
-                ("french hello", json!({"provider": {"sort": "latency"}})),
+                (
+                    "planet",
+                    ProviderPreferences::new().ignore(["Google Vertex"]),
+                ),
+                (
+                    "french hello",
+                    ProviderPreferences::new().sort(ProviderSortStrategy::Latency),
+                ),
                 (
                     "sky color",
-                    json!({"provider": {"require_parameters": true}}),
+                    ProviderPreferences::new().require_parameters(true),
                 ),
                 (
                     "country",
-                    json!({"provider": {"max_price": {"prompt": 0.30, "completion": 0.50}}}),
+                    ProviderPreferences::new()
+                        .max_price(MaxPrice::new().prompt(0.30).completion(0.50)),
                 ),
             ];
 
-            for (prompt, params) in scenarios {
+            for (prompt, preferences) in scenarios {
                 let agent = rig::AgentBuilder::new(client.completion(DEEPSEEK_V3_2))
                     .preamble("You are a helpful assistant.")
-                    .additional_params(params)
+                    .provider_option(OpenRouterOptions::new().provider(preferences))
                     .build();
                 let response = agent.prompt(prompt).await.expect("prompt should succeed");
                 assert_nonempty_response(&response.output());

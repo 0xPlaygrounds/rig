@@ -308,7 +308,7 @@ impl HistoryFixture for ChatHistory {
             AssistantContent::Image(_) => (json!({"role": "assistant", "images": [item]}), "stop"),
             // A text block's item is the audio beside its transcript, and an
             // opaque item has no block to decode to.
-            AssistantContent::Text(_) | AssistantContent::Opaque(_) => return None,
+            _ => return None,
         };
         let wire = self.wire(self.model);
         let response = decode(
@@ -448,7 +448,7 @@ pub fn projection(turn: &AssistantMessage, dialect: &Dialect) -> Value {
                 item["function"]["arguments"] = json!(call.function.arguments_value().to_string());
                 calls.push(item);
             }
-            AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
+            _ => {}
         }
     }
     if has_parts {

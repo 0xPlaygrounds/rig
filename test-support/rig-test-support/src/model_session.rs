@@ -27,12 +27,17 @@ use rig_agent::test_utils::{
     zero_argument_tool,
 };
 use rig_cassette::http::CassetteClock;
-use rig_core::completion::{CompletionRequest, FinishReason, Message, ProviderToolDefinition};
+use rig_core::completion::{
+    CacheRetention, CompletionRequest, Effort, FinishReason, GenerationOptions, Message,
+    ProviderOptions, ProviderToolDefinition, Reasoning,
+};
 use rig_core::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, ImageMediaType,
     ToolChoice, UserContent,
 };
 use rig_core::providers::anthropic;
+use rig_core::providers::anthropic::extension::AnthropicExt;
+use rig_core::providers::openai::extension::{Include, OpenAiOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -339,23 +344,65 @@ const SESSION_RULES: &str = "\n\n## Tools in this session\n\n\
     In this session the customer also sends images, documents and questions that are \
     not about orders: answer those directly and briefly, exactly as asked.";
 
+/// The typed options every request of a conversation carries.
+#[derive(Clone, Default)]
+struct RequestOptions {
+    generation: GenerationOptions,
+    provider: ProviderOptions,
+}
+
+impl RequestOptions {
+    fn generation(generation: GenerationOptions) -> Self {
+        Self {
+            generation,
+            provider: ProviderOptions::new(),
+        }
+    }
+
+    /// `generation` beside OpenAI's provider options.
+    fn openai(generation: GenerationOptions, options: OpenAiOptions) -> Self {
+        Self {
+            generation,
+            provider: ProviderOptions::new().set(options),
+        }
+    }
+
+    /// `store: false`, which keeps a Responses call stateless.
+    fn stateless() -> Self {
+        Self::openai(
+            GenerationOptions::default(),
+            OpenAiOptions::new().store(false),
+        )
+    }
+
+    fn agent<Tools>(&self, builder: AgentBuilder<Tools>) -> AgentBuilder<Tools> {
+        builder
+            .options(self.generation.clone())
+            .provider_options(self.provider.clone())
+    }
+
+    fn request(&self, request: CompletionRequest) -> CompletionRequest {
+        request
+            .options(self.generation.clone())
+            .provider_options(self.provider.clone())
+    }
+}
+
 fn main_agent(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    params: Option<Value>,
+    options: &RequestOptions,
     max_tokens: u64,
 ) -> Agent {
-    let builder = AgentBuilder::new(model)
+    options
+        .agent(AgentBuilder::new(model))
         .preamble(format!("{SUPPORT_PREAMBLE}{SESSION_RULES}"))
         .tool(LookupOrder)
         .tool(WarehouseTime)
         .tool(ListOrders)
         .tool(SchedulePickup)
         .max_tokens(max_tokens)
-        .default_max_turns(8);
-    match params {
-        Some(params) => builder.additional_params(params).build(),
-        None => builder.build(),
-    }
+        .default_max_turns(8)
+        .build()
 }
 
 /// Calls the history made to `tool` from index `from` on.
@@ -680,10 +727,8 @@ pub async fn anthropic(
 
     if !profile.fixes_only {
         let agent = main_agent(
-            models
-                .completion(profile.model)
-                .map_wire(anthropic::Messages::with_automatic_caching),
-            None,
+            models.completion(profile.model),
+            &RequestOptions::generation(GenerationOptions::default().cache(CacheRetention::Short)),
             4096,
         );
         // Enabling citations changes the rendered system prompt, so the
@@ -729,12 +774,7 @@ pub async fn anthropic(
         let cited = history[from..].iter().any(|message| match message {
             Message::Assistant(rig_core::message::AssistantMessage { content, .. }) => {
                 content.iter().any(|part| match part {
-                    AssistantContent::Text(text) => text
-                        .native
-                        .as_ref()
-                        .and_then(|native| native.item.get("citations"))
-                        .and_then(Value::as_array)
-                        .is_some_and(|citations| !citations.is_empty()),
+                    AssistantContent::Text(text) => !text.citations().is_empty(),
                     _ => false,
                 })
             }
@@ -892,14 +932,14 @@ pub async fn anthropic(
         return session;
     }
 
-    native_structured_output(&mut session, plain(), wire, None).await;
+    native_structured_output(&mut session, plain(), wire, &RequestOptions::default()).await;
     strict_tools(
         &mut session,
         models
             .completion(profile.model)
             .map_wire(anthropic::Messages::with_strict_tools),
         wire,
-        None,
+        &RequestOptions::default(),
     )
     .await;
 
@@ -910,7 +950,7 @@ pub async fn anthropic(
                 "Write these words separated by spaces: alpha bravo charlie delta echo.",
             )
             .max_tokens(256)
-            .additional_params(json!({ "stop_sequences": ["charlie"] })),
+            .stop(["charlie"]),
         )
         .await
         .unwrap_or_else(|error| panic!("{}: stop sequence: {error}", session.run));
@@ -920,9 +960,10 @@ pub async fn anthropic(
         "{}: stopped before delta: {text:?}",
         session.run
     );
+    let stop_reason = response.extras_lossy::<AnthropicExt>().stop_reason;
     assert!(
-        response.raw.get("stop_reason").and_then(Value::as_str) == Some("stop_sequence"),
-        "{}: stop_reason stop_sequence",
+        stop_reason.as_deref() == Some("stop_sequence"),
+        "{}: stop_reason stop_sequence, saw {stop_reason:?}",
         session.run
     );
     session.recorded(
@@ -941,7 +982,7 @@ pub async fn anthropic(
         json!({ "message_id": true, "usage": response.usage.is_reported() }),
     );
 
-    truncation(&mut session, plain(), wire, None, 40).await;
+    truncation(&mut session, plain(), wire, &RequestOptions::default(), 40).await;
 
     // A hosted tool: web search, streamed.
     let mut stream = plain()
@@ -1029,18 +1070,15 @@ async fn native_structured_output(
     session: &mut Session,
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     wire: &'static str,
-    params: Option<Value>,
+    options: &RequestOptions,
 ) {
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     struct City {
         name: String,
         country: String,
     }
-    let mut builder = AgentBuilder::new(model).max_tokens(2048);
-    if let Some(params) = params {
-        builder = builder.additional_params(params);
-    }
-    let city = builder
+    let city = options
+        .agent(AgentBuilder::new(model).max_tokens(2048))
         .build()
         .prompt_typed::<City>("Name the capital of France and its country.")
         .await
@@ -1063,18 +1101,16 @@ async fn strict_tools(
     session: &mut Session,
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     wire: &'static str,
-    params: Option<Value>,
+    options: &RequestOptions,
 ) {
-    let mut builder = AgentBuilder::new(model)
+    let builder = AgentBuilder::new(model)
         .preamble("Use lookup_order to answer order questions.")
         .tool(LookupOrder)
         .max_tokens(2048)
         .default_max_turns(4);
-    if let Some(params) = params {
-        builder = builder.additional_params(params);
-    }
     let mut history = Vec::new();
-    let response = builder
+    let response = options
+        .agent(builder)
         .build()
         .chat("What is the status of order A-9?", &mut history)
         .await
@@ -1096,18 +1132,16 @@ async fn truncation<W, T>(
     session: &mut Session,
     model: rig_core::driver::Model<W, T>,
     wire: &'static str,
-    params: Option<Value>,
+    options: &RequestOptions,
     max_tokens: u64,
 ) where
     W: rig_core::wire::Wire<Op = rig_core::operation::Completion>,
     T: rig_core::driver::Transport<W>,
 {
-    let mut request =
+    let request = options.request(
         CompletionRequest::new("Count from one to two hundred in words, separated by commas.")
-            .max_tokens(max_tokens);
-    if let Some(params) = params {
-        request = request.additional_params(params);
-    }
+            .max_tokens(max_tokens),
+    );
     let response = model
         .call(request)
         .await
@@ -1166,15 +1200,17 @@ pub fn cache_key(model: &str) -> String {
     format!("rig-model-session-{model}")
 }
 
-/// The shared model-contract scenarios on one OpenAI route. `params` ride
+/// The shared model-contract scenarios on one OpenAI route. `options` ride
 /// every request (`store: false` on Responses, the caller's effort on Chat
-/// Completions); `tools` is false where the route refuses function tools.
+/// Completions). The structured extraction scenario takes raw parameters
+/// only, so `extractor_params` is the same setting as JSON.
 async fn openai_scenarios(
     session: &mut Session,
     wire: &'static str,
     models: &OpenAiModels,
     profile: &OpenAiProfile,
-    params: Option<Value>,
+    options: RequestOptions,
+    extractor_params: Option<Value>,
 ) {
     let plain = || models.completion(profile.model);
     let takes_temperature = profile.takes_temperature;
@@ -1182,12 +1218,9 @@ async fn openai_scenarios(
     // its own keeps it).
     let pro_cap = profile.pro.then_some(PRO_MAX_TOKENS);
     let configure = {
-        let params = params.clone();
+        let options = options.clone();
         move |builder: AgentBuilder| {
-            let builder = match &params {
-                Some(params) => builder.additional_params(params.clone()),
-                None => builder,
-            };
+            let builder = options.agent(builder);
             let builder = match pro_cap {
                 Some(cap) => builder.max_tokens(cap),
                 None => builder,
@@ -1200,14 +1233,12 @@ async fn openai_scenarios(
         }
     };
     let adjust = {
-        let params = params.clone();
         move |mut request: CompletionRequest| {
             if !takes_temperature {
                 request.temperature = None;
             }
-            if let Some(params) = &params {
-                request.additional_params = Some(params.clone());
-            }
+            request.options = options.generation.clone();
+            request.provider_options = options.provider.clone();
             if request.max_tokens.is_none() {
                 request.max_tokens = pro_cap;
             }
@@ -1265,7 +1296,7 @@ async fn openai_scenarios(
         .scenario(wire, tool_choice_modes(plain(), adjust))
         .await;
     session
-        .scenario(wire, structured_extraction(plain(), params.clone()))
+        .scenario(wire, structured_extraction(plain(), extractor_params))
         .await;
     session
         .scenario(wire, structured_after_tool(plain(), configure.clone()))
@@ -1285,7 +1316,7 @@ async fn openai_web_search(session: &mut Session, models: &OpenAiModels, model: 
                 "Use web search to check the latest stable Rust release. You must run a search \
                  before answering. Keep the final answer under ten words.",
             )
-            .additional_params(json!({ "store": false }))
+            .provider_options(RequestOptions::stateless().provider)
             .provider_tool(ProviderToolDefinition::new("web_search"))
             .max_tokens(4096),
         )
@@ -1322,31 +1353,25 @@ pub async fn openai(
 ) -> Session {
     let mut session = Session::new("openai", profile.model);
     let wire = "responses";
-    let stateless = json!({ "store": false });
+    let stateless = RequestOptions::stateless();
     let plain = || responses.completion(profile.model);
 
     // Low effort, so every model reasons and its encrypted reasoning rides
     // the history; the pro models keep their default effort and ask for the
     // encrypted reasoning themselves (rig adds it only beside `reasoning`).
-    let params = if profile.pro {
-        json!({
-            "prompt_cache_key": cache_key(profile.model),
-            "store": false,
-            "include": ["reasoning.encrypted_content"],
-        })
+    let shared = OpenAiOptions::new()
+        .prompt_cache_key(cache_key(profile.model))
+        .store(false);
+    let options = if profile.pro {
+        RequestOptions::openai(
+            GenerationOptions::default(),
+            shared.include([Include::ReasoningEncryptedContent]),
+        )
     } else {
-        json!({
-            "prompt_cache_key": cache_key(profile.model),
-            "store": false,
-            "reasoning": { "effort": "low" },
-        })
+        RequestOptions::openai(GenerationOptions::default().reasoning(Effort::Low), shared)
     };
     let max_tokens = if profile.pro { PRO_MAX_TOKENS } else { 4096 };
-    let agent = main_agent(
-        responses.completion(profile.model),
-        Some(params),
-        max_tokens,
-    );
+    let agent = main_agent(responses.completion(profile.model), &options, max_tokens);
     let pdf = UserContent::document_url(PDF_URL, None);
     let history = main_conversation(&mut session, &agent, &clock, wire, pdf, None).await;
     let reasoning_tokens: u64 = session
@@ -1371,11 +1396,12 @@ pub async fn openai(
         wire,
         &responses,
         profile,
-        Some(stateless.clone()),
+        stateless.clone(),
+        Some(json!({ "store": false })),
     )
     .await;
     if profile.structured_outputs {
-        native_structured_output(&mut session, plain(), wire, Some(stateless.clone())).await;
+        native_structured_output(&mut session, plain(), wire, &stateless).await;
     }
     strict_tools(
         &mut session,
@@ -1383,15 +1409,15 @@ pub async fn openai(
             .completion(profile.model)
             .map_wire(|wire| wire.with_strict_tools()),
         wire,
-        Some(stateless.clone()),
+        &stateless,
     )
     .await;
-    truncation(&mut session, plain(), wire, Some(stateless.clone()), 40).await;
+    truncation(&mut session, plain(), wire, &stateless, 40).await;
     if profile.web_search {
         openai_web_search(&mut session, &responses, profile.model).await;
     }
     let response = plain()
-        .call(CompletionRequest::new("Say ok.").additional_params(stateless))
+        .call(stateless.request(CompletionRequest::new("Say ok.")))
         .await
         .unwrap_or_else(|error| panic!("{}: metadata: {error}", session.run));
     assert!(
@@ -1476,17 +1502,20 @@ async fn chat_conversation(
     );
     session.recorded("chat_history_recall", wire, json!({ "streamed": false }));
 
-    native_structured_output(session, plain(), wire, None).await;
+    native_structured_output(session, plain(), wire, &RequestOptions::default()).await;
     // Chat Completions answers a cap reached during reasoning with a 400
     // ("Could not finish the message because max_tokens ... was reached"),
     // so the GPT-6 models truncate at their lowest effort: `none` where they
     // take it, else `low` under a cap reasoning leaves room in.
-    let (params, cap) = match profile.chat {
-        ChatSupport::ToolsAtEffortNone => (Some(json!({ "reasoning_effort": "none" })), 40),
-        ChatSupport::TextOnly => (Some(json!({ "reasoning_effort": "low" })), 300),
+    let (reasoning, cap) = match profile.chat {
+        ChatSupport::ToolsAtEffortNone => (Some(Reasoning::Off), 40),
+        ChatSupport::TextOnly => (Some(Reasoning::Effort(Effort::Low)), 300),
         ChatSupport::Tools | ChatSupport::None => (None, 40),
     };
-    truncation(session, plain(), wire, params, cap).await;
+    let options = reasoning.map_or_else(RequestOptions::default, |reasoning| {
+        RequestOptions::generation(GenerationOptions::default().reasoning(reasoning))
+    });
+    truncation(session, plain(), wire, &options, cap).await;
     let response = plain()
         .call(CompletionRequest::new("Say ok."))
         .await
@@ -1504,7 +1533,15 @@ async fn chat_conversation(
 
     match profile.chat {
         ChatSupport::Tools => {
-            openai_scenarios(session, wire, models, profile, None).await;
+            openai_scenarios(
+                session,
+                wire,
+                models,
+                profile,
+                RequestOptions::default(),
+                None,
+            )
+            .await;
         }
         ChatSupport::ToolsAtEffortNone => {
             openai_scenarios(
@@ -1512,6 +1549,7 @@ async fn chat_conversation(
                 wire,
                 models,
                 profile,
+                RequestOptions::generation(GenerationOptions::default().reasoning(Reasoning::Off)),
                 Some(json!({ "reasoning_effort": "none" })),
             )
             .await;

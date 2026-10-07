@@ -38,7 +38,7 @@ fn scripted() -> Generation {
 struct Scripted(Arc<std::sync::Mutex<Vec<GenerationEvent>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
+    fn send(&self, _request: CandleRequest, _exchange: Exchange) -> Opening<CandleFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {
@@ -284,23 +284,33 @@ fn config_with(
 }
 
 fn request(messages: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: if messages.is_empty() {
-            vec![Message::user("hello")]
-        } else {
-            messages
-        },
-        documents: Vec::new(),
-        tools: Vec::new(),
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    CompletionRequest::from(if messages.is_empty() {
+        vec![Message::user("hello")]
+    } else {
+        messages
+    })
+}
+
+/// `request` as the generation wire encodes it for the loaded model.
+fn payload(request: CompletionRequest) -> Result<CandleRequest, CandleError> {
+    use rig_core::wire::Wire as _;
+    scripted()
+        .encode(request, Mode::Unary)
+        .map_err(|error| CandleError::InvalidGeneration(error.to_string()))
+}
+
+/// The generation settings `request` asks of a model with `defaults`.
+fn settings(
+    request: &CompletionRequest,
+    defaults: &GenerationConfig,
+    vocab_size: usize,
+) -> Result<GenerationConfig, CandleError> {
+    effective_generation(
+        request,
+        &payload(request.clone())?.params,
+        defaults,
+        vocab_size,
+    )
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -985,7 +995,11 @@ fn concurrency_limit_and_cancellation_are_deterministic()
     let signal = CancellationSignal::default();
     signal.cancel();
     assert!(matches!(
-        infer(&loaded, &request(vec![Message::user("hello")]), &signal),
+        infer(
+            &loaded,
+            &payload(request(vec![Message::user("hello")]))?,
+            &signal
+        ),
         Err(CandleError::Cancelled)
     ));
     Ok(())
@@ -1189,7 +1203,11 @@ fn rejects_unsupported_request_features() -> Result<(), Box<dyn std::error::Erro
     let mut override_request = request(vec![Message::user("hello")]);
     override_request.model = Some("other".to_string());
     assert!(matches!(
-        infer(&loaded, &override_request, &CancellationSignal::default()),
+        infer(
+            &loaded,
+            &payload(override_request)?,
+            &CancellationSignal::default()
+        ),
         Err(CandleError::UnsupportedFeature(feature)) if feature.contains("model override")
     ));
 
@@ -1229,7 +1247,7 @@ fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleErr
         "repeat_penalty": 1.2,
         "repeat_last_n": 9
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = settings(&request, &defaults, 8)?;
     assert_eq!(effective.max_tokens, 12);
     assert_eq!(effective.temperature, 0.0);
     assert_eq!(effective.top_k, Some(4));
@@ -1240,27 +1258,27 @@ fn request_generation_overrides_defaults_and_validates() -> Result<(), CandleErr
         "top_k": null,
         "top_p": null
     }));
-    let effective = effective_generation(&request, &defaults, 8)?;
+    let effective = settings(&request, &defaults, 8)?;
     assert_eq!(effective.top_k, None);
     assert_eq!(effective.top_p, None);
 
     let mut inherited_defaults = defaults.clone();
     inherited_defaults.top_k = Some(5);
     request.additional_params = Some(serde_json::json!({}));
-    let effective = effective_generation(&request, &inherited_defaults, 8)?;
+    let effective = settings(&request, &inherited_defaults, 8)?;
     assert_eq!(effective.top_k, Some(5));
     assert_eq!(effective.top_p, defaults.top_p);
 
     request.additional_params = Some(serde_json::json!({"unknown": true}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.additional_params = Some(serde_json::json!({"top_k": "four"}));
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.additional_params = None;
     request.max_tokens = Some(0);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     request.max_tokens = Some(1);
     request.temperature = Some(f64::NAN);
-    assert!(effective_generation(&request, &defaults, 8).is_err());
+    assert!(settings(&request, &defaults, 8).is_err());
     Ok(())
 }
 
@@ -1472,14 +1490,14 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
     );
     let history = vec![
         Message::user("add"),
-        Message::Assistant(AssistantMessage {
-            content: vec![
+        Message::Assistant(
+            AssistantMessage::new(vec![
                 AssistantContent::text("adding"),
                 AssistantContent::ToolCall(call.clone()),
-            ],
-            origin: Some(Origin::new("anthropic.messages", "anthropic", "claude")),
-            stop: Some(StopReason::ToolUse),
-        }),
+            ])
+            .with_origin(Origin::new("anthropic.messages", "anthropic", "claude"))
+            .with_stop(StopReason::ToolUse),
+        ),
         Message::User {
             content: vec![UserContent::ToolResult(
                 call.result(vec![ToolResultContent::text("2")]),
@@ -1510,5 +1528,125 @@ fn another_models_tool_history_renders_for_a_plain_protocol()
         let prompt = wire.prompt(&request)?;
         assert!(prompt.contains("2"), "{protocol:?}: {prompt}");
     }
+    Ok(())
+}
+
+/// `top_p` and `seed` become generation overrides above a raw `top_k`;
+/// thinking off is the protocols' default; the rest is refused.
+#[test]
+fn options_become_generation_overrides() -> Result<(), CandleError> {
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{
+        CacheRetention, GenerationOptions, Reasoning, ServiceTier, options::Mapping,
+    };
+
+    let mut options_request = request(vec![Message::user("hello")])
+        .top_p(0.7)
+        .seed(11)
+        .reasoning(Reasoning::Off);
+    options_request.additional_params = Some(serde_json::json!({"top_k": 4, "seed": 3}));
+    let generation = settings(&options_request, &GenerationConfig::default(), 8)?;
+    assert_eq!(generation.top_p, Some(0.7));
+    assert_eq!(generation.top_k, Some(4));
+    // `additional_params` is above the mapped options.
+    assert_eq!(generation.seed, 3);
+
+    let answers = |options: GenerationOptions| {
+        let request = request(vec![Message::user("hello")]).options(options);
+        scripted().map_options(&request, request.options.fields())
+    };
+    assert!(matches!(
+        answers(GenerationOptions::default().reasoning(Reasoning::Off)).reasoning,
+        Mapping::Omit(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().cache(CacheRetention::Short)).cache,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().service_tier(ServiceTier::Auto)).service_tier,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().stop(["END"])).stop,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().top_p(1.5)).top_p,
+        Mapping::Unsupported(_)
+    ));
+    Ok(())
+}
+
+/// Guarantee 5 for Candle: a stream's `raw` is the document a unary call of
+/// the same greedy generation records, but for its wall-clock timings.
+#[cfg(not(target_family = "wasm"))]
+#[tokio::test(flavor = "current_thread")]
+async fn a_streams_raw_is_the_unary_document()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let model = CandleModel::builder(model_data()?)
+        .temperature(0.0)
+        .max_tokens(2)
+        .build()?;
+    let unary = generation(&model)
+        .call(request(vec![Message::user("hello")]))
+        .await?
+        .raw;
+    let mut stream = generation(&model).stream(request(vec![Message::user("hello")]))?;
+    while let Some(item) = stream.next().await {
+        item?;
+    }
+    let streamed = stream.finish().await?.raw;
+    let timings = [
+        "/prefill_duration_ms",
+        "/time_to_first_token_ms",
+        "/generation_duration_ms",
+        "/tokens_per_second",
+    ];
+    assert!(!unary.is_null());
+    assert_eq!(
+        rig_core::test_utils::raw_parity::comparable(&streamed, &timings),
+        rig_core::test_utils::raw_parity::comparable(&unary, &timings),
+    );
+    Ok(())
+}
+
+/// The reassembler keeps the local response record a whole turn or a
+/// stream's final event carries, and nothing else.
+#[test]
+fn the_document_is_the_final_response_record() -> Result<(), Box<dyn std::error::Error>> {
+    use rig_core::wire::document::Reassemble;
+
+    let response = CandleCompletionResponse {
+        text: "done".to_string(),
+        prompt_tokens: 5,
+        generated_tokens: 2,
+        requested_max_tokens: 4,
+        effective_max_tokens: 3,
+        finish_reason: FinishReason::Eos,
+        prefill_duration_ms: 8,
+        time_to_first_token_ms: Some(10),
+        generation_duration_ms: 20,
+        tokens_per_second: None,
+    };
+    let record = serde_json::to_value(&response)?;
+
+    assert!(CandleDocument::default().finish().is_null());
+
+    let mut streamed = CandleDocument::default();
+    streamed.absorb(&CandleFrame::Event(GenerationEvent::Text(
+        "done".to_owned(),
+    )));
+    streamed.absorb(&CandleFrame::Event(GenerationEvent::Final(
+        response.clone(),
+    )));
+    assert_eq!(streamed.finish(), record);
+
+    let mut whole = CandleDocument::default();
+    whole.absorb(&CandleFrame::Whole(crate::generation::InferredCompletion {
+        response,
+        choice: Vec::new(),
+    }));
+    assert_eq!(whole.finish(), record);
     Ok(())
 }

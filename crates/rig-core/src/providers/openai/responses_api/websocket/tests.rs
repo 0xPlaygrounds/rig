@@ -241,3 +241,38 @@ fn websocket_frame_to_text_maps_control_frames() {
         .expect_err("a reasonless close still ends the turn");
     assert!(error.to_string().contains("without a close reason"));
 }
+
+/// A turn's `raw` is the `Response` its events rebuild, as a stream's is: a
+/// terminal that states no output takes the items the turn finished.
+#[test]
+fn a_turn_records_the_response_its_events_rebuild() {
+    let wire = test_wire("wss://api.openai.com/v1");
+    let reply = std::sync::Mutex::new(Shared::new(Turn::relayed("openai")));
+    let mut decoder = wire.decoder();
+    let mut document = wire.reassembler();
+    let item = json!({
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": "pong", "annotations": []}]
+    });
+    let events = [
+        json!({"type": "response.created", "response": sample_response("in_progress")}),
+        json!({"type": "response.output_item.added", "output_index": 0, "item": {"type": "message", "id": "msg_1", "role": "assistant", "content": []}}),
+        json!({"type": "response.output_text.delta", "output_index": 0, "content_index": 0, "item_id": "msg_1", "delta": "pong"}),
+        json!({"type": "response.output_item.done", "output_index": 0, "item": item}),
+        json!({"type": "response.completed", "response": sample_response("completed")}),
+    ];
+    let mut ended = false;
+    for event in events {
+        ended = feed(&mut decoder, &mut document, &reply, event.to_string())
+            .expect("the turn's events decode");
+    }
+    assert!(ended, "the terminal event ends the turn");
+
+    let response = fold_reply(reply, ended, "openai", document).expect("the turn folds");
+    let mut expected = sample_response("completed");
+    expected["output"] = json!([item]);
+    assert_eq!(response.raw, expected);
+}

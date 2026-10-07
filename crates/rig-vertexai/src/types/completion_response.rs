@@ -1,12 +1,38 @@
 use google_cloud_aiplatform_v1 as vertexai;
 use rig_core::error::ProviderError;
 use rig_core::operation::Completion;
+use rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 use rig_core::providers::gemini::streaming::{GenerateContentChunk, GenerateContentDecoder};
 use rig_core::wire::{Decoder, Flow, Out, WireEvent};
 use serde_json::{Map, Value};
 
 /// Stable descriptor name reported on normalized Vertex AI responses.
 pub const PROVIDER_NAME: &str = "vertexai";
+
+/// A Vertex AI reply's document: its responses' REST JSON, rebuilt by the
+/// Gemini API's [`GenerateContentResponse`] fold. The transport reports the
+/// one response a call returns, so this is fed only by a reply that
+/// arrives without it.
+#[derive(Debug, Default)]
+pub struct VertexDocument(GenerateContentResponse);
+
+impl rig_core::wire::document::Serves<rig_core::operation::Completion> for VertexDocument {}
+
+impl rig_core::wire::document::Reassemble<vertexai::model::GenerateContentResponse>
+    for VertexDocument
+{
+    fn absorb(&mut self, frame: &vertexai::model::GenerateContentResponse) {
+        // A response that does not transcode adds nothing; its decoding
+        // fails the reply.
+        rest_chunk(frame)
+            .into_iter()
+            .for_each(|chunk| self.0.chunk(chunk));
+    }
+
+    fn finish(self) -> Value {
+        self.0.document()
+    }
+}
 
 /// Decodes Vertex AI's whole `GenerateContent` reply. The reply is restated
 /// as the REST chunk its JSON is and read by the Gemini API's decoder, so a
@@ -31,7 +57,6 @@ impl<'id> Decoder<'id, Completion, vertexai::model::GenerateContentResponse> for
         out: Out<'id, Completion>,
     ) -> Result<Flow, ProviderError> {
         let chunk = rest_chunk(&response)?;
-        self.0.keep_raw(Value::Object(chunk.clone()));
         Decoder::<'id, Completion>::decode(&mut self.0, GenerateContentChunk(chunk), out)
     }
 

@@ -38,12 +38,19 @@ pub const KIMI_K2_6: &str = "kimi-k2.6";
 
 /// Whether Kimi `model` reads images: Kimi K2 before K2.5 and the
 /// `moonshot-v1` text models do not; K2.5 and later, and `*-vision-*`, do.
-/// Every wire Moonshot serves applies this rule.
+/// Every wire Moonshot serves applies this rule to an id the catalog does
+/// not list.
 pub(crate) fn reads_images(model: &str) -> bool {
     !(model == "kimi-k2"
         || model.starts_with("kimi-k2-")
         || (model.starts_with("moonshot-v1") && !model.contains("vision")))
 }
+
+pub mod extension;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "moonshot";
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::MOONSHOT, "Moonshot");
 crate::client::macros::anthropic_vendor!(
@@ -52,3 +59,6 @@ crate::client::macros::anthropic_vendor!(
     anthropic_from_env,
     anthropic_new
 );
+
+#[cfg(test)]
+mod tests;

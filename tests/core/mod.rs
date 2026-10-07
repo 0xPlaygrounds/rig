@@ -5,6 +5,7 @@
 //! test in its crate.
 
 mod agent_run_stepper;
+mod catalog_constants;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
@@ -27,7 +28,9 @@ mod history_conformance_registry;
 mod loaders;
 mod no_random_ids;
 mod prompt_response_messages;
+mod provider_keys;
 mod reasoning_stream_stats;
+mod request_bodies;
 #[cfg(feature = "derive")]
 mod rig_tool_facade;
 mod streaming_conformance;

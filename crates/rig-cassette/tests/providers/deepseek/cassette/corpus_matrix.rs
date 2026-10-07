@@ -20,6 +20,7 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         route: Some(client.completion("deepseek-reasoner")),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -70,5 +71,6 @@ fn reasoning_wire(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }

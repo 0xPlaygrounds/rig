@@ -89,7 +89,8 @@ fn input_of(target: &Interactions, request: CompletionRequest) -> Vec<Value> {
         &target.describe(),
     )
     .expect("the request is valid");
-    match create_request_body(target, request, None).expect("the request builds") {
+    let body = create_request_body(target, &request, None).expect("the request builds");
+    match serde_json::to_value(body).expect("the body is JSON") {
         Value::Object(mut body) => match body.shift_remove("input") {
             Some(Value::Array(steps)) => steps,
             other => panic!("the body sends its steps as `input`: {other:?}"),

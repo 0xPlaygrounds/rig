@@ -17,10 +17,15 @@
 
 pub mod completion;
 pub mod embedding;
+pub mod extension;
 pub mod transcription;
 
 pub use completion::*;
 pub use embedding::*;
 pub use transcription::*;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "mistral";
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::MISTRAL, "Mistral");

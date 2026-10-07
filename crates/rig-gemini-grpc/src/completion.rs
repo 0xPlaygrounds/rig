@@ -51,6 +51,7 @@ impl Wire for GenerateContent {
     type Payload = GenerateContentRequest;
     type Frame = GenerateContentResponse;
     type Decoder<'id> = crate::streaming::GrpcAdapter;
+    type Reassembler = rig_core::providers::gemini::streaming::document::GenerateContentResponse;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -67,9 +68,10 @@ impl Wire for GenerateContent {
         _mode: Mode,
     ) -> Result<GenerateContentRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let mut body = rest::request_body(request, self, &model)?;
-        body.insert("model".to_owned(), format!("models/{model}").into());
-        Ok(crate::rest::from_rest(serde_json::Value::Object(body))?)
+        let body = rest::request_body(&request, self, &model, None, |body| {
+            body.insert("model".to_owned(), format!("models/{model}").into());
+        })?;
+        Ok(crate::rest::from_rest(serde_json::to_value(&body)?)?)
     }
 
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
@@ -78,6 +80,16 @@ impl Wire for GenerateContent {
 }
 
 impl rig_core::completion::ReplayTarget for GenerateContent {
+    /// The GenerateContent mapping, for what the gRPC request declares.
+    fn map_options(
+        &self,
+        request: &rig_core::completion::CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        rest::generate_content_options(model, rest::Route::Grpc, fields)
+    }
+
     fn api(&self) -> rig_core::message::Api {
         rig_core::message::Api::from_static("gemini.generate_content")
     }
@@ -122,7 +134,7 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
     /// Tools in `additional_params` or a cached content count, as on the
     /// REST wire.
     fn declares_tools(&self, request: &rig_core::completion::CompletionRequest) -> bool {
-        rest::declares_tools(request)
+        rest::declares_tools(self, request)
     }
 }
 
@@ -137,7 +149,7 @@ impl Transport<GenerateContent> for GeminiGrpc {
         Opening::new(async move {
             Ok(match mode {
                 Mode::Unary => match client.generate_content(request).await {
-                    Ok(response) => Opened::new(futures::stream::iter([Ok(response.into_inner())])),
+                    Ok(response) => unary(response.into_inner())?,
                     Err(status) => Opened::failed(rpc_error(&status)),
                 },
                 Mode::Streaming => match client.stream_generate_content(request).await {
@@ -161,6 +173,15 @@ impl Transport<GenerateContent> for GeminiGrpc {
             })
         })
     }
+}
+
+/// A unary reply: its one message, whose REST JSON is the response's `raw`.
+/// A message that does not transcode fails as its decoding would.
+pub(crate) fn unary(
+    response: GenerateContentResponse,
+) -> Result<Opened<GenerateContentResponse>, ProviderError> {
+    let document = crate::streaming::document::rest_document(&response)?;
+    Ok(Opened::new(futures::stream::iter([Ok(response)])).with_document(document))
 }
 
 /// Stable descriptor name reported on normalized responses from this provider.

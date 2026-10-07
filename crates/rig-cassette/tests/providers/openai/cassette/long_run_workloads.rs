@@ -20,9 +20,10 @@ use rig_test_support::cache_longrun::workloads::{self, DOCUMENT_PREAMBLE};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Figures, Limits, LongRun, Recording, RunLog,
 };
-use serde_json::{Value, json};
 
-use super::super::support::with_openai_long_run_cassette;
+use rig::completion::{Effort, GenerationOptions, ProviderOptions};
+
+use super::super::support::{effort, shared_options, with_openai_long_run_cassette};
 
 /// The one key every run sends.
 const CACHE_KEY: &str = "rig-long-run-workloads";
@@ -38,12 +39,11 @@ const SOL: (CacheRates, f64) = (
 );
 
 /// Stateless, low effort, one cache key.
-fn params() -> Value {
-    json!({
-        "prompt_cache_key": CACHE_KEY,
-        "reasoning": { "effort": "low" },
-        "store": false,
-    })
+fn options() -> (GenerationOptions, ProviderOptions) {
+    (
+        effort(Effort::Low),
+        shared_options(Some(false), Some(CACHE_KEY)),
+    )
 }
 
 pub(super) fn check(
@@ -75,10 +75,12 @@ async fn document_60_responses() {
     let log = with_openai_long_run_cassette(
         "long_run_caching/document_60_responses",
         |client, clock| async move {
+            let (options, provider_options) = options();
             let agent = AgentBuilder::new(client.openai.completion(GPT_6_SOL))
                 .preamble(DOCUMENT_PREAMBLE)
                 .max_tokens(800)
-                .additional_params(params())
+                .options(options)
+                .provider_options(provider_options)
                 .build();
             workloads::document_session(
                 &agent,

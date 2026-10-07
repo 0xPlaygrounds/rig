@@ -28,6 +28,7 @@
 /// let auth = Authenticator::new(AuthSource::OAuth, None, None, DeviceCodeHandler::default(), true);
 /// ```
 pub mod auth;
+pub mod extension;
 pub mod model_listing;
 pub mod wire;
 

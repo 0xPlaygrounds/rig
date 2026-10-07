@@ -23,10 +23,7 @@ use rig_core::test_utils::{MockFrame, MockScript};
 use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
-    Usage {
-        total_tokens: Some(total_tokens),
-        ..Usage::default()
-    }
+    Usage::new().total_tokens(total_tokens)
 }
 
 /// A local model: `answer` decides its reply from the request. It is the

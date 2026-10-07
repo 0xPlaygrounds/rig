@@ -174,7 +174,14 @@
             "output_tokens": 70,
             "total_tokens": 770,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.0021,
+              "output": 0.00105,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00315
+            }
           },
           "origin": {
             "api": "anthropic.messages",
@@ -186,19 +193,51 @@
           "provider_request_id": "req_011CfikXtbSTC7Z9WJuZ6rp2",
           "finish_reason": "tool_calls",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "I'll call both tools simultaneously right now!",
+                "type": "text"
+              },
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_01Grk5asVPgGAEdb65bZD4fw",
+                "input": {},
+                "name": "lookup_harbor_label",
+                "type": "tool_use"
+              },
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_01MztgjPxDngQLU4KDhjvDas",
+                "input": {},
+                "name": "lookup_orchard_label",
+                "type": "tool_use"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikXtwmRxR7CMpKvGUGv",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 70,
-              "input_tokens": 700,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfikXtwmRxR7CMpKvGUGv",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 700,
+              "output_tokens": 70,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -423,7 +462,14 @@
             "output_tokens": 26,
             "total_tokens": 872,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.002538,
+              "output": 0.00039,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.002928
+            }
           },
           "origin": {
             "api": "anthropic.messages",
@@ -435,19 +481,33 @@
           "provider_request_id": "req_011CfikY1koQQjbcLQexc5xC",
           "finish_reason": "stop",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "The alpha signal marker is **crimson-harbor** and the beta signal marker is **silver-orchard**.",
+                "type": "text"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikY27P1DstzGmFubN1G",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 26,
-              "input_tokens": 846,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfikY27P1DstzGmFubN1G",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 846,
+              "output_tokens": 26,
+              "service_tier": "standard"
+            }
           }
         }
       }

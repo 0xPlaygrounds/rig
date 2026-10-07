@@ -18,13 +18,13 @@ use super::completion::object;
 use crate::completion::FinishReason;
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::message::{CallId, ToolName};
+use crate::message::{CallId, DocumentRange, Source, SourceLocation, ToolName};
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
-    WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation,
+    WireEvent, WireFrame,
 };
 
 /// Recognized Messages event tags; any other tag classifies as unknown.
@@ -125,23 +125,8 @@ impl Counts {
             reasoning_tokens: self.thinking,
             total_tokens: input.zip(self.output).map(|(input, output)| input + output),
             tool_use_prompt_tokens: None,
+            cost: None,
         }
-    }
-
-    /// The counters as a stream's terminal record spells them.
-    fn record(&self) -> Value {
-        let details = |thinking| json!({ "thinking_tokens": thinking });
-        Value::Object(object([
-            ("output_tokens", Some(json!(self.output.unwrap_or(0)))),
-            ("input_tokens", Some(json!(self.input))),
-            (
-                "cache_creation_input_tokens",
-                Some(json!(self.cache_creation)),
-            ),
-            ("cache_read_input_tokens", Some(json!(self.cache_read))),
-            ("cache_creation", self.cache_creation_split.clone()),
-            ("output_tokens_details", self.thinking.map(details)),
-        ]))
     }
 }
 
@@ -169,6 +154,56 @@ fn finish_of(reason: &str, details: Option<&Value>) -> (Option<FinishReason>, Op
         other => FinishReason::Other(other.to_owned()),
     };
     (Some(reason), None)
+}
+
+/// One Messages citation as a whole-block [`WireCitation`]: Anthropic
+/// cites each text block as a whole. A location kind rig does not know, or
+/// one without the field that names its source, is `None` and stays only in
+/// the block's native item, as does `encrypted_index`. Document ranges end
+/// exclusive, pages count from 1, characters and blocks from 0.
+fn citation_of(citation: &Value) -> Option<WireCitation> {
+    let number = |key: &str| citation.u64(key).and_then(|n| u32::try_from(n).ok());
+    let range = |start: &str, end: &str| Some(number(start)?..number(end)?);
+    let location = match citation.str("type")? {
+        "char_location" => SourceLocation::Document {
+            index: number("document_index"),
+            id: citation.str("file_id").map(str::to_owned),
+            within: citation
+                .u64("start_char_index")
+                .zip(citation.u64("end_char_index"))
+                .map(|(start, end)| DocumentRange::Chars(start..end)),
+        },
+        "page_location" => SourceLocation::Document {
+            index: number("document_index"),
+            id: citation.str("file_id").map(str::to_owned),
+            within: range("start_page_number", "end_page_number").map(DocumentRange::Pages),
+        },
+        "content_block_location" => SourceLocation::Document {
+            index: number("document_index"),
+            id: citation.str("file_id").map(str::to_owned),
+            within: range("start_block_index", "end_block_index").map(DocumentRange::Blocks),
+        },
+        "search_result_location" => SourceLocation::SearchResult {
+            index: number("search_result_index")?,
+            source: citation.str("source")?.to_owned(),
+            blocks: range("start_block_index", "end_block_index"),
+        },
+        "web_search_result_location" => SourceLocation::Url {
+            url: citation.str("url")?.to_owned(),
+        },
+        _ => return None,
+    };
+    let mut source = Source::new(location);
+    if let Some(title) = citation
+        .str("document_title")
+        .or_else(|| citation.str("title"))
+    {
+        source = source.title(title);
+    }
+    if let Some(cited) = citation.str("cited_text") {
+        source = source.cited_text(cited);
+    }
+    Some(WireCitation::new(None, vec![source]))
 }
 
 /// What an open content block is, for the checks its end makes.
@@ -267,14 +302,26 @@ impl MessagesDecoder {
             _ => (Block::Opaque { replay: true }, Kind::Opaque, None),
         };
         let text = text.unwrap_or_default().to_owned();
+        let citations: Vec<WireCitation> = match kind {
+            Kind::Text => block
+                .arr("citations")
+                .iter()
+                .filter_map(citation_of)
+                .collect(),
+            _ => Vec::new(),
+        };
         self.open.insert(index, (kind, String::new()));
         out.open(index, opened, block)?;
+        for citation in citations {
+            out.cite(index, citation);
+        }
         out.push(index, &text)
     }
 
     /// Apply a delta to the open block at `index`: text and reasoning grow
     /// both the block and its item, input JSON is assembled, a citation is
-    /// appended, and any other delta merges into the item by key.
+    /// appended to the item and cited, and any other delta merges into the
+    /// item by key.
     fn delta(
         &mut self,
         index: usize,
@@ -322,7 +369,8 @@ impl MessagesDecoder {
             }
             "citations_delta" => {
                 let citation = delta.get("citation").cloned().unwrap_or_default();
-                return out.edit(index, |item| {
+                let cited = citation_of(&citation);
+                out.edit(index, |item| {
                     if let Some(item) = item.as_object_mut() {
                         match item.get_mut("citations") {
                             Some(Value::Array(citations)) => citations.push(citation),
@@ -331,7 +379,11 @@ impl MessagesDecoder {
                             }
                         }
                     }
-                });
+                })?;
+                if let Some(cited) = cited {
+                    out.cite(index, cited);
+                }
+                return Ok(());
             }
             _ => {}
         }
@@ -543,19 +595,6 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
                     return Ok(Flow::More);
                 };
                 let usage = self.terminal(event.fields.get("usage"));
-                // The stop sequence rides the same `message_delta` as the
-                // stop reason: `message_start` always opens with `null`.
-                let stop_sequence = delta.and_then(|delta| delta.str("stop_sequence"));
-                out.raw(Value::Object(object([
-                    ("usage", Some(usage.record())),
-                    ("stop_reason", Some(json!(reason))),
-                    (
-                        "stop_sequence",
-                        stop_sequence.map(|sequence| json!(sequence)),
-                    ),
-                    ("message_id", self.message_id.clone().map(Value::String)),
-                    ("model", self.response_model.clone().map(Value::String)),
-                ])));
                 let details = delta.and_then(|delta| delta.get("stop_details"));
                 return self.end(&usage, Some(reason), details, out);
             }
@@ -622,6 +661,8 @@ impl MessagesDecoder {
         }
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

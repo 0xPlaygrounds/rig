@@ -16,15 +16,17 @@
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
-use aws_sdk_bedrockruntime::types::GuardrailTrace;
+use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::completion::options::FinalBody;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::json_utils::Lenient;
 use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Mode, Wire};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::capture::{self, Capture, Events};
 use crate::client::BedrockRuntime;
@@ -148,14 +150,6 @@ pub struct Converse {
     /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
     /// the model id decides.
     pub family: Option<Family>,
-    /// When enabled, cache checkpoints are inserted into Converse API requests
-    /// to take advantage of [Bedrock prompt caching](https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html).
-    /// Marks system content and, when the request sends no reasoning, the
-    /// final message. Disabled by default.
-    pub prompt_caching: bool,
-    /// The `guardrailConfig` of unary Converse requests, if any.
-    /// Set through [`Converse::with_guardrail`].
-    pub guardrail: Option<Value>,
 }
 
 impl Converse {
@@ -163,8 +157,6 @@ impl Converse {
         Self {
             model: model.into(),
             family: None,
-            prompt_caching: false,
-            guardrail: None,
         }
     }
 
@@ -191,42 +183,13 @@ impl Converse {
             _ => Family::of(model),
         }
     }
-
-    /// Enables checkpoints after system content and the final message.
-    /// A request that sends reasoning gets no message checkpoint: Bedrock
-    /// rejects one anywhere after a reasoning turn. Tool definitions are
-    /// not marked; model-specific caching limits apply.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// Apply a [Bedrock guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html)
-    /// to unary Converse requests. Streaming requests do not apply this setting.
-    ///
-    /// `identifier` is the guardrail ID or ARN; `version` is a version or `DRAFT`.
-    /// The normalized finish reason reports guardrail intervention as content
-    /// filtering.
-    pub fn with_guardrail(
-        mut self,
-        identifier: impl Into<String>,
-        version: impl Into<String>,
-        trace: GuardrailTrace,
-    ) -> Self {
-        self.guardrail = Some(json!({
-            "guardrailIdentifier": identifier.into(),
-            "guardrailVersion": version.into(),
-            "trace": trace.as_str(),
-        }));
-        self
-    }
 }
 
 /// One Converse request: the model it addresses and its JSON body.
 #[derive(Clone, Debug)]
 pub struct ConverseRequest {
     pub model: String,
-    pub body: Value,
+    pub body: FinalBody,
 }
 
 /// One unit of a Converse reply, as the JSON Bedrock sent.
@@ -243,6 +206,7 @@ impl Wire for Converse {
     type Payload = ConverseRequest;
     type Frame = ConverseFrame;
     type Decoder<'id> = StreamState;
+    type Reassembler = crate::streaming::document::ConverseOutput;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -253,10 +217,10 @@ impl Wire for Converse {
     fn encode(
         &self,
         request: CompletionRequest,
-        mode: Mode,
+        _mode: Mode,
     ) -> Result<ConverseRequest, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let body = request::body(self, request, &model, mode == Mode::Unary)?;
+        let body = request::body(self, &request, &model)?;
         Ok(ConverseRequest { model, body })
     }
 
@@ -266,7 +230,8 @@ impl Wire for Converse {
 }
 
 /// Model families pi's catalog lists as text-only on Bedrock, separated by
-/// spaces.
+/// spaces: the rule for a model the catalog does not list under Bedrock (a
+/// region inference profile, a dated or `-v2` revision).
 const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-70b \
     meta.llama3-1- meta.llama3-3- minimax. mistral.devstral mistral.mistral-7b \
     mistral.mistral-large-2402 mistral.mistral-small-2402 mistral.mixtral mistral.voxtral \
@@ -274,7 +239,35 @@ const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-
     nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
     qwen.qwen3-next writer.palmyra zai.glm";
 
+/// The catalog entry of the Bedrock `model`. A Claude id is read as every
+/// wire that serves Claude reads it ([`claude_spec`]: the Anthropic model's
+/// entry, past a region prefix, a `-v1:N` revision or a dated snapshot), so
+/// its reasoning, sampling and context binding match Anthropic's own API.
+/// Any other id is a base model id or system inference profile, or the last
+/// part of its ARN, listed under Bedrock. `None` for a model the catalog
+/// does not list.
+///
+/// [`claude_spec`]: rig_core::providers::anthropic::completion::claude_spec
+pub fn spec(model: &str) -> Option<&'static ModelSpec> {
+    let id = model.rsplit('/').next().unwrap_or(model);
+    if id.contains("anthropic.") || id.starts_with("claude") {
+        return rig_core::providers::anthropic::completion::claude_spec(id);
+    }
+    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
+}
+
 impl ReplayTarget for Converse {
+    /// Section 6.5 of the typed-options design: reasoning in the model's
+    /// own request fields, by family and Claude class.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: rig_core::completion::options::OptionFields<'_>,
+    ) -> rig_core::completion::options::OptionMap {
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        crate::options::converse(self.family(model), model, request, fields)
+    }
+
     fn api(&self) -> Api {
         Api::from_static("bedrock.converse")
     }
@@ -289,12 +282,19 @@ impl ReplayTarget for Converse {
 
     /// Converse reads images in user turns and tool results, never in
     /// assistant turns. Claude reads them; so does every other model but
-    /// the text-only families.
+    /// those the catalog lists as reading no images, or, for a model the
+    /// catalog does not list (a region inference profile such as
+    /// `eu.meta.llama3-3-70b-instruct-v1:0`), the text-only families.
     fn accepts(&self, model: &str) -> Accepts {
         let images = self.family(model) == Family::Claude
-            || !TEXT_ONLY
-                .split_whitespace()
-                .any(|family| model.contains(family));
+            || spec(model).map_or_else(
+                || {
+                    !TEXT_ONLY
+                        .split_whitespace()
+                        .any(|family| model.contains(family))
+                },
+                |spec| spec.input.image,
+            );
         Accepts {
             user_images: images,
             assistant_images: false,
@@ -307,7 +307,7 @@ impl ReplayTarget for Converse {
     /// on Converse as on Anthropic's own API.
     fn binds_context(&self, model: &str) -> bool {
         self.family(model) == Family::Claude
-            && rig_core::providers::anthropic::completion::binds_context(model)
+            && spec(model).is_some_and(|spec| spec.compat.binds_context)
     }
 
     /// Converse rejects a conversation that does not start with a user

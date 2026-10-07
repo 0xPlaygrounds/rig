@@ -11,14 +11,13 @@
 
 use rig::AgentBuilder;
 use rig::agent::Agent;
-use rig::completion::CacheRates;
-use rig::providers::anthropic;
+use rig::completion::{CacheRates, CacheRetention, GenerationOptions};
 use rig::providers::anthropic::completion::CLAUDE_OPUS_5_5;
 use rig_test_support::cache_longrun::workloads::{self, DOCUMENT_PREAMBLE};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Figures, Limits, LongRun, LookupOrder, Recording, RunLog, SUPPORT_PREAMBLE,
 };
-use rig_test_support::cassette_models::{AnthropicModels, MapWire};
+use rig_test_support::cassette_models::AnthropicModels;
 
 use super::super::support::with_anthropic_long_run_cassette;
 
@@ -33,19 +32,22 @@ pub(super) const OPUS_5_5_RATES: CacheRates = CacheRates {
 /// Claude Opus 5.5 output price.
 pub(super) const OPUS_5_5_OUTPUT: f64 = 20.0;
 
-/// `model` with automatic caching.
+/// `model`, whose agents ask for automatic caching ([`automatic`]).
 pub(super) fn cached(
     models: &AnthropicModels,
     model: &str,
 ) -> rig::DynModel<rig::operation::Completion> {
-    models
-        .completion(model)
-        .map_wire(anthropic::Messages::with_automatic_caching)
-        .into()
+    models.completion(model).into()
+}
+
+/// Anthropic's automatic caching: one top-level `cache_control`.
+pub(super) fn automatic() -> GenerationOptions {
+    GenerationOptions::default().cache(CacheRetention::Short)
 }
 
 pub(super) fn support_agent(model: rig::DynModel<rig::operation::Completion>) -> Agent {
     AgentBuilder::new(model)
+        .options(automatic())
         .preamble(SUPPORT_PREAMBLE)
         .tool(LookupOrder)
         .max_tokens(800)
@@ -85,6 +87,7 @@ async fn document_60() {
         "long_run_caching/document_60",
         |models, clock| async move {
             let agent = AgentBuilder::new(cached(&models, CLAUDE_OPUS_5_5))
+                .options(automatic())
                 .preamble(DOCUMENT_PREAMBLE)
                 .max_tokens(800)
                 .build();

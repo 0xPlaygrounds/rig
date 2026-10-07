@@ -94,6 +94,7 @@ impl Wire for Embeddings {
     type Payload = EmbeddingBatch;
     type Frame = EmbeddingFrame;
     type Decoder<'id> = EmbeddingsDecoder;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
@@ -193,11 +194,9 @@ impl<'id> Decoder<'id, rig_core::operation::Embedding, EmbeddingFrame> for Embed
             }
         };
         let tokens = response.input_text_token_count as u64;
-        self.usage += rig_core::completion::Usage {
-            input_tokens: Some(tokens),
-            total_tokens: Some(tokens),
-            ..Default::default()
-        };
+        self.usage += rig_core::completion::Usage::new()
+            .input_tokens(tokens)
+            .total_tokens(tokens);
         self.raw.push(serde_json::to_value(&response)?);
         self.embeddings.push(Embedding {
             document,

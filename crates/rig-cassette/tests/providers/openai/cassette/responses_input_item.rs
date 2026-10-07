@@ -45,21 +45,11 @@ fn test_input_item_serialization_avoids_duplicate_role() {
 
 #[test]
 fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
-    let core_request = rig::completion::CompletionRequest {
-        chat_history: vec![CompletionMessage::user("hello")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
-            "reasoning": { "effort": "low" }
-        })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let mut core_request =
+        rig::completion::CompletionRequest::from(vec![CompletionMessage::user("hello")]);
+    core_request.additional_params = Some(serde_json::json!({
+        "reasoning": { "effort": "low" }
+    }));
 
     let request = body_of("gpt-test", core_request).expect("convert request");
     assert_eq!(
@@ -211,19 +201,9 @@ fn user_tool_result_without_provider_id_serializes_the_minted_call_id() {
 #[test]
 fn openai_responses_invalid_additional_params_returns_error_without_panicking() {
     let panic_result = catch_unwind(AssertUnwindSafe(|| {
-        let request = rig::completion::CompletionRequest {
-            chat_history: vec![CompletionMessage::user("hello")],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: Some(serde_json::json!("not_a_valid_object")),
-            model: None,
-            output_schema: None,
-            record_telemetry_content: false,
-            accept_unknown_finish_reasons: false,
-        };
+        let mut request =
+            rig::completion::CompletionRequest::from(vec![CompletionMessage::user("hello")]);
+        request.additional_params = Some(serde_json::json!("not_a_valid_object"));
         body_of("gpt-test", request)
     }));
 
@@ -233,28 +213,18 @@ fn openai_responses_invalid_additional_params_returns_error_without_panicking() 
         Err(ProviderError::Request(error))
             if error
                 .to_string()
-                .contains("Invalid OpenAI Responses additional_params payload")
+                .contains("`additional_params` must be a JSON object")
     ));
 }
 
 #[test]
 fn openai_responses_request_preserves_prompt_cache_parameters() {
-    let request = rig::completion::CompletionRequest {
-        chat_history: vec![CompletionMessage::user("hello")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
-            "prompt_cache_key": "tenant-agent-scaffold",
-            "prompt_cache_retention": "24h"
-        })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let mut request =
+        rig::completion::CompletionRequest::from(vec![CompletionMessage::user("hello")]);
+    request.additional_params = Some(serde_json::json!({
+        "prompt_cache_key": "tenant-agent-scaffold",
+        "prompt_cache_retention": "24h"
+    }));
 
     let request_json = body_of("gpt-test", request).expect("convert request");
 

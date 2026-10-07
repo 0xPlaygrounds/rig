@@ -15,11 +15,13 @@ use serde_json::{Map, Value, json};
 use crate::completion::{FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
-use crate::message::{DocumentSourceKind, Image, ImageMediaType, MimeType};
+use crate::message::{
+    DocumentRange, DocumentSourceKind, Image, ImageMediaType, MimeType, Source, SourceLocation,
+};
 use crate::operation::completion::merge;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
+use crate::wire::{Decoder, Flow, Out, SpanUnit, WireCitation, WireEvent, WireFrame, WireSpan};
 
 /// Recognized Interactions SSE tags; unlisted tags classify as unknown.
 const KNOWN_EVENT_TYPES: &[&str] = &[
@@ -61,6 +63,8 @@ pub struct SseEvent {
 /// `step.delta`s, and becomes its blocks' provider item on `step.stop`, where
 /// the API states it complete. A whole interaction states each step
 /// complete. A step still open when the reply ends keeps no provider item.
+/// A text item's annotations, stated with it or streamed after it, cite its
+/// block when the step stops.
 #[derive(Default)]
 pub struct InteractionsDecoder {
     /// The open steps, by wire index.
@@ -105,6 +109,7 @@ pub fn usage_of(usage: &Value) -> Usage {
             .zip(output_tokens)
             .map(|(input, output)| input + output),
         cache_creation_input_tokens: None,
+        cost: None,
     }
 }
 
@@ -210,7 +215,9 @@ impl InteractionsDecoder {
             .to_owned();
         if !self.steps.contains_key(&index) {
             let step = match kind.as_str() {
-                "text" | "image" | "audio" | "document" | "video" => "model_output",
+                "text" | "text_annotation_delta" | "image" | "audio" | "document" | "video" => {
+                    "model_output"
+                }
                 "thought_summary" | "thought_signature" => "thought",
                 "arguments_delta" => "function_call",
                 other => other,
@@ -221,11 +228,16 @@ impl InteractionsDecoder {
             return Ok(());
         };
         match (open, kind.as_str()) {
-            // Text extends the last text item and its block; any other delta
-            // is a content item of its own.
+            // Text and its annotations extend the last text item and its
+            // block; any other delta is a content item of its own.
             (Open::Output(_, items), _) => match items.last_mut() {
-                Some((block, item)) if kind == "text" && item.str("type") == Some("text") => {
-                    if let Some(fragment) = delta.get("text").and_then(Value::as_str) {
+                Some((block, item))
+                    if matches!(kind.as_str(), "text" | "text_annotation_delta")
+                        && item.str("type") == Some("text") =>
+                {
+                    if let Some(fragment) = delta.get("text").and_then(Value::as_str)
+                        && kind == "text"
+                    {
                         out.push(*block, fragment)?;
                     }
                     let mut delta = delta;
@@ -309,6 +321,11 @@ impl InteractionsDecoder {
             }
             Some(Open::Output(step, items)) => {
                 for (block, item) in items {
+                    for annotation in item.arr("annotations") {
+                        if let Some(citation) = annotation_citation(annotation) {
+                            out.cite(block, citation);
+                        }
+                    }
                     let mut step = step.clone();
                     if let Some(step) = step.as_object_mut() {
                         step.insert("content".to_owned(), json!([item]));
@@ -323,7 +340,7 @@ impl InteractionsDecoder {
     }
 
     /// End the reply with the interaction resource it completed with.
-    fn complete(&mut self, interaction: Map<String, Value>, mut out: Out<'_, Completion>) -> Flow {
+    fn complete(&mut self, interaction: Map<String, Value>, out: Out<'_, Completion>) -> Flow {
         let interaction = Value::Object(interaction);
         let field = |key: &str| interaction.str(key).map(str::to_owned);
         // An agent interaction names its agent in place of a model.
@@ -337,17 +354,9 @@ impl InteractionsDecoder {
             usage: usage_of(&usage),
             reason,
             response_id: field("id"),
-            model: model.clone(),
+            model,
             error,
         };
-        let mut raw = Map::from_iter([
-            ("usage".to_owned(), usage),
-            ("interaction".to_owned(), interaction),
-        ]);
-        if let Some(model) = model {
-            raw.insert("model_version".to_owned(), Value::String(model));
-        }
-        out.raw(Value::Object(raw));
         out.end(finish)
     }
 }
@@ -382,6 +391,58 @@ fn ending(status: Option<&str>, errors: &[Value]) -> (Option<FinishReason>, Opti
         Some(status) => (other(status), None),
         None => (None, Some("The interaction states no status".to_owned())),
     }
+}
+
+/// The citation a text item's annotation states: a `url_citation` cites a
+/// web page, a `file_citation` a document and its page, a `place_citation`
+/// a place by its URL or id. Offsets count bytes of the item's text.
+/// Other annotations cite nothing.
+fn annotation_citation(annotation: &Value) -> Option<WireCitation> {
+    let field = |key: &str| annotation.str(key).map(str::to_owned);
+    let (location, title) = match annotation.str("type")? {
+        "url_citation" => (SourceLocation::Url { url: field("url")? }, field("title")),
+        "file_citation" => {
+            let page = annotation
+                .u64("page_number")
+                .and_then(|page| u32::try_from(page).ok());
+            let within = page.map(|page| DocumentRange::Pages(page..page.saturating_add(1)));
+            let id = field("document_uri");
+            (
+                SourceLocation::Document {
+                    index: None,
+                    id,
+                    within,
+                },
+                field("file_name"),
+            )
+        }
+        "place_citation" => {
+            let location = match (field("url"), field("place_id")) {
+                (Some(url), _) => SourceLocation::Url { url },
+                (None, Some(id)) => SourceLocation::Document {
+                    index: None,
+                    id: Some(id),
+                    within: None,
+                },
+                (None, None) => return None,
+            };
+            (location, field("name"))
+        }
+        _ => return None,
+    };
+    let mut source = Source::new(location);
+    if let Some(title) = title {
+        source = source.title(title);
+    }
+    // Proto3 JSON leaves out a zero start.
+    let span = annotation.u64("end_index").map(|end| {
+        WireSpan::new(
+            annotation.u64("start_index").unwrap_or(0),
+            end,
+            SpanUnit::Bytes,
+        )
+    });
+    Some(WireCitation::new(span, vec![source]))
 }
 
 /// Write the id, name and announced arguments a call step states.
@@ -508,6 +569,8 @@ impl<'id> Decoder<'id, Completion> for InteractionsDecoder {
         Ok(Flow::More)
     }
 }
+
+pub mod document;
 
 #[cfg(test)]
 mod tests;

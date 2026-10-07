@@ -156,8 +156,6 @@ impl HistoryFixture for MessagesHistory {
             model: model.to_owned(),
             default_max_tokens: self.dialect.default_max_tokens(model),
             prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,

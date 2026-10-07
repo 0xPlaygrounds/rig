@@ -2,8 +2,8 @@
 //!
 //! Every provider speaking the OpenAI chat-completions wire reports the same
 //! fields under the same names, so "the normalized view reproduces the
-//! recorded reply" and "the terminal record reproduces the recorded terminal
-//! frame" are one operation per format rather than one per provider. What is
+//! recorded reply" and "the document a stream rebuilds reproduces the recorded
+//! terminal frame" are one operation per format rather than one per provider. What is
 //! *not* shared: which fixture frame counts as the terminal one (dialects
 //! disagree — see [`recorded_sole_usage_frame`] against
 //! [`recorded_agreeing_usage_frames`]), what a dialect adds beside the
@@ -181,33 +181,25 @@ pub fn assert_terminal_reproduces_frame(
     );
 }
 
-/// The terminal record `raw` holds: the reply's id, model and finish reason
-/// as the response reports them, and the provider's own usage object, whose
-/// counters are the normalized ones. Returned for the cell to read whatever
-/// its dialect keeps beside the shared fields.
+/// The `chat.completion` document a stream's `raw` holds: the reply's id,
+/// model and first choice's finish reason, which the normalized terminal
+/// reports, and the provider's own usage object, whose counters are the
+/// normalized ones. Returned for the cell to read whatever its dialect keeps
+/// beside the shared fields.
 pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Value {
     let raw = terminal.raw.clone();
-    let keys = [
-        "usage",
-        "finish_reason",
-        "response_id",
-        "model",
-        "logprobs",
-        "additional_params",
-    ];
-    assert!(
-        raw.as_object()
-            .is_some_and(|record| record.keys().all(|key| keys.contains(&key.as_str()))),
-        "the captured value is the terminal record, nothing more: {raw}"
-    );
     assert_eq!(
-        raw["response_id"].as_str(),
-        terminal.response_id(),
-        "response id"
+        raw["object"], "chat.completion",
+        "the captured value is the unary document the stream rebuilt: {raw}"
     );
+    assert!(
+        raw["choices"][0]["message"].is_object(),
+        "the rebuilt document holds the answer's message: {raw}"
+    );
+    assert_eq!(raw["id"].as_str(), terminal.response_id(), "response id");
     assert_eq!(raw["model"].as_str(), terminal.model(), "model");
     assert_eq!(
-        serde_json::from_value::<Option<FinishReason>>(raw["finish_reason"].clone())
+        serde_json::from_value::<Option<FinishReason>>(raw["choices"][0]["finish_reason"].clone())
             .expect("a finish reason"),
         terminal.finish_reason(),
         "finish reason"
@@ -215,7 +207,7 @@ pub fn assert_terminal_round_trips(terminal: &CompletionResponse) -> Value {
     let usage = &raw["usage"];
     assert!(
         usage.is_object(),
-        "the terminal record carries the reply's accounting"
+        "the rebuilt document carries the reply's accounting"
     );
     assert_eq!(
         (

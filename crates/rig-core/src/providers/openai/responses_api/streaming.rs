@@ -16,12 +16,13 @@ use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
 
-use crate::completion::{FinishReason, Usage};
+use crate::completion::{Cost, FinishReason, Usage};
 use crate::error::ProviderError;
 use crate::json_utils::Lenient;
+use crate::message::{Source, SourceLocation};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{Decoder, Flow, Out, WireEvent, WireFrame};
+use crate::wire::{Decoder, Flow, Out, WireCitation, WireEvent, WireFrame};
 
 /// The item events this decoder reads, after their `response.` prefix.
 const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added content_part.done \
@@ -298,7 +299,7 @@ pub(crate) fn finish_reason_of(response: &Value) -> (FinishReason, Option<String
 }
 
 /// The usage a Responses `usage` value reports; a counter that is absent or
-/// not a count is unreported.
+/// not a count is unreported. Its cost is the one the provider reports.
 pub(crate) fn usage_of(usage: &Value) -> Usage {
     let count = |pointer: &str| usage.at(pointer).and_then(Lenient::as_u64_lenient);
     Usage {
@@ -310,6 +311,58 @@ pub(crate) fn usage_of(usage: &Value) -> Usage {
         reasoning_tokens: count("/output_tokens_details/reasoning_tokens"),
         ..Usage::default()
     }
+    .cost(reported_cost(usage))
+}
+
+/// xAI cost ticks per USD.
+const TICKS_PER_USD: f64 = 1e10;
+
+/// The total a `usage` value reports in USD: xAI's integer
+/// `cost_in_usd_ticks`, or OpenRouter's `cost` in credits of one USD.
+fn reported_cost(usage: &Value) -> Option<Cost> {
+    let total = match usage.u64("cost_in_usd_ticks") {
+        Some(ticks) => ticks as f64 / TICKS_PER_USD,
+        None => usage.f64("cost").filter(|cost| cost.is_finite())?,
+    };
+    Some(Cost::from_total(total))
+}
+
+/// The citations a message item's `output_text` parts state, in part order.
+/// The API does not document the unit of `start_index` and `end_index` and
+/// quotes no text, so each cites the whole block and its offsets stay in the
+/// item.
+fn citations_of(item: &Value) -> Vec<WireCitation> {
+    item.arr("content")
+        .iter()
+        .flat_map(|part| part.arr("annotations"))
+        .filter_map(source_of)
+        .map(|source| WireCitation::new(None, vec![source]))
+        .collect()
+}
+
+/// The source an annotation names; `None` for an annotation that names
+/// none or is of an unknown type.
+fn source_of(annotation: &Value) -> Option<Source> {
+    let text = |key: &str| {
+        annotation
+            .str(key)
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    };
+    let location = match annotation.str("type")? {
+        "url_citation" => SourceLocation::Url { url: text("url")? },
+        "file_citation" | "file_path" | "container_file_citation" => SourceLocation::File {
+            file_id: text("file_id")?,
+            filename: text("filename"),
+            container_id: text("container_id"),
+        },
+        _ => return None,
+    };
+    let source = Source::new(location);
+    Some(match text("title") {
+        Some(title) => source.title(title),
+        None => source,
+    })
 }
 
 /// The OpenAI Responses wire's decoder: one state machine for the SSE
@@ -588,6 +641,12 @@ impl ResponsesDecoder {
                     // The done item states the whole text, as pi takes it.
                     out.restate(at, &text)?;
                 }
+                let citations = citations_of(&item);
+                if done.kind == Kind::Message && !citations.is_empty() {
+                    // The item restates every annotation, so its list
+                    // replaces any an earlier snapshot gave.
+                    out.set_citations(at, citations);
+                }
             }
             Kind::Opaque => {}
         }
@@ -792,7 +851,6 @@ impl ResponsesDecoder {
                 .map(str::to_owned),
             error,
         };
-        out.raw(response);
         Ok(out.end(end))
     }
 }
@@ -927,6 +985,8 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
         }
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 mod tests;

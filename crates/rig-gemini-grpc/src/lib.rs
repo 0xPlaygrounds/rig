@@ -16,6 +16,7 @@ mod auth;
 pub mod client;
 pub mod completion;
 pub mod embedding;
+pub mod extension;
 pub mod rest;
 pub mod streaming;
 

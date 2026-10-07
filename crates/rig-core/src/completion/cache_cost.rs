@@ -8,9 +8,11 @@ use serde::{Deserialize, Serialize};
 use super::Usage;
 
 /// Prices of one model and tier, in USD per 1M tokens (storage: per 1M
-/// token-hours). The caller supplies them from the provider's price list;
-/// rig has none built in. A provider without a separate write price bills
-/// writes at `input`; one without storage leaves `storage_per_hour` at zero.
+/// token-hours). The built-in catalog's [`Pricing`](crate::catalog::Pricing)
+/// holds the input, cached-read and cache-write prices of the models it
+/// lists, but no storage price. A provider without a separate write price
+/// bills writes at `input`; one without storage leaves `storage_per_hour`
+/// at zero.
 ///
 /// ```no_run
 /// use rig_core::completion::CacheRates;

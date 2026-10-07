@@ -15,7 +15,7 @@ use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::operation::Completion;
 use crate::providers::internal::named_dialect;
-use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
+use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Secret, Wire};
 use serde::{Deserialize, Serialize};
 
 use super::completion::{
@@ -115,9 +115,12 @@ pub enum MaxTokens {
     Fixed(u64),
 }
 
+/// The API name the Messages wire reports for every dialect.
+pub(crate) const MESSAGES_API: &str = "anthropic.messages";
+
 /// Anthropic itself.
 pub const ANTHROPIC: Dialect = Dialect {
-    name: "anthropic",
+    name: super::PROVIDER_NAME,
     base_url: "https://api.anthropic.com",
     api_key_env: "ANTHROPIC_API_KEY",
     base_url_env: Some("ANTHROPIC_BASE_URL"),
@@ -183,7 +186,7 @@ impl Dialect {
 
 /// Z.AI's Anthropic-format endpoint.
 pub const ZAI: Dialect = compatible(
-    "zai",
+    crate::providers::zai::PROVIDER_NAME,
     "https://api.z.ai/api/anthropic",
     "ZAI_API_KEY",
     Some("ZAI_ANTHROPIC_API_BASE"),
@@ -191,7 +194,7 @@ pub const ZAI: Dialect = compatible(
 
 /// MiniMax's Anthropic-format endpoint.
 pub const MINIMAX: Dialect = compatible(
-    "minimax",
+    crate::providers::minimax::PROVIDER_NAME,
     "https://api.minimax.io/anthropic",
     "MINIMAX_API_KEY",
     Some("MINIMAX_ANTHROPIC_API_BASE"),
@@ -205,7 +208,7 @@ pub const MOONSHOT: Dialect = Dialect {
         ..Quirks::gateway()
     },
     ..compatible(
-        "moonshot",
+        crate::providers::moonshot::PROVIDER_NAME,
         "https://api.moonshot.ai/anthropic",
         "MOONSHOT_API_KEY",
         Some("MOONSHOT_ANTHROPIC_API_BASE"),
@@ -214,7 +217,7 @@ pub const MOONSHOT: Dialect = Dialect {
 
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
-    "xiaomimimo",
+    crate::providers::xiaomimimo::PROVIDER_NAME,
     "https://api.xiaomimimo.com/anthropic",
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
@@ -299,8 +302,6 @@ impl AnthropicConfig {
             provider: self.clone(),
             model,
             prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
@@ -360,13 +361,10 @@ pub struct Messages {
     pub default_max_tokens: Option<u64>,
     /// Manual prompt caching: `cache_control` breakpoints on the system
     /// prompt, the last tool definition, and the last content block of the
-    /// last message.
+    /// last message. The request's
+    /// [`cache`](crate::completion::GenerationOptions::cache) sets the
+    /// top-level marker and its TTL.
     pub prompt_caching: bool,
-    /// Anthropic's automatic prompt caching: one top-level `cache_control`
-    /// the API advances as the conversation grows.
-    pub automatic_caching: bool,
-    /// TTL for the automatic breakpoint. `None` takes the API default.
-    pub automatic_caching_ttl: Option<CacheTtl>,
     /// TTL for the static prefix (tools + system), independent of the
     /// conversation tail. `None` inherits the top-level TTL.
     pub static_prefix_cache_ttl: Option<CacheTtl>,
@@ -386,49 +384,11 @@ impl Messages {
     }
 
     /// Enable cache breakpoints on the system prompt, final tool, and final message block.
-    /// With automatic caching, the provider owns the moving message breakpoint.
+    /// With a request [`cache`](crate::completion::GenerationOptions::cache), the
+    /// provider owns the moving message breakpoint and the markers take its TTL.
     /// Existing tool markers are preserved and count toward the four-breakpoint budget.
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
-        self
-    }
-
-    /// Enable top-level `cache_control`, advancing the last cacheable block
-    /// as the conversation grows. No beta header is required.
-    /// Caching is skipped below the model-specific minimum prompt length.
-    ///
-    /// ```no_run
-    /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::Anthropic;
-    ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
-    /// messages.wire = messages.wire.with_automatic_caching();
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn with_automatic_caching(mut self) -> Self {
-        self.automatic_caching = true;
-        self
-    }
-
-    /// Automatic caching with the one-hour TTL rather than the default five
-    /// minutes. Identical to [`Self::with_automatic_caching`] but sets
-    /// `ttl: "1h"` on the top-level `cache_control` field.
-    ///
-    /// ```no_run
-    /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
-    /// use rig_core::providers::anthropic::Anthropic;
-    ///
-    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
-    /// messages.wire = messages.wire.with_automatic_caching_1h();
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn with_automatic_caching_1h(mut self) -> Self {
-        self.automatic_caching = true;
-        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
         self
     }
 
@@ -444,13 +404,15 @@ impl Messages {
     ///
     /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut messages = Anthropic::from_env()?.completion(CLAUDE_SONNET_4_6);
-    /// messages.wire = messages.wire.with_automatic_caching().with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    /// messages.wire = messages.wire.with_static_prefix_cache_ttl(CacheTtl::OneHour);
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// One-hour markers must precede five-minute markers. A five-minute
-    /// prefix with [`Self::with_automatic_caching_1h`] fails during encoding.
+    /// prefix under a request with
+    /// [`CacheRetention::Long`](crate::completion::CacheRetention::Long) fails
+    /// during encoding.
     /// Each marker must meet the model's minimum cacheable prompt length.
     pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
         self.static_prefix_cache_ttl = Some(ttl);
@@ -502,6 +464,7 @@ impl Wire for Messages {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = MessagesDecoder;
+    type Reassembler = super::streaming::document::Message;
 
     /// Constrained output decoding does not suppress strict tool calls.
     fn describe(&self) -> Descriptor<'_> {
@@ -519,7 +482,7 @@ impl Wire for Messages {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
         let fine_grained = !request.tools.is_empty()
             && self.tool_input_streaming == ToolInputStreaming::BetaHeader;
-        let body = super::completion::body(self, request, mode)?;
+        let body = super::completion::body(self, &request, mode)?;
         let betas: Vec<&str> = [
             super::completion::drops_unbound_thinking(self, &model, body.get("thinking"))
                 .then_some(super::completion::THINKING_BINDING_BETA),
@@ -540,7 +503,7 @@ impl Wire for Messages {
                 &betas,
             )
             .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+            .body(body.into_body())?;
         Ok(Encoded::new(
             request,
             match mode {
@@ -558,8 +521,17 @@ impl Wire for Messages {
 }
 
 impl crate::completion::ReplayTarget for Messages {
+    /// Section 6.1 of the typed-options design, by dialect and model class.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        super::options::map_options(self, request, fields)
+    }
+
     fn api(&self) -> crate::message::Api {
-        crate::message::Api::from_static("anthropic.messages")
+        crate::message::Api::from_static(MESSAGES_API)
     }
 
     fn provider(&self) -> &str {
@@ -572,16 +544,21 @@ impl crate::completion::ReplayTarget for Messages {
 
     /// Messages takes images in user turns and tool results, never in
     /// assistant turns, on models that read images: every Claude model, and
-    /// each dialect's vision models by its documented naming (pi's model
-    /// data agrees). A model a dialect does not name reads images.
+    /// on another dialect each model its catalog entry lists as reading
+    /// them, or for a model the catalog does not list each dialect's
+    /// documented vision naming (pi's model data agrees).
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
-        let images = match self.provider.dialect.name {
-            name if name == ZAI.name => crate::providers::zai::reads_images(model),
-            name if name == MOONSHOT.name => crate::providers::moonshot::reads_images(model),
-            name if name == MINIMAX.name => crate::providers::minimax::reads_images(model),
-            name if name == XIAOMIMIMO.name => crate::providers::xiaomimimo::reads_images(model),
-            _ => true,
+        let rule: Option<fn(&str) -> bool> = match self.provider.dialect.name {
+            name if name == ANTHROPIC.name => None,
+            name if name == ZAI.name => Some(crate::providers::zai::reads_images),
+            name if name == MOONSHOT.name => Some(crate::providers::moonshot::reads_images),
+            name if name == MINIMAX.name => Some(crate::providers::minimax::reads_images),
+            name if name == XIAOMIMIMO.name => Some(crate::providers::xiaomimimo::reads_images),
+            _ => Some(|_| true),
         };
+        let images = rule.is_none_or(|rule| {
+            crate::catalog::reads_images_or(self.provider.dialect.name, model, rule)
+        });
         crate::completion::Accepts {
             user_images: images,
             assistant_images: false,
@@ -643,13 +620,12 @@ impl crate::completion::ReplayTarget for Messages {
 
     /// A request in adaptive thinking asks Anthropic to drop a block bound
     /// to another context (`drop_block`), so its turns replay verbatim.
+    /// The thinking read is what the body sends: the mapped `reasoning`,
+    /// with `additional_params` over it.
     fn drops_unbound_items(&self, request: &CompletionRequest) -> bool {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        let thinking = request
-            .additional_params
-            .as_ref()
-            .and_then(|params| params.get("thinking"));
-        super::completion::drops_unbound_thinking(self, model, thinking)
+        let thinking = crate::completion::options::param(self, request, "thinking");
+        super::completion::drops_unbound_thinking(self, model, thinking.as_ref())
     }
 
     /// What the encoder sends for the block, so the two never disagree.

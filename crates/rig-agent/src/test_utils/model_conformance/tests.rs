@@ -16,12 +16,10 @@ fn tool_call(id: &str, name: &str, arguments: serde_json::Value) -> AssistantCon
 }
 
 fn usage(input: u64, output: u64) -> Usage {
-    Usage {
-        input_tokens: Some(input),
-        output_tokens: Some(output),
-        total_tokens: Some(input + output),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input)
+        .output_tokens(output)
+        .total_tokens(input + output)
 }
 
 fn fixture_contract(condition: bool, details: &str) -> Result<(), ScenarioError> {

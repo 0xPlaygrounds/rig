@@ -30,6 +30,7 @@ fn reasoning_wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::op
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 

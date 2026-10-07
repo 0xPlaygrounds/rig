@@ -263,19 +263,7 @@ fn custom(payload: serde_json::Value) -> EffectKind {
 
 fn completion_kind(stream: bool) -> EffectKind {
     EffectKind::Completion {
-        request: CompletionRequest {
-            model: None,
-            chat_history: vec![Message::user("hi")],
-            documents: vec![],
-            tools: vec![],
-            temperature: None,
-            max_tokens: None,
-            tool_choice: None,
-            additional_params: None,
-            output_schema: None,
-            record_telemetry_content: false,
-            accept_unknown_finish_reasons: false,
-        },
+        request: CompletionRequest::from(vec![Message::user("hi")]),
         stream,
     }
 }

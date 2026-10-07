@@ -29,6 +29,7 @@ fn wire(
         route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -124,5 +125,6 @@ fn reasoning_wire(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }

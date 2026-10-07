@@ -17,11 +17,13 @@ pub mod cached_content;
 pub mod caching;
 pub mod completion;
 pub mod embedding;
+pub mod extension;
 #[cfg(feature = "image")]
 #[cfg_attr(docsrs, doc(cfg(feature = "image")))]
 pub mod image_generation;
 pub mod interactions_api;
 pub mod model_listing;
+mod options;
 pub mod streaming;
 pub mod transcription;
 

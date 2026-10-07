@@ -14,7 +14,7 @@ use crate::{
     message::{ToolCall, ToolFunction},
 };
 
-use super::streaming::{MOCK_PROVIDER, MockDecoder, MockFrame, MockStreamEvent};
+use super::streaming::{MOCK_PROVIDER, MockDecoder, MockDocument, MockFrame, MockStreamEvent};
 
 /// Scripted error returned by [`MockCompletionModel`].
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -313,6 +313,40 @@ impl crate::completion::ReplayTarget for MockScript {
         MOCK_API
     }
 
+    /// A script takes every option and sends nothing for it, so a test
+    /// reads the options it set on the request the script records.
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        let taken = |set: bool| match set {
+            true => Mapping::Omit("a scripted reply ignores options"),
+            false => Mapping::Nothing,
+        };
+        OptionMap {
+            reasoning: taken(reasoning.is_some()),
+            cache: taken(cache.is_some()),
+            service_tier: taken(service_tier.is_some()),
+            verbosity: taken(verbosity.is_some()),
+            parallel_tool_calls: taken(parallel_tool_calls.is_some()),
+            top_p: taken(top_p.is_some()),
+            seed: taken(seed.is_some()),
+            stop: taken(!stop.is_empty()),
+        }
+    }
+
     // Scripts state a finish reason only when a test is about one.
     fn states_finish_reason(&self) -> bool {
         false
@@ -343,6 +377,7 @@ impl Wire for MockScript {
     type Payload = CompletionRequest;
     type Frame = MockFrame;
     type Decoder<'id> = MockDecoder<'id>;
+    type Reassembler = MockDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(&self.name)
@@ -522,3 +557,34 @@ impl Transport<MockScript> for MockRuntime {
 
 #[cfg(test)]
 mod tests;
+
+/// Every set option refused, for a test target that takes none.
+pub fn refuse_options(
+    fields: crate::completion::options::OptionFields<'_>,
+) -> crate::completion::options::OptionMap {
+    use crate::completion::options::{Mapping, OptionFields, OptionMap};
+    let OptionFields {
+        reasoning,
+        cache,
+        service_tier,
+        verbosity,
+        parallel_tool_calls,
+        top_p,
+        seed,
+        stop,
+    } = fields;
+    let refused = |set: bool| match set {
+        true => Mapping::unsupported("the test target takes no options"),
+        false => Mapping::Nothing,
+    };
+    OptionMap {
+        reasoning: refused(reasoning.is_some()),
+        cache: refused(cache.is_some()),
+        service_tier: refused(service_tier.is_some()),
+        verbosity: refused(verbosity.is_some()),
+        parallel_tool_calls: refused(parallel_tool_calls.is_some()),
+        top_p: refused(top_p.is_some()),
+        seed: refused(seed.is_some()),
+        stop: refused(!stop.is_empty()),
+    }
+}

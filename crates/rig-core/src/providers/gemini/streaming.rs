@@ -20,8 +20,8 @@ use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, Too
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
-    WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation,
+    WireEvent, WireFrame,
 };
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
@@ -43,18 +43,17 @@ pub struct GenerateContentChunk(pub Map<String, Value>);
 /// block of the part before it while the kind stays the same, and a part
 /// that carries only a thought signature joins that block; any other part is
 /// a block of its own. The provider's end is held until EOF because
-/// hosted-tool rounds can report intermediate finish reasons.
+/// hosted-tool rounds can report intermediate finish reasons. The
+/// candidate's grounding and recitation metadata cite the text blocks when
+/// the reply ends.
 #[derive(Debug, Default)]
 pub struct GenerateContentDecoder {
-    /// The latest `finishReason` and `finishMessage`.
+    /// The latest `finishReason`.
     finish: Option<String>,
-    finish_message: Option<String>,
     /// The latest `usageMetadata`, as Gemini sent it.
     usage: Option<Value>,
     model_version: Option<String>,
     response_id: Option<String>,
-    /// The reply document a wire kept in place of the summary record.
-    raw: Option<Value>,
     /// The text or thought run later parts continue, and whether it is
     /// thought.
     open: Option<(usize, bool)>,
@@ -64,15 +63,20 @@ pub struct GenerateContentDecoder {
     last: Option<usize>,
     /// A signature sent alone before any block, which the next block takes.
     signature: Option<String>,
-}
-
-impl GenerateContentDecoder {
-    /// Report `raw` as the reply's raw document in place of the summary
-    /// record, for a wire whose own reply is not REST JSON (an SDK's or
-    /// a protobuf message).
-    pub fn keep_raw(&mut self, raw: Value) {
-        self.raw = Some(raw);
-    }
+    /// The answer text written so far, which grounding segments cite.
+    answer: grounding::AnswerText,
+    /// The text block and byte offset in it of each part of the latest
+    /// chunk; `None` for a part that is not answer text.
+    placed: Vec<Option<(usize, usize)>>,
+    /// Where the part being written put its text.
+    placement: Option<(usize, usize)>,
+    /// The latest `groundingMetadata`'s citations, by block.
+    grounding: Vec<(usize, WireCitation)>,
+    /// How many chunks carried parts: a reply over more than one counts a
+    /// grounding segment's bytes in the whole answer, not in a part.
+    chunks: usize,
+    /// The `citationMetadata` sources of every chunk, by block.
+    recitations: Vec<(usize, WireCitation)>,
 }
 
 impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
@@ -149,9 +153,6 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             Some(Value::Number(number)) => self.finish = Some(format!("FINISH_REASON_{number}")),
             _ => {}
         }
-        if let Some(message) = candidate.str("finishMessage") {
-            self.finish_message = Some(message.to_owned());
-        }
         let parts = match candidate.get("content") {
             None | Some(Value::Null) => None,
             Some(content @ Value::Object(_)) => content.get("parts"),
@@ -160,11 +161,23 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
         match parts {
             None | Some(Value::Null) => {}
             Some(Value::Array(parts)) => {
+                self.chunks += 1;
+                self.placed.clear();
                 for part in parts {
                     self.part(part.clone(), &mut out)?;
+                    self.placed.push(self.placement.take());
                 }
             }
             Some(_) => return Err(malformed("candidate parts that are not a list")),
+        }
+        // Each chunk restates the grounding whole; recitation sources add up.
+        if let Some(metadata) = candidate.get("groundingMetadata") {
+            self.grounding =
+                grounding::grounding(metadata, &self.placed, &self.answer, self.chunks > 1);
+        }
+        if let Some(metadata) = candidate.get("citationMetadata") {
+            let recitations = grounding::recitations(metadata, &self.answer);
+            self.recitations.extend(recitations);
         }
         // A failure is final: nothing after it is read.
         use crate::completion::FinishReason::{Length, Stop};
@@ -190,21 +203,15 @@ impl GenerateContentDecoder {
             return Err(ProviderError::Truncated);
         };
         self.close(&mut out)?;
+        let citations = std::mem::take(&mut self.grounding)
+            .into_iter()
+            .chain(std::mem::take(&mut self.recitations));
+        for (index, citation) in citations {
+            out.cite(index, citation);
+        }
         let usage = self.usage.as_ref().map(usage_of).unwrap_or_default();
         let model = self.model_version.take();
         let response_id = self.response_id.take();
-        let summary = serde_json::json!({
-            "usage_metadata": self.usage.take().unwrap_or_else(|| Value::Object(Map::new())),
-            "finish_reason": reason,
-            "finish_message": self.finish_message.take(),
-            "model_version": model,
-            "response_id": response_id,
-        });
-        let Value::Object(mut summary) = summary else {
-            return Err(malformed("a reply"));
-        };
-        summary.retain(|_, value| !value.is_null());
-        out.raw(self.raw.take().unwrap_or(Value::Object(summary)));
         Ok(out.end(Finish {
             usage,
             reason: Some(map_google_finish_reason(&reason)),
@@ -244,6 +251,10 @@ impl GenerateContentDecoder {
             .get("thoughtSignature")
             .and_then(Value::as_str)
             .is_some_and(|signature| !signature.is_empty());
+        if matches!(block, Block::Text) {
+            self.answer.open(index, text);
+            self.placement = Some((index, 0));
+        }
         let run = match &block {
             Block::Text => Some(false),
             Block::Reasoning { .. } => Some(true),
@@ -278,6 +289,9 @@ impl GenerateContentDecoder {
             return match self.open {
                 Some((index, kind)) if kind == thought && !(self.signed && signature.is_some()) => {
                     self.signed |= signature.is_some();
+                    if !thought {
+                        self.placement = self.answer.push(index, text).map(|at| (index, at));
+                    }
                     out.push(index, text)?;
                     out.edit(index, |item| merge_part(item, &part))
                 }
@@ -415,6 +429,9 @@ fn merge_part(item: &mut Value, part: &Value) {
         }
     }
 }
+
+pub mod document;
+mod grounding;
 
 #[cfg(test)]
 mod tests;

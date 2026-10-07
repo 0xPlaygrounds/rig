@@ -17,7 +17,7 @@ use rig_core::providers::gemini::completion::GenerateContent;
 use rig_core::providers::openai::wire::OpenAIConfig;
 
 use super::portability::{FOLLOW_UP, Source, decode_whole_reply};
-use super::{Dialect, lost_tokens, response_tokens};
+use super::{Dialect, Params, lost_tokens, response_tokens};
 
 /// The code each record resolves to.
 pub const CODES: [(&str, &str); 2] = [("alpha", "amber-5521"), ("beta", "cobalt-7730")];
@@ -42,20 +42,16 @@ fn lookup() -> ToolDefinition {
 }
 
 /// A request over `history` with the lookup tool and `params`.
-pub fn request(history: Vec<Message>, params: Option<Value>, max_tokens: u64) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![lookup()],
-        temperature: None,
-        max_tokens: Some(max_tokens),
-        tool_choice: None,
-        additional_params: params,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+pub fn request(
+    history: Vec<Message>,
+    params: impl Into<Params>,
+    max_tokens: u64,
+) -> CompletionRequest {
+    let mut request = CompletionRequest::from(history);
+    request.tools = vec![lookup()];
+    request.max_tokens = Some(max_tokens);
+    params.into().apply(&mut request);
+    request
 }
 
 fn text(choice: &[AssistantContent]) -> String {
@@ -80,10 +76,7 @@ fn result(call: CallId, record: &str) -> UserContent {
 }
 
 fn assistant(reply: &CompletionResponse) -> Message {
-    Message::Assistant(rig_core::message::AssistantMessage {
-        content: reply.choice.clone(),
-        ..reply.head()
-    })
+    Message::Assistant(reply.head().with_content(reply.choice.clone()))
 }
 
 /// Two completed lookups that both used the call id `id`, then a question
@@ -91,8 +84,9 @@ fn assistant(reply: &CompletionResponse) -> Message {
 pub async fn colliding_ids(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     id: &str,
-    params: Option<Value>,
+    params: impl Into<Params>,
 ) {
+    let params = params.into();
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let mut history = vec![Message::user("Look up record alpha.")];
     for (index, (record, _)) in CODES.iter().enumerate() {
@@ -158,8 +152,9 @@ pub fn assert_colliding_recorded(provider: &str, scenario: &str) {
 /// check the model attributes each code to its record.
 pub async fn out_of_order_results(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    params: Option<Value>,
+    params: impl Into<Params>,
 ) {
+    let params = params.into();
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let prompt = Message::user(
         "Call lookup_code for record alpha and for record beta, both in this one turn, in parallel.",
@@ -252,10 +247,11 @@ async fn complete(
 pub async fn reasoning_round_trip(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     prompt: &str,
-    params: Option<Value>,
+    params: impl Into<Params>,
     max_tokens: u64,
     streamed: bool,
 ) -> CompletionResponse {
+    let params = params.into();
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let prompt = Message::user(prompt);
     let first = complete(
@@ -385,7 +381,7 @@ impl Hop {
 pub async fn round_trip_hop(
     model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     hop: Hop,
-    params: Option<Value>,
+    params: impl Into<Params>,
 ) {
     let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
     let reply = model

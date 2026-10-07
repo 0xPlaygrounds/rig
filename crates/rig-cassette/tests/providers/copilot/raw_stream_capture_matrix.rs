@@ -3,31 +3,19 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The terminal record of every stream the driver
-//! yields carries `raw`: the route's own terminal record, serialized by the
-//! decoder that built it from the stream's frames. On the chat-completions
-//! route that is the shared chat terminal type, on the Responses route the
-//! shared Responses one, and each cell reads `raw` back through the type its
-//! route owns. It is the terminal record only, and nothing about it is sent
-//! to Copilot. `raw == Value::Null` means only that a `CompletionResponse` was built
-//! by hand without a provider terminal behind it, which no cell here can
-//! produce. Which route a stream took is a fact about the wire rather than
-//! about `raw`, so each typed-access cell asserts it on the bound wire
-//! itself.
+//! Capture is always on. Every stream the driver yields carries `raw`: the
+//! document the route's reassembler rebuilds from the stream's frames, on
+//! the chat-completions route the `chat.completion` a unary call returns.
+//! Nothing about it is sent to Copilot. `raw == Value::Null` means only that
+//! a `CompletionResponse` was built by hand without a provider reply behind
+//! it, which no cell here can produce. Which route a stream took is a fact
+//! about the wire rather than about `raw`, so each typed-access cell asserts
+//! it on the bound wire itself.
 //!
-//! A stream has no single reply body, so this `raw` is unlike its blocking
-//! twin: it is `serde_json::to_value` of the terminal record the decoder
-//! assembled (`openai::wire::chat`'s `emit_terminal`, and the Responses
-//! decoder's `terminal_record`), not a document read off the socket. That is
-//! why a cell here may assert the record re-serializes *equal* to `raw`,
-//! which on the blocking path would be false: nothing the stream carried and
-//! the terminal type does not model is silently dropped, because the shared
-//! terminal type accumulates it under `additional_params`.
-//!
-//! Terminal-only fields per route: on the chat route the shared terminal type
-//! accumulates unknown top-level chunk fields under `additional_params`,
-//! which is where Copilot's own `copilot_usage` block (with `total_nano_aiu`)
-//! and the `system_fingerprint` land — neither has a home on the normalized
+//! Terminal-only fields per route: on the chat route the rebuilt
+//! `chat.completion` keeps every top-level chunk field where a unary body
+//! states it, which is where Copilot's own `copilot_usage` block (with
+//! `total_nano_aiu`) and the `system_fingerprint` land — neither has a home on the normalized
 //! [`CompletionResponse`](rig::completion::CompletionResponse); on the Responses route the
 //! terminal `status`.
 //!
@@ -35,8 +23,8 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `CopilotWire::Chat`; `raw` reads back as the chat terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
-//! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.additional_params.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `CopilotWire::Chat`; `raw` is the `chat.completion` document the stream rebuilds | unrecorded (no COPILOT credentials in this environment) |
+//! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
 //! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | the wire is `CopilotWire::Responses`; `raw` reads back as the Responses terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
 //! | 4 | `responses_stream_raw_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
 //!
@@ -152,11 +140,9 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     .expect("chat_stream_raw_terminal_round_trips_provider_type should replay from its cassette");
 
     let terminal = captured.take();
-    // The record carries the wire's own accounting, which flattens both the
-    // OpenAI-compatible counters and whatever else the dialect added — so the
-    // round trip is exact, and the accounting's own normalization is what the
-    // terminal must carry. The transport id is the header's, so the native
-    // record has no slot filled for it.
+    // The rebuilt document carries the wire's own accounting, the
+    // OpenAI-compatible counters and whatever else the dialect added, and
+    // the accounting's own normalization is what the terminal must carry.
     chat::assert_terminal_round_trips(&terminal);
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
@@ -183,20 +169,16 @@ async fn chat_stream_raw_exposes_copilot_usage() {
 
     let terminal = captured.take();
     let normalized = normalized_without_raw(terminal.clone());
-    assert_normalized_lacks(
-        &normalized,
-        &["copilot_usage", "system_fingerprint", "additional_params"],
-    );
+    assert_normalized_lacks(&normalized, &["copilot_usage", "system_fingerprint"]);
 
     let raw = &terminal.raw;
     let (frames, terminal_frame) = recorded_chat_frames(scenario);
-    let params = raw
-        .get("additional_params")
-        .expect("raw terminal must carry the accumulated chunk envelope under additional_params");
+    // The rebuilt document states the chunks' top-level fields where a unary
+    // body does.
     assert_eq!(
-        params.get("copilot_usage"),
+        raw.get("copilot_usage"),
         terminal_frame.get("copilot_usage"),
-        "raw.additional_params.copilot_usage must equal the recorded terminal frame's block"
+        "raw.copilot_usage must equal the recorded terminal frame's block"
     );
     assert_eq!(raw["usage"], terminal_frame["usage"]);
     // `fp_…` fingerprints are placeholdered on disk; only a replay compares
@@ -208,22 +190,15 @@ async fn chat_stream_raw_exposes_copilot_usage() {
         .unwrap_or_else(|| panic!("{scenario}: recorded chunks must carry system_fingerprint"));
     match CassetteMode::current() {
         CassetteMode::Replay => {
-            assert_eq!(
-                params.get("system_fingerprint"),
-                Some(&recorded_fingerprint)
-            );
+            assert_eq!(raw.get("system_fingerprint"), Some(&recorded_fingerprint));
         }
         CassetteMode::Record => assert!(
-            params
-                .get("system_fingerprint")
-                .is_some_and(Value::is_string),
-            "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
+            raw.get("system_fingerprint").is_some_and(Value::is_string),
+            "raw.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed_params = &raw["additional_params"];
     assert_eq!(
-        typed_params
-            .get("copilot_usage")
+        raw.get("copilot_usage")
             .and_then(|usage| usage.get("total_nano_aiu")),
         terminal_frame.pointer("/copilot_usage/total_nano_aiu")
     );

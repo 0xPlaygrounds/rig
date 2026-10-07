@@ -1,8 +1,9 @@
 //! Citations of the Responses hosted `web_search` tool, recorded live on
 //! the streamed and the unary route with the same prompt. Each route's text
 //! part must end with the `output_text` extras its recorded message item
-//! states, annotations included, once. Every expectation is derived from the
-//! frozen recording; none names a generated answer, source or count.
+//! states, annotations included, once, and cite it once per annotation.
+//! Every expectation is derived from the frozen recording; none names a
+//! generated answer, source or count.
 
 use std::sync::{Arc, Mutex};
 
@@ -16,7 +17,9 @@ use rig_test_support::citations::{
 };
 use serde_json::{Value, json};
 
-use super::super::support::{sse_json_frames, with_openai_cassette};
+use rig::completion::Effort;
+
+use super::super::support::{sse_json_frames, stateless, with_openai_cassette};
 use crate::stream_faults::{recorded_sse_frames, scripted, sse_bytes};
 
 const SCENARIO: &str = "web_search_citations/streamed_and_unary";
@@ -27,7 +30,8 @@ const SCRIPTED_KEY: &str = "sk-scripted-citation-key-5c1e";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
-        .additional_params(json!({ "store": false, "reasoning": { "effort": "low" } }))
+        .reasoning(Effort::Low)
+        .provider_options(stateless())
         .provider_tool(ProviderToolDefinition::new("web_search"))
         .max_tokens(2048)
 }

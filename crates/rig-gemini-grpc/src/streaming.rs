@@ -43,14 +43,6 @@ impl<'id> Decoder<'id, Completion, proto::GenerateContentResponse> for GrpcAdapt
             Value::Object(chunk) => chunk,
             _ => serde_json::Map::new(),
         };
-        // The latest response carrying a finish reason is the raw record.
-        if response
-            .candidates
-            .first()
-            .is_some_and(|candidate| candidate.finish_reason != 0)
-        {
-            self.0.keep_raw(Value::Object(chunk.clone()));
-        }
         Decoder::<'id, Completion>::decode(&mut self.0, GenerateContentChunk(chunk), out)
     }
 
@@ -58,6 +50,8 @@ impl<'id> Decoder<'id, Completion, proto::GenerateContentResponse> for GrpcAdapt
         Decoder::<'id, Completion>::eof(&mut self.0, out)
     }
 }
+
+pub(crate) mod document;
 
 #[cfg(test)]
 #[allow(clippy::expect_used, clippy::panic)]

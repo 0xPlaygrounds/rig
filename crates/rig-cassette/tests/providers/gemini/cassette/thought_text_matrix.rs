@@ -90,7 +90,8 @@ use super::super::support::{
     with_gemini_thought_text_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
+use rig::providers::gemini::extension::GeminiOptions;
 
 /// The sentence spoken in `tests/data/en-us-natural-speech.mp3`, as recorded
 /// by this matrix's own fixtures.
@@ -294,6 +295,8 @@ struct TextResponseCell {
     prompt: &'static str,
     preamble: Option<&'static str>,
     params: Option<Value>,
+    /// Typed options, beside `params`.
+    options: Option<(GenerationOptions, ProviderOptions)>,
     max_tokens: Option<u64>,
     thoughts_expected: bool,
 }
@@ -304,6 +307,7 @@ async fn text_response_body(client: GeminiModels, scenario: &'static str, cell: 
         prompt,
         preamble,
         params,
+        options,
         max_tokens,
         thoughts_expected,
     } = cell;
@@ -315,6 +319,9 @@ async fn text_response_body(client: GeminiModels, scenario: &'static str, cell: 
     }
     if let Some(params) = params {
         request = request.additional_params(params);
+    }
+    if let Some((generation, provider)) = options {
+        request = request.options(generation).provider_options(provider);
     }
     if let Some(max_tokens) = max_tokens {
         request = request.max_tokens(max_tokens);
@@ -387,7 +394,6 @@ async fn text_response_with_structured_output() {
                     preamble: None,
                     params: Some(json!({
                         "generationConfig": {
-                            "thinkingConfig": { "thinkingBudget": 512, "includeThoughts": true },
                             "responseMimeType": "application/json",
                             "responseJsonSchema": {
                                 "type": "object",
@@ -399,6 +405,10 @@ async fn text_response_with_structured_output() {
                             }
                         }
                     })),
+                    options: Some((
+                        GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 512 }),
+                        ProviderOptions::new().set(GeminiOptions::new().include_thoughts(true)),
+                    )),
                     max_tokens: Some(2000),
                     thoughts_expected: true,
                 },

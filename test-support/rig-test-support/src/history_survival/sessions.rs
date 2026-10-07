@@ -48,19 +48,11 @@ fn tool() -> ToolDefinition {
 }
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![tool()],
-        temperature: None,
-        max_tokens: Some(cell.max_tokens),
-        tool_choice: None,
-        additional_params: (cell.params)(),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = vec![tool()];
+    request.max_tokens = Some(cell.max_tokens);
+    request.additional_params = (cell.params)();
+    request
 }
 
 /// Record the first turn on `first`, persist and reload its history, answer
@@ -218,10 +210,7 @@ async fn turn_one(
 
     let history = vec![
         prompt,
-        Message::Assistant(rig_core::message::AssistantMessage {
-            content: reply.choice.clone(),
-            ..reply.head()
-        }),
+        Message::Assistant(reply.head().with_content(reply.choice.clone())),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),

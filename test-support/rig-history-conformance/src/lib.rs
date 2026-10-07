@@ -250,7 +250,7 @@ pub const TESTS: &[(&str, &str, &str)] = &[
     ),
     (
         "crates/rig-bedrock/src/streaming/tests.rs",
-        "a_streams_raw_is_bedrocks_json",
+        "a_stream_rebuilds_the_unary_converse_output",
         "#2311",
     ),
     (
@@ -1284,20 +1284,18 @@ pub fn h07_failed_turns<F: HistoryFixture>(fixture: &F) {
 /// result, a result no call asked for is dropped, and the history encodes.
 pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
     let other = Origin::new("other.api", "other", "other-model");
-    let turn = AssistantMessage {
-        content: vec![
-            AssistantContent::ToolCall(ToolCall::new(
-                CallId::from_wire("call_answered"),
-                ToolFunction::new(name("lookup"), serde_json::json!({})),
-            )),
-            AssistantContent::ToolCall(ToolCall::new(
-                CallId::from_wire("call_unanswered"),
-                ToolFunction::new(name("lookup"), serde_json::json!({})),
-            )),
-        ],
-        origin: Some(other),
-        stop: Some(StopReason::ToolUse),
-    };
+    let turn = AssistantMessage::new(vec![
+        AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire("call_answered"),
+            ToolFunction::new(name("lookup"), serde_json::json!({})),
+        )),
+        AssistantContent::ToolCall(ToolCall::new(
+            CallId::from_wire("call_unanswered"),
+            ToolFunction::new(name("lookup"), serde_json::json!({})),
+        )),
+    ])
+    .with_origin(other)
+    .with_stop(StopReason::ToolUse);
     let answered = turn.content.first().and_then(|block| match block {
         AssistantContent::ToolCall(call) => Some(call.result(vec![ToolResultContent::text("ok")])),
         _ => None,
@@ -1569,18 +1567,18 @@ fn media_history() -> Vec<Message> {
                 UserContent::Document(document(Source::base64("cmlnIG1hdHJpeCB1bnR5cGVk"), None)),
             ],
         },
-        Message::Assistant(AssistantMessage {
-            content: vec![
+        Message::Assistant(
+            AssistantMessage::new(vec![
                 AssistantContent::Image(image(
                     Source::url("https://example.com/rig-matrix-assistant.png"),
                     Some(ImageMediaType::PNG),
                 )),
                 AssistantContent::Text(Text::new("taking a shot")),
                 AssistantContent::ToolCall(call.clone()),
-            ],
-            origin: Some(Origin::new("other.api", "other", "other-model")),
-            stop: Some(StopReason::ToolUse),
-        }),
+            ])
+            .with_origin(Origin::new("other.api", "other", "other-model"))
+            .with_stop(StopReason::ToolUse),
+        ),
         Message::User {
             content: vec![UserContent::ToolResult(call.result(vec![
                 ToolResultContent::text("here"),
@@ -1594,11 +1592,11 @@ fn media_history() -> Vec<Message> {
                 )),
             ]))],
         },
-        Message::Assistant(AssistantMessage {
-            content: vec![AssistantContent::ToolCall(listing.clone())],
-            origin: Some(Origin::new("other.api", "other", "other-model")),
-            stop: Some(StopReason::ToolUse),
-        }),
+        Message::Assistant(
+            AssistantMessage::new(vec![AssistantContent::ToolCall(listing.clone())])
+                .with_origin(Origin::new("other.api", "other", "other-model"))
+                .with_stop(StopReason::ToolUse),
+        ),
         Message::User {
             content: vec![UserContent::ToolResult(listing.result(vec![
                 ToolResultContent::text("first part"),
@@ -1825,6 +1823,7 @@ pub fn h11_order<F: HistoryFixture>(fixture: &F) {
                 AssistantContent::ToolCall(_) => "call",
                 AssistantContent::Image(_) => "image",
                 AssistantContent::Opaque(_) => "opaque",
+                _ => "other",
             })
             .collect();
         assert_eq!(
@@ -2193,11 +2192,11 @@ pub fn h16_call_identity<F: HistoryFixture>(fixture: &F) {
         ))
     };
     let foreign = |content| {
-        Message::Assistant(AssistantMessage {
-            content,
-            origin: Some(Origin::new("other.api", "other", "other-model")),
-            stop: Some(StopReason::ToolUse),
-        })
+        Message::Assistant(
+            AssistantMessage::new(content)
+                .with_origin(Origin::new("other.api", "other", "other-model"))
+                .with_stop(StopReason::ToolUse),
+        )
     };
     let answer = |id: &str, text: &str| Message::User {
         content: vec![UserContent::ToolResult(ToolResult {

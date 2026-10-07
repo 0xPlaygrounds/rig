@@ -33,7 +33,7 @@ use super::support::{
     recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -78,10 +78,18 @@ struct Observation {
 
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
+/// The typed half of a cell's settings: thinking off on the disabled cells.
+/// `reasoning_effort` alone and the logprobs keys have no typed form.
+fn options(cell: Cell) -> GenerationOptions {
+    match cell.thinking {
+        Thinking::Disabled => GenerationOptions::default().reasoning(Reasoning::Off),
+        Thinking::Low => GenerationOptions::default(),
+    }
+}
+
 fn params(cell: Cell) -> Value {
     let mut params = match cell.thinking {
         Thinking::Disabled => json!({
-            "thinking": { "type": "disabled" },
             "logprobs": true
         }),
         Thinking::Low => json!({
@@ -123,6 +131,7 @@ fn max_tokens(cell: Cell) -> u64 {
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(MODEL);
     let request = CompletionRequest::new(prompt(cell))
+        .options(options(cell))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
 
@@ -147,10 +156,11 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
                 .finish()
                 .await
                 .context("raw stream should carry a terminal response")?;
-            let serialized = terminal.raw;
+            // The rebuilt document states them where a unary body does.
+            let choice = &terminal.raw["choices"][0];
             Observation {
-                logprobs: serialized["logprobs"].clone(),
-                finish_reason: serialized["finish_reason"].clone(),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
     };

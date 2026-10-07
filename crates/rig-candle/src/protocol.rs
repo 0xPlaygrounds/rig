@@ -144,7 +144,7 @@ fn validate_protocol_inputs(
                                 protocol,
                             )?;
                         }
-                        AssistantContent::Image(_) | AssistantContent::Opaque(_) => {}
+                        _ => {}
                     }
                 }
             }
@@ -208,16 +208,6 @@ fn validate_common_request(request: &CompletionRequest) -> Result<(), CandleErro
         return Err(CandleError::UnsupportedFeature(
             "direct output_schema requires constrained decoding; use Rig's tool output mode"
                 .to_string(),
-        ));
-    }
-    if request
-        .additional_params
-        .as_ref()
-        .and_then(serde_json::Value::as_object)
-        .is_some_and(|parameters| parameters.contains_key("tools"))
-    {
-        return Err(CandleError::UnsupportedFeature(
-            "provider-native hosted tools".to_string(),
         ));
     }
     Ok(())
@@ -405,6 +395,9 @@ fn render_plain_message(message: &Message) -> Result<(&'static str, String), Can
                     AssistantContent::Opaque(_) => {
                         return Err(CandleError::UnsupportedPromptContent("provider items"));
                     }
+                    _ => {
+                        return Err(CandleError::UnsupportedPromptContent("assistant content"));
+                    }
                 }
             }
             Ok(("assistant", parts.join("\n")))
@@ -586,6 +579,9 @@ fn render_qwen_message(
                     }
                     AssistantContent::Opaque(_) => {
                         return Err(CandleError::UnsupportedPromptContent("provider items"));
+                    }
+                    _ => {
+                        return Err(CandleError::UnsupportedPromptContent("assistant content"));
                     }
                 }
             }

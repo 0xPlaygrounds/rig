@@ -15,6 +15,7 @@ fn wire(client: &AnthropicModels) -> Wire<rig::Model<rig::providers::anthropic::
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 

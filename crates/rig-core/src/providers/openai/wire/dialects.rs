@@ -39,7 +39,11 @@ pub const OPENAI: Dialect = Dialect {
         output_cap: OutputCap::OpenAiReasoningFamilies,
         ..Quirks::openai()
     },
-    ..Dialect::gateway("openai", "https://api.openai.com/v1", "OPENAI_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::openai::PROVIDER_NAME,
+        "https://api.openai.com/v1",
+        "OPENAI_API_KEY",
+    )
 };
 
 /// Azure OpenAI: the deployment is in the URL, the API version is a query
@@ -67,7 +71,7 @@ pub const AZURE: Dialect = Dialect {
     },
     // The base URL is the account's own resource endpoint; there is no
     // shared host, so the dialect names none.
-    ..Dialect::gateway("azure.openai", "", "AZURE_API_KEY")
+    ..Dialect::gateway(crate::providers::azure::PROVIDER_NAME, "", "AZURE_API_KEY")
 };
 
 /// DeepSeek.
@@ -82,13 +86,21 @@ pub const DEEPSEEK: Dialect = Dialect {
         reasoning_field: Some("reasoning_content"),
         ..Quirks::openai()
     },
-    ..Dialect::gateway("deepseek", "https://api.deepseek.com", "DEEPSEEK_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::deepseek::PROVIDER_NAME,
+        "https://api.deepseek.com",
+        "DEEPSEEK_API_KEY",
+    )
 };
 
 /// Groq.
 pub const GROQ: Dialect = Dialect {
     request_id_header: Some("x-request-id"),
-    ..Dialect::gateway("groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::groq::PROVIDER_NAME,
+        "https://api.groq.com/openai/v1",
+        "GROQ_API_KEY",
+    )
 };
 
 /// Hyperbolic.
@@ -110,7 +122,7 @@ pub const HYPERBOLIC: Dialect = Dialect {
     },
     // The bare host: the chat path carries its own `/v1`.
     ..Dialect::gateway(
-        "hyperbolic",
+        crate::providers::hyperbolic::PROVIDER_NAME,
         "https://api.hyperbolic.xyz",
         "HYPERBOLIC_API_KEY",
     )
@@ -132,7 +144,11 @@ pub const MIRA: Dialect = Dialect {
         rewrite: BodyRewrite::Mira,
         ..Quirks::openai()
     },
-    ..Dialect::gateway("mira", "https://api.mira.network", "MIRA_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::mira::PROVIDER_NAME,
+        "https://api.mira.network",
+        "MIRA_API_KEY",
+    )
 };
 
 /// Perplexity.
@@ -147,7 +163,7 @@ pub const PERPLEXITY: Dialect = Dialect {
         ..Quirks::openai()
     },
     ..Dialect::gateway(
-        "perplexity",
+        crate::providers::perplexity::PROVIDER_NAME,
         "https://api.perplexity.ai",
         "PERPLEXITY_API_KEY",
     )
@@ -172,7 +188,11 @@ pub const TOGETHER: Dialect = Dialect {
         ..Quirks::openai()
     },
     // The bare host: every path carries its own `/v1`.
-    ..Dialect::gateway("together", "https://api.together.xyz", "TOGETHER_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::together::PROVIDER_NAME,
+        "https://api.together.xyz",
+        "TOGETHER_API_KEY",
+    )
 };
 
 /// Hugging Face's inference router.
@@ -194,7 +214,7 @@ pub const HUGGINGFACE: Dialect = Dialect {
         ..Quirks::openai()
     },
     ..Dialect::gateway(
-        "huggingface",
+        crate::providers::huggingface::PROVIDER_NAME,
         "https://router.huggingface.co",
         "HUGGINGFACE_API_KEY",
     )
@@ -240,7 +260,11 @@ pub const LLAMACPP: Dialect = Dialect {
         },
         ..Quirks::openai()
     },
-    ..Dialect::gateway("llamacpp", "http://localhost:8080/v1", "LLAMACPP_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::llamacpp::PROVIDER_NAME,
+        "http://localhost:8080/v1",
+        "LLAMACPP_API_KEY",
+    )
 };
 
 /// Mistral.
@@ -268,7 +292,11 @@ pub const MISTRAL: Dialect = Dialect {
         ..Quirks::openai()
     },
     // The bare host: every path carries its own `/v1`.
-    ..Dialect::gateway("mistral", "https://api.mistral.ai", "MISTRAL_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::mistral::PROVIDER_NAME,
+        "https://api.mistral.ai",
+        "MISTRAL_API_KEY",
+    )
 };
 
 /// OpenRouter.
@@ -296,7 +324,7 @@ pub const OPENROUTER: Dialect = Dialect {
         ..Quirks::openai()
     },
     ..Dialect::gateway(
-        "openrouter",
+        crate::providers::openrouter::PROVIDER_NAME,
         "https://openrouter.ai/api/v1",
         "OPENROUTER_API_KEY",
     )
@@ -313,7 +341,11 @@ pub const VENICE: Dialect = Dialect {
         image_body: ImageBody::Venice,
         ..Quirks::openai()
     },
-    ..Dialect::gateway("venice", "https://api.venice.ai/api/v1", "VENICE_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::venice::PROVIDER_NAME,
+        "https://api.venice.ai/api/v1",
+        "VENICE_API_KEY",
+    )
 };
 
 /// Doubleword.
@@ -336,7 +368,7 @@ pub const DOUBLEWORD: Dialect = Dialect {
         ..Quirks::openai()
     },
     ..Dialect::gateway(
-        "doubleword",
+        crate::providers::doubleword::PROVIDER_NAME,
         "https://api.doubleword.ai/v1",
         "DOUBLEWORD_API_KEY",
     )
@@ -352,7 +384,11 @@ pub const ZAI: Dialect = Dialect {
         ],
         ..Quirks::openai()
     },
-    ..Dialect::gateway("zai", "https://api.z.ai/api/paas/v4", "ZAI_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::zai::PROVIDER_NAME,
+        "https://api.z.ai/api/paas/v4",
+        "ZAI_API_KEY",
+    )
 };
 
 /// Z.AI's coding endpoint: the same dialect at a different base URL.
@@ -364,7 +400,11 @@ pub const ZAI_CODING: Dialect = Dialect {
 /// MiniMax's OpenAI-compatible half (global).
 pub const MINIMAX: Dialect = Dialect {
     base_url_env: Some("MINIMAX_API_BASE"),
-    ..Dialect::gateway("minimax", "https://api.minimax.io/v1", "MINIMAX_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::minimax::PROVIDER_NAME,
+        "https://api.minimax.io/v1",
+        "MINIMAX_API_KEY",
+    )
 };
 
 /// MiniMax's China endpoint.
@@ -382,7 +422,11 @@ pub const MOONSHOT: Dialect = Dialect {
         rewrite: BodyRewrite::Moonshot,
         ..Quirks::openai()
     },
-    ..Dialect::gateway("moonshot", "https://api.moonshot.ai/v1", "MOONSHOT_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::moonshot::PROVIDER_NAME,
+        "https://api.moonshot.ai/v1",
+        "MOONSHOT_API_KEY",
+    )
 };
 
 /// Moonshot's China endpoint.
@@ -401,7 +445,7 @@ pub const XIAOMIMIMO: Dialect = Dialect {
         ..Quirks::openai()
     },
     ..Dialect::gateway(
-        "xiaomimimo",
+        crate::providers::xiaomimimo::PROVIDER_NAME,
         "https://api.xiaomimimo.com/v1",
         "XIAOMI_MIMO_API_KEY",
     )
@@ -410,7 +454,7 @@ pub const XIAOMIMIMO: Dialect = Dialect {
 /// Cohere's OpenAI Compatibility API. Cohere's embedding endpoints are its
 /// own wires.
 pub const COHERE: Dialect = Dialect::gateway(
-    "cohere",
+    crate::providers::cohere::PROVIDER_NAME,
     "https://api.cohere.ai/compatibility/v1",
     "COHERE_API_KEY",
 );
@@ -424,7 +468,11 @@ pub const OLLAMA: Dialect = Dialect {
         rewrite: BodyRewrite::Ollama,
         ..Quirks::openai()
     },
-    ..Dialect::gateway("ollama", "http://localhost:11434/v1", "OLLAMA_API_KEY")
+    ..Dialect::gateway(
+        crate::providers::ollama::PROVIDER_NAME,
+        "http://localhost:11434/v1",
+        "OLLAMA_API_KEY",
+    )
 };
 
 /// The dialect named `name`, or `None` when this build has no such provider.

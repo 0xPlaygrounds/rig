@@ -1,4 +1,5 @@
 use super::*;
+use crate::completion::CacheRetention;
 use crate::error::ProviderError;
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::test_utils::json_body;
@@ -9,8 +10,8 @@ struct Params<'a> {
     model: &'a str,
     request: CompletionRequest,
     prompt_caching: bool,
-    automatic_caching: bool,
-    automatic_caching_ttl: Option<CacheTtl>,
+    /// The request's cache retention.
+    cache: Option<crate::completion::CacheRetention>,
     static_prefix_cache_ttl: Option<CacheTtl>,
 }
 
@@ -23,15 +24,17 @@ fn request_body(params: Params<'_>) -> Result<Value, EncodeError> {
 fn request_body_with(params: Params<'_>, strict: bool) -> Result<Value, EncodeError> {
     let mut wire = AnthropicConfig::new("test-key").completion(params.model);
     wire.prompt_caching = params.prompt_caching;
-    wire.automatic_caching = params.automatic_caching;
-    wire.automatic_caching_ttl = params.automatic_caching_ttl;
     wire.static_prefix_cache_ttl = params.static_prefix_cache_ttl;
     wire.strict_tools = strict;
     use crate::wire::{Operation, Wire};
     // The request as production encodes it: prepared, so adapted.
-    let request = crate::operation::Completion::prepare(params.request, &wire.describe())
+    let mut request = params.request;
+    if let Some(cache) = params.cache {
+        request.options = request.options.cache(cache);
+    }
+    let request = crate::operation::Completion::prepare(request, &wire.describe())
         .map_err(|error| EncodeError::request(error.to_string()))?;
-    body(&wire, request, Mode::Unary)
+    Ok(serde_json::to_value(body(&wire, &request, Mode::Unary)?)?)
 }
 
 /// `message` alone on the wire.
@@ -110,6 +113,25 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
         Some(128_000)
     );
     assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
+    assert_eq!(
+        default_max_tokens_for_model("claude-sonnet-4-20250514"),
+        Some(64_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model("claude-opus-4-1-20250805"),
+        Some(32_000),
+        "the Models API's limit for Claude Opus 4.1"
+    );
+    assert_eq!(default_max_tokens_for_model("claude-3-opus"), None);
+    // An id the catalog does not list takes its family's default.
+    assert_eq!(
+        default_max_tokens_for_model("claude-opus-4.6"),
+        Some(64_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model("claude-sonnet-4-6@20260101"),
+        Some(64_000)
+    );
 }
 
 fn generic_tool(name: &str) -> completion::ToolDefinition {
@@ -235,8 +257,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             model: CLAUDE_SONNET_4_6,
             request,
             prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
+            cache: None,
             static_prefix_cache_ttl: None,
         },
         true,
@@ -340,8 +361,7 @@ fn opus_4_8_preserves_mid_conversation_system_message() {
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -385,8 +405,7 @@ fn opus_4_8_hoists_leading_system_message_when_documents_are_present() {
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -467,8 +486,7 @@ fn opus_4_8_preserves_system_message_after_a_code_execution_result_in_a_containe
         model: CLAUDE_OPUS_4_8,
         request,
         prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -487,8 +505,7 @@ fn encode_mid_conversation_history(
         model,
         request: completion_request_with_history(history, None),
         prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -568,8 +585,7 @@ fn test_prompt_caching_budget_preserves_three_tool_markers_and_skips_message() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -601,8 +617,7 @@ fn test_prompt_caching_replaces_null_final_tool_cache_control() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -644,8 +659,7 @@ fn test_prompt_caching_automatic_mode_uses_reduced_marker_budget() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: true,
-        automatic_caching_ttl: None,
+        cache: Some(CacheRetention::Short),
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -697,8 +711,7 @@ fn test_prompt_caching_automatic_mode_errors_when_final_tool_marker_has_no_budge
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: true,
-        automatic_caching_ttl: None,
+        cache: Some(CacheRetention::Short),
         static_prefix_cache_ttl: None,
     })
     .unwrap_err();
@@ -744,8 +757,7 @@ fn test_automatic_caching_errors_when_explicit_tool_markers_exhaust_budget() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
-        automatic_caching: true,
-        automatic_caching_ttl: None,
+        cache: Some(CacheRetention::Short),
         static_prefix_cache_ttl: None,
     })
     .unwrap_err();
@@ -771,8 +783,7 @@ fn test_automatic_caching_1h_errors_with_explicit_five_minute_tool_marker() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
-        automatic_caching: true,
-        automatic_caching_ttl: Some(CacheTtl::OneHour),
+        cache: Some(CacheRetention::Long),
         static_prefix_cache_ttl: None,
     })
     .unwrap_err();
@@ -794,8 +805,7 @@ fn test_prompt_and_raw_top_level_automatic_caching_1h_uses_1h_generated_markers(
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: true,
-        automatic_caching_ttl: None,
+        cache: Some(CacheRetention::Short),
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -824,8 +834,7 @@ fn test_static_prefix_ttl_with_manual_caching_splits_prefix_and_tail() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: Some(CacheTtl::OneHour),
     })
     .unwrap();
@@ -861,8 +870,7 @@ fn test_static_prefix_ttl_five_minutes_with_automatic_1h_errors_client_side() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
-        automatic_caching: true,
-        automatic_caching_ttl: Some(CacheTtl::OneHour),
+        cache: Some(CacheRetention::Long),
         static_prefix_cache_ttl: Some(CacheTtl::FiveMinutes),
     })
     .unwrap_err();
@@ -873,8 +881,8 @@ fn test_static_prefix_ttl_five_minutes_with_automatic_1h_errors_client_side() {
         "error should name the knob: {message}"
     );
     assert!(
-        message.contains("with_automatic_caching_1h"),
-        "error should name the conflicting knob: {message}"
+        message.contains("CacheRetention::Long"),
+        "error should name the conflicting option: {message}"
     );
 }
 
@@ -887,8 +895,7 @@ fn test_static_prefix_ttl_five_minutes_matches_automatic_default_ttl() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
-        automatic_caching: true,
-        automatic_caching_ttl: None,
+        cache: Some(CacheRetention::Short),
         static_prefix_cache_ttl: Some(CacheTtl::FiveMinutes),
     })
     .unwrap();
@@ -901,28 +908,29 @@ fn test_static_prefix_ttl_five_minutes_matches_automatic_default_ttl() {
     assert_eq!(tools[0]["cache_control"]["ttl"], "5m");
 }
 
+/// A raw top-level marker is above the cache option: its keys win, and the
+/// mapped keys it does not name stay.
 #[test]
-fn test_typed_automatic_caching_ttl_errors_on_conflicting_raw_top_level_ttl() {
+fn a_raw_top_level_marker_beats_the_cache_option() {
     let request = completion_request_with_tools(
         Vec::new(),
         Some(json!({
-            "cache_control": {"type": "ephemeral"}
+            "cache_control": {"type": "ephemeral", "ttl": "5m"}
         })),
     );
 
-    let err = request_body(Params {
+    let value = request_body(Params {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: false,
-        automatic_caching: true,
-        automatic_caching_ttl: Some(CacheTtl::OneHour),
+        cache: Some(CacheRetention::Long),
         static_prefix_cache_ttl: None,
     })
-    .unwrap_err();
+    .unwrap();
 
-    assert!(
-        err.to_string()
-            .contains("conflicts with the typed automatic caching TTL")
+    assert_eq!(
+        value["cache_control"],
+        json!({"type": "ephemeral", "ttl": "5m"})
     );
 }
 
@@ -934,8 +942,7 @@ fn test_prompt_caching_without_tools_omits_tools() {
         model: "claude-sonnet-4-6",
         request,
         prompt_caching: true,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .unwrap();
@@ -1514,8 +1521,8 @@ fn drop_block_joins_the_callers_thinking() {
     ] {
         let mut request = completion_request_with_history(vec![message::Message::user("q")], None);
         request.additional_params = Some(json!({ "thinking": thinking }));
-        let body = super::body(&wire, request, crate::wire::Mode::Unary).expect("encodes");
-        assert_eq!(body["thinking"], sent);
+        let body = super::body(&wire, &request, crate::wire::Mode::Unary).expect("encodes");
+        assert_eq!(body.get("thinking"), Some(&sent));
     }
 }
 
@@ -1667,7 +1674,11 @@ fn context_binding_reads_every_spelling_of_a_claude_model() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
+        "claude-opus-5",
+        "claude-fable-5-1",
+        "claude-sonnet-5-5",
         "anthropic/claude-opus-5.5",
+        "claude-opus-5.5",
         "anthropic.claude-opus-5-5-v1:0",
         "us.anthropic.claude-opus-5-5-20260101-v1:0",
         "us.anthropic.claude-opus-5",
@@ -1676,6 +1687,7 @@ fn context_binding_reads_every_spelling_of_a_claude_model() {
     }
     for model in [
         "claude-sonnet-5",
+        "claude-haiku-4-5-20251001",
         "us.anthropic.claude-haiku-4-5-20251001-v1:0",
         "gpt-5",
     ] {
@@ -1711,8 +1723,7 @@ fn thinking_without_a_binding_replays_another_contexts_turn_as_text() {
         model: CLAUDE_SONNET_5_5,
         request,
         prompt_caching: false,
-        automatic_caching: false,
-        automatic_caching_ttl: None,
+        cache: None,
         static_prefix_cache_ttl: None,
     })
     .expect("encodes");
@@ -1891,8 +1902,7 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
                 model,
                 request,
                 prompt_caching: false,
-                automatic_caching: false,
-                automatic_caching_ttl: None,
+                cache: None,
                 static_prefix_cache_ttl: None,
             }) {
                 Ok(body) => body,
@@ -2051,4 +2061,33 @@ fn tool_input_streaming_reads_its_names_and_sends_the_beta_flag_once() {
         tool_input_streaming_sent(&wire, Mode::Streaming, vec![generic_tool("lookup")]).1,
         Some("fine-grained-tool-streaming-2025-05-14".to_owned())
     );
+}
+
+/// A raw top-level `cache_control` that is not an ephemeral marker with a
+/// known TTL is refused, never sent as written.
+#[test]
+fn an_invalid_raw_top_level_cache_marker_is_refused() {
+    for marker in [
+        json!({"type": "persistent"}),
+        json!({"type": "ephemeral", "ttl": "1d"}),
+    ] {
+        let request = completion_request_with_tools(
+            vec![generic_tool("cached_tool")],
+            Some(json!({ "cache_control": marker })),
+        );
+        let error = request_body(Params {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching: false,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .expect_err("refused");
+        assert!(
+            error
+                .to_string()
+                .contains("additional_params.cache_control"),
+            "{error}"
+        );
+    }
 }

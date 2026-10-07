@@ -1,28 +1,24 @@
-//! Matrix for raw terminal-record capture on mistral.rs's streaming
+//! Matrix for raw document capture on mistral.rs's streaming
 //! `/v1/chat/completions` route
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
 //! # The feature
 //!
 //! Capture is always on. mistral.rs streams through the plain `OPENAI`
-//! chat-completions wire pointed at its base URL, and the decoder assembles
-//! a terminal record —
-//! from the stream's final `data:` frame plus the envelope fields the chunks
-//! carried (`object`, `created`, `system_fingerprint`) accumulated under
-//! `additional_params`. Every terminal record carries `raw`: that record
-//! serialized. It is the terminal record only — an SSE reply is many frames
-//! and no single one is the answer, so a typed round trip through `raw` is
-//! exact here, unlike the unary path where `raw` is the reply document.
-//! Nothing about it is sent to the server. `raw == Value::Null` means only
-//! that a `CompletionResponse` was built by hand without a provider terminal behind
-//! it, which no cell here can produce.
+//! chat-completions wire pointed at its base URL, and every stream's `raw`
+//! is the `chat.completion` document its chunks rebuild: the envelope fields
+//! the chunks carried (`object` renamed to the unary tag, `created`,
+//! `system_fingerprint`) where a unary body states them, and the final
+//! frame's usage. Nothing about it is sent to the server. `raw ==
+//! Value::Null` means only that a `CompletionResponse` was built by hand
+//! without a provider reply behind it, which no cell here can produce.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `raw` is the terminal record and carries the reply's accounting | unrecorded (no mistral.rs server in this environment) |
-//! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded chunks; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `raw` is the rebuilt `chat.completion` and carries the reply's accounting | unrecorded (no mistral.rs server in this environment) |
+//! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `system_fingerprint` in `raw` equals the recorded chunks' and `object` is `chat.completion`; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
 //!
 //! Every cell is unrecorded: no mistral.rs server was listening on
 //! `127.0.0.1:1234` when this matrix was written, and a fixture is never
@@ -57,7 +53,7 @@ fn request() -> CompletionRequest {
 ///
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_stream FinalResponse, serialized
+// 1: raw is the rebuilt chat.completion
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -123,43 +119,34 @@ async fn stream_raw_exposes_envelope_fields() {
 
     let terminal = captured.take();
     let normalized = normalized_without_raw(terminal.clone());
-    assert_normalized_lacks(
-        &normalized,
-        &[
-            "system_fingerprint",
-            "object",
-            "created",
-            "additional_params",
-        ],
-    );
+    assert_normalized_lacks(&normalized, &["system_fingerprint", "object", "created"]);
 
     let raw = &terminal.raw;
     let (frames, terminal_frame) =
         chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
-    let params = raw
-        .get("additional_params")
-        .expect("raw terminal must carry the accumulated envelope under additional_params");
-    for key in ["system_fingerprint", "object"] {
-        assert_eq!(
-            params.get(key),
-            Some(&chat::recorded_envelope_field(&frames, key, scenario)),
-            "raw.additional_params.{key} must equal the recorded chunk envelope"
-        );
-    }
+    assert_eq!(
+        raw.get("system_fingerprint"),
+        Some(&chat::recorded_envelope_field(
+            &frames,
+            "system_fingerprint",
+            scenario
+        )),
+        "raw.system_fingerprint must equal the recorded chunk envelope"
+    );
+    assert_eq!(raw["object"], "chat.completion");
     // `created` is volatile: the scrubber placeholders it on disk, so only a
     // replay compares it exactly.
     let created = chat::recorded_envelope_field(&frames, "created", scenario);
     match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(params.get("created"), Some(&created)),
+        CassetteMode::Replay => assert_eq!(raw.get("created"), Some(&created)),
         CassetteMode::Record => assert!(
-            params.get("created").is_some_and(Value::is_u64) && created.is_u64(),
-            "raw.additional_params.created must carry the chunk envelope's integer"
+            raw.get("created").is_some_and(Value::is_u64) && created.is_u64(),
+            "raw.created must carry the chunk envelope's integer"
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed_params = &raw["additional_params"];
     assert_eq!(
-        typed_params.get("system_fingerprint"),
+        raw.get("system_fingerprint"),
         frames[0].get("system_fingerprint")
     );
 }

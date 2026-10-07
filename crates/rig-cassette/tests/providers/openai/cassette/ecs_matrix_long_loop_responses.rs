@@ -6,7 +6,8 @@
 //! cassette; the negative probe mutates the streamed recording's last tool
 //! result and proves the strict matcher refuses it.
 
-use super::super::support::{OpenAiCassette, with_openai_cassette};
+use super::super::support::{OpenAiCassette, shared_options, with_openai_cassette};
+use crate::ecs_matrix::corpus::TypedOptions;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig_test_support::cassette_models::OpenAiModels;
 
@@ -21,6 +22,7 @@ fn mini(models: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -28,9 +30,9 @@ fn task_wire(
     client: &OpenAiCassette,
 ) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
-        additional_params: Some(
-            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks", "store": false}),
-        ),
+        options: Some(|| {
+            TypedOptions::provider(shared_options(Some(false), Some("rig-native-long-tasks")))
+        }),
         ..wire(client)
     }
 }

@@ -15,9 +15,7 @@ async fn test_openai_streaming_tools_reasoning() {
     let agent = rig::AgentBuilder::new(client.completion("gpt-5.2"))
         .max_tokens(8192)
         .tool(MockExampleTool)
-        .additional_params(serde_json::json!({
-            "reasoning": {"effort": "high"}
-        }))
+        .options(super::super::support::effort(rig::completion::Effort::High))
         .build();
 
     let chat_history: Vec<Message> = Vec::new();

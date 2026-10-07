@@ -307,6 +307,32 @@ impl Choice {
     }
 }
 
+/// The typed options a program's requests carry, beside its raw
+/// `additional_params`.
+#[derive(Clone, Debug, Default)]
+pub struct TypedOptions {
+    pub generation: rig_core::completion::GenerationOptions,
+    pub provider: rig_core::completion::ProviderOptions,
+}
+
+impl TypedOptions {
+    /// `generation` with no provider options.
+    pub fn generation(generation: rig_core::completion::GenerationOptions) -> Self {
+        Self {
+            generation,
+            provider: rig_core::completion::ProviderOptions::new(),
+        }
+    }
+
+    /// `provider` with no generation options.
+    pub fn provider(provider: rig_core::completion::ProviderOptions) -> Self {
+        Self {
+            generation: rig_core::completion::GenerationOptions::default(),
+            provider,
+        }
+    }
+}
+
 /// One golden's program: what the producing root test built, verbatim.
 #[derive(Clone, Copy)]
 pub struct Program {
@@ -324,6 +350,8 @@ pub struct Program {
     pub temperature: Option<f64>,
     pub max_tokens: Option<u64>,
     pub additional_params: Option<fn() -> serde_json::Value>,
+    /// Typed options, beside `additional_params`.
+    pub options: Option<fn() -> TypedOptions>,
     /// Wire-specific parameters for `PatchThinkingSecond`; `None` retains
     /// the original Anthropic patch, including its temperature.
     pub thinking_params: Option<fn() -> serde_json::Value>,
@@ -509,6 +537,7 @@ impl Program {
         temperature: None,
         max_tokens: None,
         additional_params: None,
+        options: None,
         thinking_params: None,
         tool_choice: None,
         output_schema: None,
@@ -2617,6 +2646,12 @@ pub fn build_agent_unchecked(
     if let Some(params) = program.additional_params {
         builder = builder.additional_params(params());
     }
+    if let Some(options) = program.options {
+        let options = options();
+        builder = builder
+            .options(options.generation)
+            .provider_options(options.provider);
+    }
     if let Some(choice) = program.tool_choice {
         builder = builder.tool_choice(choice.tool_choice());
     }
@@ -3081,6 +3116,14 @@ pub fn run_spec(program: &Program) -> RunSpec {
         preamble: program.spec_preamble(),
         static_context: program.static_context(),
         additional_params: program.additional_params.map(|params| params()),
+        options: program
+            .options
+            .map(|options| options().generation)
+            .unwrap_or_default(),
+        provider_options: program
+            .options
+            .map(|options| options().provider)
+            .unwrap_or_default(),
         max_tokens: program.max_tokens,
         temperature: program.temperature,
         tool_choice: program.tool_choice.map(Choice::tool_choice),

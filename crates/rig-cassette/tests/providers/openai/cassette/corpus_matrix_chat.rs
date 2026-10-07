@@ -21,6 +21,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         route: Some(client.openai.chat(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 
@@ -65,6 +66,7 @@ fn reasoning_wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::op
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 

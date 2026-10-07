@@ -9,8 +9,6 @@ use crate::completion::ToolDefinition;
 use crate::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use crate::test_utils::json_body;
 
-use super::super::OPENROUTER;
-
 /// A turn with a system prompt, a tool and a tool result, so each option
 /// under test has something in the body it could change.
 fn request() -> CompletionRequest {
@@ -126,17 +124,6 @@ fn map_wire_reaches_tool_result_array_content_on_the_chat_route_only() {
     );
 }
 
-/// Prompt caching is OpenRouter's `cache_control` on the chat body, so that
-/// is the dialect whose request it changes.
-#[test]
-fn map_wire_reaches_prompt_caching_on_the_chat_route_only() {
-    only_on(
-        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Chat),
-        OpenAIConfig::with_key(&OPENROUTER, "sk-test").with_route(Route::Responses),
-        OpenAiWire::with_prompt_caching,
-    );
-}
-
 #[test]
 fn map_wire_reaches_a_wire_level_tool_on_the_responses_route_only() {
     only_on(responses(), chat(), |wire| wire.with_tool(tool()));
@@ -166,5 +153,54 @@ fn map_wire_reaches_system_instructions_as_messages_on_the_responses_route_only(
             OpenAiWire::with_system_instructions_as_messages
         ),
         body(responses(), as_messages),
+    );
+}
+
+/// The document `frames` rebuild on `reassembler`.
+fn rebuilt<R: Reassemble<WireFrame>>(
+    mut reassembler: R,
+    frames: &[serde_json::Value],
+) -> serde_json::Value {
+    for frame in frames {
+        reassembler.absorb(&WireFrame::Text(frame.to_string()));
+    }
+    reassembler.finish()
+}
+
+/// Each route rebuilds a streamed reply with its own wire's reassembler,
+/// and a default one is the chat route's, as the default route is.
+#[test]
+fn each_route_rebuilds_its_own_document() {
+    let chunk = serde_json::json!({
+        "id": "chatcmpl-1",
+        "object": "chat.completion.chunk",
+        "created": 1,
+        "model": "model",
+        "choices": [{"index": 0, "delta": {"role": "assistant", "content": "hi"}, "finish_reason": "stop"}]
+    });
+    let completed = serde_json::json!({
+        "type": "response.completed",
+        "sequence_number": 0,
+        "response": {"id": "resp_1", "object": "response", "status": "completed", "output": []}
+    });
+    for (provider, frame) in [(chat(), &chunk), (responses(), &completed)] {
+        let wire = OpenAiWire::new(provider, "model");
+        let own = match &wire {
+            OpenAiWire::Chat(chat) => rebuilt(chat.reassembler(), std::slice::from_ref(frame)),
+            OpenAiWire::Responses(responses) => {
+                rebuilt(responses.reassembler(), std::slice::from_ref(frame))
+            }
+        };
+        let routed = rebuilt(wire.reassembler(), std::slice::from_ref(frame));
+        assert!(!routed.is_null(), "{routed}");
+        assert_eq!(routed, own);
+    }
+    assert!(matches!(
+        OpenAiReassembler::default(),
+        OpenAiReassembler::Chat(_)
+    ));
+    assert_eq!(
+        rebuilt(OpenAiReassembler::default(), std::slice::from_ref(&chunk)),
+        rebuilt(<Chat as Wire>::Reassembler::default(), &[chunk]),
     );
 }

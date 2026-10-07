@@ -13,8 +13,8 @@ use crate::operation::Completion;
 use crate::providers::openai::wire::OpenAIConfig;
 pub(crate) use crate::providers::openai::wire::ResponsesContract;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Descriptor, Encoded, Framing,
-    Mode, ObservationSink, Wire,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Capabilities, Descriptor, Encoded, Framing, Mode,
+    ObservationSink, Wire,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -61,17 +61,20 @@ impl Responses {
             &request,
             http::Request::post(self.provider.uri(quirks.path, None)),
         );
-        let request = self.responses_request(request, streaming)?;
+        let mode = if streaming {
+            Mode::Streaming
+        } else {
+            Mode::Unary
+        };
+        let body = self.responses_request(&request, super::Delivery::Http(mode))?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Responses completion request",
-            &request,
+            &body,
         );
-        let body = serde_json::to_vec(&request)?;
-
         let request = builder
             .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::Bytes(body))?;
+            .body(body.into_body())?;
 
         let framing = if streaming {
             Framing::Sse
@@ -145,6 +148,7 @@ impl Wire for Responses {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ResponsesDecoder;
+    type Reassembler = super::streaming::document::Response;
 
     /// The xAI contract does not compose native structured output with tools.
     fn describe(&self) -> Descriptor<'_> {
@@ -172,6 +176,15 @@ impl Wire for Responses {
 }
 
 impl crate::completion::ReplayTarget for Responses {
+    /// Section 6.3 of the typed-options design, by dialect.
+    fn map_options(
+        &self,
+        request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::providers::openai::options::responses_options(self, request, fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("openai.responses")
     }
@@ -255,10 +268,9 @@ impl crate::completion::ReplayTarget for Responses {
     /// continues state the provider stores, which holds the calls its first
     /// results answer.
     fn continues_stored(&self, request: &completion::CompletionRequest) -> bool {
-        request.additional_params.as_ref().is_some_and(|params| {
-            ["previous_response_id", "conversation"]
-                .iter()
-                .any(|key| params.get(*key).is_some_and(|value| !value.is_null()))
+        ["previous_response_id", "conversation"].iter().any(|key| {
+            crate::completion::options::param(self, request, key)
+                .is_some_and(|value| !value.is_null())
         })
     }
 
@@ -280,15 +292,22 @@ impl crate::completion::ReplayTarget for Responses {
     }
 }
 
-/// Whether `model` reads images, by its vendor's documented text-only
-/// models. An unknown model reads them.
+/// Whether `model` reads images, past a `vendor/` prefix: its catalog
+/// entry's input, or for a model the catalog does not list its vendor's
+/// documented text-only models. An unknown model reads them.
 fn reads_images(contract: ResponsesContract, model: &str) -> bool {
     let model = model.rsplit('/').next().unwrap_or_default();
     match contract {
-        ResponsesContract::Xai => crate::providers::xai::reads_images(model),
-        ResponsesContract::OpenAi | ResponsesContract::Codex => {
-            crate::providers::openai::reads_images(model)
-        }
+        ResponsesContract::Xai => crate::catalog::reads_images_or(
+            crate::providers::xai::DIALECT.name,
+            model,
+            crate::providers::xai::reads_images,
+        ),
+        ResponsesContract::OpenAi | ResponsesContract::Codex => crate::catalog::reads_images_or(
+            crate::providers::openai::wire::OPENAI.name,
+            model,
+            crate::providers::openai::reads_images,
+        ),
     }
 }
 

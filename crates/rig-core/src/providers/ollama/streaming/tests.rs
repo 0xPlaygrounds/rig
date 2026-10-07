@@ -79,9 +79,15 @@ fn events_after_each(model: &str, records: &[Value]) -> Vec<Vec<StreamEvent>> {
     let mut seen = Vec::new();
     let mut taken = Vec::new();
     for frame in frames(records) {
-        crate::driver::step(&mut decoder, &shared, frame, None)
-            .map(drop)
-            .expect("the record decodes");
+        crate::driver::step(
+            &mut decoder,
+            None::<&mut crate::wire::document::Unreassembled>,
+            &shared,
+            frame,
+            None,
+        )
+        .map(drop)
+        .expect("the record decodes");
         let mut shared = shared.lock().expect("the reply is not poisoned");
         while let Some(item) = shared.take() {
             if let Ok(Item::Event(event)) = item {
@@ -149,8 +155,15 @@ fn ndjson_records_stream_into_one_answer() {
     assert_eq!(response.usage.total_tokens, Some(19));
     assert_eq!(response.usage.cached_input_tokens, Some(4));
     assert_eq!(response.model(), Some(MODEL));
-    // A stream's raw is the record that ended it.
-    assert_eq!(response.raw.get("done_reason"), Some(&json!("stop")));
+    // A stream's raw is the body a unary call returns.
+    assert_eq!(
+        response.raw,
+        whole(
+            MODEL,
+            json!({"role": "assistant", "content": "The sky is blue."}),
+            "stop"
+        )
+    );
 }
 
 /// The reply's `thinking` is reasoning, held before the answer.
@@ -574,4 +587,75 @@ fn the_projection_reads_usage_verdict_and_error() {
     assert!(text.contains("cached_input_tokens: Some(4)"), "{text}");
     assert!(text.contains("\"stop\""), "{text}");
     assert!(text.contains("out of memory"), "{text}");
+}
+
+/// The document the native reassembler rebuilds from `records`.
+fn rebuilt(records: &[Value]) -> Value {
+    let mut document = document::ChatResponse::default();
+    for frame in frames(records) {
+        crate::wire::document::Reassemble::absorb(&mut document, &frame);
+    }
+    crate::wire::document::Reassemble::finish(document)
+}
+
+/// A stream rebuilds the `/api/chat` body: `content` and `thinking` join,
+/// calls, images and log probabilities collect, and the `done` record's
+/// reason, counts and durations stand.
+#[test]
+fn a_stream_rebuilds_the_unary_body() {
+    let logprob = |token: &str| json!({"token": token, "logprob": -0.25});
+    let mut first = record(
+        MODEL,
+        json!({"role": "assistant", "content": "", "thinking": "Add "}),
+    );
+    first["logprobs"] = json!([logprob("Add")]);
+    let mut second = record(
+        MODEL,
+        json!({"role": "assistant", "content": "", "thinking": "them."}),
+    );
+    second["logprobs"] = json!([logprob("them")]);
+    let call =
+        |id: &str| json!({"id": id, "function": {"name": "add", "arguments": {"a": 2, "b": 3}}});
+    let records = [
+        first,
+        second,
+        record(
+            MODEL,
+            json!({"role": "assistant", "content": "", "tool_calls": [call("call_1")]}),
+        ),
+        record(
+            MODEL,
+            json!({"role": "assistant", "content": "Adding", "tool_calls": [call("call_2")]}),
+        ),
+        record(MODEL, json!({"role": "assistant", "content": " now."})),
+        done(MODEL, "stop"),
+    ];
+    let mut expected = whole(
+        MODEL,
+        json!({
+            "role": "assistant",
+            "content": "Adding now.",
+            "thinking": "Add them.",
+            "tool_calls": [call("call_1"), call("call_2")],
+        }),
+        "stop",
+    );
+    expected["logprobs"] = json!([logprob("Add"), logprob("them")]);
+    assert_eq!(rebuilt(&records), expected);
+
+    let response = decode(MODEL, Mode::Streaming, &records).expect("the reply decodes");
+    assert_eq!(response.raw, expected);
+}
+
+/// A reply that fails in band keeps its `error` beside what arrived, and a
+/// stream cut before `done` rebuilds what arrived.
+#[test]
+fn a_failed_or_cut_stream_rebuilds_what_arrived() {
+    let started = record(MODEL, json!({"role": "assistant", "content": "par"}));
+    let failed = json!({"error": "model runner has unexpectedly stopped"});
+    let mut expected = started.clone();
+    expected["error"] = failed["error"].clone();
+    assert_eq!(rebuilt(&[started.clone(), failed]), expected);
+    assert_eq!(rebuilt(std::slice::from_ref(&started)), started);
+    assert_eq!(rebuilt(&[]), Value::Null);
 }

@@ -24,6 +24,7 @@
 
 pub mod chat;
 pub mod embeddings;
+pub mod extension;
 pub mod streaming;
 pub mod wire;
 
@@ -36,7 +37,7 @@ pub use embeddings::{
 pub use wire::{ChatRoute, CohereChat, CohereConfig};
 
 /// Stable descriptor name recorded on normalized responses and telemetry.
-pub(crate) const PROVIDER_NAME: &str = "cohere";
+pub const PROVIDER_NAME: &str = "cohere";
 
 /// `command-a-plus-05-2026` completion model
 pub const COMMAND_A_PLUS_05_2026: &str = "command-a-plus-05-2026";
@@ -55,10 +56,17 @@ pub const COMMAND_R_PLUS_08_2024: &str = "command-r-plus-08-2024";
 /// `command-r-08-2024` completion model
 pub const COMMAND_R_08_2024: &str = "command-r-08-2024";
 
-/// Whether `model` reads user images: Cohere's vision models (Command A
-/// Vision, Aya Vision) do, and its text models do not.
+/// Whether `model`, an id the catalog does not list, reads user images by
+/// its name: Cohere's vision models (Command A Vision, Aya Vision) do, and
+/// its text models do not.
 pub(crate) fn reads_images(model: &str) -> bool {
     model.contains("vision")
+}
+
+/// Whether `model` thinks, as its catalog entry says, or `None` for an id
+/// the catalog does not list. Both chat routes read it.
+pub(crate) fn thinks(model: &str) -> Option<bool> {
+    crate::catalog::lookup(PROVIDER_NAME, model).map(|spec| spec.reasoning.supported)
 }
 
 #[cfg(test)]

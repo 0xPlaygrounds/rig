@@ -16,6 +16,7 @@
 //! ```
 
 pub mod auth;
+pub mod extension;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{

@@ -61,6 +61,7 @@ impl Wire for Images {
     type Payload = InvokeModel;
     type Frame = Vec<u8>;
     type Decoder<'id> = ImagesDecoder;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME).model(self.model.as_str())

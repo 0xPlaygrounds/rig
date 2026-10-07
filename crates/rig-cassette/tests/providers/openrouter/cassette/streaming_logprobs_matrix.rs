@@ -87,10 +87,7 @@ struct Observation {
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
 fn params(cell: Cell) -> Value {
-    let mut params = json!({
-        "logprobs": true,
-        "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-    });
+    let mut params = json!({ "logprobs": true });
     if let Some(top) = match cell.top {
         Top::Absent => None,
         Top::Zero => Some(0),
@@ -133,6 +130,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(model_name(cell.model));
     let request = CompletionRequest::new(prompt(cell))
+        .provider_options(super::super::support::pinned_order(&["OpenAI"]))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
 
@@ -156,10 +154,11 @@ async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation)
                 .finish()
                 .await
                 .context("raw stream should carry a terminal response")?;
-            let serialized = terminal.raw;
+            // The rebuilt document states them where a unary body does.
+            let choice = &terminal.raw["choices"][0];
             Observation {
-                logprobs: serialized["logprobs"].clone(),
-                finish_reason: serialized["finish_reason"].clone(),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
     };

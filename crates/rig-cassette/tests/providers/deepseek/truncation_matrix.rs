@@ -47,7 +47,7 @@ use super::support::{
     collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
     with_deepseek_truncation_cassette_result,
 };
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 pub(super) const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
@@ -57,8 +57,9 @@ pub(super) const TOOL_PREAMBLE: &str = "You must call the file_report tool. The 
 const PARALLEL_PREAMBLE: &str = "You must call page_oncall with team set to platform, and then file_report whose summary argument is a verbatim, complete restatement of the user request, word for word, at least 120 words long. Emit both calls in the same turn.";
 pub(super) const INCIDENT_PROMPT: &str = "Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.";
 
-pub(super) fn non_thinking_params() -> Value {
-    json!({ "thinking": { "type": "disabled" } })
+/// Thinking off: `{"thinking":{"type":"disabled"}}` on DeepSeek.
+pub(super) fn non_thinking() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Reasoning::Off)
 }
 
 fn file_report_tool() -> ToolDefinition {
@@ -90,10 +91,12 @@ fn page_oncall_tool() -> ToolDefinition {
     }
 }
 
+/// A request with thinking off and the raw `params` (typed
+/// `parallel_tool_calls` is refused on DeepSeek).
 fn request(
     preamble: &str,
     tools: Vec<ToolDefinition>,
-    params: Value,
+    params: Option<Value>,
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
     request_for(INCIDENT_PROMPT, preamble, tools, params, max_tokens)
@@ -103,11 +106,12 @@ fn request_for(
     prompt: &str,
     preamble: &str,
     tools: Vec<ToolDefinition>,
-    params: Value,
+    params: Option<Value>,
     max_tokens: u64,
 ) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt)
         .preamble(preamble.to_owned())
+        .options(non_thinking())
         .additional_params(params)
         .max_tokens(max_tokens);
     for tool in tools {
@@ -238,12 +242,7 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
         |client| async move {
             let model = client.completion(MODEL);
             let normalized = model
-                .call(request(
-                    TOOL_PREAMBLE,
-                    vec![file_report_tool()],
-                    non_thinking_params(),
-                    16,
-                ))
+                .call(request(TOOL_PREAMBLE, vec![file_report_tool()], None, 16))
                 .await?;
             // Blank arguments are an empty object, as pi reads them.
             let calls = tool_calls(&normalized.choice);
@@ -286,7 +285,7 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
                 .call(request(
                     PARALLEL_PREAMBLE,
                     vec![page_oncall_tool(), file_report_tool()],
-                    json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
+                    Some(json!({ "parallel_tool_calls": true })),
                     56,
                 ))
                 .await?;
@@ -333,7 +332,7 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
             let outcome = collect_raw_stream_outcome(model.stream(request(
                 PARALLEL_PREAMBLE,
                 vec![page_oncall_tool(), file_report_tool()],
-                json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
+                Some(json!({ "parallel_tool_calls": true })),
                 56,
             ))?)
             .await;

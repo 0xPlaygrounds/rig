@@ -37,7 +37,12 @@ pub fn decode<W: Wire<Op = Completion>>(
         &mut Call::new(&describe, mode),
     );
     let shared = Mutex::new(Shared::new(fold));
-    let fed = crate::driver::feed(&mut wire.decoder(), &shared, frames);
+    let fed = crate::driver::feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
     crate::driver::settle(
         shared,
         fed,

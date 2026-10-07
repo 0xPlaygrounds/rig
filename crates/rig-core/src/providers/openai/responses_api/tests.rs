@@ -25,13 +25,21 @@ fn openai_wire(model: &str) -> wire::Responses {
 /// The Responses request a wire builds for a Rig request — the one
 /// conversion every caller reaches, whatever opened the socket.
 fn wire_request(wire: &wire::Responses, request: completion::CompletionRequest) -> Value {
-    wire.responses_request(request, false)
-        .expect("request should convert")
+    json_of(wire, request).expect("request should convert")
+}
+
+/// The unary Responses body `wire` builds for `request`, as JSON.
+fn json_of(
+    wire: &wire::Responses,
+    request: completion::CompletionRequest,
+) -> Result<Value, EncodeError> {
+    let body = wire.responses_request(&request, Delivery::Http(crate::wire::Mode::Unary))?;
+    Ok(serde_json::to_value(body)?)
 }
 
 /// The request the OpenAI wire for `model` builds for `request`.
 fn convert(model: &str, request: completion::CompletionRequest) -> Result<Value, EncodeError> {
-    openai_wire(model).responses_request(request, false)
+    json_of(&openai_wire(model), request)
 }
 
 /// The request the OpenAI wire for `model` sends for `request`, prepared as
@@ -41,8 +49,7 @@ fn prepared(model: &str, request: completion::CompletionRequest) -> Value {
     let wire = openai_wire(model);
     let request = crate::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
-    wire.responses_request(request, false)
-        .expect("request should convert")
+    json_of(&wire, request).expect("request should convert")
 }
 
 /// The input items `message` alone becomes.
@@ -268,10 +275,11 @@ fn all_instructions_system_only_input_reports_non_system_requirement() {
             "   ",
         ),
     ] {
-        let Err(err) = openai_wire("gpt-4o-mini")
-            .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions)
-            .responses_request(system_only_request(system), false)
-        else {
+        let Err(err) = json_of(
+            &openai_wire("gpt-4o-mini")
+                .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions),
+            system_only_request(system),
+        ) else {
             panic!("{case}: should fail once every item is lifted");
         };
 
@@ -686,7 +694,13 @@ mod raw_capture {
         assert_eq!(response.identity(), refolded.identity());
         assert_eq!(response.finish_reason(), refolded.finish_reason());
         assert_eq!(response.model(), refolded.model());
-        assert_eq!(response.usage, refolded.usage);
+        // The cost prices the counters for each fold's request model, and
+        // the re-fold requested another one.
+        assert_eq!(response.usage.cost(None), refolded.usage.cost(None));
+        assert!(
+            response.usage.cost.is_some(),
+            "the catalog prices gpt-4o-mini"
+        );
         assert_eq!(response.choice, refolded.choice);
         assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
     }
@@ -737,8 +751,7 @@ fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
     request.additional_params = Some(json!({"previous_response_id": "resp_1", "store": true}));
     let prepared = crate::operation::Completion::prepare(request.clone(), &wire.describe())
         .expect("the continuation prepares");
-    let body = serde_json::to_value(wire.responses_request(prepared, false).expect("encodes"))
-        .expect("serializes");
+    let body = json_of(&wire, prepared).expect("encodes");
     assert_eq!(body["input"][0]["type"], "function_call_output");
     assert_eq!(body["input"][0]["call_id"], "call_1");
     assert_eq!(body["previous_response_id"], "resp_1");
@@ -746,6 +759,6 @@ fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
     // Without a stored response, the same result answers nothing.
     request.additional_params = None;
     let error = crate::operation::Completion::prepare(request, &wire.describe())
-        .and_then(|prepared| wire.responses_request(prepared, false).map_err(Into::into));
+        .and_then(|prepared| json_of(&wire, prepared).map_err(Into::into));
     assert!(error.is_err(), "{error:?}");
 }

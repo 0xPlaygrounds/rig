@@ -26,7 +26,77 @@ pub mod sessions;
 
 use std::collections::BTreeSet;
 
+use rig_agent::agent::AgentBuilder;
+use rig_core::completion::{CompletionRequest, GenerationOptions, ProviderOptions};
 use serde_json::Value;
+
+/// The typed options a cell's requests carry.
+#[derive(Clone, Debug, Default)]
+pub struct Options {
+    /// Portable generation options.
+    pub generation: GenerationOptions,
+    /// Typed provider options.
+    pub provider: ProviderOptions,
+}
+
+impl Options {
+    /// No option set.
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// `generation` beside `provider`.
+    pub fn new(generation: GenerationOptions, provider: ProviderOptions) -> Self {
+        Self {
+            generation,
+            provider,
+        }
+    }
+
+    /// Set these options on every request of `builder`'s agent.
+    pub fn configure<T>(&self, builder: AgentBuilder<T>) -> AgentBuilder<T> {
+        builder
+            .options(self.generation.clone())
+            .provider_options(self.provider.clone())
+    }
+}
+
+/// What a request carries beyond its conversation: raw provider parameters
+/// and typed options.
+#[derive(Clone, Debug, Default)]
+pub struct Params {
+    /// Raw `additional_params`.
+    pub additional_params: Option<Value>,
+    /// Typed options.
+    pub options: Options,
+}
+
+impl Params {
+    /// Set these on `request`, replacing what it carried.
+    pub fn apply(&self, request: &mut CompletionRequest) {
+        request.additional_params = self.additional_params.clone();
+        request.options = self.options.generation.clone();
+        request.provider_options = self.options.provider.clone();
+    }
+}
+
+impl From<Option<Value>> for Params {
+    fn from(additional_params: Option<Value>) -> Self {
+        Self {
+            additional_params,
+            options: Options::none(),
+        }
+    }
+}
+
+impl From<Options> for Params {
+    fn from(options: Options) -> Self {
+        Self {
+            additional_params: None,
+            options,
+        }
+    }
+}
 
 /// The request/response grammar a recorded path speaks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

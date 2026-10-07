@@ -3225,7 +3225,14 @@
             "total_tokens": 31,
             "cached_input_tokens": 0,
             "cache_creation_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.00007,
+              "output": 0.00003,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.00009999999999999999
+            }
           },
           "origin": {
             "api": "openai.responses",

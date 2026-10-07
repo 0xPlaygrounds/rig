@@ -74,9 +74,8 @@ const CAP: u64 = 128;
 /// The strict structured-output request that makes chat completions populate
 /// `refusal` at all, pinned to one upstream so the recorded shape is a fact
 /// rather than a routing accident.
-fn refusal_request_params(upstream: &str) -> Value {
+fn refusal_request_params() -> Value {
     json!({
-        "provider": { "order": [upstream], "allow_fallbacks": false },
         "response_format": {
             "type": "json_schema",
             "json_schema": {
@@ -110,7 +109,8 @@ async fn blocking_refusal_with_tools_in_request() {
             let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(refusal_request_params("OpenAI"));
+                .provider_options(super::super::support::pinned_order(&["OpenAI"]))
+                .additional_params(refusal_request_params());
 
             let response = model.call(request).await.expect("refusal turn");
             let text = assistant_text_response(&response.choice).expect("refusal text");
@@ -145,7 +145,8 @@ async fn streaming_refusal_emits_no_tool_calls() {
             let request = CompletionRequest::new(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .tools(vec![zero_arg_tool_definition("ping")])
-                .additional_params(refusal_request_params("OpenAI"));
+                .provider_options(super::super::support::pinned_order(&["OpenAI"]))
+                .additional_params(refusal_request_params());
 
             let stream = model.stream(request).expect("stream should connect");
             let observed = collect_raw_stream_observation(stream).await;
@@ -185,7 +186,8 @@ async fn transports_agree_on_the_refusal_text() {
                 .call(
                     CompletionRequest::new(REFUSED_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI")),
+                        .provider_options(super::super::support::pinned_order(&["OpenAI"]))
+                        .additional_params(refusal_request_params()),
                 )
                 .await
                 .expect("blocking refusal turn");
@@ -196,7 +198,8 @@ async fn transports_agree_on_the_refusal_text() {
                 .stream(
                     CompletionRequest::new(REFUSED_PROMPT)
                         .max_tokens(CAP)
-                        .additional_params(refusal_request_params("OpenAI")),
+                        .provider_options(super::super::support::pinned_order(&["OpenAI"]))
+                        .additional_params(refusal_request_params()),
                 )
                 .expect("stream should connect");
             let (streamed_text, _) = collect_text_and_terminal(stream).await;

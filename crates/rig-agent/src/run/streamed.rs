@@ -101,10 +101,7 @@ impl PartialStreamedTurn {
         if content.is_empty() {
             return None;
         }
-        Some(Message::Assistant(AssistantMessage {
-            content,
-            ..self.head.clone()
-        }))
+        Some(Message::Assistant(self.head.clone().with_content(content)))
     }
 
     /// Rollback messages for a retried or skipped streamed turn: the partial
@@ -471,10 +468,7 @@ impl StreamedTurnAssembler {
             .iter()
             .filter(|content| match content {
                 AssistantContent::ToolCall(call) => !self.ignored_calls.contains(&call.id),
-                AssistantContent::Text(_)
-                | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_)
-                | AssistantContent::Opaque(_) => true,
+                _ => true,
             })
             .cloned()
             .map(|content| match content {

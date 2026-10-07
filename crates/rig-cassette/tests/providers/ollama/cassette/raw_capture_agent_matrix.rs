@@ -54,7 +54,7 @@ use rig::agent::{
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::tool::Tool;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
@@ -308,7 +308,7 @@ async fn hooks_observe_raw_streamed() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .max_tokens(64)
-                .additional_params(json!({ "reasoning_effort": "none" }))
+                .reasoning(rig::completion::Reasoning::Off)
                 .add_hook(hook)
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
@@ -333,10 +333,14 @@ async fn hooks_observe_raw_streamed() {
     let raw = &responses[0];
     assert!(!raw.is_null(), "CompletionResponse.raw is populated");
     assert_eq!(&turns[0], raw, "both events observe the same payload");
-    // The streamed payload is the *terminal* record: the stream's accounting,
-    // not its message content.
+    // The streamed payload is the `chat.completion` the stream rebuilt: the
+    // stream's accounting and its message, as a unary body states them.
     assert!(raw.get("usage").is_some_and(Value::is_object));
-    assert!(raw.get("choices").is_none());
+    assert_eq!(raw["object"], "chat.completion");
+    assert!(
+        raw.pointer("/choices/0/message")
+            .is_some_and(Value::is_object)
+    );
     let records = recorded_completed_records(scenario, true);
     assert_eq!(records.len(), 1);
     assert_eq!(fingerprints(&responses), fingerprints(&records));
@@ -359,7 +363,7 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(TOOLS_PREAMBLE)
-                .additional_params(json!({ "reasoning_effort": "none" }))
+                .reasoning(rig::completion::Reasoning::Off)
                 .tool(Adder)
                 .add_hook(hook)
                 .build();

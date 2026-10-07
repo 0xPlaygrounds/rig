@@ -16,7 +16,13 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),
+        additional_params: None,
+        options: Some(|| {
+            crate::ecs_matrix::corpus::TypedOptions::generation(
+                rig::completion::GenerationOptions::default()
+                    .reasoning(rig::completion::Reasoning::Off),
+            )
+        }),
     }
 }
 

@@ -7,7 +7,7 @@
 //! result and proves the strict matcher refuses it.
 
 use super::super::support::with_gemini_cassette;
-use crate::ecs_matrix::{Wire, cells};
+use crate::ecs_matrix::{Wire, cells, corpus};
 use rig_test_support::cassette_models::GeminiModels;
 
 fn task_wire(
@@ -23,9 +23,13 @@ fn task_wire(
         thinking: cells::ThinkingWire::Gemini,
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(
-            || serde_json::json!({"generationConfig":{"thinkingConfig":{"thinkingLevel":"low"}}}),
-        ),
+        additional_params: None,
+        options: Some(|| {
+            corpus::TypedOptions::generation(
+                rig::completion::GenerationOptions::default()
+                    .reasoning(rig::completion::Effort::Low),
+            )
+        }),
     }
 }
 

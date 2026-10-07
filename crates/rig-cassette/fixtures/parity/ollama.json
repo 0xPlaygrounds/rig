@@ -117,18 +117,35 @@
     "model": "qwen3:4b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Okay, the user is asking for the current weather in Tokyo. I need to use the get_weather tool provided. Let me check the function signature. The function requires a city name as a parameter. The city here is Tokyo.\n\nSo I should call get_weather with city set to \"Tokyo\". The response should be a JSON object with the function name and arguments. The arguments need to be a JSON object where the key is \"city\" and the value is \"Tokyo\".\n\nWait, the function's parameters are defined as having a city which is a string. The description says \"City name to get weather for\". So yes, I need to pass \"Tokyo\" as the city parameter.\n\nLet me make sure there's no typo in the city name. The user said Tokyo, which is correct.\n\nSo the tool call would be:\n\n{\n  \"name\": \"get_weather\",\n  \"arguments\": {\n    \"city\": \"Tokyo\"\n  }\n}\n\nYes, that seems right. I don't need to do anything else since the user just wants the tool call. The next step would be to get the response from the tool and then return the city name and a one-sentence summary. But for now, the task is to generate the tool call. So this is the correct JSON in the tool_call tags.\n</think>\n\n",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"city\":\"Tokyo\"}",
+                  "name": "get_weather"
+                },
+                "id": "call_7bvcwd02",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-325",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
       "usage": {
         "completion_tokens": 291,
         "prompt_tokens": 195,
         "total_tokens": 486
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-325",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
       }
     }
   },
@@ -150,18 +167,25 @@
     "model": "qwen3:4b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "{\n  \"city\": \"Tokyo\",\n  \"summary\": \"Sunny with light clouds, 72F (22C), humidity 45%, wind 8 mph NW\"\n}\n",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-96",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
       "usage": {
         "completion_tokens": 42,
         "prompt_tokens": 526,
         "total_tokens": 568
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-96",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
       }
     }
   },
@@ -211,18 +235,36 @@
     "model": "qwen3:4b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": null,
+            "reasoning": "Okay, let's see. The user wants me to look up the alpha and beta records, verify each code, and report both with their verification status.\n\nFirst, I tried looking up \"alpha\" and \"beta\" via lookup_record. But there was a parsing error because the arguments were missing the 'record' field instead of 'name'. So I corrected that by using the right field name 'record' as per the tool's definition.\n\nThen, the lookups succeeded, returning codes \"alpha-code-7431\" and \"beta-code-2286\". Next, I called verify_code for each code.\n\nFor alpha-code-7431, the verify succeeded. But for beta-code-2286, the tool failed. The user said if a tool reports a transient failure, try again once. So I need to retry the verify for beta.\n\nWait, the latest tool response says \"the tool failed\" for beta. So I should retry the verify_code for beta-code-2286 once.\n\nSo the next step is to call verify_code again for beta-code-2286.\n\nLet me structure the tool call for that.\n\nThe function is verify_code with the code \"beta-code-2286\".\n\nSo the tool_call should be:\n\n{\"name\": \"verify_code\", \"arguments\": {\"code\": \"beta-code-2286\"}}\n\nAfter retrying, if it succeeds, report status. If still fails, maybe handle differently, but the user says to retry once.\n\nSo the answer here is to retry the beta verification.\n",
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"code\":\"beta-code-2286\"}",
+                  "name": "verify_code"
+                },
+                "id": "call_1mh4447p",
+                "type": "function"
+              }
+            ]
+          },
+          "finish_reason": "tool_calls",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-986",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
       "usage": {
         "completion_tokens": 351,
         "prompt_tokens": 4752,
         "total_tokens": 5103
-      },
-      "finish_reason": "tool_calls",
-      "response_id": "chatcmpl-986",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
       }
     }
   },
@@ -297,18 +339,25 @@
     "model": "qwen3:4b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "Hmm, the user just asked me to reply with exactly the single word \"pong\". That's pretty straightforward. \n\nOkay, let me think about this. The user seems to be testing a very specific instruction - they want nothing but the word \"pong\" with no extra characters or explanations. \n\nI recall that in computing",
+            "role": "assistant"
+          },
+          "finish_reason": "length",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-473",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
       "usage": {
         "completion_tokens": 64,
         "prompt_tokens": 18,
         "total_tokens": 82
-      },
-      "finish_reason": "length",
-      "response_id": "chatcmpl-473",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
       }
     }
   },
@@ -414,18 +463,26 @@
     "model": "qwen3:4b",
     "provider_request_id": null,
     "raw": {
+      "choices": [
+        {
+          "message": {
+            "content": "streamed",
+            "reasoning": "Hmm, the user wants me to reply with exactly one word: \"streamed\" and nothing else. \n\nThis seems straightforward - they're testing if I can follow precise instructions without adding anything. \n\nI recall the instruction says \"exactly this one word and nothing else\" so I must avoid any extra spaces, punctuation, or text. \n\nThe word \"streamed\" is already in the correct format. \n\nI'll just output it as requested - no explanations, no modifications. \n\nUser probably wants to see if I can be minimalist in responses. Maybe they're debugging something or testing AI behavior. \n\nOkay, response is locked in: just \"streamed\"\n",
+            "role": "assistant"
+          },
+          "finish_reason": "stop",
+          "index": 0
+        }
+      ],
+      "created": 0,
+      "id": "chatcmpl-584",
+      "model": "qwen3:4b",
+      "object": "chat.completion",
+      "system_fingerprint": "fp_ollama",
       "usage": {
         "completion_tokens": 139,
         "prompt_tokens": 21,
         "total_tokens": 160
-      },
-      "finish_reason": "stop",
-      "response_id": "chatcmpl-584",
-      "model": "qwen3:4b",
-      "additional_params": {
-        "created": 0,
-        "object": "chat.completion.chunk",
-        "system_fingerprint": "fp_ollama"
       }
     }
   },

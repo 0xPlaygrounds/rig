@@ -1,10 +1,12 @@
-use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_SONNET_4_6};
+use super::super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5_5, CLAUDE_SONNET_4_6};
 use super::*;
 use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
 use crate::completion::request::Document as RigDocument;
 use crate::driver::{Decoded, decode_events};
-use crate::message::{AssistantContent, Opaque, Reasoning, StopReason};
+use crate::message::{
+    AssistantContent, DocumentRange, Opaque, Reasoning, Source, SourceLocation, StopReason,
+};
 use crate::providers::anthropic::wire::AnthropicConfig;
 use crate::wire::Mode;
 use serde_json::json;
@@ -478,14 +480,16 @@ fn classify_dispatches_on_the_known_event_list() {
 /// and 4 written.
 #[test]
 fn cache_usage_from_message_start_survives_output_only_terminal_delta() {
-    let decoded = decode([
-        classified(
-            r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":1}}}}"#,
-        ),
-        classified(
-            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
-        ),
-    ]);
+    let frames = [
+        r#"{"type":"message_start","message":{"id":"msg_1","role":"assistant","content":[],"model":"claude-sonnet-4-6","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":4,"cache_read_input_tokens":6,"cache_creation":{"ephemeral_1h_input_tokens":3,"ephemeral_5m_input_tokens":1}}}}"#,
+        r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":3}}"#,
+    ];
+    let decoded = crate::driver::feed_frames!(
+        MessagesDecoder::new(false),
+        document::Message::default(),
+        "anthropic",
+        frames.map(|frame| WireFrame::Text(frame.to_owned()))
+    );
     let response = decoded.outcome.expect("the message_delta ends the reply");
     assert_eq!(response.usage.input_tokens, Some(10 + 6 + 4));
     assert_eq!(response.usage.cache_creation_input_tokens, Some(4));
@@ -957,4 +961,394 @@ fn a_delta_for_a_block_that_never_started_opens_it() {
         "{:?}",
         response.choice
     );
+}
+
+// Progress-update thinking blocks, in the documented shape of a turn that
+// answers a `tool_result` on Claude Opus 5.5: a reasoning block, a
+// progress-update block, then the `tool_use` it introduces. Both thinking
+// blocks are empty unless the display shows updates. No recording holds a
+// progress-update block, so the shapes are built here.
+// Source: <https://platform.claude.com/docs/en/build-with-claude/thinking#progress-updates>
+
+const PROGRESS_UPDATE_TEXT: &str = "Confirmed the retry path never refreshes the expired token. Editing auth.py to add the refresh call.";
+
+fn progress_update_content(update_text: &str) -> Value {
+    json!([
+        {"type": "thinking", "thinking": "", "signature": "EqMBCkYICxIM-reasoning"},
+        {"type": "thinking", "thinking": update_text, "signature": "Es8CCkYICxIM-update"},
+        {
+            "type": "tool_use",
+            "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+            "name": "edit_file",
+            "input": {"path": "auth.py", "content": "..."}
+        }
+    ])
+}
+
+/// The turn decoded from the whole message or its stream on Opus 5.5.
+fn progress_update_reply(update_text: &str, mode: Mode) -> crate::completion::CompletionResponse {
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_5_5);
+    let frames: Vec<Value> = match mode {
+        Mode::Unary => vec![json!({
+            "type": "message", "id": "msg_progress", "model": CLAUDE_OPUS_5_5,
+            "role": "assistant", "content": progress_update_content(update_text),
+            "stop_reason": "tool_use", "stop_sequence": null,
+            "usage": {"input_tokens": 120, "output_tokens": 80}
+        })],
+        _ => {
+            let thinking = |index, text: &str, signature: &str| {
+                block(
+                    index,
+                    json!({"type": "thinking", "thinking": "", "signature": ""}),
+                    &[
+                        json!({"type": "thinking_delta", "thinking": text}),
+                        json!({"type": "signature_delta", "signature": signature}),
+                    ],
+                )
+            };
+            std::iter::once(json!({"type": "message_start", "message": {
+                "type": "message", "id": "msg_progress", "model": CLAUDE_OPUS_5_5,
+                "role": "assistant", "content": [], "stop_reason": null, "stop_sequence": null,
+                "usage": {"input_tokens": 120, "output_tokens": 1}
+            }}))
+            .chain(thinking(0, "", "EqMBCkYICxIM-reasoning"))
+            .chain(thinking(1, update_text, "Es8CCkYICxIM-update"))
+            .chain(block(
+                2,
+                json!({"type": "tool_use", "id": "toolu_01D7FLrfh4GYq7yT1ULFeyMV",
+                    "name": "edit_file", "input": {}}),
+                &[json!({"type": "input_json_delta",
+                    "partial_json": "{\"path\": \"auth.py\", \"content\": \"...\"}"})],
+            ))
+            .chain([
+                json!({"type": "message_delta",
+                    "delta": {"stop_reason": "tool_use", "stop_sequence": null},
+                    "usage": {"output_tokens": 80}}),
+                json!({"type": "message_stop"}),
+            ])
+            .collect()
+        }
+    };
+    crate::test_utils::decode_reply(
+        &wire,
+        &CompletionRequest::new("hello"),
+        mode,
+        frames
+            .iter()
+            .map(|frame| WireFrame::Text(frame.to_string())),
+        Value::Null,
+    )
+    .expect("the reply folds")
+}
+
+/// Ported from #2616: both thinking blocks survive decoding unmerged and in
+/// order, whole and streamed, under either display, and the turn replays to
+/// its model exactly as received.
+#[test]
+fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
+    use crate::wire::{Operation, Wire};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_OPUS_5_5);
+    for update_text in ["", PROGRESS_UPDATE_TEXT] {
+        for mode in [Mode::Unary, Mode::Streaming] {
+            let response = progress_update_reply(update_text, mode);
+            let items: Vec<Value> = response.choice.iter().filter_map(item).cloned().collect();
+            assert_eq!(
+                Value::Array(items),
+                progress_update_content(update_text),
+                "{mode:?}: each block decodes as received"
+            );
+            let turn = response.message().expect("an assistant turn");
+            let mut request = CompletionRequest::from(vec![
+                RigMessage::user("The login test fails after an hour of uptime."),
+                turn,
+            ]);
+            request.chat_history.push(RigMessage::tool_result(
+                crate::message::CallId::from_wire("toolu_01D7FLrfh4GYq7yT1ULFeyMV"),
+                crate::message::ToolName::new("edit_file").expect("a tool name"),
+                "saved",
+            ));
+            request.tools = vec![crate::completion::ToolDefinition {
+                name: crate::message::ToolName::new("edit_file").expect("a tool name"),
+                description: "Edit a file.".to_owned(),
+                parameters: json!({"type": "object", "properties": {}}),
+            }];
+            let request =
+                Completion::prepare(request, &wire.describe()).expect("the history adapts");
+            let encoded = wire
+                .encode(request, Mode::Unary)
+                .expect("the request encodes");
+            let body = crate::test_utils::json_body(&encoded.request);
+            assert_eq!(
+                body["messages"][1]["content"],
+                progress_update_content(update_text),
+                "the {mode:?} turn replays exactly as received"
+            );
+        }
+    }
+}
+
+/// One cited claim per text block, one block per location kind Anthropic
+/// documents, plus a kind rig does not know. Hand-built: the recordings
+/// carry only the character, page and web search kinds.
+fn cited_blocks() -> Vec<(&'static str, Value)> {
+    vec![
+        (
+            "The grass is green.",
+            json!({"type": "char_location", "cited_text": "The grass is green.",
+                "document_index": 0, "document_title": "Lawn", "start_char_index": 0,
+                "end_char_index": 20, "file_id": "file_1"}),
+        ),
+        (
+            "Pages two and three.",
+            json!({"type": "page_location", "cited_text": "Two. Three.",
+                "document_index": 1, "document_title": null, "start_page_number": 2,
+                "end_page_number": 4}),
+        ),
+        (
+            "Block one.",
+            json!({"type": "content_block_location", "cited_text": "One.",
+                "document_index": 2, "document_title": "Blocks", "start_block_index": 1,
+                "end_block_index": 2}),
+        ),
+        (
+            "Café opens at nine.",
+            json!({"type": "search_result_location", "cited_text": "Opens 9am.",
+                "source": "https://example.com/cafe", "title": "Café", "search_result_index": 3,
+                "start_block_index": 0, "end_block_index": 1}),
+        ),
+        (
+            "Rust 2.0 shipped.",
+            json!({"type": "web_search_result_location", "cited_text": "Rust 2.0 is out.",
+                "url": "https://example.com/rust", "title": "Rust", "encrypted_index": "Eo8B"}),
+        ),
+        (
+            "Unknown.",
+            json!({"type": "frobnicate_location", "cited_text": "?"}),
+        ),
+    ]
+}
+
+/// The sources [`cited_blocks`] resolve to, block by block.
+fn expected_sources() -> Vec<Vec<Source>> {
+    let document = |index, within| SourceLocation::Document {
+        index: Some(index),
+        id: None,
+        within: Some(within),
+    };
+    vec![
+        vec![
+            Source::new(SourceLocation::Document {
+                index: Some(0),
+                id: Some("file_1".to_owned()),
+                within: Some(DocumentRange::Chars(0..20)),
+            })
+            .title("Lawn")
+            .cited_text("The grass is green."),
+        ],
+        vec![Source::new(document(1, DocumentRange::Pages(2..4))).cited_text("Two. Three.")],
+        vec![
+            Source::new(document(2, DocumentRange::Blocks(1..2)))
+                .title("Blocks")
+                .cited_text("One."),
+        ],
+        vec![
+            Source::new(SourceLocation::SearchResult {
+                index: 3,
+                source: "https://example.com/cafe".to_owned(),
+                blocks: Some(0..1),
+            })
+            .title("Café")
+            .cited_text("Opens 9am."),
+        ],
+        vec![
+            Source::new(SourceLocation::Url {
+                url: "https://example.com/rust".to_owned(),
+            })
+            .title("Rust")
+            .cited_text("Rust 2.0 is out."),
+        ],
+        vec![],
+    ]
+}
+
+/// Each block's text and its citations' sources and spans.
+fn citations_of(
+    response: &crate::completion::CompletionResponse,
+) -> Vec<(String, Vec<(Option<std::ops::Range<usize>>, Vec<Source>)>)> {
+    response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some((
+                text.text.clone(),
+                text.citations()
+                    .iter()
+                    .map(|citation| {
+                        (
+                            citation.span.map(|span| span.range()),
+                            citation.sources.clone(),
+                        )
+                    })
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every documented location kind decodes to a whole-block citation with
+/// its source, title and quoted passage, the same unary and streamed on
+/// every dialect, with the citations streamed before the text they cite.
+/// The provider's JSON stays in the native item, `encrypted_index`
+/// included.
+#[test]
+fn every_citation_kind_resolves_the_same_unary_and_streamed() {
+    use crate::providers::anthropic::wire::{ANTHROPIC, MINIMAX, MOONSHOT, XIAOMIMIMO, ZAI};
+
+    let blocks = cited_blocks();
+    let expected: Vec<_> = blocks
+        .iter()
+        .zip(expected_sources())
+        .map(|((text, _), sources)| {
+            let cited = (!sources.is_empty()).then_some((None, sources));
+            ((*text).to_owned(), cited.into_iter().collect::<Vec<_>>())
+        })
+        .collect();
+    let frames = reply(
+        blocks
+            .iter()
+            .enumerate()
+            .map(|(index, (text, citation))| {
+                block(
+                    index,
+                    json!({"type": "text", "text": "", "citations": null}),
+                    &[
+                        json!({"type": "citations_delta", "citation": citation}),
+                        json!({"type": "text_delta", "text": text}),
+                    ],
+                )
+            })
+            .collect(),
+        "end_turn",
+    );
+    for (dialect, model) in [
+        (&ANTHROPIC, CLAUDE_SONNET_4_6),
+        (&ZAI, "glm-5"),
+        (&MINIMAX, "MiniMax-M2.7"),
+        (&MOONSHOT, "kimi-k3"),
+        (&XIAOMIMIMO, "mimo-v2.5"),
+    ] {
+        let whole = json!({
+            "type": "message", "id": "msg_1", "role": "assistant", "model": model,
+            "content": blocks.iter().map(|(text, citation)| json!({
+                "type": "text", "text": text, "citations": [citation]
+            })).collect::<Vec<_>>(),
+            "stop_reason": "end_turn", "stop_sequence": null,
+            "usage": {"input_tokens": 3, "output_tokens": 1}
+        });
+        let wire = AnthropicConfig::with_key(dialect, "test-key").completion(model);
+        let decoded = |mode, frames: Vec<WireFrame>| {
+            crate::test_utils::decode_reply(
+                &wire,
+                &CompletionRequest::new("hello"),
+                mode,
+                frames,
+                whole.clone(),
+            )
+            .expect("the reply folds")
+        };
+        let unary = decoded(Mode::Unary, vec![WireFrame::Text(whole.to_string())]);
+        let stream = decoded(
+            Mode::Streaming,
+            frames
+                .iter()
+                .map(|frame| WireFrame::Text(frame.to_string()))
+                .collect(),
+        );
+        assert_eq!(citations_of(&unary), expected, "{}", dialect.name);
+        assert_eq!(citations_of(&stream), expected, "{}", dialect.name);
+        for response in [&unary, &stream] {
+            for (content, (_, citation)) in response.choice.iter().zip(&blocks) {
+                assert_eq!(
+                    content.native_item().and_then(|item| item.get("citations")),
+                    Some(&json!([citation])),
+                    "{}",
+                    dialect.name
+                );
+            }
+        }
+    }
+}
+
+/// A citation missing the field that names its source is left to the
+/// native item; the reply still decodes.
+#[test]
+fn a_citation_without_its_source_stays_native() {
+    for citation in [
+        json!({"type": "web_search_result_location", "cited_text": "x"}),
+        json!({"type": "search_result_location", "cited_text": "x", "search_result_index": 0}),
+        json!("not an object"),
+    ] {
+        let response = streamed(&reply(
+            vec![block(
+                0,
+                json!({"type": "text", "text": "Claim."}),
+                &[json!({"type": "citations_delta", "citation": citation})],
+            )],
+            "end_turn",
+        ))
+        .expect("the stream folds");
+        let [AssistantContent::Text(text)] = response.choice.as_slice() else {
+            panic!("one text block: {:?}", response.choice);
+        };
+        assert!(text.citations().is_empty(), "{citation}");
+        assert_eq!(
+            response.choice[0]
+                .native_item()
+                .and_then(|item| item.get("citations")),
+            Some(&json!([citation]))
+        );
+    }
+}
+
+/// A citation without a quoted passage or a title still resolves to its
+/// source, with neither set, whether it opens with its text block or
+/// streams in after it.
+#[test]
+fn a_citation_without_its_passage_or_title_still_cites_its_source() {
+    let citation = json!({"type": "web_search_result_location",
+        "url": "https://example.com/rust"});
+    let expected = vec![(
+        "Rust 2.0 shipped.".to_owned(),
+        vec![(
+            None,
+            vec![Source::new(SourceLocation::Url {
+                url: "https://example.com/rust".to_owned(),
+            })],
+        )],
+    )];
+    let opened = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": "", "citations": [citation]}),
+            &[json!({"type": "text_delta", "text": "Rust 2.0 shipped."})],
+        )],
+        "end_turn",
+    );
+    let delta = reply(
+        vec![block(
+            0,
+            json!({"type": "text", "text": ""}),
+            &[
+                json!({"type": "citations_delta", "citation": citation}),
+                json!({"type": "text_delta", "text": "Rust 2.0 shipped."}),
+            ],
+        )],
+        "end_turn",
+    );
+    for frames in [opened, delta] {
+        let response = streamed(&frames).expect("the stream folds");
+        assert_eq!(citations_of(&response), expected);
+    }
 }

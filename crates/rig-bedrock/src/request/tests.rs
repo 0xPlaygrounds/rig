@@ -31,7 +31,7 @@ fn tool(tool: &str) -> ToolDefinition {
 /// prepares it.
 fn encoded(wire: &Converse, request: CompletionRequest, mode: Mode) -> Value {
     let request = Completion::prepare(request, &wire.describe()).expect("prepares");
-    wire.encode(request, mode).expect("encodes").body
+    serde_json::to_value(wire.encode(request, mode).expect("encodes").body).expect("serializes")
 }
 
 /// The body `history` sends to `model`, with a definition for every tool
@@ -114,8 +114,8 @@ fn tool_choice_has_its_converse_form() {
 }
 
 /// The inference configuration is always sent, with the temperature as the
-/// 32-bit float Converse reads; the additional fields, the structured
-/// output schema and a unary request's guardrail go as given.
+/// 32-bit float Converse reads; the additional fields and the structured
+/// output schema go as given.
 #[test]
 fn request_fields_have_their_converse_form() {
     let mut request = CompletionRequest::new("q");
@@ -127,12 +127,7 @@ fn request_fields_have_their_converse_form() {
     request.max_tokens = Some(64);
     request.additional_params = Some(json!({ "top_k": 5 }));
     request.output_schema = Some(schemars::json_schema!({ "title": "answer", "type": "object" }));
-    let wire = Converse::new(NOVA).with_guardrail(
-        "g1",
-        "DRAFT",
-        aws_sdk_bedrockruntime::types::GuardrailTrace::Enabled,
-    );
-    let body = encoded(&wire, request.clone(), Mode::Unary);
+    let body = encoded(&Converse::new(NOVA), request, Mode::Unary);
     assert_eq!(
         body["inferenceConfig"],
         json!({ "temperature": f64::from(0.7f32), "maxTokens": 64 })
@@ -144,15 +139,6 @@ fn request_fields_have_their_converse_form() {
             "schema": r#"{"title":"answer","type":"object"}"#,
             "name": "answer",
         } } } })
-    );
-    assert_eq!(
-        body["guardrailConfig"],
-        json!({ "guardrailIdentifier": "g1", "guardrailVersion": "DRAFT", "trace": "enabled" })
-    );
-    assert!(
-        encoded(&wire, request, Mode::Streaming)
-            .get("guardrailConfig")
-            .is_none()
     );
 }
 
@@ -182,13 +168,20 @@ fn a_later_system_message_stays_in_place() {
     );
 }
 
-/// Prompt caching marks the system prompt and the last message, unless the
-/// request sends reasoning: Bedrock rejects a cache point anywhere after a
-/// reasoning turn (#1673). Reasoning another model made goes as text, so it
-/// does not.
+/// A short cache marks the system prompt and the last message. Bedrock
+/// rejects a cache point anywhere after a reasoning turn (#1673), so that
+/// one is skipped with a warning under `Ignore` and refused otherwise.
+/// Reasoning another model made goes as text, so it does not.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    let wire = Converse::new(CLAUDE).with_prompt_caching();
+    use rig_core::completion::{CacheRetention, OnUnsupported};
+    let cached = |history: Vec<Message>| {
+        CompletionRequest::from(history)
+            .cache(CacheRetention::Short)
+            .on_unsupported(OnUnsupported::Ignore)
+    };
+    let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
+    let wire = Converse::new(CLAUDE);
     let point = json!({ "cachePoint": { "type": "default" } });
     let body = sent_on(&wire, vec![Message::system("s"), Message::user("q")]);
     assert_eq!(body["system"], json!([{ "text": "s" }, point]));
@@ -208,7 +201,7 @@ fn cache_points_follow_what_the_request_sends() {
     ];
     let body = sent_on(&wire, history.clone());
     assert_eq!(body["messages"][2]["content"], json!([{ "text": "more" }]));
-    let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5).with_prompt_caching();
+    let other = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5);
     let body = sent_on(&other, history);
     assert_eq!(body["messages"][1]["content"][0], json!({ "text": "hm" }));
     assert_eq!(
@@ -270,6 +263,65 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
     assert_eq!(body["messages"].as_array().map(Vec::len), Some(1));
 }
 
+/// The body `history` encodes to on `wire` without being prepared, as a
+/// request read back from storage reaches the encoder.
+fn unprepared(history: Vec<Message>) -> Result<Value, EncodeError> {
+    let mut request = CompletionRequest::new("unused");
+    request.chat_history = history;
+    let encoded = Converse::new(CLAUDE).encode(request, Mode::Unary)?;
+    Ok(serde_json::to_value(encoded.body).expect("serializes"))
+}
+
+/// A document given as raw bytes sends the same base64 source as one given
+/// as base64, a later system message goes as user text, and audio, which
+/// Converse has no block for, is refused, when the request reaches the
+/// encoder unprepared.
+#[test]
+fn unprepared_content_is_encoded_or_refused() {
+    use rig_core::message::{Audio, Document};
+    let document = |data| {
+        unprepared(vec![Message::User {
+            content: vec![UserContent::Document(Document {
+                data,
+                media_type: Some(DocumentMediaType::PDF),
+                additional_params: None,
+            })],
+        }])
+        .expect("encodes")
+    };
+    let raw = document(DocumentSourceKind::Raw(b"hello".to_vec()));
+    assert_eq!(
+        raw.pointer("/messages/0/content/1/document/source"),
+        Some(&json!({ "bytes": "aGVsbG8=" })),
+        "{raw}"
+    );
+    assert_eq!(raw, document(DocumentSourceKind::base64("aGVsbG8=")));
+
+    let later = unprepared(vec![
+        Message::user("q"),
+        Message::assistant("a"),
+        Message::system("steer"),
+    ])
+    .expect("encodes");
+    assert_eq!(
+        later.pointer("/messages/2"),
+        Some(&json!({ "role": "user", "content": [{ "text": "steer" }] })),
+        "{later}"
+    );
+
+    let audio = unprepared(vec![Message::User {
+        content: vec![UserContent::Audio(Audio {
+            data: DocumentSourceKind::base64("aGVsbG8="),
+            media_type: None,
+        })],
+    }])
+    .expect_err("audio is refused");
+    assert!(
+        audio.to_string().contains("Converse takes no audio"),
+        "{audio}"
+    );
+}
+
 /// A failed result states it with `status: error` to Nova and Claude, which
 /// Converse documents the field for; any other result has no status.
 #[test]
@@ -287,14 +339,11 @@ fn only_nova_and_claude_get_a_result_status() {
         (ANTHROPIC_CLAUDE_SONNET_4_5, Some(json!("error"))),
         (LLAMA_3_1_70B_INSTRUCT, None),
     ] {
-        let calls = AssistantMessage {
-            content: vec![
-                AssistantContent::ToolCall(call("failed", "t", json!({}))),
-                AssistantContent::ToolCall(call("fine", "t", json!({}))),
-            ],
-            origin: None,
-            stop: Some(StopReason::ToolUse),
-        };
+        let calls = AssistantMessage::new(vec![
+            AssistantContent::ToolCall(call("failed", "t", json!({}))),
+            AssistantContent::ToolCall(call("fine", "t", json!({}))),
+        ])
+        .with_stop(StopReason::ToolUse);
         let body = sent(
             model,
             vec![
@@ -364,9 +413,11 @@ fn another_model_gets_canonical_fields() {
     let foreign = call(&id, "lookup", json!({}));
     let history = vec![
         Message::user("q"),
-        Message::Assistant(AssistantMessage {
-            origin: Some(Origin::new("openai.responses", "openai", "gpt-5")),
-            ..AssistantMessage::new(vec![AssistantContent::ToolCall(foreign.clone())])
+        Message::Assistant({
+            let mut message =
+                AssistantMessage::new(vec![AssistantContent::ToolCall(foreign.clone())]);
+            message.origin = Some(Origin::new("openai.responses", "openai", "gpt-5"));
+            message
         }),
         Message::tool_results(vec![foreign.result(vec![ToolResultContent::text("ok")])]),
     ];
@@ -551,11 +602,9 @@ fn a_hosted_use_replays_only_with_its_result() {
     ] {
         let mut content = content;
         content.push(AssistantContent::text("done"));
-        let turn = AssistantMessage {
-            content,
-            origin: Some(origin.clone()),
-            stop: Some(StopReason::Stop),
-        };
+        let turn = AssistantMessage::new(content)
+            .with_origin(origin.clone())
+            .with_stop(StopReason::Stop);
         let history = vec![Message::user("q"), Message::Assistant(turn)];
         let body = sent_with_tools(NOVA, history.clone());
         let blocks = body["messages"][1]["content"].as_array().expect("content");
@@ -637,11 +686,11 @@ fn converse_violations(body: &Value) -> Vec<String> {
 fn adversarial_histories_encode_to_requests_converse_takes() {
     let other = Some(Origin::new("openai.chat", "openai", "gpt-4.1"));
     let asst = |content: Vec<AssistantContent>, stop: StopReason| {
-        Message::Assistant(AssistantMessage {
-            content,
-            origin: other.clone(),
-            stop: Some(stop),
-        })
+        Message::Assistant(
+            AssistantMessage::new(content)
+                .with_origin(other.clone())
+                .with_stop(stop),
+        )
     };
     let result = |id: &str| Message::User {
         content: vec![UserContent::ToolResult(
@@ -757,10 +806,13 @@ fn adversarial_histories_encode_to_requests_converse_takes() {
                     continue;
                 }
             };
-            let body = Converse::new(CLAUDE)
-                .encode(request, Mode::Unary)
-                .expect("encodes")
-                .body;
+            let body = serde_json::to_value(
+                Converse::new(CLAUDE)
+                    .encode(request, Mode::Unary)
+                    .expect("encodes")
+                    .body,
+            )
+            .expect("serializes");
             let v = converse_violations(&body);
             if !v.is_empty() {
                 failures.push(format!(

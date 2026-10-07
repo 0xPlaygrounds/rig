@@ -218,10 +218,13 @@ cargo test --release -p rig-candle --test live_pose -- --ignored --nocapture
 
 ## Runtime behavior and limits
 
-Builder defaults can be overridden by request `max_tokens` and `temperature`.
-The Candle-only `additional_params` keys are `top_k`, `top_p`, `seed`,
-`repeat_penalty`, and `repeat_last_n`; unknown keys are errors. Omitting `top_k`
-or `top_p` inherits its builder default, while explicit JSON `null` disables it.
+Builder defaults can be overridden by request `max_tokens` and `temperature`,
+by the `GenerationOptions` `top_p` and `seed`, and by the `CandleOptions`
+provider options `top_k`, `repeat_penalty` and `repeat_last_n`
+(`rig_candle::extension`). The same five keys are accepted in
+`additional_params`, which take precedence; unknown keys are errors. Omitting
+`top_k` or `top_p` inherits its builder default, while an explicit JSON `null`
+in `additional_params` disables it.
 Native inference runs in `spawn_blocking`; model loading and each complete
 inference operation run inside Candle's CPU context so its private Rayon pool
 stays active. `max_concurrent_requests` defaults to one. Every request owns its

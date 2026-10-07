@@ -74,7 +74,7 @@ fn think_keep_alive_and_num_ctx_land_where_the_daemon_reads_them() {
     );
 }
 
-/// Every other key: a level `think` is lowercased, an `options` object
+/// Every other key: a raw `think` is sent as written, an `options` object
 /// merges over the typed options, `tools` join the request's, the other
 /// top-level fields stay at the top, and any other key is an option. A
 /// streamed request says so.
@@ -106,7 +106,7 @@ fn every_additional_param_lands_in_its_place() {
             ],
             "options": {"temperature": 0.2, "top_k": 40, "seed": 7},
             "stream": true,
-            "think": "high",
+            "think": "HIGH",
             "keep_alive": 300,
             "logprobs": true,
             "top_logprobs": 2,
@@ -119,62 +119,38 @@ fn every_additional_param_lands_in_its_place() {
     assert!(body(CompletionRequest::new("hi")).get("options").is_none());
 }
 
-/// `/api/chat` reads thinking from `think`, so a `reasoning_effort` key is a
-/// model option like any other, sent with a warning that names `think`.
+/// `/api/chat` reads thinking from `think`, which the `reasoning` option
+/// sends; a raw `reasoning_effort` key is a model option like any other.
 #[test]
-fn reasoning_effort_is_an_option_with_a_warning() {
-    use std::io::{self, Write};
-    use std::sync::{Arc, Mutex};
-
-    #[derive(Clone)]
-    struct SharedWriter(Arc<Mutex<Vec<u8>>>);
-
-    impl Write for SharedWriter {
-        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-            self.0
-                .lock()
-                .expect("the log buffer is not poisoned")
-                .extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
-
-    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
-    let captured = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::WARN)
-        .with_ansi(false)
-        .without_time()
-        .with_writer({
-            let captured = captured.clone();
-            move || SharedWriter(captured.clone())
-        })
-        .finish();
-    let sent = tracing::subscriber::with_default(subscriber, || {
-        body(with_params(json!({"reasoning_effort": "high"})))
-    });
+fn reasoning_is_think_and_reasoning_effort_is_an_option() {
+    use crate::completion::{Effort, Reasoning};
+    let sent = body(with_params(json!({"reasoning_effort": "high"})));
     assert_eq!(sent["options"], json!({"reasoning_effort": "high"}));
     assert!(sent.get("think").is_none());
-    let logs = String::from_utf8(
-        captured
-            .lock()
-            .expect("the log buffer is not poisoned")
-            .clone(),
-    )
-    .expect("the logs are UTF-8");
-    assert!(logs.contains("takes `think`"), "{logs}");
+    for (reasoning, think) in [
+        (Reasoning::Off, json!(false)),
+        (Effort::Medium.into(), json!("medium")),
+        (Effort::Max.into(), json!("max")),
+    ] {
+        let sent = body(CompletionRequest::new("hi").reasoning(reasoning));
+        assert_eq!(sent["think"], think, "{reasoning:?}");
+    }
+    let sent = body(
+        CompletionRequest::new("hi")
+            .top_p(0.4)
+            .seed(3)
+            .stop(["END"]),
+    );
+    assert_eq!(
+        sent["options"],
+        json!({"top_p": 0.4, "seed": 3, "stop": ["END"]})
+    );
 }
 
 /// A value the daemon cannot read is a request error, never dropped.
 #[test]
 fn malformed_params_are_refused() {
     for (params, error) in [
-        (json!({"think": "maximal"}), "`think`"),
-        (json!({"think": 1}), "`think`"),
         (json!({"keep_alive": true}), "`keep_alive`"),
         (json!({"options": [1]}), "`additional_params.options`"),
         (json!({"tools": {}}), "`additional_params.tools`"),

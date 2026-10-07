@@ -12,22 +12,15 @@ use super::support::{
     collect_raw_stream_outcome, recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_followup_hunt_cassette_result,
 };
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
-fn non_thinking(extra: Value) -> Value {
-    let mut params = json!({ "thinking": { "type": "disabled" } });
-    params
-        .as_object_mut()
-        .expect("params are an object")
-        .extend(
-            extra
-                .as_object()
-                .expect("extra params are an object")
-                .clone(),
-        );
-    params
+/// Thinking off, stopping at `ZEBRA`.
+fn non_thinking_stop() -> GenerationOptions {
+    GenerationOptions::default()
+        .reasoning(Reasoning::Off)
+        .stop(["ZEBRA"])
 }
 
 fn first_blocking_choice(scenario: &str) -> Value {
@@ -56,7 +49,7 @@ async fn blocking_stop_sequence_reaches_the_wire_and_stops_generation() {
             let request = CompletionRequest::new(
                 "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
             )
-            .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
+            .options(non_thinking_stop())
             .max_tokens(24);
             let response = model.call(request).await?;
             assert_eq!(
@@ -92,7 +85,7 @@ async fn streaming_stop_sequence_reaches_the_wire_and_stops_generation() {
             let request = CompletionRequest::new(
                 "Write exactly `alpha ZEBRA omega` with no punctuation or explanation.",
             )
-            .additional_params(non_thinking(json!({ "stop": ["ZEBRA"] })))
+            .options(non_thinking_stop())
             .max_tokens(24);
             let outcome = collect_raw_stream_outcome(model.stream(request)?).await;
             assert!(

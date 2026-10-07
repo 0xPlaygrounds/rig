@@ -419,6 +419,13 @@ pub fn spawn_agent(
             UsesModel(model),
         ))
         .id();
+    if let Some(options) = program.options {
+        let options = options();
+        world.entity_mut(agent).insert((
+            rig_ecs::agent::Options(options.generation),
+            rig_ecs::agent::ProviderOptions(options.provider),
+        ));
+    }
     for (n, text) in program.context.iter().enumerate() {
         let document = world
             .spawn((

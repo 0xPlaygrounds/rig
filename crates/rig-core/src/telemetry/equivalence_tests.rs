@@ -295,6 +295,14 @@ fn spans_match_the_replaced_builders() {
 struct Scripted(Finish);
 
 impl crate::completion::ReplayTarget for Scripted {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("prov.chat")
     }
@@ -312,11 +320,28 @@ impl crate::completion::ReplayTarget for Scripted {
     }
 }
 
+/// The scripted vendor's reply document: the model its end names.
+#[derive(Default)]
+struct ScriptedDocument(Value);
+
+impl crate::wire::document::Serves<Completion> for ScriptedDocument {}
+
+impl crate::wire::document::Reassemble<Finish> for ScriptedDocument {
+    fn absorb(&mut self, end: &Finish) {
+        self.0 = serde_json::json!({ "model": end.model });
+    }
+
+    fn finish(self) -> Value {
+        self.0
+    }
+}
+
 impl Wire for Scripted {
     type Op = Completion;
     type Payload = ();
     type Frame = Finish;
     type Decoder<'id> = Ends;
+    type Reassembler = ScriptedDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("prov").model("model").replay(self)

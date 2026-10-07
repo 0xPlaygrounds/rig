@@ -108,8 +108,6 @@ fn finished_text(part: &AssistantContent) -> String {
     match part {
         AssistantContent::Text(text) => text.text.clone(),
         AssistantContent::Reasoning(reasoning) => reasoning.text.clone(),
-        AssistantContent::ToolCall(_)
-        | AssistantContent::Image(_)
-        | AssistantContent::Opaque(_) => String::new(),
+        _ => String::new(),
     }
 }

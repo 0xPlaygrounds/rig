@@ -14,7 +14,10 @@ use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig_test_support::cassette_models::{AnthropicModels, GeminiModels, OpenAiModels};
 
-use crate::ecs_matrix::{Wire, cells, cells::ThinkingWire};
+use rig::completion::{Effort, GenerationOptions, ProviderOptions, Reasoning};
+use rig::providers::openai::extension::{OpenAiOptions, OpenAiShared};
+
+use crate::ecs_matrix::{Wire, cells, cells::ThinkingWire, corpus::TypedOptions};
 
 const KEY: &str = "bank";
 const BASE_URL: &str = "http://bank.invalid";
@@ -32,6 +35,7 @@ pub(crate) fn deepseek(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion("deepseek-reasoner")),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -46,6 +50,7 @@ pub(crate) fn doubleword(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
+        options: None,
     }
 }
 
@@ -60,6 +65,7 @@ pub(crate) fn venice(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -71,6 +77,7 @@ pub(crate) fn openai_chat(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
         route: Some(client.chat(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 
@@ -81,7 +88,8 @@ pub(crate) fn openai_responses(http: DynHttpClient) -> OpenAi {
         model: client.completion(GPT_5_MINI),
         route: Some(client.completion(GPT_5_NANO)),
         temperature: None,
-        additional_params: Some(cells::openai_responses_stateless),
+        additional_params: None,
+        options: Some(|| openai_shared(OpenAiShared::default().store(false))),
     }
 }
 
@@ -93,6 +101,7 @@ pub(crate) fn gemini(http: DynHttpClient) -> Wire<rig::Model<GenerateContent, Dy
         route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -106,14 +115,21 @@ pub(crate) fn anthropic(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
 // The focused families' wires: the models their `corpus_matrix_*` and
 // `ecs_matrix_*` files name, without a route.
 
-fn thinking_disabled() -> serde_json::Value {
-    serde_json::json!({"thinking": {"type": "disabled"}})
+fn thinking_disabled() -> TypedOptions {
+    TypedOptions::generation(GenerationOptions::default().reasoning(Reasoning::Off))
+}
+
+/// `shared` as OpenAI's typed provider options.
+fn openai_shared(shared: OpenAiShared) -> TypedOptions {
+    let options = OpenAiOptions::new().shared(shared);
+    TypedOptions::provider(ProviderOptions::new().set(options))
 }
 
 pub(crate) fn deepseek_flash(http: DynHttpClient) -> OpenAi {
@@ -126,7 +142,8 @@ pub(crate) fn deepseek_flash(http: DynHttpClient) -> OpenAi {
         model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(thinking_disabled),
+        additional_params: None,
+        options: Some(thinking_disabled),
     }
 }
 
@@ -141,6 +158,7 @@ fn gemini_model(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -158,9 +176,9 @@ pub(crate) fn gemini_flash(
 
 pub(crate) fn gemini_task(http: DynHttpClient) -> Wire<rig::Model<GenerateContent, DynHttpClient>> {
     Wire {
-        additional_params: Some(
-            || serde_json::json!({"generationConfig":{"thinkingConfig":{"thinkingLevel":"low"}}}),
-        ),
+        options: Some(|| {
+            TypedOptions::generation(GenerationOptions::default().reasoning(Effort::Low))
+        }),
         ..gemini_model(http, "gemini-3.8-flash")
     }
 }
@@ -179,14 +197,15 @@ pub(crate) fn openai_chat_mini(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
 pub(crate) fn openai_chat_task(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
     Wire {
-        additional_params: Some(
-            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks"}),
-        ),
+        options: Some(|| {
+            openai_shared(OpenAiShared::default().prompt_cache_key("rig-native-long-tasks"))
+        }),
         ..openai_chat_mini(http)
     }
 }
@@ -199,14 +218,19 @@ pub(crate) fn openai_responses_mini(http: DynHttpClient) -> OpenAi {
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
 pub(crate) fn openai_responses_task(http: DynHttpClient) -> OpenAi {
     Wire {
-        additional_params: Some(
-            || serde_json::json!({"prompt_cache_key": "rig-native-long-tasks", "store": false}),
-        ),
+        options: Some(|| {
+            openai_shared(
+                OpenAiShared::default()
+                    .prompt_cache_key("rig-native-long-tasks")
+                    .store(false),
+            )
+        }),
         ..openai_responses_mini(http)
     }
 }
@@ -235,6 +259,7 @@ pub(crate) fn anthropic_sonnet(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 

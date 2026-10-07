@@ -5,6 +5,7 @@
 use anyhow::Result;
 use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
+use rig::providers::gemini::extension::{CandidateCount, GeminiOptions};
 use rig::providers::gemini::{self, Gemini};
 use serde_json::json;
 
@@ -24,24 +25,18 @@ fn build_video_prompt() -> Result<Message> {
     })
 }
 
-fn build_additional_params() -> serde_json::Value {
-    json!({
-        "generationConfig": {
-            "candidateCount": 1,
-            "topP": 0.95,
-            "topK": 1
-        }
-    })
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let client = Gemini::from_env()?;
-    let additional_params = build_additional_params();
     let agent = AgentBuilder::new(client.completion(MODEL))
         .preamble("Be creative and concise. Answer directly and clearly.")
         .temperature(0.5)
-        .additional_params(additional_params)
+        .top_p(0.95)
+        .provider_option(
+            GeminiOptions::new()
+                .candidate_count(CandidateCount::One)
+                .top_k(1),
+        )
         .build();
 
     println!("Sending a video-understanding request to Gemini...");

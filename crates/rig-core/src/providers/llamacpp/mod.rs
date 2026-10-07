@@ -12,7 +12,12 @@
 //! ```
 
 pub mod completion;
+pub mod extension;
 
 pub use completion::LLAMA_CPP;
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "llamacpp";
 
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::LLAMACPP, "llama.cpp");

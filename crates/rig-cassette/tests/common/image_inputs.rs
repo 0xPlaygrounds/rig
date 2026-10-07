@@ -8,6 +8,7 @@
 use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, ImageMediaType, Message, ToolResultContent, UserContent};
+use rig_test_support::history_survival::Params;
 use serde_json::Value;
 
 use crate::support::{ImageContainer, assert_image_bytes};
@@ -40,21 +41,13 @@ fn text(choice: &[AssistantContent]) -> String {
 fn request(
     history: Vec<Message>,
     tools: Vec<ToolDefinition>,
-    params: Option<Value>,
+    params: &Params,
 ) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools,
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: params,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.tools = tools;
+    request.max_tokens = Some(1024);
+    params.apply(&mut request);
+    request
 }
 
 /// Generate the swatch, `side` pixels square when given, and return its bytes.
@@ -86,11 +79,12 @@ where
 pub async fn as_user_content<W, T>(
     vision: &rig::driver::Model<W, T>,
     bytes: &[u8],
-    params: Option<Value>,
+    params: impl Into<Params>,
 ) where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
+    let params = params.into();
     let message = Message::User {
         content: vec![
             UserContent::image_base64(BASE64_STANDARD.encode(bytes), Some(media_type(bytes)), None),
@@ -98,7 +92,7 @@ pub async fn as_user_content<W, T>(
         ],
     };
     let reply = vision
-        .call(request(vec![message], vec![], params))
+        .call(request(vec![message], vec![], &params))
         .await
         .expect("the vision model reads the generated image");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);
@@ -108,11 +102,12 @@ pub async fn as_user_content<W, T>(
 pub async fn as_tool_result<W, T>(
     model: &rig::driver::Model<W, T>,
     bytes: &[u8],
-    params: Option<Value>,
+    params: impl Into<Params>,
 ) where
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
+    let params = params.into();
     let tool = ToolDefinition {
         name: rig_core::message::ToolName::new("render_swatch").expect("tool name"),
         description: "Render the swatch image the user asks about.".to_owned(),
@@ -120,11 +115,7 @@ pub async fn as_tool_result<W, T>(
     };
     let prompt = Message::user(format!("Call render_swatch, then answer: {QUESTION}"));
     let first = model
-        .call(request(
-            vec![prompt.clone()],
-            vec![tool.clone()],
-            params.clone(),
-        ))
+        .call(request(vec![prompt.clone()], vec![tool.clone()], &params))
         .await
         .expect("turn one");
     let call = first
@@ -137,10 +128,7 @@ pub async fn as_tool_result<W, T>(
         .expect("the model calls render_swatch");
     let history = vec![
         prompt,
-        Message::Assistant(rig_core::message::AssistantMessage {
-            content: first.choice.clone(),
-            ..first.head()
-        }),
+        Message::Assistant(first.head().with_content(first.choice.clone())),
         Message::User {
             content: vec![UserContent::tool_result(
                 call.id.clone(),
@@ -154,7 +142,7 @@ pub async fn as_tool_result<W, T>(
         },
     ];
     let reply = model
-        .call(request(history, vec![tool], params))
+        .call(request(history, vec![tool], &params))
         .await
         .expect("the model reads the image tool result");
     assert!(text(&reply.choice).contains("red"), "{:?}", reply.choice);

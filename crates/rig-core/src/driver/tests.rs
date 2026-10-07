@@ -228,6 +228,14 @@ impl EchoDecoder<'_> {
 }
 
 impl crate::completion::ReplayTarget for Echo {
+    fn map_options(
+        &self,
+        _request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::test_utils::refuse_options(fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("echo.chat")
     }
@@ -245,11 +253,57 @@ impl crate::completion::ReplayTarget for Echo {
     }
 }
 
+/// The unary `message` document the fake wire's frames add up to: delta
+/// texts append, a stop gives the usage, a whole message or call is kept.
+#[derive(Default)]
+struct EchoDocument(Option<serde_json::Map<String, serde_json::Value>>);
+
+impl crate::wire::document::Serves<Completion> for EchoDocument {}
+
+impl crate::wire::document::Reassemble<WireFrame> for EchoDocument {
+    fn absorb(&mut self, frame: &WireFrame) {
+        let Ok(serde_json::Value::Object(frame)) = serde_json::from_str(&frame.as_str()) else {
+            return;
+        };
+        let document = self.0.get_or_insert_with(|| {
+            serde_json::Map::from_iter([
+                ("type".to_owned(), json!("message")),
+                ("text".to_owned(), json!("")),
+            ])
+        });
+        match frame.get("type").and_then(serde_json::Value::as_str) {
+            Some("message") => *document = frame,
+            Some("delta") => {
+                let text = frame.get("text").and_then(serde_json::Value::as_str);
+                if let (Some(serde_json::Value::String(held)), Some(text)) =
+                    (document.get_mut("text"), text)
+                {
+                    held.push_str(text);
+                }
+            }
+            Some("stop" | "tool") => {
+                for (key, value) in frame {
+                    if key != "type" {
+                        document.insert(key, value);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn finish(self) -> serde_json::Value {
+        self.0
+            .map_or(serde_json::Value::Null, serde_json::Value::Object)
+    }
+}
+
 impl Wire for Echo {
     type Op = Completion;
     type Payload = Encoded;
     type Frame = WireFrame;
     type Decoder<'id> = EchoDecoder<'id>;
+    type Reassembler = EchoDocument;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("echo").model("echo-1").replay(self)
@@ -359,6 +413,94 @@ async fn a_non_success_streaming_response_is_rejected_as_the_streams_only_item()
             .is_some_and(|body| body.contains("down")),
         "the reply body is the error: {error:?}"
     );
+}
+
+/// A transport whose reply sends `frames`, then fails.
+#[derive(Clone)]
+struct Broken(Vec<&'static str>);
+
+impl Transport<Echo> for Broken {
+    fn send(&self, _payload: Encoded, _exchange: super::Exchange) -> super::Opening<WireFrame> {
+        let frames = self
+            .0
+            .iter()
+            .map(|frame| Ok(WireFrame::Text((*frame).to_owned())))
+            .chain([Err(ProviderError::Response(
+                "the connection dropped".to_owned(),
+            ))])
+            .collect::<Vec<_>>();
+        super::Opening::ready(super::Opened::new(futures::stream::iter(frames)))
+    }
+}
+
+/// A streamed reply's `raw` is what its reassembler rebuilt: the whole
+/// document at the provider's end, and the document so far on a stream cut
+/// short or failed by its transport, which `partial()` then carries.
+#[tokio::test]
+async fn a_streamed_reply_records_its_document_whole_cut_or_failed() {
+    let delta = r#"{"type":"delta","text":"hi "}"#;
+    let whole = MockStreamingClient {
+        sse_bytes: Bytes::from(format!(
+            "data: {delta}\n\ndata: {{\"type\":\"delta\",\"text\":\"there\"}}\n\n\
+             data: {{\"type\":\"stop\",\"usage\":{{\"output_tokens\":3}}}}\n\n"
+        )),
+    };
+    let response = Model::new(Echo::streaming(), whole)
+        .stream(prompt())
+        .expect("the stream opens")
+        .finish()
+        .await
+        .expect("the reply ends");
+    assert_eq!(
+        response.raw,
+        serde_json::from_str::<serde_json::Value>(UNARY_BODY).expect("the unary body is JSON"),
+        "the stream rebuilds the unary document"
+    );
+
+    let so_far = json!({"type": "message", "text": "hi "});
+    let cut = MockStreamingClient {
+        sse_bytes: Bytes::from(format!("data: {delta}\n\n")),
+    };
+    let mut stream = Model::new(Echo::streaming(), cut)
+        .stream(prompt())
+        .expect("the stream opens");
+    while stream.next().await.is_some() {}
+    assert_eq!(
+        stream.partial().raw,
+        so_far,
+        "a cut stream keeps the document so far"
+    );
+
+    let mut stream = Model::new(Echo::streaming(), Broken(vec![delta]))
+        .stream(prompt())
+        .expect("the stream opens");
+    let items: Vec<_> = (&mut stream).collect().await;
+    assert!(
+        items.last().is_some_and(Result::is_err),
+        "the transport failure ends the stream: {items:?}"
+    );
+    assert_eq!(
+        stream.partial().raw,
+        so_far,
+        "a failed stream keeps the document so far"
+    );
+}
+
+/// A caller that stops polling leaves the reassembler unfinished, so the
+/// reply records no `raw`.
+#[tokio::test]
+async fn a_stream_the_caller_stopped_polling_records_no_raw() {
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from_static(
+            b"data: {\"type\":\"delta\",\"text\":\"hi \"}\n\n\
+              data: {\"type\":\"delta\",\"text\":\"there\"}\n\n",
+        ),
+    };
+    let mut stream = Model::new(Echo::streaming(), http)
+        .stream(prompt())
+        .expect("the stream opens");
+    let _first = stream.next().await;
+    assert!(stream.partial().raw.is_null());
 }
 
 // ── observation ────────────────────────────────────────────────────────
@@ -517,6 +659,14 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
     #[derive(Clone, Debug)]
     struct Multipart;
     impl crate::completion::ReplayTarget for Multipart {
+        fn map_options(
+            &self,
+            _request: &crate::completion::CompletionRequest,
+            fields: crate::completion::options::OptionFields<'_>,
+        ) -> crate::completion::options::OptionMap {
+            crate::test_utils::refuse_options(fields)
+        }
+
         fn api(&self) -> crate::message::Api {
             crate::message::Api::from_static("echo.chat")
         }
@@ -536,6 +686,7 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
         type Payload = Encoded;
         type Frame = WireFrame;
         type Decoder<'id> = EchoDecoder<'id>;
+        type Reassembler = EchoDocument;
         fn describe(&self) -> Descriptor<'_> {
             Descriptor::new("echo").replay(self)
         }

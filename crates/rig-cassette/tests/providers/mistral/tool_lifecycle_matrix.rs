@@ -217,9 +217,8 @@ async fn run_agent(client: OpenAiModels, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = rig::AgentBuilder::new(client.completion(model_name(cell.model)))
         .preamble(PREAMBLE)
-        .additional_params(
-            json!({ "tool_choice": "any", "parallel_tool_calls": cell.shape == Shape::Parallel }),
-        )
+        .parallel_tool_calls(cell.shape == Shape::Parallel)
+        .additional_params(json!({ "tool_choice": "any" }))
         .max_tokens(128)
         .default_max_turns(1);
     let agent = match cell.shape {

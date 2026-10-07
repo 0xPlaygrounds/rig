@@ -27,7 +27,11 @@ type CandleEvent = GenerationEvent;
 struct Scripted(std::sync::Arc<std::sync::Mutex<Vec<Result<CandleEvent, ProviderError>>>>);
 
 impl Transport<Generation> for Scripted {
-    fn send(&self, _request: CompletionRequest, _exchange: Exchange) -> Opening<CandleFrame> {
+    fn send(
+        &self,
+        _request: rig_candle::CandleRequest,
+        _exchange: Exchange,
+    ) -> Opening<CandleFrame> {
         let events = match self.0.lock() {
             Ok(mut events) => std::mem::take(&mut *events),
             Err(_) => {

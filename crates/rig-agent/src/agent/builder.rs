@@ -269,6 +269,152 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Set the portable generation options every request of this agent
+    /// carries. A run's [`AgentRunner::options`](crate::agent::AgentRunner::options)
+    /// overlays them field by field. Calls apply in order: this replaces
+    /// every field, so a shortcut such as [`Self::seed`] called before it is
+    /// lost, and one called after it sets its one field on top.
+    pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.config.options = options;
+        self
+    }
+
+    /// Set the reasoning level or budget in the agent's generation options, as
+    /// [`GenerationOptions::reasoning`](rig_core::completion::GenerationOptions::reasoning) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn reasoning(mut self, reasoning: impl Into<rig_core::completion::Reasoning>) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).reasoning(reasoning);
+        self
+    }
+
+    /// Set the cache retention in the agent's generation options, as
+    /// [`GenerationOptions::cache`](rig_core::completion::GenerationOptions::cache) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn cache(mut self, cache: rig_core::completion::CacheRetention) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).cache(cache);
+        self
+    }
+
+    /// Set the service tier in the agent's generation options, as
+    /// [`GenerationOptions::service_tier`](rig_core::completion::GenerationOptions::service_tier) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn service_tier(mut self, tier: rig_core::completion::ServiceTier) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).service_tier(tier);
+        self
+    }
+
+    /// Set the answer verbosity in the agent's generation options, as
+    /// [`GenerationOptions::verbosity`](rig_core::completion::GenerationOptions::verbosity) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn verbosity(mut self, verbosity: rig_core::completion::Verbosity) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).verbosity(verbosity);
+        self
+    }
+
+    /// Set whether the model may call several tools in one turn in the agent's generation options, as
+    /// [`GenerationOptions::parallel_tool_calls`](rig_core::completion::GenerationOptions::parallel_tool_calls) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
+        self.config.options =
+            std::mem::take(&mut self.config.options).parallel_tool_calls(parallel);
+        self
+    }
+
+    /// Set the nucleus sampling probability mass in the agent's generation options, as
+    /// [`GenerationOptions::top_p`](rig_core::completion::GenerationOptions::top_p) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn top_p(mut self, top_p: f64) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).top_p(top_p);
+        self
+    }
+
+    /// Set the sampling seed in the agent's generation options, as
+    /// [`GenerationOptions::seed`](rig_core::completion::GenerationOptions::seed) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).seed(seed);
+        self
+    }
+
+    /// Set the stop sequences in the agent's generation options, as
+    /// [`GenerationOptions::stop`](rig_core::completion::GenerationOptions::stop) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn stop<S: Into<String>>(mut self, stop: impl IntoIterator<Item = S>) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).stop(stop);
+        self
+    }
+
+    /// Set what happens to an option the wire or model cannot honour in the agent's generation options, as
+    /// [`GenerationOptions::on_unsupported`](rig_core::completion::GenerationOptions::on_unsupported) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).on_unsupported(policy);
+        self
+    }
+
+    /// Set the typed per-provider options every request of this agent
+    /// carries. A run's
+    /// [`AgentRunner::provider_options`](crate::agent::AgentRunner::provider_options)
+    /// replaces the entry of each provider it names.
+    ///
+    /// Calls apply in order: this replaces every entry, so an entry set by
+    /// an earlier [`Self::provider_option`] is lost, and a later
+    /// [`Self::provider_option`] replaces its provider's entry on top.
+    pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.config.provider_options = options;
+        self
+    }
+
+    /// Store `options` as the entry of their provider
+    /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext))
+    /// in the provider options every request of this agent carries,
+    /// replacing that provider's entry and keeping every other
+    /// ([`ProviderOptions::set`](rig_core::completion::ProviderOptions::set)).
+    /// Options that do not serialize fail each request's encode. A
+    /// third-party provider reusing a built-in options type needs
+    /// [`ProviderOptions::with::<P>`](rig_core::completion::ProviderOptions::with)
+    /// and [`Self::provider_options`]: this stores under the built-in key.
+    pub fn provider_option<O: rig_core::completion::ExtensionOptions>(
+        mut self,
+        options: O,
+    ) -> Self {
+        self.config.provider_options =
+            std::mem::take(&mut self.config.provider_options).set(options);
+        self
+    }
+
+    /// Check the generation options of every model call against the
+    /// catalog entry of the model the call goes to, before it is sent:
+    /// `spec` (the agent's own model's entry) for a call to the model the
+    /// agent was built with, and for a call to another model (a run's
+    /// [`using_model`](crate::agent::AgentRunner::using_model) or
+    /// [`using_model_value`](crate::agent::AgentRunner::using_model_value),
+    /// [`Agent::set_model`](crate::agent::Agent::set_model), a
+    /// [`model_route`](Self::model_route) a model-selection hook picks) the
+    /// built-in catalog's entry for the provider and model id that model was
+    /// registered with. A model the catalog does not list, or one served by
+    /// a handler rig cannot see the model id of (a host's key, a
+    /// [`model_route_handler`](Self::model_route_handler)), is not checked,
+    /// and the run logs a warning saying so. Under
+    /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error) an
+    /// option the model does not take fails the run with
+    /// [`ProviderError::UnsupportedOption`](rig_core::error::ProviderError::UnsupportedOption)
+    /// before that call is sent; under `Ignore` it is dropped from that call
+    /// with a warning.
+    pub fn model_spec(mut self, spec: rig_core::catalog::ModelSpec) -> Self {
+        self.config.model_spec = Some(spec);
+        self
+    }
+
     /// Enable or disable sensitive message content on telemetry spans.
     /// Disabled by default; enabling may expose prompts, responses, and tool data.
     pub fn record_content_telemetry(mut self, enabled: bool) -> Self {
@@ -348,11 +494,14 @@ impl<ToolState> AgentBuilder<ToolState> {
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
+        let model = model.into();
+        let suffix = rig_core::effect::model_key(label.as_str()).to_string();
+        self.config
+            .pending_model_ids
+            .push((suffix.clone(), crate::agent::drive::ModelId::of(&model)));
         self.routes.push(label.as_str().to_owned());
-        self.pending.push((
-            rig_core::effect::model_key(label.as_str()).to_string(),
-            ErasedHandler::new(ModelAdapter::new(label, model)),
-        ));
+        self.pending
+            .push((suffix, ErasedHandler::new(ModelAdapter::new(label, model))));
         self
     }
 
@@ -513,6 +662,12 @@ impl<ToolState> AgentBuilder<ToolState> {
             let key = config.bus.raw_key(&suffix);
             crate::agent::drive::register_generated(config.bus.register_erased(key, handler));
         }
+        for (suffix, id) in std::mem::take(&mut config.pending_model_ids) {
+            config
+                .bus
+                .note_model(config.bus.raw_key(&suffix).as_str(), id);
+        }
+        config.model_spec_key = Some(config.model_key.clone());
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
             let key = config.bus.key(&suffix);
@@ -562,12 +717,19 @@ impl AgentBuilder<NoToolConfig> {
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
+        let model = model.into();
+        let id = crate::agent::drive::ModelId::of(&model);
         let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));
-        Self::start(
+        let mut builder = Self::start(
             BusSource::Owned(ServingPolicy::default()),
             None,
-            DefaultModel::Labelled(label, handler),
-        )
+            DefaultModel::Labelled(label.clone(), handler),
+        );
+        builder
+            .config
+            .pending_model_ids
+            .push((rig_core::effect::model_key(label.as_str()).to_string(), id));
+        builder
     }
 
     /// Build over a host-driven bus using `model` verbatim and owner-qualified

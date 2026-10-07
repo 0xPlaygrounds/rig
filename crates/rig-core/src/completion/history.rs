@@ -4,7 +4,9 @@
 //! turns are skipped, and every tool call gets an answer.
 //!
 //! ```
+//! use rig_core::completion::CompletionRequest;
 //! use rig_core::completion::history::{Accepts, ReplayTarget, adapt};
+//! use rig_core::completion::options::{Mapping, OptionFields, OptionMap};
 //! use rig_core::message::{Api, Message};
 //!
 //! #[derive(Debug)]
@@ -22,6 +24,32 @@
 //!     }
 //!     fn accepts(&self, _model: &str) -> Accepts {
 //!         Accepts::ALL
+//!     }
+//!     fn map_options(&self, _request: &CompletionRequest, fields: OptionFields<'_>) -> OptionMap {
+//!         let OptionFields {
+//!             reasoning,
+//!             cache,
+//!             service_tier,
+//!             verbosity,
+//!             parallel_tool_calls,
+//!             top_p,
+//!             seed,
+//!             stop,
+//!         } = fields;
+//!         let none = |set: bool| match set {
+//!             true => Mapping::unsupported("the example takes no options"),
+//!             false => Mapping::Nothing,
+//!         };
+//!         OptionMap {
+//!             reasoning: none(reasoning.is_some()),
+//!             cache: none(cache.is_some()),
+//!             service_tier: none(service_tier.is_some()),
+//!             verbosity: none(verbosity.is_some()),
+//!             parallel_tool_calls: none(parallel_tool_calls.is_some()),
+//!             top_p: none(top_p.is_some()),
+//!             seed: none(seed.is_some()),
+//!             stop: none(!stop.is_empty()),
+//!         }
 //!     }
 //! }
 //!
@@ -146,6 +174,21 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     /// What `model`, the model a request addresses on this wire, reads.
     /// [`adapt`] downgrades everything else, so the encoder never sees it.
     fn accepts(&self, model: &str) -> Accepts;
+
+    /// How this wire answers each option of `request`, whose resolved model
+    /// and typed fields an answer may depend on. No default: every
+    /// completion wire writes one, destructuring `fields` with no `..`, so a
+    /// new option fails to compile until the wire answers for it. An unset
+    /// option answers `Mapping::Nothing`, so wrap each answer in
+    /// `Mapping::of` (`Mapping::of_stop` for `stop`), as in
+    /// `seed: Mapping::of(seed, |_| Mapping::unsupported("no such field"))`;
+    /// any other answer for an unset option fails every request.
+    /// `Completion::prepare` reports each refusal before the wire encodes.
+    fn map_options(
+        &self,
+        request: &crate::completion::CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap;
 
     /// Whether the encoder carries `media` to `model`: its source (data,
     /// URL, file id or string), its media type, and where it sits. [`adapt`]

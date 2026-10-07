@@ -290,6 +290,134 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Overlay `options` on the agent's generation options for this run:
+    /// each field `options` sets wins, every other field keeps the agent's
+    /// ([`GenerationOptions::overlay`](rig_core::completion::GenerationOptions::overlay)).
+    /// A policy `options` sets wins too, so a run can restore
+    /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error)
+    /// over an agent's `Ignore`.
+    ///
+    /// Calls apply in order: this overlays only the fields `options` sets,
+    /// so it wins over a shortcut such as [`Self::seed`] called before it
+    /// for those fields, and a shortcut called after it sets its one field
+    /// on top.
+    pub fn options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.config.options = self.config.options.clone().overlay(&options);
+        self
+    }
+
+    /// Set the reasoning level or budget in this run's generation options, as
+    /// [`GenerationOptions::reasoning`](rig_core::completion::GenerationOptions::reasoning) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn reasoning(mut self, reasoning: impl Into<rig_core::completion::Reasoning>) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).reasoning(reasoning);
+        self
+    }
+
+    /// Set the cache retention in this run's generation options, as
+    /// [`GenerationOptions::cache`](rig_core::completion::GenerationOptions::cache) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn cache(mut self, cache: rig_core::completion::CacheRetention) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).cache(cache);
+        self
+    }
+
+    /// Set the service tier in this run's generation options, as
+    /// [`GenerationOptions::service_tier`](rig_core::completion::GenerationOptions::service_tier) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn service_tier(mut self, tier: rig_core::completion::ServiceTier) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).service_tier(tier);
+        self
+    }
+
+    /// Set the answer verbosity in this run's generation options, as
+    /// [`GenerationOptions::verbosity`](rig_core::completion::GenerationOptions::verbosity) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn verbosity(mut self, verbosity: rig_core::completion::Verbosity) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).verbosity(verbosity);
+        self
+    }
+
+    /// Set whether the model may call several tools in one turn in this run's generation options, as
+    /// [`GenerationOptions::parallel_tool_calls`](rig_core::completion::GenerationOptions::parallel_tool_calls) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn parallel_tool_calls(mut self, parallel: bool) -> Self {
+        self.config.options =
+            std::mem::take(&mut self.config.options).parallel_tool_calls(parallel);
+        self
+    }
+
+    /// Set the nucleus sampling probability mass in this run's generation options, as
+    /// [`GenerationOptions::top_p`](rig_core::completion::GenerationOptions::top_p) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn top_p(mut self, top_p: f64) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).top_p(top_p);
+        self
+    }
+
+    /// Set the sampling seed in this run's generation options, as
+    /// [`GenerationOptions::seed`](rig_core::completion::GenerationOptions::seed) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).seed(seed);
+        self
+    }
+
+    /// Set the stop sequences in this run's generation options, keeping its
+    /// other fields: the same as
+    /// `.options(GenerationOptions::new().stop(stop))`. As with that overlay,
+    /// an empty list means "not set" and keeps the agent's stop sequences;
+    /// it does not clear them. See [`Self::options`] for the order of calls.
+    pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self {
+        self.options(rig_core::completion::GenerationOptions::new().stop(stop))
+    }
+
+    /// Set what happens to an option the wire or model cannot honour in this run's generation options, as
+    /// [`GenerationOptions::on_unsupported`](rig_core::completion::GenerationOptions::on_unsupported) does,
+    /// keeping its other fields. See
+    /// [`Self::options`] for the order of calls.
+    pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
+        self.config.options = std::mem::take(&mut self.config.options).on_unsupported(policy);
+        self
+    }
+
+    /// Overlay `options` on the agent's provider options for this run: each
+    /// provider entry `options` holds replaces the agent's, every other
+    /// entry keeps the agent's
+    /// ([`ProviderOptions::overlay`](rig_core::completion::ProviderOptions::overlay)).
+    ///
+    /// Unlike [`AgentBuilder::provider_options`](crate::agent::AgentBuilder::provider_options),
+    /// it merges rather than replaces, so calls apply in order without
+    /// loss: an entry set by an earlier [`Self::provider_option`] is kept
+    /// unless `options` holds an entry for the same provider, and a later
+    /// [`Self::provider_option`] replaces its provider's entry on top.
+    pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.config.provider_options = self.config.provider_options.clone().overlay(&options);
+        self
+    }
+
+    /// Store `options` as the entry of their provider
+    /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext))
+    /// for this run, in place of the agent's entry for that provider; every
+    /// other entry keeps the agent's. The same as
+    /// `.provider_options(ProviderOptions::new().set(options))`, so options
+    /// that write no field hold no entry and keep the agent's entry for
+    /// that provider. Options that do not serialize fail each request's
+    /// encode. See [`Self::provider_options`] for the order of calls. A
+    /// third-party provider reusing a built-in options type needs
+    /// [`ProviderOptions::with::<P>`](rig_core::completion::ProviderOptions::with)
+    /// and [`Self::provider_options`]: this stores under the built-in key.
+    pub fn provider_option<E: rig_core::completion::ExtensionOptions>(self, options: E) -> Self {
+        self.provider_options(rig_core::completion::ProviderOptions::new().set(options))
+    }
+
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);

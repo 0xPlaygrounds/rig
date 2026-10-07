@@ -14,6 +14,7 @@
 
 use serde_json::{Map, Value, json};
 
+use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{
     Accepts, CompletionRequest, Media, Place, ProviderCapabilities, Replay, ReplayTarget,
 };
@@ -24,7 +25,7 @@ use crate::message::{
 };
 use crate::operation::Completion;
 use crate::providers::internal::wire_ids::WireIds;
-use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
+use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
 
 use super::streaming::ChatDecoder;
 use super::{OllamaConfig, PROVIDER_NAME};
@@ -35,6 +36,7 @@ const CHAT_PATH: &str = "/api/chat";
 /// The `additional_params` keys `/api/chat` reads at the top level of its
 /// request. Every other key is a model parameter and goes in `options`.
 const TOP_LEVEL: &[&str] = &[
+    "think",
     "format",
     "keep_alive",
     "logprobs",
@@ -42,9 +44,6 @@ const TOP_LEVEL: &[&str] = &[
     "truncate",
     "shift",
 ];
-
-/// The thinking levels `think` takes besides a boolean.
-const THINK_LEVELS: &[&str] = &["low", "medium", "high", "max"];
 
 /// The native chat wire of an Ollama daemon.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -64,29 +63,50 @@ impl Chat {
         }
     }
 
-    /// The `/api/chat` body `request` sends in `mode`.
-    ///
-    /// `additional_params` is split by where the daemon reads each key:
-    /// `think` (a boolean or `low`, `medium`, `high` or `max`) and the keys
-    /// in [`TOP_LEVEL`] go at the top level, `tools` join the request's
-    /// tools, an `options` object merges into `options`, and every other key
-    /// is an `options` entry, `reasoning_effort` included, with a warning. `temperature` and `max_tokens` (as
-    /// `num_predict`) go in `options`, where a caller's own entries win.
-    fn body(
+    /// The `/api/chat` body `request` sends in `mode`: the wire's encoding,
+    /// then the mapped options, then `additional_params`, split by where the
+    /// daemon reads each key. `think` and the keys in [`TOP_LEVEL`] go at the
+    /// top level, `tools` join the request's tools, an `options` object
+    /// merges into `options`, and every other key is an `options` entry.
+    /// `temperature` and `max_tokens` (as `num_predict`) go in `options`,
+    /// where a caller's own entries win.
+    fn body(&self, request: &CompletionRequest, mode: Mode) -> Result<FinalBody, EncodeError> {
+        request_params(
+            self,
+            request,
+            |input| self.base(request, mode, input),
+            RawAt::Split {
+                top: TOP_LEVEL,
+                rest: "options",
+            },
+            &[],
+        )
+    }
+
+    /// The wire's own encoding of `request`.
+    fn base(
         &self,
-        request: CompletionRequest,
+        request: &CompletionRequest,
         mode: Mode,
+        input: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let params = match request.additional_params {
-            None | Some(Value::Null) => Map::new(),
-            Some(Value::Object(params)) => params,
-            Some(_) => {
-                return Err(EncodeError::request(
-                    "Ollama `additional_params` must be a JSON object",
-                ));
-            }
-        };
+        if input
+            .param("keep_alive")
+            .is_some_and(|value| !(value.is_string() || value.is_number()))
+        {
+            return Err(EncodeError::request(
+                "Ollama `keep_alive` must be a duration string or a number of seconds",
+            ));
+        }
+        if input
+            .param("options")
+            .is_some_and(|value| !value.is_object())
+        {
+            return Err(EncodeError::request(
+                "Ollama `additional_params.options` must be an object",
+            ));
+        }
         let messages = self.messages(&request.chat_history, &model)?;
 
         let mut tools: Vec<Value> = request
@@ -100,6 +120,7 @@ impl Chat {
                 }})
             })
             .collect();
+        tools.extend(input.raw_tools()?);
         if request.tool_choice.is_some() {
             tracing::warn!("Ollama has no tool choice; `tool_choice` is ignored");
         }
@@ -111,48 +132,6 @@ impl Chat {
         if let Some(max_tokens) = request.max_tokens {
             options.insert("num_predict".to_owned(), Value::from(max_tokens));
         }
-        let mut top = Map::new();
-        for (key, value) in params {
-            match key.as_str() {
-                "think" => {
-                    top.insert(key, think(value)?);
-                }
-                "reasoning_effort" => {
-                    tracing::warn!(
-                        "Ollama's `/api/chat` takes `think`, not `reasoning_effort`; \
-                         it is sent as a model option"
-                    );
-                    options.insert(key, value);
-                }
-                "keep_alive" if !(value.is_string() || value.is_number()) => {
-                    return Err(EncodeError::request(
-                        "Ollama `keep_alive` must be a duration string or a number of seconds",
-                    ));
-                }
-                "tools" => match value {
-                    Value::Array(passthrough) => tools.extend(passthrough),
-                    _ => {
-                        return Err(EncodeError::request(
-                            "Ollama `additional_params.tools` must be an array",
-                        ));
-                    }
-                },
-                "options" => match value {
-                    Value::Object(entries) => options.extend(entries),
-                    _ => {
-                        return Err(EncodeError::request(
-                            "Ollama `additional_params.options` must be an object",
-                        ));
-                    }
-                },
-                key if TOP_LEVEL.contains(&key) => {
-                    top.insert(key.to_owned(), value);
-                }
-                _ => {
-                    options.insert(key, value);
-                }
-            }
-        }
 
         // Defer the schema until a tool result exists: a constrained reply
         // cannot call a tool.
@@ -161,6 +140,7 @@ impl Chat {
             .any(|message| message.get("role").and_then(Value::as_str) == Some("tool"));
         let format = request
             .output_schema
+            .clone()
             .filter(|_| tools.is_empty() || answered)
             .map(|schema| schema.to_value());
 
@@ -175,12 +155,10 @@ impl Chat {
             ),
             ("stream", Some(Value::Bool(mode == Mode::Streaming))),
         ];
-        let mut body: Map<String, Value> = fields
+        Ok(fields
             .into_iter()
             .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect();
-        body.extend(top);
-        Ok(body)
+            .collect())
     }
 
     /// The history as `/api/chat` messages, each call and result spelled by
@@ -251,20 +229,6 @@ impl Chat {
             message.insert("tool_calls".to_owned(), Value::Array(calls));
         }
         Some(Value::Object(message))
-    }
-}
-
-/// `think` as the daemon takes it: a boolean, or one of [`THINK_LEVELS`].
-fn think(value: Value) -> Result<Value, EncodeError> {
-    match &value {
-        Value::Bool(_) => Ok(value),
-        Value::String(level) if THINK_LEVELS.contains(&level.to_ascii_lowercase().as_str()) => {
-            Ok(Value::String(level.to_ascii_lowercase()))
-        }
-        _ => Err(EncodeError::request(format!(
-            "Ollama `think` must be a boolean or one of {}",
-            THINK_LEVELS.join(", ")
-        ))),
     }
 }
 
@@ -375,6 +339,7 @@ impl Wire for Chat {
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
+    type Reassembler = super::streaming::document::ChatResponse;
 
     /// The output schema is deferred while tools are unanswered, so it
     /// composes with tools.
@@ -388,7 +353,7 @@ impl Wire for Chat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = Value::Object(self.body(request, mode)?);
+        let body = self.body(&request, mode)?;
         let target = match mode {
             Mode::Unary => crate::providers::internal::LogTarget::Completions,
             Mode::Streaming => crate::providers::internal::LogTarget::Streaming,
@@ -397,7 +362,7 @@ impl Wire for Chat {
         let request = self
             .provider
             .request(http::Method::POST, CHAT_PATH)
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+            .body(body.into_body())?;
         let framing = match mode {
             Mode::Unary => Framing::Whole,
             Mode::Streaming => Framing::Ndjson,
@@ -413,6 +378,62 @@ impl Wire for Chat {
 }
 
 impl ReplayTarget for Chat {
+    /// Section 6.5 of the typed-options design, for `/api/chat`.
+    fn map_options(
+        &self,
+        _request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::{CacheRetention, Effort, Reasoning};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        const NO_FIELD: &str = "Ollama's `/api/chat` has no such field";
+        OptionMap {
+            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+                Reasoning::Off => Mapping::Send(json!({"think": false})),
+                Reasoning::Effort(
+                    effort @ (Effort::Low | Effort::Medium | Effort::High | Effort::Max),
+                ) => Mapping::Send(json!({"think": effort.as_str()})),
+                Reasoning::Effort(effort) => Mapping::unsupported(format!(
+                    "Ollama has no `{}` thinking level",
+                    effort.as_str()
+                )),
+                Reasoning::Budget { .. } => {
+                    Mapping::unsupported("Ollama takes a thinking level, not a budget")
+                }
+            }),
+            cache: Mapping::of(cache, |cache| match cache {
+                CacheRetention::None => Mapping::Omit("Ollama keeps no prompt cache to stop"),
+                CacheRetention::Short | CacheRetention::Long => Mapping::unsupported(
+                    "Ollama has no prompt cache retention; `keep_alive` keeps the model loaded",
+                ),
+            }),
+            service_tier: Mapping::of(service_tier, |_| Mapping::unsupported(NO_FIELD)),
+            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+                Mapping::unsupported(NO_FIELD)
+            }),
+            top_p: Mapping::of(top_p, |top_p| {
+                Mapping::Send(json!({"options": {"top_p": top_p}}))
+            }),
+            seed: Mapping::of(seed, |seed| {
+                Mapping::Send(json!({"options": {"seed": seed}}))
+            }),
+            stop: Mapping::of_stop(stop, |stop| {
+                Mapping::Send(json!({"options": {"stop": stop}}))
+            }),
+        }
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("ollama.chat")
     }

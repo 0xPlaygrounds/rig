@@ -88,6 +88,7 @@ impl Wire for Transcriptions {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = TranscriptionsDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME).model(self.model.as_str())

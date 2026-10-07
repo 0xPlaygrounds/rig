@@ -149,7 +149,14 @@
             "output_tokens": 69,
             "total_tokens": 702,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.001899,
+              "output": 0.001035,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.002934
+            }
           },
           "origin": {
             "api": "anthropic.messages",
@@ -161,19 +168,41 @@
           "provider_request_id": "req_011CfikTXS6HRfiMFQt5Q8q2",
           "finish_reason": "tool_calls",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "caller": {
+                  "type": "direct"
+                },
+                "id": "toolu_01KHH4WJH33UK9kXET12Fydk",
+                "input": {
+                  "x": 17,
+                  "y": 25
+                },
+                "name": "add",
+                "type": "tool_use"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikTXovQchGh6CYTBbF3",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "tool_use",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 69,
-              "input_tokens": 633,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "tool_use",
-            "message_id": "msg_011CfikTXovQchGh6CYTBbF3",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 633,
+              "output_tokens": 69,
+              "service_tier": "standard"
+            }
           }
         }
       },
@@ -412,7 +441,14 @@
             "output_tokens": 4,
             "total_tokens": 719,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0
+            "cache_creation_input_tokens": 0,
+            "cost": {
+              "input": 0.002145,
+              "output": 0.00006,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0022050000000000004
+            }
           },
           "origin": {
             "api": "anthropic.messages",
@@ -424,19 +460,33 @@
           "provider_request_id": "req_011CfikTdBs8riQv2ZdqrP2v",
           "finish_reason": "stop",
           "raw": {
+            "container": null,
+            "content": [
+              {
+                "text": "42",
+                "type": "text"
+              }
+            ],
+            "diagnostics": null,
+            "id": "msg_011CfikTdXxYjb4Mrvgb5zWE",
+            "model": "claude-sonnet-4-6",
+            "role": "assistant",
+            "stop_details": null,
+            "stop_reason": "end_turn",
+            "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "output_tokens": 4,
-              "input_tokens": 715,
-              "cache_creation_input_tokens": 0,
-              "cache_read_input_tokens": 0,
               "cache_creation": {
                 "ephemeral_1h_input_tokens": 0,
                 "ephemeral_5m_input_tokens": 0
-              }
-            },
-            "stop_reason": "end_turn",
-            "message_id": "msg_011CfikTdXxYjb4Mrvgb5zWE",
-            "model": "claude-sonnet-4-6"
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 715,
+              "output_tokens": 4,
+              "service_tier": "standard"
+            }
           }
         }
       },

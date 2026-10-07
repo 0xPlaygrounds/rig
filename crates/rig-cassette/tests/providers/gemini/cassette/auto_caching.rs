@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use rig::agent::Agent;
-use rig::completion::{CacheCost, CacheRates, Message};
+use rig::completion::{CacheCost, CacheRates, Effort, GenerationOptions, Message};
 use rig::providers::gemini::{
     AutoCache, CacheBook, CacheEvent, CacheReport, Gemini, Lease, ThoughtReplay,
 };
@@ -132,8 +132,8 @@ impl Tool for ReadLog {
 // ---------------------------------------------------------------------------
 // Agents, books and checks.
 
-fn thinking_low() -> Value {
-    json!({ "generationConfig": { "thinkingConfig": { "thinkingLevel": "low" } } })
+fn thinking_low() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Effort::Low)
 }
 
 fn support_agent(
@@ -144,7 +144,7 @@ fn support_agent(
         .preamble(preamble)
         .tool(LookupOrder)
         .max_tokens(800)
-        .additional_params(thinking_low())
+        .options(thinking_low())
         .default_max_turns(4)
         .build()
 }
@@ -599,7 +599,7 @@ async fn agent_loop_large_results() {
                 )
                 .tool(ReadLog)
                 .max_tokens(800)
-                .additional_params(thinking_low())
+                .options(thinking_low())
                 .default_max_turns(70)
                 .build();
             let mut log = RunLog::default();

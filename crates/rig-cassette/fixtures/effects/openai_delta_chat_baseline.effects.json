@@ -143,7 +143,14 @@
             "output_tokens": 17,
             "total_tokens": 118,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.0002525,
+              "output": 0.00017,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.0004225
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -155,6 +162,34 @@
           "provider_request_id": "req_de472e470b5a441d972885411e5f6258",
           "finish_reason": "tool_calls",
           "raw": {
+            "choices": [
+              {
+                "message": {
+                  "content": null,
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\":17,\"y\":25}",
+                        "name": "add"
+                      },
+                      "id": "call_w1R8MnviufcZUPgYvdoA4l1l",
+                      "type": "function"
+                    }
+                  ]
+                },
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUdzasXCBTe5laaFz3zyCy5elKMpa",
+            "model": "gpt-4o-2024-08-06",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_5749441603",
             "usage": {
               "completion_tokens": 17,
               "completion_tokens_details": {
@@ -169,16 +204,6 @@
                 "cached_tokens": 0
               },
               "total_tokens": 118
-            },
-            "finish_reason": "tool_calls",
-            "response_id": "chatcmpl-EUdzasXCBTe5laaFz3zyCy5elKMpa",
-            "model": "gpt-4o-2024-08-06",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "LnhNAcPp2gxgd",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_5749441603"
             }
           }
         }
@@ -451,7 +476,14 @@
             "output_tokens": 2,
             "total_tokens": 128,
             "cached_input_tokens": 0,
-            "reasoning_tokens": 0
+            "reasoning_tokens": 0,
+            "cost": {
+              "input": 0.000315,
+              "output": 0.00002,
+              "cache_read": 0.0,
+              "cache_write": 0.0,
+              "total": 0.000335
+            }
           },
           "origin": {
             "api": "openai.chat",
@@ -463,6 +495,24 @@
           "provider_request_id": "req_66cc644f1f9540e8a379bf2acf081678",
           "finish_reason": "stop",
           "raw": {
+            "choices": [
+              {
+                "message": {
+                  "content": "42",
+                  "refusal": null,
+                  "role": "assistant"
+                },
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null
+              }
+            ],
+            "created": 0,
+            "id": "chatcmpl-EUdzbPcyP99eNksFXJNfuWu8sdUJS",
+            "model": "gpt-4o-2024-08-06",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_5749441603",
             "usage": {
               "completion_tokens": 2,
               "completion_tokens_details": {
@@ -477,16 +527,6 @@
                 "cached_tokens": 0
               },
               "total_tokens": 128
-            },
-            "finish_reason": "stop",
-            "response_id": "chatcmpl-EUdzbPcyP99eNksFXJNfuWu8sdUJS",
-            "model": "gpt-4o-2024-08-06",
-            "additional_params": {
-              "created": 0,
-              "obfuscation": "hZF0IE3z6G1DoD",
-              "object": "chat.completion.chunk",
-              "service_tier": "default",
-              "system_fingerprint": "fp_5749441603"
             }
           }
         }

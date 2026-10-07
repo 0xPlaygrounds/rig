@@ -14,14 +14,15 @@ use std::time::Duration;
 
 use futures::FutureExt;
 
-use rig::completion::CompletionRequest;
 use rig::completion::ToolDefinition;
+use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
 use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
+use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -62,37 +63,17 @@ const FILE_TEXT: &str =
     "Warehouse note. The ordering token is violet-needle. The shelf code is K-4471.";
 
 fn ask_with(history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(1024),
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.max_tokens = Some(1024);
+    request
 }
 
 fn ask(prompt: &str) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user(prompt)],
-        documents: vec![],
-        tools: vec![],
-        temperature: Some(0.0),
-        max_tokens: Some(64),
-        tool_choice: None,
-        additional_params: Some(json!({
-            "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-        })),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(vec![Message::user(prompt)]);
+    request.temperature = Some(0.0);
+    request.max_tokens = Some(64);
+    request.options = GenerationOptions::default().reasoning(Reasoning::Off);
+    request
 }
 
 /// One cache through its whole life: create, generate against it, extend its
@@ -345,12 +326,14 @@ async fn interactions_chain_with_tool_call() {
             };
             deleting_interactions(&client, &stored, async {
                 let model = client.clone().interactions(INTERACTIONS_MODEL);
-                let params = |previous: Option<String>| match previous {
-                    Some(previous) => serde_json::json!({
-                        "previous_interaction_id": previous,
-                        "store": true
-                    }),
-                    None => serde_json::json!({ "store": true }),
+                let params = |previous: Option<String>| {
+                    let mut options = GeminiOptions::new().store(true);
+                    if let Some(previous) = previous {
+                        options = options.interactions(
+                            InteractionsOptions::new().previous_interaction_id(previous),
+                        );
+                    }
+                    ProviderOptions::new().set(options)
                 };
 
                 let first = model
@@ -359,7 +342,7 @@ async fn interactions_chain_with_tool_call() {
                             "Use lookup_code to get the code of record alpha. Do not guess.",
                         )
                         .tool(lookup_tool())
-                        .additional_params(params(None)),
+                        .provider_options(params(None)),
                     )
                     .await
                     .expect("turn one");
@@ -379,7 +362,7 @@ async fn interactions_chain_with_tool_call() {
                                 "record alpha: code {CODE}"
                             ))],
                         )))
-                        .additional_params(params(Some(first_id))),
+                        .provider_options(params(Some(first_id))),
                     )
                     .await
                     .expect("turn two answers the call");
@@ -394,7 +377,7 @@ async fn interactions_chain_with_tool_call() {
                         CompletionRequest::new(
                             "Repeat the code you reported, exactly, and nothing else.",
                         )
-                        .additional_params(params(Some(second_id))),
+                        .provider_options(params(Some(second_id))),
                     )
                     .await
                     .expect("turn three continues");
@@ -491,10 +474,7 @@ async fn file_uri_chain() {
                 );
                 let history = vec![
                     document,
-                    Message::Assistant(rig_core::message::AssistantMessage {
-            content: first.choice.clone(),
-            ..first.head()
-        }),
+                    Message::Assistant(first.head().with_content(first.choice.clone())),
                     Message::user(
                         "What is the shelf code in the same attached file? Reply with the code only.",
                     ),

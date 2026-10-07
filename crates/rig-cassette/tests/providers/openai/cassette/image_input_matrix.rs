@@ -3,7 +3,10 @@
 use rig::providers::openai;
 use serde_json::json;
 
-use super::super::support::with_openai_cassette;
+use rig::completion::Effort;
+
+use super::super::support::{effort, stateless, with_openai_cassette};
+use crate::history_survival::Options;
 use crate::image_inputs;
 
 const GENERATOR: &str = "gpt-image-1-mini";
@@ -28,7 +31,7 @@ async fn generated_image_as_tool_result() {
             image_inputs::as_tool_result(
                 &client.openai.responses(openai::GPT_5_6),
                 &bytes,
-                Some(json!({ "reasoning": { "effort": "low" }, "store": false })),
+                Options::new(effort(Effort::Low), stateless()),
             )
             .await;
         },

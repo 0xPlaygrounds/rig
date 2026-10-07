@@ -47,4 +47,8 @@ pub const SDXL_TURBO: &str = "SDXL-turbo";
 pub const SDXL_CONTROLNET: &str = "SDXL-ControlNet";
 pub const SD1_5_CONTROLNET: &str = "SD1.5-ControlNet";
 
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "hyperbolic";
+
 crate::client::macros::openai_vendor!(crate::providers::openai::wire::HYPERBOLIC, "Hyperbolic");

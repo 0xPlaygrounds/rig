@@ -216,3 +216,21 @@ pub(super) async fn with_openrouter_prompt_caching_cassette<F, Fut>(
 {
     with_openrouter_cassette(spec, test_body).await;
 }
+
+/// `options` as the typed provider options of an OpenRouter request.
+pub(super) fn openrouter_options(
+    options: rig::providers::openrouter::extension::OpenRouterOptions,
+) -> rig::completion::ProviderOptions {
+    rig::completion::ProviderOptions::new().set(options)
+}
+
+/// Provider preferences that pin `providers`, in order, with no fallback.
+pub(super) fn pinned_order(providers: &[&str]) -> rig::completion::ProviderOptions {
+    openrouter_options(
+        rig::providers::openrouter::extension::OpenRouterOptions::new().provider(
+            rig::providers::openrouter::extension::ProviderPreferences::new()
+                .order(providers.iter().copied())
+                .allow_fallbacks(false),
+        ),
+    )
+}

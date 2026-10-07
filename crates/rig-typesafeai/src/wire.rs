@@ -145,6 +145,7 @@ impl Wire for JevConfig {
     type Frame = rig_core::wire::WireFrame;
     // One JSON document in, the reply's end out, the document kept as `raw`.
     type Decoder<'id> = Json;
+    type Reassembler = rig_core::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new("typesafeai").model(self.model.as_str())

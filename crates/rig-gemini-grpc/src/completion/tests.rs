@@ -21,10 +21,17 @@ impl Transport<GenerateContent> for Scripted {
     fn send(
         &self,
         _request: GenerateContentRequest,
-        _exchange: Exchange,
+        exchange: Exchange,
     ) -> Opening<GenerateContentResponse> {
         let replies = std::mem::take(&mut *self.0.lock().expect("script lock"));
-        Opening::ready(Opened::new(futures::stream::iter(replies)))
+        // A unary reply is one message, opened as the endpoint opens it.
+        match (exchange.mode, replies.as_slice()) {
+            (Mode::Unary, [Ok(response)]) => match unary(response.clone()) {
+                Ok(opened) => Opening::ready(opened),
+                Err(error) => Opening::failed(error),
+            },
+            _ => Opening::ready(Opened::new(futures::stream::iter(replies))),
+        }
     }
 }
 
@@ -348,4 +355,63 @@ fn a_part_with_its_own_media_resolution_is_refused() {
         error.to_string().contains("mediaResolution"),
         "the refusal names the field: {error}"
     );
+}
+
+/// gRPC takes the GenerateContent cells for what its proto declares: no
+/// service tier, and no thinking level, which Google's proto does not name.
+#[test]
+fn options_take_the_cells_the_proto_declares() {
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{
+        CompletionRequest, Effort, GenerationOptions, ServiceTier, options::Mapping,
+    };
+    use rig_core::wire::{Mode, Wire as _};
+
+    let wire = GenerateContent::new("gemini-2.5-flash");
+    let request = CompletionRequest::new("hi")
+        .top_p(0.5)
+        .seed(7)
+        .stop(["END"]);
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.top_p, Some(0.5));
+    assert_eq!(config.seed, Some(7));
+    assert_eq!(config.stop_sequences, vec!["END".to_owned()]);
+
+    let answers = |options: GenerationOptions| {
+        let request = CompletionRequest::new("hi").options(options);
+        wire.map_options(&request, request.options.fields())
+    };
+    assert!(matches!(
+        answers(GenerationOptions::default().service_tier(ServiceTier::Default)).service_tier,
+        Mapping::Unsupported(_)
+    ));
+    assert!(matches!(
+        answers(GenerationOptions::default().reasoning(Effort::High)).reasoning,
+        Mapping::Unsupported(_)
+    ));
+}
+
+/// A raw `generationConfig: null` is absent, as it was before the merge:
+/// the typed fields still reach the gRPC request.
+#[test]
+fn a_raw_null_generation_config_keeps_the_typed_fields() {
+    use rig_core::wire::{Mode, Wire as _};
+
+    let request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .max_tokens(64)
+        .additional_params(serde_json::json!({"generationConfig": null}));
+    let encoded = GenerateContent::new("gemini-2.5-flash")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.temperature, Some(0.2));
+    assert_eq!(config.max_output_tokens, Some(64));
 }

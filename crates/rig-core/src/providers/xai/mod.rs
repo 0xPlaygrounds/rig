@@ -15,6 +15,7 @@
 
 #[cfg(feature = "audio")]
 pub mod audio_generation;
+pub mod extension;
 #[cfg(feature = "image")]
 pub mod image_generation;
 
@@ -37,6 +38,10 @@ use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
     Dialect, ImageBody, Quirks, ResponsesContract, ResponsesQuirks, Route, SpeechBody,
 };
+
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "xai";
 
 /// xAI endpoint and encoding configuration. Responses system messages remain
 /// in `input`; error envelopes may arrive with HTTP 200. Completed function calls
@@ -62,13 +67,13 @@ pub const DIALECT: Dialect = Dialect {
         },
         ..Quirks::openai()
     },
-    ..Dialect::gateway("xai", "https://api.x.ai", "XAI_API_KEY")
+    ..Dialect::gateway(PROVIDER_NAME, "https://api.x.ai", "XAI_API_KEY")
 };
 
 crate::client::macros::openai_vendor!(DIALECT, "xAI");
 
-/// Whether the xAI `model` reads images: Grok 2 only in its vision models,
-/// and neither Grok 3 nor Grok Code.
+/// Whether the xAI `model`, an id the catalog does not list, reads images:
+/// Grok 2 only in its vision models, and neither Grok 3 nor Grok Code.
 pub(crate) fn reads_images(model: &str) -> bool {
     let model = model.to_ascii_lowercase();
     !((model.starts_with("grok-2") && !model.contains("vision"))

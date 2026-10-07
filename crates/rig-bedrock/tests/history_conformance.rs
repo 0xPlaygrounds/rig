@@ -140,7 +140,7 @@ fn sent_body(payload: ConverseRequest, mode: Mode) -> Value {
         Mode::Unary => "converse",
         Mode::Streaming => "converse-stream",
     };
-    let mut body = payload.body;
+    let mut body = serde_json::to_value(&payload.body).expect("the body serializes");
     body["$path"] = json!(format!("/model/{}/{operation}", payload.model));
     body
 }
@@ -620,9 +620,10 @@ fn the_transport_sends_the_encoded_body() {
                 event_stream(&events(&[json!({ "text": "ok" })], "end_turn")),
             ),
         };
-        let mut request = CompletionRequest::new("hi");
+        let mut request =
+            CompletionRequest::new("hi").cache(rig_core::completion::CacheRetention::Short);
         request.temperature = Some(0.5);
-        let wire = Converse::new(CLAUDE).with_prompt_caching();
+        let wire = Converse::new(CLAUDE);
         let prepared = rig_core::operation::Completion::prepare(request.clone(), &wire.describe())
             .expect("prepares");
         let expected = sent_body(wire.encode(prepared, mode).expect("encodes"), mode);
@@ -650,7 +651,7 @@ fn the_transport_sends_the_encoded_body() {
 
 /// `raw` is the JSON Bedrock sent: a whole reply's body, guardrail trace,
 /// performance configuration, service tier and model-specific fields
-/// included, and a stream's message-level events.
+/// included, and a stream's rebuilt into the same `ConverseOutput` shape.
 #[test]
 fn raw_is_the_json_bedrock_sent() {
     let mut whole = document(vec![json!({ "text": "blocked" })], "guardrail_intervened");
@@ -699,10 +700,36 @@ fn raw_is_the_json_bedrock_sent() {
     assert_eq!(
         streamed.raw,
         json!({
-            "messageStart": stream[0]["messageStart"],
-            "messageStop": stream[3]["messageStop"],
-            "metadata": stream[4]["metadata"],
+            "output": { "message": { "role": "assistant", "content": [{ "text": "hi" }] } },
+            "stopReason": "end_turn",
+            "additionalModelResponseFields": { "x": 1 },
+            "usage": usage(),
+            "metrics": { "latencyMs": 7 },
+            "trace": { "promptRouter": { "invokedModelId": "amazon.nova-lite-v1:0" } },
+            "serviceTier": { "type": "flex" },
         })
+    );
+    // One extras type reads both replies.
+    let read = |response: &rig_core::completion::CompletionResponse| {
+        response
+            .extras::<rig_bedrock::extension::BedrockExt>()
+            .expect("a Bedrock reply")
+            .expect("the extras read")
+    };
+    let (unary, streamed) = (read(&unary), read(&streamed));
+    assert_eq!(unary.stop_reason.as_deref(), Some("guardrail_intervened"));
+    assert_eq!(unary.service_tier.as_deref(), Some("priority"));
+    assert_eq!(unary.performance_latency.as_deref(), Some("optimized"));
+    assert_eq!(streamed.stop_reason.as_deref(), Some("end_turn"));
+    assert_eq!(streamed.latency_ms, Some(7));
+    assert_eq!(streamed.service_tier.as_deref(), Some("flex"));
+    assert_eq!(
+        streamed.invoked_model_id.as_deref(),
+        Some("amazon.nova-lite-v1:0")
+    );
+    assert_eq!(
+        streamed.additional_model_response_fields,
+        Some(json!({ "x": 1 }))
     );
 }
 

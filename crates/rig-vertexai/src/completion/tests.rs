@@ -114,3 +114,67 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
         "{contents:#}"
     );
 }
+
+/// Vertex AI takes the GenerateContent cells, but its tiers: the standard
+/// one is its default, and the others need headers its SDK cannot set. The
+/// cells reach the SDK request, a `generationConfig` merged over the typed
+/// fields.
+#[test]
+fn options_take_the_generate_content_cells_with_vertex_tiers() {
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::completion::{CompletionRequest, Effort, ServiceTier, options::Mapping};
+    use rig_core::wire::{Mode, Wire as _};
+
+    let wire = GenerateContent::new("gemini-3-flash-preview");
+    let request = CompletionRequest::new("hi")
+        .max_tokens(16)
+        .reasoning(Effort::High)
+        .top_p(0.5)
+        .seed(7);
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.top_p, Some(0.5));
+    assert_eq!(config.seed, Some(7));
+    assert_eq!(config.max_output_tokens, Some(16));
+    assert!(config.thinking_config.is_some());
+    assert_eq!(encoded.model, "gemini-3-flash-preview");
+
+    let tier = |tier| {
+        let request = CompletionRequest::new("hi").service_tier(tier);
+        wire.map_options(&request, request.options.fields())
+            .service_tier
+    };
+    assert!(matches!(tier(ServiceTier::Default), Mapping::Omit(_)));
+    assert!(matches!(tier(ServiceTier::Flex), Mapping::Unsupported(_)));
+    assert!(matches!(
+        tier(ServiceTier::Priority),
+        Mapping::Unsupported(_)
+    ));
+}
+
+/// A raw `generationConfig: null` is absent, as it was before the merge:
+/// the typed fields and the mapped thinking still reach the SDK request.
+#[test]
+fn a_raw_null_generation_config_keeps_the_typed_fields() {
+    use rig_core::completion::{CompletionRequest, Effort};
+    use rig_core::wire::{Mode, Wire as _};
+
+    let request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .max_tokens(64)
+        .reasoning(Effort::High)
+        .additional_params(serde_json::json!({"generationConfig": null}));
+    let encoded = GenerateContent::new("gemini-3-flash-preview")
+        .encode(request, Mode::Unary)
+        .expect("the request encodes");
+    let config = encoded
+        .generation_config
+        .expect("the request has a generation config");
+    assert_eq!(config.temperature, Some(0.2));
+    assert_eq!(config.max_output_tokens, Some(64));
+    assert!(config.thinking_config.is_some());
+}

@@ -55,5 +55,7 @@ mod lifecycle;
 mod sessions;
 #[path = "runtime/termination.rs"]
 mod termination;
+#[path = "runtime/typed_options.rs"]
+mod typed_options;
 #[path = "runtime/wires.rs"]
 mod wires;

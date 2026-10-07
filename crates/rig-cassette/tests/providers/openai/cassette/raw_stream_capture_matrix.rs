@@ -4,36 +4,33 @@
 //! # What this pins
 //!
 //! The streamed twin of `raw_capture_matrix`: every terminal
-//! `StreamedAssistantContent::Final` carries `raw` — the route's
-//! provider-native terminal record, serialized at the decoder's
-//! `final_record` seam. There is no switch behind it; a terminal `raw` is
-//! `Value::Null` only on a record built by hand, never on one a stream
-//! yielded. Unlike a unary `raw` — which is the provider's verbatim reply
-//! document — a streamed `raw` is the record the decoder assembled from the
-//! reply's frames, because no single frame is the terminal. A cell reads it
-//! as JSON. It exposes a terminal-only field the normalized
-//! `CompletionResponse` does not model, and its `usage`, `finish_reason`,
-//! `model` and identity are the ones the stream reported.
+//! `StreamedAssistantContent::Final` carries `raw`, the unary document of
+//! the route's API as the driver's reassembler rebuilt it from the reply's
+//! frames. There is no switch behind it; a terminal `raw` is `Value::Null`
+//! only on a record built by hand, never on one a stream yielded. A cell
+//! reads it as JSON, by the paths a unary body is read by. It exposes a
+//! field the normalized `CompletionResponse` does not model, and its
+//! `usage`, finish reason, `model` and identity are the ones the stream
+//! reported.
 //!
-//! Terminal records: on Chat Completions, a JSON object with the keys
-//! `usage`, `finish_reason`, `response_id`, `model`, `logprobs` and
-//! `additional_params`. Its `additional_params` accumulates the unmodeled
-//! top-level chunk fields (`service_tier`, `system_fingerprint`), and its
-//! `usage` is the provider's usage object, extra counters included. On the
-//! Responses API, the response object, verbatim (whose `status` and message
-//! id come from the terminal `response.completed` event alone).
+//! On Chat Completions the document is a `chat.completion`: the top-level
+//! chunk fields (`service_tier`, `system_fingerprint`) where a unary body
+//! states them, the deltas folded into `choices[].message`, and the
+//! provider's usage object, extra counters included. On the Responses API,
+//! the response object, verbatim (whose `status` and message id come from
+//! the terminal `response.completed` event alone).
 //!
 //! Cell 6 is the streamed twin of the tool-call cell in `raw_capture_matrix`:
-//! a forced Chat tool call, whose terminal spells `finish_reason` as
+//! a forced Chat tool call, whose document spells `finish_reason` as
 //! `"tool_calls"` and whose normalized twin reports `FinishReason::ToolCalls`.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the chat terminal record; its fields ≡ terminal | recorded |
+//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | `raw` is the rebuilt `chat.completion`; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
-//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the terminal record; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
+//! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | `raw` is the rebuilt `chat.completion`; `raw["choices"][0]["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
 //!
 //! Every cell is recorded; none is unit-only. Premise, re-derived from each
 //! cell's fixture after the wrapper returns: the recorded stream ends with a
@@ -163,13 +160,13 @@ async fn chat_stream_raw_round_trips_typed() {
 
     // `raw` is there to read at all: it is the terminal response object.
     captured_raw(SCENARIO, &terminal);
-    // It is the chat terminal record, read as JSON. It agrees with the
+    // It is the rebuilt `chat.completion`, read as JSON. It agrees with the
     // normalized terminal on identity, model, finish reason and the
     // accounting it normalized: two views of one record.
     let typed = chat::assert_terminal_round_trips(&terminal);
     // The captured value is *this* stream's terminal.
     assert_matches_recorded_token(
-        typed["response_id"].as_str(),
+        typed["id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
@@ -178,7 +175,10 @@ async fn chat_stream_raw_round_trips_typed() {
         last_chunk_field(&frames, "model").as_str(),
         "{SCENARIO}: terminal model"
     );
-    assert_eq!(typed["finish_reason"], serde_json::json!("stop"));
+    assert_eq!(
+        typed["choices"][0]["finish_reason"],
+        serde_json::json!("stop")
+    );
     let recorded_usage = last_chunk_field(&frames, "usage");
     let usage = &typed["usage"];
     assert_eq!(
@@ -251,7 +251,7 @@ async fn responses_stream_raw_exposes_status() {
 // Reasoning and tool-call streams
 // ---------------------------------------------------------------------------
 
-/// A forced Chat tool-call stream: the terminal record agrees with the
+/// A forced Chat tool-call stream: the rebuilt document agrees with the
 /// normalized terminal, and `raw` spells `finish_reason` as OpenAI's own
 /// `"tool_calls"`, the same word the last finishing chunk carried, while the
 /// normalized terminal reports `FinishReason::ToolCalls`. Premise: a chunk's
@@ -299,20 +299,23 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     );
 
     let raw = captured_raw(SCENARIO, &terminal);
-    // Two views of one record. The wire already said `tool_calls`, so the
+    // Two views of one reply. The wire already said `tool_calls`, so the
     // `Stop -> ToolCalls` reconciliation the normalized stream layers on has
     // nothing to change and the round trip's comparison stays exact.
     let typed = chat::assert_terminal_round_trips(&terminal);
     assert_matches_recorded_token(
-        typed["response_id"].as_str(),
+        typed["id"].as_str(),
         last_chunk_field(&frames, "id").as_str(),
         &format!("{SCENARIO}: terminal response id"),
     );
     assert_eq!(
-        raw["finish_reason"], recorded_finish,
+        raw["choices"][0]["finish_reason"], recorded_finish,
         "{SCENARIO}: raw keeps OpenAI's own finish-reason spelling"
     );
-    assert_eq!(typed["finish_reason"], serde_json::json!("tool_calls"));
+    assert_eq!(
+        typed["choices"][0]["finish_reason"],
+        serde_json::json!("tool_calls")
+    );
     assert_eq!(
         terminal.finish_reason(),
         Some(FinishReason::ToolCalls),

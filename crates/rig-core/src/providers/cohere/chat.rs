@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 
 use super::CohereConfig;
 use super::streaming::ChatDecoder;
+use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{CompletionRequest, Document, ProviderCapabilities, Replay};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
@@ -25,7 +26,7 @@ use crate::message::{
 };
 use crate::operation::Completion;
 use crate::providers::internal::wire_ids::WireIds;
-use crate::wire::{Body, Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
+use crate::wire::{Capabilities, Descriptor, Encoded, Framing, Mode, Wire};
 
 /// Where the native chat endpoint sits under the API root.
 const CHAT_PATH: &str = "/v2/chat";
@@ -62,23 +63,26 @@ impl NativeChat {
         self
     }
 
-    /// The request body. `additional_params` is flattened in last, so its
-    /// keys override the typed ones.
-    fn body(
+    /// The request body: the wire's encoding of `request`, then the mapped
+    /// options, then `additional_params`, merged key by key.
+    fn body(&self, request: &CompletionRequest, mode: Mode) -> Result<FinalBody, EncodeError> {
+        request_params(
+            self,
+            request,
+            |input| self.base(request, mode, input),
+            RawAt::Top,
+            &[],
+        )
+    }
+
+    /// The wire's own encoding of `request`.
+    fn base(
         &self,
-        request: CompletionRequest,
+        request: &CompletionRequest,
         mode: Mode,
+        input: &mut BaseInput<'_>,
     ) -> Result<Map<String, Value>, EncodeError> {
         let model = request.model.clone().unwrap_or_else(|| self.model.clone());
-        let mut params = match request.additional_params {
-            None | Some(Value::Null) => Map::new(),
-            Some(Value::Object(params)) => params,
-            Some(_) => {
-                return Err(EncodeError::request(
-                    "Cohere chat `additional_params` must be a JSON object",
-                ));
-            }
-        };
         let messages = self.messages(&request.chat_history, &model)?;
         let mut tools: Vec<Value> = request
             .tools
@@ -99,14 +103,7 @@ impl NativeChat {
                 }})
             })
             .collect();
-        if let Some(passthrough) = params.shift_remove("tools") {
-            let Value::Array(passthrough) = passthrough else {
-                return Err(EncodeError::request(
-                    "Cohere chat `additional_params.tools` must be an array",
-                ));
-            };
-            tools.extend(passthrough);
-        }
+        tools.extend(input.raw_tools()?);
         let tool_choice = match &request.tool_choice {
             None | Some(ToolChoice::Auto) => None,
             Some(ToolChoice::None) => Some("NONE"),
@@ -121,6 +118,7 @@ impl NativeChat {
             .collect();
         let response_format = request
             .output_schema
+            .clone()
             .map(|schema| json!({"type": "json_object", "schema": schema.to_value()}));
         let fields = [
             ("model", Some(Value::String(model))),
@@ -143,12 +141,10 @@ impl NativeChat {
                 (mode == Mode::Streaming).then_some(Value::Bool(true)),
             ),
         ];
-        let mut body: Map<String, Value> = fields
+        Ok(fields
             .into_iter()
             .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect();
-        body.extend(params);
-        Ok(body)
+            .collect())
     }
 
     /// The history as Cohere messages, each call and result spelled by one
@@ -401,6 +397,7 @@ impl Wire for NativeChat {
     type Payload = Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
+    type Reassembler = super::streaming::document::ChatResponse;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
@@ -412,16 +409,13 @@ impl Wire for NativeChat {
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, EncodeError> {
-        let body = Value::Object(self.body(request, mode)?);
+        let body = self.body(&request, mode)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "Cohere chat request",
             &body,
         );
-        let request = self
-            .provider
-            .post(CHAT_PATH)
-            .body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        let request = self.provider.post(CHAT_PATH).body(body.into_body())?;
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
@@ -441,6 +435,78 @@ impl Wire for NativeChat {
 const REQUEST_ID_HEADER: &str = "x-debug-trace-id";
 
 impl crate::completion::ReplayTarget for NativeChat {
+    /// Section 6.5 of the typed-options design, for the native API.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        use crate::completion::options::{Mapping, OptionFields, OptionMap};
+        use crate::completion::{CacheRetention, Effort, Reasoning};
+        let OptionFields {
+            reasoning,
+            cache,
+            service_tier,
+            verbosity,
+            parallel_tool_calls,
+            top_p,
+            seed,
+            stop,
+        } = fields;
+        let model = request.model.as_deref().unwrap_or(&self.model);
+        // A model that thinks does so by default. An id the catalog does
+        // not list thinks when its name says `reasoning`.
+        let thinks = super::thinks(model);
+        let reasons = thinks.unwrap_or_else(|| model.contains("reasoning"));
+        const NO_FIELD: &str = "Cohere's chat API has no such field";
+        OptionMap {
+            reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
+                Reasoning::Off if reasons => {
+                    Mapping::Send(json!({"thinking": {"type": "disabled"}}))
+                }
+                Reasoning::Off => Mapping::Omit("the model does not think"),
+                Reasoning::Effort(_) | Reasoning::Budget { .. } if thinks == Some(false) => {
+                    Mapping::unsupported("the model does not think")
+                }
+                Reasoning::Effort(Effort::High) => {
+                    Mapping::Send(json!({"thinking": {"type": "enabled"}}))
+                }
+                Reasoning::Effort(effort) => Mapping::unsupported(format!(
+                    "Cohere takes thinking on or a token budget, not `{}`",
+                    effort.as_str()
+                )),
+                Reasoning::Budget { tokens } => Mapping::Send(json!({
+                    "thinking": {"type": "enabled", "token_budget": tokens},
+                })),
+            }),
+            cache: Mapping::of(cache, |cache| match cache {
+                CacheRetention::None => Mapping::Omit("Cohere does not cache prompts"),
+                CacheRetention::Short | CacheRetention::Long => {
+                    Mapping::unsupported("Cohere has no prompt cache")
+                }
+            }),
+            service_tier: Mapping::of(service_tier, |_| {
+                Mapping::unsupported("Cohere's `priority` is a queue position, not a tier")
+            }),
+            verbosity: Mapping::of(verbosity, |_| Mapping::unsupported(NO_FIELD)),
+            parallel_tool_calls: Mapping::of(parallel_tool_calls, |_| {
+                Mapping::unsupported(NO_FIELD)
+            }),
+            top_p: Mapping::of(top_p, |top_p| {
+                if (0.01..=0.99).contains(&top_p) {
+                    Mapping::Send(json!({ "p": top_p }))
+                } else {
+                    Mapping::unsupported("Cohere takes `p` from 0.01 to 0.99")
+                }
+            }),
+            seed: Mapping::of(seed, |seed| Mapping::Send(json!({ "seed": seed }))),
+            stop: Mapping::of_stop(stop, |stop| match stop.len() {
+                0..=5 => Mapping::Send(json!({ "stop_sequences": stop })),
+                _ => Mapping::unsupported("Cohere takes at most 5 stop sequences"),
+            }),
+        }
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static(API)
     }
@@ -457,7 +523,11 @@ impl crate::completion::ReplayTarget for NativeChat {
     /// assistant turns or tool results.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         crate::completion::Accepts {
-            user_images: super::reads_images(model),
+            user_images: crate::catalog::reads_images_or(
+                super::PROVIDER_NAME,
+                model,
+                super::reads_images,
+            ),
             assistant_images: false,
             tool_result_images: false,
             tools: true,

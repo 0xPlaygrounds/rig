@@ -6,6 +6,7 @@ use rig::message::{
 
 use crate::support::assert_nonempty_response;
 use rig::completion::CompletionRequest;
+use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions};
 
 /// Whether the interaction's steps carry a Google Search call or result, as a
 /// step of its own or as an item of a model output step.
@@ -49,10 +50,9 @@ async fn basic_interaction_returns_id() {
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let params = serde_json::json!({ "store": true });
             let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
                 .preamble("Be concise.")
-                .additional_params(params);
+                .provider_option(GeminiOptions::new().store(true));
             let response = model
                 .call(request)
                 .await
@@ -89,7 +89,7 @@ async fn followup_with_previous_interaction_id() {
             let initial = model
                 .call(
                     CompletionRequest::new("Give me one short fact about hummingbirds.")
-                        .additional_params(serde_json::json!({ "store": true })),
+                        .provider_option(GeminiOptions::new().store(true)),
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -104,9 +104,8 @@ async fn followup_with_previous_interaction_id() {
 
             let followup = model
                 .call(
-                    CompletionRequest::new("Now answer with a short analogy.").additional_params(
-                        serde_json::json!({ "previous_interaction_id": interaction_id }),
-                    ),
+                    CompletionRequest::new("Now answer with a short analogy.")
+                        .provider_option(continuing(interaction_id)),
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -174,7 +173,7 @@ async fn tool_result_roundtrip() {
                     CompletionRequest::new("Use the add tool to sum 7 and 11.")
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(serde_json::json!({ "store": true })),
+                        .provider_option(GeminiOptions::new().store(true)),
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -197,9 +196,7 @@ async fn tool_result_roundtrip() {
                         tool_call.function.name.clone(),
                         vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                     )))
-                    .additional_params(
-                        serde_json::json!({ "previous_interaction_id": interaction_id }),
-                    ),
+                    .provider_option(continuing(interaction_id)),
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -215,9 +212,13 @@ fn code_execution_request() -> CompletionRequest {
     CompletionRequest::new(
         "Use code execution to compute the sum of the first 50 prime numbers, then state it.",
     )
-    .additional_params(
-        serde_json::json!({ "store": false, "tools": [{ "type": "code_execution" }] }),
-    )
+    .provider_option(GeminiOptions::new().store(false))
+    .additional_params(serde_json::json!({ "tools": [{ "type": "code_execution" }] }))
+}
+
+/// Continue the stored interaction `id`.
+fn continuing(id: String) -> GeminiOptions {
+    GeminiOptions::new().interactions(InteractionsOptions::new().previous_interaction_id(id))
 }
 
 /// Rig's `Usage` against the Interactions `usage` object the reply carried:
@@ -420,4 +421,95 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
         }
     }
     assert_eq!(turns, 9, "every recorded turn was checked");
+}
+
+/// The recorded Google Search interaction cites its answer: each
+/// `url_citation` covers whole bullet lines when its offsets count bytes,
+/// as the API documents, and the en dash before them would shift them by
+/// two had they counted characters. A stream that sends the annotations
+/// after the text, as `text_annotation_delta`, cites the same and folds
+/// into the same turn.
+#[test]
+fn the_recorded_search_interaction_cites_its_answer_in_both_modes() {
+    use rig_core::wire::{Mode, WireFrame};
+    use serde_json::json;
+
+    let wire = rig::providers::gemini::interactions_api::Interactions::new(
+        rig_core::providers::gemini::GeminiConfig::new("test-key"),
+        "gemini-3-flash-preview",
+    );
+    let [(_, document)] = &crate::cassettes::recorded_json_turns(
+        "gemini",
+        "interactions_api/google_search_tool_interaction",
+    )[..] else {
+        panic!("the scenario records one turn");
+    };
+    // The same stream as `restated`, with each text item's annotations in
+    // a delta of their own after its text.
+    let streamed: Vec<WireFrame> = restated(document)
+        .into_iter()
+        .flat_map(|frame| {
+            let WireFrame::Text(text) = &frame else {
+                return vec![frame];
+            };
+            let mut event: serde_json::Value = serde_json::from_str(text).expect("JSON");
+            let annotations = event["delta"]
+                .as_object_mut()
+                .filter(|delta| delta.get("type") == Some(&json!("text")))
+                .and_then(|delta| delta.shift_remove("annotations"));
+            let Some(annotations) = annotations else {
+                return vec![frame];
+            };
+            let annotation = json!({
+                "event_type": "step.delta",
+                "index": event["index"],
+                "delta": {"type": "text_annotation_delta", "annotations": annotations},
+            });
+            vec![
+                WireFrame::Text(event.to_string()),
+                WireFrame::Text(annotation.to_string()),
+            ]
+        })
+        .collect();
+    let whole = [WireFrame::Text(document.to_string())];
+    rig_core::test_utils::history::assert_restated_agrees(&wire, whole.clone(), streamed.clone());
+    for (mode, frames) in [(Mode::Unary, whole.to_vec()), (Mode::Streaming, streamed)] {
+        let response = rig_core::test_utils::history::decode(&wire, mode, frames)
+            .unwrap_or_else(|error| panic!("{mode:?} decodes: {error}"));
+        let text = response
+            .choice
+            .iter()
+            .find_map(|block| match block {
+                AssistantContent::Text(text) if !text.citations().is_empty() => Some(text),
+                _ => None,
+            })
+            .expect("a cited answer");
+        let cited: Vec<_> = text
+            .citations()
+            .iter()
+            .map(|citation| {
+                let cited = text.cited(citation).expect("a span");
+                let [source] = &citation.sources[..] else {
+                    panic!("one source a citation");
+                };
+                let rig::message::SourceLocation::Url { url } = &source.location else {
+                    panic!("a web source: {source:?}");
+                };
+                assert!(url.starts_with("https://vertexaisearch.cloud.google.com/"));
+                (cited, source.title.as_deref())
+            })
+            .collect();
+        let record = "*   **Record-Breaking Title:** This was Spain's fourth European Championship title (following wins in 1964, 2008, and 2012), making them the most successful team in the tournament's history.";
+        let run = "*   **Perfect Run:** Spain became the first team to win all seven matches in a single European Championship tournament.";
+        assert_eq!(
+            cited,
+            [
+                (record, Some("wikipedia.org")),
+                (run, Some("youtube.com")),
+                (run, Some("youtube.com")),
+                (run, Some("wikipedia.org")),
+            ],
+            "{mode:?}"
+        );
+    }
 }

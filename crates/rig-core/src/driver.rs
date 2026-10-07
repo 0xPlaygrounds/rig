@@ -30,6 +30,7 @@ use crate::error::ProviderError;
 use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
 use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
+use crate::wire::document::Reassemble;
 use crate::wire::{
     Call, Capabilities, Decoder, Flow, Mode, Operation, Out, Request, Response, Shared, Wire,
     WireEvent,
@@ -170,8 +171,8 @@ impl<F: WasmCompatSend + 'static> Opened<F> {
         self
     }
 
-    /// The whole reply as one document: a response's `raw` when the decoder
-    /// records none.
+    /// The whole reply as one document: the response's `raw`. A reply
+    /// with one is not fed to the wire's reassembler.
     pub fn with_document(mut self, document: serde_json::Value) -> Self {
         self.document = Some(document);
         self
@@ -307,7 +308,9 @@ where
 
 /// Read one reply: open it, classify each frame, decode it into the reply's
 /// writer, and stop at the provider's end. The stream yields once per frame
-/// read, so its items reach the consumer frame by frame.
+/// read, so its items reach the consumer frame by frame. When the transport
+/// reported no whole document, the wire's reassembler sees every frame
+/// first, and what it rebuilds is the reply's `raw` however the reply ends.
 ///
 /// The reply's `'id` brand is the borrow of its shared state inside this
 /// stream: the decoder and every part handle it holds are tied to it, and
@@ -344,6 +347,7 @@ fn read<W: Wire>(
             }
         };
         record_request_id(&span, request_id.as_deref());
+        let mut reassembler = document.is_none().then(|| wire.reassembler());
         {
             let mut state = lock(reply);
             state.request_id.clone_from(&request_id);
@@ -366,8 +370,15 @@ fn read<W: Wire>(
         });
         loop {
             let flow = match frames.next().await {
-                Some(Ok(frame)) => step(&mut decoder, reply, frame, tally.as_mut()),
+                Some(Ok(frame)) => step(
+                    &mut decoder,
+                    reassembler.as_mut(),
+                    reply,
+                    frame,
+                    tally.as_mut(),
+                ),
                 Some(Err(error)) => {
+                    record(reply, reassembler.map(|document| document.finish()));
                     fail(reply, slot.as_ref(), error);
                     return;
                 }
@@ -377,11 +388,13 @@ fn read<W: Wire>(
                 Ok(Flow::More) => yield (),
                 Ok(Flow::Ended(_)) => break,
                 Err(error) => {
+                    record(reply, reassembler.map(|document| document.finish()));
                     fail(reply, slot.as_ref(), enrich(error));
                     return;
                 }
             }
         }
+        record(reply, reassembler.map(|document| document.finish()));
         if let Some(slot) = &slot {
             slot.finish(AdapterEnding::Terminal);
         }
@@ -442,10 +455,11 @@ pub(crate) fn triage<E>(event: WireEvent<E>) -> Result<Item<E>, ProviderError> {
     }
 }
 
-/// Classify one frame and decode it into `reply`, counting it in `tally`
-/// when the reply is observed.
-pub(crate) fn step<'id, Op, F, D>(
+/// Hand one frame to `reassembler`, then classify it and decode it into
+/// `reply`, counting it in `tally` when the reply is observed.
+pub(crate) fn step<'id, Op, F, D, R>(
     decoder: &mut D,
+    reassembler: Option<&mut R>,
     reply: &'id Mutex<Shared<Op>>,
     frame: F,
     tally: Option<&mut Tally<'_, F>>,
@@ -453,7 +467,11 @@ pub(crate) fn step<'id, Op, F, D>(
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
+    R: Reassemble<F>,
 {
+    if let Some(reassembler) = reassembler {
+        reassembler.absorb(&frame);
+    }
     let exempt = tally
         .as_ref()
         .and_then(|tally| tally.analysis_only)
@@ -504,24 +522,55 @@ where
     }
 }
 
-/// Feed frames already in hand through `decoder` into `reply`, as [`read`]
-/// does: the reply ends at the provider's end, or the decoder decides at EOF.
+/// Feed frames already in hand through `reassembler` and `decoder` into
+/// `reply`, as [`read`] does: the reply ends at the provider's end, or the
+/// decoder decides at EOF, and what the reassembler rebuilt is recorded.
 #[cfg(any(test, feature = "websocket", feature = "test-utils"))]
-pub(crate) fn feed<'id, Op, F, D>(
+pub(crate) fn feed<'id, Op, F, D, R>(
     decoder: &mut D,
+    mut reassembler: Option<R>,
     reply: &'id Mutex<Shared<Op>>,
     frames: impl IntoIterator<Item = F>,
 ) -> Result<(), ProviderError>
 where
     Op: Operation,
     D: Decoder<'id, Op, F>,
+    R: Reassemble<F>,
+{
+    let fed = feed_until_end(decoder, reassembler.as_mut(), reply, frames);
+    record(reply, reassembler.map(|document| document.finish()));
+    fed
+}
+
+#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
+fn feed_until_end<'id, Op, F, D, R>(
+    decoder: &mut D,
+    mut reassembler: Option<&mut R>,
+    reply: &'id Mutex<Shared<Op>>,
+    frames: impl IntoIterator<Item = F>,
+) -> Result<(), ProviderError>
+where
+    Op: Operation,
+    D: Decoder<'id, Op, F>,
+    R: Reassemble<F>,
 {
     for frame in frames {
-        if let Flow::Ended(_) = step(decoder, reply, frame, None)? {
+        if let Flow::Ended(_) = step(decoder, reassembler.as_deref_mut(), reply, frame, None)? {
             return Ok(());
         }
     }
     eof(decoder, reply, None).map(drop)
+}
+
+/// Record `document`, what a reassembler rebuilt, as the reply's `raw`. A
+/// `Null` document records nothing.
+pub(crate) fn record<Op: Operation>(
+    reply: &Mutex<Shared<Op>>,
+    document: Option<serde_json::Value>,
+) {
+    if let Some(document) = document.filter(|document| !document.is_null()) {
+        lock(reply).raw = Some(document);
+    }
 }
 
 /// Fold a fed reply as a stream does: its items, then its response, or the
@@ -583,7 +632,12 @@ where
     let shared = Mutex::new(Shared::new(crate::operation::Turn::relayed(
         provider.clone(),
     )));
-    let fed = feed(&mut wire.decoder(), &shared, frames);
+    let fed = feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
     let decoded = settle(
         shared,
         fed,
@@ -671,7 +725,8 @@ pub(crate) use decode_events;
 
 /// Decode `frames` through `decoder`, classifier included, as one
 /// completion reply from `provider`: what the driver does with frames it
-/// read.
+/// read. A reassembler, when given, sees each frame first and its document
+/// is the reply's `raw`.
 #[cfg(test)]
 macro_rules! feed_frames {
     ($decoder:expr, $provider:expr, $frames:expr) => {
@@ -680,7 +735,21 @@ macro_rules! feed_frames {
             $provider,
             |reply| {
                 let mut decoder = $decoder;
-                reply.feed(&mut decoder, $frames)
+                reply.feed(
+                    &mut decoder,
+                    None::<$crate::wire::document::Unreassembled>,
+                    $frames,
+                )
+            },
+        )
+    };
+    ($decoder:expr, $reassembler:expr, $provider:expr, $frames:expr) => {
+        $crate::driver::decode_with(
+            $crate::operation::Turn::relayed($provider),
+            $provider,
+            |reply| {
+                let mut decoder = $decoder;
+                reply.feed(&mut decoder, Some($reassembler), $frames)
             },
         )
     };
@@ -699,13 +768,14 @@ impl<'id, Op: Operation> Replying<'id, Op> {
         Out::new(self.0)
     }
 
-    /// Feed frames through `decoder`, as the driver does.
-    pub(crate) fn feed<F, D: Decoder<'id, Op, F>>(
+    /// Feed frames through `reassembler` and `decoder`, as the driver does.
+    pub(crate) fn feed<F, D: Decoder<'id, Op, F>, R: Reassemble<F>>(
         &self,
         decoder: &mut D,
+        reassembler: Option<R>,
         frames: impl IntoIterator<Item = F>,
     ) -> Result<(), ProviderError> {
-        feed(decoder, self.0, frames)
+        feed(decoder, reassembler, self.0, frames)
     }
 }
 

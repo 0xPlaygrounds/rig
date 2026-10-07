@@ -218,12 +218,10 @@ impl AgentHook for FinishLifecycleHook {
 }
 
 fn canonical_usage() -> Usage {
-    Usage {
-        input_tokens: Some(11),
-        output_tokens: Some(7),
-        total_tokens: Some(18),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(11)
+        .output_tokens(7)
+        .total_tokens(18)
 }
 
 /// One hook observation per completed model call carries the attempt's
@@ -1475,11 +1473,7 @@ mod span_safety_net {
     use crate::tool::{ToolContext, ToolExecutionError};
 
     fn usage(input: u64, output: u64) -> Usage {
-        Usage {
-            input_tokens: Some(input),
-            output_tokens: Some(output),
-            ..Usage::default()
-        }
+        Usage::new().input_tokens(input).output_tokens(output)
     }
 
     /// Two-turn tool scenario: the blocking driver emits chat -> execute_tool
@@ -4550,12 +4544,10 @@ impl AgentHook for BoundedResponseRetry {
 }
 
 fn retry_usage(input_tokens: u64, output_tokens: u64) -> Usage {
-    Usage {
-        input_tokens: Some(input_tokens),
-        output_tokens: Some(output_tokens),
-        total_tokens: Some(input_tokens + output_tokens),
-        ..Usage::default()
-    }
+    Usage::new()
+        .input_tokens(input_tokens)
+        .output_tokens(output_tokens)
+        .total_tokens(input_tokens + output_tokens)
 }
 
 // ---------------------------------------------------------------------
@@ -4999,15 +4991,15 @@ async fn outcome_stop_is_terminal_through_nested_hooks_on_both_surfaces() {
 
 /// The assistant message a scripted mock reply of `text` folds into.
 fn mock_reply(text: &str) -> Message {
-    Message::Assistant(rig_core::message::AssistantMessage {
-        content: vec![AssistantContent::text(text)],
-        origin: Some(rig_core::message::Origin::new(
-            rig_core::test_utils::MOCK_API,
-            rig_core::test_utils::MOCK_PROVIDER,
-            rig_core::test_utils::MOCK_MODEL,
-        )),
-        stop: Some(rig_core::message::StopReason::Stop),
-    })
+    Message::Assistant(
+        rig_core::message::AssistantMessage::new(vec![AssistantContent::text(text)])
+            .with_origin(rig_core::message::Origin::new(
+                rig_core::test_utils::MOCK_API,
+                rig_core::test_utils::MOCK_PROVIDER,
+                rig_core::test_utils::MOCK_MODEL,
+            ))
+            .with_stop(rig_core::message::StopReason::Stop),
+    )
 }
 
 /// `messages` with every assistant turn's origin, stop and provider items

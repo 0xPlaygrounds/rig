@@ -10,14 +10,13 @@
 //! nothing about it reaches the wire, and a `Value::Null` only ever means a
 //! terminal built by hand with no provider record behind it. It is the
 //! terminal record only, never the stream's frames. Venice stamps the
-//! request's `cost` on the terminal frame alone, and the terminal's
-//! accumulated `additional_params` keeps it, alongside the `object` tag the
-//! frames repeat; neither has a slot on the normalized terminal, so both are
-//! pinned here as reachable only through `raw`.
+//! request's `cost` on the terminal frame alone, and the rebuilt document
+//! keeps it, alongside the `object` tag the frames repeat. The tag has no
+//! slot on the normalized terminal; the cost is its usage's cost.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.additional_params.cost.usd` equals the recorded terminal frame's, and no earlier frame carried a cost | recorded |
+//! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.cost.usd` and the usage's cost equal the recorded terminal frame's, and no earlier frame carried a cost | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears on exactly one frame — the stream's last
@@ -81,16 +80,14 @@ async fn stream_raw_exposes_terminal_cost() {
         "exactly the terminal frame carries cost"
     );
 
+    // The rebuilt document states the cost where a unary body does, and
+    // carries the unary tag.
     let raw = &terminal.raw;
+    assert_eq!(raw["cost"]["usd"], json!(recorded_cost));
+    assert_eq!(raw["object"], json!("chat.completion"));
+    // The normalized terminal reports it as the usage's cost.
     assert_eq!(
-        raw["additional_params"]["cost"]["usd"],
-        json!(recorded_cost)
+        terminal.usage.cost.map(|cost| cost.total),
+        Some(recorded_cost)
     );
-    assert_eq!(
-        raw["additional_params"]["object"],
-        json!("chat.completion.chunk")
-    );
-    // The normalized terminal has no slot for either.
-    let normalized = crate::support::normalized_without_raw(terminal.clone());
-    crate::raw_capture::assert_normalized_lacks(&normalized, &["cost", "additional_params"]);
 }

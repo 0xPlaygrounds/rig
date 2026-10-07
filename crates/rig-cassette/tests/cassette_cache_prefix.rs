@@ -756,34 +756,28 @@ fn determinism_probe_request() -> CompletionRequest {
         .collect(),
     };
 
-    CompletionRequest {
-        chat_history: vec![
-            Message::system("You are a deterministic serialization probe."),
-            Message::User {
-                content: vec![UserContent::text("probe")],
-            },
-        ],
-        documents: vec![document],
-        tools: vec![
-            tool("alpha_probe", "alpha_first", "alpha_second"),
-            tool("beta_probe", "beta_first", "beta_second"),
-            tool("gamma_probe", "gamma_first", "gamma_second"),
-        ],
-        temperature: Some(0.0),
-        max_tokens: Some(16),
-        tool_choice: None,
-        additional_params: Some(serde_json::json!({
-            "seed": 7,
-            "top_p": 0.5,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
-            "user": "cache-determinism-probe",
-        })),
-        model: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(vec![
+        Message::system("You are a deterministic serialization probe."),
+        Message::User {
+            content: vec![UserContent::text("probe")],
+        },
+    ]);
+    request.documents = vec![document];
+    request.tools = vec![
+        tool("alpha_probe", "alpha_first", "alpha_second"),
+        tool("beta_probe", "beta_first", "beta_second"),
+        tool("gamma_probe", "gamma_first", "gamma_second"),
+    ];
+    request.temperature = Some(0.0);
+    request.max_tokens = Some(16);
+    request.additional_params = Some(serde_json::json!({
+        "seed": 7,
+        "top_p": 0.5,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0,
+        "user": "cache-determinism-probe",
+    }));
+    request
 }
 
 /// The single request body a recording transport captured.

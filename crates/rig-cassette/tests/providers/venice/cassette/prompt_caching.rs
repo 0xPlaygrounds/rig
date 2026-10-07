@@ -103,9 +103,12 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
             max_tokens: ANSWERING_MAX_TOKENS,
             ..probe()
         }
-        .with_additional_params(serde_json::json!({
-            "prompt_cache_key": "rig-cache-conformance-venice",
-        }));
+        .with_provider_options(
+            rig::completion::ProviderOptions::new().set(
+                rig::providers::venice::extension::VeniceOptions::new()
+                    .prompt_cache_key("rig-cache-conformance-venice"),
+            ),
+        );
         let observation = run_cache_probe(model, &probe).await;
         assert_cache_conformance(&observation, &VENICE_KEYED_SUPPORT, "keyed probe");
     })

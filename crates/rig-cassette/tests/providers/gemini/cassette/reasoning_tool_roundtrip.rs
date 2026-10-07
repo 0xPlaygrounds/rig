@@ -6,7 +6,8 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::Message;
+use rig::completion::{Message, Reasoning};
+use rig::providers::gemini::extension::GeminiOptions;
 
 use crate::reasoning::{self, WeatherTool};
 
@@ -20,11 +21,8 @@ async fn nonstreaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "generationConfig": {
-                        "thinkingConfig": { "thinkingBudget": 4096, "includeThoughts": true }
-                    }
-                }))
+                .reasoning(Reasoning::Budget { tokens: 4096 })
+                .provider_option(include_thoughts())
                 .default_max_turns(2)
                 .build();
 
@@ -37,4 +35,9 @@ async fn nonstreaming() {
         },
     )
     .await;
+}
+
+/// `includeThoughts`, beside the typed thinking budget.
+fn include_thoughts() -> GeminiOptions {
+    GeminiOptions::new().include_thoughts(true)
 }

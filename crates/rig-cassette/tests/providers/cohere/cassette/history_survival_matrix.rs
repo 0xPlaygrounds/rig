@@ -17,6 +17,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "cohere",
         model: rig::providers::cohere::COMMAND_A_03_2025,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 2048,
         transport,
         expect,

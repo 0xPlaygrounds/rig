@@ -13,7 +13,7 @@ use rig::message::AssistantContent;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_cassette;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 /// Anthropic's documented test string that forces the model to emit
 /// `redacted_thinking` blocks when extended thinking is enabled.
@@ -23,10 +23,8 @@ fn redacted_thinking_prompt() -> String {
     format!("{REDACTED_THINKING_MAGIC_STRING} Reply with the single word OK.")
 }
 
-fn thinking_params() -> serde_json::Value {
-    serde_json::json!({
-        "thinking": { "type": "enabled", "budget_tokens": 1024 }
-    })
+fn thinking_options() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 })
 }
 
 fn has_redacted_reasoning(content: &AssistantContent) -> bool {
@@ -45,7 +43,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
 
             let first_request = CompletionRequest::new(redacted_thinking_prompt())
                 .max_tokens(4096)
-                .additional_params(thinking_params());
+                .options(thinking_options());
             let first_response = model
                 .call(first_request)
                 .await
@@ -62,12 +60,13 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
             let second_request =
                 CompletionRequest::new("Thanks. Now reply with the single word DONE.")
                     .max_tokens(4096)
-                    .additional_params(thinking_params())
+                    .options(thinking_options())
                     .message(Message::user(redacted_thinking_prompt()))
-                    .message(Message::Assistant(rig::message::AssistantMessage {
-                        content: first_response.choice.clone(),
-                        ..first_response.head()
-                    }));
+                    .message(Message::Assistant(
+                        first_response
+                            .head()
+                            .with_content(first_response.choice.clone()),
+                    ));
 
             let second_response = model
                 .call(second_request)

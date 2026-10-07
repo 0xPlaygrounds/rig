@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
@@ -23,10 +24,9 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 };
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
-use crate::providers::openai::completion as models;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Body, Capabilities, Decoder, Descriptor, Encoded,
-    Flow, Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
+    AdapterEvent, AdapterUsage, AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow,
+    Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::merge_fields;
@@ -46,9 +46,6 @@ pub struct Chat {
     pub strict_tools: bool,
     /// Whether tool-result messages serialize their content as arrays.
     pub tool_result_array_content: bool,
-    /// Whether the request asks for provider-side prompt caching
-    /// (OpenRouter's ephemeral `cache_control` on the system prompt).
-    pub prompt_caching: bool,
 }
 
 /// The error for media in a form Chat Completions cannot carry, which the
@@ -185,27 +182,43 @@ impl Chat {
             &request,
             http::Request::post(uri).header("Content-Type", "application/json"),
         );
-        let mut body = self.body(request)?;
+        let mut rewrites = Vec::new();
+        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies {
+            rewrites.push(Rewrite::OutputCapRename);
+        }
         if mode == Mode::Streaming {
             // A caller's own stream options, `include_usage` among them, stand.
-            if quirks.stream_include_usage
-                && let Some(options) = body
-                    .entry("stream_options")
-                    .or_insert_with(|| json!({}))
-                    .as_object_mut()
-            {
-                options.entry("include_usage").or_insert(Value::Bool(true));
+            if quirks.stream_include_usage {
+                rewrites.push(Rewrite::StreamUsage);
             }
-            body.insert("stream".to_owned(), Value::Bool(true));
+            rewrites.push(Rewrite::Stream(true));
         }
-        self.rewrite(&mut body)?;
-        let body = Value::Object(body);
+        rewrites.push(Rewrite::ChatDialect(quirks.rewrite));
+        let raw_at = match quirks.rewrite {
+            BodyRewrite::Mira => RawAt::Ignored(
+                "Additional parameters are not supported by Mira and will be ignored",
+            ),
+            _ => RawAt::Top,
+        };
+        let body = request_params(
+            self,
+            &request,
+            |input| self.base(&request, input),
+            raw_at,
+            &rewrites,
+        )?;
+        let body = crate::providers::openai::options::check_body(
+            self,
+            &request,
+            body,
+            crate::providers::openai::options::Endpoint::ChatCompletions,
+        )?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             "OpenAI Chat Completions request",
             &body,
         );
-        let request = builder.body(Body::Bytes(serde_json::to_vec(&body)?))?;
+        let request = builder.body(body.into_body())?;
         let framing = match mode {
             Mode::Streaming => Framing::Sse,
             Mode::Unary => Framing::Whole,
@@ -218,24 +231,34 @@ impl Chat {
 
     /// The field every assistant message carries its reasoning under,
     /// empty when the turn has none (pi's
-    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own, and
-    /// `reasoning_content` for DeepSeek at any base URL, for Kimi K3 under
-    /// any gateway's path, and for OpenRouter's Kimi K2.6, as pi's catalogue
-    /// marks them.
+    /// `requiresReasoningContentOnAssistantMessages`): the dialect's own,
+    /// `reasoning_content` for DeepSeek at any base URL, and the field a
+    /// catalog entry names for the model on this dialect, on Moonshot's own
+    /// API under its last path segment (Kimi K3 behind any gateway), or on
+    /// OpenRouter under its full id (`moonshotai/kimi-k2.6` behind any
+    /// gateway). Each lookup is asked for the field, not just the entry, so a
+    /// gateway's own row without one does not hide the vendor's.
     fn reasoning_field(&self, model: &str) -> Option<&'static str> {
+        use crate::providers::openai::wire::{MOONSHOT, OPENROUTER};
         let deepseek = self
             .provider
             .base_url
             .to_ascii_lowercase()
             .contains("deepseek.com");
         let name = model.rsplit('/').next().unwrap_or(model);
-        let listed = is_model(name, crate::providers::moonshot::KIMI_K3)
-            || is_model(model, "moonshotai/kimi-k2.6");
+        let field = |vendor: &str, id: &str| {
+            crate::catalog::lookup(vendor, id)
+                .and_then(|spec| spec.compat.reasoning_field.as_deref())
+        };
+        let listed = field(self.provider.dialect.name, model)
+            .or_else(|| field(MOONSHOT.name, name))
+            .or_else(|| field(OPENROUTER.name, model));
         self.provider
             .dialect
             .quirks
             .reasoning_field
-            .or((deepseek || listed).then_some("reasoning_content"))
+            .or(deepseek.then_some("reasoning_content"))
+            .or(listed)
     }
 
     /// The wire for `model` on `provider`, with every option off.
@@ -245,7 +268,6 @@ impl Chat {
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
-            prompt_caching: false,
         }
     }
 
@@ -262,42 +284,23 @@ impl Chat {
         self
     }
 
-    /// Ask the provider to cache the prompt.
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// The request body, before the stream options and the dialect's final
-    /// rewrite. `additional_params` is flattened in last, so its keys
-    /// override the typed ones.
-    fn body(&self, request: CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
+    /// The wire's own encoding of `request`: messages, tools and the typed
+    /// fields. The mapped options and `additional_params` merge over it.
+    fn base(
+        &self,
+        request: &CompletionRequest,
+        input: &mut BaseInput<'_>,
+    ) -> Result<Map<String, Value>, EncodeError> {
         let quirks = &self.provider.dialect.quirks;
         let mut model = request.model.clone().unwrap_or_else(|| self.model.clone());
         if quirks.rewrite == BodyRewrite::HuggingFaceRouter {
             // Some sub-providers (Fireworks) address models by a qualified id.
             model = self.provider.route().model_identifier(&model);
         }
-        let mut params = match request.additional_params {
-            None | Some(Value::Null) => Map::new(),
-            Some(Value::Object(params)) => params,
-            Some(_) => {
-                return Err(EncodeError::request(
-                    "Chat Completions `additional_params` must be a JSON object",
-                ));
-            }
-        };
-        if quirks.rewrite == BodyRewrite::Mira && !params.is_empty() {
-            // The gateway rejects pass-through parameters.
-            tracing::warn!("Additional parameters are not supported by Mira and will be ignored");
-            params.clear();
-        }
+        let passthrough = input.raw_tools()?;
         // A call to a custom tool the request declares is a custom call (pi).
-        let custom: Vec<String> = params
-            .get("tools")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
+        let custom: Vec<String> = passthrough
+            .iter()
             .filter(|tool| tool.str("type") == Some("custom"))
             .filter_map(|tool| tool.at("/custom/name").and_then(Value::as_str))
             .map(str::to_owned)
@@ -322,17 +325,8 @@ impl Chat {
                 tools.push(json!({"type": "function", "function": function}));
             }
             // Passthrough tools, function or native (Groq's `browser_search`),
-            // join the typed ones in one array, which a flattened `tools` key
-            // would otherwise replace.
-            if let Some(passthrough) = params.shift_remove("tools") {
-                let Value::Array(passthrough) = passthrough else {
-                    return Err(EncodeError::request(
-                        "Invalid OpenAI Chat Completions `additional_params.tools` payload: \
-                         expected an array",
-                    ));
-                };
-                tools.extend(passthrough);
-            }
+            // join the typed ones in one array.
+            tools.extend(passthrough);
             tool_choice = request
                 .tool_choice
                 .clone()
@@ -346,6 +340,9 @@ impl Chat {
             if request.tool_choice.is_some() {
                 tracing::warn!("Tool choice is not supported by this provider and will be ignored");
             }
+            // The caller's own tools still reach a dialect that takes none,
+            // as `additional_params` always did.
+            tools.extend(passthrough);
         }
 
         if request.output_schema.is_some() && !quirks.supports_response_format {
@@ -357,17 +354,17 @@ impl Chat {
         let answered = messages
             .iter()
             .any(|message| message.str("role") == Some("tool"));
-        if let Some(schema) = request.output_schema
-            && quirks.supports_response_format
-            && (quirks.response_format_with_tools || tools.is_empty() || answered)
-        {
-            let (name, schema) = crate::providers::openai::structured_output_schema(schema);
-            params.insert(
-                "response_format".to_owned(),
-                json!({"type": "json_schema",
-                    "json_schema": {"name": name, "strict": true, "schema": schema}}),
-            );
-        }
+        let response_format = match request.output_schema.clone() {
+            Some(schema)
+                if quirks.supports_response_format
+                    && (quirks.response_format_with_tools || tools.is_empty() || answered) =>
+            {
+                let (name, schema) = crate::providers::openai::structured_output_schema(schema);
+                Some(json!({"type": "json_schema",
+                    "json_schema": {"name": name, "strict": true, "schema": schema}}))
+            }
+            _ => None,
+        };
 
         let fields = [
             ("model", Some(Value::String(model))),
@@ -376,25 +373,12 @@ impl Chat {
             ("tool_choice", tool_choice),
             ("temperature", request.temperature.map(Value::from)),
             ("max_tokens", request.max_tokens.map(Value::from)),
+            ("response_format", response_format),
         ];
-        let mut body: Map<String, Value> = fields
+        Ok(fields
             .into_iter()
             .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-            .collect();
-        body.extend(params);
-        // The resolved model, not the handle's: a per-request override
-        // changes which endpoint answers, so it decides the spelling too.
-        let model = body
-            .get("model")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if quirks.output_cap == OutputCap::OpenAiReasoningFamilies
-            && models::is_openai_reasoning_model(model)
-            && let Some(max_tokens) = body.shift_remove("max_tokens")
-        {
-            body.entry("max_completion_tokens").or_insert(max_tokens);
-        }
-        Ok(body)
+            .collect())
     }
 
     /// The history as Chat messages, each call and result spelled by one
@@ -549,72 +533,74 @@ impl Chat {
         }
         has_content.then_some(Value::Object(message))
     }
+}
 
-    /// The dialect's rewrite of the finished body ([`BodyRewrite`]): a
-    /// refusal where the provider would answer with an error or silently do
-    /// something else, Moonshot's steering for `required`, and each
-    /// dialect's spellings and content shapes.
-    fn rewrite(&self, map: &mut Map<String, Value>) -> Result<(), EncodeError> {
-        let forced = map
-            .get("tool_choice")
-            .and_then(|choice| choice.at("/function/name"))
-            .and_then(Value::as_str)
-            .map(str::to_owned);
-        match self.provider.dialect.quirks.rewrite {
-            BodyRewrite::LlamaCpp => {
-                if let Some(name) = forced {
-                    return Err(EncodeError::request(format!(
-                        "llama.cpp cannot force a specific tool: `llama-server` accepts only \
-                         `auto`, `none` or `required` for tool_choice and silently treats \
-                         anything else as `auto`, so requesting `{name}` would return whichever \
-                         tool the model picked. Use `ToolChoice::Required` to force a call, or \
-                         advertise only `{name}` in `tools`."
-                    )));
-                }
+/// The dialect's rewrite of the finished body ([`BodyRewrite`]): a refusal
+/// where the provider would answer with an error or silently do something
+/// else, Moonshot's steering for `required`, and each dialect's spellings and
+/// content shapes. It runs after the merge and reads the merged body.
+pub(crate) fn rewrite_body(
+    kind: BodyRewrite,
+    map: &mut Map<String, Value>,
+) -> Result<(), EncodeError> {
+    let forced = map
+        .get("tool_choice")
+        .and_then(|choice| choice.at("/function/name"))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    match kind {
+        BodyRewrite::LlamaCpp => {
+            if let Some(name) = forced {
+                return Err(EncodeError::request(format!(
+                    "llama.cpp cannot force a specific tool: `llama-server` accepts only \
+                     `auto`, `none` or `required` for tool_choice and silently treats \
+                     anything else as `auto`, so requesting `{name}` would return whichever \
+                     tool the model picked. Use `ToolChoice::Required` to force a call, or \
+                     advertise only `{name}` in `tools`."
+                )));
             }
-            BodyRewrite::Moonshot => {
-                if forced.is_some() {
-                    return Err(EncodeError::request(
-                        "Moonshot does not support forcing a specific tool",
-                    ));
-                }
-                if map.get("tool_choice").and_then(Value::as_str) == Some("required") {
-                    tracing::warn!(
-                        "Moonshot does not support tool_choice=required; coercing to auto with an \
-                         additional steering message"
-                    );
-                    map.insert("tool_choice".to_owned(), Value::from("auto"));
-                    if let Some(Value::Array(messages)) = map.get_mut("messages") {
-                        messages.push(json!({"role": "user",
-                            "content": "Please select a tool to handle the current issue."}));
-                    }
-                }
-            }
-            // The gateway takes every message's content as one string.
-            // Perplexity spends output budget on a text-part array (a short
-            // `max_tokens` comes back empty at `length`, checked live), so
-            // text-only arrays go as one string; the gateway takes every
-            // content as one string.
-            BodyRewrite::Perplexity | BodyRewrite::Mira => {
-                let all = self.provider.dialect.quirks.rewrite == BodyRewrite::Mira;
-                for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
-                    if let Value::Array(parts) = content
-                        && (all || parts.iter().all(|part| part.str("type") == Some("text")))
-                    {
-                        let texts: Vec<&str> =
-                            parts.iter().filter_map(|part| part.str("text")).collect();
-                        *content = Value::String(texts.join("\n"));
-                    }
-                }
-            }
-            BodyRewrite::DeepSeek => finalize_deepseek(map),
-            BodyRewrite::Mistral => finalize_mistral(map),
-            BodyRewrite::Ollama => finalize_ollama(map)?,
-            BodyRewrite::OpenRouter if self.prompt_caching => apply_openrouter_prompt_caching(map),
-            BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
         }
-        Ok(())
+        BodyRewrite::Moonshot => {
+            if forced.is_some() {
+                return Err(EncodeError::request(
+                    "Moonshot does not support forcing a specific tool",
+                ));
+            }
+            if map.get("tool_choice").and_then(Value::as_str) == Some("required") {
+                tracing::warn!(
+                    "Moonshot does not support tool_choice=required; coercing to auto with an \
+                     additional steering message"
+                );
+                map.insert("tool_choice".to_owned(), Value::from("auto"));
+                if let Some(Value::Array(messages)) = map.get_mut("messages") {
+                    messages.push(json!({"role": "user",
+                        "content": "Please select a tool to handle the current issue."}));
+                }
+            }
+        }
+        // The gateway takes every message's content as one string.
+        // Perplexity spends output budget on a text-part array (a short
+        // `max_tokens` comes back empty at `length`, checked live), so
+        // text-only arrays go as one string; the gateway takes every
+        // content as one string.
+        BodyRewrite::Perplexity | BodyRewrite::Mira => {
+            let all = kind == BodyRewrite::Mira;
+            for content in messages_mut(map).filter_map(|message| message.get_mut("content")) {
+                if let Value::Array(parts) = content
+                    && (all || parts.iter().all(|part| part.str("type") == Some("text")))
+                {
+                    let texts: Vec<&str> =
+                        parts.iter().filter_map(|part| part.str("text")).collect();
+                    *content = Value::String(texts.join("\n"));
+                }
+            }
+        }
+        BodyRewrite::DeepSeek => finalize_deepseek(map),
+        BodyRewrite::Mistral => finalize_mistral(map),
+        BodyRewrite::Ollama => finalize_ollama(map)?,
+        BodyRewrite::None | BodyRewrite::OpenRouter | BodyRewrite::HuggingFaceRouter => {}
     }
+    Ok(())
 }
 
 /// `call` as the item the wire sends, from what replay hands the encoder:
@@ -685,10 +671,8 @@ fn tool_choice_value(choice: crate::message::ToolChoice) -> Result<Value, Encode
     })
 }
 
-/// Ollama's OpenAI-compatible body. `keep_alive` passes as it is, and
-/// `think` becomes `reasoning_effort`: `true` is `medium`, `false` is
-/// `none`, and a level passes through. `num_ctx` and `options` are refused:
-/// this API ignores them, and only the native route sends them.
+/// Ollama's OpenAI-compatible body: `num_ctx` and `options` are refused,
+/// because this API ignores them and only the native route sends them.
 fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
     if let Some(key) = ["num_ctx", "options"]
         .into_iter()
@@ -699,25 +683,6 @@ fn finalize_ollama(map: &mut Map<String, Value>) -> Result<(), EncodeError> {
              route (`Ollama::native_completion`)"
         )));
     }
-    let Some(think) = map.shift_remove("think") else {
-        return Ok(());
-    };
-    if map.contains_key("reasoning_effort") {
-        return Err(EncodeError::request(
-            "Ollama takes one of `think` and `reasoning_effort`, not both",
-        ));
-    }
-    let effort = match think {
-        Value::Bool(true) => Value::from("medium"),
-        Value::Bool(false) => Value::from("none"),
-        level @ Value::String(_) => level,
-        _ => {
-            return Err(EncodeError::request(
-                "Ollama `think` must be a boolean or a thinking level",
-            ));
-        }
-    };
-    map.insert("reasoning_effort".to_owned(), effort);
     Ok(())
 }
 
@@ -728,13 +693,6 @@ fn messages_mut(map: &mut Map<String, Value>) -> impl Iterator<Item = &mut Map<S
         .into_iter()
         .flatten()
         .filter_map(Value::as_object_mut)
-}
-
-/// Whether `model` is `id` or one of its dated snapshots (`<id>-YYYY-MM-DD`).
-fn is_model(model: &str, id: &str) -> bool {
-    model
-        .strip_prefix(id)
-        .is_some_and(|rest| rest.is_empty() || rest.starts_with("-20"))
 }
 
 /// DeepSeek rejects a forced tool choice while thinking, and every model
@@ -811,42 +769,12 @@ fn mistral_chunk(part: &Value) -> Value {
     }
 }
 
-/// OpenRouter's ephemeral `cache_control` on the system prompt: on its
-/// text, or on the last of its parts.
-fn apply_openrouter_prompt_caching(map: &mut Map<String, Value>) {
-    let Some(system) = map
-        .get_mut("messages")
-        .and_then(Value::as_array_mut)
-        .and_then(|messages| {
-            messages
-                .iter_mut()
-                .find(|message| message.str("role") == Some("system"))
-        })
-        .and_then(Value::as_object_mut)
-    else {
-        return;
-    };
-    let ephemeral = json!({"type": "ephemeral"});
-    let content = match system.get_mut("content") {
-        Some(Value::String(text)) => {
-            json!([{"type": "text", "text": text, "cache_control": ephemeral}])
-        }
-        Some(Value::Array(parts)) => {
-            if let Some(Value::Object(last)) = parts.last_mut() {
-                last.insert("cache_control".to_owned(), ephemeral);
-            }
-            return;
-        }
-        _ => return,
-    };
-    system.insert("content".to_owned(), content);
-}
-
 impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ChatDecoder;
+    type Reassembler = document::ChatCompletion;
 
     /// Format deferral permits tool composition; dialects without schema
     /// support require the agent's tool-mode enforcement instead.
@@ -868,9 +796,22 @@ impl Wire for Chat {
     fn decoder<'id>(&self) -> Self::Decoder<'id> {
         ChatDecoder::new(self.provider.dialect.quirks)
     }
+
+    fn reassembler(&self) -> Self::Reassembler {
+        document::ChatCompletion::new(self.provider.dialect.quirks)
+    }
 }
 
 impl crate::completion::ReplayTarget for Chat {
+    /// Section 6.2 of the typed-options design, by dialect.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        crate::providers::openai::options::chat_options(self, request, fields)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("openai.chat")
     }
@@ -1040,40 +981,47 @@ impl crate::completion::ReplayTarget for Chat {
     }
 }
 
-/// Whether `model` reads user images from `vendor`, a dialect's name or the
-/// vendor an OpenRouter model id starts with, by the provider's documented
-/// model rules. A model the rules do not name reads them. DeepSeek's API
-/// takes text content only (it answers an image part with a 400) and
-/// Mira's gateway takes text; Groq reads images on its Llama 4 models;
-/// Mistral's Codestral and Devstral are text models; OpenAI, xAI, Z.AI,
-/// Moonshot, MiniMax and MiMo apply the rules their other wires share.
-fn vendor_reads_images(vendor: &str, model: &str) -> bool {
+/// The catalog vendor whose entries say which models `vendor` serves read
+/// images, and the naming rule for an id the catalog does not list:
+/// `vendor` is a dialect's name or the vendor an OpenRouter model id starts
+/// with. Groq reads images on its Llama 4 models; Mistral's Codestral and
+/// Devstral are text models; OpenAI (on Azure too), xAI, Cohere, Z.AI,
+/// Moonshot, MiniMax and MiMo apply the rules their other wires share; any
+/// other vendor's unlisted model reads them. `None` for DeepSeek's API,
+/// which takes text content only (it answers an image part with a 400), and
+/// Mira's gateway, which takes text, whatever the model.
+fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
     use crate::providers::{minimax, moonshot, xiaomimimo, zai};
-    match vendor {
-        "deepseek" | "mira" => false,
-        "groq" => model.contains("llama-4"),
-        "mistral" | "mistralai" => {
+    Some(match vendor {
+        "deepseek" | "mira" => return None,
+        "groq" => ("groq", |model| model.contains("llama-4")),
+        "mistral" | "mistralai" => ("mistral", |model| {
             !(model.starts_with("codestral") || model.starts_with("devstral"))
-        }
-        "openai" | "azure.openai" => crate::providers::openai::reads_images(model),
-        "xai" | "x-ai" => crate::providers::xai::reads_images(model),
-        "cohere" => crate::providers::cohere::reads_images(model),
-        "zai" | "z-ai" => zai::reads_images(model),
-        "moonshot" | "moonshotai" => moonshot::reads_images(model),
-        "minimax" => minimax::reads_images(model),
-        "xiaomimimo" | "xiaomi" => xiaomimimo::reads_images(model),
-        _ => true,
-    }
+        }),
+        "openai" | "azure.openai" => ("openai", crate::providers::openai::reads_images),
+        "xai" | "x-ai" => ("xai", crate::providers::xai::reads_images),
+        "cohere" => ("cohere", crate::providers::cohere::reads_images),
+        "zai" | "z-ai" => ("zai", zai::reads_images),
+        "moonshot" | "moonshotai" => ("moonshot", moonshot::reads_images),
+        "minimax" => ("minimax", minimax::reads_images),
+        "xiaomimimo" | "xiaomi" => ("xiaomimimo", xiaomimimo::reads_images),
+        vendor => (vendor, |_| true),
+    })
 }
 
-/// Whether `model` reads user images on `dialect`. OpenRouter names a
-/// model `vendor/model`, and the vendor's rule applies.
+/// Whether `model` reads user images on `dialect`, as the model catalog
+/// lists it, or by the naming rule of [`image_rule`] for a model it does not
+/// list. OpenRouter names a model `vendor/model`: its own catalog entry
+/// decides, or failing that the vendor's naming rule.
 fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
     match model.split_once('/') {
-        Some((vendor, model)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
-            vendor_reads_images(vendor, model)
+        Some((vendor, upstream)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
+            crate::catalog::reads_images_or(dialect.name, model, |_| {
+                image_rule(vendor).is_some_and(|(_, rule)| rule(upstream))
+            })
         }
-        _ => vendor_reads_images(dialect.name, model),
+        _ => image_rule(dialect.name)
+            .is_some_and(|(vendor, rule)| crate::catalog::reads_images_or(vendor, model, rule)),
     }
 }
 
@@ -1214,13 +1162,20 @@ pub struct ChatDecoder {
     /// The calls still open, in the order they opened.
     calls: Vec<OpenCall>,
     usage: Option<Value>,
+    /// The top-level [`reported::REPLY_FIELDS`] as last stated.
+    reply_fields: Map<String, Value>,
+    /// The writer index of the message's first text block, which the
+    /// message-level citations cite.
+    first_text: Option<usize>,
+    /// The writer index of the latest text block, which a Mistral
+    /// `reference` chunk after it cites.
+    last_text: Option<usize>,
+    /// Citations of the turn's first text block held until it opens:
+    /// message annotations, and references that came before any text.
+    turn_citations: Vec<crate::wire::WireCitation>,
     finish: Option<FinishReason>,
     response_id: Option<String>,
     response_model: Option<String>,
-    /// Accumulated primary-choice token metadata, in the wire's token order.
-    logprobs: Option<Map<String, Value>>,
-    /// Provider-specific top-level fields of every frame.
-    fields: Map<String, Value>,
     /// Whether a finish reason or a whole reply ended the turn.
     ended: bool,
     /// Whether a stream chunk arrived.
@@ -1244,12 +1199,6 @@ impl ChatDecoder {
         if let Some(model) = frame.str("model") {
             self.response_model = Some(model.to_owned());
         }
-        for (key, value) in frame.as_object().into_iter().flatten() {
-            if !matches!(key.as_str(), "id" | "model" | "choices" | "usage") {
-                let field = Map::from_iter([(key.clone(), value.clone())]);
-                merge_fields(&mut self.fields, &field);
-            }
-        }
         // `n > 1` streams interleave candidates told apart only by
         // `choices[].index`; candidate 0 is the turn, as in a whole reply.
         let choice = frame
@@ -1265,6 +1214,11 @@ impl ChatDecoder {
             .or_else(|| choice.as_ref().and_then(|choice| choice.at("/usage")))
         {
             self.usage = Some(usage.clone());
+        }
+        for key in reported::REPLY_FIELDS {
+            if let Some(value) = frame.get(key).filter(|value| !value.is_null()) {
+                self.reply_fields.insert(key.to_owned(), value.clone());
+            }
         }
         let choice = choice?;
         // A gateway's upstream-native reason is consulted only when the
@@ -1282,9 +1236,6 @@ impl ChatDecoder {
         if let Some(reason) = reason {
             self.finish = Some(reason);
             self.ended = true;
-        }
-        if let Some(logprobs) = choice.obj("logprobs") {
-            merge_fields(self.logprobs.get_or_insert_default(), logprobs);
         }
         Some(choice)
     }
@@ -1357,7 +1308,26 @@ impl ChatDecoder {
         {
             self.call(call, out)?;
         }
+        self.turn_citations.extend(
+            delta
+                .get("annotations")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(reported::annotation),
+        );
+        self.cite_turn(out);
         Ok(())
+    }
+
+    /// Cite the turn's first text block with the citations held for it, as
+    /// soon as it exists, so a reply cut off before its end keeps them.
+    fn cite_turn(&mut self, out: &mut Out<'_, Completion>) {
+        if let Some(text) = self.first_text {
+            for citation in self.turn_citations.drain(..) {
+                out.cite(text, citation);
+            }
+        }
     }
 
     /// Append `text` to the message's reasoning block, opening it first.
@@ -1407,7 +1377,11 @@ impl ChatDecoder {
                 let index = out.fresh_index();
                 let block = match writing {
                     Writing::Thinking => Block::Reasoning { redacted: false },
-                    Writing::Text => Block::Text,
+                    Writing::Text => {
+                        self.first_text.get_or_insert(index);
+                        self.last_text = Some(index);
+                        Block::Text
+                    }
                 };
                 out.open(index, block, Value::Null)?;
                 self.writing = Some((writing, index));
@@ -1454,6 +1428,12 @@ impl ChatDecoder {
             Part::Image => self.image(part, out),
             Part::Unknown => {
                 self.close_writing(out)?;
+                if let Some(citation) = reported::reference(part) {
+                    match self.last_text {
+                        Some(text) => out.cite(text, citation),
+                        None => self.turn_citations.push(citation),
+                    }
+                }
                 let index = out.fresh_index();
                 out.whole(index, Block::Opaque { replay: true }, part.clone(), "")
             }
@@ -1670,42 +1650,27 @@ impl ChatDecoder {
         }
         self.delta(&message, &mut out)?;
         self.close_calls(&mut out, true)?;
-        self.end(out, false)
+        self.end(out)
     }
 
-    /// Write the provider's end of the reply. A stream's `raw` is the
-    /// terminal record the chunks built; a whole body's is the body itself,
-    /// which the transport keeps.
-    fn end(&mut self, mut out: Out<'_, Completion>, streamed: bool) -> Result<Flow, ProviderError> {
+    /// Write the provider's end of the reply. Its `raw` is the wire's
+    /// reassembler's.
+    fn end(&mut self, mut out: Out<'_, Completion>) -> Result<Flow, ProviderError> {
         self.close_writing(&mut out)?;
         self.close_reasoning(&mut out)?;
+        self.cite_turn(&mut out);
+        if let Some(text) = self.first_text {
+            for citation in reported::listed(&self.reply_fields) {
+                out.cite(text, citation);
+            }
+        }
+        let cost = reported::cost(self.usage.as_ref(), &self.reply_fields);
         let usage = self
             .usage
             .as_ref()
             .map(|usage| normalized_usage(usage, &self.quirks))
-            .unwrap_or_default();
-        if streamed {
-            let fields = std::mem::take(&mut self.fields);
-            let record = [
-                ("usage", self.usage.clone()),
-                (
-                    "finish_reason",
-                    self.finish.as_ref().map(serde_json::to_value).transpose()?,
-                ),
-                ("response_id", self.response_id.clone().map(Value::String)),
-                ("model", self.response_model.clone().map(Value::String)),
-                ("logprobs", self.logprobs.take().map(Value::Object)),
-                (
-                    "additional_params",
-                    (!fields.is_empty()).then_some(Value::Object(fields)),
-                ),
-            ];
-            let record = record
-                .into_iter()
-                .filter_map(|(key, value)| Some((key.to_owned(), value?)))
-                .collect();
-            out.raw(Value::Object(record));
-        }
+            .unwrap_or_default()
+            .cost(cost);
         Ok(out.end(Finish {
             usage,
             reason: self.finish.take(),
@@ -1722,7 +1687,7 @@ impl ChatDecoder {
             return Err(ProviderError::Truncated);
         }
         self.close_calls(&mut out, true)?;
-        self.end(out, true)
+        self.end(out)
     }
 
     /// The `[DONE]` sentinel. A dialect whose streams omit the finish reason
@@ -1839,7 +1804,7 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
                 self.ended = true;
                 self.finish = Some(FinishReason::Stop);
                 self.write(Writing::Text, &text, &mut out)?;
-                self.end(out, false)
+                self.end(out)
             }
             ChatEvent::Failure(error) => Err(error),
         }
@@ -1941,6 +1906,9 @@ impl ChatDecoder {
         }
     }
 }
+
+mod document;
+mod reported;
 
 #[cfg(test)]
 mod tests;

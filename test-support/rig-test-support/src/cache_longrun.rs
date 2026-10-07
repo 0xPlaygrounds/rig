@@ -282,19 +282,15 @@ impl CacheWire {
                 .next_back()
                 .map(|usage| {
                     let thoughts = count(usage, "/thoughtsTokenCount").unwrap_or(0);
-                    let usage = Usage {
-                        input_tokens: Some(
+                    let usage = Usage::new()
+                        .input_tokens(
                             count(usage, "/promptTokenCount").unwrap_or(0)
                                 + count(usage, "/toolUsePromptTokenCount").unwrap_or(0),
-                        ),
-                        cached_input_tokens: Some(
-                            count(usage, "/cachedContentTokenCount").unwrap_or(0),
-                        ),
-                        output_tokens: Some(
+                        )
+                        .cached_input_tokens(count(usage, "/cachedContentTokenCount").unwrap_or(0))
+                        .output_tokens(
                             count(usage, "/candidatesTokenCount").unwrap_or(0) + thoughts,
-                        ),
-                        ..Usage::default()
-                    };
+                        );
                     (usage, thoughts)
                 }),
             // A stream's `message_start` carries the input counters and its
@@ -337,16 +333,14 @@ impl CacheWire {
                 .filter_map(|frame| frame.get("usage").filter(|usage| !usage.is_null()))
                 .next_back()
                 .map(|usage| {
-                    let usage = Usage {
-                        input_tokens: count(usage, "/prompt_tokens"),
-                        cached_input_tokens: count(usage, "/prompt_tokens_details/cached_tokens"),
-                        cache_creation_input_tokens: count(
+                    let usage = Usage::new()
+                        .input_tokens(count(usage, "/prompt_tokens"))
+                        .cached_input_tokens(count(usage, "/prompt_tokens_details/cached_tokens"))
+                        .cache_creation_input_tokens(count(
                             usage,
                             "/prompt_tokens_details/cache_write_tokens",
-                        ),
-                        output_tokens: count(usage, "/completion_tokens"),
-                        ..Usage::default()
-                    };
+                        ))
+                        .output_tokens(count(usage, "/completion_tokens"));
                     (usage, 0)
                 }),
             Self::OpenAiResponses => frames
@@ -359,16 +353,14 @@ impl CacheWire {
                 })
                 .next_back()
                 .map(|usage| {
-                    let usage = Usage {
-                        input_tokens: count(usage, "/input_tokens"),
-                        cached_input_tokens: count(usage, "/input_tokens_details/cached_tokens"),
-                        cache_creation_input_tokens: count(
+                    let usage = Usage::new()
+                        .input_tokens(count(usage, "/input_tokens"))
+                        .cached_input_tokens(count(usage, "/input_tokens_details/cached_tokens"))
+                        .cache_creation_input_tokens(count(
                             usage,
                             "/input_tokens_details/cache_write_tokens",
-                        ),
-                        output_tokens: count(usage, "/output_tokens"),
-                        ..Usage::default()
-                    };
+                        ))
+                        .output_tokens(count(usage, "/output_tokens"));
                     (usage, 0)
                 }),
         };

@@ -254,7 +254,7 @@ impl HistoryFixture for CohereNativeHistory {
                     .unwrap_or_else(|| json!([]));
                 json!({"role": "assistant", "content": [part], "citations": citations})
             }
-            (AssistantContent::Image(_) | AssistantContent::Opaque(_), _) => return None,
+            _ => return None,
         };
         let wire = self.wire(self.model());
         let response = decode(

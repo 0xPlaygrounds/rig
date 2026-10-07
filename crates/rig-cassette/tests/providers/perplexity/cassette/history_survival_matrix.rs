@@ -24,6 +24,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "perplexity",
         model: perplexity::SONAR,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 2048,
         transport,
         expect,

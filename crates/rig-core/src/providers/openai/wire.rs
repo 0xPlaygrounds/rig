@@ -38,7 +38,7 @@ pub use modality::{
     RerankQuirks, RerankReply, RerankResultEntry, RerankUsage, SpeechBody, TranscriptionBody,
     Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
 };
-pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
+pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiReassembler, OpenAiWire, Route};
 
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
@@ -162,12 +162,11 @@ pub enum BodyRewrite {
     /// Moonshot: refuse a specific-function tool choice and coerce
     /// `required` to `auto` with a steering message.
     Moonshot,
-    /// OpenRouter: ephemeral `cache_control` on the system prompt when
-    /// prompt caching is on.
+    /// OpenRouter: model ids name the upstream vendor (`anthropic/...`),
+    /// which decides what a request carries.
     OpenRouter,
-    /// Ollama's OpenAI-compatible API: `think` sent as `reasoning_effort`,
-    /// and a refusal of `num_ctx` and `options`, which only the native
-    /// route can send.
+    /// Ollama's OpenAI-compatible API: a refusal of `num_ctx` and
+    /// `options`, which only the native route can send.
     Ollama,
 }
 

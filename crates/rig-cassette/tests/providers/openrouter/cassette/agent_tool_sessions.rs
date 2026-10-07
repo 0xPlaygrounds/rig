@@ -411,7 +411,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .tool(manifest)
                 .tool(labels)
                 .tool(echo)
-                .additional_params(json!({"parallel_tool_calls": false}))
+                .parallel_tool_calls(false)
                 .build();
 
             let mut stream = agent

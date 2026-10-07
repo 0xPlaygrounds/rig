@@ -10,11 +10,12 @@
 //! cells check that too.
 
 use futures::StreamExt;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
+use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions, ThinkingSummaries};
 use rig_test_support::cassette_models::GeminiModels;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
 use crate::history_survival::{Dialect, lost_tokens};
@@ -34,29 +35,24 @@ struct Cell {
     streamed: bool,
 }
 
-fn params(cell: Cell) -> Value {
+fn options(cell: Cell) -> (GenerationOptions, ProviderOptions) {
     match (cell.api, cell.model) {
-        (Api::Interactions, _) => json!({
-            "store": false,
-            "generation_config": { "thinking_level": "low", "thinking_summaries": "auto" }
-        }),
+        (Api::Interactions, _) => (
+            GenerationOptions::default().reasoning(Effort::Low),
+            ProviderOptions::new().set(GeminiOptions::new().store(false).interactions(
+                InteractionsOptions::new().thinking_summaries(ThinkingSummaries::Auto),
+            )),
+        ),
     }
 }
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: history,
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: Some(2048),
-        tool_choice: None,
-        additional_params: Some(params(cell)),
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    }
+    let mut request = CompletionRequest::from(history);
+    request.max_tokens = Some(2048);
+    let (generation, provider) = options(cell);
+    request.options = generation;
+    request.provider_options = provider;
+    request
 }
 
 async fn turn<W, T>(
@@ -78,10 +74,7 @@ where
     } else {
         model.call(request).await.expect("the turn completes")
     };
-    rig::message::AssistantMessage {
-        content: response.choice.clone(),
-        ..response.head()
-    }
+    response.head().with_content(response.choice.clone())
 }
 
 fn answer(choice: &[AssistantContent]) -> String {

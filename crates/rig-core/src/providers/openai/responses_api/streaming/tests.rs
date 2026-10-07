@@ -1647,3 +1647,137 @@ fn arguments_the_added_item_states_stream_and_an_empty_delta_is_nothing() {
         ]
     );
 }
+
+/// A message whose two `output_text` parts state every annotation type the
+/// API documents, and one of a type it does not.
+fn cited_message() -> serde_json::Value {
+    json!({
+        "type": "message",
+        "id": "msg_cited",
+        "role": "assistant",
+        "status": "completed",
+        "content": [
+            {
+                "type": "output_text",
+                "text": "Rig is a Rust library. ",
+                "annotations": [
+                    { "type": "url_citation", "start_index": 0, "end_index": 22, "url": "https://rig.rs", "title": "Rig" },
+                    { "type": "file_citation", "index": 22, "file_id": "file-1", "filename": "notes.md" },
+                ],
+            },
+            {
+                "type": "output_text",
+                "text": "See the chart.",
+                "annotations": [
+                    { "type": "container_file_citation", "start_index": 0, "end_index": 14, "container_id": "cntr_1", "file_id": "cfile_2", "filename": "chart.png" },
+                    { "type": "file_path", "index": 14, "file_id": "file-3" },
+                    { "type": "future_citation", "index": 0 },
+                    { "type": "url_citation", "start_index": 0, "end_index": 3 },
+                ],
+            },
+        ],
+    })
+}
+
+/// The sources of `response`'s text blocks' citations, one list per
+/// citation, after checking that each cites its whole block.
+fn cited_sources(
+    response: &crate::completion::CompletionResponse,
+) -> Vec<Vec<crate::message::Source>> {
+    response
+        .choice
+        .iter()
+        .filter_map(|block| match block {
+            AssistantContent::Text(text) => Some(text.citations().to_vec()),
+            _ => None,
+        })
+        .flatten()
+        .map(|citation| {
+            assert_eq!(citation.span, None, "the offsets' unit is undocumented");
+            citation.sources
+        })
+        .collect()
+}
+
+/// Every documented annotation type becomes one citation of the whole text
+/// block, in part order, on the unary and the streamed route alike; an
+/// unknown type or one that names no source is left in the item. Hand-built:
+/// the corpus records only `url_citation`, which the web search cassettes
+/// assert.
+#[test]
+fn every_annotation_type_cites_the_whole_block_on_both_routes() {
+    use crate::message::{Source, SourceLocation};
+
+    let file = |file_id: &str, filename: Option<&str>, container_id: Option<&str>| {
+        vec![Source::new(SourceLocation::File {
+            file_id: file_id.to_owned(),
+            filename: filename.map(str::to_owned),
+            container_id: container_id.map(str::to_owned),
+        })]
+    };
+    let expected = vec![
+        vec![
+            Source::new(SourceLocation::Url {
+                url: "https://rig.rs".to_owned(),
+            })
+            .title("Rig"),
+        ],
+        file("file-1", Some("notes.md"), None),
+        file("cfile_2", Some("chart.png"), Some("cntr_1")),
+        file("file-3", None, None),
+    ];
+    let output = [cited_message()];
+    let unary = decode(Mode::Unary, whole(&output));
+    let streamed = decode(Mode::Streaming, frames(&restated(&output)));
+    assert_eq!(cited_sources(&unary), expected);
+    assert_eq!(cited_sources(&streamed), expected);
+    assert_eq!(unary.choice, streamed.choice);
+    assert_eq!(
+        natives(&unary),
+        output,
+        "the item replays as stated, annotations and offsets included"
+    );
+}
+
+/// A stream whose terminal restates a message its `output_item.done`
+/// already cited keeps one copy of each citation. Hand-built: the recorded
+/// citation streams pin the same through their cassette tests.
+#[test]
+fn a_restated_message_is_cited_once() {
+    let output = [cited_message()];
+    let streamed = decode(Mode::Streaming, frames(&restated(&output)));
+    assert_eq!(cited_sources(&streamed).len(), 4);
+}
+
+/// The cost a Responses reply reports is its total in USD: xAI counts
+/// 10^10 ticks per USD and OpenRouter states USD credits. A reply that
+/// reports none leaves the cost to the catalog. Hand-built for the units;
+/// the xAI and OpenRouter cassettes assert recorded figures.
+#[test]
+fn a_reported_cost_is_its_total_in_usd() {
+    use crate::completion::Cost;
+
+    let usage = |extra: serde_json::Value| {
+        let mut usage = json!({ "input_tokens": 10, "output_tokens": 5, "total_tokens": 15 });
+        if let (Some(usage), Some(extra)) = (usage.as_object_mut(), extra.as_object()) {
+            usage.extend(extra.clone());
+        }
+        super::usage_of(&usage).cost
+    };
+    assert_eq!(
+        usage(json!({ "cost_in_usd_ticks": 184_183_500 })),
+        Some(Cost::from_total(0.018_418_35))
+    );
+    assert_eq!(
+        usage(
+            json!({ "cost": 0.000_029_5, "cost_details": { "upstream_inference_cost": 0.000_029_5 } })
+        ),
+        Some(Cost::from_total(0.000_029_5))
+    );
+    assert_eq!(
+        usage(json!({ "cost": "0.25" })),
+        Some(Cost::from_total(0.25))
+    );
+    assert_eq!(usage(json!({ "cost": null })), None);
+    assert_eq!(usage(json!({})), None);
+}

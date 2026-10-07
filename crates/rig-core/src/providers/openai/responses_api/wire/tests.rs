@@ -423,3 +423,5 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
         );
     }
 }
+
+mod provider_options;

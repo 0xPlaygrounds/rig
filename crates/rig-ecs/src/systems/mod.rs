@@ -46,7 +46,7 @@ use crate::{
         AcceptUnknownFinishReasons, AdditionalParams, Advert, Attachment, Batch, Cancelled,
         Context, Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps,
         DocumentText, Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, MaxTokens,
-        MaxTurns, MemoryAppendScheduled, MessageParts, Output, OutputKind, OutputRetries,
+        MaxTurns, MemoryAppendScheduled, MessageParts, Options, Output, OutputKind, OutputRetries,
         OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt, ProviderRetried,
         ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers, Reprompt,
         RequestPatch, Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving,
@@ -182,6 +182,10 @@ pub struct Settings<'w, 's> {
     pub unknown_finishes: Query<'w, 's, &'static AcceptUnknownFinishReasons>,
     /// The provider's extra parameters.
     pub params: Query<'w, 's, &'static AdditionalParams>,
+    /// The portable generation options.
+    pub options: Query<'w, 's, &'static Options>,
+    /// The typed per-provider options.
+    pub provider_options: Query<'w, 's, &'static crate::agent::ProviderOptions>,
     /// The tool choice.
     pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
     /// The output mode.
@@ -293,10 +297,7 @@ impl TurnRead {
     fn calls(&self) -> impl Iterator<Item = &rig_core::completion::message::ToolCall> {
         self.content.iter().filter_map(|part| match part {
             AssistantContent::ToolCall(call) => Some(call),
-            AssistantContent::Text(_)
-            | AssistantContent::Reasoning(_)
-            | AssistantContent::Image(_)
-            | AssistantContent::Opaque(_) => None,
+            _ => None,
         })
     }
 }
@@ -1386,6 +1387,8 @@ struct Resolved {
     max_tokens: Option<u64>,
     accept_unknown_finish_reasons: bool,
     additional_params: Option<serde_json::Value>,
+    options: rig_core::completion::GenerationOptions,
+    provider_options: rig_core::completion::ProviderOptions,
     tool_choice: Option<ToolChoice>,
     output: Output,
     output_tool_config: Option<OutputToolConfig>,
@@ -1420,6 +1423,30 @@ impl Settings<'_, '_> {
                 .unwrap_or_default()
                 .0,
             additional_params,
+            options: {
+                let base = self
+                    .options
+                    .get(agent)
+                    .map(|options| options.0.clone())
+                    .unwrap_or_default();
+                match self.options.get(run) {
+                    Ok(over) if run != agent => base.overlay(&over.0),
+                    _ => base,
+                }
+            },
+            provider_options: {
+                let base = self
+                    .provider_options
+                    .get(agent)
+                    .map(|options| options.0.clone())
+                    .unwrap_or_default();
+                // When the run is its own agent, overlaying its entries on
+                // themselves changes nothing.
+                match self.provider_options.get(run) {
+                    Ok(over) => base.overlay(&over.0),
+                    Err(_) => base,
+                }
+            },
             tool_choice: patch
                 .and_then(|p| p.tool_choice.clone())
                 .or_else(|| setting(run, agent, &self.choices).and_then(|c| c.0.clone())),
@@ -1570,6 +1597,8 @@ pub fn fold_turn(
             max_tokens: resolved.max_tokens,
             accept_unknown_finish_reasons: resolved.accept_unknown_finish_reasons,
             additional_params: resolved.additional_params.as_ref(),
+            options: &resolved.options,
+            provider_options: &resolved.provider_options,
             tool_choice: resolved.tool_choice.as_ref(),
             output: mode,
             schema: resolved.output.schema.as_ref(),
@@ -1867,11 +1896,7 @@ pub fn land_batch(
                 AssistantContent::ToolCall(call) if call.function.name == name => {
                     Some(call.function.arguments_value().to_string())
                 }
-                AssistantContent::ToolCall(_)
-                | AssistantContent::Text(_)
-                | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_)
-                | AssistantContent::Opaque(_) => None,
+                _ => None,
             })
         });
         match output_call {
@@ -2033,10 +2058,7 @@ fn edited_content(
             Resolution::Ignore => {
                 content.retain(|part| match part {
                     AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
-                    AssistantContent::Text(_)
-                    | AssistantContent::Reasoning(_)
-                    | AssistantContent::Image(_)
-                    | AssistantContent::Opaque(_) => true,
+                    _ => true,
                 });
             }
             Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}

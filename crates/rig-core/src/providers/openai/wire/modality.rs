@@ -597,6 +597,7 @@ impl Wire for Embeddings {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = EmbeddingsDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     /// Only an explicit nonzero declaration permits reply-width mismatch checks.
     fn describe(&self) -> Descriptor<'_> {
@@ -818,6 +819,7 @@ impl Wire for Transcriptions {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = TranscriptionsDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -1005,6 +1007,7 @@ impl Wire for Images {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ImagesDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -1164,6 +1167,7 @@ impl Wire for Speech {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = SpeechDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name).model(self.model.as_str())
@@ -1326,6 +1330,7 @@ impl Wire for Models {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = ModelsDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -1455,6 +1460,7 @@ impl Wire for Rerank {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = RerankDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
@@ -1527,6 +1533,7 @@ impl Wire for Verify {
     type Payload = crate::wire::Encoded;
     type Frame = crate::wire::WireFrame;
     type Decoder<'id> = VerifyDecoder;
+    type Reassembler = crate::wire::document::Unreassembled;
 
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)

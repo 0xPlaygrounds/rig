@@ -356,37 +356,35 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     let expected: Vec<_> = completions(log)
         .iter()
         .map(|response| {
-            Message::Assistant(rig_core::message::AssistantMessage {
-                content: if cell.reasoning == Some(ReasoningCase::Output) {
-                    // The record retains the output call; committed history keeps
-                    // its answer as JSON text, avoiding an unanswered tool call.
-                    let call = response
-                        .choice
-                        .iter()
-                        .find_map(|part| match part {
-                            AssistantContent::ToolCall(call)
-                                if call.function.name == "final_result" =>
-                            {
-                                Some(call)
-                            }
-                            _ => None,
-                        })
-                        .expect("the recorded output call");
-                    let mut parts: Vec<_> = response
-                        .choice
-                        .iter()
-                        .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
-                        .cloned()
-                        .collect();
-                    parts.push(AssistantContent::text(
-                        call.function.arguments_value().to_string(),
-                    ));
-                    parts
-                } else {
-                    response.choice.clone()
-                },
-                ..response.head()
-            })
+            let content = if cell.reasoning == Some(ReasoningCase::Output) {
+                // The record retains the output call; committed history keeps
+                // its answer as JSON text, avoiding an unanswered tool call.
+                let call = response
+                    .choice
+                    .iter()
+                    .find_map(|part| match part {
+                        AssistantContent::ToolCall(call)
+                            if call.function.name == "final_result" =>
+                        {
+                            Some(call)
+                        }
+                        _ => None,
+                    })
+                    .expect("the recorded output call");
+                let mut parts: Vec<_> = response
+                    .choice
+                    .iter()
+                    .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
+                    .cloned()
+                    .collect();
+                parts.push(AssistantContent::text(
+                    call.function.arguments_value().to_string(),
+                ));
+                parts
+            } else {
+                response.choice.clone()
+            };
+            Message::Assistant(response.head().with_content(content))
         })
         .collect();
     assert_eq!(

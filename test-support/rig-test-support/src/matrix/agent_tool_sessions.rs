@@ -32,7 +32,7 @@ macro_rules! agent_tool_sessions_case {
                     .tool(manifest)
                     .tool(labels)
                     .tool(echo)
-                    .additional_params(json ! ({ "parallel_tool_calls" : false }))
+                    .parallel_tool_calls(false)
                     .default_max_turns(10)
                     .build();
                 let mut history = Vec::<Message>::new();
@@ -69,7 +69,7 @@ macro_rules! agent_tool_sessions_case {
                     .tool(labels)
                     .tool(optional)
                     .tool(echo)
-                    .additional_params(json ! ({ "parallel_tool_calls" : false }))
+                    .parallel_tool_calls(false)
                     .default_max_turns(10)
                     .build();
                 let mut history = Vec::<Message>::new();
@@ -113,7 +113,7 @@ macro_rules! agent_tool_sessions_case {
                     .tool(labels)
                     .tool(optional)
                     .tool(echo)
-                    .additional_params(json ! ({ "parallel_tool_calls" : false }))
+                    .parallel_tool_calls(false)
                     .build();
                 let mut stream = agent
                     .prompt(COMPLEX_SESSION_PROMPT)
@@ -170,7 +170,7 @@ macro_rules! agent_tool_sessions_case {
                     .preamble(TWO_TOOL_STREAM_PREAMBLE)
                     .tool(AlphaSignal)
                     .tool(BetaSignal)
-                    .additional_params(json ! ({ "parallel_tool_calls" : true }))
+                    .parallel_tool_calls(true)
                     .default_max_turns(5)
                     .build();
                 let mut history = Vec::<Message>::new();
@@ -211,7 +211,7 @@ macro_rules! agent_tool_sessions_case {
                     .preamble(TWO_TOOL_STREAM_PREAMBLE)
                     .tool(AlphaSignal)
                     .tool(BetaSignal)
-                    .additional_params(json ! ({ "parallel_tool_calls" : true }))
+                    .parallel_tool_calls(true)
                     .build();
                 let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
                 let observation = collect_stream_observation(&mut stream).await;

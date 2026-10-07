@@ -4,19 +4,7 @@ use rig_core::message::Message;
 /// Pure parse/emission regression: no model artifact or provider call is needed.
 #[test]
 fn parsed_missing_ids_keep_their_identity_and_provenance_through_stream_emission() {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("tools")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-        accept_unknown_finish_reasons: false,
-    };
+    let request = CompletionRequest::from(vec![Message::user("tools")]);
     let raw = r#"<tool_call>{"name":"same","arguments":{"n":1}}</tool_call><tool_call>{"id":"tool-0","name":"same","arguments":{"n":2}}</tool_call><tool_call>{"name":"same","arguments":{"n":3}}</tool_call>"#;
     let parsed = crate::protocol::parse_assistant(raw, &request, ConversationProtocol::Qwen3)
         .expect("valid parsed tool event");

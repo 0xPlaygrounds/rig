@@ -52,6 +52,8 @@ pub(crate) struct ErrorProbe {
     pub(crate) prompt: &'static str,
     pub(crate) max_tokens: Option<u64>,
     pub(crate) additional_params: Option<serde_json::Value>,
+    /// Typed options, beside `additional_params`.
+    pub(crate) options: Option<corpus::TypedOptions>,
     pub(crate) streamed: bool,
     /// The recorded status.
     pub(crate) status: u16,
@@ -81,6 +83,12 @@ pub(crate) async fn error_facts<W, T>(
         MaxTokens(probe.max_tokens),
         AdditionalParams(probe.additional_params.clone()),
     ));
+    if let Some(options) = probe.options.clone() {
+        ecs.app.world_mut().entity_mut(ecs.agent).insert((
+            rig_ecs::agent::Options(options.generation),
+            rig_ecs::agent::ProviderOptions(options.provider),
+        ));
+    }
     let trace = witnessed(&mut ecs.app);
     let run = ecs
         .app

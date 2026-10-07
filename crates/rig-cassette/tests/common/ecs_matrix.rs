@@ -92,6 +92,9 @@ pub(crate) struct Wire<M> {
     /// Request parameters every cell of this wire carries when the cell
     /// names none (a thinking model asked not to think).
     pub(crate) additional_params: Option<fn() -> serde_json::Value>,
+    /// Typed options every cell of this wire carries when the cell names
+    /// no parameters, as `additional_params`.
+    pub(crate) options: Option<fn() -> corpus::TypedOptions>,
 }
 
 impl<W, Tr> Wire<rig::driver::Model<W, Tr>>
@@ -108,19 +111,24 @@ where
         if let Some(nesting) = program.nesting.as_mut() {
             nesting.no_temperature = self.temperature.is_none();
         }
-        if program.additional_params.is_none() {
+        if program.additional_params.is_none() && program.options.is_none() {
             program.additional_params = self.additional_params;
+            program.options = self.options;
         }
+        // A thinking cell's parameters replace the wire's, typed ones too.
         match cell.thinking {
             cells::Thinking::On => {
                 program.additional_params = Some(self.thinking.params(true));
+                program.options = None;
             }
             cells::Thinking::SecondTurnOnly => {
                 program.additional_params = Some(self.thinking.params(false));
+                program.options = None;
                 program.thinking_params = Some(self.thinking.params(true));
             }
             cells::Thinking::Off if cell.explicit_thinking_off => {
                 program.additional_params = Some(self.thinking.params(false));
+                program.options = None;
             }
             cells::Thinking::Off => {}
         }

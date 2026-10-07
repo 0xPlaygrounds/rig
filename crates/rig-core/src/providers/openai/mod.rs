@@ -19,8 +19,14 @@
 //! with the client's transport. A vendor that speaks this format builds its
 //! client from its own module, such as [`crate::providers::deepseek::from_env`].
 
+/// The provider key: the dialect name, a reply's `Origin::provider` and
+/// the typed provider-options key.
+pub const PROVIDER_NAME: &str = "openai";
+
 pub mod completion;
 pub mod embedding;
+pub mod extension;
+pub(crate) mod options;
 pub mod responses_api;
 
 /// The OpenAI wires: the configuration, the chat-completions wire and one
@@ -81,7 +87,8 @@ pub use transcription::*;
 
 /// Whether the OpenAI `model` reads images: every model but GPT-3.5, the
 /// text-only GPT-4 snapshots, o1-mini, o1-preview, o3-mini and GPT-5.3 Codex
-/// Spark. Chat and Responses both read this one list.
+/// Spark. Chat and Responses both read this one list for an id the catalog
+/// does not list.
 pub(crate) fn reads_images(model: &str) -> bool {
     const TEXT_ONLY: [&str; 9] = [
         "gpt-3.5",

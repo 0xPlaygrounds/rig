@@ -11,6 +11,7 @@ use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::streaming::{Item, StreamEvent};
+use crate::wire::document::Reassemble;
 use crate::wire::{Call, Mode, Operation, Reply, Shared, Wire};
 
 /// The response `frames` fold into on `wire`, as a reply to `request`.
@@ -27,7 +28,12 @@ pub fn decode<W: Wire<Op = Completion>>(
     let describe = wire.describe();
     let fold = Completion::fold(request, &mut Call::new(&describe, mode));
     let shared = Mutex::new(Shared::new(fold));
-    let fed = crate::driver::feed(&mut wire.decoder(), &shared, frames);
+    let fed = crate::driver::feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
     crate::driver::settle(shared, fed, reply_of(describe.name)).outcome
 }
 
@@ -54,9 +60,10 @@ pub fn cut<W: Wire<Op = Completion>>(
     let fold = Completion::fold(&request, &mut Call::new(&describe, mode));
     let shared = Mutex::new(Shared::new(fold));
     let mut decoder = wire.decoder();
+    let mut reassembler = wire.reassembler();
     let mut failure = None;
     for frame in frames {
-        match crate::driver::step(&mut decoder, &shared, frame, None) {
+        match crate::driver::step(&mut decoder, Some(&mut reassembler), &shared, frame, None) {
             Ok(crate::wire::Flow::More) => {}
             Ok(crate::wire::Flow::Ended(_)) => break,
             Err(error) => {
@@ -66,6 +73,7 @@ pub fn cut<W: Wire<Op = Completion>>(
         }
     }
     drop(decoder);
+    crate::driver::record(&shared, Some(reassembler.finish()));
     let mut shared = shared
         .into_inner()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

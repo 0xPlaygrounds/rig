@@ -71,6 +71,43 @@ pub struct AdditionalParams(
     #[reflect(remote = crate::agent::reflect::OptionalJsonReflect)] pub Option<serde_json::Value>,
 );
 
+/// Portable generation options the request carries. A run's overlay the
+/// agent's field by field
+/// ([`GenerationOptions::overlay`](rig_core::completion::GenerationOptions::overlay)):
+/// each field the run sets wins, every other keeps the agent's.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Options(pub rig_core::completion::GenerationOptions);
+
+/// Typed per-provider options the request carries. A run's overlay the
+/// agent's per provider
+/// ([`ProviderOptions::overlay`](rig_core::completion::ProviderOptions::overlay)):
+/// each provider entry the run holds replaces the agent's, every other
+/// entry keeps the agent's.
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
+#[reflect(opaque, Component, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProviderOptions(pub rig_core::completion::ProviderOptions);
+
+impl ProviderOptions {
+    /// The component with `options` stored as the entry of their provider
+    /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext)),
+    /// replacing that provider's entry
+    /// ([`ProviderOptions::set`](rig_core::completion::ProviderOptions::set)).
+    /// Options that do not serialize fail the encode of each request that
+    /// carries them.
+    ///
+    /// ```
+    /// use rig_core::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions};
+    ///
+    /// let component = rig_ecs::agent::ProviderOptions::default()
+    ///     .set(OpenRouterOptions::new().session_id("s-1"));
+    /// assert!(component.0.contains::<OpenRouterExt>());
+    /// ```
+    pub fn set<O: rig_core::completion::ExtensionOptions>(self, options: O) -> Self {
+        Self(self.0.set(options))
+    }
+}
+
 /// The program's tool choice: what the request's `tool_choice` starts
 /// from before the output mode has its say.
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize, Reflect)]
@@ -758,9 +795,7 @@ pub enum Failure {
 pub struct RunResult(pub String);
 
 /// The run's token usage, summed over its completions.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Usage(#[reflect(remote = crate::agent::reflect::UsageReflect)] pub WireUsage);
 
@@ -1080,3 +1115,6 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
         .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
     clone
 }
+
+#[cfg(test)]
+mod tests;

@@ -7,7 +7,7 @@
 //! assert_eq!(spec.effective_max_turns(), 1);
 //! ```
 
-use rig_core::completion::Document;
+use rig_core::completion::{Document, GenerationOptions, ProviderOptions};
 use rig_core::message::ToolChoice;
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,14 @@ pub struct RunSpec {
     pub static_context: Vec<Document>,
     /// Provider-specific request parameters, merged into every request.
     pub additional_params: Option<serde_json::Value>,
+    /// Portable generation options every request carries. Omitted from the
+    /// serialized spec while they hold their defaults.
+    #[serde(skip_serializing_if = "GenerationOptions::is_default")]
+    pub options: GenerationOptions,
+    /// Typed per-provider options every request carries. Omitted from the
+    /// serialized spec while empty.
+    #[serde(skip_serializing_if = "ProviderOptions::is_empty")]
+    pub provider_options: ProviderOptions,
     /// Maximum tokens the model may generate per call.
     pub max_tokens: Option<u64>,
     /// Sampling temperature.
@@ -86,6 +94,8 @@ impl RunSpec {
             preamble: None,
             static_context: Vec::new(),
             additional_params: None,
+            options: GenerationOptions::default(),
+            provider_options: ProviderOptions::default(),
             max_tokens: None,
             temperature: None,
             tool_choice: None,

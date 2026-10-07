@@ -10,7 +10,6 @@ use crate::support::{
 };
 use anyhow::Result;
 use rig::tool::Tool;
-use serde_json::json;
 use std::sync::{Arc, Mutex};
 #[tokio::test]
 #[ignore = "stale cassette: the shared session cell sends no `store: false`, so xAI stores its responses and the recorder refuses the re-record"]
@@ -30,9 +29,10 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
                         );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             rig_ecs::agent::DefaultMaxTurns(Some(10)),
-                            rig_ecs::agent::AdditionalParams(Some(
-                                json!({ "parallel_tool_calls" : false }),
-                            )),
+                            rig_ecs::agent::Options(
+                                rig::completion::GenerationOptions::default()
+                                    .parallel_tool_calls(false),
+                            ),
                         ));
                         ecs.tool(ping);
                         ecs.tool(manifest);
@@ -88,9 +88,10 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                         );
                         ecs.app.world_mut().entity_mut(ecs.agent).insert((
                             rig_ecs::agent::DefaultMaxTurns(Some(5)),
-                            rig_ecs::agent::AdditionalParams(Some(
-                                json!({ "parallel_tool_calls" : true }),
-                            )),
+                            rig_ecs::agent::Options(
+                                rig::completion::GenerationOptions::default()
+                                    .parallel_tool_calls(true),
+                            ),
                         ));
                         ecs.tool(AlphaSignal);
                         ecs.tool(BetaSignal);

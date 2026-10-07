@@ -142,6 +142,7 @@ impl Wire for CohereChat {
     type Payload = Encoded;
     type Frame = WireFrame;
     type Decoder<'id> = CohereDecoder;
+    type Reassembler = document::Routed;
 
     /// The Compatibility API's description, naming this wire as the replay
     /// target that routes each request.
@@ -164,11 +165,31 @@ impl Wire for CohereChat {
             native_seen: false,
         }
     }
+
+    fn reassembler(&self) -> Self::Reassembler {
+        document::Routed::new(
+            Wire::reassembler(&self.native_api),
+            Wire::reassembler(&self.compatibility_api),
+        )
+    }
 }
 
 /// Every request names its route, so these are only what the replay of a
 /// history adapted to the wire as a whole reads: the Compatibility API's.
 impl ReplayTarget for CohereChat {
+    /// The answer of the API `request` goes to.
+    fn map_options(
+        &self,
+        request: &CompletionRequest,
+        fields: crate::completion::options::OptionFields<'_>,
+    ) -> crate::completion::options::OptionMap {
+        if self.native_for(request) {
+            self.native_api.map_options(request, fields)
+        } else {
+            self.compatibility_api.map_options(request, fields)
+        }
+    }
+
     fn api(&self) -> crate::message::Api {
         self.compatibility_api.api()
     }
@@ -284,6 +305,8 @@ impl<'id> Decoder<'id, Completion> for CohereDecoder {
         }
     }
 }
+
+mod document;
 
 #[cfg(test)]
 mod tests;

@@ -18,6 +18,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "ollama",
         model: "qwen3:4b",
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 8192,
         transport,
         expect,

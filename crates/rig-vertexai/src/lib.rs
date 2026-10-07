@@ -28,6 +28,7 @@
 mod auth;
 pub mod client;
 pub mod completion;
+pub mod extension;
 pub(crate) mod types;
 
 pub use client::{VertexAi, VertexAiBuilder};

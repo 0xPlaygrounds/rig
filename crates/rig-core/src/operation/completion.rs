@@ -21,13 +21,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::completion::{CompletionRequest, CompletionResponse, FinishReason, Usage};
 use crate::error::ProviderError;
+use crate::message::citation;
 use crate::message::{
     Api, AssistantContent, CallId, Image, LocalCallId, Opaque, Origin, Reasoning, Text, ToolCall,
     ToolFunction, ToolName,
 };
 use crate::streaming::{Item, Part, PartKind, StreamEvent};
 use crate::telemetry::{GenAiOperation, SpanBuilder, SpanCombinator};
-use crate::wire::{Assembled, Call, Descriptor, Emit, Fold, Mode, Operation, Out, Reply, Shared};
+use crate::wire::{
+    Assembled, Call, Descriptor, Emit, Fold, Mode, Operation, Out, Reply, Shared, WireCitation,
+};
 
 /// Generating an assistant turn, unary or streamed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,7 +95,9 @@ impl Operation for Completion {
     /// with [`CompletionRequest::validate_message_content`], then
     /// [`adapt`](crate::completion::adapt)ed for that model on the wire's
     /// replay target and checked again. Encoders, the fold and replay all
-    /// read the one resolved model.
+    /// read the one resolved model. Each option the routed target refuses
+    /// is reported first, through
+    /// [`options::check`](crate::completion::options::check).
     fn prepare(
         mut request: Self::Request,
         wire: &Descriptor<'_>,
@@ -114,6 +119,9 @@ impl Operation for Completion {
             .filter(|model| !model.is_empty())
             .or_else(|| Some(target.model().to_owned()).filter(|model| !model.is_empty()));
         let target = target.route(&request).unwrap_or(target);
+        // Every option the routed wire cannot honour is reported here, before
+        // any wire encodes, whatever its encoder does.
+        crate::completion::options::check(target, &mut request)?;
         // Documents join the history before it is adapted, so the adapter's
         // rules apply to them, unless the encoder sends them itself.
         if !target.takes_documents() {
@@ -155,7 +163,10 @@ impl Emit<Completion> for Assembled {}
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Finish {
     /// Token usage the provider reported. A counter it did not report is
-    /// `None`.
+    /// `None`. A cost the provider reported goes in `usage.cost` and is
+    /// kept; without one the fold prices the counters at the catalog's
+    /// [`Pricing`](crate::catalog::Pricing) for the request's model, and
+    /// leaves the cost `None` when the catalog has no price for it.
     pub usage: Usage,
     /// Why the model stopped, when the provider said.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -257,6 +268,8 @@ struct Draft {
     /// The provider's item as assembled so far; `Null` for none.
     item: serde_json::Value,
     body: Body,
+    /// The citations of a text item, resolved when it closes.
+    citations: Vec<WireCitation>,
 }
 
 /// Whether a closing item keeps its provider item as the block's native.
@@ -539,6 +552,7 @@ impl Turn {
                 started,
                 item,
                 body,
+                citations: Vec::new(),
             },
         );
     }
@@ -650,6 +664,7 @@ impl Turn {
             started,
             item,
             body,
+            citations,
         } = draft;
         let item = match (closing, &body) {
             (Closing::Complete, _) | (Closing::Incomplete, Body::Opaque { .. }) => item,
@@ -663,7 +678,17 @@ impl Turn {
                 if text.is_empty() && item.is_null() {
                     return Ok(());
                 }
-                with_item(AssistantContent::Text(Text::new(text)), item)
+                // Resolved at close: a provider may cite a text before its
+                // last fragment arrives.
+                let mut text = Text::new(text);
+                citation::attach(
+                    &mut text,
+                    Vec::new(),
+                    citations,
+                    &self.origin.provider,
+                    index,
+                );
+                with_item(AssistantContent::Text(text), item)
             }
             Body::Reasoning { text, redacted } => {
                 if text.is_empty() && !redacted && item.is_null() {
@@ -744,6 +769,68 @@ impl Turn {
             edit(item);
         }
         Ok(())
+    }
+
+    /// Add `citations` to the text item at `index`, or with `replace` put
+    /// them in place of its own. An open item resolves them when it closes;
+    /// a closed one, against its final text now, while its end event waits
+    /// to be taken or once the fold holds it. Citations for any other item
+    /// are dropped with a warning.
+    fn cite_item(
+        &mut self,
+        items: &mut Items,
+        index: usize,
+        citations: Vec<WireCitation>,
+        replace: bool,
+    ) {
+        let provider = self.origin.provider.as_str();
+        if let Some(draft) = self.open.get_mut(&index) {
+            if !matches!(draft.body, Body::Text(_)) {
+                tracing::warn!(
+                    provider,
+                    index,
+                    "dropped citations of an item that is not text"
+                );
+            } else if replace {
+                draft.citations = citations;
+            } else {
+                draft.citations.extend(citations);
+            }
+            return;
+        }
+        let Some(position) = self.ended.get(&index).copied() else {
+            tracing::warn!(
+                provider,
+                index,
+                "dropped citations of an item the reply never opened"
+            );
+            return;
+        };
+        let queued = items.iter_mut().find_map(|item| match item {
+            Ok(Item::Event(StreamEvent::End { part, content })) if part.index() == position => {
+                Some(content)
+            }
+            _ => None,
+        });
+        let content = match queued {
+            Some(content) => Some(content),
+            None => self.choice.get_mut(position).and_then(Option::as_mut),
+        };
+        match content {
+            Some(AssistantContent::Text(text)) => {
+                let kept = if replace {
+                    Vec::new()
+                } else {
+                    text.citations().to_vec()
+                };
+                citation::attach(text, kept, citations, provider, index);
+            }
+            _ => tracing::warn!(
+                provider,
+                index,
+                "dropped citations of an item that is not text"
+            ),
+        }
     }
 
     pub(crate) fn run_item(
@@ -1001,6 +1088,7 @@ impl Turn {
             origin.model.clone_from(model);
         }
         origin.response_id = reported(response_id);
+        let usage = priced(usage, &origin);
         let error = error.or_else(|| {
             if !self.wire {
                 return None;
@@ -1021,6 +1109,40 @@ impl Turn {
         response.provider_request_id = reported(reply.provider_request_id);
         response
     }
+}
+
+/// `usage` with its cost: the one the provider reported, else the counters
+/// priced at the catalog's pricing for the requested model, else none.
+fn priced(usage: Usage, origin: &Origin) -> Usage {
+    if usage.cost.is_some() {
+        return usage;
+    }
+    let cost = catalog_cost(origin, &usage);
+    usage.cost(cost)
+}
+
+/// The providers whose replies the catalog does not price: ChatGPT and
+/// Copilot bill a subscription, not the per-token API rates the catalog
+/// lists, and an Ollama server is usually local, while the catalog's
+/// `ollama` prices are Ollama Cloud's and the reply does not say which
+/// served it.
+const UNPRICED: [&str; 3] = [
+    crate::providers::chatgpt::PROVIDER_NAME,
+    crate::providers::copilot::PROVIDER_NAME,
+    crate::providers::ollama::PROVIDER_NAME,
+];
+
+/// What `usage` costs at the built-in catalog's pricing for `origin`'s
+/// model, or `None` when the catalog has no price for it or the provider
+/// is one it does not price ([`UNPRICED`]).
+fn catalog_cost(origin: &Origin, usage: &Usage) -> Option<crate::completion::Cost> {
+    if UNPRICED.contains(&origin.provider.as_str()) {
+        return None;
+    }
+    crate::catalog::lookup(&origin.provider, &origin.model)
+        .or_else(|| crate::catalog::lookup_snapshot(&origin.provider, &origin.model))
+        .and_then(|spec| spec.pricing.as_ref())
+        .and_then(|pricing| pricing.cost(usage))
 }
 
 /// `block` with no provider item: an opaque item no longer replays.
@@ -1158,6 +1280,13 @@ impl Fold<Completion> for Turn {
 }
 
 impl<'id> Out<'id, Completion> {
+    /// What `usage` costs at the built-in catalog's pricing for the
+    /// requested model, for a decoder whose provider bills other counters
+    /// than the ones it reports as usage.
+    pub(crate) fn catalog_cost(&self, usage: &Usage) -> Option<crate::completion::Cost> {
+        catalog_cost(&self.lock().fold.origin, usage)
+    }
+
     /// Open the provider item at wire `index` as `block`: it takes the next
     /// position in the reply. `item` is the item as its first event states
     /// it, the base its deltas merge into; `Null` when the block keeps no
@@ -1435,6 +1564,26 @@ impl<'id> Out<'id, Completion> {
         let mut shared = self.lock();
         let Shared { fold, items, .. } = &mut *shared;
         fold.end_run(items)
+    }
+
+    /// Add `citation` to the text item at wire `index`, open or ended. Its
+    /// span is resolved to bytes of the text when the item closes, or at
+    /// once for an item already closed. A span that does not resolve, or
+    /// covers other text than its `quoted`, drops the citation with a
+    /// warning, as do citations of an item that is not text: a citation
+    /// never fails a reply.
+    pub fn cite(&mut self, index: usize, citation: WireCitation) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.cite_item(items, index, vec![citation], false);
+    }
+
+    /// Put `citations` in place of the text item's own, for a provider that
+    /// restates them; [`Self::cite`] otherwise.
+    pub fn set_citations(&mut self, index: usize, citations: Vec<WireCitation>) {
+        let mut shared = self.lock();
+        let Shared { fold, items, .. } = &mut *shared;
+        fold.cite_item(items, index, citations, true);
     }
 
     /// A whole block of an already assembled response, at the next

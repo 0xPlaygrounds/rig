@@ -243,6 +243,19 @@ pub(crate) struct AgentConfig {
     pub(crate) static_context: Vec<Document>,
     /// Additional parameters to be passed to the model
     pub(crate) additional_params: Option<serde_json::Value>,
+    /// Portable generation options every request carries.
+    pub(crate) options: rig_core::completion::GenerationOptions,
+    /// Typed per-provider options every request carries.
+    pub(crate) provider_options: rig_core::completion::ProviderOptions,
+    /// The catalog entry of the agent's model, which each model call's
+    /// options are checked against when the call goes to that model.
+    pub(crate) model_spec: Option<rig_core::catalog::ModelSpec>,
+    /// The key of the model [`Self::model_spec`] describes: the default
+    /// model the agent was built with.
+    pub(crate) model_spec_key: Option<Key<family::Completion>>,
+    /// The provider and model id of each model the builder registers from
+    /// a model value, by key suffix, until build records them on the bus.
+    pub(crate) pending_model_ids: Vec<(String, super::drive::ModelId)>,
     /// Whether to record sensitive request, response, and tool content on GenAI spans.
     ///
     /// Defaults to `false`. Enabling this can expose prompts, retrieved context,
@@ -298,6 +311,11 @@ impl AgentConfig {
             preamble: None,
             static_context: vec![],
             additional_params: None,
+            options: rig_core::completion::GenerationOptions::default(),
+            provider_options: rig_core::completion::ProviderOptions::default(),
+            model_spec: None,
+            model_spec_key: None,
+            pending_model_ids: Vec::new(),
             record_telemetry_content: false,
             accept_unknown_finish_reasons: false,
             max_tokens: None,
@@ -365,6 +383,88 @@ impl AgentConfig {
 }
 
 impl AgentConfig {
+    /// Check `options`, which a call to the model `label` names is about to
+    /// send, against that model's catalog entry ([`AgentBuilder::model_spec`]):
+    /// a refused option fails under `OnUnsupported::Error`, and is dropped
+    /// from the call with a warning under `Ignore`. Nothing is checked
+    /// without a model spec, and a model whose entry cannot be found is let
+    /// through with a warning.
+    ///
+    /// [`AgentBuilder::model_spec`]: crate::agent::AgentBuilder::model_spec
+    pub(crate) fn check_call_options(
+        &self,
+        label: &ModelRef,
+        options: &mut rig_core::completion::GenerationOptions,
+    ) -> Result<(), rig_core::error::ProviderError> {
+        use rig_core::completion::OnUnsupported;
+        use rig_core::error::ProviderError;
+        let Some(declared) = self.model_spec.as_ref() else {
+            return Ok(());
+        };
+        let key = self.bus.model_key(label.as_str());
+        let spec = match &self.model_spec_key {
+            Some(own) if own.raw() == key.raw() => Some(declared),
+            _ => self.catalog_entry(&key, label),
+        };
+        let Some(spec) = spec else {
+            tracing::warn!(
+                model = %label,
+                "the model this call goes to has no catalog entry rig can find; its generation options are not checked"
+            );
+            return Ok(());
+        };
+        while let Err(refused) = spec.validate(options) {
+            match options.unsupported_policy() {
+                OnUnsupported::Ignore => {
+                    let option: &str = refused.option.as_ref();
+                    tracing::warn!(
+                        option,
+                        provider = %refused.provider,
+                        model = %refused.model,
+                        reason = %refused.reason,
+                        "unsupported option ignored"
+                    );
+                    match option {
+                        "reasoning" => options.reasoning = None,
+                        "cache" => options.cache = None,
+                        _ => return Err(ProviderError::UnsupportedOption(refused)),
+                    }
+                }
+                _ => return Err(ProviderError::UnsupportedOption(refused)),
+            }
+        }
+        Ok(())
+    }
+
+    /// The built-in catalog's entry for the model registered under `key`:
+    /// by the provider and model id it was registered with, looked up as
+    /// the encoders look it up ([`Catalog::find`], so a dated snapshot id
+    /// finds its model), else by `label` read as a catalog reference
+    /// (`anthropic/claude-opus-4-8`).
+    ///
+    /// [`Catalog::find`]: rig_core::catalog::Catalog::find
+    fn catalog_entry(
+        &self,
+        key: &Key<family::Completion>,
+        label: &ModelRef,
+    ) -> Option<&'static rig_core::catalog::ModelSpec> {
+        use rig_core::catalog::Catalog;
+        use rig_core::providers::registry::ProviderId;
+        let catalog = Catalog::builtin();
+        match self.bus.model_id(key.raw().as_str()) {
+            Some(super::drive::ModelId {
+                provider,
+                model: Some(model),
+            }) => {
+                ProviderId::catalog(&provider).and_then(|provider| catalog.find(provider, &model))
+            }
+            Some(_) => None,
+            None => catalog.resolve(label.as_str()),
+        }
+    }
+}
+
+impl AgentConfig {
     /// The protocol-facing half of this configuration as plain data: what a
     /// driver needs to shape requests and budget a run, without the model,
     /// hooks, memory or identity this config also carries.
@@ -373,6 +473,8 @@ impl AgentConfig {
             preamble: self.preamble.clone(),
             static_context: self.static_context.clone(),
             additional_params: self.additional_params.clone(),
+            options: self.options.clone(),
+            provider_options: self.provider_options.clone(),
             max_tokens: self.max_tokens,
             temperature: self.temperature,
             tool_choice: self.tool_choice.clone(),

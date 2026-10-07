@@ -1,17 +1,22 @@
 //! Adversarial handle round-trips on OpenAI: see
 //! `rig_test_support::history_survival::adversarial`.
 
-use serde_json::json;
+use rig::completion::Effort;
+use rig::providers::openai::extension::{Include, OpenAiOptions};
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{effort, openai_options, with_openai_cassette};
+use crate::history_survival::Options;
 use crate::history_survival::adversarial::{self, Hop};
 
-fn reasoning(effort: &str) -> Option<serde_json::Value> {
-    Some(json!({
-        "reasoning": { "effort": effort },
-        "include": ["reasoning.encrypted_content"],
-        "store": false
-    }))
+fn reasoning(level: Effort) -> Options {
+    Options::new(
+        effort(level),
+        openai_options(
+            OpenAiOptions::new()
+                .store(false)
+                .include([Include::ReasoningEncryptedContent]),
+        ),
+    )
 }
 
 /// First foreign hop: the Anthropic source continues on Responses.
@@ -23,7 +28,7 @@ async fn three_provider_round_trip() {
             adversarial::round_trip_hop(
                 client.openai.responses("gpt-5-mini"),
                 Hop::OpenAiResponses,
-                reasoning("low"),
+                reasoning(Effort::Low),
             )
             .await;
         },

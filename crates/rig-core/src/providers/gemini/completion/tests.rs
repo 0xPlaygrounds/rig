@@ -23,7 +23,9 @@ fn contents_for(history: Vec<message::Message>, model: &str) -> Result<Vec<Value
 
 /// The request body the REST wire builds for `request` to `model`.
 fn body_for(request: CompletionRequest, model: &str) -> Map<String, Value> {
-    request_body(request, &wire(model), model).expect("the request encodes")
+    request_body(&request, &wire(model), model, None, |_| {})
+        .and_then(|body| Ok(body.deserialize()?))
+        .expect("the request encodes")
 }
 
 /// The parts of `content`.
@@ -964,11 +966,10 @@ fn every_part_kind_survives_decode_and_replay() {
     }
 }
 
-/// Grounding, URL context, safety ratings and citations stay with the turn
-/// as its message-level native: the candidate without its content.
+/// Grounding, URL context, safety ratings and citations reach a streamed
+/// reply's `raw` on its candidate, beside the content its chunks add up to.
 #[test]
-#[ignore = "family C: the candidate's metadata moves to raw now that turns hold no message item"]
-fn candidate_metadata_reaches_raw() {
+fn candidate_metadata_reaches_streamed_raw() {
     use crate::wire::WireFrame;
 
     let metadata = json!({
@@ -979,19 +980,17 @@ fn candidate_metadata_reaches_raw() {
         "groundingMetadata": { "webSearchQueries": ["rig"], "groundingChunks": [{ "web": { "uri": "https://example.com" } }] },
         "urlContextMetadata": { "urlMetadata": [{ "retrievedUrl": "https://example.com" }] },
     });
-    let mut candidate = metadata.clone();
-    candidate["content"] = json!({ "parts": [{ "text": "rig" }], "role": "model" });
-    let frame = WireFrame::Text(json!({ "candidates": [candidate] }).to_string());
+    let first = json!({ "candidates": [{ "content": { "parts": [{ "text": "r" }], "role": "model" }, "index": 0 }] });
+    let mut last = metadata.clone();
+    last["content"] = json!({ "parts": [{ "text": "ig" }], "role": "model" });
+    let frames =
+        [first, json!({ "candidates": [last] })].map(|chunk| WireFrame::Text(chunk.to_string()));
     let response =
-        crate::test_utils::history::decode(&wire("gemini-2.5-flash"), Mode::Unary, [frame])
+        crate::test_utils::history::decode(&wire("gemini-2.5-flash"), Mode::Streaming, frames)
             .expect("the reply decodes");
-    let candidate = response
-        .raw
-        .pointer("/candidates/0")
-        .expect("the candidate");
-    for (key, value) in metadata.as_object().expect("metadata is an object") {
-        assert_eq!(candidate.get(key), Some(value), "{key}");
-    }
+    let mut expected = metadata;
+    expected["content"] = json!({ "parts": [{ "text": "rig" }], "role": "model" });
+    assert_eq!(response.raw, json!({ "candidates": [expected] }));
 }
 
 /// A call rig issued the id for is spelled `tool-<n>` for a model that

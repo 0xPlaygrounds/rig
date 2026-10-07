@@ -417,3 +417,34 @@ fn a_pruned_fixture_and_its_sidecars_are_no_cassette_change() {
     assert!(!pruned_file(&format!("{root}/openai/a/c.yaml"), &pruned));
     assert!(!pruned_file("elsewhere/openai/a/b.yaml", &pruned));
 }
+
+#[test]
+fn a_cost_on_usage_and_citations_on_text_are_normalizations_and_nothing_else_is() {
+    let base = json!({"records": [{"outcome": {"Ok": {
+        "usage": {"input_tokens": 3, "output_tokens": 1},
+        "choice": [{"type": "text", "text": "Dock Seven"}],
+    }}}]});
+    let head = json!({"records": [{"outcome": {"Ok": {
+        "usage": {"input_tokens": 3, "output_tokens": 1, "cost": {"total": 0.5}},
+        "choice": [{"type": "text", "text": "Dock Seven", "citations": {"list": []}}],
+    }}}]});
+    let found = audit(Some(&base), &head);
+    assert!(found.other.is_empty(), "{:?}", found.other);
+    assert_eq!(found.changes.get(&Change::CostAdded), Some(&1));
+    assert_eq!(found.changes.get(&Change::CitationsAdded), Some(&1));
+
+    // A counter that moves beside the cost, or a cost outside a usage, is
+    // still a change of another kind.
+    for head in [
+        json!({"records": [{"outcome": {"Ok": {
+            "usage": {"input_tokens": 4, "output_tokens": 1, "cost": {"total": 0.5}},
+            "choice": [{"type": "text", "text": "Dock Seven"}],
+        }}}]}),
+        json!({"records": [{"outcome": {"Ok": {
+            "usage": {"input_tokens": 3, "output_tokens": 1},
+            "choice": [{"type": "text", "text": "Dock Seven", "cost": 1}],
+        }}}]}),
+    ] {
+        assert!(!audit(Some(&base), &head).other.is_empty(), "{head}");
+    }
+}

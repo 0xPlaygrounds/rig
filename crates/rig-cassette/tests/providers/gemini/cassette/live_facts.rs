@@ -10,7 +10,7 @@
 //! exchanges before a recording is written.
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, Effort, ToolDefinition};
 use rig::message::{AssistantContent, ToolName};
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use serde_json::{Value, json};
@@ -83,15 +83,13 @@ async fn stream_function_call_arguments() {
                 "Looks a sentence up.",
                 json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
             ))
+            .max_tokens(4000)
+            .reasoning(Effort::Low)
             .additional_params(json!({
                 "toolConfig": {"functionCallingConfig": {
                     "mode": "ANY",
                     "streamFunctionCallArguments": true
-                }},
-                "generationConfig": {
-                    "maxOutputTokens": 4000,
-                    "thinkingConfig": {"thinkingLevel": "low"}
-                }
+                }}
             }));
             let mut stream = models
                 .completion(GEMINI_3_FLASH_PREVIEW)

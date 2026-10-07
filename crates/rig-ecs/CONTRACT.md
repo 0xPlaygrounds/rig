@@ -28,6 +28,8 @@ it has no normal dependency on cassette or the classic agent runtime.
 | `max_tokens` | `MaxTokens` | — | `anthropic_request_shape_max_tokens` (`32`) |
 | `tool_choice` | `ToolChoiceSpec`, unchanged (`"none"`, `"required"`, `{"specific":{"function_names":[…]}}`) | — | `anthropic_request_shape_tool_choice_none`; `anthropic_output_tool_choice_required`; `anthropic_output_tool_choice_specific_output` |
 | `additional_params` | `AdditionalParams`, verbatim | — | `anthropic_request_shape_thinking_unary` (`{"thinking":{"type":"enabled","budget_tokens":1024}}`) |
+| `options` | `Options`: the agent's, with the run's overlaid field by field (`GenerationOptions::overlay`); omitted while every field holds its default | — | `tests/run_graph.rs` (`a_runs_options_overlay_the_agents`) |
+| `provider_options` | `ProviderOptions`: the agent's entries, each provider entry the run holds in place of the agent's (`ProviderOptions::overlay`); omitted while empty | — | `tests/run_graph.rs` (`a_runs_provider_options_overlay_the_agents`) |
 | `output_schema` | `Output.schema` when the resolved mode is `Native`; `null` otherwise | — | `anthropic_request_shape_output_schema_unary` (the schema verbatim, unsorted); `anthropic_output_prompted_unary` (`null`); `anthropic_output_tool_under_none_degrades` (the schema: `Tool` degraded to `Native`) |
 | `stream` (the effect's, beside the request) | the run's `StreamRequested` | — | every `*_streamed` golden |
 
@@ -207,7 +209,7 @@ A rig-agent golden's header carries the builder configuration as its `run_spec` 
  "augment_output_preamble": true, "unhandled_invalid_tool_call": "fail"}
 ```
 
-The builder `/header/run_spec` excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
+An agent's `Options` that are not all defaults add an `options` key, and its non-empty `ProviderOptions` a `provider_options` key, as a rig-agent spec's do; the effective spec of a run carries the run's overlaid on the agent's. The builder `/header/run_spec` excludes per-run overrides: `mock_delta_fail` and `mock_delta_ignore` share that builder hash. This does not imply interchangeable runs: scoped identity includes supported effective settings, including turn budget, stream mode and invalid-call policy; application-specific semantics require a nonempty `PolicyVersion` (§10).
 
 `required`: the model's key as `completion`, every granted tool's key by its family (`anthropic_request_shape_tool_choice_none` `/header/required`; a world's row is under `programs[scope].required`). `hooks`: the agent program’s declared hooks and layers (§10). `signature`: written by the recorder from what was dispatched.
 

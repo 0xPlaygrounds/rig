@@ -17,6 +17,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "venice",
         model: rig::providers::venice::MISTRAL_SMALL_3_2_24B,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 2048,
         transport,
         expect,

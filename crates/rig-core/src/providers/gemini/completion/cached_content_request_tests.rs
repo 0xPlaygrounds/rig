@@ -10,11 +10,14 @@ const MODEL: &str = "gemini-2.5-flash";
 
 /// The body `request` sends to [`MODEL`] on the REST wire.
 fn body_of(request: CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
-    request_body(
-        request,
+    let body = request_body(
+        &request,
         &GenerateContent::new(GeminiConfig::new("k"), MODEL),
         MODEL,
-    )
+        None,
+        |_| {},
+    )?;
+    Ok(body.deserialize()?)
 }
 
 fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {

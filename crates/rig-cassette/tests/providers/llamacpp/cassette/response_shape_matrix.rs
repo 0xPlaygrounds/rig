@@ -75,7 +75,9 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                 .call(
                     CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 })),
+                        .temperature(1.4)
+                        .seed(11)
+                        .additional_params(json!({ "n": 2 })),
                 )
                 .await
                 .expect("llama.cpp serves n > 1");
@@ -96,7 +98,9 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                 .stream(
                     CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
-                        .additional_params(json!({ "n": 2, "temperature": 1.4, "seed": 11 })),
+                        .temperature(1.4)
+                        .seed(11)
+                        .additional_params(json!({ "n": 2 })),
                 )
                 .expect("stream should start");
 

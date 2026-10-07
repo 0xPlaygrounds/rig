@@ -29,9 +29,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(serde_json::json!({
-                    "reasoning": { "effort": "high" }
-                }))
+                .reasoning(rig::completion::Effort::High)
                 .default_max_turns(2)
                 .build();
             let mut chat_history = Vec::<Message>::new();

@@ -22,8 +22,11 @@ pub use crate::observe::{
     AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink,
 };
 
+mod citation;
+pub mod document;
 pub(crate) mod secret;
 
+pub use citation::{SpanUnit, WireCitation, WireSpan};
 pub use secret::Secret;
 
 /// The request a wire sends, and how its reply is framed.
@@ -270,8 +273,8 @@ pub struct Reply {
     /// The provider descriptor name, for the response's `provider` field.
     pub provider: String,
     /// The reply's provider document (a completion's `raw`): the whole body
-    /// when it is one JSON document, else what the decoder recorded, else
-    /// `Null`.
+    /// when it is one JSON document, else what the wire's reassembler
+    /// rebuilt or a free-event decoder recorded, else `Null`.
     pub raw: serde_json::Value,
     /// The provider's transport request id from the reply headers.
     pub provider_request_id: Option<String>,
@@ -347,7 +350,8 @@ pub(crate) mod reply {
             Reply {
                 provider: provider.to_owned(),
                 // A whole body is the reply's document; a stream's is what
-                // its decoder recorded.
+                // the wire's reassembler rebuilt, or what the decoder of an
+                // operation with free events recorded.
                 raw: self
                     .document
                     .clone()
@@ -593,14 +597,6 @@ impl<'id, Op: Operation> Out<'id, Op> {
         Flow::Ended(Ended(()))
     }
 
-    /// Record the reply's provider document, the response's `raw`, for any
-    /// operation. A whole JSON body the transport reported outranks it, and
-    /// a `raw` the decoder writes onto its response is replaced: a decoder
-    /// whose reply is not one JSON document records it here.
-    pub fn raw(&mut self, raw: serde_json::Value) {
-        self.lock().raw = Some(raw);
-    }
-
     /// A payload the provider sent that this decoder does not model. It
     /// reaches the consumer as [`Item::Unknown`](crate::streaming::Item).
     pub fn unknown(&mut self, payload: crate::streaming::UnknownPayload) {
@@ -611,6 +607,27 @@ impl<'id, Op: Operation> Out<'id, Op> {
 }
 
 impl<Op: Operation<Emit = Free>> Out<'_, Op> {
+    /// Record the reply's provider document, the response's `raw`. A whole
+    /// JSON body the transport reported outranks it: a decoder whose reply
+    /// is not one JSON document records it here.
+    ///
+    /// Only an operation whose decoders build their own events has this. A
+    /// completion's `raw` is what its wire's
+    /// [`Reassembler`](Wire::Reassembler) rebuilds, never what a decoder
+    /// writes:
+    ///
+    /// ```compile_fail,E0599
+    /// use rig_core::operation::Completion;
+    /// use rig_core::wire::Out;
+    ///
+    /// fn record(out: &mut Out<'_, Completion>) {
+    ///     out.raw(serde_json::json!({ "response_id": "x" }));
+    /// }
+    /// ```
+    pub fn raw(&mut self, raw: serde_json::Value) {
+        self.lock().raw = Some(raw);
+    }
+
     /// One event of the reply.
     ///
     /// Only an operation whose decoders build their own events has this; a
@@ -690,6 +707,13 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
     type Frame: WasmCompatSend + 'static;
     /// The decoder for one of its replies, branded with that reply.
     type Decoder<'id>: Decoder<'id, Self::Op, Self::Frame> + WasmCompatSend;
+    /// What rebuilds a reply's provider document from its frames when the
+    /// transport reports no whole document, as for a stream. The driver
+    /// feeds it every frame and records what it finishes with as `raw`.
+    /// A wire whose operation's decoders record `raw` themselves names
+    /// [`document::Unreassembled`]; a completion wire cannot, because it
+    /// does not [`Serve`](document::Serves) completions.
+    type Reassembler: document::Reassemble<Self::Frame> + document::Serves<Self::Op>;
 
     /// What the wire says about itself.
     fn describe(&self) -> Descriptor<'_>;
@@ -701,6 +725,12 @@ pub trait Wire: Clone + WasmCompatSend + WasmCompatSync + 'static {
 
     /// A fresh decoder for one reply.
     fn decoder<'id>(&self) -> Self::Decoder<'id>;
+
+    /// A fresh reassembler for one reply. A wire that picks its API per
+    /// reply builds the matching one.
+    fn reassembler(&self) -> Self::Reassembler {
+        Self::Reassembler::default()
+    }
 }
 
 /// The decoder of a reply that is one JSON document: the document is the
@@ -710,7 +740,7 @@ pub struct Json;
 
 impl<'id, Op> Decoder<'id, Op, WireFrame> for Json
 where
-    Op: Operation,
+    Op: Operation<Emit = Free>,
     Op::End: serde::de::DeserializeOwned,
 {
     type Event = (Op::End, serde_json::Value);
