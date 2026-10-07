@@ -612,9 +612,10 @@ mod generation_option_shortcuts {
         CacheRetention, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier, Verbosity,
     };
 
-    /// The request as JSON.
+    /// The request as JSON; a request that does not serialize fails the
+    /// test, so two failures never compare equal.
     fn json(request: &CompletionRequest) -> serde_json::Value {
-        serde_json::to_value(request).unwrap_or_default()
+        serde_json::to_value(request).unwrap_or_else(|error| panic!("{error}"))
     }
 
     #[test]

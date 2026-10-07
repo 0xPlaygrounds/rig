@@ -268,7 +268,9 @@ Calls apply in order. `CompletionRequest::options` and
 them is lost and one called after sets its field on top.
 `AgentRunner::options` overlays only the fields it sets (as before), so it
 wins over an earlier shortcut for those fields; a later shortcut sets its
-field on top. No method name clashed: `CompletionRequest`, `AgentBuilder`
+field on top. An empty `stop` list means "not set" in a run, through
+`AgentRunner::stop` as through `AgentRunner::options`: it keeps the
+agent's stop sequences rather than clearing them. No method name clashed: `CompletionRequest`, `AgentBuilder`
 and `AgentRunner` had none of these names (`CompletionResponse::stop` and
 `::reasoning` are on the reply). `RequestPatch` (per-turn hook patches) has
 no options field and gets no shortcuts.
@@ -1022,6 +1024,15 @@ provider, the four companion crates included (`tests/core/provider_keys.rs`
 compiles it for each). A type that serves several markers (a user gateway
 reusing a built-in type, or the test markers) links to one of them and is
 stored for the others with `with::<P>`/`insert::<P>`, which stay as they are.
+
+The same order rule holds for `provider_option` and `provider_options`.
+`CompletionRequest::provider_options` and `AgentBuilder::provider_options`
+replace every entry, so a `provider_option` called before them is lost and
+one called after replaces its provider's entry on top.
+`AgentRunner::provider_options` overlays, so both orders keep both entries
+(the later wins for the same provider). `AgentRunner::provider_option(o)`
+is `.provider_options(ProviderOptions::new().set(o))`: options that write
+no field hold no entry and so keep the agent's entry for that provider.
 
 `set` cannot fail. It still serializes at once, so a stored entry and its
 JSON are exactly what `with` stores. Options that do not serialize to an
@@ -2012,9 +2023,13 @@ nested form's JSON:
   (GenerateContent only);
 - OpenAI `OpenAiOptions`: `store`, `metadata`, `prompt_cache_key`,
   `safety_identifier` (both routes); `reasoning_summary`, `include`,
-  `conversation`, `truncation`, `background`, `max_tool_calls` (Responses);
-  `logit_bias`, `prediction`, `frequency_penalty`, `presence_penalty`
-  (Chat);
+  `conversation`, `truncation`, `background`, `max_tool_calls` (Responses,
+  OpenAI's default route; each setter's rustdoc names its route). The
+  Chat-only fields (`logit_bias`, `prediction`, `frequency_penalty`,
+  `presence_penalty`) have no top-level setter: on the default Responses
+  route their section is skipped with only a `debug!`, so a shortcut would
+  silently do nothing. They stay on `ChatOptions` (`.chat(..)`) and on
+  `AzureOptions`, whose one route is Chat;
 - Azure `AzureOptions`: `logprobs`, `top_logprobs`, `frequency_penalty`,
   `presence_penalty`, `logit_bias`, `prediction`;
 - Venice `VeniceOptions`: the `venice_parameters` entries `character_slug`,

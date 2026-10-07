@@ -637,10 +637,17 @@ impl Usage {
     }
 }
 
-/// What one or more turns cost, in USD. `total` is what was charged. A part
-/// is `None` when it is unknown, as for a provider that reports only a
-/// total; it is never a guessed `0.0`. A `None` part is left out when
-/// serialized, and an absent one reads back as `None`.
+/// What one or more turns cost, in USD. `total` is what was charged.
+///
+/// A part is `None` when its source does not give it: a provider that
+/// reports only a total leaves every part `None`, and one that reports
+/// input and output leaves the cache parts `None`. A cost computed from
+/// the catalog ([`Pricing::cost`](crate::catalog::Pricing::cost)) has every
+/// part `Some`, and it prices a cache rate the catalog does not list at the
+/// input rate, so a `Some` cache part may be that estimate rather than a
+/// listed price. A part is never filled with a placeholder `0.0`. Summing
+/// costs keeps a part only when every side has it. A `None` part is left
+/// out when serialized, and an absent one reads back as `None`.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
@@ -1324,6 +1331,10 @@ impl CompletionRequest {
     }
 
     /// Replace the typed per-provider options.
+    ///
+    /// Calls apply in order: this replaces every entry, so an entry set by
+    /// an earlier [`Self::provider_option`] is lost, and a later
+    /// [`Self::provider_option`] replaces its provider's entry on top.
     pub fn provider_options(mut self, options: ProviderOptions) -> Self {
         self.provider_options = options;
         self
@@ -1333,6 +1344,13 @@ impl CompletionRequest {
     /// ([`ExtensionOptions::Ext`]), replacing that provider's entry and
     /// keeping every other, as [`ProviderOptions::set`] does. Options that
     /// do not serialize fail the request's encode.
+    ///
+    /// The entry is always stored under `O::Ext`'s key, the built-in
+    /// provider the options type belongs to. A third-party provider whose
+    /// extension reuses a built-in options type (say `OpenAiOptions` for an
+    /// OpenAI-compatible gateway) must store them with
+    /// [`ProviderOptions::with::<P>`](ProviderOptions::with) instead, or its
+    /// wire never reads them.
     ///
     /// ```
     /// use rig_core::completion::{CompletionRequest, ProviderOptions};

@@ -240,6 +240,12 @@ impl ProviderOptions {
     /// request that carries it with the [`OptionsError`] as the source.
     /// [`Self::with`] reports the same error at once.
     ///
+    /// The entry is always stored under `O::Ext`'s key, the built-in
+    /// provider the options type belongs to. A third-party provider whose
+    /// extension reuses a built-in options type (say `OpenAiOptions` for an
+    /// OpenAI-compatible gateway) must store them with
+    /// [`Self::with::<P>`](Self::with) instead, or its wire never reads them.
+    ///
     /// ```
     /// use rig_core::completion::ProviderOptions;
     /// use rig_core::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions};

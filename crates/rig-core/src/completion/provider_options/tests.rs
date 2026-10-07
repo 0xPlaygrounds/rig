@@ -585,8 +585,8 @@ fn set_stores_the_options_under_their_own_provider_as_with_does() {
     let set = ProviderOptions::new().set(typed.clone());
     assert_eq!(set, provider_options(&typed));
     assert_eq!(
-        serde_json::to_value(&set).unwrap_or_default(),
-        serde_json::to_value(provider_options(&typed)).unwrap_or_default()
+        serde_json::to_value(&set).unwrap_or_else(|error| panic!("{error}")),
+        serde_json::to_value(provider_options(&typed)).unwrap_or_else(|error| panic!("{error}"))
     );
     // The typed options stay behind the entry: their refusal still runs.
     let request = CompletionRequest::new("hi").provider_options(set);
@@ -623,13 +623,33 @@ fn provider_option_on_a_request_equals_the_long_form() {
     let long = request(&options(4));
     assert_eq!(short.provider_options, long.provider_options);
     assert_eq!(
-        serde_json::to_value(&short).unwrap_or_default(),
-        serde_json::to_value(&long).unwrap_or_default()
+        serde_json::to_value(&short).unwrap_or_else(|error| panic!("{error}")),
+        serde_json::to_value(&long).unwrap_or_else(|error| panic!("{error}"))
     );
     assert_eq!(
         body(&RESPONSES, &short, RawAt::Top),
         body(&RESPONSES, &long, RawAt::Top)
     );
+}
+
+/// On a request `provider_options` replaces every entry, so it drops an
+/// earlier `provider_option`; a later `provider_option` adds its entry on top.
+#[test]
+fn provider_option_and_provider_options_apply_in_order() {
+    let other = ProviderOptions::new()
+        .with::<Other>(&options(1))
+        .unwrap_or_else(|error| panic!("{error}"));
+    let before = CompletionRequest::new("hi")
+        .provider_option(options(4))
+        .provider_options(other.clone());
+    assert_eq!(before.provider_options, other);
+    assert!(!before.provider_options.contains::<Fake>());
+    let after = CompletionRequest::new("hi")
+        .provider_options(other.clone())
+        .provider_option(options(4));
+    assert_eq!(after.provider_options, other.set(options(4)));
+    assert!(after.provider_options.contains::<Fake>());
+    assert!(after.provider_options.contains::<Other>());
 }
 
 /// Options whose `Serialize` fails.

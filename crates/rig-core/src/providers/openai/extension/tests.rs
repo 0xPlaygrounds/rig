@@ -308,7 +308,6 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
 #[test]
 fn field_setters_equal_the_section_form() {
     let shared = |section: OpenAiShared| OpenAiOptions::new().shared(section);
-    let chat = |section: ChatOptions| OpenAiOptions::new().chat(section);
     let responses = |section: OpenAiResponsesOptions| OpenAiOptions::new().responses(section);
     let pairs = [
         (
@@ -354,36 +353,18 @@ fn field_setters_equal_the_section_form() {
             responses(OpenAiResponsesOptions::default().max_tool_calls(3)),
         ),
         (
-            OpenAiOptions::new().logit_bias(42, -100),
-            chat(ChatOptions::new().logit_bias(42, -100)),
-        ),
-        (
-            OpenAiOptions::new().prediction("draft"),
-            chat(ChatOptions::new().prediction("draft")),
-        ),
-        (
-            OpenAiOptions::new().frequency_penalty(0.5),
-            chat(ChatOptions::new().frequency_penalty(0.5)),
-        ),
-        (
-            OpenAiOptions::new().presence_penalty(0.25),
-            chat(ChatOptions::new().presence_penalty(0.25)),
-        ),
-        (
             OpenAiOptions::new()
                 .store(false)
                 .metadata("k", "v")
                 .reasoning_summary(ReasoningSummary::Detailed)
-                .background(true)
-                .frequency_penalty(0.5),
+                .background(true),
             OpenAiOptions::new()
                 .shared(OpenAiShared::default().store(false).metadata("k", "v"))
                 .responses(
                     OpenAiResponsesOptions::default()
                         .reasoning_summary(ReasoningSummary::Detailed)
                         .background(true),
-                )
-                .chat(ChatOptions::new().frequency_penalty(0.5)),
+                ),
         ),
     ];
     for (short, long) in pairs {
