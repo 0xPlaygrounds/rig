@@ -83,8 +83,8 @@ changes that still compile. All three inputs are required for each release.
 
 <!-- MIGRATING-GUIDE-INSTRUCTIONS:END -->
 
-This guide covers every breaking change from 0.30 through 0.43.
-Releases 0.36, 0.37, 0.40, 0.41 and 0.43 were the disruptive ones; 0.40
+This guide covers every breaking change from 0.30 through 0.44.
+Releases 0.36, 0.37, 0.40, 0.41, 0.43 and 0.44 were the disruptive ones; 0.40
 alone carried 31 breaking changes, and 0.37 renamed `rig-core`'s library
 target.
 
@@ -95,6 +95,7 @@ above it, in order. Each one is self-contained.
 
 | You are on | Start at |
 | --- | --- |
+| 0.43 | [0.43 → 0.44](#043--044) |
 | 0.42 | [0.42 → 0.43](#042--043) |
 | 0.41 | [0.41 → 0.42](#041--042) |
 | 0.40 | [0.40 → 0.41](#040--041) |
@@ -803,7 +804,611 @@ handed back a silently short list.
 ### 0.43
 
 The 0.43 changes that compile unchanged are listed under
-[Behavior Changes](#behavior-changes) in the 0.42 → 0.43 section.
+[Behavior Changes](#behavior-changes-1) in the 0.42 → 0.43 section.
+
+### 0.44
+
+The 0.44 changes that compile unchanged are listed under
+[Behavior Changes](#behavior-changes) in the 0.43 → 0.44 section. Check
+three first: a text answer with an unknown finish reason now fails the run,
+`Ollama::completion` now targets `/v1` (the native route is
+`native_completion`), and `Cohere::completion` now defaults to the
+Compatibility API.
+
+---
+
+## 0.43 → 0.44
+
+0.44 had 68 merged PRs, not counting the release PR. Five themes account for most of the breaking changes:
+
+- **Typed generation options.** Reasoning, caching, service tier and the other common knobs are now typed and portable. Every provider wire either maps each one or refuses it.
+- **Assistant history keeps provenance.** Each assistant turn records where it came from and how it stopped.
+- **Unknown finish reasons fail the run** instead of being silently dropped.
+- **Tool-call arguments stream again.** They arrive in fragments, as the provider sends them.
+- **The typed provider request and reply structs are gone**, replaced by typed `extension` options and extras.
+
+Several items changed more than once between 0.43.0 and 0.44.0, for example the malformed-call limit and the setters for accepting unknown finish reasons. This section describes only the move from the 0.43.0 form to the 0.44.0 form. Unless marked as transcribed, every 0.44 code block was compiled against `v0.44.0` with the default `rig` features; inline forms for rig-bedrock, rig-gemini-grpc, rig-ecs and the vector-store crates were checked against the source.
+
+### Upgrading at a Glance
+
+| 0.43 | 0.44 |
+|---|---|
+| `agent.prompt(p).await?.output` | `agent.prompt(p).await?.output()` (an owned `String`) |
+| `history.extend(response.messages.unwrap_or_default())` | `history.extend(response.messages)` |
+| `Err(StreamingError::…)` from a streamed run | `Err(PromptError::…)`, the same error an awaited run returns |
+| `PromptError::{CompletionError, MemoryError, MaxTurnsError, PromptCancelled}` | `PromptError::{Provider, Memory, MaxTurns, Cancelled}` (and add a `_` arm) |
+| `MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result })` | `MultiTurnStreamItem::ToolResult { tool_result }` |
+| one `StreamEvent::Arguments` holding a call's whole JSON | one `Arguments` fragment per provider delta; join them per part, or take the call from its `End` |
+| `Message::Assistant { id, content }` | `Message::Assistant(AssistantMessage { content, origin, stop, .. })`; build with `Message::assistant(text)` |
+| `CompletionRequest { model, chat_history, … }` | `CompletionRequest::new(prompt)` with its setters |
+| `Usage { input_tokens: Some(3), ..Usage::default() }` | `Usage::new().input_tokens(3)` |
+| Anthropic `with_automatic_caching()`; OpenAI Chat / Bedrock `with_prompt_caching()` | `.cache(CacheRetention::Short)` on the request or agent |
+| typed provider structs (`openai::completion::Message`, `responses_api::*`, `gemini_api_types::*`, …) | `providers::<p>::extension::{…Options, …Extras}` with `provider_option(..)` and `extras_lossy::<P>()` |
+| `streamed.raw["response_id"]` | `streamed.raw["id"]`: a streamed `raw` is now the unary document |
+| `ToolDefinition { name: "add".to_string(), .. }` | `ToolDefinition { name: ToolName::new("add")?, .. }` |
+| `agent.into_tool()` / `DynamicTool::from(mcp_tool)` | `agent.into_tool()?` / `DynamicTool::try_from(mcp_tool)?` |
+| `UserContent::audio` / `video` / `document` | `UserContent::audio_base64` / `video_base64` / `document_text` (`document_base64` for PDFs) |
+| `for (score, id, doc) in index.top_n(req).await?` | `for result in index.top_n(req).await?` (`result.score`, `.id`, `.document`) |
+| `Ollama::completion(m)` (native `/api/chat`) | `Ollama::native_completion(m)`; `completion(m)` now targets `/v1` |
+| `AnthropicConfig::with_dialect(key, &dialect)` | `AnthropicConfig::with_key(&dialect, key)` |
+| `GeminiGrpc::from_env()` / `from_val(key)` | `GeminiGrpc::from_env().await?` / `GeminiGrpc::new(key).await?` |
+| `response.provider` / `.model` / `.message_id` | `response.provider()` / `.model()` / `.response_id()` |
+| `reasoning.display_text()` | `reasoning.text` |
+| persisted `AgentRun` (format 1) | not loadable: `RUN_FORMAT` is 2 |
+
+### Breaking Changes and Migration Guide
+
+Ordered roughly by how many users each change affects.
+
+#### Prompting an agent: results and errors
+
+**`PromptResponse::output` is a method** ([#2690](https://github.com/0xPlaygrounds/rig/pull/2690)). It returns an owned `String` derived from `content`, so the text and the content can't disagree, and the serialized response no longer has an `output` key.
+
+```rust
+// 0.43
+let text = agent.prompt("hi").await?.output;
+history.extend(response.messages.unwrap_or_default());
+
+// 0.44
+let response = agent.prompt("hi").await?;
+let text: String = response.output();
+history.extend(response.messages);
+```
+
+If you also move other fields out of the response, such as `messages`, call `output()` first.
+
+**`PromptResponse::messages` is a `Vec<Message>`** that every run fills, and `messages()` returns `&[Message]` ([#2686](https://github.com/0xPlaygrounds/rig/pull/2686)). A hand-built `PromptResponse` now has empty `messages` rather than `None`. A serialized response with `"messages": null` no longer deserializes; omit the field instead.
+
+**`PromptResponse::with_content` is removed**, and `with_output_tool_calls` is no longer public. Set the public `content` field instead: `let mut r = PromptResponse::new("", usage); r.content = parts;`.
+
+**`TypedPromptResponse` carries the accepted attempt's transcript** in `messages`, so typed and extractor runs can be continued.
+
+**`stream_to_stdout` returns the run's error.** It now returns `StreamToStdoutError` instead of printing the error and returning an empty response.
+
+**One error type for both run paths** ([#2644](https://github.com/0xPlaygrounds/rig/pull/2644)). `StreamingError` is removed: streamed runs (`StreamingResult`, `AgentRunner::stream`) now fail with `PromptError`. Its variants have dropped their stutter, and it is `#[non_exhaustive]` ([#2735](https://github.com/0xPlaygrounds/rig/pull/2735)):
+
+```rust
+// 0.43
+match item {
+    Err(StreamingError::Completion(e)) | Err(StreamingError::Prompt(PromptError::CompletionError(e))) => {}
+    Err(StreamingError::Prompt(PromptError::MaxTurnsError { .. })) => {}
+    // ...
+}
+
+// 0.44 (the same arms match a streamed item)
+match agent.prompt("hi").await {
+    Ok(_) => {}
+    Err(PromptError::Provider(error)) => eprintln!("provider: {error}"),
+    Err(PromptError::MaxTurns { .. }) => eprintln!("out of turns"),
+    Err(PromptError::Cancelled { .. }) => eprintln!("cancelled"),
+    Err(other) => eprintln!("{other}"),
+}
+```
+
+- Renames: `CompletionError` → `Provider`, `MemoryError` → `Memory`, `MaxTurnsError` → `MaxTurns`, `PromptCancelled` → `Cancelled`, and `PromptError::prompt_cancelled(..)` → `cancelled(..)`.
+- On an awaited run, a provider failure relayed over the effect bus is now `PromptError::Report(report)`, as it already was on streamed runs, instead of `CompletionError(ProviderError::Relayed(report))`.
+- Structured output: `StructuredOutputError::PromptError` → `Prompt`, and `DeserializationError(error)` → `Deserialization { output, error }`, which keeps the model output that failed to parse.
+- Messages no longer repeat themselves or carry type-name prefixes such as `CompletionError:`. A cancellation reads `the run was cancelled: <reason>`, and an exhausted budget reads `reached the max turns limit of <n>`. Match on variants, not on display text.
+
+**Output-tool runs:** in output-tool mode, `content` (and so `output()`) holds only the serialized structured output; read the model's prose from `messages`.
+
+**Typed runs and extractors** ([#2670](https://github.com/0xPlaygrounds/rig/pull/2670), [#2690](https://github.com/0xPlaygrounds/rig/pull/2690)):
+
+- `TypedRun<T>` is now an alias for `AgentRunner<TypedOutput<T>>`, and `AgentRunner` is `AgentRunner<O = ()>`. Code that names either type keeps compiling. A trait implemented for both `AgentRunner` and `TypedRun<T>` must now be implemented for `AgentRunner<O>`.
+- `ExtractorBuilder::tool_choice` is removed. Extraction always forces the `submit` tool.
+- `TypedRun::retries` and `ExtractorBuilder::retries` take `usize` instead of `u64`.
+- `From<serde_json::Error> for StructuredOutputError` is removed, so `?` on a `serde_json::Error` no longer converts. Map it: `.map_err(|error| StructuredOutputError::Deserialization { output: text.into(), error })?`.
+- `TypedPromptResponse` gains the public `messages` field, which breaks struct literals in test fakes; add `messages: vec![]`.
+
+#### A turn with an unknown finish reason fails the run
+
+[#2726](https://github.com/0xPlaygrounds/rig/pull/2726), [#2733](https://github.com/0xPlaygrounds/rig/pull/2733), [#2734](https://github.com/0xPlaygrounds/rig/pull/2734).
+
+In 0.43, a text answer with an unknown finish reason was returned as a success. The next turn then silently dropped it from history. In 0.44, a turn that ends in `StopReason::Error` fails the run with an error naming the raw reason, even when it holds text. That covers an unknown finish reason, text cut by a content filter, and a reported failure.
+
+To accept unknown reasons as a normal stop, opt in at whichever level fits:
+
+```rust
+let agent = AgentBuilder::new(model).accept_unknown_finish_reasons(true).build();
+// per run:      agent.prompt("..").accept_unknown_finish_reasons(true)
+// per request:  CompletionRequest::new("..").accept_unknown_finish_reasons(true)
+// rig-ecs:      world.entity_mut(agent).insert(AcceptUnknownFinishReasons(true));   (transcribed)
+```
+
+`CompletionRequest`, `RunSpec`, `PreparedRequest` and `rig_ecs::policy::RequestGraph` each gain a public `accept_unknown_finish_reasons` field. `CompletionResponse::accepts_unknown_finish_reasons()` reports the choice. An unknown reason is also logged with `tracing::warn!`.
+
+#### Streaming: tool-call arguments and tool results
+
+**Tool-call arguments stream as they arrive** ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)). This reverses 0.43's "tool calls stream whole".
+
+- A call's `StreamEvent::Arguments` is now one fragment per provider delta. Joined together, a call's fragments are its argument JSON.
+- `End` still carries the final call and its id.
+- `StreamEvent::Start` gains `name: Option<ToolName>`: `Some(tool)` for `PartKind::ToolCall`, `None` for other kinds.
+
+```rust
+// 0.43: one Arguments per call, holding the whole JSON.
+StreamEvent::Arguments { json, .. } => show(json),
+
+// 0.44 (illustrative; `finish` is yours): fragments, joined per part; parse_partial_arguments renders the incomplete JSON.
+StreamEvent::Start { part, kind: PartKind::ToolCall, name } => {
+    calls.insert(part.index(), String::new());
+}
+StreamEvent::Arguments { part, json } => {
+    let text = calls.entry(part.index()).or_default();
+    text.push_str(&json);
+    println!("so far: {:?}", parse_partial_arguments(text));
+}
+StreamEvent::End { content: AssistantContent::ToolCall(call), .. } => finish(call),
+```
+
+- **Hooks:** `on_tool_call_delta` fires once per fragment. `ToolCallDelta` drops `call_id` and gains `aggregated`, the argument text so far. Correlate calls by `part`, and take the id from the call's `End` or from `MultiTurnStreamItem::ToolCall`.
+- **Exhaustive matches:** code that matches `StreamedTurnEvent` exhaustively must handle the new `EmitToolCallDelta`. `HoldToolCall` now applies only to calls naming a tool the turn doesn't allow.
+- **Building events by hand:** code that builds `StreamEvent::Start` (test fixtures, relays) must add `name`. Serialized transcripts with a nameless tool-call start no longer parse.
+- **Anthropic:** tool definitions now carry `eager_input_streaming: true`. For an Anthropic-compatible gateway that rejects that field, set `model.wire = model.wire.with_tool_input_streaming(ToolInputStreaming::BetaHeader)` (or `Off`). Struct literals of `anthropic::Messages` need the new `tool_input_streaming` field (`Quirks` was already `#[non_exhaustive]`).
+
+**Streamed tool results** ([#2686](https://github.com/0xPlaygrounds/rig/pull/2686)):
+
+```rust
+// 0.43
+MultiTurnStreamItem::StreamUserItem(StreamedUserContent::ToolResult { tool_result }) => { .. }
+// 0.44
+MultiTurnStreamItem::ToolResult { tool_result } => { .. }
+```
+
+`StreamedUserContent` is removed. The serialized item changes from `{"type":"streamUserItem",…}` to `{"type":"toolResult",…}`. `MultiTurnStreamItem` is `#[non_exhaustive]`, so matches need a `_` arm.
+
+#### Assistant history and messages
+
+[#2713](https://github.com/0xPlaygrounds/rig/pull/2713), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750). Assistant history is now item-shaped.
+
+- **Assistant messages.** `Message::Assistant { id, content }` is now `Message::Assistant(AssistantMessage)`.
+  - `AssistantMessage` holds `content`, the turn's `origin` (which provider and model wrote it) and its `stop`.
+  - Each block keeps the provider item it came from. Content with no canonical slot is kept as `AssistantContent::Opaque` instead of failing the reply or vanishing.
+- **Building and reading turns.**
+  - Build a turn with `Message::assistant(text)`, or `AssistantMessage::new(content).with_origin(o).with_stop(s)`.
+  - Read a reply's turn with `CompletionResponse::message()`. `message_id` is now `response_id()`.
+- **Persisted history.** Assistant turns stored by 0.43 that hold tool calls or reasoning don't load; plain text turns still do (the old `id` is ignored).
+- **Blocks.**
+  - `Reasoning { text, redacted, native }` replaces `ReasoningContent`, and a block's provider data is `native_item()`.
+  - `AdditionalParams` on assistant blocks is gone.
+  - A provider call id serializes as `{"provider": "<id>"}` instead of `{"provider": {"call_id": …, "item_id": …}}`.
+- **Tool-call arguments are always a JSON object.**
+  - `ToolFunction::arguments` is a `serde_json::Map`. Use `arguments_value()`, `ToolFunction::new` or `ToolFunction::parse`.
+  - Any other text is kept in `invalid_arguments`, and such a call is answered with an error result.
+  - `ToolResult` gains `is_error`, so struct literals need the field.
+- **Stops.** `FinishReason::Other` and `ContentFilter` end a turn in `StopReason::Error`. `CompletionResponse` gains `error` and `aborted` (and `origin`, see below).
+- **Removed:** `IfMalformed`, `MalformedToolInput`, `ErrorDetail`, `DuplicateCallId` and the `require_non_empty*` helpers.
+- **Rollbacks.** Runtimes build rollback turns with `AssistantMessage::rolled_back` or `::aborted`, and fold recorded events with `streaming::delivered`.
+- **Request documents.** `Operation::prepare` (replacing `validate`) folds request documents into the first user message.
+
+#### Core types are built with constructors
+
+[#2735](https://github.com/0xPlaygrounds/rig/pull/2735), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750).
+
+Outside rig-core, these types can no longer be built with a struct literal or `..base`:
+
+| 0.43 | 0.44 |
+|---|---|
+| `CompletionRequest { model: None, chat_history, tools, max_tokens: Some(64), … }` | `CompletionRequest::from(chat_history).tools(tools).max_tokens(64)`; `model: Some(m)` → `.model(m)` |
+| `CompletionRequest { tools: vec![], ..base }` | `let mut r = base; r.tools = vec![];` |
+| `Usage { input_tokens: Some(3), output_tokens: Some(2), ..Usage::default() }` | `Usage::new().input_tokens(3).output_tokens(2)` |
+| `Text { text, additional_params: None }` | `Text::new(text)` |
+
+- Patterns on these types need `..`, for example `Text { text, .. }`.
+- These enums are `#[non_exhaustive]`, so a `match` on any of them needs a `_` arm:
+  - rig-core: `FinishReason`, `message::StopReason`, `AssistantContent`, `ProviderError` and `providers::openai::wire::BodyRewrite`.
+  - rig-agent: `PromptError`, `MultiTurnStreamItem`, `StreamedTurnEvent` and `InvalidToolCallAction`.
+- `ProviderError` also gains the `UnsupportedOption(_)` variant (see the next section).
+- `Usage` (and `rig_ecs::agent::Usage`) no longer implements `Eq`, because `Usage::cost` holds `f64`. Drop `Eq` from any type that derived it through `Usage`.
+
+```rust
+let request = CompletionRequest::new("hi").max_tokens(64);
+let usage = Usage::new().input_tokens(3).output_tokens(2);
+let text = Text::new("hello");
+let message = Message::assistant("hello");
+```
+
+#### Responses, reasoning and content blocks
+
+[#2713](https://github.com/0xPlaygrounds/rig/pull/2713).
+
+- **`CompletionResponse` fields.** `provider`, `model`, `response_id` and `message_id` are gone; the new `origin: Origin` field carries them. Use `response.provider()`, `response.model()` and `response.response_id()` (both `message_id` and `response_id` map to `response_id()`). `CompletionResponse::new` takes an `Origin` as its third argument instead of a provider string.
+- **`Reasoning` helpers.** `Reasoning::{new_with_signature, sealed, with_id, multi, redacted, encrypted, summaries, display_text, first_text, first_signature, encrypted_content}` and the `Issuer` and `Sealed<T>` types are removed. `AssistantContent::Reasoning` holds a `Reasoning` directly. Read the text from `reasoning.text`; signatures and encrypted payloads live in the provider item (`AssistantContent::native_item()`). `AssistantContent::reasoning(issuer, text)` is now `AssistantContent::reasoning(text)`.
+- **`additional_params` on content blocks.** The field is removed from `Image`, `Audio`, `Text` and `ToolCall`, which are user blocks as well as assistant blocks. On `Document` and `Video` it is now `Option<serde_json::Value>`. The `AdditionalParams` type is removed.
+- **New fields on literal-built structs.** `Image::native`, `ToolCall::native` and `ToolFunction::invalid_arguments` break struct literals: add `native: None` / `invalid_arguments: None`, or use `ToolCall::new`, `ToolFunction::new` / `parse` and the `UserContent::image_*` constructors.
+- **Tool-call identity.** `ToolCall::{signature, with_signature, with_additional_params, from_dual_wire}`, `AssistantContent::tool_call_with_call_id` and `CallId::from_dual_wire` are removed. Build calls with `ToolCall::new(call_id, function)`, and put provider data in `native`, for example `AssistantContent::ToolCall(ToolCall::new(call_id, function)).with_native(json)`. `ProviderCallId` is an opaque newtype: `ProviderCallId::new(id)` and `.as_str()` replace the `call_id` / `item_id` fields, and `with_item_id` is removed.
+- **Smaller removals.** `ErrorReport::detail` and `with_detail`; `message::{EMPTY_RESPONSE_ERROR, canonical_streamed_choice, keys_lost_in_round_trip, non_empty, optional_additional_params, ordered_assistant_content}`; `Message::replays_to` and `CompletionRequest::replayable_to` (replay is `history::adapt`). `transcript::tool_result_output` takes `&rig_core::tool::ToolResult` (instead of `ToolOutput`) as its third argument. `streaming::PartKind` gains `Opaque`, so exhaustive matches need an arm.
+
+#### Removed model constants
+
+[#2713](https://github.com/0xPlaygrounds/rig/pull/2713). Retired model ids are gone; pass the id as a string literal if you still need one.
+
+- **Together:** 91 of 99 constants are removed. The kept ones are `LLAMA_3_8B_CHAT_HF`, `LLAMA_3_8B_INSTRUCT`, `LLAMA_3_70B_INSTRUCT`, `LLAMA_2_70B_CHAT_TOGETHER`, `MIXTRAL_8X7B_INSTRUCT_V0_1`, `LLAMA_3_1_8B_INSTRUCT_TURBO`, `LLAMA_3_1_70B_INSTRUCT_TURBO` and `QWEN2_5_72B_INSTRUCT_TURBO`.
+- **Vertex AI:** `completion::{GEMINI_1_5_PRO, GEMINI_1_5_FLASH, GEMINI_1_5_PRO_LATEST, GEMINI_1_5_FLASH_LATEST, GEMINI_2_0_FLASH_EXP, GEMINI_2_5_FLASH_LITE, GEMINI_2_5_PRO}` are removed; only `GEMINI_2_5_FLASH` remains. Use `"gemini-2.5-pro"` and so on.
+- **Bedrock:** 16 non-completion constants leave `completion::`. Image models such as `AMAZON_NOVA_CANVAS` and `STABILITY_*` are in `image::`. Embedding models remain in `embedding::` (`AMAZON_TITAN_EMBED_TEXT_V1`, `AMAZON_TITAN_EMBED_IMAGE_V1`, `AMAZON_TITAN_EMBED_TEXT_V2_0`, `COHERE_EMBED_*_V3`), where 0.43 already re-exported them; only the `completion::` spellings are gone. `AMAZON_NOVA_REEL_V1_0`/`V1_1`, `AMAZON_NOVA_SONIC`, `AMAZON_RERANK_1_0`, `COHERE_RERANK_V3_5`, `LUMA_RAY_V2_0` and `TWELVELABS_PEGASUS_V1_2` have no replacement constant.
+
+#### Generation options replace provider caching setters
+
+[#2750](https://github.com/0xPlaygrounds/rig/pull/2750).
+
+**New: typed, portable options.** `GenerationOptions` holds `reasoning`, `cache`, `service_tier`, `verbosity`, `parallel_tool_calls`, `top_p`, `seed`, `stop` and `on_unsupported`.
+
+- `CompletionRequest`, `AgentBuilder` and `AgentRunner` have a setter for each of them, such as `.reasoning(Effort::High)`, `.cache(CacheRetention::Long)` or `.seed(1)`, beside `options(..)`.
+- Every completion wire maps each option to its provider's JSON, or refuses it.
+- Under the default policy (`OnUnsupported::Error`), a refusal is `ProviderError::UnsupportedOption` and nothing is sent. `.on_unsupported(OnUnsupported::Ignore)` skips the option with one warning instead.
+- A request that sets no option at all is not checked: it is sent as built, and the provider decides.
+
+**Removed caching setters:**
+
+| Removed | Use |
+|---|---|
+| Anthropic `Messages::with_automatic_caching()` and the `automatic_caching` field | `.cache(CacheRetention::Short)` on the request, or `AgentBuilder::cache(..)` |
+| Anthropic `with_automatic_caching_1h()` and `automatic_caching_ttl` | `.cache(CacheRetention::Long)` |
+| `openai::wire::Chat::with_prompt_caching()`, its `prompt_caching` field, and `OpenAiWire::with_prompt_caching()` | `.cache(CacheRetention::Short)`; on a dialect that can't cache on request, where the setter did nothing, this is now `UnsupportedOption` |
+| Bedrock `Converse::with_prompt_caching()` and its `prompt_caching` field | `.cache(CacheRetention::Short)`, or `Long` for a 1 h TTL; a checkpoint that can't follow a reasoning turn is now `UnsupportedOption` (add `.on_unsupported(OnUnsupported::Ignore)` to skip it, as the setter did silently) |
+
+Anthropic's `with_prompt_caching()` and `with_static_prefix_cache_ttl(..)` are unchanged.
+
+**Request bodies merge in one order:** the wire's encoding, then mapped options, then provider options, then `additional_params`.
+
+- Objects merge key by key, other values replace, and a `null` is sent (except a top-level `generationConfig: null` on Gemini, which is still ignored).
+- `additional_params.tools` is appended to Rig's tools.
+- So `additional_params` now overrides typed fields on Gemini, Interactions and OpenAI Responses, and an object in it merges into the wire's object instead of replacing it. See [Behavior Changes](#behavior-changes) for the per-provider list.
+
+```rust
+use rig::completion::{CacheRetention, Effort, OnUnsupported};
+
+let agent = AgentBuilder::new(model)
+    .reasoning(Effort::High)
+    .cache(CacheRetention::Long)
+    .on_unsupported(OnUnsupported::Ignore)
+    .build();
+```
+
+#### Typed provider types are replaced by extensions
+
+[#2713](https://github.com/0xPlaygrounds/rig/pull/2713), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750).
+
+Every wire now builds requests and reads replies as JSON, so the typed provider request and reply structs are removed. That includes:
+
+- OpenAI Chat readback types and `ToolChoice`, and the Responses parameter types.
+- Anthropic's typed replies and `CacheControl`.
+- Gemini and Interactions API types, plus `gemini::completion::gemini_api_types::{tool_parameters_to_schema, flatten_schema}`.
+- The OpenRouter and Venice parameter types.
+- Bedrock's `ConverseRequest` fields.
+
+What replaces them:
+
+- **Sending provider fields:** typed `Options` types in `providers::<p>::extension` (and `rig_bedrock::extension`, `rig_vertexai::extension`, `rig_gemini_grpc::extension`, `rig_candle::extension`). Set them with `request.provider_option(options)`, `AgentBuilder::provider_option` or `AgentRunner::provider_option`. Each wire sends only its own provider's entry. Raw JSON in `additional_params` still works.
+- **Reading provider reply fields:** use `response.extras::<P>()` (an `Option<Result<P::Extras, _>>`) or `extras_lossy::<P>()`, where `P` is the provider's marker (`OpenAiExt`, `AnthropicExt`, `OpenRouterExt`, …). Both read the same fields from unary and streamed replies, instead of indexing `raw`.
+- **Coming from 0.43's typed builders:** the builders on OpenRouter, Anthropic, Responses, Venice, Ollama, Cohere and Bedrock come back as serialize-only `Options` types. For example, `ProviderPreferences` becomes `OpenRouterOptions::provider`, and `VeniceParameters` becomes `VeniceOptions::venice_parameters`. Its `disable_thinking` flag is now `Reasoning::Off`.
+- **Provider keys** (`"gcp.gemini"`, `"aws_bedrock"`, `"azure.openai"`, …) are stable API from 0.44.
+
+```rust
+use rig::providers::openrouter::extension::{ModelFallbacks, OpenRouterExt, OpenRouterOptions};
+
+let fallbacks = ModelFallbacks::new(["openai/gpt-5.5", "google/gemini-3.8-flash"])?;
+let request = CompletionRequest::new("Name three Rust web frameworks.")
+    .provider_option(OpenRouterOptions::new().models(fallbacks));
+let response = model.call(request).await?;
+let extras = response.extras_lossy::<OpenRouterExt>();
+println!("served by {:?} for {:?} credits", extras.provider, extras.cost);
+```
+
+**Bedrock guardrail:** `Converse::with_guardrail` and the `Converse::guardrail` field are removed. The guardrail is now sent on streamed requests too, where it used to be dropped silently. `GuardrailTrace` is now rig's own `rig_bedrock::extension::GuardrailTrace`, not the AWS SDK type.
+
+```rust
+// transcribed from #2750
+// 0.43
+let wire = Converse::new(model).with_guardrail("g1", "DRAFT", GuardrailTrace::Enabled);
+// 0.44
+use rig_bedrock::extension::{BedrockOptions, Guardrail, GuardrailTrace};
+let guardrail = Guardrail::new("g1", "DRAFT").trace(GuardrailTrace::Enabled);
+let request = request.provider_option(BedrockOptions::default().guardrail(guardrail));
+```
+
+**Header options:** Anthropic betas and the Copilot intent have no typed channel yet; they stay on `AnthropicConfig::with_beta` and `CopilotWire::with_intent`. ChatGPT still sends a fresh `session_id` per request. On Bedrock, Anthropic betas are a typed body option, `BedrockOptions::anthropic_beta`.
+
+**Typed reply types are removed.** 0.43's typed reply structs are gone, with no replacement type: `deepseek`, `mistral`, `openrouter`, `llamacpp` and `venice` `CompletionResponse`/`Usage`/`Choice`, the `openai::completion` and `responses_api` reply types, Anthropic's `CompletionResponse` and `Usage`, and Gemini's `GenerateContentResponse`. Code that deserialized `CompletionResponse::raw` into one of them should read the fields through `extras::<P>()` (for example `DeepSeekExt`, `MistralExt`, `OpenRouterExt`, `LlamaCppExt` for `Timings`, `VeniceExt` for `VeniceCost`), or index `raw` as JSON. ([#2661](https://github.com/0xPlaygrounds/rig/pull/2661) and [#2664](https://github.com/0xPlaygrounds/rig/pull/2664) reshaped the DeepSeek, Mistral and OpenRouter types after 0.43; [#2713](https://github.com/0xPlaygrounds/rig/pull/2713) then removed them, so skip those intermediate forms.)
+
+#### A streamed reply's `raw` is the unary document
+
+[#2750](https://github.com/0xPlaygrounds/rig/pull/2750).
+
+In 0.43, each provider wrote its own summary as a streamed reply's `raw`. In 0.44, a streamed `raw` is the API's unary response document, rebuilt from the stream. A unary `raw` is unchanged, except that ChatGPT's `output` is now filled.
+
+| API | 0.43 streamed `raw` | 0.44 streamed `raw` |
+|---|---|---|
+| OpenAI Chat and every dialect | `{usage, finish_reason, response_id, model, logprobs, additional_params}` | the `chat.completion` body: `raw["id"]`, `raw["choices"][0]["finish_reason"]`, `raw["choices"][0]["message"]`, `raw["usage"]` |
+| Anthropic Messages and dialects | `{usage, stop_reason, stop_sequence, message_id, model}` | the `Message`: `raw["id"]` (was `message_id`), `raw["content"]`, `raw["stop_reason"]`, `raw["usage"]` |
+| Gemini GenerateContent (REST, gRPC) | a snake_case summary (REST), the last chunk (gRPC) | the `GenerateContentResponse`: `raw["usageMetadata"]`, `raw["candidates"][0]["finishReason"]`, `raw["modelVersion"]`, `raw["responseId"]` |
+| Gemini Interactions | `{usage, interaction, model_version}` | the interaction resource, with `steps` rebuilt |
+| OpenAI Responses | the terminal `response` | the same, except that ChatGPT's `output` is filled and Copilot's `copilot_usage` sits at the top level |
+| Cohere native | the `message-end` event | the chat response: `raw["id"]`, `raw["message"]`, `raw["finish_reason"]`, `raw["usage"]` |
+| Ollama native | the final `done` record | the `/api/chat` body, with content, thinking and tool calls joined |
+| Bedrock Converse | `{messageStart, messageStop, metadata}` | the `ConverseOutput`: `raw["output"]["message"]`, `raw["stopReason"]`, `raw["usage"]`, `raw["metrics"]` |
+
+A stream that fails, or that runs out of frames before the provider ends it, now records the document rebuilt so far as `raw`, where 0.43 recorded `Null`. To know whether the provider ended the reply, check the finish reason, not whether `raw` is non-null.
+
+#### Tools and MCP
+
+**Tool names are `ToolName`** ([#2689](https://github.com/0xPlaygrounds/rig/pull/2689)). Declared tool names are now validated like tool-call names, and deserializing an empty name fails.
+
+```rust
+// 0.43
+ToolDefinition { name: "add".to_string(), description, parameters }
+ToolChoice::Specific { function_names: vec![Add::NAME.to_string()] }
+DynamicTool::new("echo", "Echo", schema, callback)
+builder.dynamic_tool(agent.into_tool())
+let tool: DynamicTool = mcp_tool.into();
+
+// 0.44
+ToolDefinition { name: ToolName::new("add")?, description, parameters }
+ToolChoice::Specific { function_names: vec![tool_name::<Add>()] }     // transcribed
+DynamicTool::new(ToolName::new("echo")?, "Echo", schema, callback)   // transcribed
+builder.dynamic_tool(agent.into_tool()?)                              // transcribed
+let tool: DynamicTool = mcp_tool.try_into()?;                         // transcribed
+```
+
+`DynamicTool::new_with_context` takes a `ToolName` too. `ToolName` compares equal to `str` and `String`. To get a string, use `name.as_str()`, `name.to_string()` or `String::from(name)`. `McpClientHandler` skips a nameless server tool with a warning.
+
+**Tool and MCP failures keep their structure** ([#2687](https://github.com/0xPlaygrounds/rig/pull/2687)):
+
+- A tool call that fails at dispatch, rather than inside the tool, now reports a mapped `ToolErrorKind` (for example `Timeout`, `NotFound` or `Network`) instead of `Other`, and keeps the report's `retryable()`, `code()`, `http_status()` and `is_refusal()` values, which used to be lost. `ToolExecutionError` implements `From<ErrorReport>`.
+- `ToolContextError::{Encode, Decode}` carry `source: serde_json::Error` instead of `message: String`. `ToolContextError` no longer implements `Clone`, `PartialEq` or `Eq`, so compare with `.unwrap()` instead of `assert_eq!(…, Ok(..))`.
+- `McpClientError::ConnectionError(String)` → `McpClientError::Connection(rmcp::service::ClientInitializeError)`, and `ToolFetchError` → `ToolFetch`.
+
+#### Invalid and malformed tool calls
+
+[#2727](https://github.com/0xPlaygrounds/rig/pull/2727), [#2733](https://github.com/0xPlaygrounds/rig/pull/2733).
+
+The invalid-call hook now also sees tool calls whose arguments aren't a JSON object, before they are answered.
+
+- `InvalidToolCallReason` gains `DisallowedByToolChoice`, which takes the calls `UnknownTool` used to cover when the tool choice disallowed them. It is `#[non_exhaustive]` and no longer implements `Default` (write `InvalidToolCallReason::UnknownTool`).
+- `InvalidToolCallContext` is `#[non_exhaustive]`, so it can no longer be built with a struct literal; contexts come from the run. `StreamedInvalidToolCall::reason` is removed: read `InvalidToolCallContext::reason`.
+- A hook written for unknown names should check the reason before it acts. An unconditional `Repair` now fails a run that sends malformed arguments:
+
+```rust
+// transcribed from #2727
+if matches!(context.reason, InvalidToolCallReason::MalformedArguments { .. }) {
+    return None; // keep the default feedback
+}
+```
+
+- **Optional limit:** `max_consecutive_malformed_tool_calls(n)` on `AgentRunner` or `AgentRun`, or `RunSpec::max_consecutive_malformed_tool_calls = Some(n)`. When set, a run fails after `n` consecutive turns with a malformed call; `None` clears the limit. Without it, malformed calls are answered until `max_turns`, as in 0.43.
+
+#### Run specs and persisted runs
+
+- **Persisted runs:** an `AgentRun` persisted by 0.43 is refused: "resume refused: the run is format 1, this rig reads format 2".
+- **New fields:** `RunSpec` gains `accept_unknown_finish_reasons`, `max_consecutive_malformed_tool_calls`, `options` and `provider_options`, and `PreparedRequest` gains the same option fields. A literal that ends in `..RunSpec::new()` or `..Default::default()` is unaffected. A literal that lists every field needs `accept_unknown_finish_reasons: false`, `max_consecutive_malformed_tool_calls: None`, `options: GenerationOptions::new()` and `provider_options: ProviderOptions::new()`.
+- **`RunSpec::default()` now equals `RunSpec::new()`**, including `augment_output_preamble: true` (0.43's default gave `false`). A spec deserialized without that key also gets `true`. To keep the old value, write `RunSpec { augment_output_preamble: false, ..RunSpec::default() }`.
+- **Effect logs:** logs recorded under 0.43 are refused by `check_replayable`, because the stable hash of `RunSpec` changed. Record them again.
+
+#### Media content constructors
+
+[#2685](https://github.com/0xPlaygrounds/rig/pull/2685).
+
+```rust
+// 0.43
+UserContent::audio(b64, None);
+UserContent::document(text, Some(DocumentMediaType::TXT));
+// 0.44
+UserContent::audio_base64(b64, None);
+UserContent::document_text(text, Some(DocumentMediaType::TXT));
+UserContent::document_base64(b64, Some(DocumentMediaType::PDF)); // new: base64 documents
+```
+
+`UserContent::video` → `video_base64`. If you passed base64 to `UserContent::document`, for example a PDF, switch to `document_base64`: the old call built a text source, which providers handled inconsistently. `DocumentSourceKind::{url, base64, file_id, string}` now take `impl Into<String>`.
+
+#### Vector stores
+
+**Named search results** ([#2688](https://github.com/0xPlaygrounds/rig/pull/2688)):
+
+```rust
+// 0.43
+for (score, id, doc) in index.top_n::<Doc>(req).await? { /* ... */ }
+let first_id = &index.top_n_ids(req).await?[0].1;
+
+// 0.44
+for result in index.top_n::<serde_json::Value>(req.clone()).await? {
+    println!("{} {} {}", result.score, result.id, result.document);
+}
+let first = &index.top_n_ids(req).await?[0].id;
+```
+
+- A custom `VectorStoreIndex` returns `VectorSearchResult { score, id, document }` and `VectorSearchIdResult { score, id }`.
+- `VectorStoreOutput` becomes `VectorSearchResult<serde_json::Value>`, which has the same JSON shape.
+- `SearchResult::into_result` (rig-postgres, rig-surrealdb) and agent retrievals return the new types.
+
+**`VectorSearchRequest`** ([#2683](https://github.com/0xPlaygrounds/rig/pull/2683)):
+
+- `additional_params` is removed. No backend ever read it, so delete the call and its `?`.
+- `filter()` returns `Option<&F>`. Drop `.as_ref()`, and use `.cloned()` for an owned copy.
+- `VectorStoreError::BuilderError(String)` → `SamplesOutOfRange { requested, max }`.
+
+**Companion crates** ([#2662](https://github.com/0xPlaygrounds/rig/pull/2662), [#2698](https://github.com/0xPlaygrounds/rig/pull/2698)):
+
+- **HelixDB:** `HelixDBVectorStore` is no longer generic, and the `HelixDBClient` trait is removed. Write `HelixDBVectorStore` instead of `HelixDBVectorStore<HelixDB>`, and customise transport with `HelixDB::with_client`.
+- **MongoDB, SurrealDB, Milvus, ScyllaDB:** the `From`/`TryFrom<Filter<serde_json::Value>>` impls are removed. Use `DynamicSearchFilter::from_dynamic_filter(filter)?`.
+- **Postgres:** `PgSearchFilter::like` and `similar_to` take a runtime pattern and bind it as a parameter. **Remove the SQL quotes you used to include.** A pattern that keeps them, like `"'glarb%'"`, still compiles but now matches the quote characters literally, so it finds nothing. `between` binds both bounds and accepts any `T: Into<serde_json::Value>`, floats included.
+
+```rust
+// 0.43
+PgSearchFilter::like("document->>'name'", "'glarb%'");
+// 0.44   (transcribed)
+PgSearchFilter::like("document->>'name'", "glarb%");
+PgSearchFilter::like("document->>'name'", format!("{prefix}%"));
+```
+
+#### Providers
+
+- **Ollama** ([#2730](https://github.com/0xPlaygrounds/rig/pull/2730)). In 0.43, `Ollama::completion` used the daemon's native `/api/chat`. In 0.44 it returns `Model<openai::wire::Chat>` at `{base}/v1`, and the native route is `Ollama::native_completion`. If you send `think`, `keep_alive` or model `options` such as `num_ctx`, move to `native_completion`. On `/v1`, `num_ctx` and `options` are a request error instead of being silently ignored. Set reasoning with `.reasoning(..)` on either route.
+- **Cohere** ([#2729](https://github.com/0xPlaygrounds/rig/pull/2729)). In 0.43, `Cohere::completion` returned the native `/v2/chat` wire. In 0.44 it returns `Model<CohereChat>`, which by default sends requests to Cohere's OpenAI Compatibility API. To keep documents, citations and `tool_plan`, opt back in with `model.wire = model.wire.with_route(cohere::ChatRoute::Native)`, or `ChatRoute::Auto` to go native only for requests that carry documents. Chat-only options live on `model.wire.compatibility_api`.
+- **Anthropic dialects** ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691), [#2738](https://github.com/0xPlaygrounds/rig/pull/2738)).
+  - `AnthropicConfig::with_dialect(api_key, &dialect)` → `AnthropicConfig::with_key(&dialect, api_key)`, matching `OpenAIConfig::with_key`.
+  - `xiaomimimo::ANTHROPIC_API_BASE_URL` and the `XIAOMIMIMO` dialect's `base_url` drop their trailing `/v1`. Code that joined paths onto the constant must add `/v1` itself.
+  - `with_key` now trims a custom dialect's trailing `/`, `/v1`, `/messages` or `/v1/messages`.
+- **Bedrock** ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691), [#2713](https://github.com/0xPlaygrounds/rig/pull/2713)).
+  - `client::Builder` is owned, accepts both `region` and `profile_name`, and `build()` is synchronous.
+  - `BedrockRuntime::with_profile_name` and `DEFAULT_AWS_REGION` are removed. Use `BedrockRuntime::builder().profile_name("bedrock").region("eu-west-1").build()`.
+  - **An unset region now follows the AWS SDK provider chain instead of defaulting to `us-east-1`.** Call `.region("us-east-1")` to keep the old behavior.
+  - `types::assistant_content` (`RigAssistantContent`, `map_stop_reason`) and `types::converse_output` (about 45 mirror types) are removed with no replacement. Read Converse replies from `raw` (the `ConverseOutput` JSON) or `extras::<BedrockExt>()`. `streaming::BedrockStreamingResponse` is removed too.
+- **Vertex AI** ([#2691](https://github.com/0xPlaygrounds/rig/pull/2691)). `VertexAiClientError` keeps the underlying SDK errors as typed `Arc` sources instead of strings. A client-initialization failure during a completion is now `ProviderError::Request` wrapping the `VertexAiClientError`, not `ProviderError::Provider(String)`.
+- **Gemini gRPC** ([#2684](https://github.com/0xPlaygrounds/rig/pull/2684), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750)).
+  - `GeminiGrpc::from_env()` is `async` and returns `GeminiGrpcError`. 0.43's version panicked on current-thread runtimes.
+  - `GeminiGrpc::new` takes `impl Into<Secret>` and returns `GeminiGrpcError`, and `from_val` is removed.
+  - The proto now uses `prost_types::{Struct, Value}` for JSON fields (`FunctionCall::args`, `FunctionResponse::response`, `Part::part_metadata`, …), so add `prost-types = "0.14"` if you build them; `proto::{Struct, Value, ListValue, NullValue}` are removed. About a dozen messages gained fields (`Candidate::grounding_metadata` among them), so end struct literals with `..Default::default()`. `CodeExecutionResult::outcome` and `ExecutableCode::language` are enum `i32`s, `GenerateContentRequest::cached_content` is an `Option<String>`, and `GenerationConfig::response_mime_type` is a `String` (empty when unset).
+- **Gemini** ([#2663](https://github.com/0xPlaygrounds/rig/pull/2663), [#2713](https://github.com/0xPlaygrounds/rig/pull/2713)).
+  - `operation::ContextCache` moved to `providers::gemini::cached_content::ContextCache`, and `operation::CachedContentFold` is removed. Calls through `Gemini::cached_contents()` are unchanged.
+  - Tool schemas go to Gemini unchanged as `parametersJsonSchema`, so the schema converter is gone.
+- **Candle** ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750)). The payload of `Generation` is `CandleRequest { request, params }`, and `top_p` and `seed` are now options. `Generation` itself is a struct with `model` and `protocol` fields instead of a unit struct, and loses `Default` and `Copy`; get it from `candle.completion()`.
+- **Vertex AI requests.** `completion::VertexRequest` is removed: a custom `Transport<GenerateContent>` takes the SDK's `google_cloud_aiplatform_v1::model::GenerateContentRequest`. `VERTEX_TEXT_EXTRAS_KEY` is removed; read extras with `extras::<VertexExt>()`.
+- **Moved wire types.** `ollama::wire::{Chat, Embeddings, Models}` are now `ollama::chat::Chat` (what `native_completion` returns), `ollama::embedding::Embeddings` and `ollama::model_listing::{Models, ListModelEntry}`. `cohere::wire::{Embeddings, ImageEmbeddings}` are `cohere::embeddings::*`, and the native chat wire is `cohere::chat::NativeChat`. `anthropic::wire::{Models, Verify}` are re-exported as `anthropic::{Models, Verify}`, and `copilot::wire::Models` is `copilot::model_listing::Models`.
+
+#### Telemetry
+
+[#2724](https://github.com/0xPlaygrounds/rig/pull/2724), thanks to @mateobelanger. This change compiles silently, so check anything keyed on span names or `gen_ai.operation.name`:
+
+- `chat_streaming` → `chat` with `gen_ai.request.stream = true`. Gemini streams report `generate_content` with the same flag.
+- `interactions` / `interactions_streaming` → `chat`.
+- The agent's streaming `rig::agent_chat` span is named `chat`.
+- `GenAiOperation::{ChatStreaming, Interactions, InteractionsStreaming}` are deprecated. Use `SpanBuilder::new(provider, model, GenAiOperation::Chat).streaming(true)`.
+
+#### rig-ecs
+
+- `rig_ecs::policy::text` and its duplicated helpers moved to `rig_core::structured_output` and `rig_core::transcript` ([#2660](https://github.com/0xPlaygrounds/rig/pull/2660)). For example, `policy::turn_is_empty` → `transcript::is_empty_assistant_turn`, `policy::answer_text` → `transcript::assistant_text_from_choice`, `policy::output_tool_name(&granted)` → `structured_output::output_tool_name(|name| granted.contains(&name))`, and `policy::invalid_peer_results` → `transcript::invalid_call_feedback`.
+- Request assembly is one system, `systems::fold_turn`. `gather_turn` and `AssemblyInputs` are removed, so order against `fold_turn` or `RigSet::Assemble`. `recording.delivery(batch, id, kind)` → `recording.delivery(Delivery { batch, id, kind })`, `Recording::keep_events` as a path becomes `|r| r.keep_events()`, and `policy::user_text(text)` → `Message::user(text)` ([#2672](https://github.com/0xPlaygrounds/rig/pull/2672)).
+- `save_world`, `load_world` and `Checkpoint::{validate, requirements, to_json, from_json}` return `checkpoint::CheckpointError` instead of `ErrorReport`. Match `DescriptorChanged { key }`, `MissingHandler { key }` and the other variants instead of message text. There is no `From<CheckpointError> for ErrorReport`, so change the error type of functions that `?` these calls. The tool-turn hold error `agent::checkpoint::CheckpointError` is renamed `TurnHoldError` ([#2692](https://github.com/0xPlaygrounds/rig/pull/2692)).
+- `policy::RequestGraph` gains `accept_unknown_finish_reasons`, `options` and `provider_options` (borrowed: `&GenerationOptions::new()`). There are new `Options`, `ProviderOptions` and `AcceptUnknownFinishReasons` components ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750)).
+- A tool dispatch report marked as a refusal is recorded as `ToolResultStatus::Refused` instead of `Error`.
+
+#### Cargo features and dependencies
+
+- rig-core now enables serde_json's `preserve_order` and `float_roundtrip` ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)). Cargo unifies features, so every crate in a binary with rig-core gets insertion-ordered JSON maps and exact float round trips.
+- rig-gemini-grpc exposes `prost-types` 0.14 in its public API (see Providers).
+- MSRV (1.95.0), edition and default features are unchanged.
+
+#### Implementing a provider or a custom wire
+
+[#2713](https://github.com/0xPlaygrounds/rig/pull/2713), [#2750](https://github.com/0xPlaygrounds/rig/pull/2750). These changes are transcribed from the PRs. `crates/rig-core/TYPED_OPTIONS.md` is the design contract.
+
+- **`Operation::prepare`** replaces `validate`. Implement `ReplayTarget`: `api`, `provider`, `model`, `accepts` and `map_options` are required, and the rest have defaults. Pass the wire to `Descriptor::replay`.
+- **Options mapping:** a `ReplayTarget` must implement `fn map_options(&self, request: &CompletionRequest, fields: OptionFields<'_>) -> OptionMap`. It answers each option with a `Mapping`, for example `top_p: Mapping::of(top_p, |v| Mapping::Send(json!({"top_p": v})))`.
+- **Reassembler:** every `Wire` names `type Reassembler`. A non-completion wire uses `wire::document::Unreassembled`. A completion wire implements `Reassemble<Self::Frame>` and `Serves<Completion>` for its document, or reuses one of Rig's (for example `providers::openai::wire::OpenAiReassembler`).
+- **Raw and citations:** `out.raw(..)` on `Out<'_, Completion>` no longer compiles; the driver records what the reassembler rebuilds. Set citations through `Out::cite` / `Out::set_citations`.
+- **Writer:** 0.43's part methods on `Out<'_, Completion>` (`text`, `push_text`, `close_text`, `reasoning`, `call`, `push_arguments`, `tool_call`, `message_id`, `issued_by`, the `pending_*` family, …) are removed. Write parts with `open`, `push`, `edit`, `finish`, `close`, `whole`, `fragment`, `announce`, `fresh_index`, `finish_open`, `run`, `end_run`, `order_by_index`, `lead` and `restate`. For deltas, apply `operation::merge` inside an `edit`.
+- **Serving replies:** `Reply::written` takes the reply's `Origin`, `StreamWriter::finish` takes only the `Finish`, and `EffectRecord` gains `stream_origin`. `serve::Recorder` and `serve::Observe` have a new required `origin` method. `operation::Finish` drops `message_id` and gains `error`.
+- **Decoders and runtime turns:** decoder types lose their `'id` lifetime (`MessagesDecoder`, `GenerateContentDecoder`, `ResponsesDecoder`, `OpenAiDecoder`, …), and the Chat decoder types sit in a crate-private module (name them as `<Chat as Wire>::Decoder`). `BodyRewrite::{GroqCompoundTools, Hyperbolic}` are removed. In rig-agent, `ModelTurn::new` and `transcript::assistant_message` take an `AssistantMessage` (`response.head()`) instead of a message id; `ModelTurn`/`StreamedTurn` carry `head: AssistantMessage` instead of `message_id`, `PartialStreamedTurn` holds `{head, content}`, `CompletionCall::message_id` and `surface_malformed_input` are removed, and `StreamedTurnAssembler::finish` and `partial_turn` take only the response. In rig-core, `operation::Turn::origin()` replaces `message_id()`/`provider()`. In rig-ecs, `MessageParts::assistant` takes an `AssistantMessage`, and `Outputs`/`TurnRead` expose `head` instead of `message_id`.
+- **Unwind safety:** `wire::Descriptor` and `rig_vertexai::client::VertexAiClientError` are no longer `UnwindSafe`; wrap them in `AssertUnwindSafe` where needed.
+- **Registry:** `ProviderId::format()`, `config()` and `api_key_env()` return `Option<_>`, which is `None` only for the catalog-only vendors. `ProviderRef::provider()` returns `Provider` by value.
+
+#### Smaller removals and renames
+
+- `effect::RerankRequest` → `operation::RerankRequest` ([#2656](https://github.com/0xPlaygrounds/rig/pull/2656)).
+- `embeddings::ImageEmbeddingResponse` → `EmbeddingResponse`. The Cohere and VoyageAI error-envelope types (`cohere::wire::EmbedReply`, `voyageai::wire::RerankReply`, `voyageai::RerankErrorEnvelope`) are removed ([#2666](https://github.com/0xPlaygrounds/rig/pull/2666)).
+- `transcription::NormalizeTranscriptionResponse` is removed. Drop the import: OpenAI's `TranscriptionResponse::normalize()` is an inherent method. Gemini's typed `GenerateContentResponse`, and its transcript normalizer, are removed with no replacement ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680), [#2713](https://github.com/0xPlaygrounds/rig/pull/2713)).
+- Test utilities (`test-utils` feature): `MockStreamEvent::MessageId`, `MockStreamEvent::message_id` and `MockTurn::with_message_id` are removed, and `MockStreamEvent::Reasoning`'s `content` is `text`.
+- `rig_cassette::http::DirectHeader` is removed. `record_http_interaction` takes any iterator of `(impl AsRef<str>, impl AsRef<str>)` pairs ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)).
+
+### Other API Additions
+
+- **Model catalog:** `rig_core::catalog`, with `Catalog::{builtin, get, find, resolve, iter, from_json, merge}`, `ModelSpec::validate` and `Pricing::cost`. It holds 1,492 models across 28 vendors.
+- **Connecting from the catalog:** `providers::registry::{connect, connect_with}` connect from a catalog row or a `vendor/model` reference. `AgentBuilder::model_spec` checks every call's options against the catalog.
+- **Citations:** `Text::citations()`, `Text::cited(..)` and `message::{Citation, Span, Source, SourceLocation, DocumentRange}`.
+- **Cost:** `Usage::cost` and `Cost`, in USD.
+- **Streaming arguments:** `rig::streaming::parse_partial_arguments` reads incomplete argument JSON into a best-effort object.
+- **Provider configuration:** `ProviderConfig::{base_url, with_base_url}`.
+- **Tools:** `tool_name::<T>()`.
+- **Gemini caching:** `AutoCache::for_model(model)` takes the cached-read price ratio from the catalog.
+- **Model constants:** `gemini::completion::GEMINI_3_8_FLASH` and `deepseek::DEEPSEEK_FLASH`.
+- **OpenAI-compatible gateways:** `openai::wire::Quirks::done_without_finish_reason`.
+- **Cassettes:** `ProviderCassette::{try_start_at, try_finish}`, shape-matched replay (`CassetteSpec::shape_matched()`) and request snapshots.
+- **Structured output and transcripts:** `rig_core::structured_output`, and `transcript::{invalid_call_feedback, is_empty_assistant_turn, assistant_text_from_choice}`.
+- **SQL filters:** `SqlCondition::{range, between, render_placeholders}`.
+- **Test utilities:** `rig_core::test_utils::TraceCapture`.
+- **In-memory vector stores** accept documents without `Eq` or `Default`, and closures as id generators.
+
+### Behavior Changes
+
+These compile as before but act differently:
+
+- **Unknown finish reasons and filtered text fail the run** (see above).
+- **Ollama `completion` targets `/v1`, and Cohere `completion` defaults to the Compatibility API** (see Providers).
+- **Bedrock's builder resolves the region from the AWS SDK chain** instead of defaulting to `us-east-1`.
+- **`RunSpec::default()`** sets `augment_output_preamble: true`.
+- **Streamed `raw`** is the unary document, and a failed stream's `raw` is the partial document instead of `Null`.
+- **`additional_params` overrides typed fields** on Gemini GenerateContent, Interactions and OpenAI Responses, and objects in it merge key by key into the wire's object on every wire.
+  - Chat Completions: a raw `response_format` merges over the output schema's.
+  - Responses: a raw `text` merges with the structured-output format.
+  - Anthropic, Chat Completions, Responses and Cohere: a raw `tools: null` means no tools.
+  - ChatGPT: the backend no longer strips `temperature`, `top_p`, `metadata`, `user`, `background` or `max_output_tokens` from `additional_params`.
+  - Anthropic: `additional_params.cache_control` is sent as written.
+  - A non-object `additional_params` is now an error on every wire (`` `additional_params` must be a JSON object ``). Bedrock merges `additional_params` into `additionalModelRequestFields`.
+  - Vertex AI and Gemini gRPC let `additional_params.model` (and Vertex `.contents`) override the request's own.
+  - Gemini Interactions: `additional_params.tools` must be an array, and `InteractionResume` refuses a request that sets options or raw tools.
+  - Ollama native sends a raw `think` as written, without lowercasing or validating it.
+- **Model facts come from the catalog** for models it lists:
+  - OpenAI Chat decides between `max_tokens` and `max_completion_tokens` from the catalog's `reasoning` field.
+  - Claude Opus 4 and 4.1 default to 32,000 output tokens.
+  - A listed model without image input gets the text `(image omitted: model does not support images)` instead of the image. Fifteen rows that got the text now get the image.
+- **`Usage::cost` is `Some` for most replies**, so a serialized `Usage` gains a `"cost"` object. A catalog-priced cost is a list-price estimate, not the bill.
+- **A cited `Text` serializes a `citations` key**, and no longer equals `Text::new(same text)`. Compare `text.text` instead.
+- **Telemetry span names** follow `gen_ai.operation.name` with `gen_ai.request.stream` (see Telemetry).
+- **A dispatch-level tool failure** reports a specific `ToolErrorKind` instead of `Other`.
+- **Anthropic sends `eager_input_streaming: true`** on every tool. Claude models that bind thinking to the request context get `thinking.block_binding` and the `thinking-binding-controls-2026-08-01` beta in adaptive thinking.
+- **Postgres `like` / `similar_to` patterns are bound parameters**, so leftover SQL quotes now match literally.
+- **`AgentRunner::stream()` on a resumed run** uses the run's persisted unhandled-tool-call policy, not the runner's.
+- **A turn that ends in an error runs none of its tool calls.** A malformed output-tool call is reprompted or fails the run instead of becoming the output.
+- **Groq built-in tools** such as `browser_search` go in `tools`, where Groq reads them. **Mistral** sends a forced tool choice as `required`, and **DeepSeek** honors a forced tool choice on `deepseek-chat`.
+- **A broken replay fixture** (undecodable body, invalid header or status) now fails `ProviderCassette::start_at` (or `try_start_at` with `CassetteError::InvalidInteraction`) up front, not when that interaction is served.
+- **Bedrock `InvokeModel` errors** carry the AWS request id. A mid-stream Bedrock exception with no message reads `Bedrock event stream failed (<ExceptionType>)`.
+
+### Bug Fixes
+
+- **Answers dropped from history.** A text answer with an unknown finish reason was returned and then silently dropped from history on the next turn ([#2726](https://github.com/0xPlaygrounds/rig/pull/2726)).
+- **Provider replay bugs.** Item-shaped history closes a long tail of them ([#2713](https://github.com/0xPlaygrounds/rig/pull/2713)):
+  - turns replayed without their partner item after a rollback ([#2647](https://github.com/0xPlaygrounds/rig/issues/2647));
+  - colliding call ids ([#1508](https://github.com/0xPlaygrounds/rig/issues/1508), [#1962](https://github.com/0xPlaygrounds/rig/issues/1962));
+  - replies that failed to decode on unexpected fields ([#2668](https://github.com/0xPlaygrounds/rig/issues/2668), [#1426](https://github.com/0xPlaygrounds/rig/issues/1426), [#2591](https://github.com/0xPlaygrounds/rig/issues/2591), [#1984](https://github.com/0xPlaygrounds/rig/issues/1984));
+  - lost array-mode tool results on Chat ([#2201](https://github.com/0xPlaygrounds/rig/issues/2201));
+  - a resumed run that appended to memory twice ([#2244](https://github.com/0xPlaygrounds/rig/issues/2244));
+  - Claude thinking turns that could not replay after a tool or system change ([#2703](https://github.com/0xPlaygrounds/rig/issues/2703)).
+- **Wrong Postgres parameters.** A `$` inside a key or pattern shifted every later placeholder onto the wrong value ([#2698](https://github.com/0xPlaygrounds/rig/pull/2698)).
+- **Long Gemini streams lost their usage and output** after exhausting OpenTelemetry's per-span attribute limit ([#2732](https://github.com/0xPlaygrounds/rig/pull/2732)).
+- **Xiaomi MiMo's Messages preset** posted to `/v1/v1/messages` ([#2738](https://github.com/0xPlaygrounds/rig/pull/2738)).
+- **Streams could not be decoded item by item.** `StreamEvent` and `MultiTurnStreamItem` lost `Deserialize` before 0.44; they have it again ([#2723](https://github.com/0xPlaygrounds/rig/pull/2723)).
+- **Gemini gRPC media.** gRPC rejected documents, audio, video and assistant images ([#2658](https://github.com/0xPlaygrounds/rig/pull/2658)).
+- **Bedrock guardrails** were dropped on streamed requests ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)).
+- **Cohere thinking.** `Reasoning::Off` on Command A Plus and North Mini Code, which think by default, was dropped silently ([#2750](https://github.com/0xPlaygrounds/rig/pull/2750)).
+- **Errored 200s.** A Cohere 200 reply carrying an error envelope folded to an empty answer ([#2729](https://github.com/0xPlaygrounds/rig/pull/2729)).
+- **Interleaved tool calls.** Streamed calls replayed or dropped each other's held items ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)).
+- **Debug output.** Streaming printed a `PARTIAL ...` debug line to stderr when a streamed tool call was rejected ([#2680](https://github.com/0xPlaygrounds/rig/pull/2680)).
+
+### Performance, Packaging, Docs and DX
+
+- **Less duplicated code.** The provider layer lost its hand-kept typed mirrors of provider JSON, Bedrock dropped its `Rig*` newtype layer, and every reply now decodes and folds through one step and one EOF rule.
+- **Docs and examples.** `crates/rig-core/TYPED_OPTIONS.md` documents typed options, the catalog, extensions, the `raw` shape, citations and cost. The new `agent_tool_call_streaming` example shows argument fragments streaming into a hook.
+- **Tooling.** `cargo xtask catalog sync` / `check` keeps the catalog in step with models.dev. The cassette suite gained shape-matched replay, request snapshots and a coverage gate.
 
 ---
 
@@ -4536,6 +5141,48 @@ Renamed or relocated items, for searching.
 
 | Old | New | Version |
 | --- | --- | --- |
+| `PromptResponse::output` (field) and `output() -> &str` | `PromptResponse::output() -> String` | 0.44 |
+| `PromptResponse::messages: Option<Vec<Message>>` | `PromptResponse::messages: Vec<Message>` | 0.44 |
+| `PromptResponse::with_content` | set the public `content` field | 0.44 |
+| `StreamingError` | `PromptError` | 0.44 |
+| `PromptError::{CompletionError, MemoryError, MaxTurnsError, PromptCancelled}`, `PromptError::prompt_cancelled` | `PromptError::{Provider, Memory, MaxTurns, Cancelled}`, `PromptError::cancelled` | 0.44 |
+| `StructuredOutputError::{PromptError, DeserializationError}` | `StructuredOutputError::{Prompt, Deserialization { output, error }}` | 0.44 |
+| `MultiTurnStreamItem::StreamUserItem`, `streaming::StreamedUserContent` | `MultiTurnStreamItem::ToolResult { tool_result }` | 0.44 |
+| `ToolCallDelta::call_id` | `ToolCallDelta::part` (the id arrives on the call's `End`) | 0.44 |
+| `Message::Assistant { id, content }` | `Message::Assistant(AssistantMessage)` | 0.44 |
+| `message::ReasoningContent` | `message::Reasoning { text, redacted, native }` | 0.44 |
+| `operation::IfMalformed`, `MalformedToolInput`, `error::ErrorDetail`, `ProviderError::DuplicateCallId`, `require_non_empty*` | none | 0.44 |
+| `Operation::validate` | `Operation::prepare` | 0.44 |
+| Anthropic `Messages::{with_automatic_caching, with_automatic_caching_1h}` | `.cache(CacheRetention::Short)` / `.cache(CacheRetention::Long)` | 0.44 |
+| `openai::wire::Chat::with_prompt_caching`, `OpenAiWire::with_prompt_caching`, Bedrock `Converse::with_prompt_caching` | `.cache(CacheRetention::Short)` | 0.44 |
+| Bedrock `Converse::with_guardrail` | `rig_bedrock::extension::BedrockOptions::guardrail` | 0.44 |
+| typed provider request/reply types (`openai::completion::Message`, `responses_api::*`, `anthropic::completion::*`, `gemini_api_types::*`, OpenRouter/Venice parameters, …) | `providers::<p>::extension::{…Options, …Extras}` with `provider_option(..)` and `extras::<P>()` | 0.44 |
+| `openrouter::ProviderPreferences`, `venice::VeniceParameters` | `openrouter::extension::ProviderPreferences` via `OpenRouterOptions::provider`; `venice::extension::VeniceParameters` via `VeniceOptions::venice_parameters` | 0.44 |
+| `ToolDefinition::name: String`, `ToolChoice::Specific::function_names: Vec<String>` | `ToolName`, `Vec<ToolName>` | 0.44 |
+| `From<Agent> for DynamicTool`, `From<McpTool> for DynamicTool` | `TryFrom` | 0.44 |
+| `McpClientError::{ConnectionError, ToolFetchError}` | `McpClientError::{Connection, ToolFetch}` | 0.44 |
+| `UserContent::{audio, video, document}` | `UserContent::{audio_base64, video_base64, document_text}` (and `document_base64`) | 0.44 |
+| `VectorStoreIndex::top_n` tuples, `VectorStoreOutput` | `VectorSearchResult<T>`, `VectorSearchIdResult` | 0.44 |
+| `VectorSearchRequestBuilder::additional_params`, `VectorStoreError::BuilderError` | none, `VectorStoreError::SamplesOutOfRange` | 0.44 |
+| `rig_helixdb::HelixDBClient`, `HelixDBVectorStore<C>` | `HelixDBVectorStore` (always `HelixDB`) | 0.44 |
+| `AnthropicConfig::with_dialect(key, &dialect)` | `AnthropicConfig::with_key(&dialect, key)` | 0.44 |
+| `BedrockRuntime::with_profile_name`, `DEFAULT_AWS_REGION` | `BedrockRuntime::builder().profile_name(..)` | 0.44 |
+| `rig_bedrock::types::{assistant_content, converse_output}` (`RigAssistantContent`, …) | none: read `raw` or `extras::<BedrockExt>()` | 0.44 |
+| `GeminiGrpc::from_val` | `GeminiGrpc::new(key).await` | 0.44 |
+| `Ollama::completion` (native `/api/chat`) | `Ollama::native_completion` | 0.44 |
+| `operation::ContextCache`, `operation::CachedContentFold` | `providers::gemini::cached_content::ContextCache`, `operation::Whole` | 0.44 |
+| `effect::RerankRequest` | `operation::RerankRequest` | 0.44 |
+| `embeddings::ImageEmbeddingResponse` | `embeddings::EmbeddingResponse` | 0.44 |
+| `transcription::NormalizeTranscriptionResponse` | OpenAI's inherent `normalize()`; none for Gemini | 0.44 |
+| `CompletionResponse::{provider, model, response_id, message_id}` (fields) | `provider()`, `model()`, `response_id()`, or `origin` | 0.44 |
+| `Reasoning::{display_text, first_text, multi, redacted, …}`, `Sealed`, `Issuer` | `Reasoning { text, redacted, native }` | 0.44 |
+| `deepseek`/`mistral`/`openrouter`/`llamacpp`/`venice::CompletionResponse` and other typed replies | `extras::<P>()` or `raw` | 0.44 |
+| `ollama::wire::{Chat, Embeddings, Models}`, `cohere::wire::{Embeddings, ImageEmbeddings}` | `ollama::{chat::Chat, embedding::Embeddings, model_listing::Models}`, `cohere::embeddings::*` | 0.44 |
+| `rig_cassette::http::DirectHeader` | `(impl AsRef<str>, impl AsRef<str>)` pairs | 0.44 |
+| `rig_ecs::policy::text::*`, `policy::{turn_is_empty, answer_text, user_text}` | `rig_core::structured_output::*`, `transcript::{is_empty_assistant_turn, assistant_text_from_choice}`, `Message::user` | 0.44 |
+| `rig_ecs::systems::{gather_turn, AssemblyInputs}` | `systems::fold_turn` | 0.44 |
+| `rig_ecs::agent::checkpoint::CheckpointError` | `TurnHoldError` | 0.44 |
+| `GenAiOperation::{ChatStreaming, Interactions, InteractionsStreaming}` (deprecated) | `GenAiOperation::Chat` + `SpanBuilder::streaming(true)` | 0.44 |
 | `rig_core::OneOrMany<T>` (and the `one_or_many` module, both prelude re-exports) | `Vec<T>` — no replacement type; see the conversion table in "0.41 → 0.42" | 0.42 |
 | `rig_core::EmptyListError` | none — use `message::require_non_empty` where you relied on the rejection | 0.42 |
 | `one_or_many::string_or_option_one_or_many` | none — `json_utils::string_or_vec` into a `Vec<T>`, then `message::non_empty` where the `Option` carried "absent" | 0.42 |
