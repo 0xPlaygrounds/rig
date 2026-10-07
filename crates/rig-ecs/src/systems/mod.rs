@@ -2009,6 +2009,36 @@ fn granted_tools(
         .collect()
 }
 
+impl Folded {
+    /// Names the turn may call: the `granted` tools narrowed by
+    /// `ToolAccess.allowed` and by the folded tool choice, plus the minted
+    /// `output` tool. `ToolChoice::None` leaves only the output tool, and
+    /// `Specific` only its granted names and the output tool, as the request
+    /// advertised them. Every invalid-call check of the turn reads this set.
+    pub(super) fn allowed_calls(
+        &self,
+        granted: &[GrantedTool],
+        access: Option<&ToolAccess>,
+        output: Option<&str>,
+    ) -> std::collections::BTreeSet<String> {
+        let access = access.and_then(|access| access.allowed.as_ref());
+        let chosen = |name: &str| match &self.tool_choice {
+            None | Some(ToolChoice::Auto | ToolChoice::Required) => true,
+            Some(ToolChoice::None) => false,
+            Some(ToolChoice::Specific { function_names }) => {
+                function_names.iter().any(|chosen| chosen.as_str() == name)
+            }
+        };
+        granted
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .filter(|name| access.is_none_or(|access| access.contains(*name)) && chosen(name))
+            .chain(output)
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
 /// Count a landed completion's usage once before deferred invalid-call decisions
 /// consume the turn, including responses completed after an early stream decision.
 pub fn record_usage(
@@ -2288,7 +2318,7 @@ fn provider_failed(
 /// entities and leave the turn unread until resolved.
 pub fn read_turn(
     mut commands: Commands,
-    turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
+    turns: Query<(Entity, &ChildOf, &Outputs, &Folded), Unread>,
     effects: Query<LandedEffect, NotRetrieval>,
     runs: Query<(
         &RunOf,
@@ -2309,15 +2339,15 @@ pub fn read_turn(
 ) {
     let mut turns: Vec<_> = turns
         .iter()
-        .filter_map(|(turn, turn_of, outs)| {
+        .filter_map(|(turn, turn_of, outs, folded)| {
             let run = turn_of.parent();
             runs.get(run)
                 .ok()
-                .map(|(_, seq, ..)| (*seq, turn, run, outs))
+                .map(|(_, seq, ..)| (*seq, turn, run, outs, folded))
         })
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
-    for (_, turn, run, outs) in turns {
+    for (_, turn, run, outs, folded) in turns {
         let Ok((RunOf(agent), _, provider_retried, minted, &RunPhase::AwaitingModel)) =
             runs.get(run)
         else {
@@ -2384,7 +2414,7 @@ pub fn read_turn(
         }
         let access = access.get(turn).ok();
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
-        let allowed = access.and_then(|access| access.allowed.as_ref());
+        let allowed = folded.allowed_calls(&granted, access, minted.0.as_deref());
         let read = TurnRead {
             head: AssistantHead::of(&response.head()),
             content: outs.content.clone(),
@@ -2393,12 +2423,7 @@ pub fn read_turn(
         };
         let invalid: Vec<_> = read
             .calls()
-            .filter(|call| {
-                let name = call.function.name.as_str();
-                (!read.granted.iter().any(|tool| tool.name == name)
-                    || allowed.is_some_and(|allowed| !allowed.contains(name)))
-                    && minted.0.as_deref() != Some(name)
-            })
+            .filter(|call| !allowed.contains(call.function.name.as_str()))
             .collect();
         if !invalid.is_empty() {
             commands.entity(turn).remove::<Materialised>();

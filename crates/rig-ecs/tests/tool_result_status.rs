@@ -362,26 +362,17 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     assert_eq!(app.world().entities().len(), count);
 }
 
-fn patch_tool_choice_none(fresh: Query<Entity, Added<Fresh>>, mut commands: Commands) {
-    for turn in &fresh {
-        commands.entity(turn).insert(RequestPatch {
-            tool_choice: Some(ToolChoice::None),
-            ..RequestPatch::default()
-        });
-    }
-}
-
-/// Runs an agent whose first turn calls an unknown tool, with a system that
-/// skips every invalid call, and returns how the run ended.
-fn skip_unknown_call(
+/// Runs an agent whose first turn is `first`, with the agent's tool choice
+/// `agent_choice`, every turn patched to `patched`, and, when `skip`, a system
+/// that skips every invalid call. Returns how the run ended.
+fn run_first_turn(
+    first: Vec<AssistantContent>,
     agent_choice: Option<ToolChoice>,
-    patch_none: bool,
+    patched: Option<ToolChoice>,
+    skip: bool,
 ) -> (Option<Failed>, bool, usize) {
     let (mut app, agent, requests) = tooling(
-        vec![
-            vec![call("c1", "nope", serde_json::json!({}))],
-            vec![AssistantContent::text("the skip was accepted")],
-        ],
+        vec![first, vec![AssistantContent::text("the skip was accepted")]],
         BTreeMap::new(),
     );
     app.world_mut().entity_mut(agent).insert(InvalidCalls {
@@ -394,13 +385,21 @@ fn skip_unknown_call(
             .insert(ToolChoiceSpec(Some(choice)));
     }
     let mut schedules = app.world_mut().resource_mut::<Schedules>();
-    schedules.add_systems(RigSchedule, skip_invalid_calls.in_set(RigSet::Judge));
-    if patch_none {
+    if skip {
+        schedules.add_systems(RigSchedule, skip_invalid_calls.in_set(RigSet::Judge));
+    }
+    if let Some(choice) = patched {
+        let patch = move |fresh: Query<Entity, Added<Fresh>>, mut commands: Commands| {
+            for turn in &fresh {
+                commands.entity(turn).insert(RequestPatch {
+                    tool_choice: Some(choice.clone()),
+                    ..RequestPatch::default()
+                });
+            }
+        };
         schedules.add_systems(
             RigSchedule,
-            patch_tool_choice_none
-                .after(RigSet::Advance)
-                .before(RigSet::Assemble),
+            patch.after(RigSet::Advance).before(RigSet::Assemble),
         );
     }
     let run = app
@@ -413,16 +412,38 @@ fn skip_unknown_call(
     (failed, settled, sent)
 }
 
+/// Runs an agent whose first turn calls an unknown tool, with a system that
+/// skips every invalid call, and returns how the run ended.
+fn skip_unknown_call(
+    agent_choice: Option<ToolChoice>,
+    patch_none: bool,
+) -> (Option<Failed>, bool, usize) {
+    run_first_turn(
+        vec![call("c1", "nope", serde_json::json!({}))],
+        agent_choice,
+        patch_none.then_some(ToolChoice::None),
+        true,
+    )
+}
+
+fn assert_unknown((failed, settled, sent): (Option<Failed>, bool, usize), tool: &str, case: &str) {
+    assert!(
+        matches!(&failed, Some(Failed(Failure::UnknownToolCall { name })) if name == tool),
+        "{case}: expected UnknownToolCall for {tool}, got {failed:?} \
+         (settled: {settled}, requests sent: {sent})"
+    );
+    assert_eq!(sent, 1, "{case}");
+}
+
 /// The control: an agent-level `ToolChoice::None` forbids every call, so a
 /// Skip is not a resolution and the run fails on the unknown call.
 #[test]
 fn a_skip_under_an_agent_tool_choice_none_fails_the_run() {
-    let (failed, settled, sent) = skip_unknown_call(Some(ToolChoice::None), false);
-    assert!(
-        matches!(&failed, Some(Failed(Failure::UnknownToolCall { name })) if name == "nope"),
-        "expected UnknownToolCall, got {failed:?} (settled: {settled})"
+    assert_unknown(
+        skip_unknown_call(Some(ToolChoice::None), false),
+        "nope",
+        "agent None",
     );
-    assert_eq!(sent, 1);
 }
 
 /// A turn whose `RequestPatch` sets `ToolChoice::None` was sent with no
@@ -431,11 +452,59 @@ fn a_skip_under_an_agent_tool_choice_none_fails_the_run() {
 /// turn's resolved choice, accepts the Skip, and asks the model again.
 #[test]
 fn a_skip_under_a_turn_patched_to_tool_choice_none_fails_the_run() {
-    let (failed, settled, sent) = skip_unknown_call(None, true);
-    assert!(
-        matches!(&failed, Some(Failed(Failure::UnknownToolCall { name })) if name == "nope"),
-        "expected UnknownToolCall under the patched ToolChoice::None, got {failed:?} \
-         (settled: {settled}, requests sent: {sent})"
+    assert_unknown(skip_unknown_call(None, true), "nope", "patched None");
+}
+
+/// The mirror: an agent-level `ToolChoice::None` patched to `Auto` for the
+/// turn makes a Skip of an unknown call an ordinary resolution again.
+#[test]
+fn a_skip_under_an_agent_none_patched_to_auto_is_accepted() {
+    let (failed, settled, sent) = run_first_turn(
+        vec![call("c1", "nope", serde_json::json!({}))],
+        Some(ToolChoice::None),
+        Some(ToolChoice::Auto),
+        true,
     );
-    assert_eq!(sent, 1);
+    assert!(failed.is_none(), "{failed:?}");
+    assert!(settled);
+    assert_eq!(sent, 2);
+}
+
+/// A granted tool is not callable on a turn whose effective choice is
+/// `ToolChoice::None`, or a `Specific` that leaves it out: the request
+/// advertised no such tool, so the call is invalid rather than dispatched
+/// (the probe's empty script would panic on dispatch), and a Skip of it
+/// fails the run.
+#[test]
+fn a_granted_tool_called_against_the_turn_choice_is_invalid() {
+    let only_other = || ToolChoice::Specific {
+        function_names: vec![
+            rig_core::message::ToolName::new("other")
+                .unwrap_or_else(|_| panic!("`other` is a valid tool name")),
+        ],
+    };
+    let cases = [
+        ("agent None", Some(ToolChoice::None), None, true),
+        (
+            "agent None, unresolved",
+            Some(ToolChoice::None),
+            None,
+            false,
+        ),
+        ("patched None", None, Some(ToolChoice::None), true),
+        (
+            "patched None, unresolved",
+            None,
+            Some(ToolChoice::None),
+            false,
+        ),
+        ("agent Specific", Some(only_other()), None, false),
+    ];
+    for (case, agent_choice, patched, skip) in cases {
+        assert_unknown(
+            run_first_turn(vec![probe_call(2)], agent_choice, patched, skip),
+            "probe",
+            case,
+        );
+    }
 }
