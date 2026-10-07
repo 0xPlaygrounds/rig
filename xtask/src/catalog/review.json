@@ -2978,7 +2978,8 @@
             "long"
           ],
           "prompt_cache_options": true,
-          "sampling": "reasoning_off"
+          "sampling": "reasoning_off",
+          "reasoning_default": "medium"
         }
       },
       "gpt-5.6-luna": {
@@ -2990,7 +2991,8 @@
             "long"
           ],
           "prompt_cache_options": true,
-          "sampling": "reasoning_off"
+          "sampling": "reasoning_off",
+          "reasoning_default": "medium"
         }
       },
       "gpt-5.6-sol": {
@@ -3002,7 +3004,8 @@
             "long"
           ],
           "prompt_cache_options": true,
-          "sampling": "reasoning_off"
+          "sampling": "reasoning_off",
+          "reasoning_default": "medium"
         }
       },
       "gpt-5.6-terra": {
@@ -3014,7 +3017,8 @@
             "long"
           ],
           "prompt_cache_options": true,
-          "sampling": "reasoning_off"
+          "sampling": "reasoning_off",
+          "reasoning_default": "medium"
         }
       },
       "gpt-6-astra": {

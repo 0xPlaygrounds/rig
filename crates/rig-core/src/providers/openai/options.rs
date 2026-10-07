@@ -124,8 +124,8 @@ fn named_responses_can_disable(model: &str) -> bool {
 /// `top_p` on Responses for a model whose catalog entry gives no sampling
 /// rule (or that the catalog does not list), by its id: a model that does
 /// not reason by its name takes it; the o-series, `-pro` models and GPT-5
-/// take none; GPT-5.5 is unverified; the rest take it only at effort
-/// `none`.
+/// take none; GPT-5.5 takes none, since OpenAI rejects it with no effort
+/// set; the rest take it only at effort `none`.
 fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
     match named_reasons(model) {
         Some(false) | None => send("top_p", top_p),
@@ -133,7 +133,7 @@ fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
             Mapping::unsupported("this model takes no sampling parameters")
         }
         Some(true) if gpt_version(model) == Some((5, 5)) => {
-            Mapping::unsupported("unverified for GPT-5.5, whose default effort is unconfirmed")
+            Mapping::unsupported("GPT-5.5 rejects `top_p`")
         }
         Some(true) if reasoning_off => send("top_p", top_p),
         Some(true) => Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`"),
@@ -145,7 +145,8 @@ fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
 /// [`Sampling::ReasoningOff`] takes it only while reasoning is off. That is
 /// `reasoning` set to `Off` or, with no `reasoning` set, a model that can
 /// turn reasoning off and whose entry names no default effort, so defaults
-/// to `none` (the rule [`check_body`] applies to a raw `top_p`). A model
+/// to `none` (the rule [`check_body`] applies to a raw `top_p`). GPT-5.6 and
+/// GPT-6 name `medium`. A model
 /// whose entry gives no rule, or that the catalog does not list, goes by
 /// its id ([`named_top_p`]).
 fn openai_top_p(model: &str, top_p: f64, reasoning: Option<&Reasoning>) -> Mapping {

@@ -1260,7 +1260,7 @@ fn gpt_6_rules_follow_a_per_request_model_override() {
 /// GPT-5.1 and later take `temperature`, `top_p` and `logprobs` only at
 /// effort `none` (OpenAI's model guidance for GPT-5.2 and GPT-5.4): an effort
 /// set to anything else, typed or raw, refuses them on both routes. With no
-/// effort set the model is not checked, since its default is `none`.
+/// effort set GPT-5.1 and GPT-5.4 sample, since their default is `none`.
 #[test]
 fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
     for model in ["gpt-5.1", "gpt-5.4", "gpt-5.6-sol"] {
@@ -1297,14 +1297,20 @@ fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
         )
         .expect("no option set: sent");
         assert_eq!(body["temperature"], json!(0.2), "{model}");
-        let body = on_chat(
+        let no_effort = on_chat(
             model,
             gpt_6_request(None)
                 .temperature(0.2)
                 .options(GenerationOptions::default().seed(1)),
-        )
-        .expect("no effort set");
-        assert_eq!(body["temperature"], json!(0.2), "{model}");
+        );
+        match model {
+            // GPT-5.6 reasons at `medium` when no effort is set.
+            "gpt-5.6-sol" => assert!(no_effort.is_err(), "{model}: {no_effort:?}"),
+            _ => {
+                let body = no_effort.expect("no effort set: default `none`");
+                assert_eq!(body["temperature"], json!(0.2), "{model}");
+            }
+        }
         let body = on_chat(
             model,
             strict(gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2)),
@@ -1312,4 +1318,44 @@ fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
         .expect("effort none samples");
         assert_eq!(body["temperature"], json!(0.2), "{model}");
     }
+}
+
+/// GPT-5.6 reasons at `medium` by default, so with no `reasoning` set a
+/// typed or raw `top_p` is refused on Chat and Responses, and a typed
+/// `top_p` is sent once reasoning is `Off`. GPT-5.4 defaults to `none` and
+/// samples with no `reasoning` set.
+#[test]
+fn gpt_5_6_refuses_top_p_while_it_reasons_by_default() {
+    let request =
+        |options: GenerationOptions| CompletionRequest::new("hi").max_tokens(16).options(options);
+    for model in ["gpt-5.6", "gpt-5.6-luna", "gpt-5.6-sol", "gpt-5.6-terra"] {
+        let top_p = GenerationOptions::default().top_p(0.9);
+        assert_eq!(
+            refused(sent(&chat(&OPENAI, model), top_p.clone())),
+            Some("top_p"),
+            "{model}"
+        );
+        assert_eq!(
+            refused(on_prepared_responses(model, request(top_p))),
+            Some("top_p"),
+            "{model}"
+        );
+        let raw = gpt_6_request(Some(json!({"top_p": 0.9})))
+            .options(GenerationOptions::default().on_unsupported(OnUnsupported::Error));
+        assert_eq!(refusal(on_prepared_chat(model, raw.clone())).0, "top_p");
+        assert_eq!(refusal(on_prepared_responses(model, raw)).0, "top_p");
+
+        let off = GenerationOptions::default()
+            .reasoning(Reasoning::Off)
+            .top_p(0.9);
+        let body = sent(&chat(&OPENAI, model), off.clone()).expect("reasoning is off");
+        assert_eq!(body["top_p"], 0.9, "{model}");
+        let body = on_prepared_responses(model, request(off)).expect("reasoning is off");
+        assert_eq!(body["top_p"], 0.9, "{model}");
+    }
+    let top_p = GenerationOptions::default().top_p(0.9);
+    let body = sent(&chat(&OPENAI, "gpt-5.4-nano"), top_p.clone()).expect("default none");
+    assert_eq!(body["top_p"], 0.9);
+    let body = on_prepared_responses("gpt-5.4-nano", request(top_p)).expect("default none");
+    assert_eq!(body["top_p"], 0.9);
 }
