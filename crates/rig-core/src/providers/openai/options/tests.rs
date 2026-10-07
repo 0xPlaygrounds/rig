@@ -147,6 +147,114 @@ fn xai_chat_reasoning_agrees_with_validate() {
     assert_eq!(body["reasoning_effort"], "none");
 }
 
+/// On Mistral, Groq and Venice the encoder refuses a reasoning option
+/// exactly when `ModelSpec::validate` does, for every row of each that
+/// lists its reasoning options or does not reason. A row that marks a
+/// reasoning model but lists no option, and an id the catalog does not
+/// list, take every value.
+#[test]
+fn mistral_groq_and_venice_reasoning_agrees_with_validate() {
+    let reasonings = [
+        Reasoning::Off,
+        Reasoning::Effort(Effort::Minimal),
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::Medium),
+        Reasoning::Effort(Effort::High),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Effort(Effort::Max),
+    ];
+    for dialect in [&MISTRAL, &GROQ, &VENICE] {
+        let mut checked = 0;
+        for spec in crate::catalog::Catalog::builtin()
+            .iter()
+            .filter(|spec| spec.provider.vendor() == dialect.name)
+        {
+            let support = &spec.reasoning;
+            let unlisted_options = support.supported
+                && support.levels.is_empty()
+                && support.budget.is_none()
+                && !support.can_disable;
+            for reasoning in &reasonings {
+                let options = GenerationOptions::default().reasoning(*reasoning);
+                assert_eq!(
+                    refused(sent(&chat(dialect, &spec.id), options.clone())).is_some(),
+                    !unlisted_options && spec.validate(&options).is_err(),
+                    "{}: {}: {reasoning:?}",
+                    dialect.name,
+                    spec.id
+                );
+                checked += 1;
+            }
+        }
+        assert!(checked > 50, "{}: {checked}", dialect.name);
+        let body = sent(
+            &chat(dialect, "a-model-the-catalog-does-not-list"),
+            GenerationOptions::default().reasoning(Effort::XHigh),
+        )
+        .expect("an unlisted id takes every effort");
+        assert_eq!(body["reasoning_effort"], "xhigh", "{}", dialect.name);
+    }
+    for (dialect, model, effort) in [
+        (&MISTRAL, "mistral-small-latest", Effort::Low),
+        (&GROQ, "openai/gpt-oss-20b", Effort::XHigh),
+        (&VENICE, "qwen3-5-9b", Effort::XHigh),
+    ] {
+        assert_eq!(
+            refused(sent(
+                &chat(dialect, model),
+                GenerationOptions::default().reasoning(effort)
+            )),
+            Some("reasoning"),
+            "{model}"
+        );
+    }
+    for reasoning in [Reasoning::Off, Reasoning::Effort(Effort::High)] {
+        sent(
+            &chat(&VENICE, "claude-opus-4-5"),
+            GenerationOptions::default().reasoning(reasoning),
+        )
+        .expect("a row that lists no reasoning option is sent");
+    }
+    let body = sent(
+        &chat(&MISTRAL, "mistral-small-latest"),
+        GenerationOptions::default().reasoning(Effort::High),
+    )
+    .expect("Mistral Small takes high");
+    assert_eq!(body["reasoning_effort"], "high");
+    assert_eq!(
+        refused(sent(
+            &chat(&GROQ, "openai/gpt-oss-unlisted"),
+            GenerationOptions::default().reasoning(Reasoning::Off)
+        )),
+        Some("reasoning"),
+        "an unlisted GPT-OSS id keeps the name rule"
+    );
+}
+
+/// OpenRouter refuses `Off` where the upstream's row lists reasoning
+/// options and none turns it off, on both routes; a row that lists none,
+/// and an id the catalog does not list, are sent.
+#[test]
+fn openrouter_off_follows_the_upstream_row() {
+    let off = GenerationOptions::default().reasoning(Reasoning::Off);
+    assert_eq!(
+        refused(sent(&chat(&OPENROUTER, "openai/gpt-5-nano"), off.clone())),
+        Some("reasoning")
+    );
+    assert!(matches!(
+        openrouter_reasoning("openai/gpt-5-nano", &Reasoning::Off),
+        Mapping::Unsupported(_)
+    ));
+    for model in [
+        "anthropic/claude-haiku-4.5",
+        "aion-labs/aion-2.0",
+        "vendor/unlisted-model",
+    ] {
+        let body = sent(&chat(&OPENROUTER, model), off.clone()).expect(model);
+        assert_eq!(body["reasoning"], json!({"effort": "none"}), "{model}");
+    }
+}
+
 /// Grok 4.3 takes `xhigh` (docs.x.ai/docs/models/grok-4.3).
 #[test]
 fn grok_4_3_sends_xhigh_effort() {

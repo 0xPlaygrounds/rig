@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelSpec, Sampling};
+use crate::catalog::{ModelSpec, ReasoningSupport, Sampling};
 use crate::completion::options::{CatalogRefusal, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
     CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
@@ -366,6 +366,39 @@ fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> 
     })
 }
 
+/// The reasoning a gateway dialect's catalog row gives for `model`, or
+/// `None` when the catalog does not list it or the row marks a reasoning
+/// model but lists none of its options, which says nothing a gateway's
+/// request can be checked against.
+fn listed_reasoning(dialect: &str, model: &str) -> Option<&'static ReasoningSupport> {
+    let reasoning = &crate::catalog::lookup(dialect, model)?.reasoning;
+    let lists_options =
+        !reasoning.levels.is_empty() || reasoning.budget.is_some() || reasoning.can_disable;
+    (!reasoning.supported || lists_options).then_some(reasoning)
+}
+
+/// Why `dialect`'s `model` cannot take `reasoning`, as its catalog row says
+/// (the check [`ModelSpec::validate`] makes), or `None` when it can or
+/// [`listed_reasoning`] gives no row.
+fn catalog_refusal(dialect: &str, model: &str, reasoning: &Reasoning) -> Option<Mapping> {
+    listed_reasoning(dialect, model)?
+        .refusal(reasoning)
+        .map(Mapping::unsupported)
+}
+
+/// `reasoning_effort` for `reasoning` on a dialect whose catalog rows
+/// decide the levels a model takes and whether it can turn reasoning off,
+/// `none` for `Off`; a model the catalog does not list takes every value.
+fn catalog_effort(dialect: &str, model: &str, reasoning: &Reasoning, budget: &str) -> Mapping {
+    if let Reasoning::Budget { .. } = reasoning {
+        return Mapping::unsupported(budget);
+    }
+    catalog_refusal(dialect, model, reasoning).unwrap_or_else(|| match reasoning {
+        Reasoning::Effort(effort) => reasoning_effort(effort),
+        _ => send("reasoning_effort", "none"),
+    })
+}
+
 /// A `stop` list sent under `key`, refused past `limit` sequences.
 fn stop_list(stop: &[String], limit: Option<usize>, key: &str) -> Mapping {
     match limit {
@@ -450,7 +483,7 @@ pub(crate) fn chat_options(
     } else if is(&DEEPSEEK) {
         deepseek(fields)
     } else if is(&MISTRAL) {
-        mistral(fields)
+        mistral(model, fields)
     } else if is(&GROQ) {
         groq(model, fields)
     } else if name == crate::providers::xai::DIALECT.name {
@@ -458,7 +491,7 @@ pub(crate) fn chat_options(
     } else if is(&TOGETHER) {
         together(fields)
     } else if is(&VENICE) {
-        venice(fields)
+        venice(model, fields)
     } else if is(&MOONSHOT) {
         moonshot(model, fields)
     } else if is(&ZAI) {
@@ -600,8 +633,17 @@ pub(crate) fn openrouter_cache(model: &str, cache: &CacheRetention) -> Mapping {
 }
 
 /// OpenRouter's `reasoning` object for `model`, shared by its two routes.
+/// `Off` is refused where the upstream's catalog row lists its reasoning
+/// options and none turns reasoning off ([`listed_reasoning`]).
 pub(crate) fn openrouter_reasoning(model: &str, reasoning: &Reasoning) -> Mapping {
+    let cannot_disable = || {
+        listed_reasoning(super::wire::OPENROUTER.name, model)
+            .is_some_and(|reasoning| reasoning.supported && !reasoning.can_disable)
+    };
     match reasoning {
+        Reasoning::Off if cannot_disable() => {
+            Mapping::unsupported("this upstream cannot turn reasoning off")
+        }
         Reasoning::Off => send("reasoning", json!({"effort": "none"})),
         Reasoning::Effort(effort) => send("reasoning", json!({"effort": effort.as_str()})),
         Reasoning::Budget { .. } if model.starts_with("openai/") || model.starts_with("x-ai/") => {
@@ -694,7 +736,7 @@ fn deepseek(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn mistral(fields: OptionFields<'_>) -> OptionMap {
+fn mistral(model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -706,12 +748,13 @@ fn mistral(fields: OptionFields<'_>) -> OptionMap {
         stop,
     } = fields;
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off => send("reasoning_effort", "none"),
-            Reasoning::Effort(effort) => reasoning_effort(effort),
-            Reasoning::Budget { .. } => {
-                Mapping::unsupported("Mistral takes an effort level, not a budget")
-            }
+        reasoning: Mapping::of(reasoning, |reasoning| {
+            catalog_effort(
+                super::wire::MISTRAL.name,
+                model,
+                reasoning,
+                "Mistral takes an effort level, not a budget",
+            )
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, |tier| match tier {
@@ -746,14 +789,19 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off if model.contains("gpt-oss") => {
+            // An id the catalog does not list keeps the name rule.
+            Reasoning::Off
+                if model.contains("gpt-oss")
+                    && crate::catalog::lookup(super::wire::GROQ.name, model).is_none() =>
+            {
                 Mapping::unsupported("GPT-OSS cannot turn reasoning off")
             }
-            Reasoning::Off => send("reasoning_effort", "none"),
-            Reasoning::Effort(effort) => reasoning_effort(effort),
-            Reasoning::Budget { .. } => {
-                Mapping::unsupported("Groq takes an effort level, not a budget")
-            }
+            reasoning => catalog_effort(
+                super::wire::GROQ.name,
+                model,
+                reasoning,
+                "Groq takes an effort level, not a budget",
+            ),
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, |tier| match tier {
@@ -900,7 +948,7 @@ fn together(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn venice(fields: OptionFields<'_>) -> OptionMap {
+fn venice(model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -912,12 +960,13 @@ fn venice(fields: OptionFields<'_>) -> OptionMap {
         stop,
     } = fields;
     OptionMap {
-        reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
-            Reasoning::Off => send("reasoning_effort", "none"),
-            Reasoning::Effort(effort) => reasoning_effort(effort),
-            Reasoning::Budget { .. } => {
-                Mapping::unsupported("Venice takes an effort level, not a budget")
-            }
+        reasoning: Mapping::of(reasoning, |reasoning| {
+            catalog_effort(
+                super::wire::VENICE.name,
+                model,
+                reasoning,
+                "Venice takes an effort level, not a budget",
+            )
         }),
         cache: Mapping::of(cache, |cache| match cache {
             CacheRetention::None => {
