@@ -16,9 +16,9 @@ async fn streaming() {
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)
         .tool(WeatherTool::new(call_count.clone()))
-        .additional_params(serde_json::json!({
-            "reasoning": { "effort": "high" }
-        }))
+        .options(
+            rig::completion::GenerationOptions::default().reasoning(rig::completion::Effort::High),
+        )
         .build();
 
     let stream = agent

@@ -15,7 +15,11 @@ use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::message::{AssistantContent, Message, ToolCall, ToolResultContent, UserContent};
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_cassette};
+use rig::completion::Effort;
+
+use super::super::support::{
+    OpenAiCassette, effort, shared_options, stateless, with_openai_cassette,
+};
 
 const MODEL: &str = "gpt-5-mini";
 const CODE: &str = "amber-5521";
@@ -32,11 +36,10 @@ fn lookup_tool() -> ToolDefinition {
     }
 }
 
-fn request(history: Vec<Message>, tools: Vec<ToolDefinition>, params: Value) -> CompletionRequest {
+fn request(history: Vec<Message>, tools: Vec<ToolDefinition>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
     request.tools = tools;
     request.max_tokens = Some(2048);
-    request.additional_params = Some(params);
     request
 }
 
@@ -171,21 +174,27 @@ async fn stored_chain_with_tool_call() {
             let resources = Created::default();
             cleaned(&client, &resources, async {
                 let model = client.openai.responses(MODEL);
-                let stored = |previous: Option<&str>| {
-                    let mut params = json!({ "store": true, "reasoning": { "effort": "low" } });
-                    if let Some(previous) = previous {
-                        params["previous_response_id"] = json!(previous);
+                let stored = |request: CompletionRequest, previous: Option<&str>| {
+                    let request = request
+                        .options(effort(Effort::Low))
+                        .provider_options(shared_options(Some(true), None));
+                    match previous {
+                        Some(previous) => {
+                            request.additional_params(json!({ "previous_response_id": previous }))
+                        }
+                        None => request,
                     }
-                    params
                 };
 
                 let first = model
-                    .call(request(
-                        vec![Message::user(
-                            "Use lookup_code to get the code of record alpha. Do not guess.",
-                        )],
-                        vec![lookup_tool()],
-                        stored(None),
+                    .call(stored(
+                        request(
+                            vec![Message::user(
+                                "Use lookup_code to get the code of record alpha. Do not guess.",
+                            )],
+                            vec![lookup_tool()],
+                        ),
+                        None,
                     ))
                     .await
                     .expect("turn one");
@@ -194,10 +203,9 @@ async fn stored_chain_with_tool_call() {
                 let call = only_call(&first.choice);
 
                 let second = model
-                    .call(request(
-                        vec![answer(&call)],
-                        vec![lookup_tool()],
-                        stored(Some(first_id)),
+                    .call(stored(
+                        request(vec![answer(&call)], vec![lookup_tool()]),
+                        Some(first_id),
                     ))
                     .await
                     .expect(
@@ -208,12 +216,14 @@ async fn stored_chain_with_tool_call() {
                 assert!(text(&second.choice).contains(CODE), "{:?}", second.choice);
 
                 let third = model
-                    .call(request(
-                        vec![Message::user(
-                            "Repeat the code you reported, exactly, and nothing else.",
-                        )],
-                        vec![],
-                        stored(Some(second_id)),
+                    .call(stored(
+                        request(
+                            vec![Message::user(
+                                "Repeat the code you reported, exactly, and nothing else.",
+                            )],
+                            vec![],
+                        ),
+                        Some(second_id),
                     ))
                     .await
                     .expect("turn three continues from turn two");
@@ -300,9 +310,8 @@ async fn file_id_chain() {
                 ],
             };
             let model = client.openai.responses("gpt-4.1-mini");
-            let params = json!({ "store": false });
             let first = model
-                .call(request(vec![document.clone()], vec![], params.clone()))
+                .call(request(vec![document.clone()], vec![]).provider_options(stateless()))
                 .await
                 .expect("turn one reads the file by id");
             let history = vec![
@@ -311,7 +320,7 @@ async fn file_id_chain() {
                 Message::user("How many pages does the attached PDF have? Answer with a number."),
             ];
             let second = model
-                .call(request(history, vec![], params))
+                .call(request(history, vec![]).provider_options(stateless()))
                 .await
                 .expect("turn two still reads the file by id");
             assert!(

@@ -8,7 +8,7 @@
 
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 
-use super::super::support::{OpenAiCassette, with_openai_cassette};
+use super::super::support::{OpenAiCassette, stateless, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
@@ -17,8 +17,8 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         model: client.openai.completion(GPT_5_MINI),
         route: Some(client.openai.completion(GPT_5_NANO)),
         temperature: None,
-        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
-        options: None,
+        additional_params: None,
+        options: Some(|| crate::ecs_matrix::corpus::TypedOptions::provider(stateless())),
     }
 }
 

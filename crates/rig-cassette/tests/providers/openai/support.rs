@@ -541,3 +541,38 @@ pub(super) async fn with_openai_prompt_caching_cassette<F, Fut>(
 {
     with_openai_cassette(spec, test_body).await;
 }
+
+/// `options` as OpenAI's typed provider options.
+pub(super) fn openai_options(
+    options: &rig::providers::openai::extension::OpenAiOptions,
+) -> rig::completion::ProviderOptions {
+    rig::completion::ProviderOptions::new()
+        .with::<rig::providers::openai::extension::OpenAiExt>(options)
+        .expect("OpenAI options serialize")
+}
+
+/// OpenAI's shared provider options: `store`, and `prompt_cache_key` when
+/// given.
+pub(super) fn shared_options(
+    store: Option<bool>,
+    prompt_cache_key: Option<&str>,
+) -> rig::completion::ProviderOptions {
+    let mut shared = rig::providers::openai::extension::OpenAiShared::default();
+    if let Some(store) = store {
+        shared = shared.store(store);
+    }
+    if let Some(key) = prompt_cache_key {
+        shared = shared.prompt_cache_key(key);
+    }
+    openai_options(&rig::providers::openai::extension::OpenAiOptions::new().shared(shared))
+}
+
+/// `store: false` as a typed provider option.
+pub(super) fn stateless() -> rig::completion::ProviderOptions {
+    shared_options(Some(false), None)
+}
+
+/// A reasoning effort as typed generation options.
+pub(super) fn effort(effort: rig::completion::Effort) -> rig::completion::GenerationOptions {
+    rig::completion::GenerationOptions::default().reasoning(effort)
+}

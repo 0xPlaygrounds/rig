@@ -40,7 +40,11 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
+use rig::providers::openai::extension::{ChatOptions, OpenAiOptions};
+
+use super::super::support::{
+    OpenAiCassette, openai_options, with_openai_chat_stream_logprobs_cassette_result,
+};
 use rig::completion::CompletionRequest;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -82,15 +86,13 @@ struct Observation {
 
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
-fn params(cell: Cell) -> Value {
-    let mut params = json!({ "logprobs": true });
-    if let Some(top) = match cell.top {
-        Top::Absent => None,
-        Top::Zero => Some(0),
-    } {
-        params["top_logprobs"] = json!(top);
-    }
-    params
+fn options(cell: Cell) -> rig::completion::ProviderOptions {
+    let chat = ChatOptions::new().logprobs(true);
+    let chat = match cell.top {
+        Top::Absent => chat,
+        Top::Zero => chat.top_logprobs(0),
+    };
+    openai_options(&OpenAiOptions::new().chat(chat))
 }
 
 fn prompt(cell: Cell) -> &'static str {
@@ -120,7 +122,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.openai.chat(model_name(cell.model));
     let request = CompletionRequest::new(prompt(cell))
-        .additional_params(params(cell))
+        .provider_options(options(cell))
         .max_tokens(max_tokens(cell));
 
     let observation = match cell.transport {

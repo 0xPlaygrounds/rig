@@ -21,7 +21,8 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_cassette;
 use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
 use rig::providers::openai::extension::{
-    OpenAiExt, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, ReasoningContext, ReasoningMode,
+    OpenAiExt, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningContext,
+    ReasoningMode,
 };
 
 const PROMPT: &str = "Reply with exactly: OK";
@@ -99,17 +100,6 @@ fn model_constants() {
     assert_eq!(openai::GPT_5_6_SOL, "gpt-5.6-sol");
     assert_eq!(openai::GPT_5_6_TERRA, "gpt-5.6-terra");
     assert_eq!(openai::GPT_5_6_LUNA, "gpt-5.6-luna");
-}
-
-fn assert_reasoning_metadata(raw_response: &Value, expected: Value) {
-    let expected = expected
-        .as_object()
-        .expect("expected reasoning metadata should be an object");
-    assert_eq!(
-        raw_response["reasoning"]["context"].as_str(),
-        expected.get("context").and_then(Value::as_str)
-    );
-    assert_eq!(raw_response["reasoning"].as_object(), Some(expected));
 }
 
 fn assert_has_text(response: &CompletionResponse) {
@@ -190,20 +180,25 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
+                let options = OpenAiOptions::default()
+                    .shared(OpenAiShared::default().store(false))
+                    .responses(
+                        OpenAiResponsesOptions::default()
+                            .reasoning_mode(ReasoningMode::Pro)
+                            .reasoning_context(ReasoningContext::AllTurns),
+                    );
                 let request = CompletionRequest::new(user_message.clone())
                     .messages(history)
-                    .additional_params(json!({
-                        "reasoning": {
-                            "context": "all_turns",
-                            "effort": "low",
-                            "mode": "pro"
-                        },
-                        "store": false
-                    }));
+                    .options(GenerationOptions::default().reasoning(Effort::Low))
+                    .provider_options(
+                        ProviderOptions::new()
+                            .with::<OpenAiExt>(&options)
+                            .expect("the options are sections"),
+                    );
                 // One request per turn: one call yields both views of it — the
-                // normalized response, and the provider's own wire response
-                // read back out of `raw`, which carries the reasoning
-                // metadata under test.
+                // normalized response with its typed extras, and the
+                // provider's own wire response on `raw`, which the stored
+                // turns persist.
                 let response: CompletionResponse =
                     model.call(request).await.unwrap_or_else(|error| {
                         panic!("turn {} should succeed: {error}", turn_index + 1)
@@ -211,7 +206,14 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                 let raw_response = response.raw.clone();
 
                 assert_has_text(&response);
-                assert_reasoning_metadata(&raw_response, expected_metadata.clone());
+                let extras = response
+                    .extras::<OpenAiExt>()
+                    .expect("the reply is OpenAI's")
+                    .expect("the reply holds the extras");
+                assert_eq!(
+                    reasoning_of(&extras),
+                    [Some("low"), Some("pro"), Some("all_turns"), None]
+                );
                 let text = response
                     .choice
                     .iter()
@@ -282,25 +284,24 @@ async fn streaming_reasoning_metadata() {
         "gpt_5_6_reasoning/streaming_metadata",
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6_SOL);
-            let request = CompletionRequest::new(PROMPT).additional_params(json!({
-                "reasoning": {
-                    "effort": "low",
-                    "mode": "pro",
-                    "context": "current_turn"
-                }
-            }));
-            // The terminal record's `raw` keeps the provider-native response;
-            // the normalized response carries no reasoning metadata.
+            let options = OpenAiOptions::default().responses(
+                OpenAiResponsesOptions::default()
+                    .reasoning_mode(ReasoningMode::Pro)
+                    .reasoning_context(ReasoningContext::CurrentTurn),
+            );
+            let request = CompletionRequest::new(PROMPT)
+                .options(GenerationOptions::default().reasoning(Effort::Low))
+                .provider_options(
+                    ProviderOptions::new()
+                        .with::<OpenAiExt>(&options)
+                        .expect("the options are sections"),
+                );
+            // The terminal record's typed extras read the reasoning metadata
+            // from the provider-native response; the normalized response
+            // carries none.
             let mut stream = model
                 .stream(request)
                 .expect("GPT-5.6 reasoning stream should start");
-            let expected = json!({
-                "context": "current_turn",
-                "effort": "low",
-                "mode": "pro",
-                "summary": null
-            });
-
             while let Some(item) = stream.next().await {
                 item.expect("GPT-5.6 reasoning stream should succeed");
             }
@@ -308,11 +309,14 @@ async fn streaming_reasoning_metadata() {
                 .finish()
                 .await
                 .expect("GPT-5.6 reasoning stream should yield a final response");
+            let extras = record
+                .extras::<OpenAiExt>()
+                .expect("the reply is OpenAI's")
+                .expect("the reply holds the extras");
             assert_eq!(
-                record.raw["reasoning"]["context"].as_str(),
-                Some("current_turn")
+                reasoning_of(&extras),
+                [Some("low"), Some("pro"), Some("current_turn"), None]
             );
-            assert_eq!(record.raw["reasoning"], expected);
         },
     )
     .await;

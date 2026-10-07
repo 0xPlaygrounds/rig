@@ -5,19 +5,20 @@
 
 use rig::providers::openai;
 
-use super::super::support::with_openai_cassette;
+use rig::completion::Effort;
+use rig::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions, ReasoningSummary};
+
+use super::super::support::{effort, openai_options, stateless, with_openai_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 #[tokio::test]
 async fn nonstreaming() {
     with_openai_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
-        reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.openai.completion("gpt-5.2"),
-            Some(serde_json::json!({
-                "reasoning": { "effort": "medium" },
-                "store": false
-            })),
-        ))
+        reasoning::run_reasoning_roundtrip_nonstreaming(
+            ReasoningRoundtripAgent::new(client.openai.completion("gpt-5.2"), None)
+                .with_options(effort(Effort::Medium))
+                .with_provider_options(stateless()),
+        )
         .await;
     })
     .await;
@@ -26,11 +27,16 @@ async fn nonstreaming() {
 #[tokio::test]
 async fn reasoning_delta_hook_streaming() {
     with_openai_cassette("reasoning_delta_hook/streaming", |client| async move {
-        reasoning::run_reasoning_delta_hook_streaming(
+        let summary = openai_options(&OpenAiOptions::new().responses(
+            OpenAiResponsesOptions::default().reasoning_summary(ReasoningSummary::Detailed),
+        ));
+        reasoning::run_reasoning_delta_hook_streaming_with(
             client.openai.completion(openai::GPT_5_6),
-            serde_json::json!({
-                "reasoning": { "effort": "high", "summary": "detailed" }
-            }),
+            |builder| {
+                builder
+                    .options(effort(Effort::High))
+                    .provider_options(summary)
+            },
             "openai",
         )
         .await;

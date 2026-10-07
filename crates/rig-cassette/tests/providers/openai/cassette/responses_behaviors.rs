@@ -12,7 +12,9 @@ use rig::message::AssistantContent;
 use rig::providers::openai;
 use rig_test_support::cassette_models::MapWire;
 
-use super::super::support::with_openai_cassette;
+use rig::providers::openai::extension::OpenAiExt;
+
+use super::super::support::{stateless, with_openai_cassette};
 use rig::completion::CompletionRequest;
 
 #[tokio::test]
@@ -29,8 +31,8 @@ async fn incomplete_response_surfaces_partial_output() {
 
             // The cassette records a single interaction, and one call yields
             // both views of it: the normalized response, and the provider's
-            // own reply in `raw`. `status` and `incomplete_details` are
-            // Responses-API wire fields, so they are read off the latter.
+            // own reply in `raw`. `status` has no typed extra, so it is read
+            // off the latter; the incomplete reason is a typed extra.
             let response = model
                 .call(request)
                 .await
@@ -41,9 +43,12 @@ async fn incomplete_response_surfaces_partial_output() {
                 reply["status"], "incomplete",
                 "hitting max_output_tokens should mark the response incomplete"
             );
-            let reason = reply["incomplete_details"]["reason"].as_str();
+            let extras = response
+                .extras::<OpenAiExt>()
+                .expect("the reply is OpenAI's")
+                .expect("the reply holds the extras");
             assert_eq!(
-                reason,
+                extras.incomplete_reason.as_deref(),
                 Some("max_output_tokens"),
                 "incomplete_details should carry the truncation reason"
             );
@@ -85,7 +90,7 @@ async fn system_messages_as_input_items_mid_conversation() {
                 .map_wire(|wire| wire.with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")
-                .additional_params(serde_json::json!({ "store": false }))
+                .provider_options(stateless())
                 .build();
             let mut history = vec![
                 Message::user("Hello!"),

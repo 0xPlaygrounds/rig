@@ -41,7 +41,6 @@
 
 use rig::providers::openai;
 use rig_test_support::cassette_models::OpenAiModels;
-use serde_json::json;
 
 use crate::cache_conformance::{
     CacheProbe, CacheSupport, assert_breakpoints_match_support, assert_cache_conformance,
@@ -49,7 +48,7 @@ use crate::cache_conformance::{
     run_cache_probe_streaming,
 };
 
-use super::super::support::with_openai_prompt_caching_cassette;
+use super::super::support::{shared_options, stateless, with_openai_prompt_caching_cassette};
 
 /// A cheap model that still participates in prompt caching.
 pub(super) const CACHE_MODEL: &str = openai::GPT_4O_MINI;
@@ -80,16 +79,16 @@ pub(super) fn probe() -> CacheProbe {
 
 /// The probe on the Responses surface, which stores no response.
 fn responses_probe() -> CacheProbe {
-    probe().with_additional_params(json!({ "store": false }))
+    probe().with_provider_options(stateless())
 }
 
 /// The Responses probe plus the `prompt_cache_key` that surface needs to route
 /// same-prefix traffic to the same cache.
 fn keyed_probe() -> CacheProbe {
-    probe().with_additional_params(json!({
-        "prompt_cache_key": "rig-cache-conformance-openai",
-        "store": false,
-    }))
+    probe().with_provider_options(shared_options(
+        Some(false),
+        Some("rig-cache-conformance-openai"),
+    ))
 }
 
 /// Measured Responses behavior without `prompt_cache_key`: turn 2 misses.

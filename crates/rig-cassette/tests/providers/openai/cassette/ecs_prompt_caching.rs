@@ -14,12 +14,12 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
                 |client| async move {
                     let mut ecs =
                         EcsAgent::new(client.openai.completion(CACHE_MODEL), &probe().preamble, 1);
-                    ecs.app
-                .world_mut()
-                .entity_mut(ecs.agent)
-                .insert(rig_ecs::agent::AdditionalParams(Some(
-                    serde_json::json!({"prompt_cache_key": "rig-cache-conformance-openai-agent"}),
-                )));
+                    ecs.app.world_mut().entity_mut(ecs.agent).insert(
+                        rig_ecs::agent::ProviderOptions(super::super::support::shared_options(
+                            None,
+                            Some("rig-cache-conformance-openai-agent"),
+                        )),
+                    );
                     assert_cache_growth(ecs, &OPENAI_CACHE_SUPPORT, "responses agent loop").await;
                 },
             )

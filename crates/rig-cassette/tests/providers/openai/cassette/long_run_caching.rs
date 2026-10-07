@@ -16,15 +16,16 @@
 
 use rig::AgentBuilder;
 use rig::agent::Agent;
-use rig::completion::{CacheRates, Message};
+use rig::completion::{
+    CacheRates, CacheRetention, GenerationOptions, Message, ProviderOptions, Reasoning,
+};
 use rig_test_support::cache_longrun::{
     self, CacheWire, Limits, LongRun, LookupOrder, RunLog, SUPPORT_PREAMBLE, chat, question,
 };
-use serde_json::{Value, json};
 
 use crate::cassettes::CassetteClock;
 
-use super::super::support::with_openai_long_run_cassette;
+use super::super::support::{shared_options, with_openai_long_run_cassette};
 
 const MODEL: &str = "gpt-6-sol";
 /// The one key every cached run sends.
@@ -48,13 +49,15 @@ const LIMITS: Limits = Limits {
 
 fn support_agent(
     model: impl Into<rig::DynModel<rig::operation::Completion>>,
-    params: Value,
+    options: GenerationOptions,
+    provider_options: ProviderOptions,
 ) -> Agent {
     AgentBuilder::new(model)
         .preamble(SUPPORT_PREAMBLE)
         .tool(LookupOrder)
         .max_tokens(800)
-        .additional_params(params)
+        .options(options)
+        .provider_options(provider_options)
         .default_max_turns(4)
         .build()
 }
@@ -91,7 +94,8 @@ async fn support_chat_100_chat() {
         |client, clock| async move {
             let agent = support_agent(
                 client.chat.completion(MODEL),
-                json!({ "prompt_cache_key": CACHE_KEY, "reasoning_effort": "none" }),
+                GenerationOptions::default().reasoning(Reasoning::Off),
+                shared_options(None, Some(CACHE_KEY)),
             );
             support_chat(&agent, &clock, 100).await
         },
@@ -114,10 +118,10 @@ async fn support_chat_30_baseline() {
         |client, clock| async move {
             let agent = support_agent(
                 client.chat.completion(MODEL),
-                json!({
-                    "prompt_cache_options": { "mode": "explicit" },
-                    "reasoning_effort": "none",
-                }),
+                GenerationOptions::default()
+                    .reasoning(Reasoning::Off)
+                    .cache(CacheRetention::None),
+                ProviderOptions::new(),
             );
             support_chat(&agent, &clock, 30).await
         },

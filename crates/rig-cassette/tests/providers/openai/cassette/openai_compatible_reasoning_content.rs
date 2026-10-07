@@ -22,6 +22,9 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
+use rig::completion::Effort;
+
+use super::super::support::{effort, stateless};
 use crate::cassettes::{self, ProviderCassette};
 use crate::reasoning::{self, WeatherTool};
 
@@ -38,10 +41,8 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
             let agent = rig::AgentBuilder::new(client.completion("llama-cpp-reasoning-model"))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
-                .additional_params(json!({
-                    "reasoning": { "effort": "medium" },
-                    "store": false
-                }))
+                .options(effort(Effort::Medium))
+                .provider_options(stateless())
                 .default_max_turns(2)
                 .build();
 
