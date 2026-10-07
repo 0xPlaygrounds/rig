@@ -157,6 +157,47 @@ async fn provider_error_event_ends_the_stream_without_draining_later_frames() {
     assert!(outcome.is_err());
 }
 
+/// An in-band error carrying an HTTP status code gets the verdict the Gemini
+/// REST stream gives the same envelope: a 503 or 429 is retryable.
+///
+/// Not a cassette test: an overload or quota hit is a transient condition
+/// that cannot be recorded on demand, and the defect is the verdict the
+/// envelope gets, which a hand-written frame pins exactly.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[tokio::test]
+async fn an_in_band_error_with_a_status_code_is_classified_like_the_rest_stream()
+-> anyhow::Result<()> {
+    use futures::StreamExt;
+
+    for code in [429_u16, 503] {
+        let frame = json!({
+            "event_type": "error",
+            "error": { "code": code, "message": "The model is overloaded.", "status": "UNAVAILABLE" }
+        })
+        .to_string();
+        let model = crate::driver::Model::new(
+            wire(),
+            crate::test_utils::MockStreamingClient {
+                sse_bytes: bytes::Bytes::from(format!("data: {frame}\n\n")),
+            },
+        );
+        let mut stream = model.stream(crate::completion::CompletionRequest::new("hello"))?;
+        let mut errors = Vec::new();
+        while let Some(item) = stream.next().await {
+            if let Err(error) = item {
+                errors.push(error);
+            }
+        }
+        anyhow::ensure!(errors.len() == 1, "one terminal failure: {errors:?}");
+        anyhow::ensure!(
+            errors[0].is_retryable(),
+            "code {code} must be retryable: {:?}",
+            errors[0]
+        );
+    }
+    Ok(())
+}
+
 /// A whole thought, a model output with annotated text, and a hosted
 /// search: the unary resource and its restatement as a stream fold into
 /// the same turn.

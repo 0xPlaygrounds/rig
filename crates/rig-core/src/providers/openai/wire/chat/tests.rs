@@ -342,6 +342,48 @@ async fn an_in_band_error_envelope_fails_the_turn() {
     assert!(response.finish().await.is_err());
 }
 
+/// An in-band envelope whose numeric `code` is an HTTP status (OpenRouter
+/// and other compatible gateways send `{"error":{"code":429}}` on a 200
+/// stream) gets the verdict and code that status gets, as Gemini's stream
+/// already does.
+///
+/// Not a cassette test: a gateway rate limit or upstream failure is a
+/// transient condition that cannot be recorded on demand, and the defect
+/// is the verdict the envelope gets, which a hand-written frame pins
+/// exactly.
+#[tokio::test]
+async fn an_in_band_envelope_with_a_status_code_is_classified_by_it() -> anyhow::Result<()> {
+    for code in [429_u16, 502] {
+        let body = format!(
+            "data: {{\"error\":{{\"code\":{code},\"message\":\"upstream\"}}}}\n\ndata: [DONE]\n\n"
+        );
+        let bound = crate::driver::Model::new(
+            wire(),
+            MockStreamingClient {
+                sse_bytes: Bytes::from(body),
+            },
+        );
+        let mut response = bound.stream(prompt("hi"))?;
+        let mut errors = Vec::new();
+        while let Some(item) = response.next().await {
+            if let Err(error) = item {
+                errors.push(error);
+            }
+        }
+        anyhow::ensure!(errors.len() == 1, "one terminal failure: {errors:?}");
+        let report = errors[0].report();
+        anyhow::ensure!(
+            report.retryable,
+            "code {code} must be retryable: {report:?}"
+        );
+        anyhow::ensure!(
+            report.code.as_deref() == Some(code.to_string().as_str()),
+            "code {code} must be reported: {report:?}"
+        );
+    }
+    Ok(())
+}
+
 /// OpenRouter takes no provider file id, so the adapter leaves a placeholder
 /// for a document carrying only one; every other dialect sends the id.
 #[test]

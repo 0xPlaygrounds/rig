@@ -715,6 +715,64 @@ mod terminal_emission {
         assert_eq!(usage.input_tokens, Some(5));
         assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
     }
+
+    /// The first error a 200 stream carrying `frames` yields, with
+    /// `request-id: req_stream` on the reply.
+    async fn in_band_error(frames: &[&str]) -> anyhow::Result<crate::error::ProviderError> {
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/event-stream"),
+        );
+        headers.insert("request-id", http::HeaderValue::from_static("req_stream"));
+        let bound = crate::driver::Model::new(
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
+            crate::test_utils::NonSuccessStreamingClient {
+                status: http::StatusCode::OK,
+                headers,
+                body: sse(frames),
+            },
+        );
+        let mut stream = bound.stream(crate::completion::CompletionRequest::new("hello"))?;
+        while let Some(item) = stream.next().await {
+            if let Err(error) = item {
+                return Ok(error);
+            }
+        }
+        anyhow::bail!("the stream yielded no error")
+    }
+
+    const OVERLOADED: &str =
+        r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
+
+    /// An `overloaded_error` event mid-stream is the same transient
+    /// condition as the same envelope on an HTTP 529 or 503, so it gets the
+    /// same retry verdict.
+    ///
+    /// Not a cassette test: an overload is a transient server condition that
+    /// cannot be recorded on demand, and the defect is the verdict the
+    /// envelope gets, which a hand-written frame pins exactly.
+    #[tokio::test]
+    async fn an_in_band_overloaded_event_is_retryable_like_its_http_rejection() -> anyhow::Result<()>
+    {
+        let error = in_band_error(&[MESSAGE_START, TEXT_START, TEXT_DELTA, OVERLOADED]).await?;
+        let rejected = crate::error::ProviderError::from_http_response(
+            http::StatusCode::SERVICE_UNAVAILABLE,
+            OVERLOADED,
+        );
+        anyhow::ensure!(rejected.is_retryable(), "the HTTP rejection is retryable");
+        anyhow::ensure!(
+            error.is_retryable(),
+            "the same envelope in-band must be retryable too: {error:?}"
+        );
+        let report = error.report();
+        anyhow::ensure!(report.retryable, "the report must agree: {report:?}");
+        anyhow::ensure!(
+            report.code.as_deref() == Some("overloaded_error"),
+            "the envelope's code is reported: {report:?}"
+        );
+        Ok(())
+    }
 }
 
 /// The Messages projection, driven through [`crate::driver`].
