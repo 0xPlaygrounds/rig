@@ -598,7 +598,8 @@ pub enum StepEventKind {
     ReasoningDelta,
     /// `on_tool_call_delta`.
     ToolCallDelta,
-    /// `on_dispatch`/`on_outcome` for a completion effect.
+    /// `on_dispatch`/`on_outcome` for a completion effect. Every dispatched
+    /// completion gets one outcome; only an accepted turn's can be replaced.
     CompletionDispatch,
     /// `on_dispatch`/`on_outcome` for a tool-call effect.
     ToolDispatch,
@@ -1115,7 +1116,16 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     }
 
     /// An effect resolved on the agent's bus. Gated by
-    /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`].
+    /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`]. Each
+    /// dispatched id gets at most one outcome; a denied one gets none. A
+    /// completion's outcome fires after the run validated an accepted turn,
+    /// where a replacement applies. Every other attempt closes observe-only
+    /// and a replacement is ignored. It is `Err` when no whole answer arrived:
+    /// the provider call failed, a hook stopped the run mid-reply
+    /// (`Cancelled`), or the run failed a streamed reply before it ended. It
+    /// is `Ok` with the provider's response when the answer arrived and the
+    /// run rejected, retried, recovered, abandoned or failed it, so an `Ok`
+    /// completion outcome is not proof that the turn was accepted.
     fn on_outcome(
         &self,
         _ctx: &HookContext,

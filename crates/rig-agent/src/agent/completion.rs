@@ -32,11 +32,9 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use super::UNKNOWN_AGENT_NAME;
 
-/// A prepared completion request plus the executable Rig tool names advertised
-/// to the provider for this turn.
+/// What a completion request was prepared with, including the executable Rig
+/// tool names advertised to the provider for this turn.
 pub(crate) struct PreparedCompletionRequest {
-    /// Request prepared against the selected model's capabilities.
-    pub(crate) request: CompletionRequest,
     /// The messages telemetry records for this attempt.
     pub(crate) telemetry_messages: Vec<Message>,
     /// The typed view the request is dispatched to.
@@ -67,7 +65,7 @@ pub(crate) async fn build_prepared_completion_request(
     chat_history: &[Message],
     committed_output_tool: Option<&str>,
     request_patch: Option<&RequestPatch>,
-) -> Result<PreparedCompletionRequest, ProviderError> {
+) -> Result<(CompletionRequest, PreparedCompletionRequest), ProviderError> {
     let record_telemetry_content = runner.config.record_telemetry_content;
     let tool_server_handle = &runner.tool_server_handle;
 
@@ -82,23 +80,17 @@ pub(crate) async fn build_prepared_completion_request(
     // for hooks unless one opts in), recorded like every other effect.
     let mut dynamic_tool_ids = Vec::new();
     for (key, kind) in tool_server_handle.retrieval_effects(retrieval_query) {
-        let ids = crate::agent::engine::dispatch_effect(
-            &runner.config.hooks,
-            ctx,
-            runner.config.bus.dispatcher(),
-            &key,
-            kind,
-        )
-        .await
-        .and_then(|outcome| match outcome {
-            rig_core::effect::Outcome::Documents(rig_core::effect::RetrievedDocuments::Ids(
-                ids,
-            )) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
-            other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
-        })
-        .map_err(|report| {
-            ProviderError::request(format!("Failed to get tool definitions: {report}"))
-        })?;
+        let ids = crate::agent::engine::dispatch_effect(runner, ctx, &key, kind)
+            .await
+            .and_then(|outcome| match outcome {
+                rig_core::effect::Outcome::Documents(
+                    rig_core::effect::RetrievedDocuments::Ids(ids),
+                ) => Ok(ids.into_iter().map(|(_, id)| id).collect::<Vec<String>>()),
+                other => Err(crate::agent::engine::wrong_outcome("retrieved ids", &other)),
+            })
+            .map_err(|report| {
+                ProviderError::request(format!("Failed to get tool definitions: {report}"))
+            })?;
         dynamic_tool_ids.extend(ids);
     }
     let mut tool_snapshot = tool_server_handle.snapshot_with_dynamic(&dynamic_tool_ids);
@@ -143,8 +135,7 @@ pub(crate) async fn build_prepared_completion_request(
     } else {
         Vec::new()
     };
-    Ok(PreparedCompletionRequest {
-        request,
+    let prepared = PreparedCompletionRequest {
         telemetry_messages,
         model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
@@ -153,7 +144,8 @@ pub(crate) async fn build_prepared_completion_request(
         allowed_tool_names,
         output_tool_name,
         max_tokens,
-    })
+    };
+    Ok((request, prepared))
 }
 
 /// Rig's own structured-output flow (the extractor) forces its output tool.

@@ -5020,3 +5020,733 @@ fn canonical_history(messages: &[Message]) -> Vec<Message> {
         })
         .collect()
 }
+
+// ---------------------------------------------------------------------
+// Completion dispatch pairing.
+//
+// Every completion `on_dispatch` id is closed by exactly one `on_outcome`
+// carrying the same id, on every terminal path: a provider error, a
+// stream error, a hook stop mid-stream, and a rejected (retried) attempt.
+// These are mock-model unit tests rather than cassette tests: the property
+// is the engine's hook bookkeeping, which no provider wire shape affects.
+// ---------------------------------------------------------------------
+
+/// One completion hook event: the dispatch id, and for an outcome whether
+/// it was an error.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CompletionHookEvent {
+    Dispatch(rig_core::effect::EffectId),
+    Outcome {
+        id: rig_core::effect::EffectId,
+        is_err: bool,
+    },
+}
+
+/// One completion hook event in full: the dispatch or outcome, its id and
+/// turn, and an outcome's error kind and message.
+#[derive(Clone, Debug)]
+struct CompletionHookDetail {
+    outcome: bool,
+    id: rig_core::effect::EffectId,
+    turn: usize,
+    error: Option<(rig_core::error::ErrorKind, String)>,
+}
+
+/// Records completion `on_dispatch` and `on_outcome` events in order.
+#[derive(Clone, Default)]
+struct CompletionPairingHook {
+    log: Arc<Mutex<Vec<CompletionHookEvent>>>,
+    details: Arc<Mutex<Vec<CompletionHookDetail>>>,
+    stop_on_text_delta: bool,
+}
+
+impl CompletionPairingHook {
+    fn stopping_on_text_delta() -> Self {
+        Self {
+            stop_on_text_delta: true,
+            ..Self::default()
+        }
+    }
+
+    fn push(&self, event: CompletionHookEvent, detail: CompletionHookDetail) {
+        if let Ok(mut log) = self.log.lock() {
+            log.push(event);
+        }
+        if let Ok(mut details) = self.details.lock() {
+            details.push(detail);
+        }
+    }
+
+    fn details(&self) -> anyhow::Result<Vec<CompletionHookDetail>> {
+        self.details
+            .lock()
+            .map(|details| details.clone())
+            .map_err(|_| anyhow::anyhow!("pairing details poisoned"))
+    }
+
+    fn events(&self) -> anyhow::Result<Vec<CompletionHookEvent>> {
+        self.log
+            .lock()
+            .map(|log| log.clone())
+            .map_err(|_| anyhow::anyhow!("pairing log poisoned"))
+    }
+
+    /// Every dispatched id has exactly one outcome after it, and every
+    /// outcome follows a dispatch of the same id. Returns the outcomes'
+    /// error flags in dispatch order.
+    fn paired_outcomes(&self) -> anyhow::Result<Vec<bool>> {
+        let events = self.events()?;
+        let mut flags = Vec::new();
+        for (index, event) in events.iter().enumerate() {
+            match *event {
+                CompletionHookEvent::Dispatch(id) => {
+                    let closing: Vec<bool> = events[index..]
+                        .iter()
+                        .filter_map(|later| match *later {
+                            CompletionHookEvent::Outcome { id: closed, is_err } if closed == id => {
+                                Some(is_err)
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    anyhow::ensure!(
+                        closing.len() == 1,
+                        "completion dispatch {id:?} closed by {} outcomes, want 1: {events:?}",
+                        closing.len()
+                    );
+                    flags.extend(closing);
+                }
+                CompletionHookEvent::Outcome { id, .. } => {
+                    anyhow::ensure!(
+                        events[..index].contains(&CompletionHookEvent::Dispatch(id)),
+                        "outcome for {id:?} has no dispatch before it: {events:?}"
+                    );
+                }
+            }
+        }
+        Ok(flags)
+    }
+}
+
+impl AgentHook for CompletionPairingHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        if matches!(event.kind, rig_core::effect::EffectKind::Completion { .. }) {
+            let detail = CompletionHookDetail {
+                outcome: false,
+                id: event.id,
+                turn: event.turn,
+                error: None,
+            };
+            self.push(CompletionHookEvent::Dispatch(event.id), detail);
+        }
+        DispatchAction::proceed()
+    }
+
+    async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+        if matches!(event.kind, rig_core::effect::EffectKind::Completion { .. }) {
+            let detail = CompletionHookDetail {
+                outcome: true,
+                id: event.id,
+                turn: event.turn,
+                error: event
+                    .outcome
+                    .as_ref()
+                    .err()
+                    .map(|report| (report.kind, report.message.clone())),
+            };
+            let is_err = event.outcome.is_err();
+            self.push(
+                CompletionHookEvent::Outcome {
+                    id: event.id,
+                    is_err,
+                },
+                detail,
+            );
+        }
+        OutcomeAction::proceed()
+    }
+
+    async fn on_text_delta(&self, _: &HookContext, _: TextDelta<'_>) -> ObservationAction {
+        if self.stop_on_text_delta {
+            ObservationAction::stop("stop mid-stream")
+        } else {
+            ObservationAction::continue_run()
+        }
+    }
+}
+
+/// Drains a stream, returning whether any item was an error.
+async fn drain_stream<S>(mut stream: S) -> bool
+where
+    S: futures::Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Unpin,
+{
+    let mut errored = false;
+    while let Some(item) = stream.next().await {
+        errored |= item.is_err();
+    }
+    errored
+}
+
+/// A unary provider error (a 429) after the completion was dispatched is
+/// reported to `on_outcome` as an error for that dispatch id.
+#[tokio::test]
+async fn unary_provider_error_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let hook = CompletionPairingHook::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::provider_response_error(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"rate limited"}"#,
+            "req-failed",
+        ),
+    ]))
+    .add_hook(hook.clone())
+    .build()
+    .prompt(Message::user("hi"))
+    .run()
+    .await;
+    anyhow::ensure!(result.is_err(), "the provider error fails the run");
+
+    let outcomes = hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [true],
+        "one dispatch closed by one error outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A stream that fails mid-reply is reported to `on_outcome` as an error
+/// for that dispatch id.
+#[tokio::test]
+async fn streamed_error_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("partial"),
+        MockStreamEvent::error("connection reset"),
+    ]]))
+    .add_hook(hook.clone())
+    .build()
+    .prompt("hi")
+    .stream();
+    anyhow::ensure!(drain_stream(stream).await, "the stream error fails the run");
+
+    let outcomes = hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [true],
+        "one dispatch closed by one error outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A hook that stops the run on a text delta still sees the dispatched
+/// completion closed by an outcome.
+#[tokio::test]
+async fn streamed_delta_stop_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let hook = CompletionPairingHook::stopping_on_text_delta();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("partial"),
+        MockStreamEvent::text(" more"),
+        MockStreamEvent::final_response_with_total_tokens(0),
+    ]]))
+    .add_hook(hook.clone())
+    .build()
+    .prompt("hi")
+    .stream();
+    anyhow::ensure!(drain_stream(stream).await, "the hook stop ends the run");
+
+    let outcomes = hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes.len() == 1,
+        "one dispatch closed by one outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// An attempt rejected for an invalid tool call and retried was still
+/// dispatched (and billed), so its id is closed by an outcome on both media.
+#[tokio::test]
+async fn retried_attempt_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    struct RetryInvalid;
+    impl AgentHook for RetryInvalid {
+        async fn on_invalid_tool_call(
+            &self,
+            _: &HookContext,
+            _: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::retry("no such tool"))
+        }
+    }
+
+    let blocking_hook = CompletionPairingHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("done"),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(blocking_hook.clone())
+    .add_hook(RetryInvalid)
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .max_invalid_tool_call_retries(1)
+    .run()
+    .await;
+    anyhow::ensure!(blocking.is_ok(), "the retry recovers: {blocking:?}");
+    let outcomes = blocking_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "run: both attempts closed by an outcome, got {outcomes:?}"
+    );
+
+    let streaming_hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(MockAddTool)
+    .add_hook(streaming_hook.clone())
+    .add_hook(RetryInvalid)
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .max_invalid_tool_call_retries(1)
+    .stream();
+    anyhow::ensure!(!drain_stream(stream).await, "the streamed retry recovers");
+    let outcomes = streaming_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "stream: both attempts closed by an outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A turn whose invalid tool call a hook repaired is recovered: it fires no
+/// accepted-turn hooks, but its dispatch is still closed by an outcome.
+#[tokio::test]
+async fn recovered_turn_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let blocking_hook = CompletionPairingHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("the answer is 5"),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(blocking_hook.clone())
+    .add_hook(RepairInvalidToHook("add"))
+    .build()
+    .prompt("add 2 and 3")
+    .max_turns(3)
+    .run()
+    .await;
+    anyhow::ensure!(blocking.is_ok(), "the repair recovers: {blocking:?}");
+    let outcomes = blocking_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "run: the recovered and the answer turn closed, got {outcomes:?}"
+    );
+
+    let streaming_hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("the answer is 5"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(MockAddTool)
+    .add_hook(streaming_hook.clone())
+    .add_hook(RepairInvalidToHook("add"))
+    .build()
+    .prompt("add 2 and 3")
+    .max_turns(3)
+    .stream();
+    anyhow::ensure!(!drain_stream(stream).await, "the streamed repair recovers");
+    let outcomes = streaming_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "stream: the recovered and the answer turn closed, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A denied completion never reaches the bus, so it has no outcome, as for
+/// any other denied effect.
+#[tokio::test]
+async fn denied_completion_has_no_outcome() -> anyhow::Result<()> {
+    struct DenyCompletion;
+    impl AgentHook for DenyCompletion {
+        async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+            match event.kind {
+                rig_core::effect::EffectKind::Completion { .. } => DispatchAction::deny(
+                    rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Denied, "no"),
+                ),
+                _ => DispatchAction::proceed(),
+            }
+        }
+    }
+
+    let hook = CompletionPairingHook::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]))
+        .add_hook(hook.clone())
+        .add_hook(DenyCompletion)
+        .build()
+        .prompt(Message::user("hi"))
+        .run()
+        .await;
+    anyhow::ensure!(result.is_err(), "the denial fails the run");
+    let events = hook.events()?;
+    anyhow::ensure!(
+        matches!(events.as_slice(), [CompletionHookEvent::Dispatch(_)]),
+        "a dispatch with no outcome, got {events:?}"
+    );
+    Ok(())
+}
+
+/// The outcome that closes a rejected attempt is observe-only: a hook's
+/// replacement of it is ignored and the retried run still succeeds.
+#[tokio::test]
+async fn unsettled_close_ignores_a_replacement() -> anyhow::Result<()> {
+    #[derive(Clone, Default)]
+    struct ReplaceFirstOutcome(Arc<AtomicU32>);
+    impl AgentHook for ReplaceFirstOutcome {
+        async fn on_invalid_tool_call(
+            &self,
+            _: &HookContext,
+            _: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::retry("no such tool"))
+        }
+        async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            let completion = matches!(event.kind, rig_core::effect::EffectKind::Completion { .. });
+            if completion && self.0.fetch_add(1, SeqCst) == 0 {
+                return OutcomeAction::Replace(Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Other,
+                    "replaced",
+                )));
+            }
+            OutcomeAction::proceed()
+        }
+    }
+
+    let hook = ReplaceFirstOutcome::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("done"),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(hook.clone())
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .max_invalid_tool_call_retries(1)
+    .run()
+    .await;
+    anyhow::ensure!(result.is_ok(), "the replacement is ignored: {result:?}");
+    anyhow::ensure!(hook.0.load(SeqCst) == 2, "both attempts closed");
+    Ok(())
+}
+
+/// A streamed turn abandoned for an invalid tool call (the hook skips the
+/// call) still finished its reply, so its dispatch closes with one `Ok`
+/// outcome carrying that reply.
+#[tokio::test]
+async fn streamed_abandoned_turn_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    struct SkipInvalid;
+    impl AgentHook for SkipInvalid {
+        async fn on_invalid_tool_call(
+            &self,
+            _: &HookContext,
+            _: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::skip("no such tool"))
+        }
+    }
+
+    let hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(MockAddTool)
+    .add_hook(hook.clone())
+    .add_hook(SkipInvalid)
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .stream();
+    anyhow::ensure!(!drain_stream(stream).await, "the skipped call recovers");
+    let outcomes = hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "the abandoned and the answer turn each closed once with Ok, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// An unknown tool under the default `Fail` policy fails the run on both
+/// media, and the attempt's dispatch is closed by exactly one outcome. The
+/// unary answer arrived whole, so it closes `Ok` with the provider's
+/// response; the streamed reply is cut off at the rejected call, before the
+/// provider ended it, so it closes `Err` with the run's failure.
+#[tokio::test]
+async fn unknown_tool_under_fail_policy_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let blocking_hook = CompletionPairingHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::tool_call(
+        "tc1",
+        "default_api",
+        json!({"x": 2, "y": 3}),
+    )]))
+    .tool(MockAddTool)
+    .add_hook(blocking_hook.clone())
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .run()
+    .await;
+    anyhow::ensure!(blocking.is_err(), "the unknown tool fails the run");
+    let outcomes = blocking_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false],
+        "run: one Ok outcome with the provider's answer, got {outcomes:?}"
+    );
+
+    let streaming_hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockStreamEvent::final_response_with_total_tokens(0),
+    ]]))
+    .tool(MockAddTool)
+    .add_hook(streaming_hook.clone())
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .stream();
+    anyhow::ensure!(
+        drain_stream(stream).await,
+        "the unknown tool fails the stream"
+    );
+    let outcomes = streaming_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [true],
+        "stream: one Err outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A hook that stops the run in `on_model_turn_finished` does so after the
+/// accepted turn settled: the dispatch is closed once, by the settled
+/// outcome, and the engine's close on the way out adds nothing.
+#[tokio::test]
+async fn model_turn_stop_closes_its_completion_dispatch_once() -> anyhow::Result<()> {
+    struct StopOnTurn;
+    impl AgentHook for StopOnTurn {
+        async fn on_model_turn_finished(
+            &self,
+            _: &HookContext,
+            _: ModelTurnFinished<'_>,
+        ) -> ModelTurnAction {
+            ModelTurnAction::stop("enough")
+        }
+    }
+
+    let blocking_hook = CompletionPairingHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("hello")]))
+        .add_hook(blocking_hook.clone())
+        .add_hook(StopOnTurn)
+        .build()
+        .prompt("hi")
+        .run()
+        .await;
+    anyhow::ensure!(blocking.is_err(), "the stop ends the run");
+    let outcomes = blocking_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false],
+        "run: one settled outcome, got {outcomes:?}"
+    );
+
+    let streaming_hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hello"),
+        MockStreamEvent::final_response_with_total_tokens(0),
+    ]]))
+    .add_hook(streaming_hook.clone())
+    .add_hook(StopOnTurn)
+    .build()
+    .prompt("hi")
+    .stream();
+    anyhow::ensure!(drain_stream(stream).await, "the stop ends the stream");
+    let outcomes = streaming_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false],
+        "stream: one settled outcome, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A completion handler that answers every dispatch with a memory outcome.
+struct WrongOutcomeHandler;
+
+impl rig_core::serve::Serve for WrongOutcomeHandler {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: rig_core::effect::model_key("wrong"),
+            family: rig_core::effect::FamilyDescriptor::Completion {
+                model: "wrong".into(),
+                capabilities: rig_core::completion::ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _: rig_core::effect::EffectKind,
+        _: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Memory(
+            rig_core::effect::MemoryOutcome::Appended,
+        )))
+    }
+}
+
+/// A unary handler that answers a completion with another family's outcome
+/// fails the run, and the dispatch closes with the `Internal` report that
+/// names the wrong outcome.
+#[tokio::test]
+async fn wrong_outcome_closes_its_completion_dispatch_with_internal() -> anyhow::Result<()> {
+    let (dispatcher, registrar, mut driver) = crate::bus::Bus::channel();
+    driver
+        .register("model:wrong", WrongOutcomeHandler)
+        .map_err(|report| anyhow::anyhow!("register: {report}"))?;
+    tokio::spawn(driver);
+    let hook = CompletionPairingHook::default();
+    let result = AgentBuilder::over_bus(
+        dispatcher,
+        registrar,
+        "wrong",
+        rig_core::effect::HandlerKey::from("model:wrong"),
+    )
+    .add_hook(hook.clone())
+    .build()
+    .prompt(Message::user("hi"))
+    .run()
+    .await;
+    anyhow::ensure!(result.is_err(), "the wrong outcome fails the run");
+    anyhow::ensure!(hook.paired_outcomes()? == [true], "one Err outcome");
+    let details = hook.details()?;
+    let closed = details.iter().find(|detail| detail.outcome);
+    let Some((kind, message)) = closed.and_then(|detail| detail.error.clone()) else {
+        anyhow::bail!("no error outcome: {details:?}");
+    };
+    anyhow::ensure!(
+        kind == rig_core::error::ErrorKind::Internal && message.contains("memory"),
+        "the Internal wrong-outcome report, got {kind:?}: {message}"
+    );
+    Ok(())
+}
+
+/// An attempt closed unsettled reports the turn it was dispatched in: the
+/// outcome's `turn` is its dispatch's `turn`, here on the second turn.
+#[tokio::test]
+async fn unsettled_close_reports_the_dispatch_turn() -> anyhow::Result<()> {
+    let hook = CompletionPairingHook::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "add", json!({"x": 2, "y": 3})),
+        MockTurn::provider_response_error(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":"rate limited"}"#,
+            "req-failed",
+        ),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(hook.clone())
+    .build()
+    .prompt(Message::user("add 2 and 3"))
+    .max_turns(3)
+    .run()
+    .await;
+    anyhow::ensure!(result.is_err(), "the provider error fails the run");
+    anyhow::ensure!(
+        hook.paired_outcomes()? == [false, true],
+        "both turns closed"
+    );
+    let details = hook.details()?;
+    let failed = details
+        .iter()
+        .find(|detail| detail.outcome && detail.error.is_some());
+    let Some(failed) = failed else {
+        anyhow::bail!("no failed outcome: {details:?}");
+    };
+    let dispatched = details
+        .iter()
+        .find(|detail| !detail.outcome && detail.id == failed.id);
+    let Some(dispatched) = dispatched else {
+        anyhow::bail!("no dispatch for the failed outcome: {details:?}");
+    };
+    anyhow::ensure!(
+        failed.turn == dispatched.turn && failed.turn > 0,
+        "outcome turn {} matches dispatch turn {}",
+        failed.turn,
+        dispatched.turn
+    );
+    Ok(())
+}
+
+/// Dispatch ids are minted, and dispatch and outcome events built, only in
+/// the dispatch scope module, the hook stack (which re-wraps events) and the
+/// bus. A source scan, so a lint rather than a type-level guarantee: it
+/// walks every non-test file under `src`.
+#[test]
+fn no_dispatch_events_are_built_outside_the_scope() -> anyhow::Result<()> {
+    const ALLOWED: [&str; 3] = ["agent/engine/dispatch.rs", "agent/hook.rs", "bus/"];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut pending = vec![root.clone()];
+    let mut scanned = 0;
+    while let Some(dir) = pending.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let relative = path
+                .strip_prefix(&root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned());
+            let is_test =
+                name.is_some_and(|name| name == "tests.rs" || name.ends_with("_tests.rs"));
+            let allowed = ALLOWED.iter().any(|prefix| relative.starts_with(prefix));
+            if !relative.ends_with(".rs") || is_test || allowed {
+                continue;
+            }
+            scanned += 1;
+            let source = std::fs::read_to_string(&path)?;
+            for needle in ["DispatchEvent {", "OutcomeEvent {", "mint_id("] {
+                anyhow::ensure!(!source.contains(needle), "{relative} contains `{needle}`");
+            }
+        }
+    }
+    anyhow::ensure!(
+        scanned > 10,
+        "the scan found the source tree ({scanned} files)"
+    );
+    Ok(())
+}

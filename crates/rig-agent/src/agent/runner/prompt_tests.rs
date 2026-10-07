@@ -7,7 +7,7 @@ use crate::{
         AgentBuilder,
         hook::{
             AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction,
-            InvalidToolCallContext, OutcomeAction, OutcomeEvent,
+            InvalidToolCallContext, ModelTurnAction, ModelTurnFinished,
         },
     },
     completion::{
@@ -119,11 +119,14 @@ fn deserialize_structured_output_tolerates_fences_and_prose() {
 struct PanicOnUnknownToolHook;
 
 impl AgentHook for PanicOnUnknownToolHook {
-    async fn on_outcome(&self, _ctx: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
-        if event.completion().is_some() {
-            panic!("unknown tool response should fail before response hooks run")
-        }
-        OutcomeAction::proceed()
+    // The rejected attempt's completion outcome still fires, observe-only;
+    // the accepted-turn hook must not.
+    async fn on_model_turn_finished(
+        &self,
+        _ctx: &HookContext,
+        _event: ModelTurnFinished<'_>,
+    ) -> ModelTurnAction {
+        panic!("unknown tool response should fail before response hooks run")
     }
     async fn on_dispatch(&self, _ctx: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
         if event.tool_name().is_some() {

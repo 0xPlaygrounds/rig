@@ -664,9 +664,8 @@ impl AgentRunner {
                     // The load is a `Memory` dispatch at the boundary:
                     // observe-only for hooks unless one opts in.
                     let loaded = crate::agent::engine::dispatch_effect(
-                        &self.config.hooks,
+                        self,
                         hook_ctx,
-                        self.config.bus.dispatcher(),
                         memory.key(),
                         rig_core::effect::EffectKind::Memory {
                             op: rig_core::effect::MemoryOp::Load {
