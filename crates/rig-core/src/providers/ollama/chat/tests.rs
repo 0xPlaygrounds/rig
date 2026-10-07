@@ -369,7 +369,7 @@ fn unprepared_content_is_refused() {
     assert!(unprepared(UserContent::Image(image.clone())).contains("an image"));
     assert!(
         unprepared(UserContent::Document(Document {
-            data: url.clone(),
+            data: url.clone().into(),
             media_type: None,
             additional_params: None,
         }))

@@ -223,7 +223,7 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
     };
     let pdf = || {
         document(
-            DocumentSourceKind::base64("aGVsbG8="),
+            DocumentSourceKind::base64("aGVsbG8=").into(),
             DocumentMediaType::PDF,
         )
     };
@@ -236,7 +236,7 @@ fn documents_are_named_by_content_and_land_in_the_first_user_message() {
     request.chat_history = vec![Message::User {
         content: vec![
             UserContent::Document(document(
-                DocumentSourceKind::string("plain"),
+                rig_core::message::DocumentData::Text("plain".into()),
                 DocumentMediaType::TXT,
             )),
             UserContent::Document(pdf()),
@@ -289,13 +289,13 @@ fn unprepared_content_is_encoded_or_refused() {
         }])
         .expect("encodes")
     };
-    let raw = document(DocumentSourceKind::Raw(b"hello".to_vec()));
+    let raw = document(DocumentSourceKind::Raw(b"hello".to_vec()).into());
     assert_eq!(
         raw.pointer("/messages/0/content/1/document/source"),
         Some(&json!({ "bytes": "aGVsbG8=" })),
         "{raw}"
     );
-    assert_eq!(raw, document(DocumentSourceKind::base64("aGVsbG8=")));
+    assert_eq!(raw, document(DocumentSourceKind::base64("aGVsbG8=").into()));
 
     let later = unprepared(vec![
         Message::user("q"),

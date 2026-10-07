@@ -202,12 +202,12 @@ fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
                     additional_params: None,
                 }),
                 UserContent::Document(Document {
-                    data: DocumentSourceKind::base64("YSxiCjEsMgo="),
+                    data: DocumentSourceKind::base64("YSxiCjEsMgo=").into(),
                     media_type: Some(DocumentMediaType::CSV),
                     additional_params: None,
                 }),
                 UserContent::Document(Document {
-                    data: DocumentSourceKind::base64("JVBERi0="),
+                    data: DocumentSourceKind::base64("JVBERi0=").into(),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
                 }),

@@ -259,7 +259,10 @@ fn user(
             additional_params: value.additional_params,
         }),
         UserContent::Document(value) => ContentPart::Document(DocumentPart {
-            source: assets.intern(value.data)?,
+            source: match value.data {
+                message::DocumentData::Text(text) => PartSource::String(text),
+                message::DocumentData::File(source) => assets.intern(source)?,
+            },
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),
@@ -452,7 +455,10 @@ fn to_user<'a>(
             additional_params: value.additional_params,
         }),
         ContentPart::Document(value) => UserContent::Document(message::Document {
-            data: assets.resolve(&value.source)?,
+            data: match &value.source {
+                PartSource::String(text) => message::DocumentData::Text(text.clone()),
+                source => assets.resolve(source)?.into(),
+            },
             media_type: value.media_type,
             additional_params: value.additional_params,
         }),

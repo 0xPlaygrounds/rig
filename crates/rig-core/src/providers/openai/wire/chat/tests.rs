@@ -395,7 +395,7 @@ fn openrouter_gets_a_placeholder_for_a_file_id_document() {
         let mut request = prompt("read this");
         request.chat_history = vec![Message::User {
             content: vec![UserContent::Document(Document {
-                data: DocumentSourceKind::FileId("file-abc".to_owned()),
+                data: DocumentSourceKind::FileId("file-abc".to_owned()).into(),
                 media_type: None,
                 additional_params: None,
             })],

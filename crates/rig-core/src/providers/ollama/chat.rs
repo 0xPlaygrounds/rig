@@ -20,8 +20,8 @@ use crate::completion::{
 };
 use crate::error::EncodeError;
 use crate::message::{
-    AssistantContent, AssistantMessage, DocumentSourceKind as Source, Message, ToolCall,
-    ToolResult, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, DocumentData, DocumentSourceKind as Source, Message,
+    ToolCall, ToolResult, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
 use crate::providers::internal::wire_ids::WireIds;
@@ -250,8 +250,8 @@ impl UserParts {
                 _ => return Err(unsendable("an image that is not base64 data")),
             },
             UserContent::Document(document) => match &document.data {
-                Source::String(text) => self.texts.push(text.clone()),
-                _ => return Err(unsendable("a document")),
+                DocumentData::Text(text) => self.texts.push(text.clone()),
+                DocumentData::File(_) => return Err(unsendable("a document")),
             },
             UserContent::Audio(_) => return Err(unsendable("audio")),
             UserContent::Video(_) => return Err(unsendable("video")),

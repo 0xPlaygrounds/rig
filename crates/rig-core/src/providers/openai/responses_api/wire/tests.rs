@@ -358,7 +358,7 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
         ..Image::default()
     };
     let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
-        data,
+        data: data.into(),
         media_type,
         additional_params: None,
     };
@@ -366,10 +366,13 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
     let untyped = image(Source::base64("AAAA"), None);
     let url = image(Source::url("https://example.com/a.png"), None);
     let image_file = image(Source::file_id("file-image"), None);
-    let string = image(Source::string("an image"), None);
     let pdf = document(Source::base64("JVBERi0="), Some(DocumentMediaType::PDF));
     let pdf_url = document(Source::url("https://example.com/a.pdf"), None);
-    let text = document(Source::string("plain"), Some(DocumentMediaType::TXT));
+    let text = Document {
+        data: crate::message::DocumentData::Text("plain".into()),
+        media_type: Some(DocumentMediaType::TXT),
+        additional_params: None,
+    };
     let csv = document(Source::base64("YSxi"), Some(DocumentMediaType::CSV));
     let document_file = document(Source::file_id("file-document"), None);
     let audio = Audio {
@@ -404,7 +407,6 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
                 "{name}: image file id"
             );
             assert!(!encodes(Media::Image(&untyped, place)), "{name}: untyped");
-            assert!(!encodes(Media::Image(&string, place)), "{name}: string");
         }
         assert!(!encodes(Media::Image(&png, Place::Assistant)), "{name}");
         assert!(!encodes(Media::Audio(&audio)), "{name}: audio");

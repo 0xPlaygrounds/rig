@@ -22,7 +22,7 @@ use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTar
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::{EncodeError, ProviderError};
 use rig_core::json_utils::Lenient;
-use rig_core::message::{Api, DocumentSourceKind, Origin, ToolChoice};
+use rig_core::message::{Api, DocumentData, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Mode, Wire};
@@ -348,7 +348,7 @@ impl ReplayTarget for Converse {
     /// Converse carries images in its four formats, documents in a format it
     /// lists, and inline data, which must be valid base64. Only Nova reads S3
     /// objects and video. Converse rejects a document's text source and
-    /// takes no audio, so a string document goes as its text.
+    /// takes no audio, so a text document goes as its text.
     fn encodes(&self, model: &str, media: Media<'_>) -> bool {
         let nova = self.family(model) == Family::Nova;
         let stored = |data: &DocumentSourceKind| {
@@ -357,7 +357,8 @@ impl ReplayTarget for Converse {
         match media {
             Media::Image(image, _) => stored(&image.data) && request::image(image).is_ok(),
             Media::Document(document) => {
-                stored(&document.data) && request::document(document).is_ok()
+                matches!(&document.data, DocumentData::File(data) if stored(data))
+                    && request::document(document).is_ok()
             }
             Media::Video(video) => {
                 nova && self.accepts(model).user_images && request::video(video).is_ok()

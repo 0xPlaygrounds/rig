@@ -8,7 +8,6 @@ fn nonbinary_sources_stay_data_without_asset_or_io() {
     for source in [
         DocumentSourceKind::Url("https://invalid.invalid/image".into()),
         DocumentSourceKind::FileId("file-123".into()),
-        DocumentSourceKind::String("not base64".into()),
         DocumentSourceKind::Unknown,
     ] {
         let handle = store.intern(source.clone()).unwrap();
@@ -93,4 +92,12 @@ fn scene_spelling_metadata_cannot_change_decoded_bytes() {
             Err(BinaryError::Spelling)
         );
     }
+}
+
+/// A document's text is no media source: it never resolves as one.
+#[test]
+fn a_document_text_is_no_media_source() {
+    let store = BinaryAssets::default();
+    let text = PartSource::String("not base64".into());
+    assert_eq!(store.resolve(&text), Err(BinaryError::Text));
 }

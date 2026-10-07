@@ -678,20 +678,19 @@ pub struct Image {
     pub native: Option<Native>,
 }
 
-/// The kind of image source (to be used).
+/// Where a file's bytes are; never the content as text.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub enum DocumentSourceKind {
     /// A file URL/URI.
     Url(String),
     /// A base-64 encoded string.
+    #[serde(alias = "string")]
     Base64(String),
     /// A provider-side uploaded file identifier.
     FileId(String),
     /// Raw bytes
     Raw(Vec<u8>),
-    /// A string (or a string literal).
-    String(String),
     #[default]
     /// An unknown file source (there's nothing there).
     Unknown,
@@ -713,11 +712,6 @@ impl DocumentSourceKind {
         Self::FileId(file_id.into())
     }
 
-    /// Create a string-backed source.
-    pub fn string(input: impl Into<String>) -> Self {
-        Self::String(input.into())
-    }
-
     /// Return the contained URL, base64 string, or file ID, if this source stores one.
     pub fn try_into_inner(self) -> Option<String> {
         match self {
@@ -733,7 +727,6 @@ impl std::fmt::Display for DocumentSourceKind {
             Self::Url(string) => write!(f, "{string}"),
             Self::Base64(string) => write!(f, "{string}"),
             Self::FileId(string) => write!(f, "{string}"),
-            Self::String(string) => write!(f, "{string}"),
             Self::Raw(_) => write!(f, "<binary data>"),
             Self::Unknown => write!(f, "<unknown>"),
         }
@@ -764,11 +757,35 @@ pub struct Video {
     pub additional_params: Option<serde_json::Value>,
 }
 
+/// A document's content: its own text, or where its file's bytes are.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "camelCase")]
+pub enum DocumentData {
+    /// The document's own UTF-8 text; every wire sends it as text.
+    #[serde(alias = "string")]
+    Text(String),
+    /// Where the document's bytes are.
+    #[serde(untagged)]
+    File(DocumentSourceKind),
+}
+
+impl Default for DocumentData {
+    fn default() -> Self {
+        Self::File(DocumentSourceKind::Unknown)
+    }
+}
+
+impl From<DocumentSourceKind> for DocumentData {
+    fn from(source: DocumentSourceKind) -> Self {
+        Self::File(source)
+    }
+}
+
 /// Document content containing document data and metadata about it.
 #[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Document {
-    /// Document source data.
-    pub data: DocumentSourceKind,
+    /// Document content.
+    pub data: DocumentData,
     /// Document media type, if known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub media_type: Option<DocumentMediaType>,
@@ -776,16 +793,6 @@ pub struct Document {
     /// `title`, `context` and `citations`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_params: Option<serde_json::Value>,
-}
-
-/// Content representation as base64, text, or a URL.
-#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum ContentFormat {
-    #[default]
-    Base64,
-    String,
-    Url,
 }
 
 /// Helper enum that tracks the media type of the content.
@@ -953,13 +960,13 @@ macro_rules! media_ctors {
         media_ctors! { $($rest)* }
     };
     (
-        $(#[$meta:meta])* $name:ident => $variant:ident(params $mt:ty, $kind:ident: $data:ty);
+        $(#[$meta:meta])* $name:ident => $variant:ident(params $mt:ty, $kind:path: $data:ty);
         $($rest:tt)*
     ) => {
         $(#[$meta])*
         pub fn $name(data: impl Into<$data>, media_type: Option<$mt>) -> Self {
             Self::$variant($variant {
-                data: DocumentSourceKind::$kind(data.into()),
+                data: $kind(data.into()).into(),
                 media_type,
                 additional_params: None,
             })
@@ -1001,21 +1008,21 @@ impl UserContent {
         /// Creates user audio content referencing a URL.
         audio_url => Audio(AudioMediaType, Url: String);
         /// Creates user video content from base64-encoded data.
-        video_base64 => Video(params VideoMediaType, Base64: String);
+        video_base64 => Video(params VideoMediaType, DocumentSourceKind::Base64: String);
         /// Creates user video content from unencoded bytes.
-        video_raw => Video(params VideoMediaType, Raw: Vec<u8>);
+        video_raw => Video(params VideoMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user video content referencing a URL.
-        video_url => Video(params VideoMediaType, Url: String);
+        video_url => Video(params VideoMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from base64-encoded data.
-        document_base64 => Document(params DocumentMediaType, Base64: String);
+        document_base64 => Document(params DocumentMediaType, DocumentSourceKind::Base64: String);
         /// Creates user document content from unencoded bytes.
-        document_raw => Document(params DocumentMediaType, Raw: Vec<u8>);
+        document_raw => Document(params DocumentMediaType, DocumentSourceKind::Raw: Vec<u8>);
         /// Creates user document content referencing a URL.
-        document_url => Document(params DocumentMediaType, Url: String);
+        document_url => Document(params DocumentMediaType, DocumentSourceKind::Url: String);
         /// Creates user document content from literal text, such as a plain
         /// text or Markdown file. Binary formats belong in
         /// [`Self::document_base64`] or [`Self::document_raw`].
-        document_text => Document(params DocumentMediaType, String: String);
+        document_text => Document(params DocumentMediaType, DocumentData::Text: String);
     }
 
     /// Creates a tool result answering the call `call` to the tool `name`.

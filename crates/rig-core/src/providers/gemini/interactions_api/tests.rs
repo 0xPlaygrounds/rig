@@ -564,7 +564,8 @@ where
 
 /// One canonical string-sourced image and PDF reach both Gemini wires as
 /// the same inline bytes: GenerateContent sends the string as the data, so
-/// Interactions must not base64-encode it a second time.
+/// Interactions must not base64-encode it a second time. The image is the
+/// persisted `"string"` spelling, which loads as base64 data.
 ///
 /// Not a cassette test: the defect is in the request body two wires build
 /// from one message, which no recorded reply exercises.
@@ -572,17 +573,19 @@ where
 fn a_string_source_is_the_same_inline_data_on_both_gemini_wires() -> anyhow::Result<()> {
     let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
+    let image: message::DocumentSourceKind =
+        serde_json::from_value(json!({"type": "string", "value": png}))?;
     let request = || {
         CompletionRequest::new(Message::User {
             content: vec![
                 message::UserContent::text("Describe both."),
                 message::UserContent::Image(message::Image {
-                    data: message::DocumentSourceKind::string(png),
+                    data: image.clone(),
                     media_type: Some(message::ImageMediaType::PNG),
                     ..message::Image::default()
                 }),
                 message::UserContent::Document(message::Document {
-                    data: message::DocumentSourceKind::string(pdf),
+                    data: message::DocumentSourceKind::base64(pdf).into(),
                     media_type: Some(message::DocumentMediaType::PDF),
                     additional_params: None,
                 }),

@@ -21,7 +21,7 @@ use crate::completion::{CompletionRequest, Document, ProviderCapabilities, Repla
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
 use crate::message::{
-    AssistantContent, AssistantMessage, DocumentMediaType, DocumentSourceKind as Source, Message,
+    AssistantContent, AssistantMessage, DocumentData, DocumentSourceKind as Source, Message,
     MimeType, ToolChoice, ToolResult, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
@@ -337,7 +337,7 @@ fn document_value(position: usize, document: &Document) -> Value {
     json!({"id": id, "data": data})
 }
 
-/// One user content part as Cohere carries it: text, a string document's
+/// One user content part as Cohere carries it: text, a text document's
 /// text, or an image by URL. Replay leaves no other part.
 fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
     Ok(match part {
@@ -352,10 +352,8 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
             json!({"type": "image_url", "image_url": {"url": url}})
         }
         UserContent::Document(document) => match &document.data {
-            Source::String(text) if document.media_type != Some(DocumentMediaType::PDF) => {
-                json!({"type": "text", "text": text})
-            }
-            _ => return Err(unsendable("a document")),
+            DocumentData::Text(text) => json!({"type": "text", "text": text}),
+            DocumentData::File(_) => return Err(unsendable("a document")),
         },
         UserContent::Audio(_) => return Err(unsendable("audio")),
         UserContent::Video(_) => return Err(unsendable("a video")),
@@ -544,10 +542,7 @@ impl crate::completion::ReplayTarget for NativeChat {
                 Source::Base64(_) => image.media_type.is_some(),
                 _ => false,
             },
-            Media::Document(document) => {
-                matches!(document.data, Source::String(_))
-                    && document.media_type != Some(DocumentMediaType::PDF)
-            }
+            Media::Document(document) => matches!(document.data, DocumentData::Text(_)),
             Media::Image(..) | Media::Audio(_) | Media::Video(_) => false,
         }
     }

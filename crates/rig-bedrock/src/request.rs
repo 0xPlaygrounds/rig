@@ -13,8 +13,8 @@ use rig_core::completion::options::{BaseInput, FinalBody, RawAt, request_params}
 use rig_core::completion::{CacheRetention, CompletionRequest, Message, Replay};
 use rig_core::error::EncodeError;
 use rig_core::message::{
-    AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Image, MimeType, ToolChoice,
-    ToolResultContent, UserContent, Video,
+    AssistantContent, Document, DocumentData, DocumentMediaType, DocumentSourceKind, Image,
+    MimeType, ToolChoice, ToolResultContent, UserContent, Video,
 };
 use rig_core::providers::internal::wire_ids::WireIds;
 use serde_json::{Map, Value, json};
@@ -392,8 +392,11 @@ pub(crate) fn document(document: &Document) -> Result<Value, EncodeError> {
             DocumentMediaType::MARKDOWN => "text/md",
             _ => "text/txt",
         });
-    let mut block = media(mime, &["pdf", "html", "csv", "md", "txt"], &document.data)?;
-    let (_, bytes) = source(&document.data)?;
+    let DocumentData::File(data) = &document.data else {
+        return Err(EncodeError::request("a text document goes as text"));
+    };
+    let mut block = media(mime, &["pdf", "html", "csv", "md", "txt"], data)?;
+    let (_, bytes) = source(data)?;
     let digest: String = Sha256::digest(&bytes)
         .iter()
         .take(8)

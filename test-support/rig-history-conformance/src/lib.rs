@@ -27,8 +27,8 @@ use serde_json::Value;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::error::EncodeError;
 use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, Image, Message, Origin, StopReason, Text, ToolCall,
-    ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, CallId, DocumentData, Image, Message, Origin, StopReason,
+    Text, ToolCall, ToolFunction, ToolName, ToolResult, ToolResultContent, UserContent,
 };
 use rig_core::operation::Completion;
 use rig_core::wire::{Mode, Operation, Wire};
@@ -1493,7 +1493,7 @@ fn media_history() -> Vec<Message> {
         ..Image::default()
     };
     let document = |data: Source, media_type: Option<DocumentMediaType>| Document {
-        data,
+        data: data.into(),
         media_type,
         additional_params: None,
     };
@@ -1523,7 +1523,6 @@ fn media_history() -> Vec<Message> {
                     ]),
                     None,
                 )),
-                UserContent::Image(image(Source::string("rig-matrix-string-image"), None)),
                 UserContent::Image(image(Source::Unknown, Some(ImageMediaType::PNG))),
                 UserContent::Audio(Audio {
                     data: Source::base64("SUQzBAAAAAAAI1RTU0UAAAAP"),
@@ -1551,18 +1550,18 @@ fn media_history() -> Vec<Message> {
                     Source::url("https://example.com/rig-matrix.pdf"),
                     Some(DocumentMediaType::PDF),
                 )),
-                UserContent::Document(document(
-                    Source::string("rig matrix plain document"),
+                UserContent::document_text(
+                    "rig matrix plain document",
                     Some(DocumentMediaType::TXT),
-                )),
+                ),
                 UserContent::Document(document(
                     Source::base64("cmlnLG1hdHJpeAoxLDIK"),
                     Some(DocumentMediaType::CSV),
                 )),
-                UserContent::Document(document(
-                    Source::string("# rig matrix markdown"),
+                UserContent::document_text(
+                    "# rig matrix markdown",
                     Some(DocumentMediaType::MARKDOWN),
-                )),
+                ),
                 UserContent::Document(document(Source::file_id("file-rig-matrix-document"), None)),
                 UserContent::Document(document(Source::base64("cmlnIG1hdHJpeCB1bnR5cGVk"), None)),
             ],
@@ -1613,16 +1612,14 @@ const MATRIX_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQV
 const MATRIX_WEBP: &str = "UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAwA0JaQAA3AA/vuUAAA=";
 
 /// Each media part `history` still holds, by kind, with the strings one of
-/// which its encoding contains: its URL, file id, string, or the head of
+/// which its encoding contains: its URL, file id, text, or the head of
 /// its data (and a text document's decoded text).
 fn payloads(history: &[Message]) -> Vec<(&'static str, Vec<String>)> {
     use base64::Engine as _;
     use rig_core::message::DocumentSourceKind as Source;
     fn needles(source: &Source) -> Vec<String> {
         match source {
-            Source::Url(text) | Source::FileId(text) | Source::String(text) => {
-                vec![text.clone()]
-            }
+            Source::Url(text) | Source::FileId(text) => vec![text.clone()],
             Source::Base64(data) => {
                 let mut needles = vec![data.chars().take(16).collect()];
                 if let Some(text) = base64::prelude::BASE64_STANDARD
@@ -1647,7 +1644,11 @@ fn payloads(history: &[Message]) -> Vec<(&'static str, Vec<String>)> {
                         UserContent::Audio(audio) => found.push(("audio", needles(&audio.data))),
                         UserContent::Video(video) => found.push(("video", needles(&video.data))),
                         UserContent::Document(document) => {
-                            found.push(("document", needles(&document.data)));
+                            let needles = match &document.data {
+                                DocumentData::Text(text) => vec![text.clone()],
+                                DocumentData::File(source) => needles(source),
+                            };
+                            found.push(("document", needles));
                         }
                         UserContent::ToolResult(result) => {
                             for part in &result.content {

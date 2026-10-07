@@ -1,5 +1,5 @@
 //! AWS Bedrock document prompt smoke tests inspired by Anthropic document tests.
-use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::message::{Document, DocumentData, DocumentMediaType, Message, UserContent};
 
 use super::{
     BEDROCK_COMPLETION_MODEL, client,
@@ -33,7 +33,7 @@ async fn plaintext_document_prompt() {
         .build();
 
     let document = Document {
-        data: DocumentSourceKind::String(rust_document()),
+        data: DocumentData::Text(rust_document()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,
     };

@@ -82,14 +82,17 @@ fn converse_encodes_only_what_it_carries() {
     };
     assert!(!encodes(AMAZON_NOVA_LITE, Media::Image(&heic, Place::User)));
     let script = document(
-        Source::base64("bGV0IGEgPSAxOw=="),
+        Source::base64("bGV0IGEgPSAxOw==").into(),
         DocumentMediaType::Javascript,
     );
     assert!(encodes(
         ANTHROPIC_CLAUDE_SONNET_4_6,
         Media::Document(&script)
     ));
-    let text = document(Source::string("notes"), DocumentMediaType::TXT);
+    let text = document(
+        rig_core::message::DocumentData::Text("notes".into()),
+        DocumentMediaType::TXT,
+    );
     assert!(!encodes(AMAZON_NOVA_LITE, Media::Document(&text)));
     let mp4 = video(Source::base64("AAAAIGZ0eXBpc29tAAACAA"));
     assert!(encodes(AMAZON_NOVA_LITE, Media::Video(&mp4)));

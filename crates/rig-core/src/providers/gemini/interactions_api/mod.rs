@@ -17,8 +17,8 @@ use url::form_urlencoded;
 use crate::completion::{CompletionRequest, Media, Replay, ReplayTarget};
 use crate::error::EncodeError;
 use crate::message::{
-    AssistantContent, DocumentMediaType, DocumentSourceKind as Source, Message, MimeType,
-    ToolChoice as Choice, ToolResultContent, UserContent,
+    AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind as Source, Message,
+    MimeType, ToolChoice as Choice, ToolResultContent, UserContent,
 };
 use crate::providers::internal::wire_ids::WireIds;
 use crate::telemetry::GenAiOperation;
@@ -176,15 +176,10 @@ impl ReplayTarget for Interactions {
 }
 
 /// Whether this API takes `media`: data or a URL with a media type, an
-/// image of a type Gemini reads, and a document other than a PDF only as a
-/// string, which is sent as text. A file id is never taken.
+/// image of a type Gemini reads, a PDF, and a text document, which is sent
+/// as text. A file id is never taken.
 fn encodes(media: Media<'_>) -> bool {
-    let carried = |source: &Source| {
-        matches!(
-            source,
-            Source::Url(_) | Source::Base64(_) | Source::String(_)
-        )
-    };
+    let carried = |source: &Source| matches!(source, Source::Url(_) | Source::Base64(_));
     match media {
         Media::Image(image, place) => {
             super::completion::reads_image(image.media_type.as_ref(), place) && carried(&image.data)
@@ -192,9 +187,9 @@ fn encodes(media: Media<'_>) -> bool {
         Media::Audio(audio) => audio.media_type.is_some() && carried(&audio.data),
         Media::Video(video) => video.media_type.is_some() && carried(&video.data),
         Media::Document(document) => match (&document.media_type, &document.data) {
-            (None, _) => false,
-            (Some(DocumentMediaType::PDF), data) => carried(data),
-            (Some(_), data) => matches!(data, Source::String(_)),
+            (_, DocumentData::Text(_)) => true,
+            (Some(DocumentMediaType::PDF), DocumentData::File(data)) => carried(data),
+            _ => false,
         },
     }
 }
@@ -574,11 +569,9 @@ fn user_content(part: UserContent) -> Result<Value, EncodeError> {
         UserContent::Image(image) => media("image", image.media_type, image.data),
         UserContent::Audio(audio) => media("audio", audio.media_type, audio.data),
         UserContent::Video(video) => media("video", video.media_type, video.data),
-        UserContent::Document(document) => match (document.media_type, document.data) {
-            (Some(media_type), Source::String(text)) if media_type != DocumentMediaType::PDF => {
-                Ok(json!({ "type": "text", "text": text }))
-            }
-            (media_type, data) => media("document", media_type, data),
+        UserContent::Document(document) => match document.data {
+            DocumentData::Text(text) => Ok(json!({ "type": "text", "text": text })),
+            DocumentData::File(data) => media("document", document.media_type, data),
         },
         UserContent::ToolResult(_) => {
             Err(EncodeError::request("a tool result is a step of its own"))
@@ -586,9 +579,8 @@ fn user_content(part: UserContent) -> Result<Value, EncodeError> {
     }
 }
 
-/// A media content item of `kind`: a URL as its `uri`, and base64 data, or a
-/// string's bytes in base64, as its `data`. [`encodes`] refuses every other
-/// form, so the adapter passes none.
+/// A media content item of `kind`: a URL as its `uri`, and base64 data as its
+/// `data`. [`encodes`] refuses every other form, so the adapter passes none.
 fn media<M: MimeType>(
     kind: &str,
     media_type: Option<M>,
@@ -600,7 +592,7 @@ fn media<M: MimeType>(
         ))
     };
     let mime_type = media_type.ok_or_else(unsendable)?.to_mime_type().to_owned();
-    let key = match super::completion::carried(source, false)? {
+    let key = match super::completion::carried(source)? {
         (true, uri) => ("uri", uri),
         (false, data) => ("data", data),
     };

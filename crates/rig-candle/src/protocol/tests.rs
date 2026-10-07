@@ -269,11 +269,11 @@ fn every_renderer_takes_any_media_the_adapter_hands_over() {
                 additional_params: None,
             }),
             document(
-                DocumentSourceKind::string("the plain document"),
+                rig_core::message::DocumentData::Text("the plain document".into()),
                 DocumentMediaType::TXT,
             ),
             document(
-                DocumentSourceKind::base64("JVBERi0xLjQ="),
+                DocumentSourceKind::base64("JVBERi0xLjQ=").into(),
                 DocumentMediaType::PDF,
             ),
         ],

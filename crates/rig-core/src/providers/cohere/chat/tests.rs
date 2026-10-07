@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use super::*;
 use crate::completion::{CompletionResponse, ReplayTarget, ToolDefinition};
 use crate::message::{
-    CallId, Image, ImageMediaType, Reasoning, Text, ToolCall, ToolFunction, ToolName,
+    CallId, DocumentMediaType, Image, ImageMediaType, Reasoning, Text, ToolCall, ToolFunction,
+    ToolName,
 };
 use crate::providers::cohere::{ChatRoute, CohereChat, CohereConfig};
 use crate::test_utils::json_body;
@@ -286,7 +287,7 @@ fn unsendable_parts_are_errors() {
             data: Source::base64("aGk="),
             ..Image::default()
         }),
-        UserContent::document_text("%PDF", Some(DocumentMediaType::PDF)),
+        UserContent::document_base64("JVBERi0=", Some(DocumentMediaType::PDF)),
         UserContent::audio_base64("aGk=", None),
         UserContent::video_base64("aGk=", None),
     ] {
@@ -521,12 +522,12 @@ fn the_native_target_states_what_it_carries() {
     assert!(!wire.encodes(MODEL, Media::Image(&raw, Place::User)));
     assert!(!wire.encodes(MODEL, Media::Image(&url, Place::ToolResult)));
     let text = crate::message::Document {
-        data: Source::String("notes".to_owned()),
+        data: crate::message::DocumentData::Text("notes".to_owned()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: None,
     };
     let pdf = crate::message::Document {
-        data: Source::String("%PDF".to_owned()),
+        data: Source::base64("JVBERi0=").into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     };

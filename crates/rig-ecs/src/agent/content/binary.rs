@@ -74,6 +74,9 @@ pub enum BinaryError {
     /// Persisted spelling metadata cannot describe these bytes.
     #[error("invalid base64 spelling metadata")]
     Spelling,
+    /// A document's text stands where media bytes belong.
+    #[error("a text source where media bytes belong")]
+    Text,
 }
 
 /// Representation at a particular use of a shared binary payload.
@@ -91,15 +94,15 @@ pub enum BinaryEncoding {
     },
 }
 
-/// A part's source. URLs, file IDs, string data and unknown sources remain data;
-/// only raw and base64 binary payloads refer to the store.
+/// A part's source. URLs, file IDs, a document's text and unknown sources
+/// remain data; only raw and base64 binary payloads refer to the store.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub enum PartSource {
     /// External URL or URI; never fetched by scene loading.
     Url(String),
     /// Provider file identifier.
     FileId(String),
-    /// Literal string source, not interpreted as binary.
+    /// A document's own text, never binary. Checkpoints spell it `String`.
     String(String),
     /// Explicit unknown source.
     Unknown,
@@ -188,7 +191,6 @@ impl BinaryAssets {
         Ok(match source {
             DocumentSourceKind::Url(value) => PartSource::Url(value),
             DocumentSourceKind::FileId(value) => PartSource::FileId(value),
-            DocumentSourceKind::String(value) => PartSource::String(value),
             DocumentSourceKind::Unknown => PartSource::Unknown,
             DocumentSourceKind::Raw(bytes) => PartSource::Binary {
                 id: self.insert(bytes)?,
@@ -290,13 +292,14 @@ impl BinaryAssets {
     }
 
     /// Rebuild the transport source with its saved spelling, returning an error
-    /// for missing bytes, invalid spelling metadata, or size overflow.
+    /// for missing bytes, invalid spelling metadata, size overflow, or a
+    /// document's text, which is no media source.
     pub fn resolve(&self, source: &PartSource) -> Result<DocumentSourceKind, BinaryError> {
         self.resolved_len(source)?;
         Ok(match source {
             PartSource::Url(value) => DocumentSourceKind::Url(value.clone()),
             PartSource::FileId(value) => DocumentSourceKind::FileId(value.clone()),
-            PartSource::String(value) => DocumentSourceKind::String(value.clone()),
+            PartSource::String(_) => return Err(BinaryError::Text),
             PartSource::Unknown => DocumentSourceKind::Unknown,
             PartSource::Binary { id, encoding } => {
                 let bytes = self.get(*id)?;

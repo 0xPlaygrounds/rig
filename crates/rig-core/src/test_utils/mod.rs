@@ -111,7 +111,7 @@ pub fn sent_documents(request: &crate::completion::CompletionRequest) -> Vec<(St
         })
         .filter_map(|part| match part {
             crate::message::UserContent::Document(document) => match &document.data {
-                crate::message::DocumentSourceKind::String(text) => {
+                crate::message::DocumentData::Text(text) => {
                     let body = text.strip_prefix("<file id: ")?;
                     let (id, rest) = body.split_once(">\n")?;
                     let text = rest.strip_suffix("\n</file>\n")?;

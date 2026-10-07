@@ -45,7 +45,7 @@ fn sole_body(encoded: Encoded) -> Value {
 fn generic_document_file_id_reaches_openrouter_as_a_placeholder() {
     let message = Message::User {
         content: vec![RigUserContent::Document(Document {
-            data: DocumentSourceKind::file_id("file_abc"),
+            data: DocumentSourceKind::file_id("file_abc").into(),
             media_type: None,
             additional_params: None,
         })],
@@ -66,7 +66,7 @@ fn generic_document_file_id_reaches_openrouter_as_a_placeholder() {
 fn file_data_document_encodes_as_an_openrouter_file_part() {
     let message = Message::User {
         content: vec![RigUserContent::Document(Document {
-            data: DocumentSourceKind::Base64("AAAA".to_string()),
+            data: DocumentSourceKind::Base64("AAAA".to_string()).into(),
             media_type: Some(DocumentMediaType::PDF),
             additional_params: None,
         })],
