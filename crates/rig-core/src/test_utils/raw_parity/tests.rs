@@ -432,8 +432,12 @@ const PAIRS: &[Pair] = &[
         unary: "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap.yaml",
         streamed: "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap.yaml",
         // Each answer is cut at its own words, and Venice states its
-        // parameters in a unary body only.
-        minted: &["/choices/0/message/content", "/venice_parameters"],
+        // parameters and `reasoning_encrypted` in a unary body only.
+        minted: &[
+            "/choices/0/message/content",
+            "/choices/0/message/reasoning_encrypted",
+            "/venice_parameters",
+        ],
     },
     Pair {
         provider: "groq",
