@@ -966,8 +966,27 @@ got `None` for `extras::<DeepSeek>()` on it, and read
 `prompt_cache_miss_tokens = 57` from a DeepSeek recording. It found that the
 merge must be deep, which section 2.1 adopts.
 
+**Stable keys.** The provider keys are stable API from 0.44, kept as they
+are: every `ProviderExtension::PROVIDER` value and every vendor key of the
+model catalog. A caller writes them in code, stores them in serialized
+requests (`ProviderOptions` serializes by key) and in catalog override files,
+and `extras::<P>()` compares them with a reply's `Origin::provider`, so a
+rename would break each of these silently. rig does not rename one in a
+minor release. `tests/core/provider_keys.rs` pins them, so a rename fails a
+test:
+
+| keys | values |
+|---|---|
+| `ProviderExtension::PROVIDER`, rig-core | `anthropic`, `azure.openai`, `chatgpt`, `cohere`, `copilot`, `deepseek`, `gcp.gemini`, `groq`, `llamacpp`, `minimax`, `mistral`, `moonshot`, `ollama`, `openai`, `openrouter`, `perplexity`, `together`, `venice`, `xai`, `xiaomimimo`, `zai` |
+| `ProviderExtension::PROVIDER`, companion crates | `aws_bedrock` (rig-bedrock), `candle` (rig-candle), `gemini-grpc` (rig-gemini-grpc), `vertexai` (rig-vertexai) |
+| catalog vendor keys | the extension keys but `candle`, plus `doubleword`, `huggingface`, `hyperbolic` and `voyageai` |
+| models.dev keys read under another vendor key (section 8) | `azure`, `google`, `google-vertex`, `amazon-bedrock`, `togetherai`, `moonshotai`, `xiaomi`, `ollama-cloud`, `github-copilot` |
+
+The test also counts the `impl ProviderExtension` items in each crate's
+sources, so a new extension cannot ship without its key pinned.
+
 **Weaknesses.**
-- Provider names become API: `"gcp.gemini"`, `"gemini-grpc"`, `"vertexai"`, `"aws_bedrock"`, `"azure.openai"` freeze as they are.
+- Provider names become API: `"gcp.gemini"`, `"gemini-grpc"`, `"vertexai"`, `"aws_bedrock"`, `"azure.openai"` freeze as they are (stable from 0.44, above).
 - Gemini REST and gRPC are one API under two names, so a harness that targets both inserts its `GeminiOptions` twice: once under `Gemini`, and once wrapped as `GeminiGrpcOptions::from(..)` under `GeminiGrpc`. `GeminiGrpcOptions` is a newtype over `GeminiOptions` that serializes the same fields and refuses, through its own `unsupported`, what the gRPC proto does not declare (`store`, `labels`, `HARM_CATEGORY_JAILBREAK`).
 - A section for a route not taken is skipped with a `tracing::debug!`, so a typo in a section name is skipped the same way.
 - Section names are strings; a typo in a hand-written `#[serde(rename)]` is caught by the per-extension test only.

@@ -35,6 +35,10 @@ pub const SHARED: &str = "*";
 pub trait ProviderExtension {
     /// The provider's key: the name its wires report as
     /// [`ReplayTarget::provider`] and stamp on a reply's `Origin`.
+    ///
+    /// Stable API from 0.44: requests store provider options under this
+    /// key, and the model catalog files the provider's models under it, so
+    /// rig does not rename a provider's key in a minor release.
     const PROVIDER: &'static str;
     /// The request options: an object of sections, [`SHARED`] and route API
     /// names, each an object of body keys.
