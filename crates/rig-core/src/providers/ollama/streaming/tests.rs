@@ -659,3 +659,35 @@ fn a_failed_or_cut_stream_rebuilds_what_arrived() {
     assert_eq!(rebuilt(std::slice::from_ref(&started)), started);
     assert_eq!(rebuilt(&[]), Value::Null);
 }
+
+/// Ollama reports no total, so the observed usage carries none: the
+/// `AdapterUsage` contract says the total is provider-reported, never a sum
+/// of the other fields. The decoder's `Finish` usage and the raw-bytes
+/// projector read the same `done` record independently, and the projector
+/// invents one.
+#[test]
+fn the_observed_usage_does_not_invent_a_total() {
+    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
+    let log = std::sync::Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+    let mut attempt = context
+        .attempt_for(&http::Request::new(()), "/api/chat")
+        .expect("an attempt starts");
+    let payload =
+        br#"{"model":"m","done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":4}"#;
+    attempt.project(|sink| ChatDecoder::project(payload, sink));
+    drop(attempt);
+    let totals: Vec<Option<u64>> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            Action::Adapter { observation } => match &observation.event {
+                crate::wire::AdapterEvent::Usage { usage } => Some(usage.total_tokens),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(totals, [None], "Ollama reports no total_tokens");
+}

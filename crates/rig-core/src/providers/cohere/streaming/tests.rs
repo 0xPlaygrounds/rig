@@ -961,3 +961,33 @@ fn a_streamed_reply_without_a_plan_rebuilds_no_tool_plan() {
         Some(&json!("I will look."))
     );
 }
+
+/// Cohere reports no total, so the observed usage carries none: the
+/// `AdapterUsage` contract says the total is provider-reported, never a sum
+/// of the other fields. The projector reuses the decoder's normalized
+/// `usage_of`, whose total is a sum.
+#[test]
+fn the_observed_usage_does_not_invent_a_total() {
+    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
+    let log = std::sync::Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+    let mut attempt = context
+        .attempt_for(&http::Request::new(()), "/v2/chat")
+        .expect("an attempt starts");
+    let payload = br#"{"usage":{"tokens":{"input_tokens":3,"output_tokens":4}}}"#;
+    attempt.project(|sink| ChatDecoder::project(payload, sink));
+    drop(attempt);
+    let totals: Vec<Option<u64>> = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            Action::Adapter { observation } => match &observation.event {
+                AdapterEvent::Usage { usage } => Some(usage.total_tokens),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(totals, [None], "Cohere reports no total_tokens");
+}
