@@ -236,18 +236,25 @@ fn settle(target: &dyn ReplayTarget, request: &CompletionRequest) -> Result<Sett
     let provider = target.provider();
     let mut settled = Settled::default();
     for ((option, mapping), set) in map.into_slots().into_iter().zip(set) {
-        let fail = |what: &str| {
-            Err(EncodeError::request(format!(
-                "{provider} {what} the option `{option}`"
-            )))
-        };
+        let fail = |what: String| Err(EncodeError::request(format!("{provider} {what}")));
         match (mapping, set) {
             (Mapping::Nothing, false) => {}
-            (Mapping::Nothing, true) => return fail("answered nothing for the set"),
-            (_, false) => return fail("answered for the unset"),
+            (Mapping::Nothing, true) => {
+                return fail(format!(
+                    "answered `Mapping::Nothing` for the option `{option}`, which the request sets"
+                ));
+            }
+            (_, false) => {
+                return fail(format!(
+                    "answered the option `{option}`, which the request does not set; \
+                     an unset option answers `Mapping::Nothing` (see `Mapping::of`)"
+                ));
+            }
             (Mapping::Send(value), true) => {
                 if !value.is_object() {
-                    return fail("sent a value that is not a JSON object for");
+                    return fail(format!(
+                        "sent a value that is not a JSON object for the option `{option}`"
+                    ));
                 }
                 settled.sends.push(value);
                 if option == "cache" {
@@ -263,7 +270,11 @@ fn settle(target: &dyn ReplayTarget, request: &CompletionRequest) -> Result<Sett
                 );
             }
             (Mapping::Place, true) if option == "cache" => settled.cache = request.options.cache,
-            (Mapping::Place, true) => return fail("placed markers for"),
+            (Mapping::Place, true) => {
+                return fail(format!(
+                    "answered `Mapping::Place` for the option `{option}`; only `cache` places markers"
+                ));
+            }
             (Mapping::Unsupported(reason), true) => {
                 refuse(target, request, option, reason)?;
                 settled.ignored.push(option);

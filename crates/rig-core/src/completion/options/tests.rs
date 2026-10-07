@@ -324,3 +324,51 @@ fn overlay_keeps_what_the_top_layer_leaves_unset() {
     assert_eq!(resolved.on_unsupported, OnUnsupported::Ignore);
     assert_eq!(agent.clone().overlay(&GenerationOptions::default()), agent);
 }
+
+/// Every option answered with a bare value, set or not.
+fn unconditional(_fields: OptionFields<'_>) -> OptionMap {
+    OptionMap {
+        reasoning: Mapping::Nothing,
+        cache: Mapping::Nothing,
+        service_tier: Mapping::Nothing,
+        verbosity: Mapping::Nothing,
+        parallel_tool_calls: Mapping::Nothing,
+        top_p: Mapping::Send(json!(0.5)),
+        seed: Mapping::unsupported("no such field"),
+        stop: Mapping::Nothing,
+    }
+}
+
+/// A wire that answers the options against the contract fails with a
+/// sentence naming the provider, the option and the fix.
+#[test]
+fn a_wire_that_breaks_the_mapping_contract_names_the_option() {
+    let failure = |answer: fn(OptionFields<'_>) -> OptionMap, options: GenerationOptions| {
+        request_params(&Fake(answer), &request(options), base, RawAt::Top, &[])
+            .expect_err("the answers break the contract")
+            .to_string()
+    };
+    let unset = failure(unconditional, GenerationOptions::default());
+    assert!(
+        unset.contains(
+            "fake answered the option `top_p`, which the request does not set; an unset option \
+             answers `Mapping::Nothing` (see `Mapping::of`)"
+        ),
+        "{unset}"
+    );
+    let not_object = failure(unconditional, GenerationOptions::default().top_p(0.5));
+    assert!(
+        not_object.contains("fake sent a value that is not a JSON object for the option `top_p`"),
+        "{not_object}"
+    );
+    let nothing = failure(
+        unconditional,
+        GenerationOptions::default().reasoning(Effort::High),
+    );
+    assert!(
+        nothing.contains(
+            "fake answered `Mapping::Nothing` for the option `reasoning`, which the request sets"
+        ),
+        "{nothing}"
+    );
+}
