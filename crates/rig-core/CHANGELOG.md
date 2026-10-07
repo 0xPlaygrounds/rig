@@ -15,7 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - *(cohere)* [**breaking**] native documents, citations and tool_plan ([#2729](https://github.com/0xPlaygrounds/rig/pull/2729)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(openai)* opt-in quirk ending a [DONE] stream without finish_reason ([#2725](https://github.com/0xPlaygrounds/rig/pull/2725)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - [**breaking**] stream tool-call arguments as they arrive ([#2721](https://github.com/0xPlaygrounds/rig/pull/2721)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2721
-- *(rig-core)* add transcript::answer_unanswered ([#2699](https://github.com/0xPlaygrounds/rig/pull/2699)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig-core)* add ProviderConfig::base_url and with_base_url ([#2700](https://github.com/0xPlaygrounds/rig/pull/2700)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 - *(rig-core)* add Gemini 3.8 Flash and DeepSeek Flash model constants ([#2704](https://github.com/0xPlaygrounds/rig/pull/2704)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
 
