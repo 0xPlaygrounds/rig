@@ -991,26 +991,31 @@ sources, so a new extension cannot ship without its key pinned.
 - A section for a route not taken is skipped with a `tracing::debug!`, so a typo in a section name is skipped the same way.
 - Section names are strings; a typo in a hand-written `#[serde(rename)]` is caught by the per-extension test only.
 
-**Not covered: headers and encoder directives.** `ProviderOptions` is a
-body layer: `request_params` merges it into the JSON body and nowhere else.
-Options that are request headers or that change how the base builder works
-are not body keys. Section 7 does not list them, and P4 does not add them:
-- the ones that exist stay setters on the wire: Anthropic betas
-  (`Messages::with_beta`, `crates/rig-core/src/providers/anthropic/wire.rs:283`),
-  Copilot `with_intent` (`crates/rig-core/src/providers/copilot/wire.rs:261`),
-  Anthropic `with_prompt_caching` and `with_static_prefix_cache_ttl`
-  (`crates/rig-core/src/providers/anthropic/wire.rs:391`, `:455`), Gemini
-  `thought_replay` (`crates/rig-core/src/providers/gemini/completion.rs:113`);
-- the ones that do not exist yet are out of this stack: Vertex
-  `shared_request_type` (a header), the Anthropic binding-block policy, and
-  Bedrock document citations and tool caching (directives on the base
-  arrays).
+**Not covered, planned after 0.44: headers and encoder directives.**
+`ProviderOptions` is a body layer: `request_params` merges it into the JSON
+body and nowhere else. Options that are request headers or that change how
+the base builder works are not body keys. Section 7 does not list them, and
+this stack adds no typed channel for them. A typed header channel would need
+a second merge target with its own precedence; it is planned after 0.44.
+Until then:
 
-A body field in section 7 marked "+ beta" needs its beta set on the wire
-with `with_beta`. P4 does not add the header for it. Without the beta, the
-provider rejects the request: an error, not a silent drop. A typed header
-channel would need a second merge target, with its own precedence, and no
-acceptance test asks for one.
+| option | kind | how it is set today |
+|---|---|---|
+| Anthropic betas (`anthropic-beta`) | header | `AnthropicConfig::with_beta` (`crates/rig-core/src/providers/anthropic/wire.rs:286`), on every request of the client |
+| ChatGPT `session_id` | header | no caller setter: the ChatGPT dialect's `Identity { session_ids: true }` sends a fresh id on every request (`crates/rig-core/src/providers/openai/wire/auth.rs:148-156`); `originator` and `user-agent` come from `CHATGPT_ORIGINATOR` and `CHATGPT_USER_AGENT` |
+| Copilot intent (`openai-intent`) | header | `CopilotWire::with_intent(CopilotIntent)` (`crates/rig-core/src/providers/copilot/wire.rs:261`) |
+| Anthropic manual prompt caching | directive on the base arrays | `Messages::with_prompt_caching` and `with_static_prefix_cache_ttl` (`crates/rig-core/src/providers/anthropic/wire.rs:390`, `:417`) |
+| Gemini thought replay | directive | `thought_replay` (`crates/rig-core/src/providers/gemini/completion.rs:115`) |
+
+The ones that do not exist yet are out of this stack too: Vertex
+`shared_request_type` (a header), the Anthropic binding-block policy, and
+Bedrock document citations and tool caching (directives on the base
+arrays).
+
+A body field in section 7 marked "+ beta" needs its beta set on the client
+with `AnthropicConfig::with_beta`. This stack does not add the header for
+it. Without the beta, the provider rejects the request: an error, not a
+silent drop.
 
 **Alternative considered.** Keying by wire API with a dialect layer
 (`openai.chat/openrouter`). Rejected: the fixed `const PROVIDER` would hold a
