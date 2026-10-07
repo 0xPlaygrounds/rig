@@ -74,9 +74,6 @@ pub enum BinaryError {
     /// Persisted spelling metadata cannot describe these bytes.
     #[error("invalid base64 spelling metadata")]
     Spelling,
-    /// A document's text stands where media bytes belong.
-    #[error("a text source where media bytes belong")]
-    Text,
 }
 
 /// Representation at a particular use of a shared binary payload.
@@ -102,7 +99,8 @@ pub enum PartSource {
     Url(String),
     /// Provider file identifier.
     FileId(String),
-    /// A document's own text, never binary. Checkpoints spell it `String`.
+    /// A document's own text. On a legacy media part it is base64, as the
+    /// legacy `"string"` JSON spelling is.
     String(String),
     /// Explicit unknown source.
     Unknown,
@@ -292,14 +290,13 @@ impl BinaryAssets {
     }
 
     /// Rebuild the transport source with its saved spelling, returning an error
-    /// for missing bytes, invalid spelling metadata, size overflow, or a
-    /// document's text, which is no media source.
+    /// for missing bytes, invalid spelling metadata, or size overflow.
     pub fn resolve(&self, source: &PartSource) -> Result<DocumentSourceKind, BinaryError> {
         self.resolved_len(source)?;
         Ok(match source {
             PartSource::Url(value) => DocumentSourceKind::Url(value.clone()),
             PartSource::FileId(value) => DocumentSourceKind::FileId(value.clone()),
-            PartSource::String(_) => return Err(BinaryError::Text),
+            PartSource::String(value) => DocumentSourceKind::Base64(value.clone()),
             PartSource::Unknown => DocumentSourceKind::Unknown,
             PartSource::Binary { id, encoding } => {
                 let bytes = self.get(*id)?;

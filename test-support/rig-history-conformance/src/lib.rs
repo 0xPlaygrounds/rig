@@ -1550,6 +1550,7 @@ fn media_history() -> Vec<Message> {
                     Source::url("https://example.com/rig-matrix.pdf"),
                     Some(DocumentMediaType::PDF),
                 )),
+                UserContent::document_text("rig matrix text pdf", Some(DocumentMediaType::PDF)),
                 UserContent::document_text(
                     "rig matrix plain document",
                     Some(DocumentMediaType::TXT),

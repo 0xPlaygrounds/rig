@@ -776,13 +776,13 @@ fn carries_text(value: &Value, text: &str) -> bool {
 }
 
 /// A base64 PDF is PDF data, as Anthropic sends it: it never reaches the
-/// model as a text part holding its base64. A persisted `"string"` PDF is
-/// a text document, so it goes as its text, as on every wire.
+/// model as a text part holding its base64. A document's text, including a
+/// persisted `"string"` PDF, goes as its text, as on every wire.
 ///
 /// Not a cassette test: the defect is the request body built before any
 /// HTTP, which no recorded reply exercises.
 #[test]
-fn a_string_pdf_is_never_sent_as_text() -> anyhow::Result<()> {
+fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
     use crate::wire::{Operation, Wire};
     let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
     let wire = openai_wire("gpt-5");
@@ -801,12 +801,11 @@ fn a_string_pdf_is_never_sent_as_text() -> anyhow::Result<()> {
             .map_err(anyhow::Error::from)
             .and_then(|request| Ok(json_of(&wire, request)?))
     };
-    if let Ok(body) = sent(DocumentSourceKind::base64(pdf).into()) {
-        anyhow::ensure!(
-            !carries_text(&body, pdf),
-            "the PDF's base64 goes to the model as text: {body:#}"
-        );
-    }
+    let body = sent(DocumentSourceKind::base64(pdf).into())?;
+    anyhow::ensure!(
+        !carries_text(&body, pdf),
+        "the PDF's base64 goes to the model as text: {body:#}"
+    );
     let legacy = serde_json::from_value(json!({"type": "string", "value": pdf}))?;
     let body = sent(legacy)?;
     anyhow::ensure!(

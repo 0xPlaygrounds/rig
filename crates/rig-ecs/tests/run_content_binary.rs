@@ -94,10 +94,14 @@ fn scene_spelling_metadata_cannot_change_decoded_bytes() {
     }
 }
 
-/// A document's text is no media source: it never resolves as one.
+/// A legacy checkpoint's `String` media source loads as base64, the same
+/// reading as the legacy `"string"` JSON spelling.
 #[test]
-fn a_document_text_is_no_media_source() {
+fn a_legacy_string_media_source_resolves_as_base64() {
     let store = BinaryAssets::default();
-    let text = PartSource::String("not base64".into());
-    assert_eq!(store.resolve(&text), Err(BinaryError::Text));
+    let legacy = PartSource::String("iVBORw0KGgo=".into());
+    assert_eq!(
+        store.resolve(&legacy),
+        Ok(DocumentSourceKind::Base64("iVBORw0KGgo=".into()))
+    );
 }
