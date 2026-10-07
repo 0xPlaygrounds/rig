@@ -386,10 +386,11 @@ impl wire::Responses {
             &rewrites,
         )?;
         crate::providers::openai::options::check_body(
-            &body,
+            self,
+            request,
+            body,
             crate::providers::openai::options::Endpoint::Responses,
-        )?;
-        Ok(body)
+        )
     }
 
     /// This wire's own encoding of `request`: model, input, instructions,

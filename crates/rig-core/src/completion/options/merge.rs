@@ -350,6 +350,78 @@ pub fn check(
     Ok(())
 }
 
+/// A part of a final body that a model's catalog entry says the API
+/// rejects: a top-level body key, or `tools` for the request's tools, and
+/// why. Found on the final body, because `additional_params` can set the
+/// same keys.
+pub(crate) struct CatalogRefusal {
+    pub(crate) field: &'static str,
+    pub(crate) reason: String,
+}
+
+/// `body` after the refusals `target`'s catalog entry for the model makes
+/// of it. A request that sets no [`GenerationOptions`] is sent as built,
+/// and the provider decides. Otherwise each refusal goes through the
+/// request's policy under the name of its body key: an error under
+/// [`OnUnsupported::Error`]; under [`OnUnsupported::Ignore`] a warning, and
+/// a field rig wrote from a typed source (a request field such as
+/// `temperature`, a generation option, a provider option) is left out of
+/// the body. A key whose value `additional_params` sets, and the request's
+/// `tools`, are sent as written.
+///
+/// # Errors
+///
+/// Under [`OnUnsupported::Error`], for the first refusal.
+pub(crate) fn catalog_refusals(
+    target: &dyn ReplayTarget,
+    request: &CompletionRequest,
+    body: FinalBody,
+    refusals: Vec<CatalogRefusal>,
+) -> Result<FinalBody, EncodeError> {
+    let provider = target.provider();
+    let model = model_of(target, request);
+    if request.options.is_default() {
+        for refusal in &refusals {
+            tracing::debug!(
+                option = refusal.field,
+                provider,
+                model,
+                reason = refusal.reason.as_str(),
+                "catalog refusal not applied: the request sets no generation options"
+            );
+        }
+        return Ok(body);
+    }
+    let FinalBody(mut body) = body;
+    for CatalogRefusal { field, reason } in refusals {
+        if request.options.on_unsupported == OnUnsupported::Error {
+            return Err(EncodeError::unsupported(UnsupportedOption::new(
+                field, provider, model, reason,
+            )));
+        }
+        let raw = request
+            .additional_params
+            .as_ref()
+            .and_then(|params| params.get(field));
+        let typed = field != "tools" && raw.is_none_or(|raw| body.get(field) != Some(raw));
+        if typed {
+            body.shift_remove(field);
+        }
+        tracing::warn!(
+            option = field,
+            provider,
+            model,
+            reason = reason.as_str(),
+            "{}",
+            match typed {
+                true => "option skipped: the model's catalog entry refuses it",
+                false => "catalog refusal ignored: sent as written",
+            }
+        );
+    }
+    Ok(FinalBody(body))
+}
+
 /// A provider field the target cannot send: its body key, the section it
 /// came from and why.
 struct Refused {

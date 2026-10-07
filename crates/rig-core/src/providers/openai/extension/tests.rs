@@ -138,15 +138,29 @@ fn raw_additional_params_beat_typed_options() {
 #[test]
 fn typed_logprobs_on_gpt_6_while_reasoning_fail_the_body_check() {
     let options = OpenAiOptions::new().chat(ChatOptions::new().logprobs(true));
-    let error = encoded_body(
+    let strict = request_with::<OpenAi>(&options)
+        .options(GenerationOptions::default().reasoning(crate::completion::Effort::Medium));
+    let error = encoded_body(&chat_wire(GPT_6_SOL), strict, Mode::Unary)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(error.contains("`logprobs`"), "{error}");
+    let lenient = request_with::<OpenAi>(&options)
+        .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    let body = encoded_body(&chat_wire(GPT_6_SOL), lenient, Mode::Unary)
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(
+        body.get("logprobs"),
+        None,
+        "a typed field is left out: {body}"
+    );
+    let unset = encoded_body(
         &chat_wire(GPT_6_SOL),
         request_with::<OpenAi>(&options),
         Mode::Unary,
     )
-    .err()
-    .map(|error| error.to_string())
-    .unwrap_or_default();
-    assert!(error.contains("`logprobs`"), "{error}");
+    .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(unset["logprobs"], true, "no option set: sent as built");
     let off = request_with::<OpenAi>(&options).options(
         GenerationOptions::default()
             .reasoning(Reasoning::Off)

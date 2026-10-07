@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{GenerationOptions, Verbosity};
+use crate::completion::{GenerationOptions, OnUnsupported, Verbosity};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::openai::wire::{
@@ -716,6 +716,25 @@ fn on_chat(model: &str, request: CompletionRequest) -> Result<Value, String> {
     gpt_6_body(chat(&OPENAI, model).encode(request, Mode::Unary))
 }
 
+/// The body `chat` sends for `request`, prepared as the driver prepares it.
+fn on_prepared_chat(model: &str, request: CompletionRequest) -> Result<Value, ProviderError> {
+    crate::test_utils::provider_extensions::encoded_body(
+        &chat(&OPENAI, model),
+        request,
+        Mode::Unary,
+    )
+}
+
+/// The body Responses sends for `request`, prepared as the driver prepares
+/// it.
+fn on_prepared_responses(model: &str, request: CompletionRequest) -> Result<Value, ProviderError> {
+    crate::test_utils::provider_extensions::encoded_body(
+        &responses_wire(model),
+        request,
+        Mode::Unary,
+    )
+}
+
 fn on_responses(model: &str, request: CompletionRequest) -> Result<Value, String> {
     gpt_6_body(
         ResponsesWire::new(OpenAIConfig::with_key(&OPENAI, "sk-test"), model)
@@ -723,82 +742,218 @@ fn on_responses(model: &str, request: CompletionRequest) -> Result<Value, String
     )
 }
 
+/// `request` with a generation option set, so the catalog's refusals apply
+/// under the default `Error` policy. The effort is GPT-6's default.
+fn strict(request: CompletionRequest) -> CompletionRequest {
+    request.options(GenerationOptions::default().reasoning(Effort::Medium))
+}
+
+/// `request` with the `Ignore` policy and no other option.
+fn lenient(request: CompletionRequest) -> CompletionRequest {
+    request.options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore))
+}
+
+/// The refusal `result` carries: its option name, provider and model.
+fn refusal(result: Result<Value, ProviderError>) -> (String, String, String) {
+    match result {
+        Err(ProviderError::UnsupportedOption(refused)) => {
+            (refused.option.into_owned(), refused.provider, refused.model)
+        }
+        other => panic!("expected an unsupported option, got {other:?}"),
+    }
+}
+
+/// The body `wire` sends for `request`, prepared as the driver prepares
+/// it, and the warnings logged on the way.
+fn sent_with_warnings<W>(wire: &W, request: CompletionRequest) -> (Value, Vec<String>)
+where
+    W: Wire<Op = crate::operation::Completion, Payload = crate::wire::Encoded>,
+{
+    let capture = crate::test_utils::TraceCapture::default();
+    let body = tracing::subscriber::with_default(capture.subscriber(), || {
+        crate::test_utils::provider_extensions::encoded_body(wire, request, Mode::Unary)
+    })
+    .unwrap_or_else(|error| panic!("{error}"));
+    (body, capture.warnings())
+}
+
+fn responses_wire(model: &str) -> ResponsesWire {
+    ResponsesWire::new(OpenAIConfig::with_key(&OPENAI, "sk-test"), model)
+}
+
+/// With a generation option set, the default `Error` policy refuses a
+/// sampling parameter while GPT-6 reasons, by default or at an explicit
+/// effort, with the field's name.
 #[test]
 fn gpt_6_sampling_parameters_fail_while_the_model_reasons_by_default() {
     for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
-        let with_temperature = gpt_6_request(None).temperature(0.2);
-        for error in [
-            on_chat(model, with_temperature.clone()).expect_err("chat temperature"),
-            on_responses(model, with_temperature).expect_err("responses temperature"),
+        let with_temperature = strict(gpt_6_request(None).temperature(0.2));
+        for result in [
+            on_prepared_chat(model, with_temperature.clone()),
+            on_prepared_responses(model, with_temperature),
         ] {
-            assert!(error.contains(model), "{error}");
-            assert!(error.contains("`temperature`"), "{error}");
+            assert_eq!(
+                refusal(result),
+                (
+                    "temperature".to_owned(),
+                    "openai".to_owned(),
+                    model.to_owned()
+                )
+            );
         }
-        let top_p = on_responses(model, gpt_6_request(Some(json!({"top_p": 0.9}))))
-            .expect_err("responses top_p");
-        assert!(top_p.contains("`top_p`"), "{top_p}");
+        let top_p =
+            on_prepared_responses(model, strict(gpt_6_request(Some(json!({"top_p": 0.9})))));
+        assert_eq!(refusal(top_p).0, "top_p");
         for (field, value) in [
             ("top_p", json!(0.9)),
             ("top_logprobs", json!(2)),
             ("logprobs", json!(true)),
         ] {
-            let error = on_chat(model, gpt_6_request(Some(json!({field: value}))))
-                .expect_err("chat sampling parameter");
-            assert!(error.contains(&format!("`{field}`")), "{error}");
+            let result =
+                on_prepared_chat(model, strict(gpt_6_request(Some(json!({field: value})))));
+            assert_eq!(refusal(result).0, field, "{model}");
         }
+        let error =
+            on_chat(model, strict(gpt_6_request(None).temperature(0.2))).expect_err("refused");
+        assert!(
+            error.contains(model) && error.contains("`temperature`"),
+            "{error}"
+        );
     }
+}
+
+/// A request that sets no generation option is sent as built, as before the
+/// catalog held these rules, and the provider decides: the sampling and
+/// tool rules refuse nothing for it.
+#[test]
+fn gpt_6_without_options_is_sent_and_left_to_the_provider() {
+    for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
+        let body = on_chat(
+            model,
+            with_tool(gpt_6_request(Some(json!({"top_p": 0.9})))).temperature(0.2),
+        )
+        .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body["temperature"], json!(0.2), "{model}");
+        assert_eq!(body["top_p"], json!(0.9), "{model}");
+        assert_eq!(body["tools"][0]["function"]["name"], "lookup", "{model}");
+        let body = on_responses(
+            model,
+            gpt_6_request(Some(json!({"top_logprobs": 2}))).temperature(0.2),
+        )
+        .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body["temperature"], json!(0.2), "{model}");
+        assert_eq!(body["top_logprobs"], json!(2), "{model}");
+    }
+}
+
+/// Under `Ignore` the request goes out with one warning per refused field:
+/// a field rig wrote from a typed source (the request's `temperature`, the
+/// `top_p` option) is left out, a raw key is sent as written.
+#[test]
+fn gpt_6_sampling_under_ignore_warns_and_sends() {
+    let typed = gpt_6_request(None).temperature(0.2).options(
+        GenerationOptions::default()
+            .top_p(0.9)
+            .on_unsupported(OnUnsupported::Ignore),
+    );
+    let (body, warnings) = sent_with_warnings(&chat(&OPENAI, GPT_6_SOL), typed.clone());
+    assert_eq!(body.get("temperature"), None, "{body}");
+    assert_eq!(body.get("top_p"), None, "{body}");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(warnings[0].contains("option=temperature"), "{warnings:?}");
+    assert!(warnings[1].contains("option=top_p"), "{warnings:?}");
+    let (body, warnings) = sent_with_warnings(&responses_wire(GPT_6_SOL), typed);
+    assert_eq!(body.get("temperature"), None, "{body}");
+    assert_eq!(body.get("top_p"), None, "{body}");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+
+    let raw = lenient(gpt_6_request(Some(json!({"top_p": 0.9, "logprobs": true}))));
+    let (body, warnings) = sent_with_warnings(&chat(&OPENAI, GPT_6_LUNA), raw);
+    assert_eq!(body["top_p"], json!(0.9), "{body}");
+    assert_eq!(body["logprobs"], json!(true), "{body}");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(
+        warnings
+            .iter()
+            .all(|warning| warning.contains("sent as written")),
+        "{warnings:?}"
+    );
+
+    // A raw key over a typed one is the raw key, so it is sent.
+    let both = gpt_6_request(Some(json!({"temperature": 0.7}))).temperature(0.2);
+    let (body, _) = sent_with_warnings(&chat(&OPENAI, GPT_6_SOL), lenient(both));
+    assert_eq!(body["temperature"], json!(0.7), "{body}");
 }
 
 #[test]
 fn gpt_6_explicit_effort_other_than_none_still_rejects_sampling() {
     let chat_request = gpt_6_request(Some(json!({"reasoning_effort": "high"}))).temperature(0.2);
-    assert!(on_chat(GPT_6_SOL, chat_request).is_err());
+    assert!(on_chat(GPT_6_SOL, strict(chat_request)).is_err());
     let responses_request =
         gpt_6_request(Some(json!({"reasoning": {"effort": "low"}}))).temperature(0.2);
-    assert!(on_responses(GPT_6_LUNA, responses_request).is_err());
+    assert!(on_responses(GPT_6_LUNA, strict(responses_request)).is_err());
 }
 
 #[test]
 fn gpt_6_effort_none_allows_sampling_on_sol_and_luna() {
     for model in [GPT_6_SOL, GPT_6_LUNA] {
-        let chat_request =
-            gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2);
-        let body = on_chat(model, chat_request).expect("effort none samples");
+        let off = |request: CompletionRequest| {
+            request.options(GenerationOptions::default().reasoning(Reasoning::Off))
+        };
+        let body =
+            on_chat(model, off(gpt_6_request(None).temperature(0.2))).expect("effort none samples");
         assert_eq!(body["temperature"], json!(0.2));
-        let responses_request =
-            gpt_6_request(Some(json!({"reasoning": {"effort": "none"}}))).temperature(0.2);
-        let body = on_responses(model, responses_request).expect("effort none samples");
+        assert_eq!(body["reasoning_effort"], "none");
+        let body = on_responses(model, off(gpt_6_request(None).temperature(0.2)))
+            .expect("effort none samples");
         assert_eq!(body["temperature"], json!(0.2));
     }
 }
 
 #[test]
 fn gpt_6_astras_sampling_error_does_not_suggest_effort_none() {
-    let error =
-        on_responses(GPT_6_ASTRA, gpt_6_request(None).temperature(0.2)).expect_err("rejected");
+    let error = on_responses(GPT_6_ASTRA, strict(gpt_6_request(None).temperature(0.2)))
+        .expect_err("rejected");
     assert!(!error.contains("to `none`"), "{error}");
 }
 
-/// Astra never calls tools through Chat Completions, so rig refuses before
-/// sending. Sol and Luna call them at effort `none`; at their default
-/// effort the request reaches OpenAI, whose 400 names the fix (the recorded
-/// `gpt_6_luna` session pins that reply).
+/// Astra and 6.1 Sol never call tools through Chat Completions: with an
+/// option set, `Error` refuses them under the name `tools` and `Ignore`
+/// sends them as built with a warning. Sol and Luna call them at effort
+/// `none`; at their default effort the request reaches OpenAI, whose 400
+/// names the fix (the recorded `gpt_6_luna` session pins that reply).
 #[test]
 fn gpt_6_chat_completions_tools_fail_for_astra_and_reach_the_api_on_sol_and_luna() {
-    let error = on_chat(GPT_6_ASTRA, with_tool(gpt_6_request(None))).expect_err("astra chat tools");
-    assert!(
-        error.contains(GPT_6_ASTRA) && error.contains("Responses"),
-        "{error}"
+    let result = on_prepared_chat(GPT_6_ASTRA, strict(with_tool(gpt_6_request(None))));
+    assert_eq!(
+        refusal(result),
+        (
+            "tools".to_owned(),
+            "openai".to_owned(),
+            GPT_6_ASTRA.to_owned()
+        )
     );
+    let error = on_chat(GPT_6_ASTRA, strict(with_tool(gpt_6_request(None)))).expect_err("astra");
+    assert!(error.contains("Responses"), "{error}");
     let error = on_chat(
         GPT_6_ASTRA,
-        with_tool(gpt_6_request(Some(json!({"reasoning_effort": "none"})))),
+        strict(with_tool(gpt_6_request(Some(
+            json!({"reasoning_effort": "none"}),
+        )))),
     )
     .expect_err("astra never calls tools on chat");
     assert!(error.contains("Responses"), "{error}");
+    let (body, warnings) = sent_with_warnings(
+        &chat(&OPENAI, GPT_6_ASTRA),
+        lenient(with_tool(gpt_6_request(None))),
+    );
+    assert_eq!(body["tools"][0]["function"]["name"], "lookup");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("option=tools"), "{warnings:?}");
     for model in [GPT_6_SOL, GPT_6_LUNA] {
-        let body = on_chat(model, with_tool(gpt_6_request(None))).expect("sent; OpenAI decides");
-        assert_eq!(body.get("reasoning_effort"), None, "{body}");
+        let body =
+            on_chat(model, strict(with_tool(gpt_6_request(None)))).expect("sent; OpenAI decides");
+        assert_eq!(body["tools"][0]["function"]["name"], "lookup");
         let body = on_chat(
             model,
             with_tool(gpt_6_request(Some(json!({"reasoning_effort": "none"})))),
@@ -811,7 +966,8 @@ fn gpt_6_chat_completions_tools_fail_for_astra_and_reach_the_api_on_sol_and_luna
 #[test]
 fn gpt_6_responses_carries_tools_at_any_effort() {
     for model in [GPT_6_ASTRA, GPT_6_SOL, GPT_6_LUNA] {
-        let body = on_responses(model, with_tool(gpt_6_request(None))).expect("responses tools");
+        let body =
+            on_responses(model, strict(with_tool(gpt_6_request(None)))).expect("responses tools");
         assert_eq!(body["tools"][0]["name"], "lookup");
     }
 }
@@ -828,8 +984,8 @@ fn gpt_6_chat_requests_use_the_reasoning_output_cap() {
 
 #[test]
 fn gpt_6_rules_leave_other_models_unchecked() {
-    for model in ["gpt-5.6-sol", "gpt-6", "gpt-6-sol-mini", "openai/gpt-6-sol"] {
-        let sampled = with_tool(gpt_6_request(None)).temperature(0.2);
+    for model in ["gpt-6", "gpt-6-sol-mini", "openai/gpt-6-sol"] {
+        let sampled = strict(with_tool(gpt_6_request(None)).temperature(0.2));
         assert!(on_chat(model, sampled.clone()).is_ok(), "{model}");
         assert!(on_responses(model, sampled).is_ok(), "{model}");
     }
@@ -837,8 +993,11 @@ fn gpt_6_rules_leave_other_models_unchecked() {
 
 #[test]
 fn gpt_6_rules_follow_a_per_request_model_override() {
-    let request = gpt_6_request(None).model(GPT_6_SOL).temperature(0.2);
-    assert!(on_chat("gpt-5.6-sol", request.clone()).is_err());
+    let request = strict(gpt_6_request(None).model(GPT_6_SOL).temperature(0.2));
+    assert_eq!(
+        refusal(on_prepared_chat("gpt-5.6-sol", request.clone())).2,
+        GPT_6_SOL
+    );
     assert!(on_responses("gpt-5.6-sol", request).is_err());
 }
 
@@ -849,26 +1008,50 @@ fn gpt_6_rules_follow_a_per_request_model_override() {
 #[test]
 fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
     for model in ["gpt-5.1", "gpt-5.4", "gpt-5.6-sol"] {
-        let chat_request =
-            gpt_6_request(Some(json!({"reasoning_effort": "high"}))).temperature(0.2);
-        let error = on_chat(model, chat_request).expect_err("chat temperature");
-        assert!(error.contains("`temperature`"), "{error}");
-        let error = on_chat(
+        let high = |request: CompletionRequest| {
+            request.options(GenerationOptions::default().reasoning(Effort::High))
+        };
+        let result = on_prepared_chat(model, high(gpt_6_request(None).temperature(0.2)));
+        assert_eq!(refusal(result).0, "temperature", "{model}");
+        let result = on_prepared_chat(
             model,
-            gpt_6_request(Some(json!({"reasoning_effort": "low", "top_p": 0.9}))),
-        )
-        .expect_err("chat top_p");
-        assert!(error.contains("`top_p`"), "{error}");
-        let responses_request =
-            gpt_6_request(Some(json!({"reasoning": {"effort": "medium"}}))).temperature(0.2);
-        let error = on_responses(model, responses_request).expect_err("responses temperature");
-        assert!(error.contains("`temperature`"), "{error}");
+            strict(gpt_6_request(Some(
+                json!({"reasoning_effort": "low", "top_p": 0.9}),
+            ))),
+        );
+        assert_eq!(refusal(result).0, "top_p", "{model}");
+        let result = on_prepared_responses(model, high(gpt_6_request(None).temperature(0.2)));
+        assert_eq!(refusal(result).0, "temperature", "{model}");
 
-        let body = on_chat(model, gpt_6_request(None).temperature(0.2)).expect("no effort set");
+        let (body, warnings) = sent_with_warnings(
+            &chat(&OPENAI, model),
+            gpt_6_request(None).temperature(0.2).options(
+                GenerationOptions::default()
+                    .reasoning(Effort::High)
+                    .on_unsupported(OnUnsupported::Ignore),
+            ),
+        );
+        assert_eq!(body.get("temperature"), None, "{model}: {body}");
+        assert_eq!(body["reasoning_effort"], "high", "{model}");
+        assert_eq!(warnings.len(), 1, "{model}: {warnings:?}");
+
+        let body = on_chat(
+            model,
+            gpt_6_request(Some(json!({"reasoning_effort": "high"}))).temperature(0.2),
+        )
+        .expect("no option set: sent");
         assert_eq!(body["temperature"], json!(0.2), "{model}");
         let body = on_chat(
             model,
-            gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2),
+            gpt_6_request(None)
+                .temperature(0.2)
+                .options(GenerationOptions::default().seed(1)),
+        )
+        .expect("no effort set");
+        assert_eq!(body["temperature"], json!(0.2), "{model}");
+        let body = on_chat(
+            model,
+            strict(gpt_6_request(Some(json!({"reasoning_effort": "none"}))).temperature(0.2)),
         )
         .expect("effort none samples");
         assert_eq!(body["temperature"], json!(0.2), "{model}");

@@ -210,6 +210,34 @@ fn claude_4_0_and_4_1_refuse_an_effort_and_take_a_budget() {
     }
 }
 
+/// The refusal of an effort on Claude Opus 4, Opus 4.1 and Sonnet 4 rests
+/// on catalog data alone, so it follows the policy: under `Ignore` the
+/// request goes out without the effort, with one warning.
+#[test]
+fn claude_4_0_and_4_1_skip_an_effort_under_ignore() {
+    for model in ["claude-opus-4-0", "claude-opus-4-1", "claude-sonnet-4-0"] {
+        let capture = crate::test_utils::TraceCapture::default();
+        let body = tracing::subscriber::with_default(capture.subscriber(), || {
+            sent(
+                &wire(model),
+                request(
+                    GenerationOptions::default()
+                        .reasoning(Effort::High)
+                        .on_unsupported(OnUnsupported::Ignore),
+                ),
+                Mode::Unary,
+            )
+        })
+        .unwrap_or_else(|error| panic!("{model}: {error}"));
+        assert_eq!(body.get("thinking"), None, "{model}: {body}");
+        assert_eq!(body.get("output_config"), None, "{model}: {body}");
+        let warnings = capture.warnings();
+        assert_eq!(warnings.len(), 1, "{model}: {warnings:?}");
+        assert!(warnings[0].contains("option=reasoning"), "{warnings:?}");
+        assert!(warnings[0].contains(model), "{warnings:?}");
+    }
+}
+
 #[test]
 fn the_remaining_options_take_their_documented_cells() {
     let one =

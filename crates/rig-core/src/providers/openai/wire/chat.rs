@@ -207,8 +207,10 @@ impl Chat {
             raw_at,
             &rewrites,
         )?;
-        crate::providers::openai::options::check_body(
-            &body,
+        let body = crate::providers::openai::options::check_body(
+            self,
+            &request,
+            body,
             crate::providers::openai::options::Endpoint::ChatCompletions,
         )?;
         crate::providers::internal::trace_json(

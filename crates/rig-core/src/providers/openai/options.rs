@@ -7,8 +7,10 @@
 use serde_json::json;
 
 use crate::catalog::{ModelSpec, Sampling};
-use crate::completion::options::{FinalBody, Mapping, OptionFields, OptionMap};
-use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
+use crate::completion::options::{CatalogRefusal, FinalBody, Mapping, OptionFields, OptionMap};
+use crate::completion::{
+    CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier,
+};
 use crate::error::EncodeError;
 
 use super::wire::Chat;
@@ -210,24 +212,44 @@ pub(crate) enum Endpoint {
     Responses,
 }
 
-/// Refuse a body the model's catalog entry says the API rejects, by its
-/// exact id (an OpenRouter `openai/` id is the gateway's to check). While
-/// the model reasons, a model whose sampling rule is
-/// [`Sampling::ReasoningOff`] takes no `temperature`, `top_p` or
-/// `top_logprobs` (nor, on Chat Completions, `logprobs`), and one marked
-/// `chat_tools_need_reasoning_off` whose reasoning cannot be turned off takes
-/// no tools on Chat Completions at all. (One that can turn it off takes them
-/// at effort `none`; the API's own error names that fix, and a recorded
-/// session pins it.) The model reasons unless the body sets effort `none`;
-/// with no effort it reasons when the catalog names its default level, and
-/// is not checked otherwise. These are fields `additional_params` can set, so the check
-/// reads the final body.
-pub(crate) fn check_body(body: &FinalBody, endpoint: Endpoint) -> Result<(), EncodeError> {
+/// `body` after the refusals of OpenAI's catalog entry for its model, by
+/// its exact id (an OpenRouter `openai/` id is the gateway's to check),
+/// reported through the request's policy by
+/// [`catalog_refusals`](crate::completion::options::catalog_refusals): a
+/// request that sets no generation options is sent as built. While the
+/// model reasons, a model whose sampling rule is [`Sampling::ReasoningOff`]
+/// takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
+/// Completions, `logprobs`), and one marked `chat_tools_need_reasoning_off`
+/// whose reasoning cannot be turned off takes no tools on Chat Completions
+/// at all. (One that can turn it off takes them at effort `none`; the API's
+/// own error names that fix, and a recorded session pins it.) The model
+/// reasons unless the body sets effort `none`; with no effort it reasons
+/// when the catalog names its default level, and is not checked otherwise.
+/// These are fields `additional_params` can set, so the check reads the
+/// final body.
+///
+/// # Errors
+///
+/// A refusal under [`OnUnsupported::Error`](crate::completion::OnUnsupported::Error).
+pub(crate) fn check_body(
+    target: &dyn ReplayTarget,
+    request: &CompletionRequest,
+    body: FinalBody,
+    endpoint: Endpoint,
+) -> Result<FinalBody, EncodeError> {
+    let refusals = body_refusals(&body, endpoint);
+    crate::completion::options::catalog_refusals(target, request, body, refusals)
+}
+
+/// The parts of `body` the catalog entry of its model refuses on
+/// `endpoint`, as [`check_body`] describes.
+fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
+    let mut refusals = Vec::new();
     let Some(model) = body.get("model").and_then(serde_json::Value::as_str) else {
-        return Ok(());
+        return refusals;
     };
     let Some(spec) = crate::catalog::lookup(super::wire::OPENAI.name, model) else {
-        return Ok(());
+        return refusals;
     };
     let (effort, effort_field) = match endpoint {
         Endpoint::ChatCompletions => (body.get("reasoning_effort"), "reasoning_effort"),
@@ -239,19 +261,22 @@ pub(crate) fn check_body(body: &FinalBody, endpoint: Endpoint) -> Result<(), Enc
     };
     let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
     if reasons && spec.sampling == Some(Sampling::ReasoningOff) {
-        let sampling: &[&str] = match endpoint {
+        let sampling: &[&'static str] = match endpoint {
             Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
             Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
         };
-        if let Some(field) = sampling.iter().find(|field| present(field)) {
+        for field in sampling.iter().copied().filter(|field| present(field)) {
             let fix = match spec.reasoning.can_disable {
                 true => format!("remove `{field}` or set `{effort_field}` to `none`"),
                 false => format!("remove `{field}`"),
             };
-            return Err(EncodeError::request(format!(
-                "`{model}` rejects `{field}` while it reasons, which it does unless \
-                 `{effort_field}` is `none`; {fix}"
-            )));
+            refusals.push(CatalogRefusal {
+                field,
+                reason: format!(
+                    "the model rejects `{field}` while it reasons, which it does unless \
+                     `{effort_field}` is `none`; {fix}"
+                ),
+            });
         }
     }
     let carries_tools = body
@@ -263,11 +288,13 @@ pub(crate) fn check_body(body: &FinalBody, endpoint: Endpoint) -> Result<(), Enc
         && spec.compat.chat_tools_need_reasoning_off
         && !spec.reasoning.can_disable
     {
-        return Err(EncodeError::request(format!(
-            "`{model}` cannot call tools through Chat Completions; use the Responses API"
-        )));
+        refusals.push(CatalogRefusal {
+            field: "tools",
+            reason: "the model cannot call tools through Chat Completions; use the Responses API"
+                .to_owned(),
+        });
     }
-    Ok(())
+    refusals
 }
 
 /// Why the model `spec` describes cannot take effort `effort`, from its

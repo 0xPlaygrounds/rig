@@ -335,10 +335,25 @@ fn max_tool_calls_reaches_the_body() {
 fn top_logprobs_is_checked_like_a_raw_key() {
     let wire = gpt_6();
     let typed = responses(OpenAiResponsesOptions::default().top_logprobs(2));
+    let strict = prompt()
+        .provider_options(typed.clone())
+        .options(GenerationOptions::default().reasoning(crate::completion::Effort::Medium));
     let error = wire
-        .encode(prompt().provider_options(typed.clone()), Mode::Unary)
+        .encode(strict, Mode::Unary)
         .expect_err("gpt-6 reasons by default");
-    assert!(error.to_string().contains("top_logprobs"), "{error}");
+    assert_eq!(
+        error
+            .unsupported_option()
+            .map(|refused| refused.option.as_ref()),
+        Some("top_logprobs"),
+        "{error}"
+    );
+    assert_adds(
+        &wire,
+        GenerationOptions::default(),
+        typed.clone(),
+        json!({"top_logprobs": 2}),
+    );
 
     assert_adds(
         &wire,
