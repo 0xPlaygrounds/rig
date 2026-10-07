@@ -370,13 +370,13 @@ impl<O> AgentRunner<O> {
         self
     }
 
-    /// Set the stop sequences in this run's generation options, as
-    /// [`GenerationOptions::stop`](rig_core::completion::GenerationOptions::stop) does,
-    /// keeping its other fields. See
-    /// [`Self::options`] for the order of calls.
-    pub fn stop<S: Into<String>>(mut self, stop: impl IntoIterator<Item = S>) -> Self {
-        self.config.options = std::mem::take(&mut self.config.options).stop(stop);
-        self
+    /// Set the stop sequences in this run's generation options, keeping its
+    /// other fields: the same as
+    /// `.options(GenerationOptions::new().stop(stop))`. As with that overlay,
+    /// an empty list means "not set" and keeps the agent's stop sequences;
+    /// it does not clear them. See [`Self::options`] for the order of calls.
+    pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self {
+        self.options(rig_core::completion::GenerationOptions::new().stop(stop))
     }
 
     /// Set what happens to an option the wire or model cannot honour in this run's generation options, as
@@ -392,6 +392,12 @@ impl<O> AgentRunner<O> {
     /// provider entry `options` holds replaces the agent's, every other
     /// entry keeps the agent's
     /// ([`ProviderOptions::overlay`](rig_core::completion::ProviderOptions::overlay)).
+    ///
+    /// Unlike [`AgentBuilder::provider_options`](crate::agent::AgentBuilder::provider_options),
+    /// it merges rather than replaces, so calls apply in order without
+    /// loss: an entry set by an earlier [`Self::provider_option`] is kept
+    /// unless `options` holds an entry for the same provider, and a later
+    /// [`Self::provider_option`] replaces its provider's entry on top.
     pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
         self.config.provider_options = self.config.provider_options.clone().overlay(&options);
         self
@@ -400,16 +406,16 @@ impl<O> AgentRunner<O> {
     /// Store `options` as the entry of their provider
     /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext))
     /// for this run, in place of the agent's entry for that provider; every
-    /// other entry keeps the agent's. Options that write no field remove
-    /// the agent's entry for this run. Options that do not serialize fail
-    /// each request's encode.
-    pub fn provider_option<E: rig_core::completion::ExtensionOptions>(
-        mut self,
-        options: E,
-    ) -> Self {
-        self.config.provider_options =
-            std::mem::take(&mut self.config.provider_options).set(options);
-        self
+    /// other entry keeps the agent's. The same as
+    /// `.provider_options(ProviderOptions::new().set(options))`, so options
+    /// that write no field hold no entry and keep the agent's entry for
+    /// that provider. Options that do not serialize fail each request's
+    /// encode. See [`Self::provider_options`] for the order of calls. A
+    /// third-party provider reusing a built-in options type needs
+    /// [`ProviderOptions::with::<P>`](rig_core::completion::ProviderOptions::with)
+    /// and [`Self::provider_options`]: this stores under the built-in key.
+    pub fn provider_option<E: rig_core::completion::ExtensionOptions>(self, options: E) -> Self {
+        self.provider_options(rig_core::completion::ProviderOptions::new().set(options))
     }
 
     /// Override the tool-choice policy for this run.

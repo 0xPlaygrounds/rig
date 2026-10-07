@@ -339,6 +339,101 @@ async fn provider_option_on_the_agent_and_the_run_equals_the_long_form() {
     assert!(short.iter().all(|options| options.contains::<Beta>()));
 }
 
+/// The provider options of the requests `model` received.
+fn sent_provider_options(
+    model: &MockCompletionModel,
+) -> Vec<rig_core::completion::ProviderOptions> {
+    model
+        .requests()
+        .into_iter()
+        .map(|request| request.provider_options)
+        .collect()
+}
+
+/// On the agent `provider_options` replaces every entry, dropping an
+/// earlier `provider_option`; on a run it merges, keeping one.
+#[tokio::test]
+async fn provider_option_and_provider_options_apply_in_order() {
+    use extension::{Beta, shared};
+    use rig_core::completion::ProviderOptions;
+
+    let beta = ProviderOptions::new()
+        .with::<Beta>(&shared(json!({"min_p": 0.1})))
+        .expect("beta's options serialize");
+    let with_alpha = beta.clone().set(shared(json!({"top_k": 4})));
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let before = AgentBuilder::new(model.clone())
+        .provider_option(shared(json!({"top_k": 4})))
+        .provider_options(beta.clone())
+        .build();
+    before
+        .prompt("go")
+        .run()
+        .await
+        .expect("the agent's request");
+    let after = AgentBuilder::new(model.clone())
+        .provider_options(beta.clone())
+        .provider_option(shared(json!({"top_k": 4})))
+        .build();
+    after.prompt("go").run().await.expect("the agent's request");
+    assert_eq!(
+        sent_provider_options(&model),
+        [beta.clone(), with_alpha.clone()]
+    );
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone()).build();
+    agent
+        .prompt("go")
+        .provider_option(shared(json!({"top_k": 4})))
+        .provider_options(beta.clone())
+        .run()
+        .await
+        .expect("the run's request");
+    agent
+        .prompt("go")
+        .provider_options(beta.clone())
+        .provider_option(shared(json!({"top_k": 4})))
+        .run()
+        .await
+        .expect("the run's request");
+    assert_eq!(
+        sent_provider_options(&model),
+        [with_alpha.clone(), with_alpha]
+    );
+}
+
+/// A run's options that write no field hold no entry, so the agent's entry
+/// for that provider stays, through the shortcut and the long form alike.
+#[tokio::test]
+async fn a_runs_empty_provider_option_keeps_the_agents_entry() {
+    use extension::shared;
+    use rig_core::completion::ProviderOptions;
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent_options = ProviderOptions::new().set(shared(json!({"top_k": 4})));
+    let agent = AgentBuilder::new(model.clone())
+        .provider_options(agent_options.clone())
+        .build();
+    agent
+        .prompt("go")
+        .provider_option(shared(json!({})))
+        .run()
+        .await
+        .expect("the run's request");
+    agent
+        .prompt("go")
+        .provider_options(ProviderOptions::new().set(shared(json!({}))))
+        .run()
+        .await
+        .expect("the run's request");
+    assert_eq!(
+        sent_provider_options(&model),
+        [agent_options.clone(), agent_options]
+    );
+}
+
 /// The generation options of the last request `model` received, once `run`
 /// has run.
 async fn sent_options(
@@ -435,6 +530,27 @@ async fn a_run_restores_the_error_policy_over_an_agents_ignore() {
     )
     .await;
     assert_eq!(through_shortcut, through_options);
+}
+
+/// An empty stop list on a run means "not set", through the shortcut and
+/// the long form alike: the agent's stop sequences stay.
+#[tokio::test]
+async fn a_runs_empty_stop_keeps_the_agents_stop_sequences() {
+    use rig_core::completion::GenerationOptions;
+
+    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+    let agent = AgentBuilder::new(model.clone()).seed(1).stop(["x"]).build();
+    let agents = GenerationOptions::new().seed(1).stop(["x"]);
+    let short = sent_options(&model, agent.prompt("go").stop(Vec::<String>::new())).await;
+    let long = sent_options(
+        &model,
+        agent
+            .prompt("go")
+            .options(GenerationOptions::new().stop(Vec::<String>::new())),
+    )
+    .await;
+    assert_eq!(short, agents);
+    assert_eq!(long, agents);
 }
 
 #[tokio::test]

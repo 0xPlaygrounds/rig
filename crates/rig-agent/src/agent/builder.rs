@@ -365,6 +365,10 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// carries. A run's
     /// [`AgentRunner::provider_options`](crate::agent::AgentRunner::provider_options)
     /// replaces the entry of each provider it names.
+    ///
+    /// Calls apply in order: this replaces every entry, so an entry set by
+    /// an earlier [`Self::provider_option`] is lost, and a later
+    /// [`Self::provider_option`] replaces its provider's entry on top.
     pub fn provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
         self.config.provider_options = options;
         self
@@ -375,7 +379,10 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// in the provider options every request of this agent carries,
     /// replacing that provider's entry and keeping every other
     /// ([`ProviderOptions::set`](rig_core::completion::ProviderOptions::set)).
-    /// Options that do not serialize fail each request's encode.
+    /// Options that do not serialize fail each request's encode. A
+    /// third-party provider reusing a built-in options type needs
+    /// [`ProviderOptions::with::<P>`](rig_core::completion::ProviderOptions::with)
+    /// and [`Self::provider_options`]: this stores under the built-in key.
     pub fn provider_option<O: rig_core::completion::ExtensionOptions>(
         mut self,
         options: O,
