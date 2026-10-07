@@ -576,9 +576,16 @@ impl AgentRun {
         self
     }
 
-    /// Set the synthetic output-tool name for Tool output mode.
-    /// When a model turn calls this tool, the run finalizes with the call's
-    /// arguments (serialized JSON) as the response.
+    /// Pin the synthetic output-tool name for Tool output mode up front.
+    ///
+    /// This only seeds [`output_tool_name`](Self::output_tool_name), which the
+    /// driver passes to [`prepare_request`] as `committed_output_tool` for
+    /// later turns. It does not by itself make a call to the tool finalize the
+    /// run: a turn intercepts the call only when its [`TurnPolicy`] names the
+    /// tool, as `prepared.policy` does when `prepare_request` resolved Tool
+    /// output mode, or a hand-built `TurnPolicy::new(.., Some(name))`. Under a
+    /// policy that does not name it, a call to the tool is an invalid
+    /// (unknown) tool call.
     pub fn with_output_tool_name(mut self, name: impl Into<String>) -> Self {
         self.output_tool_name = Some(name.into());
         self
