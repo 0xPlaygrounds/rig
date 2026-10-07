@@ -180,3 +180,9 @@ data: {\"error\":{\"code\":429,\"message\":\"Provider returned error\"}}\n\n";
         Some(AccountFailure::RateLimit)
     );
 }
+
+#[test]
+fn each_failure_kind_has_its_own_bit() {
+    let bits = AccountFailure::ALL.map(AccountFailure::bit);
+    assert_eq!(bits, [1, 2, 4, 8]);
+}
