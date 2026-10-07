@@ -203,7 +203,7 @@ pub struct GenerationOptions {
     pub top_p: Option<f64>,
     pub seed: Option<u64>,
     pub stop: Vec<String>,
-    pub on_unsupported: OnUnsupported, // default Error
+    pub on_unsupported: Option<OnUnsupported>, // None: unset, acts as Error
 }
 #[non_exhaustive] pub enum Reasoning { Off, Effort(Effort), Budget { tokens: u32 } }
 #[non_exhaustive] pub enum Effort { Minimal, Low, Medium, High, XHigh, Max }
@@ -215,8 +215,8 @@ pub struct GenerationOptions {
 
 The enums derive `Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize,
 Deserialize`. Their serde names are the lower-case wire words (`"xhigh"`, not
-`"x_high"`). Every `GenerationOptions` field is `#[serde(default)]`, and
-`stop` is skipped when empty.
+`"x_high"`). Every `GenerationOptions` field is `#[serde(default)]`, `stop`
+is skipped when empty and `on_unsupported` when unset.
 
 Builders and the request:
 
@@ -230,12 +230,16 @@ impl GenerationOptions {
     pub fn top_p(self, top_p: f64) -> Self;
     pub fn seed(self, seed: u64) -> Self;
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self;
-    pub fn on_unsupported(self, policy: OnUnsupported) -> Self;
+    pub fn on_unsupported(self, policy: OnUnsupported) -> Self; // sets Some(policy)
+    /// The policy in effect: the one set, or `Error`.
+    pub fn unsupported_policy(&self) -> OnUnsupported;
+    /// No field set, the policy included.
+    pub fn is_default(&self) -> bool;
     /// Every option but the policy, borrowed. Destructures `self` with no
     /// `..`, so a new field fails to compile here first.
     pub fn fields(&self) -> OptionFields<'_>;
     /// `self` with every field `over` sets put on top: a `Some` option, a
-    /// non-empty `stop` list, a non-default `on_unsupported`.
+    /// non-empty `stop` list, a set `on_unsupported`.
     pub fn overlay(self, over: &GenerationOptions) -> GenerationOptions;
 }
 
@@ -600,9 +604,9 @@ target `route` names, the one `prepare` and the fold already use.
   rig-agent and an `Options(GenerationOptions)` component in rig-ecs. The
   two layers merge with `GenerationOptions::overlay`: `agent.overlay(&run)`,
   so each field the run sets beats the agent's, and every other field keeps
-  the agent's value. A `stop` list replaces; it never concatenates. Because
-  `on_unsupported` has no unset state, a run cannot put `Error` back over an
-  agent's `Ignore`. The caller sets it on the agent instead. The
+  the agent's value. A `stop` list replaces; it never concatenates.
+  `on_unsupported` is unset (`None`) until a layer sets it, so a run's
+  `on_unsupported(Error)` puts `Error` back over an agent's `Ignore`. The
   `option_layers` acceptance test pins this (section 13).
 - **Refusals from catalog data.** A stale catalog row must not block a
   request the API accepts, so every local refusal whose only basis is the
@@ -624,7 +628,8 @@ target `route` names, the one `prepare` and the fold already use.
     `completion::options::catalog_refusals`, named by its body key
     (`"temperature"`, `"top_p"`, `"top_logprobs"`, `"logprobs"`, `"tools"`).
 
-  Under `Error`, the default, each is refused before sending, as before.
+  Under `Error`, the policy in effect when none is set, each is refused
+  before sending, as before.
   Under `Ignore`, each is one `tracing::warn!` (`option`, `provider`,
   `model`, `reason`) and the request goes out. What is dropped follows one
   rule: a value rig wrote from a typed source is left out, and a value the
@@ -637,8 +642,8 @@ target `route` names, the one `prepare` and the fold already use.
   can do, and the provider's own error names the fix if the catalog is
   right.
 
-  A request that sets no `GenerationOptions` (`options.is_default()`, which
-  also holds for `on_unsupported(Error)` alone) has chosen no policy, and
+  A request that sets no `GenerationOptions` (`options.is_default()`: no
+  option and no policy set) has chosen no policy, and
   `check_body` refuses nothing for it: the body is sent as built and the
   provider decides, with a `tracing::debug!` per refusal it skipped. The
   other catalog refusals need a set option to fire, so they are unaffected.
@@ -655,7 +660,9 @@ target `route` names, the one `prepare` and the fold already use.
   (`crates/rig-cassette/fixtures/cassettes/openai/models/gpt_6_luna/session.yaml:2652`).
   The alternative, refusing with no option set, would keep P3's bodies but
   let a stale row block callers who never opted into local checks, with
-  no policy to turn it off short of setting `Ignore`.
+  no policy to turn it off short of setting `Ignore`. Setting the policy alone opts in: `on_unsupported(Error)` turns the
+  checks on as local refusals, and `on_unsupported(Ignore)` as warnings
+  that drop the typed value.
 
 ### 2.2 C: the model catalog
 
@@ -2265,6 +2272,7 @@ phase removed the gate.
 | `no_silent_drop::the_driver_refuses_an_option_before_any_wire_encodes` | P2 | on Bedrock Converse, an SDK-backed wire, `Completion::prepare` alone refuses `seed` with `UnsupportedOption` naming `seed` and `aws_bedrock`; under `Ignore` it warns once and clears the option |
 | `option_matrix::every_option_alone_gives_its_section_6_cell` | P2 | a table-driven golden: each `GenerationOptions` field set alone on Anthropic, Responses, Gemini, Bedrock, OpenRouter, Cohere and DeepSeek gives exactly its section 6 cell for that wire, field and value: the body equals the baseline body with the cell's object deep-merged in (or a marker pushed onto an array), equals the baseline for an "omit" cell, or fails with `UnsupportedOption` naming that field and provider. So `Omit` passes only where the cell says "omit", and a set option answered `Nothing` fails it. P2 extends the table to every rig-core completion wire and dialect, `InteractionResume` included, and Bedrock; the runtime target does not build Vertex AI, gRPC or Candle, whose cells are pinned in their own crates' tests |
 | `option_layers::a_run_field_beats_the_agent_field_and_leaves_the_rest` | P2 | `GenerationOptions::overlay`, the one merge rig-agent and rig-ecs use: an agent's `reasoning(High)` survives a run that sets only `cache(Long)`; the run's `seed` and `stop` win; an empty run changes nothing |
+| `option_layers::a_run_restores_error_over_the_agents_ignore` | P6 | a run's `on_unsupported(Error)` beats an agent's `Ignore` through `overlay`, and the agent's other fields stay |
 | `precedence::raw_tools_are_appended_to_rig_tools` | P2 | a function tool plus a raw server tool in `additional_params.tools` both reach the Anthropic body, rig's first; a raw function tool joins rig's on OpenRouter Chat. The merge never replaces rig's tools |
 | `precedence::null_is_sent` | P2 | a `null` in `additional_params` over a mapped `top_p` is sent as `"top_p": null`, as `body.extend` sends it today; on OpenAI Responses a raw `"user": null`, skipped today, is sent (section 12.0) |
 | `precedence::interactions_refuses_raw_tools_that_are_not_an_array` | P2 | a raw `tools` object on Gemini Interactions, discarded today, is an encode error that names no option (section 12.0) |

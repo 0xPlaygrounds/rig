@@ -210,7 +210,7 @@ fn refuse(
     let option = option.into();
     let provider = target.provider();
     let model = model_of(target, request);
-    match request.options.on_unsupported {
+    match request.options.unsupported_policy() {
         OnUnsupported::Error => Err(EncodeError::unsupported(UnsupportedOption::new(
             option, provider, model, reason,
         ))),
@@ -405,7 +405,7 @@ pub(crate) fn catalog_refusals(
     }
     let FinalBody(mut body) = body;
     for CatalogRefusal { field, reason } in refusals {
-        if request.options.on_unsupported == OnUnsupported::Error {
+        if request.options.unsupported_policy() == OnUnsupported::Error {
             return Err(EncodeError::unsupported(UnsupportedOption::new(
                 field, provider, model, reason,
             )));

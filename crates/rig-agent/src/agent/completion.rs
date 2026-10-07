@@ -414,7 +414,7 @@ impl AgentConfig {
             return Ok(());
         };
         while let Err(refused) = spec.validate(options) {
-            match options.on_unsupported {
+            match options.unsupported_policy() {
                 OnUnsupported::Ignore => {
                     let option: &str = refused.option.as_ref();
                     tracing::warn!(

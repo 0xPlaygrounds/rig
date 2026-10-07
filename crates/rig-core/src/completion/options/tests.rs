@@ -5,7 +5,8 @@ use serde_json::json;
 fn the_default_is_empty_and_serializes_without_stop() {
     let options = GenerationOptions::default();
     assert!(options.is_default());
-    assert_eq!(options.on_unsupported, OnUnsupported::Error);
+    assert_eq!(options.on_unsupported, None);
+    assert_eq!(options.unsupported_policy(), OnUnsupported::Error);
     assert_eq!(
         serde_json::to_value(&options).ok(),
         Some(json!({
@@ -16,8 +17,36 @@ fn the_default_is_empty_and_serializes_without_stop() {
             "parallel_tool_calls": null,
             "top_p": null,
             "seed": null,
-            "on_unsupported": "error",
         }))
+    );
+}
+
+/// A set policy, `Error` included, is a set option: it survives serde and
+/// an overlay, and the options are no longer default.
+#[test]
+fn a_set_policy_is_an_option() {
+    let explicit = GenerationOptions::default().on_unsupported(OnUnsupported::Error);
+    assert!(!explicit.is_default());
+    assert_eq!(explicit.unsupported_policy(), OnUnsupported::Error);
+    let value = serde_json::to_value(&explicit).ok();
+    assert_eq!(
+        value.as_ref().and_then(|value| value.get("on_unsupported")),
+        Some(&json!("error"))
+    );
+    let back = value.and_then(|value| serde_json::from_value::<GenerationOptions>(value).ok());
+    assert_eq!(back, Some(explicit.clone()));
+
+    let agent = GenerationOptions::default()
+        .seed(1)
+        .on_unsupported(OnUnsupported::Ignore);
+    let restored = agent.clone().overlay(&explicit);
+    assert_eq!(restored.unsupported_policy(), OnUnsupported::Error);
+    assert_eq!(restored.seed, Some(1));
+    assert_eq!(
+        agent
+            .overlay(&GenerationOptions::default())
+            .unsupported_policy(),
+        OnUnsupported::Ignore
     );
 }
 
@@ -321,7 +350,7 @@ fn overlay_keeps_what_the_top_layer_leaves_unset() {
     assert_eq!(resolved.reasoning, Some(Reasoning::Effort(Effort::Low)));
     assert_eq!(resolved.top_p, Some(0.2));
     assert_eq!(resolved.stop, vec!["A".to_owned()]);
-    assert_eq!(resolved.on_unsupported, OnUnsupported::Ignore);
+    assert_eq!(resolved.on_unsupported, Some(OnUnsupported::Ignore));
     assert_eq!(agent.clone().overlay(&GenerationOptions::default()), agent);
 }
 

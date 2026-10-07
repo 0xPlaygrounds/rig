@@ -1130,10 +1130,21 @@ mod option_layers {
         assert_eq!(resolved.cache, Some(CacheRetention::Long));
         assert_eq!(resolved.seed, Some(9));
         assert_eq!(resolved.stop, vec!["RUN".to_owned()]);
-        assert_eq!(resolved.on_unsupported, OnUnsupported::Ignore);
+        assert_eq!(resolved.on_unsupported, Some(OnUnsupported::Ignore));
 
         // A run that sets nothing leaves the agent's options as they are.
         assert_eq!(agent.clone().overlay(&GenerationOptions::default()), agent);
+    }
+
+    #[test]
+    fn a_run_restores_error_over_the_agents_ignore() {
+        let agent = GenerationOptions::default()
+            .reasoning(Effort::High)
+            .on_unsupported(OnUnsupported::Ignore);
+        let run = GenerationOptions::default().on_unsupported(OnUnsupported::Error);
+        let resolved = agent.overlay(&run);
+        assert_eq!(resolved.unsupported_policy(), OnUnsupported::Error);
+        assert_eq!(resolved.reasoning, Some(Reasoning::Effort(Effort::High)));
     }
 }
 

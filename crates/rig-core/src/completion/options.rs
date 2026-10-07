@@ -27,7 +27,7 @@ pub(crate) use merge::{CatalogRefusal, catalog_refusals};
 
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is
-/// reported through [`Self::on_unsupported`], never silently dropped.
+/// reported through [`Self::unsupported_policy`], never silently dropped.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct GenerationOptions {
@@ -55,16 +55,26 @@ pub struct GenerationOptions {
     /// Sequences that end generation. Empty means none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
-    /// What happens to an option the wire or model cannot honour.
-    #[serde(default)]
-    pub on_unsupported: OnUnsupported,
+    /// What happens to an option the wire or model cannot honour. `None`
+    /// leaves the policy unset, which acts as [`OnUnsupported::Error`]
+    /// ([`Self::unsupported_policy`]); a set policy counts as setting an
+    /// option.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_unsupported: Option<OnUnsupported>,
 }
 
 impl GenerationOptions {
-    /// Whether every field holds its default: no option set, and the
-    /// default policy.
+    /// Whether every field holds its default: no option set, and no
+    /// policy set. A request whose options are default is not checked
+    /// against its model's catalog rules; setting any field, the policy
+    /// included, turns the checks on.
     pub fn is_default(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// The policy in effect: the one set, or [`OnUnsupported::Error`].
+    pub fn unsupported_policy(&self) -> OnUnsupported {
+        self.on_unsupported.unwrap_or_default()
     }
 
     /// Set the reasoning level or budget.
@@ -117,7 +127,7 @@ impl GenerationOptions {
 
     /// Set what happens to an option the wire or model cannot honour.
     pub fn on_unsupported(mut self, policy: OnUnsupported) -> Self {
-        self.on_unsupported = policy;
+        self.on_unsupported = Some(policy);
         self
     }
 
@@ -149,7 +159,8 @@ impl GenerationOptions {
     }
 
     /// `self` with every field `over` sets put on top: a `Some` option, a
-    /// non-empty `stop` list, a non-default `on_unsupported`. Every other
+    /// non-empty `stop` list, a set `on_unsupported` (so a run can restore
+    /// `Error` over an agent's `Ignore`). Every other
     /// field keeps `self`'s value. An agent's options overlaid with a run's
     /// give the run's where it sets one.
     pub fn overlay(self, over: &GenerationOptions) -> GenerationOptions {
@@ -177,11 +188,7 @@ impl GenerationOptions {
             } else {
                 stop.clone()
             },
-            on_unsupported: if *on_unsupported == OnUnsupported::default() {
-                self.on_unsupported
-            } else {
-                *on_unsupported
-            },
+            on_unsupported: on_unsupported.or(self.on_unsupported),
         }
     }
 }

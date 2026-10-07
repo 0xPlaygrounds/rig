@@ -1078,6 +1078,26 @@ fn gpt_6_without_options_is_sent_and_left_to_the_provider() {
     }
 }
 
+/// A policy set on its own turns the catalog checks on: `Error` refuses
+/// GPT-6 sampling while it reasons by default, and `Ignore` drops the
+/// typed `temperature` with a warning. With no policy set the request is
+/// sent as built.
+#[test]
+fn a_policy_set_alone_turns_the_catalog_checks_on() {
+    let request = || gpt_6_request(None).temperature(0.2);
+    let explicit_error =
+        request().options(GenerationOptions::default().on_unsupported(OnUnsupported::Error));
+    assert_eq!(
+        refusal(on_prepared_chat(GPT_6_SOL, explicit_error)).0,
+        "temperature"
+    );
+    let (body, warnings) = sent_with_warnings(&chat(&OPENAI, GPT_6_SOL), lenient(request()));
+    assert_eq!(body.get("temperature"), None, "{body}");
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let body = on_chat(GPT_6_SOL, request()).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(body["temperature"], json!(0.2));
+}
+
 /// Under `Ignore` the request goes out with one warning per refused field:
 /// a field rig wrote from a typed source (the request's `temperature`, the
 /// `top_p` option) is left out, a raw key is sent as written.
