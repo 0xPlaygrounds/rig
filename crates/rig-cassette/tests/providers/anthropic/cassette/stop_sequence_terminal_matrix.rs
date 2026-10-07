@@ -32,9 +32,10 @@
 //! | 18 | `raw_with_preamble_sequence_fires` | system prompt present | `charlie` | recorded |
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, ToolDefinition};
+use rig::completion::{CompletionRequest, GenerationOptions, ToolDefinition};
 use rig::driver::Model;
 use rig::providers::anthropic;
+use rig::providers::anthropic::extension::{AnthropicExt, AnthropicExtras};
 use rig::providers::anthropic::wire::Messages;
 use serde_json::json;
 
@@ -59,8 +60,8 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-/// Drain a provider-native stream and return its terminal record.
-async fn raw_terminal(model: &AnthropicModel, request: CompletionRequest) -> serde_json::Value {
+/// Drain a provider-native stream and return its terminal record's extras.
+async fn terminal_extras(model: &AnthropicModel, request: CompletionRequest) -> AnthropicExtras {
     let mut stream = model
         .stream(request)
         .expect("stop-sequence stream should open");
@@ -71,7 +72,10 @@ async fn raw_terminal(model: &AnthropicModel, request: CompletionRequest) -> ser
         .finish()
         .await
         .expect("stream should yield a terminal record");
-    record.raw
+    record
+        .extras::<AnthropicExt>()
+        .expect("the terminal record comes from Anthropic")
+        .expect("the terminal record decodes")
 }
 
 /// Assert the terminal record a streamed cell produced.
@@ -81,17 +85,17 @@ async fn raw_terminal(model: &AnthropicModel, request: CompletionRequest) -> ser
 /// record mode the fixture is written by `finish_after_test`, so an in-body
 /// read would assert against the previous recording.
 fn assert_terminal(
-    terminal: &serde_json::Value,
+    terminal: &AnthropicExtras,
     expected_sequence: Option<&str>,
     expected_reason: &str,
 ) {
     assert_eq!(
-        terminal["stop_sequence"].as_str(),
+        terminal.stop_sequence.as_deref(),
         expected_sequence,
         "the terminal record must carry the sequence the wire reported"
     );
     assert_eq!(
-        terminal["stop_reason"].as_str(),
+        terminal.stop_reason.as_deref(),
         Some(expected_reason),
         "unexpected stop reason"
     );
@@ -186,8 +190,8 @@ async fn raw_with_tools_sequence_fires() {
             let request = CompletionRequest::new(LIST_PROMPT)
                 .max_tokens(64)
                 .tool(weather_tool())
-                .additional_params(json!({ "stop_sequences": ["charlie"] }));
-            let terminal = raw_terminal(&model, request).await;
+                .options(GenerationOptions::default().stop(["charlie"]));
+            let terminal = terminal_extras(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )
@@ -208,8 +212,8 @@ async fn raw_with_preamble_sequence_fires() {
             let request = CompletionRequest::new(LIST_PROMPT)
                 .preamble("You follow formatting instructions exactly.")
                 .max_tokens(64)
-                .additional_params(json!({ "stop_sequences": ["charlie"] }));
-            let terminal = raw_terminal(&model, request).await;
+                .options(GenerationOptions::default().stop(["charlie"]));
+            let terminal = terminal_extras(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
     )

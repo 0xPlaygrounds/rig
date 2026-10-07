@@ -10,11 +10,14 @@
 //! cells check that too.
 
 use futures::StreamExt;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
+use rig::providers::gemini::extension::{
+    GeminiExt, GeminiOptions, InteractionsOptions, ThinkingSummaries,
+};
 use rig_test_support::cassette_models::GeminiModels;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
 use crate::history_survival::{Dialect, lost_tokens};
@@ -34,19 +37,25 @@ struct Cell {
     streamed: bool,
 }
 
-fn params(cell: Cell) -> Value {
+fn options(cell: Cell) -> (GenerationOptions, ProviderOptions) {
     match (cell.api, cell.model) {
-        (Api::Interactions, _) => json!({
-            "store": false,
-            "generation_config": { "thinking_level": "low", "thinking_summaries": "auto" }
-        }),
+        (Api::Interactions, _) => (
+            GenerationOptions::default().reasoning(Effort::Low),
+            ProviderOptions::new()
+                .with::<GeminiExt>(&GeminiOptions::new().store(false).interactions(
+                    InteractionsOptions::new().thinking_summaries(ThinkingSummaries::Auto),
+                ))
+                .expect("Gemini options serialize"),
+        ),
     }
 }
 
 fn request(cell: Cell, history: Vec<Message>) -> CompletionRequest {
     let mut request = CompletionRequest::from(history);
     request.max_tokens = Some(2048);
-    request.additional_params = Some(params(cell));
+    let (generation, provider) = options(cell);
+    request.options = generation;
+    request.provider_options = provider;
     request
 }
 

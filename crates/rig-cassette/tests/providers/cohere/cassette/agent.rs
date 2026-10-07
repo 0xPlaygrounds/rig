@@ -5,7 +5,8 @@ use rig::completion::{AssistantContent, FinishReason};
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions};
+use rig::providers::cohere::extension::{CohereExt, CohereOptions};
 
 #[tokio::test]
 async fn completion_smoke() {
@@ -32,10 +33,7 @@ async fn stop_sequences_are_forwarded() {
         let request = CompletionRequest::new("Output exactly this sequence: alpha<END>omega")
             .temperature(0.0)
             .max_tokens(32)
-            .additional_params(serde_json::json!({
-                "seed": 7,
-                "stop": ["<END>"]
-            }));
+            .options(GenerationOptions::default().seed(7).stop(["<END>"]));
 
         let response = model
             .call(request)
@@ -68,12 +66,13 @@ async fn sampling_parameters_are_forwarded() {
             let request = CompletionRequest::new("Reply with one short sentence about rain.")
                 .temperature(0.2)
                 .max_tokens(24)
-                .additional_params(serde_json::json!({
-                    "seed": 11,
-                    "top_p": 0.8,
-                    // Cohere takes one penalty at a time.
-                    "frequency_penalty": 0.1
-                }));
+                .options(GenerationOptions::default().seed(11).top_p(0.8))
+                .provider_options(
+                    ProviderOptions::new()
+                        // Cohere takes one penalty at a time.
+                        .with::<CohereExt>(&CohereOptions::default().frequency_penalty(0.1))
+                        .expect("Cohere options serialize"),
+                );
 
             let response = model
                 .call(request)

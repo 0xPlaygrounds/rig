@@ -4,10 +4,15 @@
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
+use crate::history_survival::Options;
 use crate::history_survival::adversarial::{self, Hop};
+use rig::completion::{GenerationOptions, ProviderOptions, Reasoning};
 
-fn thinking() -> Option<serde_json::Value> {
-    Some(json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }))
+fn thinking() -> Options {
+    Options::new(
+        GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 }),
+        ProviderOptions::new(),
+    )
 }
 
 /// `display: omitted` returns thinking blocks with no text and a signature.

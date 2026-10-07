@@ -5,7 +5,8 @@ use rig::message::{
 };
 
 use crate::support::assert_nonempty_response;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, ProviderOptions};
+use rig::providers::gemini::extension::{GeminiExt, GeminiOptions, InteractionsOptions};
 
 /// Whether the interaction's steps carry a Google Search call or result, as a
 /// step of its own or as an item of a model output step.
@@ -49,10 +50,9 @@ async fn basic_interaction_returns_id() {
         "interactions_api/basic_interaction_returns_id",
         |client| async move {
             let model = client.interactions("gemini-3-flash-preview");
-            let params = serde_json::json!({ "store": true });
             let request = CompletionRequest::new("Give me two fun facts about hummingbirds.")
                 .preamble("Be concise.")
-                .additional_params(params);
+                .provider_options(gemini_options(&GeminiOptions::new().store(true)));
             let response = model
                 .call(request)
                 .await
@@ -89,7 +89,7 @@ async fn followup_with_previous_interaction_id() {
             let initial = model
                 .call(
                     CompletionRequest::new("Give me one short fact about hummingbirds.")
-                        .additional_params(serde_json::json!({ "store": true })),
+                        .provider_options(gemini_options(&GeminiOptions::new().store(true))),
                 )
                 .await
                 .expect("initial completion should succeed");
@@ -104,9 +104,8 @@ async fn followup_with_previous_interaction_id() {
 
             let followup = model
                 .call(
-                    CompletionRequest::new("Now answer with a short analogy.").additional_params(
-                        serde_json::json!({ "previous_interaction_id": interaction_id }),
-                    ),
+                    CompletionRequest::new("Now answer with a short analogy.")
+                        .provider_options(continuing(interaction_id)),
                 )
                 .await
                 .expect("followup completion should succeed");
@@ -174,7 +173,7 @@ async fn tool_result_roundtrip() {
                     CompletionRequest::new("Use the add tool to sum 7 and 11.")
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(serde_json::json!({ "store": true })),
+                        .provider_options(gemini_options(&GeminiOptions::new().store(true))),
                 )
                 .await
                 .expect("tool call completion should succeed");
@@ -197,9 +196,7 @@ async fn tool_result_roundtrip() {
                         tool_call.function.name.clone(),
                         vec![ToolResultContent::json(serde_json::json!({ "sum": 18.0 }))],
                     )))
-                    .additional_params(
-                        serde_json::json!({ "previous_interaction_id": interaction_id }),
-                    ),
+                    .provider_options(continuing(interaction_id)),
                 )
                 .await
                 .expect("tool result followup should succeed");
@@ -215,8 +212,20 @@ fn code_execution_request() -> CompletionRequest {
     CompletionRequest::new(
         "Use code execution to compute the sum of the first 50 prime numbers, then state it.",
     )
-    .additional_params(
-        serde_json::json!({ "store": false, "tools": [{ "type": "code_execution" }] }),
+    .provider_options(gemini_options(&GeminiOptions::new().store(false)))
+    .additional_params(serde_json::json!({ "tools": [{ "type": "code_execution" }] }))
+}
+
+fn gemini_options(options: &GeminiOptions) -> ProviderOptions {
+    ProviderOptions::new()
+        .with::<GeminiExt>(options)
+        .expect("Gemini options serialize")
+}
+
+/// Continue the stored interaction `id`.
+fn continuing(id: String) -> ProviderOptions {
+    gemini_options(
+        &GeminiOptions::new().interactions(InteractionsOptions::new().previous_interaction_id(id)),
     )
 }
 

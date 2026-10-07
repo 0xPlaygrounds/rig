@@ -10,7 +10,8 @@ use rig_test_support::cassette_models::AnthropicModels;
 use rig_test_support::cassette_models::MapWire;
 
 use super::super::support::with_anthropic_cassette;
-use crate::ecs_matrix::{Wire, cells};
+use crate::ecs_matrix::{Wire, cells, corpus};
+use rig::completion::{CacheRetention, GenerationOptions};
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 
@@ -29,8 +30,7 @@ fn task_wire(
     }
 }
 
-/// The harness carries per-cell request parameters only as raw JSON, so the
-/// one-hour automatic marker (`CacheRetention::Long`'s body) is sent raw.
+/// The one-hour automatic marker: `CacheRetention::Long`.
 fn automatic_task_wire(
     client: &AnthropicModels,
 ) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {
@@ -39,10 +39,8 @@ fn automatic_task_wire(
         model: client.completion("claude-haiku-4-5-20251001"),
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(
-            || serde_json::json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}),
-        ),
-        options: None,
+        additional_params: None,
+        options: Some(|| corpus::TypedOptions::generation(cache(CacheRetention::Long))),
     }
 }
 
@@ -60,9 +58,13 @@ fn mixed_task_wire(
             }),
         route: None,
         temperature: Some(0.0),
-        additional_params: Some(|| serde_json::json!({"cache_control": {"type": "ephemeral"}})),
-        options: None,
+        additional_params: None,
+        options: Some(|| corpus::TypedOptions::generation(cache(CacheRetention::Short))),
     }
+}
+
+fn cache(retention: CacheRetention) -> GenerationOptions {
+    GenerationOptions::default().cache(retention)
 }
 
 fn assert_task_requests(scenario: &str) {

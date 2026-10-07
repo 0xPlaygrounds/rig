@@ -9,6 +9,7 @@ use rig::driver::Model;
 use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
+use rig::providers::anthropic::extension::AnthropicExt;
 use rig::providers::anthropic::wire::AnthropicConfig;
 use rig::providers::anthropic::wire::Messages;
 use rig::streaming::Item;
@@ -114,42 +115,38 @@ fn expected_buckets(mode: CachingMode, prefix_ttl: Option<&CacheTtl>) -> (bool, 
     (can_write_5m, can_write_1h)
 }
 
-/// A counter of Anthropic's `usage`, zero when absent.
-fn count(usage: &serde_json::Value, pointer: &str) -> u64 {
-    usage
-        .pointer(pointer)
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or_default()
-}
-
 fn assert_cache_creation_split(
-    usage: &serde_json::Value,
+    response: &RigCompletionResponse,
     mode: CachingMode,
     prefix_ttl: Option<&CacheTtl>,
     context: &str,
 ) {
     let (can_write_5m, can_write_1h) = expected_buckets(mode, prefix_ttl);
-    assert!(
-        usage["cache_creation"].is_object(),
-        "{context}: Anthropic should report the per-TTL cache_creation split: {usage}"
-    );
-    let five = count(usage, "/cache_creation/ephemeral_5m_input_tokens");
-    let one = count(usage, "/cache_creation/ephemeral_1h_input_tokens");
+    let usage = &response.usage;
+    let extras = response
+        .extras::<AnthropicExt>()
+        .expect("an Anthropic reply")
+        .expect("the extras read the recorded reply");
+    let Some(split) = extras.cache_creation else {
+        panic!("{context}: Anthropic should report the per-TTL cache_creation split: {usage:?}");
+    };
+    let five = split.ephemeral_5m_input_tokens;
+    let one = split.ephemeral_1h_input_tokens;
     assert_eq!(
         five + one,
-        count(usage, "/cache_creation_input_tokens"),
-        "{context}: per-TTL buckets should sum to the aggregate: {usage}"
+        usage.cache_creation_input_tokens.unwrap_or_default(),
+        "{context}: per-TTL buckets should sum to the aggregate: {usage:?}"
     );
     if !can_write_5m {
         assert_eq!(
             five, 0,
-            "{context}: no marker requests a 5m write in this configuration: {usage}"
+            "{context}: no marker requests a 5m write in this configuration: {usage:?}"
         );
     }
     if !can_write_1h {
         assert_eq!(
             one, 0,
-            "{context}: no marker requests a 1h write in this configuration: {usage}"
+            "{context}: no marker requests a 1h write in this configuration: {usage:?}"
         );
     }
 }
@@ -179,21 +176,16 @@ async fn run_matrix_body(
             second.usage
         );
     } else {
-        let first = send_matrix_raw_probe(&model, preamble.clone(), tools.clone()).await;
-        assert_matrix_raw_response(&first, mode, prefix_ttl.as_ref(), "first matrix request");
-        let first_usage = &first["usage"];
-        assert!(
-            count(first_usage, "/cache_creation_input_tokens") > 0
-                || count(first_usage, "/cache_read_input_tokens") > 0,
-            "first matrix request should create or read cache tokens, got usage: {first_usage}"
-        );
+        let first = send_matrix_probe(&model, preamble.clone(), tools.clone()).await;
+        assert_matrix_response(&first, mode, prefix_ttl.as_ref(), "first matrix request");
+        assert_cache_created_or_read(&first.usage, "first matrix request");
 
-        let second = send_matrix_raw_probe(&model, preamble, tools).await;
-        assert_matrix_raw_response(&second, mode, prefix_ttl.as_ref(), "warm matrix request");
+        let second = send_matrix_probe(&model, preamble, tools).await;
+        assert_matrix_response(&second, mode, prefix_ttl.as_ref(), "warm matrix request");
         assert!(
-            count(&second["usage"], "/cache_read_input_tokens") > 0,
-            "warm matrix request should read cached tokens, got usage: {}",
-            second["usage"]
+            second.usage.cached_input_tokens.is_some_and(|n| n > 0),
+            "warm matrix request should read cached tokens, got usage: {:?}",
+            second.usage
         );
     }
 }
@@ -208,11 +200,11 @@ fn unreachable_anthropic_client() -> AnthropicModels {
     )
 }
 
-async fn send_matrix_raw_probe(
+async fn send_matrix_probe(
     model: &Matrix,
     preamble: String,
     tools: Option<Vec<ToolDefinition>>,
-) -> serde_json::Value {
+) -> RigCompletionResponse {
     let mut builder = CompletionRequest::new(CACHE_PROBE_PROMPT)
         .preamble(preamble)
         .temperature(0.0)
@@ -220,28 +212,20 @@ async fn send_matrix_raw_probe(
     if let Some(tools) = tools {
         builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
-    let response = model
+    model
         .call(builder)
         .await
-        .expect("matrix Anthropic request should succeed");
-    response.raw
+        .expect("matrix Anthropic request should succeed")
 }
 
-fn assert_matrix_raw_response(
-    response: &serde_json::Value,
+fn assert_matrix_response(
+    response: &RigCompletionResponse,
     mode: CachingMode,
     prefix_ttl: Option<&CacheTtl>,
     context: &str,
 ) {
-    let text: String = response["content"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter(|block| block["type"] == "text")
-        .filter_map(|block| block["text"].as_str())
-        .collect();
-    assert_text_contains_cache_probe(&text, CACHE_PROBE_RESPONSE);
-    assert_cache_creation_split(&response["usage"], mode, prefix_ttl, context);
+    assert_text_contains_cache_probe(&response_text(response), CACHE_PROBE_RESPONSE);
+    assert_cache_creation_split(response, mode, prefix_ttl, context);
 }
 
 async fn send_matrix_streaming_probe(
@@ -254,9 +238,7 @@ async fn send_matrix_streaming_probe(
         .temperature(0.0)
         .max_tokens(16);
     if let Some(tools) = tools {
-        builder = builder.tools(tools).additional_params(json!({
-            "tool_choice": { "type": "none" }
-        }));
+        builder = builder.tools(tools).tool_choice(ToolChoice::None);
     }
     let mut stream = model
         .stream(builder)

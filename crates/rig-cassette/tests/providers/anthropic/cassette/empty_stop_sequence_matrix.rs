@@ -38,7 +38,7 @@
 //! `crates/rig-core/src/providers/anthropic/`; cells 11 and 12 cover it end to
 //! end on recorded turns.
 
-use rig::completion::ToolDefinition;
+use rig::completion::{GenerationOptions, ToolDefinition};
 use rig::providers::anthropic;
 use serde_json::json;
 
@@ -105,7 +105,7 @@ async fn with_preamble_empty_stop() {
             let request = CompletionRequest::new(IMMEDIATE_PROMPT)
                 .preamble("You follow formatting instructions exactly.")
                 .max_tokens(32)
-                .additional_params(json!({ "stop_sequences": ["alpha"] }));
+                .options(GenerationOptions::default().stop(["alpha"]));
             let response = model
                 .call(request)
                 .await
@@ -127,7 +127,7 @@ async fn with_tools_empty_stop() {
             let request = CompletionRequest::new(IMMEDIATE_PROMPT)
                 .max_tokens(32)
                 .tool(weather_tool())
-                .additional_params(json!({ "stop_sequences": ["alpha"] }));
+                .options(GenerationOptions::default().stop(["alpha"]));
             let response = model
                 .call(request)
                 .await

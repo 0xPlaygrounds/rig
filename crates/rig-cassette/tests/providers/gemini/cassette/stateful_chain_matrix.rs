@@ -14,14 +14,15 @@ use std::time::Duration;
 
 use futures::FutureExt;
 
-use rig::completion::CompletionRequest;
 use rig::completion::ToolDefinition;
+use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
 use rig::message::{
     AssistantContent, Document, DocumentMediaType, DocumentSourceKind, Message, UserContent,
 };
 use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
+use rig::providers::gemini::extension::{GeminiExt, GeminiOptions, InteractionsOptions};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -71,9 +72,7 @@ fn ask(prompt: &str) -> CompletionRequest {
     let mut request = CompletionRequest::from(vec![Message::user(prompt)]);
     request.temperature = Some(0.0);
     request.max_tokens = Some(64);
-    request.additional_params = Some(json!({
-        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-    }));
+    request.options = GenerationOptions::default().reasoning(Reasoning::Off);
     request
 }
 
@@ -327,12 +326,16 @@ async fn interactions_chain_with_tool_call() {
             };
             deleting_interactions(&client, &stored, async {
                 let model = client.clone().interactions(INTERACTIONS_MODEL);
-                let params = |previous: Option<String>| match previous {
-                    Some(previous) => serde_json::json!({
-                        "previous_interaction_id": previous,
-                        "store": true
-                    }),
-                    None => serde_json::json!({ "store": true }),
+                let params = |previous: Option<String>| {
+                    let mut options = GeminiOptions::new().store(true);
+                    if let Some(previous) = previous {
+                        options = options.interactions(
+                            InteractionsOptions::new().previous_interaction_id(previous),
+                        );
+                    }
+                    ProviderOptions::new()
+                        .with::<GeminiExt>(&options)
+                        .expect("Gemini options serialize")
                 };
 
                 let first = model
@@ -341,7 +344,7 @@ async fn interactions_chain_with_tool_call() {
                             "Use lookup_code to get the code of record alpha. Do not guess.",
                         )
                         .tool(lookup_tool())
-                        .additional_params(params(None)),
+                        .provider_options(params(None)),
                     )
                     .await
                     .expect("turn one");
@@ -361,7 +364,7 @@ async fn interactions_chain_with_tool_call() {
                                 "record alpha: code {CODE}"
                             ))],
                         )))
-                        .additional_params(params(Some(first_id))),
+                        .provider_options(params(Some(first_id))),
                     )
                     .await
                     .expect("turn two answers the call");
@@ -376,7 +379,7 @@ async fn interactions_chain_with_tool_call() {
                         CompletionRequest::new(
                             "Repeat the code you reported, exactly, and nothing else.",
                         )
-                        .additional_params(params(Some(second_id))),
+                        .provider_options(params(Some(second_id))),
                     )
                     .await
                     .expect("turn three continues");

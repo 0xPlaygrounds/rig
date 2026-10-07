@@ -91,11 +91,9 @@ pub(super) const GEMINI_CACHE_SUPPORT: CacheSupport = CacheSupport {
 /// keeps the cheap, short, deterministic answer the probe wants; the thinking
 /// tokens are output-side anyway and have no bearing on what gets cached.
 pub(super) fn probe() -> CacheProbe {
-    CacheProbe::new("gemini prompt caching").with_additional_params(serde_json::json!({
-        "generationConfig": {
-            "thinkingConfig": { "thinkingBudget": 0 }
-        }
-    }))
+    CacheProbe::new("gemini prompt caching").with_options(
+        rig::completion::GenerationOptions::default().reasoning(rig::completion::Reasoning::Off),
+    )
 }
 
 #[tokio::test]

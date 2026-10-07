@@ -11,11 +11,14 @@
 //! the recorded turn and never mint literal IDs.
 
 use futures::StreamExt;
-use rig::completion::CompletionResponse;
 use rig::completion::FinishReason;
+use rig::completion::{CompletionResponse, Effort, GenerationOptions, ProviderOptions};
 use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
+use rig::providers::gemini::extension::{
+    GeminiExt, GeminiOptions, InteractionStatus, InteractionsOptions, ThinkingSummaries,
+};
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
@@ -128,9 +131,6 @@ fn signature(content: &AssistantContent) -> Option<&str> {
 /// distinct parts with the ids the stream reported.
 #[tokio::test]
 async fn parallel_function_calls_stay_distinct() {
-    let params = serde_json::json!({
-        "generationConfig": { "thinkingConfig": { "thinkingBudget": 0 } }
-    });
     super::super::support::with_gemini_cassette(
         "streaming_grammar/parallel_function_calls",
         |client| async move {
@@ -143,7 +143,7 @@ async fn parallel_function_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .additional_params(params);
+            .options(GenerationOptions::default().reasoning(rig::completion::Reasoning::Off));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -215,31 +215,25 @@ async fn interactions_requires_action_roundtrip() {
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(serde_json::json!({ "store": true })),
+                        .provider_options(gemini_options(&GeminiOptions::new().store(true))),
                 )
                 .await
                 .expect("tool-required interaction should succeed");
 
-            // The wire status transition under test, read off the reply
-            // document `raw` carries verbatim — the interaction resource is
-            // the reply, and the fold is the other view of it.
+            // The wire status transition under test, read from the typed
+            // extras of the interaction resource the reply is; the fold is
+            // the other view of it.
             let interaction = raw
-                .raw
-                .as_object()
-                .expect("`raw` is the interaction resource");
+                .extras::<GeminiExt>()
+                .expect("a Gemini reply")
+                .expect("the extras read the interaction resource");
             assert_eq!(
-                interaction
-                    .get("status")
-                    .and_then(serde_json::Value::as_str),
-                Some("requires_action"),
+                interaction.status,
+                Some(InteractionStatus::RequiresAction),
                 "declared client tool should leave the interaction in requires_action, got {:?}",
-                interaction.get("status")
+                interaction.status
             );
-            let interaction_id = interaction
-                .get("id")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_owned();
+            let interaction_id = interaction.id.unwrap_or_default();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
             let normalized = raw;
@@ -278,9 +272,11 @@ async fn interactions_requires_action_roundtrip() {
                         tool_call.function.name.clone(),
                         vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                     )))
-                    .additional_params(
-                        serde_json::json!({ "previous_interaction_id": interaction_id }),
-                    ),
+                    .provider_options(gemini_options(
+                        &GeminiOptions::new().interactions(
+                            InteractionsOptions::new().previous_interaction_id(interaction_id),
+                        ),
+                    )),
                 )
                 .await
                 .expect("tool-result follow-up should succeed");
@@ -321,13 +317,12 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
             )
-            .additional_params(serde_json::json!({
-                "generation_config": {
-                    "thinking_level": "medium",
-                    "thinking_summaries": "none"
-                },
-                "store": true
-            }));
+            .options(GenerationOptions::default().reasoning(Effort::Medium))
+            .provider_options(gemini_options(
+                &GeminiOptions::new().store(true).interactions(
+                    InteractionsOptions::new().thinking_summaries(ThinkingSummaries::None),
+                ),
+            ));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert!(!run.text.trim().is_empty(), "turn should produce text");
@@ -366,4 +361,10 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
         },
     )
     .await;
+}
+
+fn gemini_options(options: &GeminiOptions) -> ProviderOptions {
+    ProviderOptions::new()
+        .with::<GeminiExt>(options)
+        .expect("Gemini options serialize")
 }
