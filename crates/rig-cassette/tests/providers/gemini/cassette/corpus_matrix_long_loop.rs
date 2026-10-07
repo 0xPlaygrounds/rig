@@ -1,11 +1,10 @@
 //! The long tool loop's producer column on Gemini: gemini-2.5-flash.
-//! One recording per live cell; the native twin (`ecs_matrix_long_loop.rs`)
-//! reuses each with strict matching. Programs, toolset and assertions are
-//! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
+//! One recording per live cell. Programs, toolset and assertions are
+//! `tests/common/corpus_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
 use super::super::support::with_gemini_cassette;
-use crate::ecs_matrix::{Wire, cells, long_loop};
+use crate::corpus_matrix::{Wire, cells, long_loop};
 use rig_test_support::cassette_models::GeminiModels;
 
 // gemini-2.5-flash, not flash-lite: at temperature 0 flash-lite answered the

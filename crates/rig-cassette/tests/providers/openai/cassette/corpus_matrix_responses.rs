@@ -1,8 +1,7 @@
-//! The ECS contract matrix's producers on the OpenAI Responses wire (`gpt-5-mini`, no temperature: the gpt-5 family takes only its default; the route `gpt-5-nano`): every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder, recorded once
-//! and replayed as the golden `openai_responses_<cell>` the world cells in
-//! `ecs_matrix_responses.rs` are compared to. The driver is
-//! `tests/common/ecs_matrix/agent.rs`; this file holds the scenario
+//! The corpus matrix's producers on the OpenAI Responses wire (`gpt-5-mini`, no temperature: the gpt-5 family takes only its default; the route `gpt-5-nano`): every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder, recorded once
+//! and replayed as the golden `openai_responses_<cell>`. The driver is
+//! `tests/common/corpus_matrix/agent.rs`; this file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 //!
 //! Every scenario here is a new recording under `corpus_matrix_responses/`; a cell of
@@ -12,15 +11,15 @@
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
+        thinking: crate::corpus_matrix::cells::ThinkingWire::OpenAiResponses,
         model: client.openai.completion(GPT_5_MINI),
         route: Some(client.openai.completion(GPT_5_NANO)),
         temperature: None,
-        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
+        additional_params: Some(crate::corpus_matrix::cells::openai_responses_stateless),
         options: None,
     }
 }

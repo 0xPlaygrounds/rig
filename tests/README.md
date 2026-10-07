@@ -17,18 +17,13 @@ Provider test targets have two owners:
 - `tests/core.rs` contains provider-agnostic core behavior tests and the guards
   that scan the source tree, which need the repository root.
 - `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
-- The [ECS consumer harness](https://github.com/gold-silver-copper/rigcoder/tree/main/crates/rigcoder-verify)
-  is owned by rigcoder. Run `cargo run --locked -p rigcoder-verify -- verify`
-  there for its maintenance/repair cases, replay and supported resume checks.
-  Rig retains its runtime and provider conformance suites.
 
 Cassette suites require a checkout of this repository: `rig-cassette` excludes
 its fixtures and integration tests from the published package. The unpublished
 `rig-cassette-minimal` runner at
-`crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify` and
-`world_replay` sources, plus the shared effect-log/classic-replay regressions.
-It selects only cassette's `agent,ecs` features, without the native HTTP
-engine.
+`crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify`
+source, plus the shared effect-log/classic-replay regressions. It selects only
+cassette's `agent` feature, without the native HTTP engine.
 
 ```sh
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
@@ -39,10 +34,10 @@ replaces, the unified verification runs through `rig-cassette`.
 The default/all-features cassette library still owns the unified library
 regressions; `core-all` also retains the migrated classic replay cases.
 Minimal verification runs with zero retries; unified verification and both
-standalone/default-member parity configurations retain their existing two.
-The standalone parity lane explicitly includes the `rig-test-support` ECS
-helper regressions. Source ownership includes the library tests shared by
-the minimal runner, not only its two verification entrypoints.
+standalone/default-member effect-corpus configurations retain their existing
+two. The standalone effect-corpus lane explicitly includes the
+`rig-test-support` corpus regressions. Source ownership includes the library
+tests shared by the minimal runner, not only its verification entrypoint.
 
 ## Testing Doctrine
 
@@ -167,14 +162,9 @@ The other commands:
   credentials, account ids, emails and home paths. It matches case-sensitively
   on whole tokens, and searches for every exported `*_API_KEY`, `*_TOKEN` and
   `*_SECRET` value literally.
-- `cassette goldens [--base REF] [--test TARGET]...` regenerates effect
-  goldens from replay. A golden whose only change from `REF` (default `HEAD`)
-  is `header.deliveries` is reverted. A golden whose content changed keeps
-  `REF`'s delivery batches, each stream count grown by the events the change
-  inserted into it, so the diff shows the change and not the racy batching.
-  A golden whose change those batches do not fit keeps its regenerated
-  batches and is listed. That fails the command only when `--base` names
-  `REF`, because a rebase onto a named base must fit every golden.
+- `cassette goldens [--test TARGET]...` regenerates effect goldens from
+  replay: each selected target runs with `RIG_REGENERATE_GOLDEN=1`, so each
+  golden holds what its producer logs over its replayed cassette.
 - `cassette audit [--base REF]` checks every effect golden: a block on a
   stream's end must be what the block's deltas carried, and an end whose
   deltas assembled text, or that closes an open reasoning part, must carry
@@ -500,8 +490,8 @@ baseline of it in `crates/rig-cassette/coverage/`:
   llvm-cov derives some counts by subtracting counters, and a panic that
   unwinds out of a function between two increments drives one below zero.
   A test whose panic races another ending of the test makes such counts come
-  and go, so a test ends one way only; the live-tool tripwire in
-  `world_replay_world.rs` never answers instead of panicking on the pool.
+  and go, so a test ends one way only: a tripwire that must not run should
+  never answer rather than panic on a pool thread.
 - `unstable.tsv`: the regions whose coverage depends on scheduling, each
   with its file's source hash, the trimmed source line and a one-line reason.
   The line part leaves them out of the baseline and of every measurement, so
@@ -565,7 +555,7 @@ deleted files.
 - The candidates are the tests of the provider targets that record, replay
   or read a cassette, or name an effect golden. Every other test stays: the
   crates' unit tests, the conformance targets, the `runtime` target over the
-  reply bank, `verify` and `world_replay`. So does every fixture or golden
+  reply bank, and `verify`. So does every fixture or golden
   something outside the candidates names, and every recording test of a
   fixture that stays.
 - The elements are every line and branch of `lines.tsv` (from each test's own
@@ -582,8 +572,8 @@ deleted files.
   and `.clock.json`; the reply bank keeps its replies. A golden goes with its
   producer. A kept producer's golden stays only when something else reads
   it, or it is the one format pin of an effect kind; otherwise the producer
-  checks its log in the test: the log replays record by record through a
-  world, and a world log's programs restore and replay by id. Such a golden
+  checks its log in the test: the log replays record by record through its
+  own replayers by effect id. Such a golden
   is never written, `RIG_REGENERATE_GOLDEN` included.
 - The mutation baseline is measured against the fast suites only, so no
   deletion of a cassette test or golden can lose a kill.
@@ -622,7 +612,7 @@ that cover what it covered. It keeps its own manifest because its
 candidates, elements and keep rules differ from the cassette prune's, and
 each `--check` owns its file whole.
 
-- The candidates are the tests of `rig`, `rig-core`, `rig-agent`, `rig-ecs`,
+- The candidates are the tests of `rig`, `rig-core`, `rig-agent`,
   `rig-bedrock`, `rig-vertexai`, `rig-gemini-grpc`, `rig-candle` and
   `rig-memory` that the per-test run covered and that are a `#[test]`-style
   function the source scan can place. The conformance rows, helper-module
@@ -987,44 +977,30 @@ cargo test -p rig-service-tests --features vectorize --test integrations vectori
 ## Shared test implementation
 
 `test-support/rig-test-support` compiles neutral tools, cassette paths, cache and
-stream assertions, golden comparison, and the ECS harness once. Provider binaries
-import these modules; their cassette-safety tests remain registered in each binary.
-Generic ECS matrix drivers live under `crates/rig-cassette/tests/common/ecs_matrix`: a cell edit
-then rebuilds its provider binaries without invalidating unrelated providers.
-Their long-loop regression tests stay with those modules. Other shared helper
-regressions run in the support crate; its ECS regressions also retain the
-standalone root-parity dependency configuration.
+stream assertions and golden comparison once. Provider binaries import these
+modules; their cassette-safety tests remain registered in each binary. The
+generic corpus matrix drivers live under
+`crates/rig-cassette/tests/common/corpus_matrix`: a cell edit then rebuilds its
+provider binaries without invalidating unrelated providers. Their long-loop
+regression tests stay with those modules. Other shared helper regressions run
+in the support crate; its `corpus_` regressions also retain the standalone
+effect-corpus dependency configuration.
 
 Matrix declarations keep literal scenario names and explicit per-cell parameters.
-`golden_matrix!` runs a common agent/world cell, `resume_matrix!` preserves each
-checkpoint cut and its named oracle, and `case_matrix!` selects a family body.
+`golden_matrix!` runs a common agent cell against its named oracle, and
+`case_matrix!` selects a family body.
 A `case_matrix!` declaration without a wrapper contains only scripted rows;
 it registers tests without claiming cassette scenarios.
 Their parsers reject malformed rows and exclude ignored rows from the recording
 inventory. Keep a compiled listing when changing declarations: source discovery
 alone does not establish that a configuration registers or executes a test.
 
-## Agent/ECS regression scenarios
-
-Native ECS tests execute real provider adapters against the same cassettes as
-rig-agent tests. Original and native golden comparisons retain their complete
-assertions. The [comparison guide](ecs_parity/README.md) describes shared
-boundaries and family-specific limitations. Behavioral obligations live in the
-tests and their helpers; current test runs and CI establish which tests pass.
-A compiled listing is not proof of execution or an exhaustive functional superset.
-Shared-provider tests do not count as native agent migrations.
-
-List registrations or run a native family, for example:
-
-```sh
-cargo nextest list --locked -p rig --features bedrock
-RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --test anthropic ecs_outcome -- --nocapture
-```
+## Regression scenarios
 
 ### Runtime scenarios and the reply bank
 
-The agent loop, the ECS world, tool lifecycle, turn endings, resume, memory
-and the effect bus behave the same on every provider. Their scenarios run
+The agent loop, tool lifecycle, turn endings, resume, memory and the effect
+bus behave the same on every provider. Their scenarios run
 once, in the `runtime` target of `rig-cassette`
 (`crates/rig-cassette/tests/runtime.rs` and `runtime/`), over replies from
 the reply bank instead of a provider's cassette. A bank transport serves the
@@ -1061,8 +1037,8 @@ cargo xtask cassette bank --check   # CI's `verify --check bank`
 cargo nextest run --locked --profile local -p rig-cassette --test runtime
 ```
 
-The runtime target holds the ECS contract matrix (`cells`), its focused
-families (`families`, `faults`, `extra`), the turn-termination cells
+The runtime target holds the corpus matrix's cells on rig-agent (`cells`),
+its focused families (`families`, `faults`), the turn-termination cells
 (`termination`, run over every bank reply that decodes to the cell's
 ending), the agent tool sessions (`sessions`), the lifecycle matrix
 (`lifecycle`), and `decode`, which decodes every bank reply through its
@@ -1072,24 +1048,17 @@ is in `crates/rig-cassette/coverage/runtime-families.md`.
 
 ### Stream-fault cells
 
-`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and OpenAI's
-`ecs_stream_faults.rs` twin drive the runner and the native runtime through
-the real adapter into a stream that ends badly: the committed error
-recordings for a setup failure, the committed text stream dropped by its
-consumer, and scripted faults served by `rig::test_utils`'s sequenced
-transport — a recording cut before its terminal (`test-support/rig-test-support/src/stream_faults.rs`),
-a Gemini refusal, an in-band error after content. Every scripted frame is a
+`tests/providers/{gemini,openai}/cassette/stream_faults.rs` drive the runner
+through the real adapter into a stream that ends badly: scripted faults
+served by `rig::test_utils`'s sequenced transport, a recording cut before its
+terminal (`test-support/rig-test-support/src/stream_faults.rs`), a Gemini
+refusal, an in-band error after content. Every scripted frame is a
 labelled constant with its provenance beside the cell; no cassette is
 hand-edited and no new fixture is committed. A scripted cell pins what the
 runtime does with the fault (the failure kind, the record, the committed
-history, the tools that never ran, the witness's facts); the request shape it
-would have sent is pinned by the recording's owning test, not by the cell.
-Every HTTP wire threads the witness's `AdapterContext` through its request,
-so a native cell reads the adapter's boundary facts (the request, the
-status, the provider's verdict, usage and error envelope, the closure) for
-Gemini, the OpenAI Chat Completions and Responses wires (Cohere and Ollama
-among the Chat dialects) and Anthropic; the Gemini Interactions wire reports
-the transport facts without a payload projection. Error classification follows the one funnel in
+history, the tools that never ran); the request shape it would have sent is
+pinned by the recording's owning test, not by the cell. Error classification
+follows the one funnel in
 `rig_core::provider_response` (see `AGENTS.md`, Error Handling).
 
 Consumed cassettes and goldens remain in Git; historical execution logs, proof

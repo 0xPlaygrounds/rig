@@ -36,8 +36,7 @@ pub struct ServingPolicy {
     /// dispatcher and every dispatch; the caller of a dispatch is never
     /// blocked.
     pub command_capacity: usize,
-    /// Driver delivery queue capacity. rig-agent bounds its consumer queue;
-    /// rig-ecs uses at least one shared slot plus one sender-reserved slot.
+    /// Driver delivery queue capacity. rig-agent bounds its consumer queue.
     /// Source-internal buffers and collection work limits are separate.
     pub stream_capacity: usize,
     /// Serves one command at a time per key in arrival order when true;

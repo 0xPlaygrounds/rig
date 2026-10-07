@@ -313,6 +313,5 @@ otherwise-empty frames still count. Corrupt-frame ordinals start at one using
 the same counting rule. `TransportEof`
 records body completeness independently: a provider terminal followed by
 an incomplete trailing frame retains both its terminal closure and partial
-EOF evidence. The context does not promise cross-execution identity. The ECS completion adapter
-forwards its driver's context when the invocation supplies no explicit context. Response bodies and
+EOF evidence. The context does not promise cross-execution identity. Response bodies and
 credentials are not copied into these boundary facts.

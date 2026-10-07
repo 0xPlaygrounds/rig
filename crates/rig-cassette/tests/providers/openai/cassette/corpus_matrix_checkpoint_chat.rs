@@ -1,8 +1,7 @@
 //! Focused tool-turn checkpoint matrix on OpenAiChat: gpt-4.1-mini.
-//! One producer recording is reused by every native cut with strict matching.
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use crate::ecs_matrix::{Wire, cells, checkpoint};
+use crate::corpus_matrix::{Wire, cells, checkpoint};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::Chat>> {
     Wire {

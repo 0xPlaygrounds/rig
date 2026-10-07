@@ -14,13 +14,6 @@ use rig_core::message::Message;
 
 use rig_cassette::effect_log::EffectLog;
 
-#[path = "../../../crates/rig-cassette/tests/corpus/replay_check.rs"]
-mod replay_check;
-#[path = "goldens/world.rs"]
-mod world;
-pub(crate) use world::attach_world_recorder;
-pub use world::{capture_world_program, capture_world_programs, world_golden_test};
-
 /// The families of a log's records, in order: the shape a producer asserts.
 pub fn families(log: &EffectLog) -> Vec<EffectFamily> {
     log.records
@@ -85,11 +78,47 @@ fn as_committed(log: &EffectLog) -> (serde_json::Value, EffectLog) {
     (value, read)
 }
 
-/// Run a world replay check on its own thread, away from the test's async
-/// runtime: the world drives its own task pools and blocks while it ticks.
-fn on_own_thread(check: impl FnOnce() + Send) {
+/// Replay `log` record by record through its own replayers, each record by
+/// its recorded id, and require every answer to be the recorded outcome.
+/// Runs on its own thread, away from the test's async runtime.
+fn replay_by_id(name: &str, log: &EffectLog) {
+    use rig_cassette::effect_log::EffectLogReplayer;
+    use rig_core::serve::{Dispatch, Serve};
+    EffectLogReplayer::check_header(log)
+        .unwrap_or_else(|report| panic!("{name}: the log's header checks: {report}"));
+    let replayers: std::collections::HashMap<_, _> = EffectLogReplayer::for_log(log)
+        .unwrap_or_else(|report| panic!("{name}: the log registers: {report}"))
+        .into_iter()
+        .map(|replayer| (replayer.key().clone(), replayer))
+        .collect();
+    let mut records: Vec<_> = log.records.iter().collect();
+    records.sort_by_key(|record| record.id);
     std::thread::scope(|scope| {
-        if let Err(panic) = scope.spawn(check).join() {
+        let replay = scope.spawn(|| {
+            futures::executor::block_on(async {
+                for record in records {
+                    let replayer = replayers
+                        .get(&record.key)
+                        .unwrap_or_else(|| panic!("{name}: record {} has a replayer", record.id));
+                    // A tool record publishes its outputs into the slot the
+                    // driver supplies before it resolves.
+                    let dispatch = Dispatch::new(record.id, record.events.is_some())
+                        .with_scope(rig_core::tool::PublishedContext::new());
+                    let answer = replayer
+                        .serve(record.kind.clone(), dispatch)
+                        .await
+                        .into_outcome()
+                        .await;
+                    assert_eq!(
+                        serde_json::to_value(answer).expect("serde"),
+                        serde_json::to_value(&record.outcome).expect("serde"),
+                        "{name}: record {} replays its outcome",
+                        record.id
+                    );
+                }
+            });
+        });
+        if let Err(panic) = replay.join() {
             std::panic::resume_unwind(panic);
         }
     });
@@ -106,7 +135,7 @@ pub fn golden_path(name: &str) -> std::path::PathBuf {
 /// assert it equals the committed golden byte for byte (the header is part
 /// of the oracle: a program that changed refuses before it diverges). A
 /// golden the cassette prune replaced is never written: the log, read as a
-/// committed golden would be, replays through a world record by record
+/// committed golden would be, replays by id through its own replayers
 /// instead.
 ///
 /// In record mode this is a no-op: a golden is generated from the
@@ -127,9 +156,7 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
     }
     if checked_in_test(name) {
         let (_, read) = as_committed(log);
-        on_own_thread(|| {
-            replay_check::replay_through_a_world(name, &read);
-        });
+        replay_by_id(name, &read);
         return;
     }
     let rendered = serde_json::to_string_pretty(&rig_cassette::effect_log::canonical_local_ids(
@@ -152,76 +179,6 @@ pub fn golden_effects(name: &str, log: &EffectLog) {
         committed.trim_end(),
         rendered,
         "the agent's effects diverged from golden `{name}`; if the change is deliberate, regenerate it"
-    );
-}
-
-/// Compare a native log with its world fixture as JSON data.
-/// Observed delivery boundaries are excluded because HTTP scheduling varies.
-/// Requires [`capture_world_programs`] and pre-dispatch program captures.
-/// In replay mode, `RIG_REGENERATE_GOLDEN` writes the fixture instead.
-/// Record mode does nothing and rejects simultaneous regeneration.
-/// Names must be a single file stem, not a path. A golden the cassette
-/// prune replaced is never written: its captured programs restore and
-/// check against the log, and the log replays by id.
-pub fn world_golden_effects(name: &str, log: &EffectLog) {
-    assert!(
-        !name.is_empty()
-            && name
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_'),
-        "world golden names must contain only letters, digits, and underscores"
-    );
-    if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("record"))
-    {
-        assert!(
-            std::env::var_os("RIG_REGENERATE_GOLDEN").is_none(),
-            "world golden `{name}`: regenerate only in replay mode"
-        );
-        return;
-    }
-    if checked_in_test(&format!("world/{name}")) {
-        let (_, read) = as_committed(log);
-        let programs = world::captured(log);
-        on_own_thread(|| {
-            let policy = replay_check::check_programs(name, &read, &programs);
-            replay_check::replay_world_log(name, &read, policy, false);
-        });
-        return;
-    }
-    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../crates/rig-cassette/fixtures/effects/world")
-        .join(format!("{name}.effects.json"));
-    let value = rig_cassette::effect_log::canonical_local_ids(
-        serde_json::to_value(log).expect("the world log serializes"),
-    );
-    if std::env::var_os("RIG_REGENERATE_GOLDEN").is_some() {
-        std::fs::create_dir_all(path.parent().expect("world corpus directory"))
-            .expect("create world corpus directory");
-        let rendered = serde_json::to_string_pretty(&value).expect("the world log serializes");
-        std::fs::write(&path, format!("{rendered}\n")).expect("write world golden");
-        world::programs(
-            &path.with_file_name(format!("{name}.programs.json")),
-            log,
-            true,
-        );
-        return;
-    }
-    let committed = std::fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "world golden {}: {error}; regenerate in replay mode",
-            path.display()
-        )
-    });
-    world::programs(
-        &path.with_file_name(format!("{name}.programs.json")),
-        log,
-        false,
-    );
-    let expected: serde_json::Value = serde_json::from_str(&committed).expect("world golden JSON");
-    assert_eq!(
-        world::without_delivery_boundaries(rig_cassette::effect_log::canonical_local_ids(expected)),
-        world::without_delivery_boundaries(value),
-        "the world's effects diverged from world golden `{name}`"
     );
 }
 

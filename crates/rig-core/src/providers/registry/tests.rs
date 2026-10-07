@@ -442,7 +442,7 @@ fn optional_auth_selections_are_not_described_as_requiring_a_credential() {
     }
 }
 
-/// A gateway the old ECS enum could not name is expressible as a
+/// A gateway the old provider enum could not name is expressible as a
 /// configuration and builds a handler.
 #[test]
 fn a_gateway_absent_from_the_old_vocabulary_is_materializable() {

@@ -23,7 +23,7 @@ let answer = agent.prompt("Explain ownership briefly.").await?;
 
 The runtime accepts `rig_core::serve::Recorder`, not a concrete log type.
 Enable the separate `rig-cassette` crate's `agent` feature for logs and replay
-adapters; neither crate configuration adds ECS/Bevy or the native HTTP engine.
+adapters; neither crate configuration adds the native HTTP engine.
 
 Retain a `rig_cassette::effect_log::EffectLogRecorder` and attach a clone with
 `AgentBuilder::record_to`. Choose `keeping_stream_events()` when the recording

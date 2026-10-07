@@ -27,8 +27,8 @@ fn kept() {}
 
 #[test]
 fn a_row_goes_and_a_matrix_left_without_rows_goes_whole() {
-    let source = r#"crate::matrix::native_matrix! {
-    wrapper: with_x, wire: w, run: r;
+    let source = r#"crate::matrix::golden_matrix! {
+    wrapper: with_x, wire: w, run: r, oracle: o;
     /// First.
     #[tokio::test]
     one: ("a/one", CELL, "g_one");
@@ -51,8 +51,8 @@ crate::matrix::case_matrix! {
     assert_eq!(removed, 2);
     assert_eq!(
         edited,
-        r#"crate::matrix::native_matrix! {
-    wrapper: with_x, wire: w, run: r;
+        r#"crate::matrix::golden_matrix! {
+    wrapper: with_x, wire: w, run: r, oracle: o;
     #[tokio::test]
     two: ("a/two", CELL, "g_two");
 }

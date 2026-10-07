@@ -1,7 +1,6 @@
 //! Reasoning across a session boundary: a reasoning turn with a tool call is
 //! recorded, its history is persisted the way an application would
-//! (serialized to JSON and loaded back, or held by an ECS world that is
-//! checkpointed and restored fresh), and the conversation continues live
+//! (serialized to JSON and loaded back), and the conversation continues live
 //! from the loaded history, optionally on a different model of the same
 //! provider.
 //!
@@ -76,87 +75,6 @@ pub async fn run(
             )
         });
     assert_answer(cell, &answer.choice);
-}
-
-/// Record the first turn on `first`, then checkpoint a world holding the
-/// continuation, restore it into a fresh world whose model handler is
-/// `second`, and let the restored world send it.
-pub async fn run_checkpoint(
-    first: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    second: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    cell: Cell,
-) {
-    let first: rig_core::DynModel<rig_core::operation::Completion> = first.into();
-    let second: rig_core::DynModel<rig_core::operation::Completion> = second.into();
-    use bevy_app::App;
-    use rig_core::effect::{EffectKind, Outcome};
-    use rig_core::serve::{ErasedHandler, adapters::ModelAdapter};
-    use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
-    use rig_ecs::checkpoint::{Checkpoint, RestoreMode, load_world, save_world};
-
-    const KEY: &str = "session/model";
-    fn app() -> App {
-        let mut app = App::new();
-        app.add_plugins(rig_ecs::RigPlugin::default());
-        app.finish();
-        app.cleanup();
-        app
-    }
-    let handler = |model: rig_core::DynModel<rig_core::operation::Completion>| {
-        ErasedHandler::new(crate::ecs_agent::RuntimeHandler {
-            inner: std::sync::Arc::new(ModelAdapter::new("session", model)),
-            runtime: crate::ecs_agent::io_runtime(),
-        })
-    };
-
-    let history = turn_one(&first, cell).await;
-    let mut saved = app();
-    Handlers::with(saved.world_mut(), |handlers| {
-        handlers.register_erased(KEY, handler(second.clone()))
-    })
-    .expect("bus installed")
-    .expect("fresh model key");
-    saved.world_mut().spawn(PendingEffect::new(
-        KEY,
-        EffectKind::Completion {
-            request: request(cell, history),
-            stream: false,
-        },
-    ));
-    let scene = serde_json::to_string(&save_world(saved.world_mut()).expect("the world saves"))
-        .expect("the checkpoint serializes");
-    drop(saved);
-
-    let scene: Checkpoint = serde_json::from_str(&scene).expect("the checkpoint loads");
-    let mut restored = app();
-    load_world(
-        &scene,
-        restored.world_mut(),
-        RestoreMode::Replace,
-        [(KEY.into(), handler(second))],
-    )
-    .unwrap_or_else(|error| panic!("[{}] the checkpoint restores: {error}", cell.provider));
-    let outcome = tokio::time::timeout(std::time::Duration::from_secs(300), async {
-        loop {
-            restored.update();
-            let outcome = restored
-                .world_mut()
-                .query::<&EffectOutcome>()
-                .iter(restored.world())
-                .next()
-                .map(|outcome| outcome.0.clone());
-            if let Some(outcome) = outcome {
-                return outcome;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        }
-    })
-    .await
-    .expect("the restored continuation finishes");
-    match outcome {
-        Ok(Outcome::Completion(answer)) => assert_answer(cell, &answer.choice),
-        other => panic!("[{}] restored continuation: {other:?}", cell.provider),
-    }
 }
 
 /// Run turn one and return its history (prompt, reply, tool result) after a

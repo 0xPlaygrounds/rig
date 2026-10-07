@@ -24,19 +24,8 @@ mod cassette {
     mod corpus_serving;
     mod document_ordering;
     mod dynamic_tools;
-    mod ecs_extractor;
-    mod ecs_faults;
-    mod ecs_matrix;
-    mod ecs_matrix_checkpoint;
-    mod ecs_matrix_image;
-    mod ecs_matrix_long_loop;
-    mod ecs_parity;
-    mod ecs_stress_context;
-    #[path = "ecs_stress/runtime.rs"]
-    mod ecs_stress_runtime;
     mod embedding_matrix;
     mod embeddings;
-    mod extractor;
     mod generate_behaviors;
     mod generate_tool_args;
     mod history_survival_matrix;

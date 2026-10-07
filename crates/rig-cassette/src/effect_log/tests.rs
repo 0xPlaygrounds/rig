@@ -208,7 +208,7 @@ fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
         };
         recorder.delivery(delivery.clone());
         recorder.discard(id);
-        // The ECS outcome observer can run after an async layer discarded.
+        // An outcome observer can run after an async layer discarded.
         recorder.delivery(delivery);
         assert!(recorder.take().records.is_empty());
         assert!(recorder.header().deliveries.unwrap().is_empty());

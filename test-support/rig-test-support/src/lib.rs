@@ -16,7 +16,6 @@ pub mod cassette_models;
 pub mod cassettes;
 pub mod citations;
 pub mod comparison_guard;
-pub mod ecs_agent;
 pub mod goldens;
 pub mod history_survival;
 pub mod matrix;

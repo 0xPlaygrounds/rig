@@ -20,11 +20,6 @@ mod cassette {
     mod corpus_serving;
     mod corpus_shaping;
     mod document_file_id;
-    mod ecs_host;
-    mod ecs_lifecycle;
-    mod ecs_matrix_long_loop;
-    mod ecs_outcome;
-    mod ecs_prompt_caching;
     mod effect_corpus;
     mod empty_stop_sequence_matrix;
     mod history_survival_matrix;

@@ -125,7 +125,7 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     ),
     (
         "openai/corpus_matrix_chat/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
@@ -148,57 +148,57 @@ const MOVES_CACHE_PREFIX: &[(&str, &str)] = &[
     ),
     (
         "openai/corpus_matrix_chat/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (
         "openai/corpus_matrix_responses/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
         "openai/corpus_matrix_responses/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (
         "gemini/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
         "gemini/corpus_matrix/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (
         "deepseek/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
         "deepseek/corpus_matrix/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (
         "doubleword/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
         "doubleword/corpus_matrix/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (
         "venice/corpus_matrix/shaping_active_tools_none_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch drops every tool on the second turn",
     ),
     (
         "venice/corpus_matrix/shaping_preamble_second_turn.yaml",
-        "the ECS contract matrix's copy of the anthropic cell on this wire: the \
+        "the corpus matrix's copy of the anthropic cell on this wire: the \
          patch replaces the preamble on the second turn",
     ),
     (

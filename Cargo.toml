@@ -132,14 +132,13 @@ members = [
 # `cargo test -p rig-core --test macro_hygiene` step. Both are required for
 # this exclusion to stay honest: until the first existed, every test in
 # rig-derive ran nowhere.
-# The nested cassette runner is selected separately by bus-verification and
-# ecs-parity: default-member feature unification defeats its minimal JSON graph.
+# The nested cassette runner is selected separately by bus-verification:
+# default-member feature unification defeats its minimal JSON graph.
 default-members = [
     ".",
     "crates/rig-core",
     "crates/rig-cassette",
     "crates/rig-agent",
-    "crates/rig-ecs",
     "crates/rig-http",
     "crates/rig-reqwest",
     "crates/rig-tungstenite",
@@ -163,6 +162,9 @@ exclude = [
     # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
     # Excluding it keeps that subtree out of the workspace lockfile.
     "examples/discord_bot",
+    # Only the frozen release changelog of the removed rig-ecs crate remains;
+    # the release PR deletes it.
+    "crates/rig-ecs",
 ]
 
 [workspace.lints.rust]
@@ -212,8 +214,7 @@ opt-level = "s"
 [workspace.package]
 version = "0.44.0"
 edition = "2024"
-# The toolchain in rust-toolchain.toml, the only one CI builds with. Bevy 0.19,
-# rig-ecs's floor, declares the same minimum.
+# The toolchain in rust-toolchain.toml, the only one CI builds with.
 rust-version = "1.95.0"
 
 [workspace.dependencies]
@@ -267,21 +268,10 @@ ethers = "2"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example, and the
-# pool rig-ecs runs handler futures on. Bevy 0.19.1: crates.io, never git;
-# the tooling check verifies Bevy sources and declared release floors. Each crate has default
-# features off and only what rig-ecs needs: the `bus` module's three, and
-# `bevy_reflect` / `bevy_asset` behind rig-ecs's `reflect` / `assets`
-# features (the inspector's view of the graph; prompts and tool
-# definitions as assets).
+# Runtime-agnostic executor used by the `agent_no_tokio` example. Bevy
+# 0.19.1: crates.io, never git; the tooling check verifies Bevy sources and
+# declared release floors. Default features off.
 bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
-bevy_platform = { version = "0.19.1", default-features = false }
-bevy_ecs = { version = "0.19.1", default-features = false, features = ["std", "multi_threaded"] }
-bevy_app = { version = "0.19.1", default-features = false, features = ["std"] }
-bevy_reflect = { version = "0.19.1", default-features = false, features = ["std"] }
-bevy_asset = { version = "0.19.1", default-features = false }
-bevy_time = { version = "0.19.1", default-features = false, features = ["std", "bevy_reflect"] }
-bevy_diagnostic = { version = "0.19.1", default-features = false, features = ["std"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -430,10 +420,6 @@ rig-test-support = { path = "test-support/rig-test-support" }
 rig-history-conformance = { path = "test-support/rig-history-conformance" }
 # The facade's tests use the recorder directly, whatever `cassette` is set to.
 rig-cassette = { path = "crates/rig-cassette", default-features = false, features = ["agent"] }
-bevy_app = { workspace = true }
-bevy_ecs = { workspace = true }
-# The ECS contract matrix (`crates/rig-cassette/tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
-bevy_tasks = { workspace = true }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
 rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false, features = [

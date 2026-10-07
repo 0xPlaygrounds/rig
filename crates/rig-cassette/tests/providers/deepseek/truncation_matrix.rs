@@ -34,10 +34,9 @@
 //! as streaming budget 16, exercising no additional adapter state, so that
 //! duplicate cell is explicitly pruned. The matrix also records the shapes
 //! that share the same decode: parallel calls where only the second is cut, a
-//! turn that spoke before it was cut, a reasoner turn cut mid-arguments, and
-//! the agent loop. See the module doc table in the PR body for per-cell status.
+//! turn that spoke before it was cut, and a reasoner turn cut mid-arguments.
+//! See the module doc table in the PR body for per-cell status.
 
-use anyhow::Result;
 use rig::completion::ToolDefinition;
 use rig::message::AssistantContent;
 use rig::providers::deepseek;
@@ -192,18 +191,6 @@ pub(super) fn recorded_stream_arguments(scenario: &str) -> Vec<String> {
         }
     }
     accumulated
-}
-
-pub(super) fn recorded_stream_finish_reason(scenario: &str) -> String {
-    recorded_stream_chunks(scenario)
-        .into_iter()
-        .filter_map(|chunk| {
-            chunk["choices"][0]["finish_reason"]
-                .as_str()
-                .map(str::to_owned)
-        })
-        .next_back()
-        .unwrap_or_default()
 }
 
 pub(super) fn assert_unparseable(arguments: &str, scenario: &str) {
@@ -364,55 +351,6 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
 // ================================================================
 // E. Reasoner turns share the decode
 // ================================================================
-
-// ================================================================
-// F. Agent level: the loop sees a `Length` turn, not a failed request
-// ================================================================
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub(super) struct EmptyFileReportArgs {}
-
-#[derive(Debug, thiserror::Error)]
-#[error("file_report failed")]
-pub(super) struct FileReportError;
-
-/// A real zero-argument side-effect tool for the empty-wire boundary. This is
-/// intentionally separate from `FileReport`: `{}` cannot reach that tool's
-/// `call` method because its required `summary` fails argument decoding, which
-/// would make an invocation-count assertion pass for the wrong reason.
-#[derive(Clone)]
-pub(super) struct ZeroArgumentFileReport {
-    pub(super) invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-}
-
-impl rig::tool::Tool for ZeroArgumentFileReport {
-    const NAME: &'static str = "file_report";
-    type Error = FileReportError;
-    type Args = EmptyFileReportArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "File the incident now; this action takes no arguments.".to_owned()
-    }
-
-    fn parameters(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false,
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        _args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.invocations
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Ok("filed".to_owned())
-    }
-}
 
 // ================================================================
 // G. Provider-type decode, no recording needed

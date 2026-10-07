@@ -8,13 +8,13 @@ readme = "README.md"
 description = "Effect-log and provider HTTP recording, replay, scrubbing and verification for Rig."
 repository = "https://github.com/0xPlaygrounds/rig"
 # `tests/` is the repository's own record/replay suite: the cassette-backed
-# provider targets, the effect bus's verification targets and the shared
+# provider targets, the effect bus's verification target and the shared
 # helpers they include. It is written against the facade and the agent
-# runtimes, replays the committed corpora, and is meaningless outside this
+# runtime, replays the committed corpora, and is meaningless outside this
 # workspace, so every dev-dependency below is a version-less path entry.
 # The corpora are replay fixtures the binaries read at runtime, never embedded
-# with `include_*!`: 2,841 provider cassettes (50 MiB), 842 effect goldens
-# (17 MiB) and the chat parity snapshot (5 MiB). Sweeping any of them into the
+# with `include_*!`: 839 provider cassettes (66 MiB), 206 effect goldens
+# (3 MiB) and the chat parity snapshots (1 MiB). Sweeping any of them into the
 # tarball would put the upload over the crates.io 10 MiB limit, which is
 # enforced server-side and so never surfaces in `cargo publish --dry-run`.
 # Cargo drops every `[[test]]` target below from the normalized manifest
@@ -44,7 +44,6 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
-ecs = ["dep:rig-ecs", "dep:bevy_app", "dep:bevy_ecs"]
 http = [
     "dep:rig-reqwest",
     "dep:axum",
@@ -63,10 +62,7 @@ bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 rig-agent = { path = "../rig-agent", version = "0.44.0", default-features = false, optional = true }
-rig-ecs = { path = "../rig-ecs", version = "0.44.0", optional = true }
 rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", default-features = false, features = ["rustls"], optional = true }
-bevy_app = { workspace = true, optional = true }
-bevy_ecs = { workspace = true, optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
@@ -99,7 +95,6 @@ rig = { path = "../..", default-features = false, features = [
 rig-test-support = { path = "../../test-support/rig-test-support" }
 rig-core = { path = "../rig-core", features = ["test-utils"] }
 rig-agent = { path = "../rig-agent", features = ["test-utils"] }
-rig-ecs = { path = "../rig-ecs" }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
 async-stream = { workspace = true }
@@ -110,11 +105,6 @@ aws-smithy-eventstream = { workspace = true }
 aws-smithy-http-client = { workspace = true, features = ["default-client"] }
 aws-smithy-runtime-api = { workspace = true }
 aws-smithy-types = { workspace = true }
-# The world interpreter (`tests/world_replay.rs`) builds its own App; the ECS
-# contract matrix pins the bus task pool to one thread the same way.
-bevy_app = { workspace = true }
-bevy_ecs = { workspace = true }
-bevy_tasks = { workspace = true }
 bytes = { workspace = true }
 http = { workspace = true }
 proptest = "1"
@@ -141,91 +131,83 @@ tracing = { workspace = true }
 [[test]]
 name = "verify"
 path = "tests/verify/main.rs"
-required-features = ["agent", "ecs"]
+required-features = ["agent"]
 
 [[test]]
 name = "runtime"
-required-features = ["http", "agent", "ecs"]
-
-[[test]]
-name = "world_replay"
-required-features = ["agent", "ecs"]
-
-[[test]]
-name = "world_replay_world"
-required-features = ["ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "anthropic"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "bedrock"
-required-features = ["bedrock", "agent", "ecs"]
+required-features = ["bedrock", "agent"]
 
 [[test]]
 name = "chatgpt"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "cohere"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "copilot"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "deepseek"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "doubleword"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "gemini"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "groq"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "llamacpp"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "mistral"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "mistralrs"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "ollama"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "openai"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "openrouter"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "perplexity"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "venice"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "xai"
-required-features = ["http", "agent", "ecs"]
+required-features = ["http", "agent"]
 
 [[test]]
 name = "cassette_cache_prefix"

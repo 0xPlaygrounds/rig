@@ -30,8 +30,8 @@ use crate::{
 /// The identity of one dispatch, minted by the dispatcher.
 ///
 /// It is the correlation key between a bus-tap [`EffectRecord`], a hook
-/// observation, and a host's own bookkeeping (a Bevy driver maps it to an
-/// `Entity`). Ids are unique per dispatcher and strictly increasing.
+/// observation, and a host's own bookkeeping (a host driver maps it to its
+/// own handle). Ids are unique per dispatcher and strictly increasing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EffectId(u64);

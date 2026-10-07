@@ -1367,9 +1367,7 @@ fn runtime_turns_come_from_folds() {
     for_each_shipped_source(|path, shipped| {
         let normalized = path.to_string_lossy().replace('\\', "/");
         walked.push(normalized.clone());
-        let runtime = ["/rig-agent/src/", "/rig-ecs/src/"]
-            .iter()
-            .any(|root| normalized.contains(root));
+        let runtime = normalized.contains("/rig-agent/src/");
         if runtime && mask_literals_and_comments(shipped).contains("AssistantMessage::new(") {
             offenders.push(normalized);
         }
@@ -1377,11 +1375,8 @@ fn runtime_turns_come_from_folds() {
     assert!(
         walked
             .iter()
-            .any(|path| path.ends_with("rig-agent/src/run/streamed.rs"))
-            && walked
-                .iter()
-                .any(|path| path.ends_with("rig-ecs/src/systems/mod.rs")),
-        "the walk covers the runtimes"
+            .any(|path| path.ends_with("rig-agent/src/run/streamed.rs")),
+        "the walk covers the runtime"
     );
     assert!(
         offenders.is_empty(),

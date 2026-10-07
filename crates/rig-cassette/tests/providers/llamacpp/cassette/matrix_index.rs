@@ -33,7 +33,6 @@ use std::path::{Path, PathBuf};
 const NOT_TABULATED: &[&str] = &[
     "agent",
     "embeddings",
-    "extractor_usage",
     "image_tool_result",
     "matrix_index",
     "models",

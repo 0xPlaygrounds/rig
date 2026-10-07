@@ -1,8 +1,8 @@
 //! Focused tool-turn checkpoint matrix on Gemini: gemini-2.5-flash-lite.
-//! One producer recording is reused by every native cut with strict matching.
+//! The large-result recording also backs a negative matcher probe.
 
 use super::super::support::with_gemini_cassette;
-use crate::ecs_matrix::{Wire, cells, checkpoint};
+use crate::corpus_matrix::{Wire, cells, checkpoint};
 use rig_test_support::cassette_models::GeminiModels;
 
 fn wire(
@@ -29,4 +29,10 @@ crate::matrix::golden_matrix! {
     parallel_batch: ("checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, "gemini_checkpoint_parallel_batch");
     #[tokio::test]
     large_result: ("checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, "gemini_checkpoint_large_result");
+}
+
+/// The strict matcher refuses the large result with its last byte changed.
+#[tokio::test]
+async fn large_result_last_byte_mismatch() {
+    checkpoint::assert_large_request_rejected("gemini", "checkpoint_matrix/large_result").await;
 }

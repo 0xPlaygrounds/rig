@@ -45,7 +45,6 @@ fn independent_downstream_graph_excludes_smithy_and_agent_runtimes() {
     for forbidden in [
         "rig",
         "rig-agent",
-        "rig-ecs",
         "aws-smithy-eventstream",
         "aws-smithy-types",
     ] {

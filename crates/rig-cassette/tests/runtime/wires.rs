@@ -14,10 +14,10 @@ use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig_test_support::cassette_models::{AnthropicModels, GeminiModels, OpenAiModels};
 
-use rig::completion::{Effort, GenerationOptions, ProviderOptions, Reasoning};
+use rig::completion::{GenerationOptions, ProviderOptions, Reasoning};
 use rig::providers::openai::extension::{OpenAiOptions, OpenAiShared};
 
-use crate::ecs_matrix::{Wire, cells, cells::ThinkingWire, corpus::TypedOptions};
+use crate::corpus_matrix::{Wire, cells, cells::ThinkingWire, corpus::TypedOptions};
 
 const KEY: &str = "bank";
 const BASE_URL: &str = "http://bank.invalid";
@@ -120,7 +120,7 @@ pub(crate) fn anthropic(
 }
 
 // The focused families' wires: the models their `corpus_matrix_*` and
-// `ecs_matrix_*` files name, without a route.
+// `corpus_matrix_*` files name, without a route.
 
 fn thinking_disabled() -> TypedOptions {
     TypedOptions::generation(GenerationOptions::default().reasoning(Reasoning::Off))
@@ -174,15 +174,6 @@ pub(crate) fn gemini_flash(
     gemini_model(http, "gemini-2.5-flash")
 }
 
-pub(crate) fn gemini_task(http: DynHttpClient) -> Wire<rig::Model<GenerateContent, DynHttpClient>> {
-    Wire {
-        options: Some(|| {
-            TypedOptions::generation(GenerationOptions::default().reasoning(Effort::Low))
-        }),
-        ..gemini_model(http, "gemini-3.8-flash")
-    }
-}
-
 pub(crate) fn gemini_preview(
     http: DynHttpClient,
 ) -> Wire<rig::Model<GenerateContent, DynHttpClient>> {
@@ -201,15 +192,6 @@ pub(crate) fn openai_chat_mini(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
     }
 }
 
-pub(crate) fn openai_chat_task(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
-    Wire {
-        options: Some(|| {
-            openai_shared(OpenAiShared::default().prompt_cache_key("rig-native-long-tasks"))
-        }),
-        ..openai_chat_mini(http)
-    }
-}
-
 pub(crate) fn openai_responses_mini(http: DynHttpClient) -> OpenAi {
     let client = OpenAiModels::new(OpenAIConfig::new(KEY).with_base_url(BASE_URL), http);
     Wire {
@@ -219,19 +201,6 @@ pub(crate) fn openai_responses_mini(http: DynHttpClient) -> OpenAi {
         temperature: Some(0.0),
         additional_params: None,
         options: None,
-    }
-}
-
-pub(crate) fn openai_responses_task(http: DynHttpClient) -> OpenAi {
-    Wire {
-        options: Some(|| {
-            openai_shared(
-                OpenAiShared::default()
-                    .prompt_cache_key("rig-native-long-tasks")
-                    .store(false),
-            )
-        }),
-        ..openai_responses_mini(http)
     }
 }
 

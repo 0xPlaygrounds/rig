@@ -486,12 +486,6 @@ const PAIRS: &[Pair] = &[
         ],
     },
     Pair {
-        provider: "openai",
-        unary: "long_task_matrix/chat_repair.yaml",
-        streamed: "long_task_matrix/chat_repair_streamed.yaml",
-        minted: &[],
-    },
-    Pair {
         provider: "openrouter",
         unary: "reasoning_roundtrip/nonstreaming.yaml",
         streamed: "reasoning_roundtrip/streaming.yaml",

@@ -28,6 +28,8 @@
 //!
 //! | # | cell | surface | asserts |
 //! |---|------|---------|---------|
+//! | 1 | `blocking_truncated_turn_reports_length_and_cap` | blocking | `Length` + the cap this attempt ran under |
+//! | 2 | `streaming_truncated_turn_reports_length_and_cap` | streaming | the same, on the other surface |
 //! | 5 | `blocking_tool_turn_reports_tool_calls` | blocking | `ToolCalls` |
 //! | 6 | `streaming_tool_turn_reports_tool_calls` | streaming | `ToolCalls` |
 //!
@@ -64,11 +66,16 @@ pub(super) const CONCISE_PREAMBLE: &str =
 pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
 
 // ---------------------------------------------------------------------------
-// ToolCalls: the reason a portable hook must never mistake for retryable.
+// Length, and ToolCalls: the reason a portable hook must never mistake for
+// retryable.
 // ---------------------------------------------------------------------------
 
 crate::matrix::case_matrix! {
     wrapper: with_venice_cassette, family: turn_termination_matrix_case;
+    # [tokio :: test]
+    blocking_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap", blocking_truncated_turn_reports_length_and_cap_15);
+    # [tokio :: test]
+    streaming_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap", streaming_truncated_turn_reports_length_and_cap_16);
     # [ignore = "Venice mistral-small-3-2-24b-instruct answered without calling add in attempts 1, 2 and 3 (2026-09-13, record-venice-termination-blocking-attempt-{1,2,3}.log); exhausted the reasoning-matrix prompt's three-attempt limit"]
     # [tokio :: test]
     blocking_tool_turn_reports_tool_calls: ("turn_termination_matrix/blocking_tool_turn_reports_tool_calls", blocking_tool_turn_reports_tool_calls_19);

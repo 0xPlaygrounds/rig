@@ -1,11 +1,10 @@
 //! The long tool loop's producer column on OpenAiResponses: gpt-4.1-mini (Responses).
-//! One recording per live cell; the native twin (`ecs_matrix_long_loop_responses.rs`)
-//! reuses each with strict matching. Programs, toolset and assertions are
-//! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
+//! One recording per live cell. Programs, toolset and assertions are
+//! `tests/common/corpus_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use crate::ecs_matrix::{Wire, cells, long_loop};
+use crate::corpus_matrix::{Wire, cells, long_loop};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {

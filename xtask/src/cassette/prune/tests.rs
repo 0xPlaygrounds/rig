@@ -37,7 +37,7 @@ fn a_manifest_reads_back_as_written() {
 
 #[test]
 fn a_sweep_is_named_by_target_and_prefix() {
-    assert!(is_sweep("rig-cassette::world_replay", "anything"));
+    assert!(is_sweep("rig-cassette::chat_parity", "anything"));
     assert!(is_sweep(
         "rig-cassette::verify",
         "corpus_oracle::bus_engine::x"
@@ -71,14 +71,14 @@ fn only_a_provider_targets_own_test_can_be_stale() {
     ));
     // A shared module's test, compiled into the provider target.
     assert!(!is_stale(
-        &id("rig-cassette::openai", "ecs_matrix::tests::x"),
+        &id("rig-cassette::openai", "corpus_matrix::tests::x"),
         &scanned
     ));
     assert!(!is_stale(&id("rig-core", "openai::x"), &scanned));
 }
 
 #[test]
-fn a_fixture_takes_its_snapshot_and_clock_and_a_golden_its_programs() {
+fn a_fixture_takes_its_snapshot_and_clock_and_a_golden_its_one_file() {
     assert_eq!(
         sidecars("openai/a/b.yaml"),
         [
@@ -87,23 +87,16 @@ fn a_fixture_takes_its_snapshot_and_clock_and_a_golden_its_programs() {
             "openai/a/b.clock.json"
         ]
     );
-    let world = golden_of("world/deepseek_x");
-    assert!(world.world);
+    let golden = golden_of("deepseek_x");
     assert_eq!(
-        world.files(),
-        [
-            format!("{}/world/deepseek_x.effects.json", names::EFFECTS),
-            format!("{}/world/deepseek_x.programs.json", names::EFFECTS),
-        ]
+        golden.files(),
+        [format!("{}/deepseek_x.effects.json", names::EFFECTS)]
     );
-    assert_eq!(world.label(), "world/deepseek_x");
-    let agent = golden_of("deepseek_x");
-    assert!(!agent.world);
-    assert_eq!(agent.files().len(), 1);
+    assert_eq!(golden.label(), "deepseek_x");
 }
 
 #[test]
 fn the_keep_list_reads_the_first_word_of_each_line() {
-    let text = "# a comment\n\nxai/a/b.yaml   the reason\n  world/name reason too\n";
-    assert_eq!(parse_keep(text), ["xai/a/b.yaml", "world/name"]);
+    let text = "# a comment\n\nxai/a/b.yaml   the reason\n  golden_name reason too\n";
+    assert_eq!(parse_keep(text), ["xai/a/b.yaml", "golden_name"]);
 }

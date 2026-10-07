@@ -1,8 +1,7 @@
 //! Focused tool-turn checkpoint matrix on DeepSeek: deepseek-flash.
-//! One producer recording is reused by every native cut with strict matching.
 
+use crate::corpus_matrix::{Wire, cells, checkpoint};
 use crate::deepseek::support::with_deepseek_cassette;
-use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig_test_support::cassette_models::OpenAiModels;
 
 fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
@@ -13,7 +12,7 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         temperature: Some(0.0),
         additional_params: None,
         options: Some(|| {
-            crate::ecs_matrix::corpus::TypedOptions::generation(
+            crate::corpus_matrix::corpus::TypedOptions::generation(
                 rig::completion::GenerationOptions::default()
                     .reasoning(rig::completion::Reasoning::Off),
             )

@@ -146,7 +146,7 @@ const DESERIALIZE: &[&str] = &["from_str", "from_value", "from_slice", "from_rea
 /// Literal fragments that name a committed fixture or effect log.
 /// A recorded cassette counts too: the cassette prune keeps a fixture a test
 /// outside it names, so deleting that test would change what it keeps.
-const FIXTURE_PATHS: &[&str] = &["fixtures/", ".effects.json", ".programs.json", ".yaml"];
+const FIXTURE_PATHS: &[&str] = &["fixtures/", ".effects.json", ".yaml"];
 
 /// The facts of `item`, a test named `name` (binary id and test path).
 /// `wasm_gated` says an enclosing module or file only builds for wasm.

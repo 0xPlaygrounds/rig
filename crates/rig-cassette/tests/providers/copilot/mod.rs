@@ -1,12 +1,7 @@
 use rig_test_support::cassette_models::CopilotModels;
 mod agent;
 mod auth;
-#[path = "cassette/ecs_extractor.rs"]
-mod ecs_extractor;
-#[path = "cassette/ecs_extractor_usage.rs"]
-mod ecs_extractor_usage;
 mod embeddings;
-mod extractor_usage;
 mod models;
 mod multi_extract;
 mod noninteractive_oauth_cassette;

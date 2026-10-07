@@ -7,7 +7,7 @@
 //! replay or read a fixture, or name an effect golden. Every other test is
 //! kept: the crates' unit tests, the conformance targets, the `runtime`
 //! target (which replays the reply bank and is preferred over a provider's
-//! copy of a runtime scenario), `verify` and `world_replay`. The selection
+//! copy of a runtime scenario) and `verify`. The selection
 //! keeps the fewest candidates whose union, with the always-kept tests,
 //! holds everything the coverage gate measures; see [`select`] and the
 //! manifest's preamble for the rule. A reply shape the reply bank holds
@@ -56,8 +56,6 @@ const SWEEPS: &[(&str, &str)] = &[
     ("rig-cassette::cassette_history_survival", ""),
     ("rig-cassette::cassette_usage_census", ""),
     ("rig-cassette::chat_parity", ""),
-    ("rig-cassette::world_replay", ""),
-    ("rig-cassette::world_replay_world", ""),
     ("rig-cassette::verify", "corpus_oracle::"),
     (
         "rig-cassette::verify",
@@ -90,8 +88,8 @@ const PREAMBLE: &str = "\
 # The rule. The candidates are the tests of the provider targets that record,
 # replay or read a cassette, or name an effect golden. Every other test is kept
 # (crate unit tests, conformance targets, the runtime target over the reply
-# bank, verify, world_replay, and every test of a provider file another target
-# compiles too), and so is every fixture or golden something outside the
+# bank, verify, and every test of a provider file another target compiles
+# too), and so is every fixture or golden something outside the
 # candidates names or crates/rig-cassette/coverage/prune-keep.txt lists with
 # its reason. The kept candidates are chosen by greedy set cover over what the
 # gate measures that the always-kept tests do not hold: the candidate covering
@@ -104,9 +102,9 @@ const PREAMBLE: &str = "\
 # The elements. Regions: every line and branch of crates/rig-cassette/coverage/
 # lines.tsv, from each test's own coverage (`cargo xtask coverage --per-test`).
 # The corpus sweeps (cassette_history_survival, cassette_usage_census,
-# cassette_cache_prefix, chat_parity, world_replay, world_replay_world, the
-# cassette-safety scans and the restatement sweeps) stay but are not credited,
-# since what they cover depends on the files that exist. Shapes: every request
+# cassette_cache_prefix, chat_parity, the cassette-safety scans and the
+# restatement sweeps) stay but are not credited, since what they cover
+# depends on the files that exist. Shapes: every request
 # fact and reply shape of crates/rig-cassette/coverage/shapes.tsv, except the
 # reply shapes the reply bank holds: a bank entry is a verbatim provider reply
 # with its source, kept when its fixture goes, and the runtime target's decode
@@ -119,10 +117,9 @@ const PREAMBLE: &str = "\
 #
 # Goldens. A golden goes with its producer. A kept producer's golden stays only
 # when something other than its producer reads it, or it is the smallest golden
-# of its corpus (agent or world) holding an effect kind no read golden holds:
-# the one format pin for that kind. Every other kept producer checks its log in
-# the test instead: the log replays record by record through a world, and a
-# world log's programs restore and replay by id.
+# of its corpus holding an effect kind no read golden holds: the one format pin
+# for that kind. Every other kept producer checks its log in the test instead:
+# the log replays record by record through its own replayers.
 #
 # Parity snapshots follow the same rule: fixtures/parity/<provider>.json pins
 # one reply per reply shape and mode (the smallest, then the first in path
@@ -685,19 +682,19 @@ impl Model {
                 }
             }
         }
-        let mut pinned: BTreeSet<(bool, String)> = BTreeSet::new();
+        let mut pinned: BTreeSet<String> = BTreeSet::new();
         for golden in &self.protected_goldens {
             if let Some((_, kinds)) = self.goldens.get(golden) {
                 for kind in kinds {
-                    pinned.insert((golden.world, kind.clone()));
+                    pinned.insert(kind.clone());
                 }
             }
         }
-        let mut pins: BTreeMap<(bool, String), (u64, &Golden)> = BTreeMap::new();
+        let mut pins: BTreeMap<String, (u64, &Golden)> = BTreeMap::new();
         for golden in &remaining {
             if let Some((size, kinds)) = self.goldens.get(*golden) {
                 for kind in kinds {
-                    let key = (golden.world, kind.clone());
+                    let key = kind.clone();
                     if pinned.contains(&key) {
                         continue;
                     }
@@ -851,15 +848,8 @@ fn sidecars(fixture: &str) -> Vec<String> {
 
 /// The golden a manifest label names.
 fn golden_of(label: &str) -> Golden {
-    match label.strip_prefix("world/") {
-        Some(name) => Golden {
-            world: true,
-            name: name.to_owned(),
-        },
-        None => Golden {
-            world: false,
-            name: label.to_owned(),
-        },
+    Golden {
+        name: label.to_owned(),
     }
 }
 
@@ -897,49 +887,43 @@ fn read(root: &Path, relative: &str) -> Result<String, String> {
 /// Every golden with its size and the effect kinds its records hold.
 fn read_goldens(root: &Path) -> Result<BTreeMap<Golden, (u64, BTreeSet<String>)>, String> {
     let mut goldens = BTreeMap::new();
-    for (world, dir) in [
-        (false, root.join(names::EFFECTS)),
-        (true, root.join(names::EFFECTS).join("world")),
-    ] {
-        let entries =
-            std::fs::read_dir(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
-        let mut files = Vec::new();
-        for entry in entries {
-            files.push(
-                entry
-                    .map_err(|error| format!("{}: {error}", dir.display()))?
-                    .path(),
-            );
-        }
-        files.sort();
-        for file in files {
-            let Some(name) = file
-                .file_name()
-                .and_then(|name| name.to_str())
-                .and_then(|name| name.strip_suffix(".effects.json"))
-            else {
-                continue;
-            };
-            let text = std::fs::read_to_string(&file)
-                .map_err(|error| format!("{}: {error}", file.display()))?;
-            let value: Value = serde_json::from_str(&text)
-                .map_err(|error| format!("{}: {error}", file.display()))?;
-            let kinds = value
-                .get("records")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .filter_map(|record| record.pointer("/kind/effect").and_then(Value::as_str))
-                .map(str::to_owned)
-                .collect();
-            goldens.insert(
-                Golden {
-                    world,
-                    name: name.to_owned(),
-                },
-                (text.len() as u64, kinds),
-            );
-        }
+    let dir = root.join(names::EFFECTS);
+    let entries = std::fs::read_dir(&dir).map_err(|error| format!("{}: {error}", dir.display()))?;
+    let mut files = Vec::new();
+    for entry in entries {
+        files.push(
+            entry
+                .map_err(|error| format!("{}: {error}", dir.display()))?
+                .path(),
+        );
+    }
+    files.sort();
+    for file in files {
+        let Some(name) = file
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_suffix(".effects.json"))
+        else {
+            continue;
+        };
+        let text = std::fs::read_to_string(&file)
+            .map_err(|error| format!("{}: {error}", file.display()))?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|error| format!("{}: {error}", file.display()))?;
+        let kinds = value
+            .get("records")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|record| record.pointer("/kind/effect").and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect();
+        goldens.insert(
+            Golden {
+                name: name.to_owned(),
+            },
+            (text.len() as u64, kinds),
+        );
     }
     Ok(goldens)
 }

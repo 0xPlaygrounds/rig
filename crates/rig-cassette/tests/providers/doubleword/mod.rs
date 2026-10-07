@@ -8,9 +8,6 @@ mod cassette {
     mod conformance;
     mod corpus_faults;
     mod corpus_matrix;
-    mod ecs_extractor;
-    mod ecs_faults;
-    mod ecs_termination;
     mod embedding_dimensions;
     mod embedding_matrix;
     mod embeddings;
@@ -22,6 +19,5 @@ mod cassette {
     mod streaming;
     mod structured_output;
     mod tools;
-    mod turn_termination_matrix;
     mod typed_prompt_tools;
 }

@@ -1,29 +1,36 @@
-//! Shared inputs and fixture-premise checks for the DeepSeek turn-termination
-//! cells in `ecs_termination`: the model, caps, prompts and preambles they
-//! send, and readers of the wire reason and request cap each recorded turn
-//! carries, so a cell fails when its fixture stops showing the premise it is
-//! about.
+//! The model-turn termination metadata a hook sees (rig#2184), against the
+//! real DeepSeek wire: a turn the provider cut short at the cap reaches the
+//! hook as `FinishReason::Length` with the cap that attempt ran under, on
+//! both surfaces. Each cell re-reads its own fixture and fails if the
+//! recorded turn stopped carrying the wire reason or the request cap the
+//! cell is about.
 //!
 //! `ContentFilter`, `Other(_)` and a missing reason have no benign live
 //! trigger on this endpoint. Unit cells pin them in
 //! `crates/rig-agent/src/agent/runner.rs` (`model_turn_finished_*`) and
 //! `crates/rig-core/src/completion/request.rs` (`truncated_output_*`).
 
+use rig::completion::FinishReason;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes;
+use crate::deepseek::support::with_deepseek_cassette;
+use crate::support::{TurnTerminationProbe, collect_stream_final_response};
 
-pub(super) const MODEL: &str = "deepseek-chat";
-pub(super) const TINY_CAP: u64 = 16;
-/// Roomy enough for every prompt below to finish naturally.
-pub(super) const ROOMY_CAP: u64 = 512;
-/// Truncates at `TINY_CAP` and completes at `ROOMY_CAP`.
-pub(super) const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
-pub(super) const TOOL_PROMPT: &str = "Calculate 2 + 3.";
-pub(super) const CONCISE_PREAMBLE: &str =
-    "You are a concise assistant. Answer directly in plain text.";
-pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmetic questions.";
+const MODEL: &str = "deepseek-chat";
+const TINY_CAP: u64 = 16;
+/// Truncates at `TINY_CAP`.
+const TRUNCATING_PROMPT: &str = "Write two sentences about maple trees.";
+const CONCISE_PREAMBLE: &str = "You are a concise assistant. Answer directly in plain text.";
+
+crate::matrix::case_matrix! {
+    wrapper: with_deepseek_cassette, family: turn_termination_matrix_case;
+    # [tokio :: test]
+    blocking_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap", blocking_truncated_turn_reports_length_and_cap_15);
+    # [tokio :: test]
+    streaming_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap", streaming_truncated_turn_reports_length_and_cap_16);
+}
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell
@@ -81,7 +88,7 @@ fn body_json_objects(body: &str) -> Vec<Value> {
 /// non-null one the body carries. A stream repeats `null` on every chunk until
 /// the terminal one, so taking the first non-null entry yields exactly one
 /// reason per call on both surfaces.
-pub(super) fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
+fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     {
         interaction_bodies(scenario, "then")
             .iter()
@@ -101,7 +108,7 @@ pub(super) fn recorded_wire_reasons(scenario: &str) -> Vec<String> {
     }
 }
 
-pub(super) fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
+fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
     {
         let reasons = recorded_wire_reasons(scenario);
         assert!(
@@ -114,7 +121,7 @@ pub(super) fn assert_recorded_wire_reason(scenario: &str, expected: &str) {
 
 /// The output-token cap of every recorded *request*, in order — proof that the
 /// cap the hook reported is the cap that actually went on the wire.
-pub(super) fn recorded_request_caps(scenario: &str) -> Vec<u64> {
+fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     {
         interaction_bodies(scenario, "when")
             .iter()
@@ -128,7 +135,7 @@ pub(super) fn recorded_request_caps(scenario: &str) -> Vec<u64> {
     }
 }
 
-pub(super) fn assert_recorded_request_cap(scenario: &str, expected: u64) {
+fn assert_recorded_request_cap(scenario: &str, expected: u64) {
     {
         let caps = recorded_request_caps(scenario);
         assert!(

@@ -2,18 +2,18 @@
 //! Macro definitions and arbitrary Rust macros are not expanded or registered.
 
 use std::collections::BTreeSet;
-use syn::parse::{Parse, ParseStream, Parser};
+use syn::parse::{Parse, ParseStream};
 use syn::{Attribute, Ident, LitStr, Path, Token, parenthesized};
 
 #[cfg(test)]
 #[path = "matrix_registry/tests.rs"]
 mod tests;
 
-/// Golden-producing or native-parity matrix declarations.
+/// Golden-producing matrix declarations.
 pub struct GoldenMatrix {
     /// The wire-specific cassette wrapper called by each generated test.
     pub wrapper: Path,
-    /// Original golden producer or native parity helper.
+    /// The golden producer.
     pub oracle: Path,
     /// Test rows in declaration order.
     pub rows: Vec<Row>,
@@ -23,7 +23,7 @@ pub struct GoldenMatrix {
 pub struct Row {
     /// Cassette path relative to the provider directory.
     pub scenario: LitStr,
-    /// Golden name within the matrix's runtime corpus, without an extension.
+    /// Golden name within the effect corpus, without an extension.
     pub golden: LitStr,
     /// Whether this row requires no recording because it is ignored.
     pub ignored: bool,
@@ -81,9 +81,8 @@ fn header(input: ParseStream<'_>) -> syn::Result<Path> {
     Ok(wrapper)
 }
 
-/// Rows of `name: ("scenario", cell, "golden");`, with a resume point
-/// expression before the golden when `resume` is set.
-fn rows(input: ParseStream<'_>, resume: bool) -> syn::Result<Vec<Row>> {
+/// Rows of `name: ("scenario", cell, "golden");`.
+fn rows(input: ParseStream<'_>) -> syn::Result<Vec<Row>> {
     let mut rows = Vec::new();
     let mut names = BTreeSet::new();
     while !input.is_empty() {
@@ -95,15 +94,9 @@ fn rows(input: ParseStream<'_>, resume: bool) -> syn::Result<Vec<Row>> {
         args.parse::<Token![,]>()?;
         args.parse::<Path>()?;
         args.parse::<Token![,]>()?;
-        if resume {
-            args.parse::<syn::Expr>()?;
-            args.parse::<Token![,]>()?;
-        }
         let golden = args.parse()?;
         if !args.is_empty() {
-            return Err(
-                args.error("expected scenario, cell, resume point if any, and golden literal")
-            );
+            return Err(args.error("expected scenario, cell and golden literal"));
         }
         input.parse::<Token![;]>()?;
         rows.push(Row {
@@ -127,44 +120,7 @@ impl Parse for GoldenMatrix {
         Ok(Self {
             wrapper,
             oracle,
-            rows: rows(input, false)?,
-        })
-    }
-}
-
-/// Native cells and their world golden names, from `native_matrix!` or
-/// `resume_matrix!`.
-pub struct NativeMatrix {
-    /// The wire-specific cassette wrapper called by each generated test.
-    pub wrapper: Path,
-    /// Native fixture references and ignore status.
-    pub rows: Vec<Row>,
-}
-
-impl NativeMatrix {
-    /// Parse a `resume_matrix!` body: an optional `after` header field and a
-    /// cut point beside each row's cell.
-    fn parse_resume(input: ParseStream<'_>) -> syn::Result<Self> {
-        let wrapper = header(input)?;
-        if input.peek(Token![,]) {
-            input.parse::<Token![,]>()?;
-            field(input, "after")?;
-        }
-        input.parse::<Token![;]>()?;
-        Ok(Self {
-            wrapper,
-            rows: rows(input, true)?,
-        })
-    }
-}
-
-impl Parse for NativeMatrix {
-    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let wrapper = header(input)?;
-        input.parse::<Token![;]>()?;
-        Ok(Self {
-            wrapper,
-            rows: rows(input, false)?,
+            rows: rows(input)?,
         })
     }
 }
@@ -180,8 +136,6 @@ pub struct CaseMatrix {
     pub wrapper: Option<Path>,
     /// Scenario literals and whether each row is ignored.
     pub rows: Vec<(LitStr, bool)>,
-    /// Explicit world golden names and ignore status.
-    pub world_goldens: Vec<(LitStr, bool)>,
 }
 
 impl Parse for CaseMatrix {
@@ -202,17 +156,12 @@ impl Parse for CaseMatrix {
         let family = input.parse::<Ident>()?;
         input.parse::<Token![;]>()?;
         let mut rows = Vec::new();
-        let mut world_goldens = Vec::new();
         let mut names = BTreeSet::new();
         while !input.is_empty() {
             let ignored = registration(input, &mut names)?;
             input.parse::<Token![:]>()?;
             if wrapper.is_none() {
                 input.parse::<Ident>()?;
-                if input.peek(Token![=>]) {
-                    input.parse::<Token![=>]>()?;
-                    world_goldens.push((input.parse::<LitStr>()?, ignored));
-                }
                 input.parse::<Token![;]>()?;
                 continue;
             }
@@ -223,14 +172,7 @@ impl Parse for CaseMatrix {
             args.parse::<Ident>()?;
             if args.peek(Token![,]) {
                 args.parse::<Token![,]>()?;
-                let argument = args.parse::<syn::Expr>()?;
-                if let syn::Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(name),
-                    ..
-                }) = argument
-                {
-                    world_goldens.push((name, ignored));
-                }
+                args.parse::<syn::Expr>()?;
             }
             if !args.is_empty() {
                 return Err(args.error("expected scenario and case selector"));
@@ -246,7 +188,6 @@ impl Parse for CaseMatrix {
             registrations: names.len(),
             wrapper,
             rows,
-            world_goldens,
         })
     }
 }
@@ -255,8 +196,6 @@ impl Parse for CaseMatrix {
 pub enum Matrix {
     /// `golden_matrix!`: agent goldens produced through an oracle.
     Golden(GoldenMatrix),
-    /// `native_matrix!` or `resume_matrix!`: world goldens.
-    Native(NativeMatrix),
     /// `case_matrix!`: family-specific rows.
     Case(CaseMatrix),
 }
@@ -269,8 +208,6 @@ impl Matrix {
         Some(
             match node.path.segments.last()?.ident.to_string().as_str() {
                 "golden_matrix" => syn::parse2(tokens).map(Self::Golden),
-                "native_matrix" => syn::parse2(tokens).map(Self::Native),
-                "resume_matrix" => NativeMatrix::parse_resume.parse2(tokens).map(Self::Native),
                 "case_matrix" => syn::parse2(tokens).map(Self::Case),
                 _ => return None,
             },
@@ -281,8 +218,7 @@ impl Matrix {
     /// row that is not ignored, or `None` when the matrix has no wrapper.
     pub fn recorded(self) -> Option<(String, Vec<String>)> {
         let (wrapper, scenarios): (_, Vec<_>) = match self {
-            Self::Golden(GoldenMatrix { wrapper, rows, .. })
-            | Self::Native(NativeMatrix { wrapper, rows }) => (
+            Self::Golden(GoldenMatrix { wrapper, rows, .. }) => (
                 wrapper,
                 rows.into_iter()
                     .filter(|row| !row.ignored)

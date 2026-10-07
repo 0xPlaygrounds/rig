@@ -3,6 +3,10 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 #[macro_use]
+#[allow(
+    dead_code,
+    reason = "each target uses a different subset of the corpus"
+)]
 #[path = "../corpus/mod.rs"]
 mod corpus;
 #[path = "../corpus_breadth.rs"]

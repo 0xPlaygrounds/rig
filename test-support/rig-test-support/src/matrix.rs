@@ -20,71 +20,6 @@ macro_rules! golden_matrix {
 
 pub use golden_matrix;
 
-/// Emit native cells with their own world golden assertions.
-#[macro_export]
-macro_rules! native_matrix {
-    (
-        wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $golden:literal); )*
-    ) => {
-        $(
-            $(#[$attribute])*
-            async fn $name() {
-                $crate::goldens::capture_world_programs(async {
-                    $wrapper($scenario, |client| async move {
-                        $run(&$wire(&client), &$cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
-                    }).await;
-                }).await;
-            }
-        )*
-    };
-}
-
-pub use native_matrix;
-
-/// Emit native resume rows. An optional `after` callback inspects a scenario
-/// only after its cassette wrapper has finalized.
-#[macro_export]
-macro_rules! resume_matrix {
-    (
-        wrapper: $wrapper:path, wire: $wire:path, run: $run:path, after: $after:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $golden:literal); )*
-    ) => {
-        $(
-            $(#[$attribute])*
-            async fn $name() {
-                $crate::goldens::capture_world_programs(async {
-                    $wrapper($scenario, |client| async move {
-                        let mut cell = $cell;
-                        cell.resume_after = $resume;
-                        $run(&$wire(&client), &cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
-                    }).await;
-                    $after($scenario);
-                }).await;
-            }
-        )*
-    };
-    (
-        wrapper: $wrapper:path, wire: $wire:path, run: $run:path;
-        $( $(#[$attribute:meta])* $name:ident: ($scenario:literal, $cell:path, $resume:expr, $golden:literal); )*
-    ) => {
-        $(
-            $(#[$attribute])*
-            async fn $name() {
-                $crate::goldens::capture_world_programs(async {
-                    $wrapper($scenario, |client| async move {
-                        let mut cell = $cell;
-                        cell.resume_after = $resume;
-                        $run(&$wire(&client), &cell, |log| $crate::goldens::world_golden_effects($golden, log)).await;
-                    }).await;
-                }).await;
-            }
-        )*
-    };
-}
-
-pub use resume_matrix;
-
 /// Emit registered test rows with the shared execution body.
 #[macro_export]
 macro_rules! case_matrix {
@@ -112,14 +47,6 @@ pub use case_matrix;
 mod agent_tool_sessions;
 pub use agent_tool_sessions::agent_tool_sessions_case;
 pub use agent_tool_sessions::session_agent;
-
-#[path = "matrix/ecs_faults.rs"]
-mod ecs_faults;
-pub use ecs_faults::ecs_faults_case;
-
-#[path = "matrix/ecs_termination.rs"]
-mod ecs_termination;
-pub use ecs_termination::ecs_termination_case;
 
 #[path = "matrix/turn_termination_matrix.rs"]
 mod turn_termination_matrix;

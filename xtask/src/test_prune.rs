@@ -58,7 +58,6 @@ const SCOPE: &[&str] = &[
     "rig-bedrock",
     "rig-candle",
     "rig-core",
-    "rig-ecs",
     "rig-gemini-grpc",
     "rig-memory",
     "rig-vertexai",
@@ -77,9 +76,9 @@ const PREAMBLE: &str = "\
 # cassette prune keeps its own manifest, pruned.tsv, since its candidates,
 # elements and keep rules differ and each `--check` owns its file whole.
 #
-# The candidates are the tests of rig, rig-core, rig-agent, rig-ecs,
-# rig-bedrock, rig-vertexai, rig-gemini-grpc, rig-candle and rig-memory that
-# the per-test run covered and the source scan places as a `#[test]`-style
+# The candidates are the tests of rig, rig-core, rig-agent, rig-bedrock,
+# rig-vertexai, rig-gemini-grpc, rig-candle and rig-memory that the per-test
+# run covered and the source scan places as a `#[test]`-style
 # function. Every other test stays: the conformance rows (any test whose binary
 # or path names `conformance`), tests of helper modules (test_utils), tests a
 # macro generates, every other package's tests, and the tests of xtask and the

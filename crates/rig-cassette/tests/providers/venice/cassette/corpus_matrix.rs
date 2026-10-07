@@ -1,8 +1,7 @@
-//! The ECS contract matrix's producers on the Venice wire (`mistral-small-3-2-24b-instruct`, the model the suite records tools under, temperature 0; the route is the same model under `golden/model:fast`: every other Venice model tried either thinks (its reasoning part in the history is refused by the Mistral tokenizer on the next turn) or re-calls the tool after its result, so the route is observable on the bus, not on the wire): every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder, recorded once
-//! and replayed as the golden `venice_<cell>` the world cells in
-//! `ecs_matrix.rs` are compared to. The driver is
-//! `tests/common/ecs_matrix/agent.rs`; this file holds the scenario
+//! The corpus matrix's producers on the Venice wire (`mistral-small-3-2-24b-instruct`, the model the suite records tools under, temperature 0; the route is the same model under `golden/model:fast`: every other Venice model tried either thinks (its reasoning part in the history is refused by the Mistral tokenizer on the next turn) or re-calls the tool after its result, so the route is observable on the bus, not on the wire): every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder, recorded once
+//! and replayed as the golden `venice_<cell>`. The driver is
+//! `tests/common/corpus_matrix/agent.rs`; this file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 //!
 //! Every scenario here is a new recording under `corpus_matrix/`; a cell of
@@ -13,11 +12,11 @@ use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_venice_cassette;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
+        thinking: crate::corpus_matrix::cells::ThinkingWire::Venice,
         model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),

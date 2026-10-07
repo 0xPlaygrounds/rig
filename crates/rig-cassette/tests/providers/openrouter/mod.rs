@@ -6,11 +6,7 @@ mod cassette {
     mod context_binding;
     mod document_file_data;
     mod document_ordering;
-    mod ecs_extractor_usage;
-    mod ecs_prompt_caching;
-    mod ecs_tool_sessions;
     mod embedding_matrix;
-    mod extractor_usage;
     mod history_roundtrip_matrix;
     mod models;
     mod multi_extract;

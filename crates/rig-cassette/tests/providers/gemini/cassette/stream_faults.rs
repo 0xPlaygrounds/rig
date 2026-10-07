@@ -1,8 +1,7 @@
 //! Gemini stream faults through the runner: the recorded 404 on stream
 //! setup, and scripted faults — a blocked prompt, a stream cut before its
 //! terminal, an in-band error after content — served to the real
-//! `streamGenerateContent` adapter. Native counterparts:
-//! `ecs_stream_faults.rs`. Every cell's hypothesis is that the fault
+//! `streamGenerateContent` adapter. Every cell's hypothesis is that the fault
 //! surfaces as its own kind, with nothing recorded, committed or executed
 //! after it.
 

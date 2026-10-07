@@ -3,9 +3,8 @@
 //! scripted faults cut from the committed recordings — a stream that ends
 //! before its terminal, one that ends after a complete tool call, one that
 //! carries an error event after content — served to the real Responses
-//! adapter. Native counterparts: `ecs_stream_faults.rs`. Every cell's
-//! hypothesis is that the fault surfaces as its own kind, with nothing
-//! recorded, committed or executed after it.
+//! adapter. Every cell's hypothesis is that the fault surfaces as its own
+//! kind, with nothing recorded, committed or executed after it.
 
 use bytes::Bytes;
 use rig::effect::EffectFamily;

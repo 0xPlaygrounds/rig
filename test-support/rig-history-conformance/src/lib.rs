@@ -2551,8 +2551,8 @@ pub fn h18_generated_stream_equals_whole<F: HistoryFixture>(fixture: &F) {
 /// either, and each encodes by the wire's message rules with its calls
 /// answered: `CompletionResponse::continued` over the partial reply, as
 /// rig-agent rolls a turn back, and `streaming::delivered` over the items
-/// the consumer took, up to each call that ended and in all, as rig-ecs
-/// does.
+/// the consumer took, up to each call that ended and in all, as a host that
+/// keeps only delivered items does.
 pub fn h19_generated_cuts<F: HistoryFixture>(fixture: &F) {
     if let Some(reason) = fixture.no_cuts() {
         eprintln!("skip H19: {reason}");

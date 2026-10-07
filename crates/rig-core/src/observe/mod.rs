@@ -131,7 +131,7 @@ pub enum Stage {
 /// represents unavailable attribution; it is not inferred from the outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Emitter {
-    /// The emitter's stable name (`rig-ecs/bus`, a layer's name, a host
+    /// The emitter's stable name (a bus's name, a layer's name, a host
     /// system's name).
     pub name: String,
     /// Its declared version, when it has one.

@@ -34,10 +34,8 @@ pub(crate) const USAGE: &str = "\
   cassette audit [--base REF]
                               check every effect golden's blocks against their
                               deltas and classify its changes from REF (HEAD)
-  cassette goldens [--base REF] [--test TARGET]...
-                              regenerate effect goldens from replay, revert
-                              delivery-only churn and keep the base's delivery
-                              batches (REF defaults to HEAD)
+  cassette goldens [--test TARGET]...
+                              regenerate effect goldens from replay
   cassette snapshots [--check] [--test TARGET]...
                               rewrite the request snapshots from replay, or
                               with --check fail when a request differs from one

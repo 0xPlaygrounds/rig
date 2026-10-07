@@ -10,15 +10,14 @@
 //! in the header, so two programs differing only in that state are two
 //! headers;
 //! `Rerank` has a golden through a mock reranker on a host's bus; a
-//! `Prompted` answer is returned unvalidated; the handler table, the
-//! signature and the required row are three sets with stated inclusions;
-//! and a Bevy world replays every golden by id (`tests/world_replay.rs`).
+//! `Prompted` answer is returned unvalidated; and the handler table, the
+//! signature and the required row are three sets with stated inclusions.
 //!
 //! # Dimensions
 //!
 //! | axis | values recorded |
 //! |---|---|
-//! | instrument | id order · concurrent cross-key order · hook identity · the three header sets · a third interpreter |
+//! | instrument | id order · concurrent cross-key order · hook identity · the three header sets |
 //! | family | `Rerank` (mock) · `Prompted` unvalidated |
 //!
 //! Recorded: 4 goldens and 4 corpus-wide tests below (the matrix is the

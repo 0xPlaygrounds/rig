@@ -1,7 +1,7 @@
 //! Shared fixtures for the hook-system stress cassette suites
 //! (`cassette::hook_stress*`): a comprehensive event-tap observer, flexible
-//! request-patch / arg-rewrite / result-rewrite / terminate hooks, scratchpad
-//! probes, and a third counting arithmetic tool.
+//! request-patch / arg-rewrite / result-rewrite / terminate hooks, and
+//! scratchpad probes.
 //!
 //! Every hook here is **deterministic** (no clocks/RNG), so the outbound
 //! requests it produces stay byte-identical across replay. See
@@ -18,8 +18,6 @@ use rig::agent::{
     OutcomeAction, OutcomeEvent, RequestPatch, TextDelta, ToolCallDelta,
 };
 use rig::completion::Document;
-use rig::tool::Tool;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 /// Forces tool use and a dependent chain so the model takes >= 2 turns.
@@ -28,73 +26,10 @@ pub(crate) const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUS
      in order, using the result of each step as an input to the next. Once you have the final tool \
      result, reply with the final numeric answer in plain text.";
 
-#[derive(Debug, thiserror::Error)]
-#[error("math error")]
-pub(crate) struct MathError;
-
 /// Forces independent tool use (no dependency) so the model may batch calls.
 pub(crate) const INDEPENDENT_TOOLS_PREAMBLE: &str = "You are a calculator assistant. You MUST use \
      the provided tools for every arithmetic operation instead of computing results yourself. Once \
      you have the tool results you need, reply with the requested numbers in plain text.";
-
-// ---------------------------------------------------------------------------
-// A third counting tool (add/subtract live in tools_support).
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize, Serialize)]
-pub(crate) struct OperationArgs {
-    pub(crate) x: i64,
-    pub(crate) y: i64,
-}
-
-#[derive(Clone, Default)]
-pub(crate) struct CallCounter(Arc<std::sync::atomic::AtomicUsize>);
-
-impl CallCounter {
-    pub(crate) fn count(&self) -> usize {
-        self.0.load(std::sync::atomic::Ordering::SeqCst)
-    }
-    fn bump(&self) {
-        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-    }
-}
-
-/// `multiply` tool that counts its real executions.
-#[derive(Clone, Default)]
-pub(crate) struct CountingMultiply {
-    pub(crate) counter: CallCounter,
-}
-
-impl Tool for CountingMultiply {
-    const NAME: &'static str = "multiply";
-    type Error = MathError;
-    type Args = OperationArgs;
-    type Output = i64;
-
-    fn description(&self) -> String {
-        "Multiply x and y together".to_string()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "x": { "type": "number", "description": "The first operand" },
-                "y": { "type": "number", "description": "The second operand" }
-            },
-            "required": ["x", "y"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut rig::tool::ToolContext,
-        args: Self::Args,
-    ) -> Result<Self::Output, Self::Error> {
-        self.counter.bump();
-        Ok(args.x * args.y)
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Observation: one comprehensive event tap.
