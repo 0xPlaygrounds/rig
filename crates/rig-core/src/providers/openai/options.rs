@@ -501,7 +501,7 @@ pub(crate) fn chat_options(
     } else if is(&OLLAMA) {
         ollama(fields)
     } else if is(&COHERE) {
-        cohere(fields)
+        cohere(model, fields)
     } else if is(&PERPLEXITY) {
         perplexity(model, fields)
     } else if is(&MINIMAX) {
@@ -1167,7 +1167,7 @@ fn ollama(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn cohere(fields: OptionFields<'_>) -> OptionMap {
+fn cohere(model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -1182,6 +1182,11 @@ fn cohere(fields: OptionFields<'_>) -> OptionMap {
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Off => send("reasoning_effort", "none"),
+            Reasoning::Effort(Effort::High)
+                if crate::providers::cohere::thinks(model) == Some(false) =>
+            {
+                Mapping::unsupported("the model does not think")
+            }
             Reasoning::Effort(Effort::High) => send("reasoning_effort", "high"),
             Reasoning::Effort(_) => {
                 Mapping::unsupported("the Compatibility API takes only `none` and `high`")

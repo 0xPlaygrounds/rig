@@ -575,3 +575,103 @@ fn the_routing_wire_routes_each_request() {
     let strict = wire.with_strict_tools();
     assert!(strict.compatibility_api.strict_tools && strict.native_api.strict_tools);
 }
+
+/// What the native wire answers for `reasoning` on `model`: the body's
+/// `thinking`, or the error.
+fn native_thinking(
+    model: &str,
+    reasoning: crate::completion::Reasoning,
+) -> Result<Option<Value>, String> {
+    let wire = NativeChat::new(CohereConfig::new("key"), model);
+    let request = CompletionRequest::new("hi")
+        .options(crate::completion::GenerationOptions::default().reasoning(reasoning));
+    let encoded = Completion::prepare(request, &wire.describe())
+        .map_err(|error| error.to_string())
+        .and_then(|request| {
+            wire.encode(request, Mode::Unary)
+                .map_err(|error| error.to_string())
+        })?;
+    Ok(json_body(&encoded.request).get("thinking").cloned())
+}
+
+/// Whether a model thinks is its catalog entry's `reasoning`: Command A
+/// Plus thinks by default, so `Off` turns thinking off, and a listed model
+/// that does not think refuses an effort and a budget. An unlisted id
+/// thinks by default when its name says `reasoning`, and is sent an effort.
+#[test]
+fn native_thinking_follows_the_catalog() {
+    use crate::completion::{Effort, Reasoning as Thinking};
+    assert_eq!(
+        native_thinking("command-a-plus-05-2026", Thinking::Off),
+        Ok(Some(json!({"type": "disabled"})))
+    );
+    assert_eq!(
+        native_thinking("command-a-reasoning-08-2025", Thinking::Off),
+        Ok(Some(json!({"type": "disabled"})))
+    );
+    assert_eq!(
+        native_thinking(
+            "command-a-reasoning-08-2025",
+            Thinking::Effort(Effort::High)
+        ),
+        Ok(Some(json!({"type": "enabled"})))
+    );
+    assert_eq!(
+        native_thinking(
+            "command-a-reasoning-08-2025",
+            Thinking::Budget { tokens: 256 }
+        ),
+        Ok(Some(json!({"type": "enabled", "token_budget": 256})))
+    );
+    for reasoning in [
+        Thinking::Effort(Effort::High),
+        Thinking::Budget { tokens: 256 },
+    ] {
+        let refused = native_thinking("command-r7b-12-2024", reasoning);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|error| error.contains("`reasoning` is not supported")),
+            "{reasoning:?}: {refused:?}"
+        );
+    }
+    assert_eq!(
+        native_thinking("command-r7b-12-2024", Thinking::Off),
+        Ok(None)
+    );
+    assert_eq!(
+        native_thinking("command-z-reasoning-unlisted", Thinking::Off),
+        Ok(Some(json!({"type": "disabled"}))),
+        "an unlisted id thinks by its name"
+    );
+    assert_eq!(
+        native_thinking("command-z-unlisted", Thinking::Effort(Effort::High)),
+        Ok(Some(json!({"type": "enabled"}))),
+        "an unlisted id is sent an effort"
+    );
+}
+
+/// The Compatibility route refuses `high` effort on a model that does not
+/// think, by the same catalog rule.
+#[test]
+fn compatibility_effort_follows_the_catalog() {
+    use crate::completion::{Effort, GenerationOptions};
+    let effort = |model: &str| {
+        let wire = CohereConfig::new("key")
+            .completion(model)
+            .with_route(ChatRoute::Compatibility);
+        let request = CompletionRequest::new("hi")
+            .options(GenerationOptions::default().reasoning(Effort::High));
+        Completion::prepare(request, &wire.describe())
+            .map_err(|error| error.to_string())
+            .and_then(|request| {
+                wire.encode(request, Mode::Unary)
+                    .map(|encoded| json_body(&encoded.request))
+                    .map_err(|error| error.to_string())
+            })
+    };
+    let body = effort("command-a-reasoning-08-2025").expect("a model that thinks");
+    assert_eq!(body["reasoning_effort"], "high");
+    let error = effort("command-r7b-12-2024").expect_err("a model that does not think");
+    assert!(error.contains("`reasoning`"), "{error}");
+}

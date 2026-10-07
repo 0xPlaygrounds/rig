@@ -503,11 +503,11 @@ mod option_matrix {
                 ],
             ),
             (
-                // 6.2, the Compatibility route.
+                // 6.2, the Compatibility route; Command A does not think.
                 "cohere",
                 Box::new(|r| encode(&cohere(), r)),
                 [
-                    Merge(json!({"reasoning_effort": "high"})),
+                    Refuse,
                     Refuse,
                     Refuse,
                     Refuse,
@@ -985,6 +985,29 @@ mod option_matrix {
                         &rig::providers::cohere::NativeChat::new(
                             rig::providers::cohere::CohereConfig::new(KEY),
                             rig::providers::cohere::COMMAND_A_03_2025,
+                        ),
+                        r,
+                    )
+                }),
+                [
+                    // Command A does not think.
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Refuse,
+                    Merge(json!({"p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop_sequences": ["END"]})),
+                ],
+            ),
+            (
+                "cohere",
+                Box::new(|r| {
+                    encode(
+                        &rig::providers::cohere::NativeChat::new(
+                            rig::providers::cohere::CohereConfig::new(KEY),
+                            "command-a-plus-05-2026",
                         ),
                         r,
                     )

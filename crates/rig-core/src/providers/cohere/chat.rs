@@ -454,8 +454,10 @@ impl crate::completion::ReplayTarget for NativeChat {
             stop,
         } = fields;
         let model = request.model.as_deref().unwrap_or(&self.model);
-        // Cohere's reasoning models name themselves so; they think by default.
-        let reasons = model.contains("reasoning");
+        // A model that thinks does so by default. An id the catalog does
+        // not list thinks when its name says `reasoning`.
+        let thinks = super::thinks(model);
+        let reasons = thinks.unwrap_or_else(|| model.contains("reasoning"));
         const NO_FIELD: &str = "Cohere's chat API has no such field";
         OptionMap {
             reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
@@ -463,6 +465,9 @@ impl crate::completion::ReplayTarget for NativeChat {
                     Mapping::Send(json!({"thinking": {"type": "disabled"}}))
                 }
                 Reasoning::Off => Mapping::Omit("the model does not think"),
+                Reasoning::Effort(_) | Reasoning::Budget { .. } if thinks == Some(false) => {
+                    Mapping::unsupported("the model does not think")
+                }
                 Reasoning::Effort(Effort::High) => {
                     Mapping::Send(json!({"thinking": {"type": "enabled"}}))
                 }
