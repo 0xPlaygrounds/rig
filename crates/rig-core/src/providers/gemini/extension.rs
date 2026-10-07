@@ -102,7 +102,9 @@ impl GeminiOptions {
     }
 }
 
-impl ExtensionOptions for GeminiOptions {}
+impl ExtensionOptions for GeminiOptions {
+    type Ext = GeminiExt;
+}
 
 /// The fields both Gemini routes read, at the top level of the body.
 #[non_exhaustive]

@@ -176,7 +176,9 @@ impl LlamaCppOptions {
     }
 }
 
-impl ExtensionOptions for LlamaCppOptions {}
+impl ExtensionOptions for LlamaCppOptions {
+    type Ext = LlamaCppExt;
+}
 
 /// llama.cpp's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

@@ -62,7 +62,9 @@ impl XaiOptions {
     }
 }
 
-impl ExtensionOptions for XaiOptions {}
+impl ExtensionOptions for XaiOptions {
+    type Ext = XaiExt;
+}
 
 /// xAI's reply fields, from `usage` on both routes. Each is `None` when
 /// the reply lacks it.

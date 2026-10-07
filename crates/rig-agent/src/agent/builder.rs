@@ -286,6 +286,21 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
+    /// Store `options` as the entry of their provider
+    /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext))
+    /// in the provider options every request of this agent carries,
+    /// replacing that provider's entry and keeping every other
+    /// ([`ProviderOptions::set`](rig_core::completion::ProviderOptions::set)).
+    /// Options that do not serialize fail each request's encode.
+    pub fn provider_option<O: rig_core::completion::ExtensionOptions>(
+        mut self,
+        options: O,
+    ) -> Self {
+        self.config.provider_options =
+            std::mem::take(&mut self.config.provider_options).set(options);
+        self
+    }
+
     /// Check the generation options of every model call against the
     /// catalog entry of the model the call goes to, before it is sent:
     /// `spec` (the agent's own model's entry) for a call to the model the

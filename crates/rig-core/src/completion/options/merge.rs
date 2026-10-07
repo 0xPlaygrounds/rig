@@ -333,12 +333,14 @@ fn clear(options: &mut GenerationOptions, ignored: &[&str]) {
 ///
 /// # Errors
 ///
-/// When an option is refused under [`OnUnsupported::Error`], or the wire
-/// answers an option wrongly.
+/// When an option is refused under [`OnUnsupported::Error`], the wire
+/// answers an option wrongly, or the request carries provider options that
+/// did not serialize.
 pub fn check(
     target: &dyn ReplayTarget,
     request: &mut CompletionRequest,
 ) -> Result<(), EncodeError> {
+    unserialized(request)?;
     let settled = settle(target, request)?;
     clear(&mut request.options, &settled.ignored);
     let layer = provider_layer(target, request);
@@ -526,6 +528,17 @@ impl ProviderLayer {
     }
 }
 
+/// The error of provider options [`ProviderOptions::set`] stored without
+/// sections, as an encode error.
+///
+/// [`ProviderOptions::set`]: crate::completion::ProviderOptions::set
+fn unserialized(request: &CompletionRequest) -> Result<(), EncodeError> {
+    match request.provider_options.failure() {
+        Some(error) => Err(EncodeError::request(error.clone())),
+        None => Ok(()),
+    }
+}
+
 /// `additional_params` as an object, or empty.
 fn raw_layer(request: &CompletionRequest) -> Result<Map<String, Value>, EncodeError> {
     match &request.additional_params {
@@ -643,7 +656,8 @@ pub fn param(target: &dyn ReplayTarget, request: &CompletionRequest, key: &str) 
 /// # Errors
 ///
 /// When an option or a provider field is refused under
-/// [`OnUnsupported::Error`],
+/// [`OnUnsupported::Error`], the request carries provider options that did
+/// not serialize,
 /// `additional_params` is not an object or holds a malformed `tools` or
 /// cached-content handle, `base` fails, or a rewrite refuses the body.
 pub fn request_params(
@@ -653,6 +667,7 @@ pub fn request_params(
     raw_at: RawAt,
     rewrites: &[Rewrite],
 ) -> Result<FinalBody, EncodeError> {
+    unserialized(request)?;
     let settled = settle(target, request)?;
     let mut provider = provider_layer(target, request);
     // The rewrite drops a raw `background` as it always has; a typed one is

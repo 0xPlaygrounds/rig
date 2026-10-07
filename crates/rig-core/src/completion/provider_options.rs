@@ -11,11 +11,18 @@
 //! above the mapped generation options and below `additional_params`. A
 //! section for another route is skipped.
 //!
+//! Each `Options` type names its provider ([`ExtensionOptions::Ext`]), so
+//! [`ProviderOptions::set`] and `CompletionRequest::provider_option` take
+//! the options by value, with no provider type and no `?`. Options that do
+//! not serialize fail the request's encode.
+//!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
+//! use rig_core::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions};
 //!
-//! let request = CompletionRequest::new("hi").provider_options(ProviderOptions::new());
-//! assert!(request.provider_options.is_empty());
+//! let request =
+//!     CompletionRequest::new("hi").provider_option(OpenRouterOptions::new().session_id("s-1"));
+//! assert!(request.provider_options.contains::<OpenRouterExt>());
 //! ```
 
 use std::collections::BTreeMap;
@@ -55,6 +62,12 @@ pub trait ProviderExtension {
 pub trait ExtensionOptions:
     Serialize + Clone + fmt::Debug + Send + Sync + UnwindSafe + RefUnwindSafe + 'static
 {
+    /// The provider these options are for: the entry
+    /// [`ProviderOptions::set`] stores them under. A type that serves as the
+    /// `Options` of several providers names one of them here, and is stored
+    /// for the others with [`ProviderOptions::with`].
+    type Ext: ProviderExtension<Options = Self>;
+
     /// The fields `target` cannot send for `request`, each a top-level body
     /// key with the reason. Each one set is reported through the request's
     /// [`OnUnsupported`](crate::completion::OnUnsupported) policy under the
@@ -140,11 +153,47 @@ impl<T: ExtensionOptions> Refusals for T {
     }
 }
 
-/// One provider's sections, and the typed options they came from.
+/// One provider's entry: its sections and the typed options they came
+/// from, or the error the typed options failed to serialize with.
 #[derive(Clone)]
-struct Entry {
-    sections: Map<String, Value>,
-    typed: Option<Arc<dyn Refusals>>,
+enum Entry {
+    Sections {
+        sections: Map<String, Value>,
+        typed: Option<Arc<dyn Refusals>>,
+    },
+    Failed(Failure),
+}
+
+/// The error of options that did not serialize. It is never mutated once
+/// made, so a request holding it stays unwind safe although
+/// `serde_json::Error` is not.
+#[derive(Clone)]
+struct Failure(Arc<OptionsError>);
+
+impl UnwindSafe for Failure {}
+impl RefUnwindSafe for Failure {}
+
+impl Entry {
+    /// The sections, when the options serialized.
+    fn sections(&self) -> Option<&Map<String, Value>> {
+        match self {
+            Self::Sections { sections, .. } => Some(sections),
+            Self::Failed(_) => None,
+        }
+    }
+}
+
+/// `P`'s `options` as sections, empty when they write no field.
+fn sections_of<P: ProviderExtension>(
+    options: &P::Options,
+) -> Result<Map<String, Value>, OptionsError> {
+    let provider = P::PROVIDER;
+    let value = serde_json::to_value(options)
+        .map_err(|source| OptionsError::Serialize { provider, source })?;
+    let Value::Object(sections) = value else {
+        return Err(OptionsError::NotSections { provider });
+    };
+    non_empty_sections(sections).ok_or(OptionsError::NotSections { provider })
 }
 
 /// Typed options for several providers, one entry per provider key. Each
@@ -152,6 +201,12 @@ struct Entry {
 /// serialized form are the entries' sections. A deserialized entry has no
 /// typed options behind it, so its fields are sent as written: inserting the
 /// typed options again restores their refusal check.
+///
+/// An entry [`Self::set`] stores from options that do not serialize holds
+/// the [`OptionsError`] instead of sections. It fails the encode of every
+/// request that carries it, whichever provider the request goes to, and it
+/// fails serializing this value, so the error is never dropped. Two failed
+/// entries are equal when their errors read the same.
 #[derive(Clone, Default)]
 pub struct ProviderOptions(BTreeMap<String, Entry>);
 
@@ -171,26 +226,58 @@ impl ProviderOptions {
         &mut self,
         options: &P::Options,
     ) -> Result<&mut Self, OptionsError> {
-        let provider = P::PROVIDER;
-        let value = serde_json::to_value(options)
-            .map_err(|source| OptionsError::Serialize { provider, source })?;
-        let Value::Object(sections) = value else {
-            return Err(OptionsError::NotSections { provider });
-        };
-        let sections =
-            non_empty_sections(sections).ok_or(OptionsError::NotSections { provider })?;
+        let sections = sections_of::<P>(options)?;
+        self.put(P::PROVIDER, sections, || Arc::new(options.clone()));
+        Ok(self)
+    }
+
+    /// `self` with `options` as the entry of their provider,
+    /// [`ExtensionOptions::Ext`], replacing any entry it had. Options that
+    /// write no field leave that provider with no entry.
+    ///
+    /// It cannot fail: options that do not serialize to an object of object
+    /// sections are stored as a failed entry, which fails the encode of a
+    /// request that carries it with the [`OptionsError`] as the source.
+    /// [`Self::with`] reports the same error at once.
+    ///
+    /// ```
+    /// use rig_core::completion::ProviderOptions;
+    /// use rig_core::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions};
+    ///
+    /// let options = ProviderOptions::new().set(OpenRouterOptions::new().session_id("s-1"));
+    /// assert!(options.contains::<OpenRouterExt>());
+    /// ```
+    pub fn set<O: ExtensionOptions>(mut self, options: O) -> Self {
+        let provider = <O::Ext as ProviderExtension>::PROVIDER;
+        match sections_of::<O::Ext>(&options) {
+            Ok(sections) => self.put(provider, sections, || Arc::new(options)),
+            Err(error) => {
+                self.0
+                    .insert(provider.to_owned(), Entry::Failed(Failure(Arc::new(error))));
+            }
+        }
+        self
+    }
+
+    /// Store `sections` as `provider`'s entry, with the typed options
+    /// `typed` makes, or remove the entry when `sections` is empty.
+    fn put(
+        &mut self,
+        provider: &str,
+        sections: Map<String, Value>,
+        typed: impl FnOnce() -> Arc<dyn Refusals>,
+    ) {
         if sections.is_empty() {
             self.0.remove(provider);
         } else {
             self.0.insert(
                 provider.to_owned(),
-                Entry {
+                Entry::Sections {
                     sections,
-                    typed: Some(Arc::new(options.clone())),
+                    typed: Some(typed()),
                 },
             );
         }
-        Ok(self)
     }
 
     /// `self` with `options` as `P`'s entry. See [`Self::insert`].
@@ -207,8 +294,9 @@ impl ProviderOptions {
     }
 
     /// `P`'s sections as the wire receives them, when it has an entry.
+    /// `None` for a failed entry ([`Self::set`]).
     pub fn get<P: ProviderExtension>(&self) -> Option<&Map<String, Value>> {
-        self.0.get(P::PROVIDER).map(|entry| &entry.sections)
+        self.0.get(P::PROVIDER).and_then(Entry::sections)
     }
 
     /// Remove `P`'s entry.
@@ -238,7 +326,15 @@ impl ProviderOptions {
 
     /// The sections of `provider`'s entry.
     pub(crate) fn sections(&self, provider: &str) -> Option<&Map<String, Value>> {
-        self.0.get(provider).map(|entry| &entry.sections)
+        self.0.get(provider).and_then(Entry::sections)
+    }
+
+    /// The error of the first entry whose options did not serialize.
+    pub(crate) fn failure(&self) -> Option<&Arc<OptionsError>> {
+        self.0.values().find_map(|entry| match entry {
+            Entry::Failed(Failure(error)) => Some(error),
+            Entry::Sections { .. } => None,
+        })
     }
 
     /// The refusals of the typed options behind `provider`'s entry.
@@ -248,18 +344,22 @@ impl ProviderOptions {
         target: &dyn ReplayTarget,
         request: &CompletionRequest,
     ) -> Vec<(&'static str, String)> {
-        self.0
-            .get(provider)
-            .and_then(|entry| entry.typed.as_ref())
-            .map(|typed| typed.refusals(target, request))
-            .unwrap_or_default()
+        match self.0.get(provider) {
+            Some(Entry::Sections {
+                typed: Some(typed), ..
+            }) => typed.refusals(target, request),
+            _ => Vec::new(),
+        }
     }
 
     /// Remove `field` from the `sections` of `provider`'s entry.
     pub(crate) fn remove_field(&mut self, provider: &str, sections: &[&str], field: &str) {
-        if let Some(entry) = self.0.get_mut(provider) {
+        if let Some(Entry::Sections {
+            sections: entry, ..
+        }) = self.0.get_mut(provider)
+        {
             for section in sections {
-                if let Some(Value::Object(fields)) = entry.sections.get_mut(*section) {
+                if let Some(Value::Object(fields)) = entry.get_mut(*section) {
                     fields.shift_remove(field);
                 }
             }
@@ -283,35 +383,48 @@ fn non_empty_sections(sections: Map<String, Value>) -> Option<Map<String, Value>
     Some(kept)
 }
 
+impl fmt::Debug for Entry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sections { sections, .. } => sections.fmt(f),
+            Self::Failed(Failure(error)) => {
+                f.debug_tuple("Failed").field(&error.to_string()).finish()
+            }
+        }
+    }
+}
+
 impl fmt::Debug for ProviderOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_map()
-            .entries(
-                self.0
-                    .iter()
-                    .map(|(provider, entry)| (provider, &entry.sections)),
-            )
-            .finish()
+        f.debug_map().entries(&self.0).finish()
+    }
+}
+
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Sections { sections: a, .. }, Self::Sections { sections: b, .. }) => a == b,
+            (Self::Failed(Failure(a)), Self::Failed(Failure(b))) => a.to_string() == b.to_string(),
+            _ => false,
+        }
     }
 }
 
 impl PartialEq for ProviderOptions {
     fn eq(&self, other: &Self) -> bool {
-        self.0.len() == other.0.len()
-            && self
-                .0
-                .iter()
-                .zip(&other.0)
-                .all(|((a, x), (b, y))| a == b && x.sections == y.sections)
+        self.0 == other.0
     }
 }
 
 impl Serialize for ProviderOptions {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if let Some(error) = self.failure() {
+            return Err(serde::ser::Error::custom(error));
+        }
         serializer.collect_map(
             self.0
                 .iter()
-                .map(|(provider, entry)| (provider, &entry.sections)),
+                .filter_map(|(provider, entry)| Some((provider, entry.sections()?))),
         )
     }
 }
@@ -329,7 +442,7 @@ impl<'de> Deserialize<'de> for ProviderOptions {
             if !sections.is_empty() {
                 options.insert(
                     provider,
-                    Entry {
+                    Entry::Sections {
                         sections,
                         typed: None,
                     },

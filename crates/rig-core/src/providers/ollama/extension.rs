@@ -43,7 +43,9 @@ pub struct OllamaOptions {
     pub chat: OllamaNative,
 }
 
-impl ExtensionOptions for OllamaOptions {}
+impl ExtensionOptions for OllamaOptions {
+    type Ext = OllamaExt;
+}
 
 impl OllamaOptions {
     /// How long the daemon keeps the model loaded after the request

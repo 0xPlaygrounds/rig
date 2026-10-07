@@ -211,7 +211,10 @@ mod extension {
         pub(super) fields: Map<String, Value>,
     }
 
-    impl ExtensionOptions for Shared {}
+    /// Alpha's options; [`Beta`] stores the same type with `with::<Beta>`.
+    impl ExtensionOptions for Shared {
+        type Ext = Alpha;
+    }
 
     pub(super) struct NoExtras;
 
@@ -288,6 +291,52 @@ async fn the_agents_provider_options_reach_the_request_and_a_run_replaces_an_ent
         second.provider_options.get::<Beta>(),
         agent_options.get::<Beta>()
     );
+}
+
+#[tokio::test]
+async fn provider_option_on_the_agent_and_the_run_equals_the_long_form() {
+    use extension::{Alpha, Beta, shared};
+    use rig_core::completion::ProviderOptions;
+
+    let beta = ProviderOptions::new()
+        .with::<Beta>(&shared(json!({"min_p": 0.1})))
+        .expect("beta's options serialize");
+    let requests = |short: bool| {
+        let beta = beta.clone();
+        async move {
+            let model =
+                MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
+            let builder = AgentBuilder::new(model.clone()).provider_options(beta.clone());
+            let agent = match short {
+                true => builder.provider_option(shared(json!({"top_k": 4}))),
+                false => builder.provider_options(
+                    beta.with::<Alpha>(&shared(json!({"top_k": 4})))
+                        .expect("alpha's options serialize"),
+                ),
+            }
+            .build();
+            agent.prompt("go").run().await.expect("the agent's request");
+            let run = agent.prompt("again");
+            let run = match short {
+                true => run.provider_option(shared(json!({"top_k": 8}))),
+                false => run.provider_options(
+                    ProviderOptions::new()
+                        .with::<Alpha>(&shared(json!({"top_k": 8})))
+                        .expect("the run's options serialize"),
+                ),
+            };
+            run.run().await.expect("the run's request");
+            model
+                .requests()
+                .into_iter()
+                .map(|request| request.provider_options)
+                .collect::<Vec<_>>()
+        }
+    };
+    let short = requests(true).await;
+    assert_eq!(short, requests(false).await);
+    assert_eq!(short.len(), 2);
+    assert!(short.iter().all(|options| options.contains::<Beta>()));
 }
 
 #[tokio::test]

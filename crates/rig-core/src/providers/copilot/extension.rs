@@ -42,7 +42,9 @@ impl CopilotOptions {
     }
 }
 
-impl ExtensionOptions for CopilotOptions {}
+impl ExtensionOptions for CopilotOptions {
+    type Ext = CopilotExt;
+}
 
 /// Copilot's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

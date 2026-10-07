@@ -46,7 +46,9 @@ impl PerplexityOptions {
     }
 }
 
-impl ExtensionOptions for PerplexityOptions {}
+impl ExtensionOptions for PerplexityOptions {
+    type Ext = PerplexityExt;
+}
 
 /// Perplexity's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

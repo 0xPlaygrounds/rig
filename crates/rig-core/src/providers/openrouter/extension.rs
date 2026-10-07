@@ -197,7 +197,9 @@ impl OpenRouterOptions {
     }
 }
 
-impl ExtensionOptions for OpenRouterOptions {}
+impl ExtensionOptions for OpenRouterOptions {
+    type Ext = OpenRouterExt;
+}
 
 /// A non-empty list of fallback models.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

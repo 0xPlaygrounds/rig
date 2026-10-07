@@ -77,7 +77,9 @@ impl AzureOptions {
     }
 }
 
-impl ExtensionOptions for AzureOptions {}
+impl ExtensionOptions for AzureOptions {
+    type Ext = AzureExt;
+}
 
 /// Azure OpenAI's Chat reply fields. Each is `None` when the reply lacks
 /// it.

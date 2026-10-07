@@ -67,7 +67,9 @@ impl MiniMaxOptions {
     }
 }
 
-impl ExtensionOptions for MiniMaxOptions {}
+impl ExtensionOptions for MiniMaxOptions {
+    type Ext = MiniMaxExt;
+}
 
 /// The fields MiniMax's OpenAI-format API takes.
 #[non_exhaustive]

@@ -310,6 +310,21 @@ impl<O> AgentRunner<O> {
         self
     }
 
+    /// Store `options` as the entry of their provider
+    /// ([`ExtensionOptions::Ext`](rig_core::completion::ExtensionOptions::Ext))
+    /// for this run, in place of the agent's entry for that provider; every
+    /// other entry keeps the agent's. Options that write no field remove
+    /// the agent's entry for this run. Options that do not serialize fail
+    /// each request's encode.
+    pub fn provider_option<E: rig_core::completion::ExtensionOptions>(
+        mut self,
+        options: E,
+    ) -> Self {
+        self.config.provider_options =
+            std::mem::take(&mut self.config.provider_options).set(options);
+        self
+    }
+
     /// Override the tool-choice policy for this run.
     pub fn tool_choice(mut self, tool_choice: ToolChoice) -> Self {
         self.config.tool_choice = Some(tool_choice);

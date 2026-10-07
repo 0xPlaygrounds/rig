@@ -54,6 +54,8 @@ struct FakeOptions {
 }
 
 impl ExtensionOptions for FakeOptions {
+    type Ext = Fake;
+
     fn unsupported(
         &self,
         target: &dyn ReplayTarget,
@@ -221,7 +223,9 @@ fn options_must_be_an_object_of_object_sections() {
     struct Flat {
         top_k: u32,
     }
-    impl ExtensionOptions for Flat {}
+    impl ExtensionOptions for Flat {
+        type Ext = Bad;
+    }
     struct Bad;
     impl ProviderExtension for Bad {
         const PROVIDER: &'static str = "bad";
@@ -543,4 +547,149 @@ fn requests_stay_unwind_safe() {
     unwind_safe::<CompletionRequest>();
     unwind_safe::<crate::effect::EffectKind>();
     unwind_safe::<crate::serve::Decision>();
+}
+
+#[test]
+fn set_stores_the_options_under_their_own_provider_as_with_does() {
+    let typed = FakeOptions {
+        shared: Shared {
+            store: Some(true),
+            ..Shared::default()
+        },
+        ..options(4)
+    };
+    let set = ProviderOptions::new().set(typed.clone());
+    assert_eq!(set, provider_options(&typed));
+    assert_eq!(
+        serde_json::to_value(&set).unwrap_or_default(),
+        serde_json::to_value(provider_options(&typed)).unwrap_or_default()
+    );
+    // The typed options stay behind the entry: their refusal still runs.
+    let request = CompletionRequest::new("hi").provider_options(set);
+    let error = request_params(&CHAT, &request, base, RawAt::Top, &[])
+        .err()
+        .and_then(|error| error.unsupported_option().cloned());
+    assert_eq!(
+        error.map(|refused| refused.option.into_owned()),
+        Some("fake.*.store".to_owned())
+    );
+    // Another provider's entry is kept; the provider's own is replaced.
+    let set = ProviderOptions::new()
+        .with::<Other>(&options(1))
+        .unwrap_or_else(|error| panic!("{error}"))
+        .set(options(2))
+        .set(options(3));
+    assert_eq!(
+        set.get::<Other>(),
+        Some(&sections(json!({"*": {"top_k": 1}})))
+    );
+    assert_eq!(
+        set.get::<Fake>(),
+        Some(&sections(json!({"*": {"top_k": 3}})))
+    );
+    // Options that write nothing remove the entry.
+    assert!(!set.clone().set(FakeOptions::default()).contains::<Fake>());
+}
+
+#[test]
+fn provider_option_on_a_request_equals_the_long_form() {
+    let short = CompletionRequest::new("hi")
+        .provider_option(options(7))
+        .provider_option(options(4));
+    let long = request(&options(4));
+    assert_eq!(short.provider_options, long.provider_options);
+    assert_eq!(
+        serde_json::to_value(&short).unwrap_or_default(),
+        serde_json::to_value(&long).unwrap_or_default()
+    );
+    assert_eq!(
+        body(&RESPONSES, &short, RawAt::Top),
+        body(&RESPONSES, &long, RawAt::Top)
+    );
+}
+
+/// Options whose `Serialize` fails.
+#[derive(Clone, Debug)]
+struct Broken;
+
+impl Serialize for Broken {
+    fn serialize<S: Serializer>(&self, _serializer: S) -> Result<S::Ok, S::Error> {
+        Err(serde::ser::Error::custom("broken on purpose"))
+    }
+}
+
+struct BrokenExt;
+
+impl ExtensionOptions for Broken {
+    type Ext = BrokenExt;
+}
+
+impl ProviderExtension for BrokenExt {
+    const PROVIDER: &'static str = "fake";
+    type Options = Broken;
+    type Extras = FakeExtras;
+}
+
+#[test]
+fn options_that_do_not_serialize_fail_the_encode_not_the_setter() {
+    assert!(matches!(
+        ProviderOptions::new().with::<BrokenExt>(&Broken),
+        Err(OptionsError::Serialize {
+            provider: "fake",
+            ..
+        })
+    ));
+    let mut request = CompletionRequest::new("hi").provider_option(Broken);
+    assert!(!request.provider_options.is_empty());
+    assert!(request.provider_options.contains::<BrokenExt>());
+    assert_eq!(request.provider_options.get::<BrokenExt>(), None);
+    let message = "fake options do not serialize: broken on purpose";
+    let encode = format!("RequestError: {message}");
+    // Every encode reports it, whichever route it takes.
+    for target in [&CHAT, &RESPONSES] {
+        let error = request_params(target, &request, base, RawAt::Top, &[]).err();
+        assert_eq!(error.map(|error| error.to_string()), Some(encode.clone()));
+    }
+    let error = check(&CHAT, &mut request).err();
+    assert_eq!(error.map(|error| error.to_string()), Some(encode));
+    // Serializing the request reports it too, rather than dropping the entry.
+    let error = serde_json::to_value(&request).err();
+    assert_eq!(
+        error.map(|error| error.to_string()),
+        Some(message.to_owned())
+    );
+    // Equal to another failed entry with the same error; not to a good one.
+    assert_eq!(request.provider_options, ProviderOptions::new().set(Broken));
+    assert_ne!(request.provider_options, provider_options(&options(1)));
+    // Setting good options in its place clears the failure.
+    let request = request.provider_option(options(1));
+    assert_eq!(request.provider_options, provider_options(&options(1)));
+    assert!(request_params(&CHAT, &request, base, RawAt::Top, &[]).is_ok());
+}
+
+#[test]
+fn options_of_the_wrong_shape_fail_the_encode() {
+    #[derive(Clone, Debug, Serialize)]
+    struct Flat {
+        top_k: u32,
+    }
+    struct FlatExt;
+    impl ExtensionOptions for Flat {
+        type Ext = FlatExt;
+    }
+    impl ProviderExtension for FlatExt {
+        const PROVIDER: &'static str = "other";
+        type Options = Flat;
+        type Extras = FakeExtras;
+    }
+    // An entry for a provider the request does not go to fails it all the same.
+    let request = request(&options(1)).provider_option(Flat { top_k: 1 });
+    let error = request_params(&CHAT, &request, base, RawAt::Top, &[]).err();
+    assert_eq!(
+        error.map(|error| error.to_string()),
+        Some(
+            "RequestError: other options must serialize to an object of sections, each an object"
+                .to_owned()
+        )
+    );
 }

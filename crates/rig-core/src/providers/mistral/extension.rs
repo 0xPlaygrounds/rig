@@ -117,7 +117,9 @@ impl MistralOptions {
     }
 }
 
-impl ExtensionOptions for MistralOptions {}
+impl ExtensionOptions for MistralOptions {
+    type Ext = MistralExt;
+}
 
 /// Mistral's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

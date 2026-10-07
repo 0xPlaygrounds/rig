@@ -99,7 +99,9 @@ impl OpenAiOptions {
     }
 }
 
-impl ExtensionOptions for OpenAiOptions {}
+impl ExtensionOptions for OpenAiOptions {
+    type Ext = OpenAiExt;
+}
 
 /// The fields both OpenAI routes take at the top level of the body.
 #[non_exhaustive]

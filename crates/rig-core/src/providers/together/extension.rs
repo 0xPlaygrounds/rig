@@ -98,7 +98,9 @@ impl TogetherOptions {
     }
 }
 
-impl ExtensionOptions for TogetherOptions {}
+impl ExtensionOptions for TogetherOptions {
+    type Ext = TogetherExt;
+}
 
 /// Together AI's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

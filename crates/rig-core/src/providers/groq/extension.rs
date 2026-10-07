@@ -157,7 +157,9 @@ impl GroqOptions {
     }
 }
 
-impl ExtensionOptions for GroqOptions {}
+impl ExtensionOptions for GroqOptions {
+    type Ext = GroqExt;
+}
 
 /// Groq's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

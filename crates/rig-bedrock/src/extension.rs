@@ -46,7 +46,9 @@ pub struct BedrockOptions {
     pub shared: BedrockShared,
 }
 
-impl ExtensionOptions for BedrockOptions {}
+impl ExtensionOptions for BedrockOptions {
+    type Ext = BedrockExt;
+}
 
 impl BedrockOptions {
     /// Apply `guardrail` to the request (`guardrailConfig`).

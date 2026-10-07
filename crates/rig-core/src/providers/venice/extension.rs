@@ -78,7 +78,9 @@ impl VeniceOptions {
     }
 }
 
-impl ExtensionOptions for VeniceOptions {}
+impl ExtensionOptions for VeniceOptions {
+    type Ext = VeniceExt;
+}
 
 /// How Venice's web search behaves for a request.
 #[non_exhaustive]

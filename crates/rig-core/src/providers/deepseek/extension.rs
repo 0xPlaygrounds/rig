@@ -40,7 +40,9 @@ impl DeepSeekOptions {
     }
 }
 
-impl ExtensionOptions for DeepSeekOptions {}
+impl ExtensionOptions for DeepSeekOptions {
+    type Ext = DeepSeekExt;
+}
 
 /// DeepSeek's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

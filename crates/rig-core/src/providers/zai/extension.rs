@@ -57,7 +57,9 @@ impl ZaiOptions {
     }
 }
 
-impl ExtensionOptions for ZaiOptions {}
+impl ExtensionOptions for ZaiOptions {
+    type Ext = ZaiExt;
+}
 
 /// The fields Z.AI's OpenAI-format API takes.
 #[non_exhaustive]

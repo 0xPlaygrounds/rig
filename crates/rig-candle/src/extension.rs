@@ -41,7 +41,9 @@ pub struct CandleOptions {
     pub shared: CandleShared,
 }
 
-impl ExtensionOptions for CandleOptions {}
+impl ExtensionOptions for CandleOptions {
+    type Ext = CandleExt;
+}
 
 impl CandleOptions {
     /// Sample from the `top_k` most likely tokens. It must be positive and

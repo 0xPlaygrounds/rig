@@ -9,11 +9,17 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use rig::catalog::Catalog;
-use rig::completion::ProviderExtension;
+use rig::completion::{ExtensionOptions, ProviderExtension};
 use rig::providers;
 
-/// `P`'s key.
-fn key<P: ProviderExtension>() -> &'static str {
+/// `P`'s key. It compiles only when `P`'s options name `P` back
+/// ([`ExtensionOptions::Ext`]), so every marker listed here, which the
+/// count below makes every marker, takes its options by value through
+/// `ProviderOptions::set`.
+fn key<P: ProviderExtension>() -> &'static str
+where
+    P::Options: ExtensionOptions<Ext = P>,
+{
     P::PROVIDER
 }
 

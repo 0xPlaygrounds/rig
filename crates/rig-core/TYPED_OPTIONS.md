@@ -910,6 +910,7 @@ pub trait ProviderExtension {
     type Extras: ReplyExtras;
 }
 pub trait ExtensionOptions: Serialize + Clone + Debug + Send + Sync + UnwindSafe + RefUnwindSafe + 'static {
+    type Ext: ProviderExtension<Options = Self>; // the provider `set` stores them under
     fn unsupported(&self, target: &dyn ReplayTarget, request: &CompletionRequest)
         -> Vec<(&'static str, String)> { Vec::new() }
 }
@@ -923,6 +924,8 @@ impl ProviderOptions {
     pub fn new() -> Self;
     pub fn insert<P: ProviderExtension>(&mut self, options: &P::Options) -> Result<&mut Self, OptionsError>;
     pub fn with<P: ProviderExtension>(self, options: &P::Options) -> Result<Self, OptionsError>;
+    /// Under `O::Ext`; a serialization failure is kept and fails the encode.
+    pub fn set<O: ExtensionOptions>(self, options: O) -> Self;
     pub fn get<P: ProviderExtension>(&self) -> Option<&Map<String, Value>>;
     pub fn remove<P: ProviderExtension>(&mut self);
     pub fn contains<P: ProviderExtension>(&self) -> bool;
@@ -942,10 +945,43 @@ pub enum OptionsError {
 #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
 pub provider_options: ProviderOptions;
 pub fn provider_options(self, options: ProviderOptions) -> Self;
+pub fn provider_option<O: ExtensionOptions>(self, options: O) -> Self; // set on the request's value
 
 // CompletionResponse
 pub fn extras<P: ProviderExtension>(&self) -> Option<Result<P::Extras, serde_json::Error>>;
 ```
+
+**Self-describing options.** Each `Options` type names its marker through
+`ExtensionOptions::Ext`, so the common call takes the options by value with
+no turbofish, no `&` and no `?`:
+
+```rust
+let request = CompletionRequest::new("hi").provider_option(
+    OpenRouterOptions::new().provider(ProviderPreferences::new().only([route]).allow_fallbacks(false)),
+);
+```
+
+`ProviderOptions::set`, `CompletionRequest::provider_option`,
+`AgentBuilder::provider_option`, `AgentRunner::provider_option` (for one run,
+in place of the agent's entry for that provider) and rig-ecs's
+`agent::ProviderOptions::set` all store the entry `insert::<O::Ext>` stores.
+Each of the 25 markers has its own `Options` type, so the link covers every
+provider, the four companion crates included (`tests/core/provider_keys.rs`
+compiles it for each). A type that serves several markers (a user gateway
+reusing a built-in type, or the test markers) links to one of them and is
+stored for the others with `with::<P>`/`insert::<P>`, which stay as they are.
+
+`set` cannot fail. It still serializes at once, so a stored entry and its
+JSON are exactly what `with` stores. Options that do not serialize to an
+object of object sections become a failed entry: `contains::<P>` is true,
+`get::<P>` is `None`, the value is not empty, and `options::check` and
+`request_params` fail every encode of a request that carries it with an
+`EncodeError` (kind `Request`) whose source is the `OptionsError`, whichever
+provider the request goes to. Serializing the value (a request, a `RunSpec`,
+a `PreparedRequest`) fails with the same message, so the error is never
+dropped. Two failed entries are equal when their errors read the same. A
+deserialized value never holds one, so the serialized form and equality of
+every value that serializes are unchanged.
 
 Each provider's marker, `Options` and `Extras` live in
 `providers::<p>::extension` (for example `rig::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions, OpenRouterExtras}`).

@@ -107,7 +107,9 @@ impl VertexOptions {
     }
 }
 
-impl ExtensionOptions for VertexOptions {}
+impl ExtensionOptions for VertexOptions {
+    type Ext = VertexExt;
+}
 
 /// The fields of Vertex AI's `GenerateContentRequest` rig does not set.
 #[non_exhaustive]

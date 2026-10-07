@@ -44,7 +44,9 @@ pub struct CohereOptions {
     pub chat: CohereNative,
 }
 
-impl ExtensionOptions for CohereOptions {}
+impl ExtensionOptions for CohereOptions {
+    type Ext = CohereExt;
+}
 
 impl CohereOptions {
     /// Penalize tokens by how often they appeared (`frequency_penalty`,

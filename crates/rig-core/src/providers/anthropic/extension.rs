@@ -230,6 +230,8 @@ impl AnthropicOptions {
 }
 
 impl ExtensionOptions for AnthropicOptions {
+    type Ext = AnthropicExt;
+
     /// `top_k` on a model that fixes its sampling, and fast mode on a
     /// listed model that does not offer it. A model the catalog does not
     /// list is sent everything.

@@ -67,6 +67,8 @@ impl Serialize for GeminiGrpcOptions {
 }
 
 impl ExtensionOptions for GeminiGrpcOptions {
+    type Ext = GeminiGrpcExt;
+
     fn unsupported(
         &self,
         _target: &dyn ReplayTarget,

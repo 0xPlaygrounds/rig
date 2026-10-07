@@ -47,7 +47,9 @@ impl XiaomiMimoOptions {
     }
 }
 
-impl ExtensionOptions for XiaomiMimoOptions {}
+impl ExtensionOptions for XiaomiMimoOptions {
+    type Ext = XiaomiMimoExt;
+}
 
 /// Xiaomi MiMo's reply fields. Each is `None` when the reply lacks it.
 #[non_exhaustive]

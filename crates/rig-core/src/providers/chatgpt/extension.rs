@@ -71,7 +71,9 @@ impl ChatGptOptions {
     }
 }
 
-impl ExtensionOptions for ChatGptOptions {}
+impl ExtensionOptions for ChatGptOptions {
+    type Ext = ChatGptExt;
+}
 
 /// The fields the ChatGPT backend takes at the top level of a Responses
 /// body.

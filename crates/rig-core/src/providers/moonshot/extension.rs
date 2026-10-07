@@ -56,7 +56,9 @@ impl MoonshotOptions {
     }
 }
 
-impl ExtensionOptions for MoonshotOptions {}
+impl ExtensionOptions for MoonshotOptions {
+    type Ext = MoonshotExt;
+}
 
 /// The fields Moonshot's OpenAI-format API takes.
 #[non_exhaustive]
