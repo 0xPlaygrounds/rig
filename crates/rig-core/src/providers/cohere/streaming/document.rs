@@ -12,7 +12,8 @@ use crate::wire::{Decoder, WireEvent, WireFrame};
 
 /// The native chat response a stream of events adds up to.
 ///
-/// `message-start` gives `id` and the message's skeleton. `content-start`
+/// `message-start` gives `id` and the message's skeleton, less an empty
+/// `tool_plan`, which a unary reply without a plan leaves out. `content-start`
 /// places a content part at its index and `content-delta` appends to its
 /// text fields. `tool-plan-delta` appends to `message.tool_plan`.
 /// `tool-call-start` places a call at its index and `tool-call-delta`
@@ -76,7 +77,15 @@ impl Reassemble<WireFrame> for ChatResponse {
                     self.top.insert("id".to_owned(), id.clone());
                 }
                 if let Some(Value::Object(message)) = fields.at("/delta/message") {
-                    append(&mut self.message, message);
+                    let mut message = message.clone();
+                    // The skeleton states an empty plan; a unary reply with
+                    // no plan states none.
+                    if let Some(Value::String(plan)) = message.shift_remove("tool_plan")
+                        && !plan.is_empty()
+                    {
+                        self.tool_plan.get_or_insert_default().push_str(&plan);
+                    }
+                    append(&mut self.message, &message);
                 }
             }
             "content-start" => {
@@ -138,7 +147,7 @@ impl Reassemble<WireFrame> for ChatResponse {
                 message.insert(key.to_owned(), list);
             }
         }
-        if let Some(plan) = self.tool_plan {
+        if let Some(plan) = self.tool_plan.filter(|plan| !plan.is_empty()) {
             message.insert("tool_plan".to_owned(), Value::String(plan));
         }
         let mut document = self.top;

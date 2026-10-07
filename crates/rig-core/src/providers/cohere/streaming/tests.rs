@@ -725,7 +725,7 @@ fn a_whole_reply_is_its_document_and_a_cut_stream_keeps_what_arrived() {
     assert_eq!(
         rebuilt(&cut),
         json!({"id": "resp_1", "message": {"role": "assistant", "content": [{"type": "text", "text": "par"}],
-            "tool_plan": "", "tool_calls": [], "citations": []}})
+            "tool_calls": [], "citations": []}})
     );
 }
 
@@ -917,4 +917,47 @@ fn the_cost_prices_the_billed_units() {
         "usage": {"tokens": {"input_tokens": 100, "output_tokens": 10}}});
     let response = command_a(&[tokens_only], crate::wire::Mode::Unary);
     assert_eq!(response.usage.cost, Some(priced(100.0, 10.0)));
+}
+
+/// A plan-less reply rebuilds no `tool_plan`, as its unary body states
+/// none, so the extras read `None` both ways. The skeleton is Cohere's
+/// recorded `message-start`
+/// (`cohere/native/documents_ground_a_streamed_answer_with_citations.yaml`).
+#[test]
+fn a_streamed_reply_without_a_plan_rebuilds_no_tool_plan() {
+    use crate::completion::ReplyExtras;
+    let start = json!({"id": "c1", "type": "message-start", "delta": {"message": {
+        "citations": [], "content": [], "role": "assistant", "tool_calls": [], "tool_plan": ""}}});
+    let frames = vec![
+        start,
+        content_start(0, "text"),
+        content_delta(0, "text", "hello"),
+        content_end(0),
+        json!({"type": "message-end", "delta": {"finish_reason": "COMPLETE", "usage": usage()}}),
+    ];
+    let streamed = rebuilt(&frames);
+    assert_eq!(streamed.pointer("/message/tool_plan"), None, "{streamed}");
+    let unary = json!({"id": "c1", "finish_reason": "COMPLETE", "usage": usage(),
+        "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}});
+    let api = crate::message::Api::from_static(crate::providers::cohere::chat::API);
+    let extras = |raw: &Value| {
+        crate::providers::cohere::extension::CohereExtras::from_reply(&api, raw)
+            .expect("the extras read")
+            .tool_plan
+    };
+    assert_eq!(extras(&streamed), None);
+    assert_eq!(extras(&streamed), extras(&unary));
+
+    let mut seeded = frames.clone();
+    if let Some(plan) = seeded
+        .first_mut()
+        .and_then(|start| start.pointer_mut("/delta/message/tool_plan"))
+    {
+        *plan = json!("I will ");
+    }
+    seeded.insert(1, plan_delta("look."));
+    assert_eq!(
+        rebuilt(&seeded).pointer("/message/tool_plan"),
+        Some(&json!("I will look."))
+    );
 }
