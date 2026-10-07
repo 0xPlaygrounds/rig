@@ -1119,9 +1119,13 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     /// [`AgentHook::observes`] like [`AgentHook::on_dispatch`]. Each
     /// dispatched id gets at most one outcome; a denied one gets none. A
     /// completion's outcome fires after the run validated an accepted turn,
-    /// where a replacement applies. A rejected, recovered, abandoned or
-    /// failed attempt closes observe-only (with `Err` for a failure,
-    /// `Cancelled` for a hook stop) and a replacement is ignored.
+    /// where a replacement applies. Every other attempt closes observe-only
+    /// and a replacement is ignored. It is `Err` when no whole answer arrived:
+    /// the provider call failed, a hook stopped the run mid-reply
+    /// (`Cancelled`), or the run failed a streamed reply before it ended. It
+    /// is `Ok` with the provider's response when the answer arrived and the
+    /// run rejected, retried, recovered, abandoned or failed it, so an `Ok`
+    /// completion outcome is not proof that the turn was accepted.
     fn on_outcome(
         &self,
         _ctx: &HookContext,

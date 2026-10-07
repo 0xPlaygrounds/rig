@@ -53,7 +53,7 @@ use crate::{
     streaming::{Item, Part, StreamEvent},
     tool::{ToolCatalog, ToolResult},
 };
-use dispatch::{CompletionScope, DispatchScope, open_completion};
+use dispatch::{CompletionScope, DispatchScope, model_step};
 
 mod dispatch;
 
@@ -75,10 +75,13 @@ pub(crate) enum DriveItem {
 /// Medium-specific model turns, span chaining, telemetry, and final-item
 /// construction. Implementations resolve invalid calls during model ingestion
 /// and feed accepted turns back into the run; the engine runs tool calls.
-pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
+pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
     /// Whether the surface forwards intermediate items. The blocking fold
     /// discards them, so its source skips building them.
     const FORWARDS_ITEMS: bool;
+
+    /// Whether this source's completions are dispatched as streams.
+    const STREAMS: bool;
 
     /// Build this medium's per-turn `chat` span (name + parenting + any
     /// `follows_from` chaining differ between blocking and streaming).
@@ -91,7 +94,8 @@ pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
     /// Run one model turn: issue the provider call through the engine's open
     /// `scope`, feed the result into the sans-IO machine, and yield any
     /// intermediate items. Returning normally advances the loop; yielding an
-    /// `Err` terminates the run. The engine closes the scope on either exit.
+    /// `Err` terminates the run. Only [`model_step`] calls this, and it closes
+    /// the scope on either exit.
     fn run_model_turn<'a>(
         &'a mut self,
         runner: &'a AgentRunner,
@@ -100,7 +104,7 @@ pub(crate) trait TurnSource: WasmCompatSend + WasmCompatSync {
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
-        scope: &'a mut CompletionScope,
+        scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a>;
 
     /// Chain a chat or tool execute span into this medium's span sequence.
@@ -220,11 +224,9 @@ where
         }
 
         // A macro keeps yield and loop termination in the caller's scope;
-        // macro hygiene requires passing the loop label explicitly. A model
-        // step closes its completion scope on every exit, before an error
-        // surfaces.
+        // macro hygiene requires passing the loop label explicitly.
         macro_rules! drive_step {
-            ($label:lifetime, $step_stream:expr $(, close = $scope:ident)?) => {{
+            ($label:lifetime, $step_stream:expr) => {{
                 let mut step_stream = $step_stream;
                 let mut step_error = None;
                 while let Some(item) = step_stream.next().await {
@@ -237,7 +239,6 @@ where
                     }
                 }
                 drop(step_stream);
-                $($scope.close_unsettled(&runner, &hook_ctx, step_error.as_ref()).await;)?
                 if let Some(err) = step_error {
                     fail!(err, break $label);
                 }
@@ -350,22 +351,16 @@ where
                     run.set_previous_model(selected_label.clone());
                     previous_model = Some(selected_label);
 
-                    let opened = open_completion(&runner, &hook_ctx, &run, request, S::FORWARDS_ITEMS)
-                        .instrument(chat_span.clone())
-                        .await;
-                    let mut scope = match opened {
-                        Ok(scope) => scope,
-                        Err(err) => fail!(err, break 'outer),
-                    };
-                    drive_step!('outer, source.run_model_turn(
+                    drive_step!('outer, model_step(
+                        &mut source,
                         &runner,
                         &hook_ctx,
                         &mut run,
+                        request,
                         prepared,
                         chat_span,
                         &agent_span,
-                        &mut scope,
-                    ), close = scope);
+                    ));
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
@@ -756,6 +751,7 @@ impl StreamingTurnSource {
 
 impl TurnSource for StreamingTurnSource {
     const FORWARDS_ITEMS: bool = true;
+    const STREAMS: bool = true;
 
     fn open_chat_span(
         &self,
@@ -773,14 +769,21 @@ impl TurnSource for StreamingTurnSource {
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         agent_span: &'a tracing::Span,
-        scope: &'a mut CompletionScope,
+        scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
             // Bound before the builder is consumed: the cap this attempt was
             // prepared with, completion-call patches included.
             let attempt_max_tokens = prepared.max_tokens;
 
-            let mut stream = chat_span.in_scope(|| scope.dispatch_stream(runner, &prepared.model));
+            let stream = chat_span.in_scope(|| scope.dispatch_stream(runner, &prepared.model));
+            let mut stream = match stream {
+                Ok(stream) => stream,
+                Err(err) => {
+                    yield Err(err);
+                    return;
+                }
+            };
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
                 prepared.allowed_tool_names.clone(),
@@ -1219,11 +1222,11 @@ pub(crate) enum ModelTurnDecision {
 /// see, and `max_tokens` the cap it was prepared with. The callers own what
 /// happens next: both record the accepted turn's telemetry, and the streaming
 /// driver also keeps the content its final item surfaces.
-pub(crate) async fn settle_model_turn(
+pub(crate) async fn settle_model_turn<M>(
     runner: &AgentRunner,
     hook_ctx: &HookContext,
     run: &mut AgentRun,
-    scope: &mut CompletionScope,
+    scope: &mut CompletionScope<M>,
     max_tokens: Option<u64>,
     recovered: bool,
 ) -> Result<ModelTurnDecision, PromptError> {
@@ -1585,6 +1588,7 @@ impl UnaryTurnSource {
 
 impl TurnSource for UnaryTurnSource {
     const FORWARDS_ITEMS: bool = false;
+    const STREAMS: bool = false;
 
     /// Chain `span` onto the previous step's span and record it as the new chain
     /// head, preserving the blocking driver's linear causal trace.
@@ -1619,7 +1623,7 @@ impl TurnSource for UnaryTurnSource {
         prepared: PreparedCompletionRequest,
         chat_span: tracing::Span,
         _agent_span: &'a tracing::Span,
-        scope: &'a mut CompletionScope,
+        scope: &'a mut CompletionScope<Self>,
     ) -> DriveStream<'a> {
         Box::pin(async_stream::stream! {
             // Content telemetry for the accepted provider turn. Called at each
