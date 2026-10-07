@@ -249,8 +249,7 @@ fn openai_chat_cells() {
             .verbosity(Verbosity::High)
             .parallel_tool_calls(true)
             .top_p(0.3)
-            .seed(4)
-            .stop(["a", "b"]),
+            .seed(4),
     )
     .expect("every other option");
     assert_eq!(body["service_tier"], "flex");
@@ -258,14 +257,107 @@ fn openai_chat_cells() {
     assert_eq!(body["parallel_tool_calls"], true);
     assert_eq!(body["top_p"], 0.3);
     assert_eq!(body["seed"], 4);
+    let body = sent(
+        &gpt("gpt-4.1"),
+        GenerationOptions::default().stop(["a", "b"]),
+    )
+    .expect("a model that does not reason stops");
     assert_eq!(body["stop"], json!(["a", "b"]));
     assert_eq!(
         refused(sent(
-            &gpt("gpt-5.2"),
+            &gpt("gpt-4.1"),
             GenerationOptions::default().stop(["a", "b", "c", "d", "e"])
         )),
         Some("stop")
     );
+}
+
+/// Chat answers `top_p` by the catalog's sampling rule, as Responses does:
+/// none on a model that never samples, and on a GPT-5.1-and-later model
+/// only while reasoning is off, which it is by default.
+#[test]
+fn chat_top_p_follows_the_catalog_sampling_rule() {
+    let top_p =
+        |model: &str, options: GenerationOptions| sent(&chat(&OPENAI, model), options.top_p(0.9));
+    for model in ["gpt-5-mini", "o3"] {
+        assert_eq!(
+            refused(top_p(model, GenerationOptions::default())),
+            Some("top_p"),
+            "{model}"
+        );
+    }
+    for options in [
+        GenerationOptions::default(),
+        GenerationOptions::default().reasoning(Reasoning::Off),
+    ] {
+        let body = top_p("gpt-5.4-nano", options).expect("reasoning is off");
+        assert_eq!(body["top_p"], 0.9);
+    }
+    assert_eq!(
+        refused(top_p(
+            "gpt-5.4-nano",
+            GenerationOptions::default().reasoning(Effort::Low)
+        )),
+        Some("top_p")
+    );
+    assert_eq!(
+        refused(top_p(GPT_6_SOL, GenerationOptions::default())),
+        Some("top_p"),
+        "GPT-6 reasons by default"
+    );
+    let body = top_p("gpt-4.1-mini", GenerationOptions::default()).expect("no reasoning");
+    assert_eq!(body["top_p"], 0.9);
+}
+
+/// OpenAI's reasoning models refuse `stop` on Chat at every effort,
+/// `none` included.
+#[test]
+fn chat_stop_is_refused_on_reasoning_models() {
+    let stop = |model: &str, options: GenerationOptions| {
+        sent(&chat(&OPENAI, model), options.stop(["END"]))
+    };
+    for (model, options) in [
+        ("gpt-5-mini", GenerationOptions::default()),
+        ("gpt-5.4-nano", GenerationOptions::default()),
+        (
+            "gpt-5.4-nano",
+            GenerationOptions::default().reasoning(Reasoning::Off),
+        ),
+        ("o4-mini", GenerationOptions::default()),
+        ("gpt-5.1-codex", GenerationOptions::default()),
+    ] {
+        assert_eq!(refused(stop(model, options)), Some("stop"), "{model}");
+    }
+    let body = stop("gpt-4.1-mini", GenerationOptions::default()).expect("no reasoning");
+    assert_eq!(body["stop"], json!(["END"]));
+    let body = stop("prod-deployment", GenerationOptions::default()).expect("an unknown id");
+    assert_eq!(body["stop"], json!(["END"]));
+}
+
+/// A model that does not reason takes only `medium` verbosity on both
+/// routes, and sends nothing for it.
+#[test]
+fn verbosity_other_than_medium_is_refused_where_the_model_does_not_reason() {
+    let gpt = |model| chat(&OPENAI, model);
+    assert_eq!(
+        refused(sent(
+            &gpt("gpt-4.1-mini"),
+            GenerationOptions::default().verbosity(Verbosity::Low)
+        )),
+        Some("verbosity")
+    );
+    let body = sent(
+        &gpt("gpt-4.1-mini"),
+        GenerationOptions::default().verbosity(Verbosity::Medium),
+    )
+    .expect("medium is the default");
+    assert!(body.get("verbosity").is_none(), "{body}");
+    let body = sent(
+        &gpt("gpt-5-mini"),
+        GenerationOptions::default().verbosity(Verbosity::Low),
+    )
+    .expect("a GPT-5 model");
+    assert_eq!(body["verbosity"], "low");
 }
 
 #[test]
@@ -560,14 +652,46 @@ mod responses {
         )
         .expect("verbosity");
         assert_eq!(body["text"], json!({"verbosity": "high"}));
+        assert_eq!(
+            refused(sent(
+                &gpt("gpt-4.1-mini"),
+                with(GenerationOptions::default().verbosity(Verbosity::Low))
+            )),
+            Some("verbosity")
+        );
+        let body = sent(
+            &gpt("gpt-4.1-mini"),
+            with(GenerationOptions::default().verbosity(Verbosity::Medium)),
+        )
+        .expect("medium is the default");
+        assert!(body.get("text").is_none(), "{body}");
 
-        // `top_p` reaches a reasoning model only at effort `none`.
+        // `top_p` reaches a reasoning model only at effort `none`, its
+        // default from GPT-5.1 to 5.4.
         assert_eq!(
             refused(sent(
                 &gpt("gpt-5.2"),
-                with(GenerationOptions::default().top_p(0.5))
+                with(
+                    GenerationOptions::default()
+                        .top_p(0.5)
+                        .reasoning(Effort::Low)
+                )
             )),
             Some("top_p")
+        );
+        let body = sent(
+            &gpt("gpt-5.2"),
+            with(GenerationOptions::default().top_p(0.5)),
+        )
+        .expect("the default effort is none");
+        assert_eq!(body["top_p"], 0.5);
+        assert_eq!(
+            refused(sent(
+                &gpt(crate::providers::openai::GPT_6_SOL),
+                with(GenerationOptions::default().top_p(0.5))
+            )),
+            Some("top_p"),
+            "GPT-6 reasons by default"
         );
         let body = sent(
             &gpt("gpt-5.2"),
@@ -860,8 +984,12 @@ fn gpt_6_sampling_under_ignore_warns_and_sends() {
     assert_eq!(body.get("temperature"), None, "{body}");
     assert_eq!(body.get("top_p"), None, "{body}");
     assert_eq!(warnings.len(), 2, "{warnings:?}");
-    assert!(warnings[0].contains("option=temperature"), "{warnings:?}");
-    assert!(warnings[1].contains("option=top_p"), "{warnings:?}");
+    for option in ["option=temperature", "option=top_p"] {
+        assert!(
+            warnings.iter().any(|warning| warning.contains(option)),
+            "{warnings:?}"
+        );
+    }
     let (body, warnings) = sent_with_warnings(&responses_wire(GPT_6_SOL), typed);
     assert_eq!(body.get("temperature"), None, "{body}");
     assert_eq!(body.get("top_p"), None, "{body}");

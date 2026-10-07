@@ -588,14 +588,51 @@ mod option_matrix {
         };
         vec![
             (
+                // GPT-5.2 samples at its default effort `none`; a reasoning
+                // model takes no `stop`.
                 "openai",
                 chat(&OPENAI, "gpt-5.2"),
-                openai_like(
+                [
                     Merge(json!({"reasoning_effort": "high"})),
                     Merge(json!({"prompt_cache_retention": "in_memory"})),
                     Merge(json!({"service_tier": "default"})),
                     Merge(json!({"verbosity": "low"})),
-                ),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Refuse,
+                ],
+            ),
+            (
+                // `gpt-5-mini` never samples.
+                "openai",
+                chat(&OPENAI, "gpt-5-mini"),
+                [
+                    Merge(json!({"reasoning_effort": "high"})),
+                    Merge(json!({"prompt_cache_retention": "in_memory"})),
+                    Merge(json!({"service_tier": "default"})),
+                    Merge(json!({"verbosity": "low"})),
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Refuse,
+                    Merge(json!({"seed": 7})),
+                    Refuse,
+                ],
+            ),
+            (
+                // A model that does not reason takes `stop`, and only
+                // `medium` verbosity.
+                "openai",
+                chat(&OPENAI, "gpt-4.1-mini"),
+                [
+                    Refuse,
+                    Merge(json!({"prompt_cache_retention": "in_memory"})),
+                    Merge(json!({"service_tier": "default"})),
+                    Refuse,
+                    Merge(json!({"parallel_tool_calls": false})),
+                    Merge(json!({"top_p": 0.5})),
+                    Merge(json!({"seed": 7})),
+                    Merge(json!({"stop": ["END"]})),
+                ],
             ),
             (
                 // rig's default `api-version` predates the newer fields.

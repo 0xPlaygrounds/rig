@@ -9,7 +9,7 @@ use serde_json::json;
 use crate::catalog::{ModelSpec, Sampling};
 use crate::completion::options::{CatalogRefusal, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
-    CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier,
+    CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
 };
 use crate::error::EncodeError;
 
@@ -137,6 +137,63 @@ fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
         }
         Some(true) if reasoning_off => send("top_p", top_p),
         Some(true) => Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`"),
+    }
+}
+
+/// `top_p` on OpenAI's Chat Completions and Responses, by the model's
+/// catalog sampling rule: [`Sampling::Never`] refuses it, and
+/// [`Sampling::ReasoningOff`] takes it only while reasoning is off. That is
+/// `reasoning` set to `Off` or, with no `reasoning` set, a model that can
+/// turn reasoning off and whose entry names no default effort, so defaults
+/// to `none` (the rule [`check_body`] applies to a raw `top_p`). A model
+/// whose entry gives no rule, or that the catalog does not list, goes by
+/// its id ([`named_top_p`]).
+fn openai_top_p(model: &str, top_p: f64, reasoning: Option<&Reasoning>) -> Mapping {
+    let spec = openai_spec(model);
+    let reasoning_off = match reasoning {
+        Some(reasoning) => matches!(reasoning, Reasoning::Off),
+        None => {
+            spec.is_some_and(|spec| spec.reasoning.can_disable && spec.reasoning.default.is_none())
+        }
+    };
+    match spec {
+        Some(spec) if spec.reasoning.supported => match spec.sampling {
+            Some(Sampling::Any) => send("top_p", top_p),
+            Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
+            Some(Sampling::ReasoningOff) => {
+                Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
+            }
+            Some(Sampling::Never) => {
+                Mapping::unsupported("this model takes no sampling parameters")
+            }
+            None => named_top_p(model, top_p, reasoning_off),
+        },
+        Some(_) => send("top_p", top_p),
+        None => named_top_p(model, top_p, reasoning_off),
+    }
+}
+
+/// `stop` on OpenAI's Chat Completions: at most 4 sequences, and none on a
+/// reasoning model (the o-series and the GPT-5 family), at any effort.
+fn openai_stop(model: &str, stop: &[String]) -> Mapping {
+    match reasons(model) {
+        Some(true) => Mapping::unsupported("an OpenAI reasoning model takes no `stop`"),
+        _ => stop_list(stop, Some(4), "stop"),
+    }
+}
+
+/// `verbosity` on OpenAI's Chat Completions and Responses, sent by `send`.
+/// A model that does not reason takes only `medium`, its default, so
+/// `Medium` sends nothing there and the other levels are refused.
+fn openai_verbosity(
+    model: &str,
+    verbosity: &Verbosity,
+    send: impl FnOnce(&Verbosity) -> Mapping,
+) -> Mapping {
+    match (reasons(model), verbosity) {
+        (Some(false), Verbosity::Medium) => Mapping::Omit("`medium` is the model's only verbosity"),
+        (Some(false), _) => Mapping::unsupported("this model takes only `medium` verbosity"),
+        _ => send(verbosity),
     }
 }
 
@@ -503,14 +560,16 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
             if dated {
                 return refuse_dated();
             }
-            send("verbosity", verbosity.as_str())
+            openai_verbosity(model, verbosity, |verbosity| {
+                send("verbosity", verbosity.as_str())
+            })
         }),
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
             send("parallel_tool_calls", parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
+        top_p: Mapping::of(top_p, |top_p| openai_top_p(model, top_p, reasoning)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(stop, |stop| stop_list(stop, Some(4), "stop")),
+        stop: Mapping::of_stop(stop, |stop| openai_stop(model, stop)),
     }
 }
 
@@ -1215,7 +1274,7 @@ fn xiaomimimo(fields: OptionFields<'_>) -> OptionMap {
 }
 
 /// `verbosity` for the Responses API, inside `text`.
-fn text_verbosity(verbosity: &crate::completion::Verbosity) -> Mapping {
+fn text_verbosity(verbosity: &Verbosity) -> Mapping {
     send("text", json!({"verbosity": verbosity.as_str()}))
 }
 
@@ -1268,7 +1327,6 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         stop,
     } = fields;
     let spec = openai_spec(model);
-    let reasoning_off = matches!(reasoning, Some(Reasoning::Off));
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Budget { .. } => {
@@ -1299,25 +1357,13 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
             ServiceTier::Flex => send("service_tier", "flex"),
             ServiceTier::Priority => send("service_tier", "priority"),
         }),
-        verbosity: Mapping::of(verbosity, text_verbosity),
+        verbosity: Mapping::of(verbosity, |verbosity| {
+            openai_verbosity(model, verbosity, text_verbosity)
+        }),
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
             send("parallel_tool_calls", parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| match spec {
-            Some(spec) if spec.reasoning.supported => match spec.sampling {
-                Some(Sampling::Any) => send("top_p", top_p),
-                Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
-                Some(Sampling::ReasoningOff) => {
-                    Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
-                }
-                Some(Sampling::Never) => {
-                    Mapping::unsupported("this model takes no sampling parameters")
-                }
-                None => named_top_p(model, top_p, reasoning_off),
-            },
-            Some(_) => send("top_p", top_p),
-            None => named_top_p(model, top_p, reasoning_off),
-        }),
+        top_p: Mapping::of(top_p, |top_p| openai_top_p(model, top_p, reasoning)),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Responses has no seed parameter")
         }),
