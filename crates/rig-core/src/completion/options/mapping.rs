@@ -59,6 +59,7 @@ impl OptionFields<'_> {
 }
 
 /// What a wire does with one option.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mapping {
     /// The option is unset. For a set option this is an encode error.

@@ -319,6 +319,7 @@ pub type SharedError = Arc<dyn std::error::Error + 'static>;
 ///
 /// Errors are `Clone`: sources are shared, so a stream that already yielded
 /// an error can hand the same error to a later caller.
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum ProviderError {
     /// A transport failure that produced no provider reply: a reset

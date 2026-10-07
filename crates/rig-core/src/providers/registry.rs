@@ -879,6 +879,7 @@ pub enum RefError {
 /// What [`connect`] connects to: a catalog entry, or a reference spelled as
 /// [`Catalog::resolve`](crate::catalog::Catalog::resolve) reads one
 /// (`anthropic/claude-opus-5-5`, `deepseek:deepseek-chat`).
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug)]
 pub enum ModelSelector<'a> {
     /// A catalog entry: its provider and id.
