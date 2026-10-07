@@ -27,7 +27,7 @@ use futures::StreamExt;
 use tracing::Instrument;
 
 use crate::error::ProviderError;
-use crate::observe::{AdapterContext, AdapterEnding, AdapterSlot};
+use crate::observe::{AdapterContext, AdapterSlot};
 use crate::streaming::{Item, Streamed};
 use crate::wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync};
 use crate::wire::document::Reassemble;
@@ -396,7 +396,12 @@ fn read<W: Wire>(
         }
         record(reply, reassembler.map(|document| document.finish()));
         if let Some(slot) = &slot {
-            slot.finish(AdapterEnding::Terminal);
+            let usage = lock(reply)
+                .end
+                .as_ref()
+                .and_then(W::Op::observed_usage)
+                .cloned();
+            slot.terminal(usage.as_ref());
         }
         {
             let state = lock(reply);

@@ -90,6 +90,11 @@ impl Operation for Completion {
         }
     }
 
+    /// The reply's normalized usage.
+    fn observed_usage(finish: &Finish) -> Option<&crate::completion::Usage> {
+        Some(&finish.usage)
+    }
+
     /// Resolve the model the request addresses once, as the request's
     /// `model`: the one it names, else the wire's. The history is checked
     /// with [`CompletionRequest::validate_message_content`], then

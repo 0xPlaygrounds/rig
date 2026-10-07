@@ -23,8 +23,7 @@ use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation,
-    WireEvent, WireFrame,
+    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
 };
 
 /// Recognized Messages event tags; any other tag classifies as unknown.
@@ -615,9 +614,9 @@ impl<'id> Decoder<'id, Completion> for MessagesDecoder {
 
 impl MessagesDecoder {
     /// Messages metadata projected before normalization can discard it: the
-    /// stop reason, the model, the message id, the usage and any error
-    /// envelope, on the unary reply and on the stream's `message_start`,
-    /// `message_delta` and `error` events.
+    /// stop reason, the model, the message id and any error envelope, on the
+    /// unary reply and on the stream's `message_start`, `message_delta` and
+    /// `error` events.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
             return;
@@ -626,22 +625,6 @@ impl MessagesDecoder {
             .get("message")
             .filter(|m| m.is_object())
             .unwrap_or(&payload);
-        // Anthropic reports the prompt on `message_start` and the answer's
-        // running total on each `message_delta`: each is a snapshot of what it
-        // knows, never a sum.
-        if let Some(usage) = payload.get("usage").or_else(|| fields.get("usage")) {
-            let counts = Counts::of(Some(usage));
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    input_tokens: counts.input,
-                    output_tokens: counts.output,
-                    total_tokens: None,
-                    cached_input_tokens: counts.cache_read,
-                    reasoning_tokens: counts.thinking,
-                    tool_input_tokens: None,
-                },
-            });
-        }
         let stop_reason = fields
             .str("stop_reason")
             .or_else(|| payload.at("/delta/stop_reason").and_then(Value::as_str));

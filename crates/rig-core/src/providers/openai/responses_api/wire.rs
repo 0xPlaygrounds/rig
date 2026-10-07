@@ -13,13 +13,12 @@ use crate::operation::Completion;
 use crate::providers::openai::wire::OpenAIConfig;
 pub(crate) use crate::providers::openai::wire::ResponsesContract;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Capabilities, Descriptor, Encoded, Framing, Mode,
-    ObservationSink, Wire,
+    AdapterVerdict, Capabilities, Descriptor, Encoded, Framing, Mode, ObservationSink, Wire,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::streaming::{ResponsesDecoder, usage_of};
+use super::streaming::ResponsesDecoder;
 use super::{ResponsesToolDefinition, SystemInstructionsPlacement};
 
 /// The Responses wire: `POST /responses`, SSE when streamed.
@@ -312,8 +311,7 @@ fn reads_images(contract: ResponsesContract, model: &str) -> bool {
 }
 
 /// The facts a Responses payload carries before normalization discards
-/// them: the verdict, the model, the response id, the usage and any error
-/// envelope.
+/// them: the verdict, the model, the response id and any error envelope.
 ///
 /// The unary reply is the response object itself; a stream event wraps that
 /// object under `response` (`response.created`, `.completed`, `.failed`,
@@ -347,19 +345,6 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
         .get("response")
         .filter(|response| response.is_object())
         .unwrap_or(&payload);
-    if let Some(usage) = object.get("usage").filter(|usage| usage.is_object()) {
-        let usage = usage_of(usage);
-        sink.emit(AdapterEvent::Usage {
-            usage: AdapterUsage {
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                total_tokens: usage.total_tokens,
-                cached_input_tokens: usage.cached_input_tokens,
-                reasoning_tokens: usage.reasoning_tokens,
-                tool_input_tokens: None,
-            },
-        });
-    }
     // `status` is the provider's verdict; `in_progress` on a stream's
     // opening event is not one yet, so it is left out of the projection.
     let verdict = AdapterVerdict {

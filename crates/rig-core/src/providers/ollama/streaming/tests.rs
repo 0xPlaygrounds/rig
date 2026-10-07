@@ -562,10 +562,10 @@ fn an_unterminated_block_is_reasoning_and_a_call_ends_the_text() {
     assert_eq!(response.tool_calls().count(), 1);
 }
 
-/// Observation reads the counters, the reason and the model off the
-/// `done` record, and an in-band error's message.
+/// Observation reads the reason and the model off the `done` record, and
+/// an in-band error's message. Usage is the driver's to observe.
 #[test]
-fn the_projection_reads_usage_verdict_and_error() {
+fn the_projection_reads_verdict_and_error() {
     use crate::observe::{AdapterContext, ObservationLog, Subject};
     let log = std::sync::Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "call");
@@ -582,9 +582,7 @@ fn the_projection_reads_usage_verdict_and_error() {
     drop(attempt);
     let observed = log.trace();
     let text = format!("{observed:?}");
-    assert!(text.contains("input_tokens: Some(12)"), "{text}");
-    assert!(text.contains("total_tokens: Some(19)"), "{text}");
-    assert!(text.contains("cached_input_tokens: Some(4)"), "{text}");
+    assert!(!text.contains("input_tokens"), "{text}");
     assert!(text.contains("\"stop\""), "{text}");
     assert!(text.contains("out of memory"), "{text}");
 }
@@ -658,4 +656,21 @@ fn a_failed_or_cut_stream_rebuilds_what_arrived() {
     assert_eq!(rebuilt(&[started.clone(), failed]), expected);
     assert_eq!(rebuilt(std::slice::from_ref(&started)), started);
     assert_eq!(rebuilt(&[]), Value::Null);
+}
+
+/// Ollama reports no total, so the observed usage carries none: the
+/// observation is the decoder's normalized `Finish` usage, observed once
+/// by the driver, never a second parse that sums the counters.
+#[tokio::test]
+async fn the_observed_usage_does_not_invent_a_total() {
+    let body = br#"{"model":"m","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":4}"#;
+    let (observed, usage) = crate::driver::tests::observed_usage(
+        OllamaConfig::new().native_completion(MODEL),
+        crate::test_utils::RecordingHttpClient::new(&body[..]),
+        Mode::Unary,
+    )
+    .await;
+    let totals: Vec<Option<u64>> = observed.iter().map(|usage| usage.total_tokens).collect();
+    assert_eq!(totals, [None], "Ollama reports no total_tokens");
+    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }

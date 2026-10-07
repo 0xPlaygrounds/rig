@@ -514,3 +514,17 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     );
     assert_eq!(response.raw["status"], "completed");
 }
+
+/// Interactions has no payload projector, yet its usage is observed: the
+/// driver observes it once, from the usage the decoder normalized.
+#[tokio::test]
+async fn an_interaction_observes_its_usage_once() {
+    let (observed, usage) = crate::driver::tests::observed_usage(
+        interactions_wire(),
+        RecordingHttpClient::new(UNARY_INTERACTION),
+        Mode::Unary,
+    )
+    .await;
+    assert!(usage.input_tokens.is_some(), "{usage:?}");
+    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+}

@@ -23,10 +23,7 @@ use crate::message::{CallId, ToolName};
 use crate::observe::ObservedError;
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
-use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent,
-    WireFrame,
-};
+use crate::wire::{AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireEvent, WireFrame};
 
 /// The keys that make a JSON line a chat record: every record carries
 /// `message` or `done`, and an in-band failure carries `error`.
@@ -263,27 +260,13 @@ impl ChatDecoder {
         out.finish(index)
     }
 
-    /// Project usage, the verdict and an error envelope off one raw record
+    /// Project the verdict and an error envelope off one raw record
     /// before normalization discards them. A payload that is not JSON
     /// projects nothing.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(record) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
-        let input = record.u64("prompt_eval_count");
-        let output = record.u64("eval_count");
-        if input.is_some() || output.is_some() {
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    input_tokens: input,
-                    output_tokens: output,
-                    total_tokens: input.zip(output).map(|(input, output)| input + output),
-                    cached_input_tokens: record.u64("prompt_eval_cached_count"),
-                    reasoning_tokens: None,
-                    tool_input_tokens: None,
-                },
-            });
-        }
         let verdict = match record.str("done_reason") {
             Some(reason) => AdapterVerdict {
                 finish_reason: Some(sink.scrub(reason)),

@@ -206,6 +206,15 @@ pub trait Operation: Sized + 'static {
         let _ = wire;
         Ok(request)
     }
+
+    /// The normalized usage one reply's `end` carries. The driver hands it
+    /// to the attempt's one closing call when the reply ends, so the
+    /// observation is the usage the decoder already normalized and never a
+    /// second parse of the payload. Observes nothing by default.
+    fn observed_usage(end: &Self::End) -> Option<&crate::completion::Usage> {
+        let _ = end;
+        None
+    }
 }
 
 /// Events a decoder builds and writes with [`Out::event`].

@@ -259,24 +259,14 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
     }
     assert_eq!(http.requests().len(), 2);
     let trace = log.trace();
-    assert_eq!(trace.observations.len(), 10);
+    // A rejected attempt never ended its reply, so it observes no usage.
+    assert_eq!(trace.observations.len(), 8);
     for (index, observation) in trace.observations.iter().enumerate() {
         let Action::Adapter { observation } = &observation.action else {
             panic!("adapter fact")
         };
-        assert_eq!(observation.attempt, Some((index / 5 + 1) as u64));
-        if index % 5 == 2 {
-            assert_eq!(
-                observation.event,
-                AdapterEvent::Usage {
-                    usage: AdapterUsage {
-                        input_tokens: Some(3),
-                        ..AdapterUsage::default()
-                    }
-                }
-            );
-        }
-        if index % 5 == 3 {
+        assert_eq!(observation.attempt, Some((index / 4 + 1) as u64));
+        if index % 4 == 2 {
             assert_eq!(
                 observation.event,
                 AdapterEvent::ErrorEnvelope {
@@ -287,7 +277,7 @@ async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies(
                 }
             );
         }
-        if index % 5 == 4 {
+        if index % 4 == 3 {
             assert_eq!(
                 observation.event,
                 AdapterEvent::Finished {
@@ -452,26 +442,14 @@ async fn corrupt_frame_is_evidence_separate_from_recovery_or_consumer_drop() {
     }
 }
 
+/// A reply that never ended observes no usage, whatever counters its body
+/// carried: usage is observed once, from the end the decoder normalized.
 #[tokio::test]
-async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
+async fn empty_unary_rejection_observes_no_usage_before_failure() {
     use crate::test_utils::RecordingHttpClient;
-    for (metadata, expected) in [
-        (
-            serde_json::json!({"promptTokenCount": 7, "totalTokenCount": 9}),
-            Some(AdapterUsage {
-                input_tokens: Some(7),
-                total_tokens: Some(9),
-                ..AdapterUsage::default()
-            }),
-        ),
-        (
-            serde_json::json!({"candidatesTokenCount": 0, "promptTokenCount": -1}),
-            Some(AdapterUsage {
-                output_tokens: Some(0),
-                ..AdapterUsage::default()
-            }),
-        ),
-        (serde_json::Value::Null, None),
+    for metadata in [
+        serde_json::json!({"promptTokenCount": 7, "totalTokenCount": 9}),
+        serde_json::Value::Null,
     ] {
         let body = serde_json::json!({"candidates": [], "usageMetadata": metadata}).to_string();
         let http = RecordingHttpClient::new(body);
@@ -487,21 +465,8 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
         assert_eq!(error.to_string(), plain_error.to_string());
         assert_eq!(http.requests()[0], http.requests()[1]);
         let trace = log.trace();
-        let usage: Vec<_> = trace
-            .observations
-            .iter()
-            .filter_map(|o| match &o.action {
-                Action::Adapter {
-                    observation:
-                        AdapterObservation {
-                            event: AdapterEvent::Usage { usage },
-                            ..
-                        },
-                } => Some(usage.clone()),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(usage, expected.into_iter().collect::<Vec<_>>());
+        assert!(!trace.observations.iter().any(|o| matches!(&o.action,
+            Action::Adapter { observation } if matches!(observation.event, AdapterEvent::Usage { .. }))));
         // The body named no finish reason: its frames ran out before the
         // provider ended the reply.
         assert!(matches!(&trace.observations.last().unwrap().action,
@@ -511,7 +476,7 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
 }
 
 #[tokio::test]
-async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
+async fn streaming_http_rejection_preserves_the_original_error() {
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
     let model = crate::driver::Model::new(
@@ -534,11 +499,9 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
     assert!(stream.next().await.is_none());
     drop(stream);
     let trace = log.trace();
-    assert_eq!(trace.observations.len(), 5);
-    assert!(matches!(&trace.observations[2].action,
-        Action::Adapter { observation } if observation.event == AdapterEvent::Usage { usage: AdapterUsage { input_tokens: Some(3), ..AdapterUsage::default() } }
-    ));
-    assert!(matches!(&trace.observations[4].action,
+    // The rejected stream never ended its reply, so it observes no usage.
+    assert_eq!(trace.observations.len(), 4);
+    assert!(matches!(&trace.observations[3].action,
         Action::Adapter { observation } if matches!(observation.event, AdapterEvent::Finished { ending: AdapterEnding::Error { status: Some(429), retryable: true, .. } })
     ));
     assert!(
@@ -881,4 +844,40 @@ fn a_host_scrubs_its_own_diagnostics_with_the_adapter_rules() {
         crate::observe::scrub_diagnostic("plain failure", &secrets),
         "plain failure"
     );
+}
+
+#[test]
+fn terminal_observes_nothing_without_an_open_attempt() {
+    let usage = crate::completion::Usage {
+        input_tokens: Some(3),
+        output_tokens: Some(2),
+        ..Default::default()
+    };
+    // No attempt installed: there is nothing to close.
+    let empty = AdapterSlot::default();
+    empty.terminal(Some(&usage));
+
+    // An attempt that already failed is closed: the reply's end adds no
+    // usage and no second `Finished`.
+    let log = Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+    let request = http::Request::new(());
+    let slot = AdapterSlot::default();
+    slot.install(context.attempt_for(&request, "/completion"));
+    slot.fail(&crate::error::ProviderError::Http(
+        crate::http_client::Error::StreamEnded.into(),
+    ));
+    let before = log.trace().observations.len();
+    slot.terminal(Some(&usage));
+    drop(slot);
+    let trace = log.trace();
+    assert_eq!(trace.observations.len(), before);
+    assert!(!trace.observations.iter().any(|o| matches!(
+        &o.action,
+        Action::Adapter { observation } if matches!(
+            observation.event,
+            AdapterEvent::Usage { .. }
+                | AdapterEvent::Finished { ending: AdapterEnding::Terminal }
+        )
+    )));
 }
