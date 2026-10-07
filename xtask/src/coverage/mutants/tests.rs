@@ -46,7 +46,7 @@ fn killers_are_read_from_nextest_status_lines() {
         PASS [   0.004s] (1/3) rig-core a::passes
         FAIL [   0.012s] (2/3) rig-core history::tests::drops_orphans
      TIMEOUT [  60.000s] rig-core::driver_adoption slow
-     SIGSEGV [   0.100s] (3/3) rig-ecs systems::tests::crash
+     SIGSEGV [   0.100s] (3/3) rig-reqwest client::tests::crash
         FAIL [   0.012s] (2/3) rig-core history::tests::drops_orphans
    Summary [   1.000s] 3 tests run
 ";
@@ -55,7 +55,7 @@ fn killers_are_read_from_nextest_status_lines() {
         [
             "rig-core history::tests::drops_orphans",
             "rig-core::driver_adoption slow",
-            "rig-ecs systems::tests::crash"
+            "rig-reqwest client::tests::crash"
         ]
     );
 }
@@ -142,10 +142,10 @@ fn every_group_mutates_its_own_package() {
 
 #[test]
 fn a_package_restriction_selects_its_groups_and_their_mutants() {
-    let picked = groups(Some(&["rig-ecs".to_owned()])).unwrap();
+    let picked = groups(Some(&["rig-agent".to_owned()])).unwrap();
     assert_eq!(picked.len(), 1);
     assert!(in_groups(
-        "crates/rig-ecs/src/systems/mod.rs: delete ! in f",
+        "crates/rig-agent/src/run/mod.rs: delete ! in f",
         &picked
     ));
     assert!(!in_groups(

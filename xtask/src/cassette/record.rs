@@ -404,7 +404,7 @@ fn build_tests(root: &Path, provider: &str) -> Result<(), String> {
             "-p",
             "rig-cassette",
             "--features",
-            "http,agent,ecs,bedrock",
+            "http,agent,bedrock",
             "--test",
             provider,
         ])
@@ -440,7 +440,7 @@ fn run_test(
             "-p",
             "rig-cassette",
             "--features",
-            "http,agent,ecs,bedrock",
+            "http,agent,bedrock",
             "--test",
             provider,
             "--run-ignored",

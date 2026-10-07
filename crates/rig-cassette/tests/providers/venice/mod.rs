@@ -17,10 +17,6 @@ mod cassette {
     mod conformance;
     mod corpus_faults;
     mod corpus_matrix;
-    mod ecs_extractor;
-    mod ecs_faults;
-    mod ecs_matrix;
-    mod ecs_termination;
     mod embedding_matrix;
     mod embeddings;
     mod history_survival_matrix;

@@ -1,6 +1,6 @@
-//! The lifecycle matrix (`lifecycle_matrix`, `ecs_lifecycle`) once: HTTP
-//! middleware phases, run-start rewrites and settle hooks on rig-agent and
-//! in a world, which every wire runs the same. Anthropic's rows run over
+//! The lifecycle matrix (`lifecycle_matrix`) once: HTTP middleware phases,
+//! run-start rewrites and settle hooks on rig-agent, which every wire runs
+//! the same. Anthropic's rows run over
 //! their own pinned replies (the rewrite cells read the marker the rewritten
 //! prompt asked for), through the same middleware stack, instead of their
 //! cassettes. Gemini's and OpenAI's copies repeat the same runtime.
@@ -34,8 +34,6 @@ mod support {
 // their provider; the module's own directory is this file's.
 #[path = "."]
 mod cassette {
-    #[path = "../providers/anthropic/cassette/ecs_lifecycle.rs"]
-    mod ecs_lifecycle;
     #[path = "../providers/anthropic/cassette/lifecycle_matrix.rs"]
     mod lifecycle_matrix;
 }

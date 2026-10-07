@@ -94,6 +94,129 @@
       }
     }
   },
+  "conformance/structured_extraction.yaml#0": {
+    "mode": "unary",
+    "choice": [
+      {
+        "reasoning": {
+          "text": "The user is introducing themselves and providing their name and job. They are saying their name is \"Ada Lovelace\" and they work as a \"mathematician\".\n\nThis seems to be a roleplay or introduction scenario. They are providing information that matches the `submit` function's required fields:\n- first_name: \"Ada\"\n- last_name: \"Lovelace\"  \n- job: \"mathematician\"\n\nAccording to the instructions, I should use the `submit` function to submit the structured data extracted from the provided text. I should fill out every field and call the submit function.\n\nLet me submit this data.\n",
+          "redacted": false,
+          "native": {
+            "item": {
+              "reasoning_content": "The user is introducing themselves and providing their name and job. They are saying their name is \"Ada Lovelace\" and they work as a \"mathematician\".\n\nThis seems to be a roleplay or introduction scenario. They are providing information that matches the `submit` function's required fields:\n- first_name: \"Ada\"\n- last_name: \"Lovelace\"  \n- job: \"mathematician\"\n\nAccording to the instructions, I should use the `submit` function to submit the structured data extracted from the provided text. I should fill out every field and call the submit function.\n\nLet me submit this data.\n"
+            },
+            "fingerprint": "b340fc077ede64d4"
+          }
+        }
+      },
+      {
+        "tool_call": {
+          "id": "chatcmpl-tool-b360cb6dc61153c3",
+          "name": "submit",
+          "arguments": {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "job": "mathematician"
+          },
+          "native": {
+            "item": {
+              "function": {
+                "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                "name": "submit"
+              },
+              "id": "chatcmpl-tool-b360cb6dc61153c3",
+              "type": "function"
+            },
+            "fingerprint": "c1cffbd0e4cf9027"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "input_tokens": 1349,
+      "output_tokens": 190,
+      "total_tokens": 1539,
+      "cached_input_tokens": 0,
+      "reasoning_tokens": 133,
+      "cost": {
+        "total": 0.00016340000000000001
+      }
+    },
+    "response_id": "chatcmpl-5619f175a3f6969e7d42d99a81d73caf",
+    "finish_reason": "tool_calls",
+    "model": "qwen3-5-9b",
+    "provider_request_id": null,
+    "raw": {
+      "choices": [
+        {
+          "finish_reason": "tool_calls",
+          "index": 0,
+          "logprobs": null,
+          "message": {
+            "annotations": null,
+            "audio": null,
+            "content": "",
+            "function_call": null,
+            "reasoning_content": "The user is introducing themselves and providing their name and job. They are saying their name is \"Ada Lovelace\" and they work as a \"mathematician\".\n\nThis seems to be a roleplay or introduction scenario. They are providing information that matches the `submit` function's required fields:\n- first_name: \"Ada\"\n- last_name: \"Lovelace\"  \n- job: \"mathematician\"\n\nAccording to the instructions, I should use the `submit` function to submit the structured data extracted from the provided text. I should fill out every field and call the submit function.\n\nLet me submit this data.\n",
+            "refusal": null,
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "function": {
+                  "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
+                  "name": "submit"
+                },
+                "id": "chatcmpl-tool-b360cb6dc61153c3",
+                "type": "function"
+              }
+            ]
+          },
+          "routed_experts": null,
+          "stop_reason": null,
+          "token_ids": null
+        }
+      ],
+      "cost": {
+        "diem": 0,
+        "usd": 0.00016340000000000001
+      },
+      "created": 0,
+      "ec_transfer_params": null,
+      "id": "chatcmpl-5619f175a3f6969e7d42d99a81d73caf",
+      "kv_transfer_params": null,
+      "metrics": null,
+      "model": "qwen3-5-9b",
+      "object": "chat.completion",
+      "prompt_logprobs": null,
+      "prompt_text": null,
+      "prompt_token_ids": null,
+      "service_tier": null,
+      "usage": {
+        "completion_tokens": 190,
+        "completion_tokens_details": {
+          "reasoning_tokens": 133
+        },
+        "prompt_tokens": 1349,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 1539
+      },
+      "venice_parameters": {
+        "disable_thinking": false,
+        "enable_e2ee": true,
+        "enable_web_citations": false,
+        "enable_web_scraping": false,
+        "enable_web_search": "off",
+        "enable_x_search": false,
+        "include_search_results_in_stream": false,
+        "include_venice_system_prompt": true,
+        "return_search_results_as_documents": false,
+        "strip_thinking_response": false,
+        "web_search_citations": []
+      }
+    }
+  },
   "conformance/tool_choice_modes.yaml#2": {
     "mode": "unary",
     "choice": [
@@ -483,129 +606,6 @@
         "completion_tokens": 3,
         "prompt_tokens": 1030,
         "total_tokens": 1033
-      },
-      "venice_parameters": {
-        "disable_thinking": false,
-        "enable_e2ee": true,
-        "enable_web_citations": false,
-        "enable_web_scraping": false,
-        "enable_web_search": "off",
-        "enable_x_search": false,
-        "include_search_results_in_stream": false,
-        "include_venice_system_prompt": true,
-        "return_search_results_as_documents": false,
-        "strip_thinking_response": false,
-        "web_search_citations": []
-      }
-    }
-  },
-  "extractor/extractor_smoke.yaml#0": {
-    "mode": "unary",
-    "choice": [
-      {
-        "reasoning": {
-          "text": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n",
-          "redacted": false,
-          "native": {
-            "item": {
-              "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n"
-            },
-            "fingerprint": "e4bc5d1e62741af5"
-          }
-        }
-      },
-      {
-        "tool_call": {
-          "id": "chatcmpl-tool-9ead3cc0c2dad76d",
-          "name": "submit",
-          "arguments": {
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "job": "mathematician"
-          },
-          "native": {
-            "item": {
-              "function": {
-                "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
-                "name": "submit"
-              },
-              "id": "chatcmpl-tool-9ead3cc0c2dad76d",
-              "type": "function"
-            },
-            "fingerprint": "5819df31705b7c6b"
-          }
-        }
-      }
-    ],
-    "usage": {
-      "input_tokens": 1348,
-      "output_tokens": 117,
-      "total_tokens": 1465,
-      "cached_input_tokens": 0,
-      "reasoning_tokens": 60,
-      "cost": {
-        "total": 0.00015235
-      }
-    },
-    "response_id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3",
-    "finish_reason": "tool_calls",
-    "model": "qwen3-5-9b",
-    "provider_request_id": null,
-    "raw": {
-      "choices": [
-        {
-          "finish_reason": "tool_calls",
-          "index": 0,
-          "logprobs": null,
-          "message": {
-            "annotations": null,
-            "audio": null,
-            "content": "",
-            "function_call": null,
-            "reasoning_content": "The user is providing personal information about themselves. They want me to extract their name and job using the submit function.\n\nFrom the text:\n- First name: Ada\n- Last name: Lovelace\n- Job: mathematician\n\nI should submit this information using the submit function.\n",
-            "refusal": null,
-            "role": "assistant",
-            "tool_calls": [
-              {
-                "function": {
-                  "arguments": "{\"first_name\": \"Ada\", \"last_name\": \"Lovelace\", \"job\": \"mathematician\"}",
-                  "name": "submit"
-                },
-                "id": "chatcmpl-tool-9ead3cc0c2dad76d",
-                "type": "function"
-              }
-            ]
-          },
-          "routed_experts": null,
-          "stop_reason": null,
-          "token_ids": null
-        }
-      ],
-      "cost": {
-        "diem": 0,
-        "usd": 0.00015235
-      },
-      "created": 0,
-      "ec_transfer_params": null,
-      "id": "chatcmpl-c7758c0e2f3976dd2dc1ab417887d0c3",
-      "kv_transfer_params": null,
-      "metrics": null,
-      "model": "qwen3-5-9b",
-      "object": "chat.completion",
-      "prompt_logprobs": null,
-      "prompt_text": null,
-      "prompt_token_ids": null,
-      "service_tier": null,
-      "usage": {
-        "completion_tokens": 117,
-        "completion_tokens_details": {
-          "reasoning_tokens": 60
-        },
-        "prompt_tokens": 1348,
-        "prompt_tokens_details": {
-          "cached_tokens": 0
-        },
-        "total_tokens": 1465
       },
       "venice_parameters": {
         "disable_thinking": false,

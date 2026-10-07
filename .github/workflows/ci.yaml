@@ -103,10 +103,10 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check default-tests
 
-  # The required parity lane owns the root agent/ECS matrices and world
-  # golden replay; default-tests and bus-verification exclude these tests.
-  ecs-parity:
-    name: stable / ecs parity
+  # The effect-corpus lane owns the agent golden producers and the
+  # golden-pairing guard; default-tests and bus-verification exclude them.
+  effect-corpus:
+    name: stable / effect corpus
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -116,7 +116,7 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
-      - run: cargo xtask verify --check ecs-parity
+      - run: cargo xtask verify --check effect-corpus
 
   # Cross-crate contract tripwires, each with its own feature configuration:
   # rig-core/rig-agent under all features with zero retries for the telemetry
@@ -266,8 +266,6 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-cassette
       - if: ${{ !cancelled() }}
-        run: cargo xtask verify --check wasm-rig-ecs
-      - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-reqwest
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-agent
@@ -306,11 +304,3 @@ jobs:
       - env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
         run: cargo xtask verify --check wasm-rig-agent-bus_wasm
-      - if: ${{ !cancelled() }}
-        env:
-          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo xtask verify --check wasm-rig-ecs-bus_wasm
-      - if: ${{ !cancelled() }}
-        env:
-          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
-        run: cargo xtask verify --check wasm-rig-ecs-run_wasm

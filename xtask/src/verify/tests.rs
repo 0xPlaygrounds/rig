@@ -11,11 +11,11 @@ fn metadata() -> Value {
     // are targets of `rig-cassette`.
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
-        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]}]},
-        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"world_replay_world","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
-        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]}]},
+        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
+        {"name":"rig-agent","manifest_path":"/repo/crates/rig-agent/Cargo.toml","dependencies":[]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
-        {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
+        {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-agent"}]}
     ]})
 }
 
@@ -77,7 +77,7 @@ fn planner_and_dependency_edits_cannot_skip_checks() {
     for p in [
         "xtask/src/main.rs",
         "Cargo.lock",
-        "crates/rig-ecs/Cargo.toml",
+        "crates/rig-agent/Cargo.toml",
         "examples/agent/Cargo.toml",
         "rust-toolchain.toml",
         ".cargo/config.toml",
@@ -120,7 +120,7 @@ fn full_and_floor_lanes_select_independently() {
     assert!(pr.contains("dependency-floors"));
     assert!(!pr.contains("full-tests"));
     // Resolver inputs run both.
-    for p in ["Cargo.lock", "crates/rig-ecs/Cargo.toml"] {
+    for p in ["Cargo.lock", "crates/rig-agent/Cargo.toml"] {
         let pr = ids("--pr", &[p]);
         assert!(
             pr.contains("full-tests") && pr.contains("dependency-floors"),
@@ -197,8 +197,7 @@ fn a_provider_target_is_run_by_the_package_that_declares_it() {
 fn shared_replay_sources_keep_the_minimal_execution() {
     for path in [
         "crates/rig-cassette/tests/corpus_hooks.rs",
-        "crates/rig-cassette/tests/world_replay.rs",
-        "crates/rig-cassette/tests/world_replay_world.rs",
+        "crates/rig-cassette/tests/verify/main.rs",
         "crates/rig-cassette/src/effect_log/tests.rs",
         "crates/rig-cassette/src/agent/replay/tests.rs",
     ] {
@@ -223,9 +222,9 @@ fn unknown_fixture_provider_falls_back() {
 }
 
 #[test]
-fn ecs_changes_include_reverse_consumers() {
-    let p = ids("--changed", &["crates/rig-ecs/src/lib.rs"]);
-    assert!(p.contains("package-rig-ecs"));
+fn runtime_changes_include_reverse_consumers() {
+    let p = ids("--changed", &["crates/rig-agent/src/lib.rs"]);
+    assert!(p.contains("package-rig-agent"));
     assert!(p.contains("consumers"));
 }
 
@@ -235,14 +234,14 @@ fn pr_preserves_required_platform_and_default_guarantees() {
     for c in [
         "default-check",
         "default-tests",
-        "wasm-rig-ecs",
-        "wasm-rig-ecs-run_wasm",
+        "wasm-rig-agent",
+        "wasm-rig-agent-bus_wasm",
         "native-only-rig-rmcp",
         "loom",
         "doctests",
         "conformance",
         "derive",
-        "ecs-parity",
+        "effect-corpus",
     ] {
         assert!(p.contains(c), "missing {c}");
     }
@@ -309,7 +308,7 @@ fn browser_worker_changes_run_javascript_and_wasm_checks() {
 #[test]
 fn unmodeled_package_assets_broaden_instead_of_skipping() {
     assert_eq!(
-        ids("--changed", &["crates/rig-ecs/generator.sh"]),
+        ids("--changed", &["crates/rig-agent/generator.sh"]),
         ids("--full", &[])
     );
 }
@@ -317,7 +316,11 @@ fn unmodeled_package_assets_broaden_instead_of_skipping() {
 #[test]
 fn reporting_only_selection_skips_work_but_other_docs_keep_executable_checks() {
     assert!(ids("--changed", &["DEVELOPING.md"]).is_empty());
-    for path in ["docs/progress.md", "README.md", "crates/rig-ecs/README.md"] {
+    for path in [
+        "docs/progress.md",
+        "README.md",
+        "crates/rig-agent/README.md",
+    ] {
         assert!(!ids("--changed", &[path]).is_empty());
     }
     assert_eq!(ids("--pr", &["DEVELOPING.md"]), ids("--pr", &[]));
@@ -831,36 +834,20 @@ fn workflows_carry_no_toolchain_copy() {
 }
 
 #[test]
-fn a_golden_change_selects_the_parity_lane() {
+fn a_golden_change_selects_the_effect_corpus_lane() {
     let p = ids(
         "--changed",
         &["crates/rig-cassette/fixtures/effects/x.effects.json"],
     );
-    for check in ["bus-verification", "default-tests", "ecs-parity"] {
+    for check in ["bus-verification", "default-tests", "effect-corpus"] {
         assert!(p.contains(check), "{p:?}");
     }
 }
 
-#[test]
-fn world_goldens_select_the_same_lanes_as_agent_goldens() {
-    let agent = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
-    );
-    let world = ids(
-        "--changed",
-        &["crates/rig-cassette/fixtures/effects/world/x.effects.json"],
-    );
-    assert_eq!(world, agent);
-    for check in ["bus-verification", "default-tests", "ecs-parity"] {
-        assert!(world.contains(check), "{world:?}");
-    }
-}
-
-/// The two corpora share a parent directory inside one package. A provider
-/// cassette must still reach its provider target instead of falling through
-/// to the owning package's generic asset rule, and neither corpus may be
-/// classified as the other.
+/// The cassette and effect corpora share a parent directory inside one
+/// package. A provider cassette must still reach its provider target instead
+/// of falling through to the owning package's generic asset rule, and
+/// neither corpus may be classified as the other.
 #[test]
 fn the_two_corpora_are_classified_apart() {
     let cassette = ids(
@@ -877,15 +864,15 @@ fn the_two_corpora_are_classified_apart() {
     assert!(!effects.iter().any(|id| id.starts_with("provider-")));
 }
 
-/// The fixture metadata declares `rig-ecs` (a runtime crate) and
-/// `rig-sqlite` (a store): an edit to the first selects the parity lane on
-/// its own account, an edit to the second does not.
+/// The fixture metadata declares `rig-agent` (a runtime crate) and
+/// `rig-sqlite` (a store): an edit to the first selects the effect-corpus
+/// lane on its own account, an edit to the second does not.
 #[test]
-fn a_runtime_crate_change_selects_the_parity_lane() {
-    let p = ids("--changed", &["crates/rig-ecs/src/replay/mod.rs"]);
-    assert!(p.contains("ecs-parity"), "{p:?}");
+fn a_runtime_crate_change_selects_the_effect_corpus_lane() {
+    let p = ids("--changed", &["crates/rig-agent/src/run/mod.rs"]);
+    assert!(p.contains("effect-corpus"), "{p:?}");
     let p = ids("--changed", &["crates/rig-sqlite/src/lib.rs"]);
-    assert!(!p.contains("ecs-parity"), "{p:?}");
+    assert!(!p.contains("effect-corpus"), "{p:?}");
 }
 
 #[test]
@@ -924,7 +911,7 @@ fn cassettes_snapshots_and_the_index_select_the_acceptance_check() {
     ] {
         assert!(ids("--changed", &[path]).contains("acceptance"), "{path}");
     }
-    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("acceptance"));
+    assert!(!ids("--changed", &["crates/rig-agent/src/lib.rs"]).contains("acceptance"));
 }
 
 #[test]
@@ -943,13 +930,13 @@ fn cassettes_and_the_bank_select_the_bank_check() {
     assert!(bank.contains("provider-runtime"), "{bank:?}");
     assert!(bank.contains("coverage"), "{bank:?}");
     assert!(!bank.contains("full-tests"), "{bank:?}");
-    assert!(!ids("--changed", &["crates/rig-ecs/src/lib.rs"]).contains("bank"));
+    assert!(!ids("--changed", &["crates/rig-agent/src/lib.rs"]).contains("bank"));
 }
 
 #[test]
 fn sources_cassettes_and_the_baseline_select_the_coverage_gate() {
     for path in [
-        "crates/rig-ecs/src/lib.rs",
+        "crates/rig-agent/src/lib.rs",
         "crates/rig-cassette/tests/corpus_hooks.rs",
         "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
         "crates/rig-cassette/coverage/lines.tsv",

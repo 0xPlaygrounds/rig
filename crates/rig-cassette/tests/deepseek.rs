@@ -6,11 +6,6 @@
     clippy::unreachable
 )]
 
-use rig_test_support::ecs_agent;
-#[allow(dead_code, reason = "this target uses part of the shared driver")]
-#[path = "common/ecs_extractor.rs"]
-mod ecs_extractor;
-
 use rig_test_support::cache_conformance;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
@@ -22,28 +17,14 @@ use rig_test_support::support;
 #[path = "providers/deepseek/mod.rs"]
 mod deepseek;
 
-#[allow(dead_code, reason = "this target uses part of the shared driver")]
-#[path = "common/ecs_observation.rs"]
-mod ecs_observation;
-
-#[allow(dead_code, reason = "this target uses part of the shared driver")]
-#[path = "common/ecs_session.rs"]
-mod ecs_session;
-
 use rig_test_support::goldens;
-
-#[allow(dead_code)]
-#[path = "common/ecs_termination.rs"]
-mod ecs_termination;
-
-use rig_test_support::stream_faults;
 
 #[allow(
     dead_code,
     reason = "each provider exercises its own subset of matrix cells"
 )]
-#[path = "common/ecs_matrix.rs"]
-mod ecs_matrix;
+#[path = "common/corpus_matrix.rs"]
+mod corpus_matrix;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;

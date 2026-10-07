@@ -344,21 +344,21 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        // Agent and world goldens share this prefix. Classify both before
-        // provider cassettes and the owning package's generic asset rule.
+        // The agent goldens. Classify them before provider cassettes and the
+        // owning package's generic asset rule.
         if path.starts_with("crates/rig-cassette/fixtures/effects/") {
             add(&mut out, all, "bus-verification", "consumed golden changed")?;
             add(
                 &mut out,
                 all,
                 "default-tests",
-                "goldens may be consumed by any original/native provider target",
+                "goldens may be consumed by any provider target",
             )?;
             add(
                 &mut out,
                 all,
-                "ecs-parity",
-                "a golden changed: replay the parity lane",
+                "effect-corpus",
+                "a golden changed: replay the effect corpus",
             )?;
             continue;
         }
@@ -388,9 +388,7 @@ pub(super) fn plan(
         }
         if let Some(name) = provider(path) {
             if let Some(owner) = provider_owner(packages, name) {
-                if owner == "rig-cassette"
-                    && matches!(name, "verify" | "world_replay" | "world_replay_world")
-                {
+                if owner == "rig-cassette" && name == "verify" {
                     affected.insert("rig-cassette-minimal".to_owned());
                 }
                 let id = format!("provider-{name}");
@@ -496,19 +494,18 @@ pub(super) fn plan(
             "source or cassettes changed: coverage and shapes must not drop",
         )?;
     }
-    // The runtimes and the effective-policy hash: an edit to rig-ecs (the
-    // hash, `Materialise`), rig-agent (the runner) or rig-core (the message
-    // and error rules) can stale or diverge the parity goldens, which the
-    // package's own tests never replay (tests/ecs_parity/README.md).
+    // The runtime and the effective-policy hash: an edit to rig-agent (the
+    // runner) or rig-core (the message and error rules) can stale the effect
+    // goldens, which the package's own tests never replay.
     if affected
         .iter()
-        .any(|name| matches!(name.as_str(), "rig-ecs" | "rig-agent" | "rig-core"))
+        .any(|name| matches!(name.as_str(), "rig-agent" | "rig-core"))
     {
         add(
             &mut out,
             all,
-            "ecs-parity",
-            "runtime crate changed: the parity goldens may be stale or diverge",
+            "effect-corpus",
+            "runtime crate changed: the effect goldens may be stale",
         )?;
     }
     let mut downstream = BTreeSet::new();

@@ -1106,8 +1106,8 @@ mod option_matrix {
 
 mod option_layers {
     //! An agent's options and a run's options merge field by field through
-    //! `GenerationOptions::overlay`, the one function rig-agent and rig-ecs
-    //! call: what the run sets wins, the rest keeps the agent's value.
+    //! `GenerationOptions::overlay`, the one function rig-agent calls: what
+    //! the run sets wins, the rest keeps the agent's value.
 
     use rig::completion::{CacheRetention, Effort, GenerationOptions, OnUnsupported, Reasoning};
 

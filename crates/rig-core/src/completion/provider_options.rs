@@ -57,7 +57,7 @@ pub trait ProviderExtension {
 
 /// A provider's request options. Serialize-only: the body keys they write
 /// are their only output. They are plain data, `Send + Sync` on every
-/// target, since a request carrying them is a component of an ECS world,
+/// target, since a request carrying them may be held in shared host state,
 /// and unwind safe, so a request holding them stays unwind safe.
 pub trait ExtensionOptions:
     Serialize + Clone + fmt::Debug + Send + Sync + UnwindSafe + RefUnwindSafe + 'static

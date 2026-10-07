@@ -71,7 +71,7 @@ pub(crate) fn run(root: &Path, args: &[String]) -> Result<(), String> {
         "-p",
         "rig-cassette",
         "--features",
-        "http,agent,ecs,bedrock",
+        "http,agent,bedrock",
         "--retries",
         "0",
         "--no-fail-fast",

@@ -1,8 +1,7 @@
 //! Focused tool-turn checkpoint matrix on Anthropic: claude-haiku-4-5-20251001.
-//! One producer recording is reused by every native cut with strict matching.
 
 use super::super::support::with_anthropic_cassette;
-use crate::ecs_matrix::{Wire, cells, checkpoint};
+use crate::corpus_matrix::{Wire, cells, checkpoint};
 use rig_test_support::cassette_models::AnthropicModels;
 
 fn wire(client: &AnthropicModels) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {

@@ -1,21 +1,20 @@
-//! The ECS contract matrix's producers on the DeepSeek wire (`deepseek-chat`, temperature 0; the route `deepseek-reasoner`): every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder, recorded once
-//! and replayed as the golden `deepseek_<cell>` the world cells in
-//! `ecs_matrix.rs` are compared to. The driver is
-//! `tests/common/ecs_matrix/agent.rs`; this file holds the scenario
+//! The corpus matrix's producers on the DeepSeek wire (`deepseek-chat`, temperature 0; the route `deepseek-reasoner`): every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder, recorded once
+//! and replayed as the golden `deepseek_<cell>`. The driver is
+//! `tests/common/corpus_matrix/agent.rs`; this file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 //!
 //! Every scenario here is a new recording under `corpus_matrix/`; a cell of
 //! the grid missing from this file reuses a recording the corpus already
 //! had, whose producer stays where it is.
 
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 use crate::deepseek::support::with_deepseek_cassette;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 use rig_test_support::cassette_models::OpenAiModels;
 
 fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
+        thinking: crate::corpus_matrix::cells::ThinkingWire::DeepSeek,
         model: client.completion("deepseek-chat"),
         route: Some(client.completion("deepseek-reasoner")),
         temperature: Some(0.0),

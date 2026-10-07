@@ -31,7 +31,7 @@
 //! | per-turn shaping | none · a request patch on one turn (`tool_choice`, `extra_context`, `preamble`, `max_tokens`, `additional_params`, `active_tools`, `history`) · patches merged from several hooks · a route on the first turn · a route registered after build |
 //! | hook identity | the type name · a name the hook gives itself (`AgentHook::name`) |
 //! | causality | a consumer's own dispatch · nested from a tool's `Serve` through its sink's dispatcher (depth 1 · 2) · from a detached sink's resolver · from a spawned thread; the target another key · the same key (refused under serial serving, served under concurrent); the parent answered · cancelled with the child in flight · cancelled with the child queued (Matrix Q) |
-//! | interpreters | the bus engine · the hand driver · the resumed engine · the Bevy host replaying the log as a script |
+//! | interpreters | the bus engine · the hand driver · the resumed engine |
 //! | outcome kind | success · `Cancelled` · handler error (`ErrorReport`) · a divergence (refused) |
 //! | invalid call | none · unary, resolved by a hook · streamed, resolved mid-stream · unresolved under `Fail` · under `Ignore` |
 //!
@@ -45,8 +45,6 @@
 //! bus, a resumed run, a handler error, `tool_choice`, `max_tokens`,
 //! `additional_params`, static context, an appended or absent preamble, or
 //! a prior history. Those are the matrices.
-
-#![allow(dead_code)] // every test target uses a different subset
 
 pub mod fixtures;
 
@@ -4189,20 +4187,5 @@ macro_rules! both_interpreters {
                 }
             )*
         }
-        /// The third interpreter: the program as an agent graph in a Bevy
-        /// world.
-        mod world_agent {
-            $(
-                #[test]
-                fn $test() {
-                    $crate::corpus::world::world_agent_reproduces(&super::$program);
-                }
-            )*
-        }
     };
 }
-
-pub mod world;
-pub mod world_hooks;
-pub mod world_nesting;
-pub mod world_resume;

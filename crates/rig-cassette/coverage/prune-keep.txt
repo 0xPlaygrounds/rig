@@ -3,7 +3,5 @@
 # tests/README.md). The corpus sweeps stay but their coverage is not
 # credited, so a region only a sweep reaches, through one recording, keeps
 # that recording here. Each line is a fixture (`<provider>/<scenario>.yaml`) or
-# an effect golden (`<name>`, or `world/<name>`) and the region it keeps.
+# an effect golden (`<name>`) and the region it keeps.
 xai/response_identity/auth_rejection_classifies_with_contract.yaml                       the cassette-safety scan reads an auth failure from a 400's message only here (rig-cassette http/account.rs 133)
-world/openai_stream_faults_despawning_the_stream_at_the_first_delta_records_a_cancel     the world replay delivers a cancelled stream's closed buffer (rig-cassette ecs/delivery.rs 446-462)
-world/deepseek_causal_completion_serial                                                  the world replay walks a witness past the scope it found (rig-ecs bus/witness.rs 197)

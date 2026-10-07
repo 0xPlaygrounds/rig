@@ -2,9 +2,9 @@ use super::*;
 use serde_json::json;
 
 fn metadata(version: &str) -> Value {
-    json!({"workspace_members":["rig-ecs"], "packages": [
-        {"id":"rig-ecs", "name":"rig-ecs", "source":null, "dependencies":[{"name":"bevy_ecs", "source":CRATES_IO, "req":"^0.19.1"}]},
-        {"name":"bevy_ecs", "version":version, "source":CRATES_IO, "dependencies":[]},
+    json!({"workspace_members":["agent_no_tokio"], "packages": [
+        {"id":"agent_no_tokio", "name":"agent_no_tokio", "source":null, "dependencies":[{"name":"bevy_tasks", "source":CRATES_IO, "req":"^0.19.1"}]},
+        {"name":"bevy_tasks", "version":version, "source":CRATES_IO, "dependencies":[]},
         {"name":"local-fixture", "source":null, "dependencies":[]}
     ]})
 }

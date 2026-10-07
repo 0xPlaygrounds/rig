@@ -1,31 +1,23 @@
-//! The ECS contract matrix once per cell: every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder and as an agent
-//! graph in a Bevy world, both over the bank's replies of the shapes one
-//! wire recorded for it, and the two logs compared record by record. The
-//! wires rotate across the cells so every wire's decoder serves some of
-//! them; a reasoning cell runs on every wire it was recorded on, because
-//! each wire carries reasoning in its own shape.
+//! The corpus matrix once per cell: every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder over the
+//! bank's replies of the shapes one wire recorded for it. The wires rotate
+//! across the cells so every wire's decoder serves some of them; a
+//! reasoning cell runs on every wire it was recorded on, because each wire
+//! carries reasoning in its own shape.
 //!
-//! The drivers are the matrix's own (`run_agent`, `run_world`), with every
-//! assertion they make: the ending, the record's families, the header's
-//! hooks, the world's graph, despawn and cut. The per-provider goldens are
-//! replaced by the agreement of the two interpreters over the same replies.
-//! Where a consumer cancels a stream mid-flight, how many of its events
-//! landed before the drop is the scheduler's, so a cancelled record's events
-//! need only agree up to the shorter of the two.
+//! The driver is the matrix's own (`run_agent`), with every assertion it
+//! makes: the ending, the record's families and the header's hooks. The
+//! per-provider goldens are replaced by those assertions over the same
+//! replies.
 
 use rig::http_client::DynHttpClient;
-use rig_cassette::effect_log::EffectLog;
-use rig_core::effect::EffectRecord;
-use rig_core::error::ErrorKind;
 use rig_test_support::bank;
 
-use crate::ecs_matrix::corpus;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells, cells::Cell, world::run_world};
-use crate::goldens::capture_world_programs;
+use crate::corpus_matrix::{Wire, agent::run_agent, cells, cells::Cell};
 
-/// Run `cell` on both interpreters over `replies`, and compare their logs.
-pub(crate) async fn agree<W, T>(
+/// Run `cell` on rig-agent over `replies`, with every assertion the
+/// producer makes.
+pub(crate) async fn produce<W, T>(
     wire: fn(DynHttpClient) -> Wire<rig::driver::Model<W, T>>,
     replies: Vec<bank::Entry>,
     cell: &Cell,
@@ -33,43 +25,7 @@ pub(crate) async fn agree<W, T>(
     W: rig::wire::Wire<Op = rig::operation::Completion>,
     T: rig::driver::Transport<W>,
 {
-    let mut agent = run_agent(&wire(bank::client(&replies)), cell, |_| {}).await;
-    let mut world =
-        capture_world_programs(run_world(&wire(bank::client(&replies)), cell, |_| {})).await;
-    agree_on_cuts(&mut world, &mut agent, cell.name);
-    corpus::assert_same_records(&world, &agent, cell.name);
-}
-
-/// A record both interpreters cancelled mid-stream keeps events in both
-/// logs; the shorter must be a prefix of the longer, and then neither is
-/// compared further.
-pub(crate) fn agree_on_cuts(world: &mut EffectLog, agent: &mut EffectLog, name: &str) {
-    let cancelled = |record: &EffectRecord| matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Cancelled);
-    for (position, (ours, theirs)) in world
-        .records
-        .iter_mut()
-        .zip(agent.records.iter_mut())
-        .enumerate()
-    {
-        if !(cancelled(ours) && cancelled(theirs)) {
-            continue;
-        }
-        let events = |record: &EffectRecord| -> Vec<serde_json::Value> {
-            match serde_json::to_value(&record.events).expect("events serialize") {
-                serde_json::Value::Array(items) => items,
-                _ => Vec::new(),
-            }
-        };
-        let (world_events, agent_events) = (events(ours), events(theirs));
-        let shared = world_events.len().min(agent_events.len());
-        assert_eq!(
-            world_events[..shared],
-            agent_events[..shared],
-            "{name}: record {position}'s events before the cut"
-        );
-        ours.events = None;
-        theirs.events = None;
-    }
+    run_agent(&wire(bank::client(&replies)), cell, |_| {}).await;
 }
 
 /// A row runs its cell over the bank replies of the shapes its wire
@@ -81,7 +37,7 @@ macro_rules! cells {
             #[tokio::test]
             async fn $name() {
                 let replies = cells!(@replies $($pinned)? $provider, $scenario);
-                agree(crate::wires::$wire, replies, &$cell).await;
+                produce(crate::wires::$wire, replies, &$cell).await;
             }
         )*
     };
@@ -212,7 +168,7 @@ cells! {
     reasoning_capped_streamed_openai_responses: (openai_responses, "openai", "reasoning_matrix_responses/capped_streamed", cells::REASONING_CAPPED_STREAMED);
 }
 
-// The image cells (`tests/common/ecs_matrix/image.rs`): the image in every
+// The image cells (`tests/common/corpus_matrix/image.rs`): the image in every
 // request and in history, then the cell's answer.
 cells! {
     image_inline_text_unary: recorded (anthropic_sonnet, "anthropic", "image_matrix/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY);

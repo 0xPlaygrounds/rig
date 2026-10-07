@@ -29,7 +29,6 @@ const PROVIDER_CASSETTE_SUITES: &[ProviderCassetteSuite] = &[
             "with_openai_lifecycle_cassette",
             "with_openai_prompt_caching_cassette",
             "with_openai_completions_prompt_caching_cassette",
-            "with_openai_turn_metadata_cassette",
             "with_openai_cassette_bogus_key",
             "with_openai_completions_cassette",
             "with_openai_cassette_result",

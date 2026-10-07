@@ -60,8 +60,9 @@ pub struct LogHeader {
     /// order under either policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bus: Option<ServingPolicy>,
-    /// Required effects and policy hashes per `EffectRecord::scope` for shared
-    /// world logs. Single-agent logs use `run_spec` and `required` instead.
+    /// Required effects and policy hashes per `EffectRecord::scope` for logs
+    /// shared by several programs. Single-agent logs use `run_spec` and
+    /// `required` instead.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub programs: BTreeMap<String, ProgramIdentity>,
 }

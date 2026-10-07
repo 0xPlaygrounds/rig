@@ -1,11 +1,6 @@
 mod agent;
 mod agent_tool_sessions;
 mod audio_generation;
-#[path = "cassette/ecs_extractor_usage.rs"]
-mod ecs_extractor_usage;
-#[path = "cassette/ecs_tool_sessions.rs"]
-mod ecs_tool_sessions;
-mod extractor_usage;
 mod image_generation;
 mod image_input_matrix;
 mod multi_extract;

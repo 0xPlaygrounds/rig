@@ -11,7 +11,6 @@ use anyhow::Result;
 use rig::completion::Message;
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::tool::Tool;
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -25,7 +24,6 @@ use rig::completion::CompletionRequest;
 
 pub(super) const SESSION_MODEL: &str = TOOL_MODEL;
 const SESSION_MAX_TOKENS: Option<u64> = None;
-pub(super) const STRUCTURED_MODEL: &str = "google/gemini-2.5-flash";
 
 pub(super) const COMPLEX_SESSION_PREAMBLE: &str = "\
 You are a deterministic OpenRouter tool orchestration test harness. Use the tools instead of inventing values. \
@@ -500,22 +498,4 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         },
     )
     .await
-}
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub(super) struct NestedPlan {
-    pub(super) release: ReleaseInfo,
-    pub(super) checks: Vec<PlanCheck>,
-}
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub(super) struct ReleaseInfo {
-    pub(super) lane: String,
-    pub(super) risk: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema, Serialize)]
-pub(super) struct PlanCheck {
-    pub(super) name: String,
-    pub(super) required: bool,
 }

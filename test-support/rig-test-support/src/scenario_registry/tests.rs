@@ -36,15 +36,6 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
                 #[tokio::test] first: ("first", CELL, "first_golden");
                 #[tokio::test] #[ignore = "unrecorded"] ignored: ("absent", CELL, "absent_golden");
             }
-            crate::matrix::native_matrix! {
-                wrapper: super::with_cassette, wire: wire, run: run;
-                #[tokio::test] native: ("first", CELL, "native");
-                #[tokio::test] #[ignore = "unrecorded"] absent: ("absent", CELL, "absent");
-            }
-            crate::matrix::resume_matrix! {
-                wrapper: with_cassette, wire: wire, run: run;
-                #[tokio::test] resume: ("first", CELL, Some(1), "resume");
-            }
             crate::matrix::case_matrix! {
                 family: wire_matrix_case;
                 #[tokio::test] scripted: truncated_after_text;
@@ -58,22 +49,7 @@ fn qualified_matrix_invocations_in_modules_claim_only_recorded_rows() {
     "#;
     assert_eq!(
         cassette_scenarios(source, WRAPPERS).expect("matrix rows"),
-        ["first", "first", "first", "tools"]
-    );
-}
-
-#[test]
-fn post_cassette_assertions_preserve_literal_scenario_registration() {
-    let source = r#"
-        crate::matrix::resume_matrix! {
-            wrapper: with_cassette, wire: wire, run: run, after: checks::requests;
-            #[tokio::test] task: ("long_task_matrix/inventory", CELL, None, "task");
-            #[tokio::test] #[ignore = "unrecorded"] absent: ("long_task_matrix/absent", CELL, None, "absent");
-        }
-    "#;
-    assert_eq!(
-        cassette_scenarios(source, WRAPPERS).expect("post-cassette rows"),
-        ["long_task_matrix/inventory"]
+        ["first", "tools"]
     );
 }
 
@@ -95,13 +71,6 @@ fn comments_strings_and_macro_definitions_are_not_invocations() {
 fn malformed_matrix_rows_fail_instead_of_vanishing() {
     for source in [
         "golden_matrix! { wrapper: with_cassette, wire: wire, run: run, oracle: golden; #[tokio::test] a: (dynamic(), CELL, \"golden\"); }",
-        "native_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL); }",
-        "native_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, golden); }",
-        "native_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, \"golden\", extra); }",
-        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, None); }",
-        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, None, golden); }",
-        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; #[tokio::test] a: (\"scenario\", CELL, None, \"golden\", extra); }",
-        "resume_matrix! { wrapper: with_cassette, wire: wire, run: run; a: (\"scenario\", CELL, None); }",
         "case_matrix! { family: wire_matrix_case; missing_attribute: truncation; }",
         "case_matrix! { wrapper: with_cassette, family: family; #[tokio::test] a: (\"a\", row); #[tokio::test] a: (\"b\", row); }",
     ] {

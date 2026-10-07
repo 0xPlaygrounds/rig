@@ -5,7 +5,7 @@
 //! them before the first dispatch: the agent (`check_replayable`), the
 //! replayer (`check_header`, `for_key`) and a host checking a row against
 //! the bus it runs (`EffectRow::is_subset_of` over
-//! `Dispatcher::descriptors()` — the Bevy startup check). Every cell edits
+//! `Dispatcher::descriptors()`, a host's startup check). Every cell edits
 //! one header field of an existing golden in memory and pins the *text*
 //! of refusals or accepted compatibility cases. A header has no global
 //! format number, and a key it does not know is refused. No new
@@ -344,7 +344,7 @@ async fn the_replayer_refuses_a_key_nothing_describes_by_name() {
 
 #[tokio::test]
 async fn a_host_checks_its_row_against_the_bus_it_built() {
-    // The Bevy startup check: a host with a row (the program's required
+    // A host's startup check: a host with a row (the program's required
     // row, from the log) and a bus it populated asks whether the bus
     // serves the row, before any dispatch.
     let replay = corpus::Replay::open(&TOOLS);

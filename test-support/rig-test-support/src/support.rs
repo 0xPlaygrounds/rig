@@ -27,7 +27,6 @@ use rig_core::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 /// System instruction for the basic completion smoke scenario.
 pub const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
@@ -171,23 +170,6 @@ pub fn smoke_structured_output_value() -> serde_json::Value {
         "category": "Technology",
         "summary": "A focused local meetup for Rust developers."
     })
-}
-
-/// Derive the synthetic output-tool name from the serialized schema's SHA-256 prefix.
-pub fn ecs_synthetic_output_tool_name<T>() -> String
-where
-    T: JsonSchema,
-{
-    let schema = schemars::schema_for!(T);
-    let mut hasher = Sha256::new();
-    hasher.update(schema.as_value().to_string().as_bytes());
-    let prefix = hasher
-        .finalize()
-        .iter()
-        .take(4)
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!("__rig_output_{prefix}")
 }
 
 /// Person fields used to test required extraction properties.

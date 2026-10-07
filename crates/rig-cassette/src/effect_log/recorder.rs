@@ -94,7 +94,7 @@ impl EffectLogRecorder {
     }
 
     /// Stamp one program's identity under its scope
-    /// ([`LogHeader::programs`]): a world writing several programs' effects
+    /// ([`LogHeader::programs`]): a host writing several programs' effects
     /// into one log names each by its scope.
     pub fn set_program_identity(&self, scope: impl Into<String>, identity: super::ProgramIdentity) {
         self.header

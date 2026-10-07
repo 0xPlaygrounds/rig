@@ -1,8 +1,7 @@
-//! The ECS contract matrix's producers on the Gemini REST wire (`gemini-3-flash-preview`, temperature 0; the route `gemini-3.1-flash-lite-preview`): every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder, recorded once
-//! and replayed as the golden `gemini_<cell>` the world cells in
-//! `ecs_matrix.rs` are compared to. The driver is
-//! `tests/common/ecs_matrix/agent.rs`; this file holds the scenario
+//! The corpus matrix's producers on the Gemini REST wire (`gemini-3-flash-preview`, temperature 0; the route `gemini-3.1-flash-lite-preview`): every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder, recorded once
+//! and replayed as the golden `gemini_<cell>`. The driver is
+//! `tests/common/corpus_matrix/agent.rs`; this file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 //!
 //! Every scenario here is a new recording under `corpus_matrix/`; a cell of
@@ -13,7 +12,7 @@ use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3
 use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(
     client: &GeminiModels,
@@ -24,7 +23,7 @@ fn wire(
     >,
 > {
     Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
+        thinking: crate::corpus_matrix::cells::ThinkingWire::Gemini,
         model: client.completion(GEMINI_3_FLASH_PREVIEW),
         route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),

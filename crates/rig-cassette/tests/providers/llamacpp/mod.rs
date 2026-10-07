@@ -82,7 +82,6 @@
 //! | --- | --- | --- |
 //! | `agent` | 1 | an agent prompt end to end |
 //! | `embeddings` | 1 | `embed_texts` (server 8081) |
-//! | `extractor_usage` | 0 | the extraction types `ecs_extractor_usage` reads |
 //! | `image_tool_result` | 1 | an image in a tool result (server 8082) |
 //! | `models` | 1 | `list_models` smoke |
 //! | `multi_extract` | 1 | a concurrent batch extractor (`CassetteSpec::unordered`) |
@@ -92,15 +91,6 @@
 //! | `structured_output` | 2 | `prompt_typed` and `output_schema` |
 //! | `typed_prompt_tools` | 1 | `prompt_typed` with a tool round trip |
 //! | `matrix_index` | 5 | the guard that keeps every table on this page honest |
-//!
-//! ## Native ECS counterparts
-//!
-//! These modules replay the same default-server (8080) fixtures through the
-//! native ECS runtime. Each module tabulates its own cells.
-//!
-//! | Module | Cells | Covers |
-//! | --- | --- | --- |
-//! | `ecs_extractor_usage` | 1 | typed extraction |
 //!
 //! # Model tiers, and the rule for escalating
 //!
@@ -136,11 +126,9 @@ mod cassette_support;
 mod cassette {
     mod agent;
     mod content_matrix;
-    mod ecs_extractor_usage;
     mod embedding_matrix;
     mod embeddings;
     mod error_matrix;
-    mod extractor_usage;
     mod image_tool_result;
     mod matrix_index;
     mod model_family_matrix;

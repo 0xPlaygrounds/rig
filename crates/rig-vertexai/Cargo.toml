@@ -29,7 +29,5 @@ rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest", "t
 anyhow = { workspace = true }
 http = { workspace = true }
 rig-agent.workspace = true
-rig-ecs = { path = "../rig-ecs", version = "0.44.0", default-features = false }
-bevy_app = { workspace = true }
 schemars = { workspace = true }
 tracing-subscriber = { workspace = true }

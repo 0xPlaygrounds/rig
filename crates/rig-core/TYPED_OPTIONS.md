@@ -632,8 +632,8 @@ target `route` names, the one `prepare` and the fold already use.
   those facts with catalog lookups. Before P3, a level the model rejects
   reaches the provider and fails there: an error, not a silent drop.
 - **Elsewhere.** P2 adds `AgentBuilder::options(GenerationOptions)` in
-  rig-agent and an `Options(GenerationOptions)` component in rig-ecs. The
-  two layers merge with `GenerationOptions::overlay`: `agent.overlay(&run)`,
+  rig-agent. The agent's and the run's options merge with
+  `GenerationOptions::overlay`: `agent.overlay(&run)`,
   so each field the run sets beats the agent's, and every other field keeps
   the agent's value. A `stop` list replaces; it never concatenates.
   `on_unsupported` is unset (`None`) until a layer sets it, so a run's
@@ -985,7 +985,7 @@ impl ProviderOptions {
     pub fn contains<P: ProviderExtension>(&self) -> bool;
     pub fn is_empty(&self) -> bool;
     /// Each entry of `over` in place of `self`'s for the same provider
-    /// (rig-agent runs, rig-ecs runs).
+    /// (rig-agent runs).
     pub fn overlay(self, over: &ProviderOptions) -> ProviderOptions;
 }
 #[non_exhaustive]
@@ -1016,9 +1016,9 @@ let request = CompletionRequest::new("hi").provider_option(
 ```
 
 `ProviderOptions::set`, `CompletionRequest::provider_option`,
-`AgentBuilder::provider_option`, `AgentRunner::provider_option` (for one run,
-in place of the agent's entry for that provider) and rig-ecs's
-`agent::ProviderOptions::set` all store the entry `insert::<O::Ext>` stores.
+`AgentBuilder::provider_option` and `AgentRunner::provider_option` (for one
+run, in place of the agent's entry for that provider) all store the entry
+`insert::<O::Ext>` stores.
 Each of the 25 markers has its own `Options` type, so the link covers every
 provider, the four companion crates included (`tests/core/provider_keys.rs`
 compiles it for each). A type that serves several markers (a user gateway
@@ -2295,15 +2295,15 @@ are updated with them.
 
 | today | markers sent | P2 | callers |
 |---|---|---|---|
-| `with_automatic_caching()` | top-level, no TTL | `cache(Short)` | `crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs:61`, `long_run_workloads.rs:43`, `strict_schema_streaming.rs:174`, `test-support/rig-test-support/src/model_session.rs:685`, `crates/rig-cassette/tests/common/ecs_matrix/world/tests.rs:30` |
-| `with_automatic_caching_1h()` | top-level `1h` | `cache(Long)` | `prompt_caching.rs:64`, `ecs_matrix_long_loop.rs:38`, `strict_schema_integrations.rs:97`, `crates/rig-cassette/tests/common/ecs_matrix/long_tasks/cache/tests.rs:23` |
-| `with_prompt_caching()` | final tool, last system block, last message block; no top-level | unchanged, `cache` unset | `prompt_caching.rs:57`, `ecs_prompt_caching.rs:20`, `ecs_matrix_long_loop.rs:24`, `long_tasks/cache/tests.rs:16` |
+| `with_automatic_caching()` | top-level, no TTL | `cache(Short)` | `crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs:61`, `long_run_workloads.rs:43`, `strict_schema_streaming.rs:174`, `test-support/rig-test-support/src/model_session.rs:685` |
+| `with_automatic_caching_1h()` | top-level `1h` | `cache(Long)` | `prompt_caching.rs:64`, `strict_schema_integrations.rs:97` |
+| `with_prompt_caching()` | final tool, last system block, last message block; no top-level | unchanged, `cache` unset | `prompt_caching.rs:57` |
 | `with_prompt_caching().with_automatic_caching()` | top-level; tool and system (with a top-level marker, manual placement adds no message marker, `completion.rs:761`) | `with_prompt_caching()` plus `cache(Short)` | `prompt_caching.rs` |
 | `with_prompt_caching().with_automatic_caching_1h()` | top-level `1h`; tool and system `1h` | `with_prompt_caching()` plus `cache(Long)` | `prompt_caching.rs` `ManualAutomatic1h` |
-| `with_automatic_caching().with_static_prefix_cache_ttl(t)` (or `_1h()`) | top-level; tool and system with `t` | `with_static_prefix_cache_ttl(t)` plus `cache(Short)` (or `Long`) | `prompt_caching.rs:69`, `strict_schema_integrations.rs:57-58`, `ecs_matrix_long_loop.rs:53`, `long_tasks/cache/tests.rs:30` |
+| `with_automatic_caching().with_static_prefix_cache_ttl(t)` (or `_1h()`) | top-level; tool and system with `t` | `with_static_prefix_cache_ttl(t)` plus `cache(Short)` (or `Long`) | `prompt_caching.rs:69`, `strict_schema_integrations.rs:57-58` |
 | `with_static_prefix_cache_ttl(t)` alone | tool and system with `t` | unchanged, `cache` unset | none in the workspace |
 | Bedrock `Converse::with_prompt_caching()` | `cachePoint` after the system blocks and at the end of the last message, skipped after a reasoning turn | `cache(Short)`; the skip goes through `BaseInput::refuse_cache` (section 12.0) | `crates/rig-cassette/tests/providers/bedrock/cassette/agent.rs:61`, `crates/rig-bedrock/tests/history_conformance.rs:625`, `tests/integrations/bedrock/adaptive_thinking.rs:28` |
-| Chat `with_prompt_caching()` | OpenRouter: a system-message marker; elsewhere nothing | `cache(Short)`: OpenRouter's documented top-level marker, `UnsupportedOption` elsewhere (section 12.0) | `crates/rig-cassette/tests/common/ecs_matrix/world/tests.rs:68`, on OpenAI where it is a no-op; the call is removed. No OpenRouter cassette uses it |
+| Chat `with_prompt_caching()` | OpenRouter: a system-message marker; elsewhere nothing | `cache(Short)`: OpenRouter's documented top-level marker, `UnsupportedOption` elsewhere (section 12.0) | none in the workspace; no OpenRouter cassette uses it |
 
 `tests/core/history_conformance/anthropic.rs:161` builds `Messages` by
 struct literal and drops the two deleted fields.
@@ -2402,7 +2402,7 @@ phase removed the gate.
 | `no_silent_drop::under_ignore_the_option_is_skipped_with_a_warning` | P2 | the same under `Ignore`: the body has no cache field and one warning names `cache` and the provider |
 | `no_silent_drop::the_driver_refuses_an_option_before_any_wire_encodes` | P2 | on Bedrock Converse, an SDK-backed wire, `Completion::prepare` alone refuses `seed` with `UnsupportedOption` naming `seed` and `aws_bedrock`; under `Ignore` it warns once and clears the option |
 | `option_matrix::every_option_alone_gives_its_section_6_cell` | P2 | a table-driven golden: each `GenerationOptions` field set alone on Anthropic, Responses, Gemini, Bedrock, OpenRouter, Cohere and DeepSeek gives exactly its section 6 cell for that wire, field and value: the body equals the baseline body with the cell's object deep-merged in (or a marker pushed onto an array), equals the baseline for an "omit" cell, or fails with `UnsupportedOption` naming that field and provider. So `Omit` passes only where the cell says "omit", and a set option answered `Nothing` fails it. P2 extends the table to every rig-core completion wire and dialect, `InteractionResume` included, and Bedrock; the runtime target does not build Vertex AI, gRPC or Candle, whose cells are pinned in their own crates' tests |
-| `option_layers::a_run_field_beats_the_agent_field_and_leaves_the_rest` | P2 | `GenerationOptions::overlay`, the one merge rig-agent and rig-ecs use: an agent's `reasoning(High)` survives a run that sets only `cache(Long)`; the run's `seed` and `stop` win; an empty run changes nothing |
+| `option_layers::a_run_field_beats_the_agent_field_and_leaves_the_rest` | P2 | `GenerationOptions::overlay`, the one merge rig-agent uses: an agent's `reasoning(High)` survives a run that sets only `cache(Long)`; the run's `seed` and `stop` win; an empty run changes nothing |
 | `option_layers::a_run_restores_error_over_the_agents_ignore` | P6 | a run's `on_unsupported(Error)` beats an agent's `Ignore` through `overlay`, and the agent's other fields stay |
 | `precedence::raw_tools_are_appended_to_rig_tools` | P2 | a function tool plus a raw server tool in `additional_params.tools` both reach the Anthropic body, rig's first; a raw function tool joins rig's on OpenRouter Chat. The merge never replaces rig's tools |
 | `precedence::null_is_sent` | P2 | a `null` in `additional_params` over a mapped `top_p` is sent as `"top_p": null`, as `body.extend` sends it today; on OpenAI Responses a raw `"user": null`, skipped today, is sent (section 12.0) |

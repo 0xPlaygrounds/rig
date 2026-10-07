@@ -27,33 +27,21 @@ use crate::cassette::owner;
 /// A test of a provider target: its nextest binary id and its name.
 pub(crate) type TestId = (String, String);
 
-/// One effect golden: the world corpus or the agent corpus, and its stem.
+/// One effect golden, by its stem.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Golden {
-    pub(crate) world: bool,
     pub(crate) name: String,
 }
 
 impl Golden {
     /// The golden's files, relative to the workspace root.
     pub(crate) fn files(&self) -> Vec<String> {
-        if self.world {
-            vec![
-                format!("{EFFECTS}/world/{}.effects.json", self.name),
-                format!("{EFFECTS}/world/{}.programs.json", self.name),
-            ]
-        } else {
-            vec![format!("{EFFECTS}/{}.effects.json", self.name)]
-        }
+        vec![format!("{EFFECTS}/{}.effects.json", self.name)]
     }
 
     /// The golden as the manifest names it.
     pub(crate) fn label(&self) -> String {
-        if self.world {
-            format!("world/{}", self.name)
-        } else {
-            self.name.clone()
-        }
+        self.name.clone()
     }
 }
 
@@ -447,9 +435,6 @@ impl Names {
         found: FileNames,
         corpus: &Corpus,
     ) {
-        let native = Path::new(relative)
-            .file_stem()
-            .is_some_and(|stem| stem.to_string_lossy().starts_with("ecs_"));
         let Some(provider) = provider else {
             for value in &found.outside {
                 if let Some(shared) = shared_file(value) {
@@ -469,14 +454,11 @@ impl Names {
                         .entry(fixture)
                         .or_insert_with(|| relative.to_owned());
                 }
-                let found = [false, true]
-                    .into_iter()
-                    .map(|world| Golden {
-                        world,
-                        name: value.clone(),
-                    })
-                    .find(|golden| corpus.goldens.contains(golden));
-                if let Some(golden) = found {
+                let agent = Golden {
+                    name: value.clone(),
+                };
+                if corpus.goldens.contains(&agent) {
+                    let golden = agent;
                     self.goldens
                         .entry(golden)
                         .or_insert_with(|| relative.to_owned());
@@ -489,21 +471,10 @@ impl Names {
             if let Some(golden) = golden_path(value) {
                 return corpus.goldens.contains(&golden).then_some(golden);
             }
-            let preferred = Golden {
-                world: native,
+            let agent = Golden {
                 name: value.to_owned(),
             };
-            let other = Golden {
-                world: !native,
-                name: value.to_owned(),
-            };
-            if corpus.goldens.contains(&preferred) {
-                Some(preferred)
-            } else if corpus.goldens.contains(&other) {
-                Some(other)
-            } else {
-                None
-            }
+            corpus.goldens.contains(&agent).then_some(agent)
         };
         if found.tests.is_empty() {
             for value in &found.outside {
@@ -568,16 +539,11 @@ fn shared_files(source: &str) -> BTreeSet<String> {
         .collect()
 }
 
-/// The golden a path literal names: a file `<name>.effects.json` or
-/// `<name>.programs.json`, in the world corpus when its directory is
-/// `world`.
+/// The golden a path literal names: a file `<name>.effects.json`.
 fn golden_path(literal: &str) -> Option<Golden> {
-    let (dir, file) = literal.rsplit_once('/').unwrap_or(("", literal));
-    let name = file
-        .strip_suffix(".effects.json")
-        .or_else(|| file.strip_suffix(".programs.json"))?;
+    let file = literal.rsplit_once('/').map_or(literal, |(_, file)| file);
+    let name = file.strip_suffix(".effects.json")?;
     Some(Golden {
-        world: dir.ends_with("world"),
         name: name.to_owned(),
     })
 }

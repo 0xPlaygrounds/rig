@@ -1,14 +1,14 @@
 //! The image matrix on the Gemini REST wire (`gemini-3-flash-preview`): the rig-agent producers of the image cells of
-//! `tests/common/ecs_matrix/cells.rs` over the shared driver
-//! (`tests/common/ecs_matrix/agent.rs`), their logs written as the goldens
-//! the world cells (`ecs_matrix_image*.rs`) are compared to. This file holds
+//! `tests/common/corpus_matrix/cells.rs` over the shared driver
+//! (`tests/common/corpus_matrix/agent.rs`), their logs written as the
+//! goldens. This file holds
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use rig_test_support::cassette_models::GeminiModels;
 
 use super::super::support::with_gemini_cassette;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(
     client: &GeminiModels,

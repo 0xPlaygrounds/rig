@@ -29,7 +29,7 @@ fn a_trace_round_trips_through_json() {
             ..Subject::default()
         },
         Stage::Collect,
-        Emitter::named("rig-ecs/bus"),
+        Emitter::named("host/bus"),
         Action::StreamTruncated {
             delivered: 2,
             tail: Vec::new(),

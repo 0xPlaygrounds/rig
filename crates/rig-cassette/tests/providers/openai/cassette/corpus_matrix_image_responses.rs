@@ -1,13 +1,13 @@
 //! The image matrix on the OpenAI Responses wire (`gpt-5-mini`, no temperature: the gpt-5 family takes only its default): the rig-agent producers of the image cells of
-//! `tests/common/ecs_matrix/cells.rs` over the shared driver
-//! (`tests/common/ecs_matrix/agent.rs`), their logs written as the goldens
-//! the world cells (`ecs_matrix_image*.rs`) are compared to. This file holds
+//! `tests/common/corpus_matrix/cells.rs` over the shared driver
+//! (`tests/common/corpus_matrix/agent.rs`), their logs written as the
+//! goldens. This file holds
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::providers::openai::GPT_5_MINI;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
@@ -15,7 +15,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         model: client.openai.completion(GPT_5_MINI),
         route: None,
         temperature: None,
-        additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
+        additional_params: Some(crate::corpus_matrix::cells::openai_responses_stateless),
         options: None,
     }
 }

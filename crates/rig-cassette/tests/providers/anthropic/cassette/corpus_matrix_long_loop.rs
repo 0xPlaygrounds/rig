@@ -1,11 +1,10 @@
 //! The long tool loop's producer column on Anthropic: claude-haiku-4-5-20251001.
-//! One recording per live cell; the native twin (`ecs_matrix_long_loop.rs`)
-//! reuses each with strict matching. Programs, toolset and assertions are
-//! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
+//! One recording per live cell. Programs, toolset and assertions are
+//! `tests/common/corpus_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
 use super::super::support::with_anthropic_cassette;
-use crate::ecs_matrix::{Wire, cells, long_loop};
+use crate::corpus_matrix::{Wire, cells, long_loop};
 use rig_test_support::cassette_models::AnthropicModels;
 
 fn wire(client: &AnthropicModels) -> Wire<rig::Model<rig::providers::anthropic::wire::Messages>> {

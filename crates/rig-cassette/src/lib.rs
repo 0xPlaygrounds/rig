@@ -13,8 +13,8 @@
 //! Recording and replay for Rig's effects and provider HTTP exchanges.
 //!
 //! [`effect_log`] is available without optional features and supports WASM.
-//! The `agent` and `ecs` features independently enable runtime integrations;
-//! neither enables the native HTTP engine or changes JSON map/float semantics.
+//! The `agent` feature enables the classic-agent integration; it does not
+//! enable the native HTTP engine or change JSON map/float semantics.
 //! The `http` feature enables the native provider cassette engine, including
 //! ordered JSON maps and round-trip float parsing. `bedrock` extends it with
 //! AWS event-stream support. No optional feature is enabled by default.
@@ -29,9 +29,6 @@ pub mod effect_log;
 
 #[cfg(feature = "agent")]
 pub mod agent;
-
-#[cfg(feature = "ecs")]
-pub mod ecs;
 
 #[cfg(feature = "http")]
 pub mod http;

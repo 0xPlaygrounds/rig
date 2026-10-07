@@ -6,10 +6,6 @@
     clippy::unreachable
 )]
 
-use rig_test_support::ecs_agent;
-#[path = "common/ecs_extractor.rs"]
-mod ecs_extractor;
-
 use rig_test_support::raw_capture;
 use rig_test_support::support;
 
@@ -23,18 +19,12 @@ mod venice;
 
 use rig_test_support::goldens;
 
-#[allow(dead_code)]
-#[path = "common/ecs_termination.rs"]
-mod ecs_termination;
-
-use rig_test_support::stream_faults;
-
 #[allow(
     dead_code,
     reason = "each provider exercises its own subset of matrix cells"
 )]
-#[path = "common/ecs_matrix.rs"]
-mod ecs_matrix;
+#[path = "common/corpus_matrix.rs"]
+mod corpus_matrix;
 
 use rig_test_support::history_survival;
 use rig_test_support::matrix;

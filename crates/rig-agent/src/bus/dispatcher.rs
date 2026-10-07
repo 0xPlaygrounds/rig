@@ -1306,7 +1306,8 @@ impl Stream for EffectStream {
 const _: () = {
     const fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
     const fn assert_unpin<T: Unpin + 'static>() {}
-    // Browser ECS components also require Send; replies must never contain handlers.
+    // Hosts hold replies in shared state on every target, so replies must be
+    // Send and must never contain handlers.
     const fn assert_send<T: Send + 'static>() {}
     assert_dispatcher::<Dispatcher>();
     assert_unpin::<Pending>();

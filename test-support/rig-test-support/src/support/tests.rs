@@ -1,12 +1,9 @@
-use super::{
-    SmokePerson, SmokeStructuredOutput, ecs_synthetic_output_tool_name,
-    matches_recorded_document_in,
-};
+use super::{SmokePerson, SmokeStructuredOutput, matches_recorded_document_in};
 use crate::cassettes::CassetteMode;
 use serde_json::json;
 
 // These fixed schemas predate the support-crate extraction. In particular, adding
-// Rust documentation must not alter recorded requests or synthetic output-tool IDs.
+// Rust documentation must not alter recorded requests.
 #[test]
 fn structured_smoke_schema_preserves_recorded_shape() {
     assert_eq!(
@@ -22,10 +19,6 @@ fn structured_smoke_schema_preserves_recorded_shape() {
             },
             "required": ["title", "category", "summary"]
         })
-    );
-    assert_eq!(
-        ecs_synthetic_output_tool_name::<SmokeStructuredOutput>(),
-        "__rig_output_8d3dd766"
     );
 }
 
@@ -44,10 +37,6 @@ fn person_smoke_schema_preserves_recorded_shape() {
             },
             "required": ["first_name", "last_name", "job"]
         })
-    );
-    assert_eq!(
-        ecs_synthetic_output_tool_name::<SmokePerson>(),
-        "__rig_output_8ea10729"
     );
 }
 

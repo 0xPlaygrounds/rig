@@ -1,8 +1,7 @@
-//! The ECS contract matrix's producers on the Doubleword wire (`Qwen/Qwen3.5-397B-A17B-FP8`, the model the suite records tool scenarios under, `reasoning_effort: none` so a tiny cap cuts an answer and not hidden tokens, temperature 0; the route `Qwen/Qwen3.5-9B`): every cell of
-//! `tests/common/ecs_matrix/cells.rs` on rig-agent's builder, recorded once
-//! and replayed as the golden `doubleword_<cell>` the world cells in
-//! `ecs_matrix.rs` are compared to. The driver is
-//! `tests/common/ecs_matrix/agent.rs`; this file holds the scenario
+//! The corpus matrix's producers on the Doubleword wire (`Qwen/Qwen3.5-397B-A17B-FP8`, the model the suite records tool scenarios under, `reasoning_effort: none` so a tiny cap cuts an answer and not hidden tokens, temperature 0; the route `Qwen/Qwen3.5-9B`): every cell of
+//! `tests/common/corpus_matrix/cells.rs` on rig-agent's builder, recorded once
+//! and replayed as the golden `doubleword_<cell>`. The driver is
+//! `tests/common/corpus_matrix/agent.rs`; this file holds the scenario
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 //!
 //! Every scenario here is a new recording under `corpus_matrix/`; a cell of
@@ -13,11 +12,11 @@ use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
 use rig_test_support::cassette_models::OpenAiModels;
 
 use super::super::support::with_doubleword_cassette;
-use crate::ecs_matrix::{Wire, agent::run_agent, cells};
+use crate::corpus_matrix::{Wire, agent::run_agent, cells};
 
 fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::OpenAiWire>> {
     Wire {
-        thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
+        thinking: crate::corpus_matrix::cells::ThinkingWire::Doubleword,
         model: client.completion(QWEN3_5_397B_A17B),
         route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),

@@ -130,21 +130,19 @@ pub(super) fn all() -> Vec<Check> {
                 "--retries",
                 "2",
                 "-E",
-                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))",
+                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
             ])],
         ),
-        // Parity cells have one lane owner; default-tests excludes them. Each
-        // cell asserts its own runtime's record against the cell; no log is
-        // compared across runtimes. They
-        // moved with the cassette-backed provider suites, so the predicate is
-        // `package(rig-cassette)` now, qualified away from the two absorbed
-        // verification binaries whose `corpus_` module names would otherwise
-        // match it. The golden-pairing guard stays in the facade's `core`
-        // target. Excluding them never costs the cassette engine's own unit
-        // tests their default owner. Distinct feature/target runs (core-all,
-        // wasm, loom) remain separate coverage.
+        // The effect-corpus cells have one lane owner; default-tests excludes
+        // them. Each cell replays its cassette and compares the agent's log
+        // with its committed golden. The predicate is `package(rig-cassette)`,
+        // qualified away from the `verify` binary whose `corpus_` module names
+        // would otherwise match it. The golden-pairing guard stays in the
+        // facade's `core` target. Excluding them never costs the cassette
+        // engine's own unit tests their default owner. Distinct feature/target
+        // runs (core-all, wasm, loom) remain separate coverage.
         check(
-            "ecs-parity",
+            "effect-corpus",
             vec![
                 cargo(&[
                     "nextest",
@@ -154,33 +152,21 @@ pub(super) fn all() -> Vec<Check> {
                     "rig",
                     "-p",
                     "rig-cassette",
-                    // Extracted ECS helper regressions retain this graph too.
+                    // Extracted corpus helper regressions retain this graph too.
                     "-p",
                     "rig-test-support",
                     "--features",
                     "bedrock",
-                    // The same retries as `test`: a divergence or a stale
-                    // golden is deterministic and fails every attempt, while
-                    // a handful of cells carry wall-clock deadlines (a 30 s
-                    // session budget, a stream drained at the replay's pace)
-                    // that a loaded machine can miss once. Without retries
-                    // one such miss cancels the lane mid-run.
+                    // The same retries as `test`: a stale golden is
+                    // deterministic and fails every attempt, while a handful
+                    // of cells carry wall-clock deadlines (a 30 s session
+                    // budget, a stream drained at the replay's pace) that a
+                    // loaded machine can miss once. Without retries one such
+                    // miss cancels the lane mid-run.
                     "--retries",
                     "2",
                     "-E",
-                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig-test-support) and test(/(^|::)(ecs|corpus)_/)) or (package(rig) and test(golden_pairing))",
-                ]),
-                cargo(&[
-                    "nextest",
-                    "run",
-                    "--locked",
-                    "-p",
-                    "rig-cassette-minimal",
-                    "--all-features",
-                    "-E",
-                    "package(rig-cassette-minimal) and binary(world_replay)",
-                    "--retries",
-                    "0",
+                    "(package(rig-cassette) and test(/(^|::)corpus_/) and not binary(verify)) or (package(rig-test-support) and test(/(^|::)corpus_/)) or (package(rig) and test(golden_pairing))",
                 ]),
                 // The default-member graph enables different dependency
                 // implementations (including JSON/allocator features). Keep
@@ -194,7 +180,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing)) or (package(rig-cassette) and binary(world_replay))",
+                    "(package(rig-cassette) and test(/(^|::)corpus_/) and not binary(verify)) or (package(rig) and test(golden_pairing))",
                 ]),
             ],
         ),
@@ -402,7 +388,6 @@ pub(super) fn all() -> Vec<Check> {
         "rig-core",
         "rig-http",
         "rig-cassette",
-        "rig-ecs",
         "rig-reqwest",
         "rig-agent",
         "rig",
@@ -417,43 +402,21 @@ pub(super) fn all() -> Vec<Check> {
             "--target",
             "wasm32-unknown-unknown",
         ])];
-        if package == "rig-ecs" {
+        if package == "rig-cassette" {
             steps.push(cargo(&[
                 "check",
                 "--locked",
                 "-p",
                 package,
                 "--no-default-features",
-                "--lib",
-            ]));
-            steps.push(cargo(&[
-                "check",
-                "--locked",
-                "-p",
-                package,
-                "--no-default-features",
+                "--features",
+                "agent",
                 "--lib",
                 "--target",
                 "wasm32-unknown-unknown",
             ]));
         }
-        if package == "rig-cassette" {
-            for features in ["agent", "ecs", "agent,ecs"] {
-                steps.push(cargo(&[
-                    "check",
-                    "--locked",
-                    "-p",
-                    package,
-                    "--no-default-features",
-                    "--features",
-                    features,
-                    "--lib",
-                    "--target",
-                    "wasm32-unknown-unknown",
-                ]));
-            }
-        }
-        if ["rig-core", "rig-http", "rig-ecs"].contains(&package) {
+        if ["rig-core", "rig-http"].contains(&package) {
             steps.push(cargo(&[
                 "check",
                 "--locked",
@@ -466,31 +429,25 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
-    for (package, test) in [
-        ("rig-agent", "bus_wasm"),
-        ("rig-ecs", "bus_wasm"),
-        ("rig-ecs", "run_wasm"),
-    ] {
-        checks.push(check(
-            &format!("wasm-{package}-{test}"),
-            vec![
-                cargo(&[
-                    "test",
-                    "--locked",
-                    "--package",
-                    package,
-                    "--target",
-                    "wasm32-unknown-unknown",
-                    "--test",
-                    test,
-                ])
-                .env(
-                    "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
-                    "wasm-bindgen-test-runner",
-                ),
-            ],
-        ));
-    }
+    checks.push(check(
+        "wasm-rig-agent-bus_wasm",
+        vec![
+            cargo(&[
+                "test",
+                "--locked",
+                "--package",
+                "rig-agent",
+                "--target",
+                "wasm32-unknown-unknown",
+                "--test",
+                "bus_wasm",
+            ])
+            .env(
+                "CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER",
+                "wasm-bindgen-test-runner",
+            ),
+        ],
+    ));
     for (package, message) in [
         ("rig-rmcp", "the `rmcp` feature is native-only"),
         (

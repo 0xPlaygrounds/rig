@@ -11,16 +11,9 @@ fn corpus() -> Corpus {
         .into_iter()
         .map(str::to_owned)
         .collect(),
-        BTreeSet::from([
-            Golden {
-                world: false,
-                name: "openai_text".into(),
-            },
-            Golden {
-                world: true,
-                name: "openai_text".into(),
-            },
-        ]),
+        BTreeSet::from([Golden {
+            name: "openai_text".into(),
+        }]),
     )
 }
 
@@ -67,8 +60,8 @@ fn a_test_owns_its_wrapper_and_row_literals_and_reads_the_rest() {
             .await;
         }
 
-        crate::matrix::native_matrix! {
-            wrapper: with_openai_cassette, wire: wire, run: run_world;
+        crate::matrix::golden_matrix! {
+            wrapper: with_openai_cassette, wire: wire, run: run_agent, oracle: golden_effects;
             /// A row.
             #[tokio::test]
             row_one: ("corpus/text", CELL, "openai_text");
@@ -115,12 +108,12 @@ fn a_file_level_literal_is_read_by_every_test_of_its_file() {
         #[test]
         fn two() {}
     "#;
-    let found = file_names(source, Some("openai::cassette::ecs_f")).expect("valid Rust");
+    let found = file_names(source, Some("openai::cassette::corpus_f")).expect("valid Rust");
     let mut names = Names::default();
     names.add(
-        "crates/rig-cassette/tests/providers/openai/cassette/ecs_f.rs",
+        "crates/rig-cassette/tests/providers/openai/cassette/corpus_f.rs",
         Some("openai"),
-        Some("openai::cassette::ecs_f"),
+        Some("openai::cassette::corpus_f"),
         found,
         &corpus,
     );
@@ -129,21 +122,19 @@ fn a_file_level_literal_is_read_by_every_test_of_its_file() {
             .tests
             .get(&(
                 "rig-cassette::openai".to_owned(),
-                format!("openai::cassette::ecs_f::{name}"),
+                format!("openai::cassette::corpus_f::{name}"),
             ))
             .expect("the test")
     };
     assert!(test("one").file_reads.contains("openai/frames/cut.yaml"));
     assert!(test("two").file_reads.contains("openai/frames/cut.yaml"));
-    // An `ecs_` file produces world goldens.
     assert_eq!(
         test("one").goldens,
         BTreeSet::from([Golden {
-            world: true,
             name: "openai_text".into(),
         }])
     );
-    assert_eq!(test("one").module, "openai::cassette::ecs_f");
+    assert_eq!(test("one").module, "openai::cassette::corpus_f");
 }
 
 #[test]
@@ -152,7 +143,6 @@ fn a_name_outside_the_provider_tests_protects_what_it_names() {
     let source = r#"
         fn helper() {
             let _ = ("corpus/text", "openai_text");
-            let _ = "../effects/world/openai_text.effects.json";
         }
     "#;
     let found = file_names(source, None).expect("valid Rust");
@@ -162,11 +152,6 @@ fn a_name_outside_the_provider_tests_protects_what_it_names() {
     assert!(names.fixtures.contains_key("openai/corpus/text.yaml"));
     assert!(names.fixtures.contains_key("anthropic/corpus/text.yaml"));
     assert!(names.goldens.contains_key(&Golden {
-        world: false,
-        name: "openai_text".into(),
-    }));
-    assert!(names.goldens.contains_key(&Golden {
-        world: true,
         name: "openai_text".into(),
     }));
 }
@@ -181,7 +166,7 @@ fn a_row_body_is_parenthesized_or_names_a_golden() {
     };
     assert!(is_row_body(&body(r#"("a", CELL, "g")"#)));
     assert!(is_row_body(&body(r#"SCRIPTED => "g""#)));
-    assert!(!is_row_body(&body("ecs_faults_case")));
+    assert!(!is_row_body(&body("wire_matrix_case")));
     assert!(!is_row_body(&body("with_x, wire: y")));
 }
 
@@ -190,14 +175,16 @@ fn a_provider_file_another_target_compiles_is_shared() {
     let source = r#"
         #[path = "."]
         mod cassette {
-            #[path = "../providers/anthropic/cassette/ecs_lifecycle.rs"]
-            mod ecs_lifecycle;
+            #[path = "../providers/anthropic/cassette/lifecycle_matrix.rs"]
+            mod lifecycle_matrix;
         }
-        #[path = "../common/ecs_matrix.rs"]
-        mod ecs_matrix;
+        #[path = "../common/corpus_matrix.rs"]
+        mod corpus_matrix;
     "#;
     assert_eq!(
         shared_files(source),
-        BTreeSet::from([format!("{PROVIDERS}/anthropic/cassette/ecs_lifecycle.rs")])
+        BTreeSet::from([format!(
+            "{PROVIDERS}/anthropic/cassette/lifecycle_matrix.rs"
+        )])
     );
 }

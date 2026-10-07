@@ -1,7 +1,7 @@
-//! Scripted stream faults for the runner/native fault matrix.
+//! Scripted stream faults for the runner fault matrix.
 //!
 //! A fault cell serves a real provider adapter a stream that ends badly and
-//! asserts what each runtime does with it: the error it surfaces, the record
+//! asserts what the runtime does with it: the error it surfaces, the record
 //! it keeps, the history it commits, the tools it runs. The bodies are cut
 //! from committed recordings ([`recorded_sse_frames`]) or, where a wire only
 //! records single terminal frames, assembled from frames a real capture or
@@ -16,8 +16,6 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
-use bevy_app::App;
-use bevy_ecs::prelude::*;
 use bytes::Bytes;
 use futures::StreamExt;
 
@@ -48,14 +46,8 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_cassette::effect_log::EffectLog;
-use rig_ecs::{
-    agent::{Failure, Role, Utterance},
-    bus::{Streamed, Witnessing},
-    systems::RunCommands,
-};
 
 use crate::{
-    ecs_agent::EcsAgent,
     goldens::families,
     support::{MathError, OperationArgs, Subtract},
 };
@@ -231,35 +223,6 @@ impl SseShape {
         let mut out = self.text_prefix(frames);
         out.push(self.error_frame());
         out
-    }
-
-    /// The facts the in-band error frame carries, as the funnel reports
-    /// them: the body's machine code (`error.type` on the Chat envelope,
-    /// `error.code` on the Responses event, `error.status` on Gemini's),
-    /// a fragment of its message, and the HTTP status Gemini's envelope
-    /// names (the others name none).
-    pub const fn error_code(self) -> Option<&'static str> {
-        match self {
-            Self::Chat | Self::Responses => Some("server_error"),
-            Self::Gemini => Some("UNAVAILABLE"),
-        }
-    }
-
-    /// Expected message fragment for this wire's injected provider error.
-    pub const fn error_message(self) -> &'static str {
-        match self {
-            Self::Chat => "upstream unavailable",
-            Self::Responses => "boom",
-            Self::Gemini => "The model is overloaded",
-        }
-    }
-
-    /// Expected HTTP status carried inside the injected error, when the wire supplies one.
-    pub const fn error_status(self) -> Option<u16> {
-        match self {
-            Self::Chat | Self::Responses => None,
-            Self::Gemini => Some(503),
-        }
     }
 
     /// The finish the recorded turn stops with, and the one a filtered
@@ -444,33 +407,6 @@ fn responses_filtered(frames: &[String], with_text: bool) -> Vec<String> {
         .collect()
 }
 
-/// The recorded setup failure of `scenario` under `status`, as the bundled
-/// transport reports a rejection: a status error carrying the reply's
-/// headers (`Retry-After: 1` when `retry_after`).
-pub fn status_reply(
-    provider: &str,
-    scenario: &str,
-    status: u16,
-    retry_after: bool,
-) -> rig_agent::test_utils::MockHttpResponse {
-    let (_, body) = crate::cassettes::recorded_statuses_and_bodies(provider, scenario)
-        .into_iter()
-        .next()
-        .expect("the setup failure is recorded");
-    let mut headers = rig_core::http_client::HeaderMap::new();
-    if retry_after {
-        headers.insert(
-            "retry-after",
-            rig_core::http_client::HeaderValue::from_static("1"),
-        );
-    }
-    rig_agent::test_utils::MockHttpResponse::ErrorWithHeaders(
-        rig_core::http_client::StatusCode::from_u16(status).expect("a status"),
-        body,
-        headers,
-    )
-}
-
 /// The Responses wire's `error` event, the shape the adapter's unit tests
 /// pin (`streaming_error_event_preserves_full_payload`).
 pub const RESPONSES_ERROR_EVENT: &str = r#"event: error
@@ -538,15 +474,6 @@ pub fn report_of(error: &PromptError) -> ErrorReport {
         }
         other => panic!("a provider-shaped failure, not {other:?}"),
     }
-}
-
-/// The log as JSON with its delivery batches removed: batch numbers count
-/// schedule passes, which a witness's extra work can shift by a tick, and
-/// the comparison guide already excludes them from golden equality.
-pub fn log_json_without_deliveries(log: &EffectLog) -> String {
-    let mut log = log.clone();
-    log.header.deliveries = None;
-    serde_json::to_string(&log).expect("the log serializes")
 }
 
 /// The error the one completion record holds. A fault cell records exactly
@@ -632,184 +559,6 @@ impl Tool for CountedSubtract {
     }
 }
 
-/// One native run and everything a cell asserts on afterwards.
-pub struct NativeRun {
-    /// The answer, or the failure.
-    pub outcome: Result<String, Failure>,
-    /// The recorder's log.
-    pub log: EffectLog,
-    /// The witness's log, when one was installed.
-    pub trace: Option<Arc<ObservationLog>>,
-    /// The committed history, in order: who spoke.
-    pub roles: Vec<Role>,
-    /// The one completion stream's fold, while its effect survives: a
-    /// despawned in-flight effect takes its stream with it.
-    pub stream: Option<Streamed>,
-}
-
-impl NativeRun {
-    /// Return the stream fold, panicking if its effect did not survive the run.
-    pub fn stream(&self) -> &Streamed {
-        self.stream
-            .as_ref()
-            .expect("the stream's effect survived the run")
-    }
-
-    /// Return the run's failure, panicking if it succeeded.
-    pub fn failure(&self) -> &Failure {
-        self.outcome.as_ref().expect_err("the fault fails the run")
-    }
-
-    /// Return the provider failure report, panicking on success or another failure kind.
-    pub fn provider_report(&self) -> &ErrorReport {
-        match self.failure() {
-            Failure::Provider(report) => report,
-            other => panic!("a provider failure, not {other:?}"),
-        }
-    }
-
-    /// Return the observation trace, panicking if no witness was installed.
-    pub fn trace(&self) -> &ObservationLog {
-        self.trace.as_deref().expect("a witnessed run")
-    }
-
-    /// The log without its scheduling-dependent delivery batches.
-    pub fn log_json(&self) -> String {
-        log_json_without_deliveries(&self.log)
-    }
-}
-
-/// Drive one streamed native run of `prompt` on a fresh world over `model`
-/// with an agent-level budget of two turns; `configure` shapes the agent
-/// before the run is spawned.
-pub async fn native_run(
-    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
-    preamble: &str,
-    prompt: &str,
-    witness: bool,
-    configure: impl FnOnce(&mut EcsAgent),
-) -> NativeRun {
-    let model: rig_core::DynModel<rig_core::operation::Completion> = model.into();
-    native_run_serving(
-        |label| rig_core::serve::adapters::ModelAdapter::new(label, model),
-        preamble,
-        prompt,
-        witness,
-        configure,
-    )
-    .await
-}
-
-/// [`native_run`] over the model handler `serve` builds for the model label.
-pub async fn native_run_serving<S: rig_core::serve::Serve + 'static>(
-    serve: impl FnOnce(&str) -> S,
-    preamble: &str,
-    prompt: &str,
-    witness: bool,
-    configure: impl FnOnce(&mut EcsAgent),
-) -> NativeRun {
-    let mut ecs = EcsAgent::serving(serve, preamble, 2);
-    configure(&mut ecs);
-    let trace = witness.then(|| witnessed(&mut ecs.app));
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, true, None);
-    let outcome = ecs.wait_for_outcome(run).await;
-    // The run's ending lands before a despawned or dropped handler has
-    // necessarily closed its record; give the owned task the same window
-    // the anthropic cancellation cells do before reading the log.
-    for _ in 0..64 {
-        ecs.app.update();
-        tokio::task::yield_now().await;
-    }
-    let log = ecs.effect_log();
-    let roles = utterance_roles(ecs.app.world_mut(), run);
-    let stream = sole_stream(ecs.app.world_mut());
-    NativeRun {
-        outcome,
-        log,
-        trace,
-        roles,
-        stream,
-    }
-}
-
-/// A failure with the one field that varies between two replays of the same
-/// recording removed: the replay server stamps a live `date` header on every
-/// response, and a provider report keeps the response's headers. Everything
-/// else — kind, status, message, body, the other headers — compares whole.
-pub fn comparable_failure(failure: &Failure) -> Failure {
-    let mut failure = failure.clone();
-    let report = match &mut failure {
-        Failure::Provider(report)
-        | Failure::Cancelled(report)
-        | Failure::Tool(report)
-        | Failure::Memory(report) => report,
-        _ => return failure,
-    };
-    if let Some(headers) = report
-        .provider_response
-        .as_mut()
-        .and_then(|response| response.headers.as_mut())
-    {
-        headers.remove("date");
-    }
-    failure
-}
-
-/// The fault must read the same with and without a witness: same failure,
-/// same record, same history; and `secret` must not reach the trace.
-pub fn assert_witness_is_a_side_channel(observed: &NativeRun, plain: &NativeRun, secret: &str) {
-    assert_eq!(
-        comparable_failure(observed.failure()),
-        comparable_failure(plain.failure()),
-        "the witness does not change the failure"
-    );
-    assert_eq!(
-        observed.log_json(),
-        plain.log_json(),
-        "the witness does not change the record"
-    );
-    assert_eq!(observed.roles, plain.roles, "nor the history");
-    assert!(
-        !trace_json(observed.trace()).contains(secret),
-        "the credential never reaches the trace"
-    );
-}
-
-/// The run's committed history, in order: who spoke.
-pub fn utterance_roles(world: &mut World, run: Entity) -> Vec<Role> {
-    let children: Vec<Entity> = world
-        .get::<Children>(run)
-        .map(|children| children.iter().collect())
-        .unwrap_or_default();
-    children
-        .into_iter()
-        .filter(|child| world.get::<Utterance>(*child).is_some())
-        .filter_map(|child| world.get::<Role>(child).copied())
-        .collect()
-}
-
-/// The one stream's fold: its text so far, its error items with their
-/// positions, and its outcome. `None` once its effect is gone.
-pub fn sole_stream(world: &mut World) -> Option<Streamed> {
-    let mut query = world.query::<&Streamed>();
-    let streams: Vec<_> = query.iter(world).cloned().collect();
-    assert!(
-        streams.len() <= 1,
-        "at most one streamed effect: {streams:?}"
-    );
-    streams.into_iter().next()
-}
-
-/// Install a witness over a fresh log.
-pub fn witnessed(app: &mut App) -> Arc<ObservationLog> {
-    let log = Arc::new(ObservationLog::default());
-    Witnessing::install(app.world_mut(), log.clone());
-    log
-}
-
 /// Every program ending the witness saw, by code.
 pub fn endings(log: &ObservationLog) -> Vec<String> {
     log.trace()
@@ -844,29 +593,6 @@ pub fn truncations(log: &ObservationLog) -> Vec<(usize, usize)> {
                 delivered, errors, ..
             } => Some((*delivered, errors.len())),
             _ => None,
-        })
-        .collect()
-}
-
-/// The bus's decisions in order, by name.
-pub fn bus_actions(log: &ObservationLog) -> Vec<&'static str> {
-    log.trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Issued => Some("issued"),
-            Action::Landed { outcome } => Some(match outcome {
-                rig_core::observe::OutcomeSummary::Err { .. } => "landed_err",
-                _ => "landed_ok",
-            }),
-            Action::Denied { .. } => Some("denied"),
-            Action::Refused { .. } => Some("refused"),
-            Action::Cancelled { .. } => Some("cancelled"),
-            Action::StreamTruncated { .. } => Some("truncated"),
-            Action::Held { .. } => Some("held"),
-            Action::Released => Some("released"),
-            Action::Replaced { .. } => Some("replaced"),
-            Action::Adapter { .. } | Action::Ended { .. } | Action::Host { .. } => None,
         })
         .collect()
 }

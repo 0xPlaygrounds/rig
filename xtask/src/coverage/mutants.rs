@@ -1,7 +1,7 @@
 //! The mutation kill set of the replay core, from `cargo mutants` with
 //! nextest, each mutant tested against its crate's fast suites only: the
-//! crate's unit tests and its conformance targets, and for rig-agent and
-//! rig-ecs every target of the crate, which together take about a second.
+//! crate's unit tests and its conformance targets, and for rig-agent every
+//! target of the crate, which together take about a second.
 //!
 //! The replay core has about four thousand mutants, and one rig-core mutant
 //! rebuilds rig-core and its test binaries, so the gate samples them. A
@@ -78,13 +78,6 @@ pub(crate) const GROUPS: &[Group] = &[
         package: "rig-agent",
         files: &["crates/rig-agent/src/run/**"],
         // Every target: the integration suites take about a second.
-        test_args: &[],
-    },
-    Group {
-        package: "rig-ecs",
-        files: &["crates/rig-ecs/src/systems/**"],
-        // The systems are exercised by the `run` and `bus` targets, not by
-        // unit tests; every target takes about a second.
         test_args: &[],
     },
 ];
