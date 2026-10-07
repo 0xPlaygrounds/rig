@@ -6,6 +6,8 @@
 //! | every outcome the batch distinguishes lands as its status, in call order, and `read_message` is what the model saw | `every_outcome_lands_as_its_status_and_the_dto_is_unchanged` |
 //! | a skipped invalid call and its peers land `Skipped` | `an_invalid_call_skipped_by_a_system_lands_skipped_results` |
 //! | a checkpoint round-trips the status, and refuses one off a tool-result part | `a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part` |
+//! | a Skip under an agent-level `ToolChoice::None` fails the run | `a_skip_under_an_agent_tool_choice_none_fails_the_run` |
+//! | a Skip under a turn patched to `ToolChoice::None` fails the run the same way | `a_skip_under_a_turn_patched_to_tool_choice_none_fails_the_run` |
 
 use crate::run_support;
 
@@ -17,18 +19,20 @@ use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
+    message::ToolChoice,
     message::{AssistantContent, Message},
     serve::{Dispatch, Reply, Serve},
     tool::{ToolExecutionError, ToolOutput, ToolResult},
 };
 use rig_ecs::{
     agent::{
-        Grant, InvalidCall, InvalidCalls, Resolution, Run, RunSeq, Settled,
+        Failed, Failure, Grant, InvalidCall, InvalidCalls, RequestPatch, Resolution, Run, RunSeq,
+        Settled, ToolChoiceSpec,
         content::parts::{ContentPart, ToolResultStatus, read_message},
     },
     bus::RigSchedule,
     checkpoint::{Checkpoint, CheckpointError, RestoreMode, load_world, save_world},
-    systems::{RigSet, RunCommands},
+    systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
 
@@ -356,4 +360,82 @@ fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
         "{error:?}"
     );
     assert_eq!(app.world().entities().len(), count);
+}
+
+fn patch_tool_choice_none(fresh: Query<Entity, Added<Fresh>>, mut commands: Commands) {
+    for turn in &fresh {
+        commands.entity(turn).insert(RequestPatch {
+            tool_choice: Some(ToolChoice::None),
+            ..RequestPatch::default()
+        });
+    }
+}
+
+/// Runs an agent whose first turn calls an unknown tool, with a system that
+/// skips every invalid call, and returns how the run ended.
+fn skip_unknown_call(
+    agent_choice: Option<ToolChoice>,
+    patch_none: bool,
+) -> (Option<Failed>, bool, usize) {
+    let (mut app, agent, requests) = tooling(
+        vec![
+            vec![call("c1", "nope", serde_json::json!({}))],
+            vec![AssistantContent::text("the skip was accepted")],
+        ],
+        BTreeMap::new(),
+    );
+    app.world_mut().entity_mut(agent).insert(InvalidCalls {
+        retries: 1,
+        ..Default::default()
+    });
+    if let Some(choice) = agent_choice {
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(ToolChoiceSpec(Some(choice)));
+    }
+    let mut schedules = app.world_mut().resource_mut::<Schedules>();
+    schedules.add_systems(RigSchedule, skip_invalid_calls.in_set(RigSet::Judge));
+    if patch_none {
+        schedules.add_systems(
+            RigSchedule,
+            patch_tool_choice_none
+                .after(RigSet::Advance)
+                .before(RigSet::Assemble),
+        );
+    }
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "call nothing", false, None);
+    ended(&mut app, run, "ended");
+    let failed = app.world().get::<Failed>(run).cloned();
+    let settled = app.world().get::<Settled>(run).is_some();
+    let sent = requests.lock().map(|seen| seen.len()).unwrap_or_default();
+    (failed, settled, sent)
+}
+
+/// The control: an agent-level `ToolChoice::None` forbids every call, so a
+/// Skip is not a resolution and the run fails on the unknown call.
+#[test]
+fn a_skip_under_an_agent_tool_choice_none_fails_the_run() {
+    let (failed, settled, sent) = skip_unknown_call(Some(ToolChoice::None), false);
+    assert!(
+        matches!(&failed, Some(Failed(Failure::UnknownToolCall { name })) if name == "nope"),
+        "expected UnknownToolCall, got {failed:?} (settled: {settled})"
+    );
+    assert_eq!(sent, 1);
+}
+
+/// A turn whose `RequestPatch` sets `ToolChoice::None` was sent with no
+/// callable tool, exactly like the control, so its Skip must fail the run
+/// the same way. The judge reads the agent's `ToolChoiceSpec` instead of the
+/// turn's resolved choice, accepts the Skip, and asks the model again.
+#[test]
+fn a_skip_under_a_turn_patched_to_tool_choice_none_fails_the_run() {
+    let (failed, settled, sent) = skip_unknown_call(None, true);
+    assert!(
+        matches!(&failed, Some(Failed(Failure::UnknownToolCall { name })) if name == "nope"),
+        "expected UnknownToolCall under the patched ToolChoice::None, got {failed:?} \
+         (settled: {settled}, requests sent: {sent})"
+    );
+    assert_eq!(sent, 1);
 }
