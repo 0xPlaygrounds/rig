@@ -963,31 +963,19 @@ fn a_streamed_reply_without_a_plan_rebuilds_no_tool_plan() {
 }
 
 /// Cohere reports no total, so the observed usage carries none: the
-/// `AdapterUsage` contract says the total is provider-reported, never a sum
-/// of the other fields. The projector reuses the decoder's normalized
-/// `usage_of`, whose total is a sum.
-#[test]
-fn the_observed_usage_does_not_invent_a_total() {
-    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
-    let log = std::sync::Arc::new(ObservationLog::default());
-    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
-    let mut attempt = context
-        .attempt_for(&http::Request::new(()), "/v2/chat")
-        .expect("an attempt starts");
-    let payload = br#"{"usage":{"tokens":{"input_tokens":3,"output_tokens":4}}}"#;
-    attempt.project(|sink| ChatDecoder::project(payload, sink));
-    drop(attempt);
-    let totals: Vec<Option<u64>> = log
-        .trace()
-        .observations
-        .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => match &observation.event {
-                AdapterEvent::Usage { usage } => Some(usage.total_tokens),
-                _ => None,
-            },
-            _ => None,
-        })
-        .collect();
+/// observation is the decoder's normalized `Finish` usage, observed once by
+/// the driver, never the summed total a second parse would invent.
+#[tokio::test]
+async fn the_observed_usage_does_not_invent_a_total() {
+    let body = json!({"id": "r", "message": {"content": []}, "finish_reason": "COMPLETE",
+        "usage": {"tokens": {"input_tokens": 3, "output_tokens": 4}}});
+    let (observed, usage) = crate::driver::tests::observed_usage(
+        super::super::NativeChat::new(super::super::CohereConfig::new("key"), "command-a"),
+        crate::test_utils::RecordingHttpClient::new(body.to_string()),
+        crate::wire::Mode::Unary,
+    )
+    .await;
+    let totals: Vec<Option<u64>> = observed.iter().map(|usage| usage.total_tokens).collect();
     assert_eq!(totals, [None], "Cohere reports no total_tokens");
+    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }

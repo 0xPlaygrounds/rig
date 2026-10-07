@@ -17,9 +17,7 @@ use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::http_client::framing::Framing;
 use crate::message::{CallId, ToolName};
-use crate::observe::{
-    AdapterContext, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
-};
+use crate::observe::{AdapterContext, AdapterVerdict, ObservationLog, Subject};
 use crate::operation::{Block, Completion, Finish};
 use crate::streaming::Streamed;
 use crate::test_utils::{
@@ -65,6 +63,49 @@ where
         Some(context) => model.stream_observed(request, context),
         None => model.stream(request),
     }
+}
+
+/// One observed reply of `wire` over `http` in `mode`: the usage
+/// observations it emitted, in order, and the response's usage.
+///
+/// # Panics
+///
+/// When the reply does not fold.
+pub(crate) async fn observed_usage<W, T>(
+    wire: W,
+    http: T,
+    mode: crate::wire::Mode,
+) -> (Vec<crate::observe::AdapterUsage>, crate::completion::Usage)
+where
+    W: crate::wire::Wire<Op = crate::operation::Completion>,
+    T: Transport<W>,
+{
+    use crate::observe::{Action, AdapterContext, AdapterEvent, ObservationLog, Subject};
+    let log = std::sync::Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+    let model = Model::new(wire, http);
+    let request = crate::completion::CompletionRequest::new("hi");
+    let response = match mode {
+        crate::wire::Mode::Unary => model.call_observed(request, context).await,
+        crate::wire::Mode::Streaming => match model.stream_observed(request, context) {
+            Ok(stream) => stream.finish().await,
+            Err(error) => Err(error),
+        },
+    }
+    .unwrap_or_else(|error| panic!("the reply folds: {error}"));
+    let observed = log
+        .trace()
+        .observations
+        .iter()
+        .filter_map(|observation| match &observation.action {
+            Action::Adapter { observation } => match &observation.event {
+                AdapterEvent::Usage { usage } => Some(usage.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    (observed, response.usage)
 }
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -203,19 +244,8 @@ impl<'id> EchoDecoder<'id> {
 
 impl EchoDecoder<'_> {
     fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
-        let Ok(value) = serde_json::from_slice::<serde_json::Value>(payload) else {
+        if serde_json::from_slice::<serde_json::Value>(payload).is_err() {
             return;
-        };
-        if let Some(tokens) = value
-            .pointer("/usage/output_tokens")
-            .and_then(|v| v.as_u64())
-        {
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    output_tokens: Some(tokens),
-                    ..AdapterUsage::default()
-                },
-            });
         }
         sink.provider(
             AdapterVerdict {
@@ -582,10 +612,39 @@ async fn a_failed_unary_call_projects_the_reply_it_failed_on() {
         .expect_err("a 400 fails the call");
     let events = events(&log);
     assert!(
-        events.contains(&"usage".to_owned()),
+        events.contains(&"provider".to_owned()),
         "the failed reply's facts are still projected: {events:?}"
     );
     assert_eq!(events.last().map(String::as_str), Some("finished"));
+}
+
+/// The driver observes a reply's usage once, when it ends, from the usage
+/// the decoder normalized into its end: unary or streamed, it is the
+/// response's usage, with no invented total.
+#[tokio::test]
+async fn a_reply_observes_its_finish_usage_once() {
+    let streamed = MockStreamingClient {
+        sse_bytes: Bytes::from_static(
+            b"data: {\"type\":\"delta\",\"text\":\"hi\"}\n\n\
+              data: {\"type\":\"stop\",\"usage\":{\"output_tokens\":3}}\n\n",
+        ),
+    };
+    for (observed, usage) in [
+        crate::driver::tests::observed_usage(
+            Echo::unary(),
+            RecordingHttpClient::new(UNARY_BODY),
+            Mode::Unary,
+        )
+        .await,
+        crate::driver::tests::observed_usage(Echo::streaming(), streamed, Mode::Streaming).await,
+    ] {
+        let expected = crate::observe::AdapterUsage {
+            output_tokens: Some(3),
+            ..Default::default()
+        };
+        assert_eq!(observed, std::slice::from_ref(&expected));
+        assert_eq!(expected, crate::observe::AdapterUsage::from(&usage));
+    }
 }
 
 // ── paging ─────────────────────────────────────────────────────────────

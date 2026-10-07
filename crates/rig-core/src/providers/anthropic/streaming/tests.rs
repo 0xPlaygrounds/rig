@@ -691,6 +691,30 @@ mod terminal_emission {
             assert_eq!(response.usage.input_tokens, Some(expected), "{case}");
         }
     }
+
+    /// A gateway that zeroes the input on the terminal `message_delta` has
+    /// the `message_start` count observed, as the response reports it: the
+    /// observation is the decoder's end, not each frame's raw snapshot.
+    #[tokio::test]
+    async fn a_zeroed_terminal_input_is_observed_as_the_response_reports_it() {
+        const ZEROED_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"input_tokens":0,"output_tokens":3}}"#;
+        let (observed, usage) = crate::driver::tests::observed_usage(
+            AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6),
+            MockStreamingClient {
+                sse_bytes: sse(&[
+                    MESSAGE_START,
+                    TEXT_START,
+                    TEXT_DELTA,
+                    ZEROED_DELTA,
+                    r#"{"type":"message_stop"}"#,
+                ]),
+            },
+            crate::wire::Mode::Streaming,
+        )
+        .await;
+        assert_eq!(usage.input_tokens, Some(5));
+        assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
+    }
 }
 
 /// The Messages projection, driven through [`crate::driver`].

@@ -2015,7 +2015,6 @@ where
         }
         super::reasoning::assert_witness(
             cell,
-            wire.thinking,
             &log,
             gates.witness.as_deref().expect("reasoning is witnessed"),
         );

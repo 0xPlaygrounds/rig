@@ -394,12 +394,7 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     );
 }
 
-pub(crate) fn assert_witness(
-    cell: &Cell,
-    wire: ThinkingWire,
-    log: &EffectLog,
-    trace: &ObservationLog,
-) {
+pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLog) {
     if cell.reasoning.is_none() {
         return;
     }
@@ -434,22 +429,18 @@ pub(crate) fn assert_witness(
     let mut reported = Vec::new();
     for event in &adapters {
         match event {
-            AdapterEvent::Usage { usage } => current_usage = usage.reasoning_tokens,
+            AdapterEvent::Usage { usage } => current_usage = Some(usage.clone()),
             AdapterEvent::Finished { .. } => reported.push(current_usage.take()),
             _ => {}
         }
     }
     for (response, reported) in completions(log).iter().zip(reported) {
-        // Doubleword's reasoning counter is not part of its completion count,
-        // so rig leaves it unreported.
-        let expected = if matches!(wire, ThinkingWire::Doubleword) {
-            None
-        } else {
-            reported
-        };
+        // The observation is the response's usage, total aside.
+        let observed = rig_core::observe::AdapterUsage::from(&response.usage);
+        let expected = (observed != rig_core::observe::AdapterUsage::default()).then_some(observed);
         assert_eq!(
-            response.usage.reasoning_tokens, expected,
-            "{}: record usage equals the provider's witnessed counter",
+            reported, expected,
+            "{}: the observed usage is the response's usage",
             cell.name
         );
     }

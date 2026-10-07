@@ -802,34 +802,23 @@ pub(super) fn replayed(wire: &Chat, turn: crate::message::AssistantMessage) -> s
 
 /// A gateway that reports usage on the choice rather than the top level
 /// still has its usage observed: the decoder accepts `choices[0].usage` for
-/// `Finish`, so the observation must see the same counts. The raw-bytes
-/// projector reads only `/usage`, and reports nothing.
-#[test]
-fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
-    use crate::observe::{Action, AdapterContext, ObservationLog, Subject};
-    let log = std::sync::Arc::new(ObservationLog::default());
-    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
-    let mut attempt = context
-        .attempt_for(&http::Request::new(()), "/chat/completions")
-        .expect("an attempt starts");
-    let payload = br#"{"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}]}"#;
-    attempt.project(|sink| ChatDecoder::project(payload, sink));
-    drop(attempt);
-    let observed: Vec<(Option<u64>, Option<u64>)> = log
-        .trace()
-        .observations
+/// `Finish`, and the driver observes that `Finish` usage, so the
+/// observation sees the same counts.
+#[tokio::test]
+async fn per_choice_usage_is_observed_as_the_decoder_reads_it() {
+    let payload = r#"{"id":"c","model":"m","choices":[{"index":0,"delta":{},"finish_reason":"stop","usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}]}"#;
+    let (observed, usage) = crate::driver::tests::observed_usage(
+        wire(),
+        MockStreamingClient {
+            sse_bytes: Bytes::from(format!("data: {payload}\n\ndata: [DONE]\n\n")),
+        },
+        Mode::Streaming,
+    )
+    .await;
+    let counts: Vec<(Option<u64>, Option<u64>)> = observed
         .iter()
-        .filter_map(|observation| match &observation.action {
-            Action::Adapter { observation } => match &observation.event {
-                AdapterEvent::Usage { usage } => Some((usage.input_tokens, usage.output_tokens)),
-                _ => None,
-            },
-            _ => None,
-        })
+        .map(|usage| (usage.input_tokens, usage.output_tokens))
         .collect();
-    assert_eq!(
-        observed,
-        [(Some(3), Some(4))],
-        "per-choice usage is observed"
-    );
+    assert_eq!(counts, [(Some(3), Some(4))], "per-choice usage is observed");
+    assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
