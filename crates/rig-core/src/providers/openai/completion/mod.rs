@@ -6,27 +6,33 @@
 //! ```
 
 /// GPT-6 Astra, API ID `gpt-6-astra`: a reasoning model that cannot turn
-/// reasoning off. Its catalog entry holds what the encoders enforce: no
-/// sampling parameters, and tools only through Responses.
+/// reasoning off. Its catalog entry holds the rules the encoders check,
+/// through `on_unsupported`, for a request that sets generation options:
+/// no sampling parameters, and tools only through Responses.
 pub const GPT_6_ASTRA: &str = "gpt-6-astra";
 
 /// GPT-6.1 Sol, API ID `gpt-6.1-sol`: a reasoning model that cannot turn
-/// reasoning off. Its catalog entry holds what the encoders enforce: no
-/// sampling parameters, and tools only through Responses.
+/// reasoning off. Its catalog entry holds the rules the encoders check,
+/// through `on_unsupported`, for a request that sets generation options:
+/// no sampling parameters, and tools only through Responses.
 pub const GPT_6_1_SOL: &str = "gpt-6.1-sol";
 
 /// GPT-6 Sol, API ID `gpt-6-sol`: a reasoning model. Its catalog entry
-/// holds what the encoders enforce: sampling parameters, and Chat
-/// Completions tools, only at effort `none`
+/// holds the rules the encoders check, through `on_unsupported`, for a
+/// request that sets generation options: sampling parameters only at effort
+/// `none`
 /// ([`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
-/// `(Reasoning::Off)`). Responses takes tools at any effort.
+/// `(Reasoning::Off)`). OpenAI itself refuses Chat Completions tools at
+/// any other effort; Responses takes tools at any effort.
 pub const GPT_6_SOL: &str = "gpt-6-sol";
 
 /// GPT-6 Luna, API ID `gpt-6-luna`: a reasoning model. Its catalog entry
-/// holds what the encoders enforce: sampling parameters, and Chat
-/// Completions tools, only at effort `none`
+/// holds the rules the encoders check, through `on_unsupported`, for a
+/// request that sets generation options: sampling parameters only at effort
+/// `none`
 /// ([`GenerationOptions::reasoning`](crate::completion::GenerationOptions::reasoning)
-/// `(Reasoning::Off)`). Responses takes tools at any effort.
+/// `(Reasoning::Off)`). OpenAI itself refuses Chat Completions tools at
+/// any other effort; Responses takes tools at any effort.
 pub const GPT_6_LUNA: &str = "gpt-6-luna";
 
 /// `gpt-5.6` completion model (alias that routes to GPT-5.6 Sol)
