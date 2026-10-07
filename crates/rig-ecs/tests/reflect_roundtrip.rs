@@ -184,7 +184,10 @@ fn populated() -> bevy_app::App {
                 name: rig_core::message::ToolName::new("add".to_owned()).expect("tool name"),
             },
             rig_ecs::systems::Fresh,
-            rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
+            rig_ecs::systems::Folded {
+                mode: rig_ecs::agent::OutputKind::Auto,
+                tool_choice: Some(ToolChoice::None),
+            },
             rig_ecs::agent::Prompt(vec![rig_core::message::UserContent::text("p")]),
             (
                 rig_ecs::agent::RunPhase::Assembling,

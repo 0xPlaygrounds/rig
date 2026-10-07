@@ -6,7 +6,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -151,7 +151,7 @@
       "serial_per_handler": false
     },
     {
-      "format": 2,
+      "format": 3,
       "entities": [
         {
           "rig_ecs::bus::handlers::Bound": {
@@ -354,7 +354,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 11,
           "rig_ecs::agent::checkpoint::TurnResults": 13,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -643,7 +646,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 20,
           "rig_ecs::agent::checkpoint::TurnResults": 22,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -924,7 +930,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 29,
           "rig_ecs::agent::checkpoint::TurnResults": 31,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -1230,7 +1239,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 39,
           "rig_ecs::agent::checkpoint::TurnResults": 42,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -1621,7 +1633,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 51,
           "rig_ecs::agent::checkpoint::TurnResults": 53,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -1902,7 +1917,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 60,
           "rig_ecs::agent::checkpoint::TurnResults": 62,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -2208,7 +2226,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 70,
           "rig_ecs::agent::checkpoint::TurnResults": 73,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -2599,7 +2620,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 82,
           "rig_ecs::agent::checkpoint::TurnResults": 84,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -2880,7 +2904,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 91,
           "rig_ecs::agent::checkpoint::TurnResults": 93,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -3186,7 +3213,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 101,
           "rig_ecs::agent::checkpoint::TurnResults": 104,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -3577,7 +3607,10 @@
           },
           "rig_ecs::agent::checkpoint::TurnAssistant": 113,
           "rig_ecs::agent::checkpoint::TurnResults": 115,
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
@@ -3828,7 +3861,10 @@
             ]
           },
           "rig_ecs::agent::Turn": {},
-          "rig_ecs::systems::Folded": "Native",
+          "rig_ecs::systems::Folded": {
+            "mode": "Native",
+            "tool_choice": null
+          },
           "rig_ecs::systems::Materialised": {}
         },
         {
