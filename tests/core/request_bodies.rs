@@ -76,13 +76,16 @@ fn canonical(value: &Value) -> Value {
 }
 
 /// An HTTP request as data: its method, URL, headers (with the per-request
-/// random ids blanked) and JSON body.
+/// random ids and the crate version blanked) and JSON body.
 fn http(encoded: &Encoded) -> Value {
     let request = &encoded.request;
     let mut headers: BTreeMap<String, String> = BTreeMap::new();
     for (name, value) in request.headers() {
         let value = match name.as_str() {
             "session_id" | "x-request-id" | "x-interaction-id" => "<random>".to_owned(),
+            // The crate version changes on every release; the golden pins the shape.
+            "user-agent" => String::from_utf8_lossy(value.as_bytes())
+                .replace(concat!("rig/", env!("CARGO_PKG_VERSION")), "rig/<version>"),
             _ => String::from_utf8_lossy(value.as_bytes()).into_owned(),
         };
         headers
