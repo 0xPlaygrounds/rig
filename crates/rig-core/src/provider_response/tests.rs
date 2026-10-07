@@ -625,3 +625,71 @@ fn the_envelope_json_is_the_located_error() {
         assert_eq!(reply.envelope_json(), error, "{body}");
     }
 }
+
+/// A body already known to be an error is classified even when a decoder
+/// hands over the inner error object, or a JSON array of documents, rather
+/// than the document: the verdict and code come from the bare object's own
+/// `code`, `status` or `type`, and an array from its first error. A bare
+/// object names no status, and the cassette's located-error JSON stays the
+/// strict envelope.
+#[test]
+fn a_bare_error_object_or_an_array_body_is_still_classified() {
+    let cases: &[(&str, Option<&str>, Option<u16>, bool)] = &[
+        (
+            r#"{"type":"overloaded_error","message":"x"}"#,
+            Some("overloaded_error"),
+            None,
+            true,
+        ),
+        (
+            r#"{"code":503,"status":"UNAVAILABLE","message":"x"}"#,
+            Some("UNAVAILABLE"),
+            None,
+            true,
+        ),
+        (r#"{"code":429,"message":"x"}"#, Some("429"), None, true),
+        (
+            r#"{"code":"insufficient_quota","message":"x"}"#,
+            Some("insufficient_quota"),
+            None,
+            false,
+        ),
+        (r#"[{"error":{"code":503}}]"#, Some("503"), Some(503), true),
+        (
+            r#"[{"candidates":[]},{"error":{"code":429,"status":"RESOURCE_EXHAUSTED"}}]"#,
+            Some("RESOURCE_EXHAUSTED"),
+            Some(429),
+            true,
+        ),
+        // Without a message, or beside an `error`/`response` slot of its
+        // own, a document is not read as a bare error.
+        (r#"{"type":"overloaded_error"}"#, None, None, false),
+        (
+            r#"{"type":"response.failed","message":"x","response":{"error":null}}"#,
+            None,
+            None,
+            false,
+        ),
+        (
+            r#"{"type":"x","message":"x","error":null}"#,
+            None,
+            None,
+            false,
+        ),
+        ("[]", None, None, false),
+    ];
+    for (body, code, status, retryable) in cases {
+        let reply = ProviderResponseError::from_body(*body);
+        assert_eq!(reply.machine_code().as_deref(), *code, "{body}");
+        assert_eq!(reply.status.map(|s| s.as_u16()), *status, "{body}");
+        assert_eq!(reply.is_retryable(), *retryable, "{body}");
+    }
+    let bare = ProviderResponseError::from_body(r#"{"type":"overloaded_error","message":"x"}"#);
+    assert_eq!(bare.envelope_json(), None);
+    // The public hint on `ProviderError` is outranked the same way.
+    let hinted = crate::error::ProviderError::from_provider_body(
+        r#"{"type":"overloaded_error","message":"x"}"#,
+    )
+    .with_transient(Some(false));
+    assert!(hinted.report().retryable);
+}

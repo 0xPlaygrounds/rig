@@ -140,9 +140,10 @@ pub fn account_failure(status: u16, body: &str) -> Option<AccountFailure> {
 /// status, [`account_failure`]; for a successful one, an error its body
 /// delivers instead of a result. That is a top-level `error` object, an
 /// event of type `error`, or a Responses `response.failed` event, as a
-/// stream that already answered 200 reports a limit it hit. A nested
-/// error's numeric `code` stands in for the status, as
-/// [`rig_core::ProviderResponseError::from_body`] reads it.
+/// stream that already answered 200 reports a limit it hit. The error's
+/// numeric `code` stands in for the status: a nested one as
+/// [`rig_core::ProviderResponseError::from_body`] reads it, else the
+/// event's own.
 pub fn reply_account_failure(status: u16, body: &str) -> Option<AccountFailure> {
     if status >= 400 {
         return account_failure(status, body);
@@ -157,7 +158,12 @@ pub fn reply_account_failure(status: u16, body: &str) -> Option<AccountFailure> 
         })
         .find_map(|document| {
             let reply = rig_core::ProviderResponseError::from_body(document.to_string());
-            let status = reply.status.map_or(400, |status| status.as_u16());
+            // An `error` event's own numeric `code` stands in too.
+            let status = reply.status.map(|status| status.as_u16()).or_else(|| {
+                let code = reply.machine_code()?.parse::<u16>().ok()?;
+                (400..600).contains(&code).then_some(code)
+            });
+            let status = status.unwrap_or(400);
             account_failure(status, &reply.envelope_json()?.to_string())
         })
 }

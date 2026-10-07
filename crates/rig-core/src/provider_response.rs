@@ -140,19 +140,19 @@ impl ProviderResponseError {
     /// The error the body's envelope holds, as `{"error": ...}`, or the
     /// error event itself; `None` when the body carries no envelope.
     pub fn envelope_json(&self) -> Option<serde_json::Value> {
-        self.located(|envelope| {
-            let error = envelope.error?.clone();
-            Some(match envelope.nested {
-                true => serde_json::json!({ "error": error }),
-                false => error,
-            })
+        let doc: serde_json::Value = serde_json::from_str(&self.body).ok()?;
+        let envelope = envelope(&doc)?;
+        let error = envelope.error?.clone();
+        Some(match envelope.nested {
+            true => serde_json::json!({ "error": error }),
+            false => error,
         })
     }
 
-    /// `f` applied to the error envelope the body carries, if it carries one.
+    /// `f` applied to the error the body carries, as [`delivered`] finds it.
     fn located<T>(&self, f: impl FnOnce(Envelope<'_>) -> Option<T>) -> Option<T> {
         let doc: serde_json::Value = serde_json::from_str(&self.body).ok()?;
-        envelope(&doc).and_then(f)
+        delivered(&doc).and_then(f)
     }
 
     /// Attach the transport request id the failed response reported.
@@ -312,6 +312,24 @@ fn envelope(doc: &serde_json::Value) -> Option<Envelope<'_>> {
         _ => (doc.get("type").and_then(Value::as_str) == Some("error"))
             .then(|| Envelope::of(doc, &["code"], false)),
     }
+}
+
+/// The error a body already known to be one carries, for its verdict and
+/// code: where [`envelope`] locates it; in a JSON array (Gemini's non-SSE
+/// stream), the first element that carries one; else the document read as
+/// a bare error object, as a decoder that handed over the inner error
+/// (`{"type":"overloaded_error","message":".."}`) leaves it. A bare error
+/// has a nonempty string `message` and no `error` or `response` of its own,
+/// and its code is its `code`, `status` or `type`.
+fn delivered(doc: &serde_json::Value) -> Option<Envelope<'_>> {
+    if let Some(items) = doc.as_array() {
+        return items.iter().find_map(delivered);
+    }
+    let message = doc.get("message").and_then(serde_json::Value::as_str);
+    let bare = message.is_some_and(|message| !message.is_empty())
+        && doc.get("error").is_none()
+        && doc.get("response").is_none();
+    envelope(doc).or_else(|| bare.then(|| Envelope::of(doc, &["code", "status", "type"], false)))
 }
 
 impl<'a> Envelope<'a> {

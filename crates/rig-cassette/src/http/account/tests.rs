@@ -150,6 +150,21 @@ data: {\"error\":{\"code\":429,\"message\":\"Provider returned error\"}}\n\n";
         ),
         None
     );
+    // A top-level error event's own numeric code stands in for the status.
+    assert_eq!(
+        reply_account_failure(
+            200,
+            "data: {\"type\":\"error\",\"code\":429,\"message\":\"upstream\"}\n\n"
+        ),
+        Some(AccountFailure::RateLimit)
+    );
+    assert_eq!(
+        reply_account_failure(
+            200,
+            "data: {\"type\":\"error\",\"code\":401,\"message\":\"upstream\"}\n\n"
+        ),
+        Some(AccountFailure::Auth)
+    );
     // Gemini's non-SSE stream is a JSON array of chunks.
     assert_eq!(
         reply_account_failure(

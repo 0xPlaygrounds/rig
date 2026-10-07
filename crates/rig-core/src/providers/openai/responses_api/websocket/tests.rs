@@ -276,3 +276,36 @@ fn a_turn_records_the_response_its_events_rebuild() {
     expected["output"] = json!([item]);
     assert_eq!(response.raw, expected);
 }
+
+/// A websocket error event and a `response.failed` lifecycle event are
+/// classified by their code, like the same envelope on the SSE stream.
+#[test]
+fn websocket_failures_with_a_transient_code_are_retryable() {
+    let payload = json!({ "type": "error", "error": { "code": "server_error" } });
+    let Ok(Some(ResponsesWebSocketEvent::Error(error))) = parse_server_event(&payload.to_string())
+    else {
+        panic!("an error event parses as one")
+    };
+    let err = provider_error_from_event(&error);
+    assert!(err.is_retryable(), "{err}");
+    assert_eq!(err.report().code.as_deref(), Some("server_error"));
+
+    let payload = json!({
+        "type": "response.failed",
+        "response": {
+            "status": "failed",
+            "error": { "code": "rate_limit_exceeded", "message": "slow down" }
+        }
+    });
+    let Ok(Some(ResponsesWebSocketEvent::Response { kind, response })) =
+        parse_server_event(&payload.to_string())
+    else {
+        panic!("a lifecycle event parses as one")
+    };
+    assert_eq!(kind, "response.failed");
+    let Err(err) = terminal_response_result(response) else {
+        panic!("a failed response fails")
+    };
+    assert!(err.is_retryable(), "{err}");
+    assert_eq!(err.report().code.as_deref(), Some("rate_limit_exceeded"));
+}
