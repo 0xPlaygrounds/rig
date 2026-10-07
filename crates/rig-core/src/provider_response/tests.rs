@@ -598,3 +598,30 @@ fn a_deserialized_record_re_derives_its_verdict_from_the_body() {
     assert!(back.is_retryable());
     assert_eq!(back, reply);
 }
+
+/// The located error as JSON: nested errors under `error`, an error event
+/// as itself.
+#[test]
+fn the_envelope_json_is_the_located_error() {
+    use serde_json::json;
+    for (body, error) in [
+        (
+            r#"{"type":"response.failed","response":{"error":{"code":"x"}}}"#,
+            Some(json!({"error": {"code": "x"}})),
+        ),
+        (
+            r#"{"type":"error","error":{"type":"overloaded_error"}}"#,
+            Some(json!({"error": {"type": "overloaded_error"}})),
+        ),
+        (r#"{"error":"boom"}"#, Some(json!({"error": "boom"}))),
+        (
+            r#"{"type":"error","code":"x"}"#,
+            Some(json!({"type": "error", "code": "x"})),
+        ),
+        (r#"{"error":null}"#, None),
+        ("text", None),
+    ] {
+        let reply = ProviderResponseError::without_status(body);
+        assert_eq!(reply.envelope_json(), error, "{body}");
+    }
+}

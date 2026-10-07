@@ -137,6 +137,18 @@ impl ProviderResponseError {
             .or_else(|| self.located(|envelope| envelope.code()))
     }
 
+    /// The error the body's envelope holds, as `{"error": ...}`, or the
+    /// error event itself; `None` when the body carries no envelope.
+    pub fn envelope_json(&self) -> Option<serde_json::Value> {
+        self.located(|envelope| {
+            let error = envelope.error?.clone();
+            Some(match envelope.nested {
+                true => serde_json::json!({ "error": error }),
+                false => error,
+            })
+        })
+    }
+
     /// `f` applied to the error envelope the body carries, if it carries one.
     fn located<T>(&self, f: impl FnOnce(Envelope<'_>) -> Option<T>) -> Option<T> {
         let doc: serde_json::Value = serde_json::from_str(&self.body).ok()?;
@@ -231,6 +243,8 @@ impl<'de> serde::Deserialize<'de> for ProviderResponseError {
 /// nonempty string and the first integer among its code fields.
 #[derive(Default)]
 struct Envelope<'a> {
+    /// The error value itself: an object, a message string, or the event.
+    error: Option<&'a serde_json::Value>,
     name: Option<&'a str>,
     number: Option<i64>,
     /// The error nests in the document (`error`, `response.error`) rather
@@ -303,6 +317,7 @@ impl<'a> Envelope<'a> {
     fn of(error: &'a serde_json::Value, fields: &[&str], nested: bool) -> Self {
         let values = || fields.iter().filter_map(|field| error.get(field));
         Self {
+            error: Some(error),
             name: values().find_map(|value| value.as_str().filter(|name| !name.is_empty())),
             number: values().find_map(serde_json::Value::as_i64),
             nested,

@@ -140,8 +140,9 @@ pub fn account_failure(status: u16, body: &str) -> Option<AccountFailure> {
 /// status, [`account_failure`]; for a successful one, an error its body
 /// delivers instead of a result. That is a top-level `error` object, an
 /// event of type `error`, or a Responses `response.failed` event, as a
-/// stream that already answered 200 reports a limit it hit. The error's own
-/// numeric `code` stands in for the status.
+/// stream that already answered 200 reports a limit it hit. A nested
+/// error's numeric `code` stands in for the status, as
+/// [`rig_core::ProviderResponseError::from_body`] reads it.
 pub fn reply_account_failure(status: u16, body: &str) -> Option<AccountFailure> {
     if status >= 400 {
         return account_failure(status, body);
@@ -154,35 +155,11 @@ pub fn reply_account_failure(status: u16, body: &str) -> Option<AccountFailure> 
             Value::Array(items) => items,
             document => vec![document],
         })
-        .filter_map(|document| delivered_error(&document))
-        .find_map(|error| {
-            let code = error
-                .get("error")
-                .unwrap_or(&error)
-                .get("code")
-                .and_then(Value::as_u64)
-                .and_then(|code| u16::try_from(code).ok())
-                .filter(|code| (400..600).contains(code))
-                .unwrap_or(400);
-            account_failure(code, &error.to_string())
+        .find_map(|document| {
+            let reply = rig_core::ProviderResponseError::from_body(document.to_string());
+            let status = reply.status.map_or(400, |status| status.as_u16());
+            account_failure(status, &reply.envelope_json()?.to_string())
         })
-}
-
-/// The error a successful reply's document delivers, if it is one.
-fn delivered_error(document: &Value) -> Option<Value> {
-    let kind = document.get("type").and_then(Value::as_str);
-    if kind == Some("response.failed") {
-        return document
-            .get("response")
-            .and_then(|response| response.get("error"))
-            .filter(|error| !error.is_null())
-            .cloned();
-    }
-    match document.get("error") {
-        Some(Value::Null) | None if kind == Some("error") => Some(document.clone()),
-        Some(Value::Null) | None => None,
-        Some(error) => Some(serde_json::json!({ "error": error })),
-    }
 }
 
 /// The identifying fields of an error body, lowercased: `ids` holds type,
