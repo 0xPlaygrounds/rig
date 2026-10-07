@@ -202,12 +202,22 @@ fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
                     additional_params: None,
                 }),
                 UserContent::Document(Document {
+                    data: DocumentSourceKind::Unknown.into(),
+                    media_type: Some(DocumentMediaType::TXT),
+                    additional_params: None,
+                }),
+                UserContent::Document(Document {
                     data: DocumentSourceKind::base64("YSxiCjEsMgo=").into(),
                     media_type: Some(DocumentMediaType::CSV),
                     additional_params: None,
                 }),
                 UserContent::Document(Document {
                     data: DocumentSourceKind::base64("JVBERi0=").into(),
+                    media_type: Some(DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+                UserContent::Document(Document {
+                    data: crate::message::DocumentData::Text("notes".to_owned()),
                     media_type: Some(DocumentMediaType::PDF),
                     additional_params: None,
                 }),
@@ -233,8 +243,10 @@ fn media_the_encoder_cannot_carry_becomes_a_placeholder_or_its_text() {
                 UserContent::text(IMAGE_UNSENDABLE),
                 UserContent::text(AUDIO_UNSENDABLE),
                 UserContent::text(VIDEO_UNSENDABLE),
+                UserContent::text(DOCUMENT_UNSENDABLE),
                 UserContent::text("a,b\n1,2\n"),
                 UserContent::text(DOCUMENT_UNSENDABLE),
+                UserContent::text("notes"),
             ],
         }]
     );

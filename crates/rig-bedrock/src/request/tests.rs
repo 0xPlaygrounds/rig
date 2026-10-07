@@ -274,8 +274,9 @@ fn unprepared(history: Vec<Message>) -> Result<Value, EncodeError> {
 
 /// A document given as raw bytes sends the same base64 source as one given
 /// as base64, a later system message goes as user text, and audio, which
-/// Converse has no block for, is refused, when the request reaches the
-/// encoder unprepared.
+/// Converse has no block for, and a document's own text, which preparation
+/// sends as text, are refused, when the request reaches the encoder
+/// unprepared.
 #[test]
 fn unprepared_content_is_encoded_or_refused() {
     use rig_core::message::{Audio, Document};
@@ -319,6 +320,19 @@ fn unprepared_content_is_encoded_or_refused() {
     assert!(
         audio.to_string().contains("Converse takes no audio"),
         "{audio}"
+    );
+
+    let text = unprepared(vec![Message::User {
+        content: vec![UserContent::Document(Document {
+            data: rig_core::message::DocumentData::Text("plain".into()),
+            media_type: Some(DocumentMediaType::TXT),
+            additional_params: None,
+        })],
+    }])
+    .expect_err("a text document is not a file");
+    assert!(
+        text.to_string().contains("a text document goes as text"),
+        "{text}"
     );
 }
 

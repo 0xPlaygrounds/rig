@@ -282,3 +282,55 @@ fn adopted_completion_parents_report_the_standard_operation_and_stream_flag() {
         ]
     );
 }
+
+/// A document's own text is a text part; a document's file and every media
+/// source kind keep their uri / file / blob shape, and an unknown source is
+/// dropped rather than guessed at.
+#[test]
+fn user_parts_keep_a_document_text_apart_from_media_sources() {
+    use crate::message::{
+        Audio, AudioMediaType, Document, DocumentMediaType, ImageMediaType, Video, VideoMediaType,
+    };
+
+    let parts = user_parts(&[
+        UserContent::Document(Document {
+            data: DocumentData::Text("notes".to_owned()),
+            media_type: Some(DocumentMediaType::TXT),
+            ..Default::default()
+        }),
+        UserContent::Document(Document {
+            data: DocumentSourceKind::Base64("JVBERi0=".to_owned()).into(),
+            media_type: Some(DocumentMediaType::PDF),
+            ..Default::default()
+        }),
+        UserContent::Image(Image {
+            data: DocumentSourceKind::Url("https://example.com/a.png".to_owned()),
+            media_type: Some(ImageMediaType::PNG),
+            ..Default::default()
+        }),
+        UserContent::Audio(Audio {
+            data: DocumentSourceKind::Raw(vec![1, 2, 3]),
+            media_type: Some(AudioMediaType::MP3),
+        }),
+        UserContent::Video(Video {
+            data: DocumentSourceKind::FileId("file-1".to_owned()),
+            media_type: Some(VideoMediaType::MP4),
+            ..Default::default()
+        }),
+        UserContent::Image(Image {
+            data: DocumentSourceKind::Unknown,
+            ..Default::default()
+        }),
+    ]);
+
+    assert_eq!(
+        serde_json::to_value(&parts).ok(),
+        Some(json!([
+            {"type": "text", "content": "notes"},
+            {"type": "blob", "mime_type": "application/pdf", "modality": "document", "content": "JVBERi0="},
+            {"type": "uri", "mime_type": "image/png", "modality": "image", "uri": "https://example.com/a.png"},
+            {"type": "blob", "mime_type": "audio/mp3", "modality": "audio", "content": "AQID"},
+            {"type": "file", "mime_type": "video/mp4", "modality": "video", "file_id": "file-1"},
+        ]))
+    );
+}

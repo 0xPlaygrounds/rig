@@ -814,3 +814,41 @@ fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+/// A document file Responses has no part for (base64 that is not a PDF) and
+/// an image with no source are refused when they reach the encoder
+/// unprepared, rather than sent as text or dropped.
+#[test]
+fn an_unprepared_part_with_no_responses_form_is_refused() {
+    let refused = |content: message::UserContent| {
+        json_of(
+            &openai_wire("gpt-5"),
+            completion::CompletionRequest::new(message::Message::User {
+                content: vec![content],
+            }),
+        )
+        .map(|body| body.to_string())
+        .map_err(|error| error.to_string())
+    };
+    let document = refused(message::UserContent::Document(message::Document {
+        data: DocumentSourceKind::base64("aGVsbG8=").into(),
+        media_type: Some(message::DocumentMediaType::TXT),
+        additional_params: None,
+    }));
+    assert!(
+        document
+            .as_ref()
+            .is_err_and(|error| error.contains("cannot carry this document")),
+        "{document:?}"
+    );
+    let image = refused(message::UserContent::Image(message::Image {
+        data: DocumentSourceKind::Unknown,
+        ..Default::default()
+    }));
+    assert!(
+        image
+            .as_ref()
+            .is_err_and(|error| error.contains("cannot carry this image")),
+        "{image:?}"
+    );
+}
