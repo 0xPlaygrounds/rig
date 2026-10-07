@@ -22,6 +22,7 @@ fn wire(client: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
+        options: None,
     }
 }
 
@@ -65,5 +66,6 @@ fn reasoning_wire(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }

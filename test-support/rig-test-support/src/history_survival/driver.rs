@@ -18,7 +18,9 @@ use rig_core::message::{
 };
 use rig_core::tool::{Tool, ToolOutput};
 
-use super::{Dialect, Token, continues, lost_tokens, response_tokens, unpaired_tool_calls};
+use super::{
+    Dialect, Options, Token, continues, lost_tokens, response_tokens, unpaired_tool_calls,
+};
 
 /// The alpha record's code.
 pub const ALPHA_CODE: &str = "alpha-code-7431";
@@ -125,6 +127,8 @@ pub struct Cell {
     pub model: &'static str,
     /// Provider-specific request parameters, typically the reasoning switch.
     pub params: fn() -> Option<Value>,
+    /// Typed request options, beside `params`.
+    pub options: fn() -> Options,
     /// Output budget per model call. Thinking models spend it on reasoning
     /// first, so a wire whose thinking cannot be capped needs more.
     pub max_tokens: u64,
@@ -313,7 +317,8 @@ pub async fn run(
     if let Some(params) = (cell.params)() {
         builder = builder.additional_params(params);
     }
-    let builder = builder
+    let builder = (cell.options)()
+        .configure(builder)
         .tool(LookupTool(Arc::clone(&journal)))
         .tool(VerifyTool(Arc::clone(&journal)));
     let agent = if cell.expect.image_tool_result {

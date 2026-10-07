@@ -15,6 +15,7 @@ fn missing(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::w
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 

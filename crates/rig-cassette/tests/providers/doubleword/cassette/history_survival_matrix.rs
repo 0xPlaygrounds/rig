@@ -17,6 +17,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "doubleword",
         model: rig::providers::doubleword::QWEN3_5_397B_A17B,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 2048,
         transport,
         expect,

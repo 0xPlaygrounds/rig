@@ -28,6 +28,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "anthropic",
         model: CLAUDE_HAIKU_4_5,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 4096,
         transport,
         expect,

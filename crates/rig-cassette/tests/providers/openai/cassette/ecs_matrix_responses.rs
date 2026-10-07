@@ -18,6 +18,7 @@ fn wire(client: &OpenAiCassette) -> Wire<rig::Model<rig::providers::openai::wire
         route: Some(client.openai.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: Some(crate::ecs_matrix::cells::openai_responses_stateless),
+        options: None,
     }
 }
 
@@ -140,6 +141,7 @@ fn reasoning_wire(
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 

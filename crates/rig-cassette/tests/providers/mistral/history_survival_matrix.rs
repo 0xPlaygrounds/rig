@@ -23,6 +23,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "mistral",
         model: super::DEFAULT_MODEL,
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 2048,
         transport,
         expect,

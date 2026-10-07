@@ -25,6 +25,7 @@ fn task_wire(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -41,6 +42,7 @@ fn automatic_task_wire(
         additional_params: Some(
             || serde_json::json!({"cache_control": {"type": "ephemeral", "ttl": "1h"}}),
         ),
+        options: None,
     }
 }
 
@@ -59,6 +61,7 @@ fn mixed_task_wire(
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"cache_control": {"type": "ephemeral"}})),
+        options: None,
     }
 }
 

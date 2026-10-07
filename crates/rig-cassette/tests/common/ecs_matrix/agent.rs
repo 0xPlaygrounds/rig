@@ -130,6 +130,12 @@ fn configure<S>(
     if let Some(params) = program.additional_params {
         builder = builder.additional_params(params());
     }
+    if let Some(options) = program.options {
+        let options = options();
+        builder = builder
+            .options(options.generation)
+            .provider_options(options.provider);
+    }
     if let Some(choice) = program.tool_choice {
         builder = builder.tool_choice(choice.tool_choice());
     }

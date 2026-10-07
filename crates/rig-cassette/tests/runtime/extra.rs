@@ -49,6 +49,7 @@ async fn deepseek_error_facts(scenario: &str, streamed: bool) {
             prompt: "hi",
             max_tokens: Some(8),
             additional_params: Some(serde_json::json!({ "thinking": { "type": "disabled" } })),
+            options: None,
             streamed,
             status: 400,
             code: Some("invalid_request_error"),

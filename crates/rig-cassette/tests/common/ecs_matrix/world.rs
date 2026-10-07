@@ -794,6 +794,13 @@ where
                 UsesModel(model.expect("a head world's model is bound")),
             ))
             .id();
+        if let Some(options) = program.options {
+            let options = options();
+            world.entity_mut(agent).insert((
+                rig_ecs::agent::Options(options.generation),
+                rig_ecs::agent::ProviderOptions(options.provider),
+            ));
+        }
         if let Some(retries) = cell.provider_retries {
             world.entity_mut(agent).insert(ProviderRetries(retries));
         }

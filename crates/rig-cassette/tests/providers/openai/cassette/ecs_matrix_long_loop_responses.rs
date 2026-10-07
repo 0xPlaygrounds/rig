@@ -21,6 +21,7 @@ fn mini(models: &OpenAiModels) -> Wire<rig::Model<rig::providers::openai::wire::
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 

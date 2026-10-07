@@ -124,13 +124,29 @@ pub async fn run_reasoning_delta_hook_streaming(
     additional_params: serde_json::Value,
     provider: &str,
 ) {
+    run_reasoning_delta_hook_streaming_with(
+        model,
+        |builder| builder.additional_params(additional_params),
+        provider,
+    )
+    .await;
+}
+
+/// [`run_reasoning_delta_hook_streaming`], with `configure` setting the
+/// agent's request options instead of raw parameters.
+pub async fn run_reasoning_delta_hook_streaming_with(
+    model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
+    configure: impl FnOnce(AgentBuilder) -> AgentBuilder,
+    provider: &str,
+) {
     let hook = ReasoningDeltaHookRecorder::default();
     let probe = hook.clone();
-    let agent = AgentBuilder::new(model)
-        .preamble("Reason carefully before giving a concise final answer.")
-        .max_tokens(4096)
-        .additional_params(additional_params)
-        .build();
+    let agent = configure(
+        AgentBuilder::new(model)
+            .preamble("Reason carefully before giving a concise final answer.")
+            .max_tokens(4096),
+    )
+    .build();
     let mut stream = agent
         .prompt(REASONING_DELTA_HOOK_PROMPT)
         .add_hook(hook)
@@ -210,6 +226,10 @@ pub struct ReasoningRoundtripAgent {
     pub preamble: String,
     /// Provider-specific parameters included in both requests.
     pub additional_params: Option<serde_json::Value>,
+    /// Generation options included in both requests.
+    pub options: rig_core::completion::GenerationOptions,
+    /// Typed provider options included in both requests.
+    pub provider_options: rig_core::completion::ProviderOptions,
     /// Opt-in capability flag. Most providers stream reasoning as unsigned
     /// deltas (or emit none at all), so the shared roundtrip only records
     /// reasoning for diagnostics. A provider whose wire is known to carry a
@@ -230,8 +250,29 @@ impl ReasoningRoundtripAgent {
             model,
             preamble: ROUNDTRIP_PREAMBLE.to_owned(),
             additional_params,
+            options: rig_core::completion::GenerationOptions::default(),
+            provider_options: rig_core::completion::ProviderOptions::new(),
             expects_signed_reasoning_block: false,
         }
+    }
+
+    /// Both requests carry `options`.
+    pub fn with_options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Both requests carry `options` as their typed provider options.
+    pub fn with_provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.provider_options = options;
+        self
+    }
+
+    /// Set this configuration's parameters and options on `request`.
+    fn apply(&self, request: &mut completion::CompletionRequest) {
+        request.additional_params = self.additional_params.clone();
+        request.options = self.options.clone();
+        request.provider_options = self.provider_options.clone();
     }
 
     /// See [`ReasoningRoundtripAgent::expects_signed_reasoning_block`].
@@ -261,7 +302,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
         Message::system(agent.preamble.clone()),
         turn1_prompt.clone(),
     ]);
-    request.additional_params = agent.additional_params.clone();
+    agent.apply(&mut request);
 
     let mut stream = agent.model.stream(request).expect("Turn 1 stream");
 
@@ -306,7 +347,7 @@ pub async fn run_reasoning_roundtrip_streaming_with_final<F>(
             turn1_assistant,
             turn2_prompt,
         ]);
-        request.additional_params = agent.additional_params.clone();
+        agent.apply(&mut request);
         request
     };
 
@@ -347,7 +388,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
         Message::system(agent.preamble.clone()),
         turn1_prompt.clone(),
     ]);
-    request.additional_params = agent.additional_params.clone();
+    agent.apply(&mut request);
 
     let response = agent.model.call(request).await.expect("Turn 1 completion");
 
@@ -381,7 +422,7 @@ pub async fn run_reasoning_roundtrip_nonstreaming(agent: ReasoningRoundtripAgent
             turn1_assistant,
             turn2_prompt,
         ]);
-        request.additional_params = agent.additional_params.clone();
+        agent.apply(&mut request);
         request
     };
 

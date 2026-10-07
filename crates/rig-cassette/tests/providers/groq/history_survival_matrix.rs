@@ -24,6 +24,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "groq",
         model: "openai/gpt-oss-20b",
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 4096,
         transport,
         expect,

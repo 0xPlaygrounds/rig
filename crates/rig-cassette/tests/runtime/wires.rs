@@ -32,6 +32,7 @@ pub(crate) fn deepseek(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion("deepseek-reasoner")),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -46,6 +47,7 @@ pub(crate) fn doubleword(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
+        options: None,
     }
 }
 
@@ -60,6 +62,7 @@ pub(crate) fn venice(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -71,6 +74,7 @@ pub(crate) fn openai_chat(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
         route: Some(client.chat(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
+        options: None,
     }
 }
 
@@ -82,6 +86,7 @@ pub(crate) fn openai_responses(http: DynHttpClient) -> OpenAi {
         route: Some(client.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: Some(cells::openai_responses_stateless),
+        options: None,
     }
 }
 
@@ -93,6 +98,7 @@ pub(crate) fn gemini(http: DynHttpClient) -> Wire<rig::Model<GenerateContent, Dy
         route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -106,6 +112,7 @@ pub(crate) fn anthropic(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -127,6 +134,7 @@ pub(crate) fn deepseek_flash(http: DynHttpClient) -> OpenAi {
         route: None,
         temperature: Some(0.0),
         additional_params: Some(thinking_disabled),
+        options: None,
     }
 }
 
@@ -141,6 +149,7 @@ fn gemini_model(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -179,6 +188,7 @@ pub(crate) fn openai_chat_mini(http: DynHttpClient) -> Wire<rig::Model<Chat>> {
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -199,6 +209,7 @@ pub(crate) fn openai_responses_mini(http: DynHttpClient) -> OpenAi {
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 
@@ -235,6 +246,7 @@ pub(crate) fn anthropic_sonnet(
         route: None,
         temperature: Some(0.0),
         additional_params: None,
+        options: None,
     }
 }
 

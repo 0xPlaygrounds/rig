@@ -20,6 +20,7 @@ fn cached_anthropic_wire_is_not_rebuilt_without_its_options() {
         route: None,
         temperature: None,
         additional_params: None,
+        options: None,
     };
     assert!(
         wire.binding().is_some(),
@@ -53,6 +54,7 @@ fn model_level_options_require_intact_host_bindings() {
             route: None,
             temperature: None,
             additional_params: None,
+            options: None,
         };
         assert!(
             wire.binding().is_none(),

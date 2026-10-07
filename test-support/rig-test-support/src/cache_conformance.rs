@@ -185,6 +185,10 @@ pub struct CacheProbe {
     pub max_tokens: u64,
     /// Provider-specific request parameters shared by the probe turns.
     pub additional_params: Option<serde_json::Value>,
+    /// Generation options shared by the probe turns.
+    pub options: rig_core::completion::GenerationOptions,
+    /// Typed provider options shared by the probe turns.
+    pub provider_options: rig_core::completion::ProviderOptions,
 }
 
 /// The prompt every probe sends, unless a provider needs its own wording.
@@ -217,6 +221,8 @@ impl CacheProbe {
             follow_up: CACHE_PROBE_FOLLOW_UP,
             max_tokens: 16,
             additional_params: None,
+            options: rig_core::completion::GenerationOptions::default(),
+            provider_options: rig_core::completion::ProviderOptions::new(),
         }
     }
 
@@ -236,6 +242,18 @@ impl CacheProbe {
     /// Set provider-specific request parameters for every probe turn.
     pub fn with_additional_params(mut self, params: serde_json::Value) -> Self {
         self.additional_params = Some(params);
+        self
+    }
+
+    /// Set the generation options of every probe turn.
+    pub fn with_options(mut self, options: rig_core::completion::GenerationOptions) -> Self {
+        self.options = options;
+        self
+    }
+
+    /// Set the typed provider options of every probe turn.
+    pub fn with_provider_options(mut self, options: rig_core::completion::ProviderOptions) -> Self {
+        self.provider_options = options;
         self
     }
 
@@ -270,6 +288,8 @@ impl CacheProbe {
         request.temperature = Some(0.0);
         request.max_tokens = Some(self.max_tokens);
         request.additional_params = self.additional_params.clone();
+        request.options = self.options.clone();
+        request.provider_options = self.provider_options.clone();
         request
     }
 }

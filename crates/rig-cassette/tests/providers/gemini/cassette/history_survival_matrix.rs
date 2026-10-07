@@ -26,6 +26,7 @@ const fn cell(transport: Transport, expect: Expect) -> Cell {
         provider: "gemini",
         model: "gemini-2.5-flash",
         params,
+        options: crate::history_survival::Options::none,
         max_tokens: 4096,
         transport,
         expect,

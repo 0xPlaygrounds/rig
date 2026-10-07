@@ -26,6 +26,7 @@ fn task_wire(
         additional_params: Some(
             || serde_json::json!({"generationConfig":{"thinkingConfig":{"thinkingLevel":"low"}}}),
         ),
+        options: None,
     }
 }
 
