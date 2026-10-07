@@ -29,7 +29,7 @@
 
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
+use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy};
 use rig::completion::CompletionRequest;
 use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai::{self, OpenAI};
@@ -188,8 +188,7 @@ async fn main() -> Result<()> {
                     response.head(),
                     response.choice.clone(),
                     response.usage,
-                    tool_names.clone(),
-                    tool_names,
+                    TurnPolicy::new(tool_names, None, None)?,
                     response.raw.clone(),
                 ))?;
                 while let ModelTurnOutcome::NeedsResolution(context) = outcome {

@@ -4,12 +4,12 @@
 //! driver divergences pinned by #1899.
 
 use rig::streaming::Item;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::VecDeque;
 
 use futures::StreamExt;
 use rig::agent::run::{
     AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
-    StreamedTurnEvent,
+    StreamedTurnEvent, TurnPolicy,
 };
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
@@ -22,7 +22,7 @@ use rig_agent::test_utils::validate_cancelled_failure;
 
 use super::super::agent_run_support::{
     Add, FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, execute_pending_calls,
-    history_has_assistant_tool_call, is_tool_result_user_message, tool_names,
+    history_has_assistant_tool_call, is_tool_result_user_message, policy,
 };
 use super::super::support::with_gemini_cassette;
 use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
@@ -47,8 +47,7 @@ async fn run_streamed_turn(
     run: &mut AgentRun,
     prompt: Message,
     history: Vec<Message>,
-    executable: &BTreeSet<String>,
-    allowed: &BTreeSet<String>,
+    policy: &TurnPolicy,
     on_invalid: impl Fn(&StreamedInvalidToolCall) -> InvalidToolCallAction,
     collected_text: &mut String,
 ) -> Result<TurnEnd, PromptError> {
@@ -56,7 +55,7 @@ async fn run_streamed_turn(
         .model
         .stream(agent.request(prompt, history))
         .expect("gemini stream should open");
-    let mut assembler = StreamedTurnAssembler::new(executable.clone(), allowed.clone());
+    let mut assembler = StreamedTurnAssembler::new(policy.clone());
 
     while let Some(item) = stream.next().await {
         let item = item.expect("stream item should be ok");
@@ -144,7 +143,7 @@ async fn streamed_repair_continues_the_same_stream() {
                 &["add", "sum"],
                 None,
             );
-            let machine_names = tool_names(&["sum"]);
+            let machine_names = policy(&["sum"]);
 
             let mut run =
                 AgentRun::new("Use the add tool to compute 2 + 3, then state the result.")
@@ -162,7 +161,6 @@ async fn streamed_repair_continues_the_same_stream() {
                             &mut run,
                             prompt,
                             history,
-                            &machine_names,
                             &machine_names,
                             |invalid| {
                                 assert_eq!(invalid.tool_call.function.name, "add");
@@ -216,8 +214,9 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                 &["add"],
                 None,
             );
-            let executable = tool_names(&["add"]);
-            let nothing_allowed = tool_names(&[]);
+            let executable = policy(&["add"]);
+            // The restricted first turn advertises no tool to the machine.
+            let nothing_allowed = policy(&[]);
             const SKIP_REASON: &str = "The add tool is disabled for this request.";
 
             let mut run = AgentRun::new("What is 21 + 21? Use the add tool.").max_turns(3);
@@ -253,7 +252,6 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                             &mut run,
                             prompt,
                             history,
-                            &executable,
                             allowed,
                             |invalid| {
                                 assert!(expect_abandon, "only the first turn restricts tools");

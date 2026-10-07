@@ -1069,8 +1069,7 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
                 let prepared =
                     prepare_request(&spec, &Default::default(), &history, Vec::new(), None, None)
                         .expect("prepared");
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
+                let policy = prepared.policy.clone();
                 let request = prepared.apply(CompletionRequest::new(prompt));
                 assert!(request.accept_unknown_finish_reasons);
                 let response = model.call(request).await.expect("the reply folds");
@@ -1078,8 +1077,7 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
                     response.head(),
                     response.choice,
                     response.usage,
-                    executable,
-                    allowed,
+                    policy,
                     response.raw,
                 ))
                 .expect("the accepted turn is no failure");

@@ -572,7 +572,6 @@ impl<O> AgentRunner<O> {
                 .output_schema
                 .as_ref()
                 .map(|schema| schema.as_value().clone()),
-            tool_choice: self.config.tool_choice.clone(),
             ..crate::run::spec::RunSpec::new()
         };
         let run = AgentRun::from_spec(

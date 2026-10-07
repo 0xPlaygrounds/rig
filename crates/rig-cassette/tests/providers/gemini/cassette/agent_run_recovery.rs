@@ -12,7 +12,7 @@ use rig_agent::test_utils::validate_unknown_tool_failure;
 
 use super::super::agent_run_support::{
     FORCE_TOOLS_PREAMBLE, GeminiAgent, assistant_tool_call_names, call_model,
-    execute_pending_calls, tool_names,
+    execute_pending_calls, policy, restricted_policy,
 };
 use super::super::support::with_gemini_cassette;
 use crate::support::assert_mentions_expected_number;
@@ -21,10 +21,9 @@ use crate::support::assert_mentions_expected_number;
 /// the run mid-resolution.
 async fn run_until_invalid_add_call(
     agent: &super::super::agent_run_support::GeminiAgent,
-    allowed: &std::collections::BTreeSet<String>,
+    policy: &rig::agent::run::TurnPolicy,
     retries: usize,
 ) -> AgentRun {
-    let executable = tool_names(&["add"]);
     let mut run = AgentRun::new("What is 21 + 21? Use the add tool.")
         .max_turns(2)
         .max_invalid_tool_call_retries(retries);
@@ -35,7 +34,7 @@ async fn run_until_invalid_add_call(
         panic!("a fresh run starts with a model call");
     };
     let outcome = run
-        .model_response(call_model(agent, prompt, history, &executable, allowed).await)
+        .model_response(call_model(agent, prompt, history, policy).await)
         .expect("model turn should be ingested");
     let ModelTurnOutcome::NeedsResolution(context) = outcome else {
         panic!("the add call must be rejected for this turn: {outcome:?}");
@@ -57,7 +56,7 @@ async fn repair_renames_tool_call_and_executes_it() {
                 &["add", "sum"],
                 None,
             );
-            let machine_names = tool_names(&["sum"]);
+            let machine_names = policy(&["sum"]);
 
             let mut run =
                 AgentRun::new("Use the add tool to compute 2 + 3, then state the result.")
@@ -72,8 +71,7 @@ async fn repair_renames_tool_call_and_executes_it() {
                         let repaired_before = repaired_calls;
                         let mut outcome = run
                             .model_response(
-                                call_model(&agent, prompt, history, &machine_names, &machine_names)
-                                    .await,
+                                call_model(&agent, prompt, history, &machine_names).await,
                             )
                             .expect("model turn should be ingested");
                         while let ModelTurnOutcome::NeedsResolution(context) = outcome {
@@ -143,7 +141,12 @@ async fn repair_to_disallowed_name_fails_with_unknown_tool_call() {
                 Some(ToolChoice::Required),
             );
 
-            let mut run = run_until_invalid_add_call(&agent, &tool_names(&["subtract"]), 0).await;
+            let mut run = run_until_invalid_add_call(
+                &agent,
+                &restricted_policy(&["add", "subtract"], &["subtract"]),
+                0,
+            )
+            .await;
             let error = run
                 .resolve_invalid_tool_call(InvalidToolCallAction::repair("multiply"))
                 .expect_err("repairing to a disallowed name must error the run");

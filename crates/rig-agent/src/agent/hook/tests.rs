@@ -246,17 +246,22 @@ fn tool_call_kind() -> EffectKind {
 }
 
 fn invalid_tool_call_context() -> InvalidToolCallContext {
-    InvalidToolCallContext {
-        tool_name: "unknown".into(),
-        tool_call_id: Some(rig_core::message::CallId::from_wire("tc1")),
-        args: Some("{}".into()),
-        available_tools: vec!["add".into()],
-        allowed_tools: vec!["add".into()],
-        tool_choice: None,
-        chat_history: vec![],
-        is_streaming: false,
-        reason: crate::run::policy::InvalidToolCallReason::UnknownTool,
-    }
+    let call = rig_core::message::ToolCall::from_wire(
+        "tc1",
+        rig_core::message::ToolFunction::new(
+            rig_core::message::ToolName::new("unknown").expect("tool name"),
+            serde_json::json!({}),
+        ),
+    );
+    crate::run::TurnPolicy::new(["add".to_string()].into(), None, None)
+        .expect("policy")
+        .invalid_call_context(
+            &call,
+            Some("{}".into()),
+            vec![],
+            false,
+            crate::run::policy::InvalidToolCallReason::UnknownTool,
+        )
 }
 
 #[tokio::test]

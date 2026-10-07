@@ -222,16 +222,14 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                 )
                 .expect("prepared");
                 run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
+                let policy = prepared.policy.clone();
                 let request = prepared.apply(CompletionRequest::new(prompt));
                 let response = within(model.call(request)).await.expect("the model");
                 run.model_response(ModelTurn::new(
                     response.head(),
                     response.choice,
                     response.usage,
-                    executable,
-                    allowed,
+                    policy,
                     response.raw,
                 ))
                 .expect("a model turn");

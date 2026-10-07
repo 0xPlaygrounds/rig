@@ -3702,21 +3702,15 @@ async fn hand_drive(program: &Program, resume: Resume) {
                     // preparation failure leaves it unchanged — so a resumed
                     // engine's selection hook sees it.
                     run.set_previous_model(rig_core::completion::ModelRef::new(label));
-                    if let Some(name) = &prepared.output_tool_name {
-                        // Refused after the first turn by design: the name is pinned.
-                        let _ = run.commit_output_tool_name(name.clone());
-                    }
                     run.advertise_tools(turn, prepared.tools.clone());
-                    let executable = prepared.executable_tool_names.clone();
-                    let allowed = prepared.allowed_tool_names.clone();
-                    let request = prepared.apply(CompletionRequest::new(prompt));
+                    let request = prepared.clone().apply(CompletionRequest::new(prompt));
                     // The completion-call hook's dispatch, before the completion.
                     if program.hooks.contains(&Hook::NoteAtCompletionCall) {
                         note("completion_call").await;
                     }
                     let turn = if program.streamed {
                         let mut stream = model.stream(request);
-                        let mut assembler = StreamedTurnAssembler::new(executable, allowed);
+                        let mut assembler = StreamedTurnAssembler::new(prepared.policy.clone());
                         let mut provider_failed = false;
                         let mut delta_stop: Option<&'static str> = None;
                         let mut turn_abandoned = false;
@@ -3907,8 +3901,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             streamed.head,
                             streamed.choice,
                             response.usage,
-                            streamed.executable_tool_names,
-                            streamed.allowed_tool_names,
+                            streamed.policy,
                             response.raw,
                         )
                     } else {
@@ -3926,7 +3919,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                 panic!("the replayer recognised the request: {report:?}")
                             }
                         };
-                        ModelTurn::from_response_parts(&response, executable, allowed)
+                        ModelTurn::from_response(&response, &prepared)
                     };
                     let choice = turn.choice.clone();
                     let mut outcome = run.model_response(turn).expect("a model turn");

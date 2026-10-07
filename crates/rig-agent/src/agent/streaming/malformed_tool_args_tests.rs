@@ -15,7 +15,9 @@ use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::{
     AgentBuilder, AgentRunner, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
 };
-use crate::run::{AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, UnhandledInvalidToolCall};
+use crate::run::{
+    AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, TurnPolicy, UnhandledInvalidToolCall,
+};
 use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
 use futures::StreamExt;
 use rig_core::completion::{CompletionRequest, Usage};
@@ -482,8 +484,7 @@ async fn the_count_survives_a_serialize_and_resume() {
             AssistantMessage::default(),
             vec![AssistantContent::ToolCall(call.clone())],
             Usage::default(),
-            ["add".to_owned()].into(),
-            ["add".to_owned()].into(),
+            TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
             json!({}),
         ));
         assert!(matches!(outcome, Ok(ModelTurnOutcome::Continue { .. })));

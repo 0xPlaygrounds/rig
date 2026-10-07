@@ -7,12 +7,12 @@ use rig_core::message::{ToolFunction, ToolResultContent, UserContent};
 use rig_core::streaming::Transcript;
 use serde_json::json;
 
-fn tool_names(names: &[&str]) -> BTreeSet<String> {
-    names.iter().map(|name| (*name).to_string()).collect()
+fn add_policy() -> TurnPolicy {
+    TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy")
 }
 
 fn assembler() -> StreamedTurnAssembler {
-    StreamedTurnAssembler::new(tool_names(&["add"]), tool_names(&["add"]))
+    StreamedTurnAssembler::new(add_policy())
 }
 
 fn tool_call(id: &str, name: &str) -> ToolCall {
@@ -109,8 +109,7 @@ fn assembler_round_trips_mid_stream() {
     let direct = uninterrupted.finish(&response);
     let resumed = restored.finish(&response);
     assert_eq!(resumed.choice, direct.choice);
-    assert_eq!(resumed.executable_tool_names, direct.executable_tool_names);
-    assert_eq!(resumed.allowed_tool_names, direct.allowed_tool_names);
+    assert_eq!(resumed.policy, direct.policy);
 }
 
 /// The decode-outcome contract, as a total matrix: every unknown payload
@@ -414,8 +413,7 @@ fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
     let turn = StreamedTurn {
         head: AssistantMessage::default(),
         choice: vec![AssistantContent::ToolCall(tool_call("tc_1", "unknown"))],
-        executable_tool_names: tool_names(&["add"]),
-        allowed_tool_names: tool_names(&["add"]),
+        policy: add_policy(),
         finish_reason: None,
     };
     let err = run

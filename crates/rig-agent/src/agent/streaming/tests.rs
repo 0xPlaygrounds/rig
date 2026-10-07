@@ -405,8 +405,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
             ),
         )],
         Usage::default(),
-        advertised.clone(),
-        advertised,
+        crate::run::TurnPolicy::new(advertised, None, None).expect("policy"),
         serde_json::json!({"origin": "hand-built test turn"}),
     );
     assert!(matches!(

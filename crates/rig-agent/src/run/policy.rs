@@ -6,8 +6,13 @@
 //! assert!(matches!(action, InvalidToolCallAction::Retry { .. }));
 //! ```
 
-use rig_core::message::{Message, ToolChoice};
+use std::collections::BTreeSet;
+
+use rig_core::message::{Message, ToolCall, ToolChoice, ToolName};
 use serde::{Deserialize, Serialize};
+
+use super::prepare::PrepareError;
+use super::response::PromptError;
 
 /// Why a model-emitted tool call cannot be dispatched as written.
 ///
@@ -83,6 +88,210 @@ pub struct InvalidToolCallContext {
     pub is_streaming: bool,
     /// Why the call cannot be dispatched as written.
     pub reason: InvalidToolCallReason,
+    /// Built only by [`TurnPolicy::invalid_call_context`], so the reported
+    /// tools and choice are always the judged turn's.
+    #[serde(skip)]
+    _sealed: Sealed,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct Sealed;
+
+/// The tool policy of one model turn, built once by
+/// [`prepare_request`](super::prepare::prepare_request) and read by every
+/// invalid-call check of that turn. The allowed set is derived from the
+/// executable tools, the choice and the output tool, and never persisted, so
+/// it cannot disagree with the choice.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "TurnPolicyRepr")]
+pub struct TurnPolicy {
+    executable: BTreeSet<String>,
+    tool_choice: Option<ToolChoice>,
+    output_tool: Option<String>,
+    #[serde(skip_serializing)]
+    allowed: BTreeSet<String>,
+}
+
+#[derive(Deserialize)]
+struct TurnPolicyRepr {
+    executable: BTreeSet<String>,
+    tool_choice: Option<ToolChoice>,
+    output_tool: Option<String>,
+}
+
+impl TryFrom<TurnPolicyRepr> for TurnPolicy {
+    type Error = PrepareError;
+
+    fn try_from(repr: TurnPolicyRepr) -> Result<Self, Self::Error> {
+        Self::new(repr.executable, repr.tool_choice, repr.output_tool)
+    }
+}
+
+impl TurnPolicy {
+    /// The policy for a turn advertising `executable` tools and, in Tool
+    /// output mode, the synthetic `output_tool`, under `tool_choice`.
+    ///
+    /// # Errors
+    /// [`PrepareError::Request`] when the choice cannot be honored: `Required`
+    /// with no advertised tool, an empty `Specific`, or a `Specific` naming a
+    /// tool that is not advertised.
+    pub fn new(
+        executable: BTreeSet<String>,
+        tool_choice: Option<ToolChoice>,
+        output_tool: Option<String>,
+    ) -> Result<Self, PrepareError> {
+        Self::resolve(executable, tool_choice, output_tool, None)
+    }
+
+    /// [`new`](Self::new) with the names advertised before a per-turn
+    /// `active_tools` allow-list, which only sharpens the error message.
+    pub(crate) fn resolve(
+        executable: BTreeSet<String>,
+        tool_choice: Option<ToolChoice>,
+        output_tool: Option<String>,
+        pre_filter: Option<&BTreeSet<String>>,
+    ) -> Result<Self, PrepareError> {
+        let output = output_tool.as_deref();
+        let hint = |active_tools_caused: bool| {
+            if active_tools_caused {
+                " A per-turn `active_tools` allow-list narrowed the advertised tools this turn; \
+                 set a compatible `tool_choice` in the same `RequestPatch`, or widen `active_tools`."
+            } else {
+                ""
+            }
+        };
+
+        let mut allowed = match &tool_choice {
+            Some(ToolChoice::Required) if executable.is_empty() && output.is_none() => {
+                return Err(PrepareError::Request(format!(
+                    "ToolChoice::Required forces the model to call a tool, but no tools are \
+                     advertised this turn.{}",
+                    hint(pre_filter.is_some_and(|pf| !pf.is_empty()))
+                )));
+            }
+            None | Some(ToolChoice::Auto | ToolChoice::Required) => executable.clone(),
+            Some(ToolChoice::None) => BTreeSet::new(),
+            Some(ToolChoice::Specific { function_names }) => {
+                if function_names.is_empty() {
+                    return Err(PrepareError::Request(
+                        "ToolChoice::Specific requires at least one function name".to_string(),
+                    ));
+                }
+                let missing = function_names
+                    .iter()
+                    .map(ToolName::as_str)
+                    .filter(|name| !executable.contains(*name) && Some(*name) != output)
+                    .collect::<Vec<_>>();
+                if !missing.is_empty() {
+                    let advertised: Vec<_> = executable
+                        .iter()
+                        .map(String::as_str)
+                        .chain(output)
+                        .collect();
+                    // Attribute missing names to filtering only if they existed before it.
+                    return Err(PrepareError::Request(format!(
+                        "ToolChoice::Specific requested tool names not advertised this turn: \
+                         {missing:?}. Advertised: {advertised:?}.{}",
+                        hint(pre_filter.is_some_and(|pf| missing.iter().any(|n| pf.contains(*n))))
+                    )));
+                }
+                function_names.iter().map(ToString::to_string).collect()
+            }
+        };
+        // The output tool is allowed, so its call is not invalid, though it
+        // never executes.
+        if let Some(name) = &output_tool {
+            allowed.insert(name.clone());
+        }
+
+        Ok(Self {
+            executable,
+            tool_choice,
+            output_tool,
+            allowed,
+        })
+    }
+
+    /// Names of the real, dispatchable tools advertised this turn.
+    pub fn executable(&self) -> &BTreeSet<String> {
+        &self.executable
+    }
+
+    /// Names the model may call without it being an invalid tool call: the
+    /// executable tools narrowed by the tool choice, plus the output tool.
+    pub fn allowed(&self) -> &BTreeSet<String> {
+        &self.allowed
+    }
+
+    /// The turn's effective tool choice (patch over spec).
+    pub fn tool_choice(&self) -> Option<&ToolChoice> {
+        self.tool_choice.as_ref()
+    }
+
+    /// In Tool output mode, the synthetic output tool's name (allowed but
+    /// never executable).
+    pub fn output_tool(&self) -> Option<&str> {
+        self.output_tool.as_deref()
+    }
+
+    /// Whether the turn's choice is [`ToolChoice::None`], under which no
+    /// call may be skipped into the history.
+    pub fn forbids_calls(&self) -> bool {
+        matches!(self.tool_choice, Some(ToolChoice::None))
+    }
+
+    /// Whether a call to `name` is allowed this turn.
+    pub fn allows(&self, name: &str) -> bool {
+        self.allowed.contains(name)
+    }
+
+    /// The run's error for a call to `tool_name` this turn does not allow.
+    pub(crate) fn unknown_call(
+        &self,
+        tool_name: String,
+        chat_history: Vec<Message>,
+    ) -> PromptError {
+        PromptError::UnknownToolCall {
+            tool_name,
+            available_tools: self.executable.iter().cloned().collect(),
+            allowed_tools: self.allowed.iter().cloned().collect(),
+            chat_history,
+        }
+    }
+
+    /// Why `call` is not allowed: its tool is not executable at all, or is
+    /// executable but excluded by the tool choice.
+    pub(crate) fn name_reason(&self, call: &ToolCall) -> InvalidToolCallReason {
+        if self.executable.contains(call.function.name.as_str()) {
+            InvalidToolCallReason::DisallowedByToolChoice
+        } else {
+            InvalidToolCallReason::UnknownTool
+        }
+    }
+
+    /// The invalid-call context for `call` under this turn's policy, which
+    /// supplies the advertised tools, the allowed tools and the tool choice.
+    pub fn invalid_call_context(
+        &self,
+        call: &ToolCall,
+        args: Option<String>,
+        chat_history: Vec<Message>,
+        is_streaming: bool,
+        reason: InvalidToolCallReason,
+    ) -> InvalidToolCallContext {
+        InvalidToolCallContext {
+            tool_name: call.function.name.to_string(),
+            tool_call_id: Some(call.id.clone()),
+            args,
+            available_tools: self.executable.iter().cloned().collect(),
+            allowed_tools: self.allowed.iter().cloned().collect(),
+            tool_choice: self.tool_choice.clone(),
+            chat_history,
+            is_streaming,
+            reason,
+            _sealed: Sealed,
+        }
+    }
 }
 
 /// How an accepted, tool-free model turn should be retried.

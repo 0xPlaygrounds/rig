@@ -6,9 +6,7 @@ use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
 use rig::message::Message;
 use rig::providers::gemini;
 
-use super::super::agent_run_support::{
-    GeminiAgent, call_model, sum_completion_call_usage, tool_names,
-};
+use super::super::agent_run_support::{GeminiAgent, call_model, policy, sum_completion_call_usage};
 use super::super::support::with_gemini_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -23,7 +21,7 @@ async fn hand_driven_single_turn_completes() {
                 &[],
                 None,
             );
-            let names = tool_names(&[]);
+            let names = policy(&[]);
 
             let mut run = AgentRun::new(BASIC_PROMPT);
             let response = loop {
@@ -39,9 +37,7 @@ async fn hand_driven_single_turn_completes() {
                             "first turn of a history-free run starts empty: {history:?}"
                         );
                         let outcome = run
-                            .model_response(
-                                call_model(&agent, prompt, history, &names, &names).await,
-                            )
+                            .model_response(call_model(&agent, prompt, history, &names).await)
                             .expect("model turn should be accepted");
                         assert!(
                             matches!(
