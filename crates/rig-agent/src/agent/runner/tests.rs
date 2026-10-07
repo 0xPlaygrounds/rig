@@ -582,7 +582,7 @@ fn a_runner_overrides_content_telemetry_for_its_run() {
 #[tokio::test]
 async fn a_model_spec_checks_every_runs_options_before_it_starts() {
     use rig_core::catalog::Catalog;
-    use rig_core::completion::{Effort, GenerationOptions, OnUnsupported, Reasoning};
+    use rig_core::completion::{Effort, OnUnsupported, Reasoning};
     use rig_core::error::ProviderError;
 
     let haiku = Catalog::builtin()
@@ -592,7 +592,7 @@ async fn a_model_spec_checks_every_runs_options_before_it_starts() {
     let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
     let agent = AgentBuilder::new(model.clone())
         .model_spec(haiku)
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .build();
 
     let refused = agent.prompt("go").run().await.expect_err("refused");
@@ -628,13 +628,13 @@ async fn a_model_spec_checks_every_runs_options_before_it_starts() {
 
     agent
         .prompt("go")
-        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 2048 }))
+        .reasoning(Reasoning::Budget { tokens: 2048 })
         .run()
         .await
         .expect("a budget Haiku 4.5 takes");
     agent
         .prompt("again")
-        .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore))
+        .on_unsupported(OnUnsupported::Ignore)
         .run()
         .await
         .expect("ignored, with a warning");
@@ -673,7 +673,7 @@ impl AgentHook for SelectOpus {
 #[tokio::test]
 async fn a_model_spec_checks_the_model_a_switched_run_calls() {
     use rig_core::catalog::Catalog;
-    use rig_core::completion::{Effort, GenerationOptions, Reasoning};
+    use rig_core::completion::{Effort, Reasoning};
     use rig_core::error::ProviderError;
     use rig_core::test_utils::MockScript;
 
@@ -694,7 +694,7 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
     let agent = AgentBuilder::new(own.clone())
         .model_spec(haiku)
         .model_route("opus", opus.clone())
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .build();
     let refused = |error: &crate::completion::PromptError| {
         matches!(
@@ -731,7 +731,7 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
         )
         .model_route("opus", opus_by_hook.clone())
         .add_hook(SelectOpus)
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .build();
     hooked
         .prompt("go")
@@ -794,7 +794,7 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
 #[tokio::test]
 async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
     use rig_core::catalog::Catalog;
-    use rig_core::completion::{CacheRetention, Effort, GenerationOptions, OnUnsupported};
+    use rig_core::completion::{CacheRetention, Effort, OnUnsupported};
     use rig_core::error::ProviderError;
     use rig_core::serve::adapters::ModelAdapter;
 
@@ -822,11 +822,8 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
 
     agent
         .prompt("go")
-        .options(
-            GenerationOptions::default()
-                .cache(CacheRetention::Long)
-                .on_unsupported(OnUnsupported::Ignore),
-        )
+        .cache(CacheRetention::Long)
+        .on_unsupported(OnUnsupported::Ignore)
         .run()
         .await
         .expect("ignored, with a warning");
@@ -841,7 +838,7 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
 
     let error = agent
         .prompt("go")
-        .options(GenerationOptions::default().cache(CacheRetention::Long))
+        .cache(CacheRetention::Long)
         .run()
         .await
         .expect_err("refused");
@@ -850,7 +847,7 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
     agent
         .prompt("go")
         .using_model("unnamed")
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .run()
         .await
         .expect("a model value with no model id is not checked");
@@ -859,7 +856,7 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
     let error = agent
         .prompt("go")
         .using_model(haiku)
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .run()
         .await
         .expect_err("the label names Haiku 4.5, which takes no effort level");

@@ -15,10 +15,7 @@ async fn streaming_smoke() {
     with_ollama_cassette("streaming/streaming_smoke", |client| async move {
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(STREAMING_PREAMBLE)
-            .options(
-                rig::completion::GenerationOptions::default()
-                    .reasoning(rig::completion::Reasoning::Off),
-            )
+            .reasoning(rig::completion::Reasoning::Off)
             .build();
 
         let mut stream = agent.prompt(STREAMING_PROMPT).stream();

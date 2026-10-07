@@ -2,16 +2,12 @@
 //! (<https://console.groq.com/docs/api-reference>).
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::groq::extension::{GroqExt, GroqOptions, ReasoningFormat};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::groq::extension::{GroqOptions, ReasoningFormat};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = GroqOptions::new().reasoning_format(ReasoningFormat::Parsed);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<GroqExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

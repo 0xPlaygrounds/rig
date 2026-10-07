@@ -4,8 +4,7 @@ use serde_json::json;
 
 use super::*;
 use crate::completion::{
-    CompletionRequest, Document, GenerationOptions, OnUnsupported, ProviderOptions, Reasoning,
-    SHARED, ToolDefinition,
+    CompletionRequest, Document, OnUnsupported, ProviderOptions, Reasoning, SHARED, ToolDefinition,
 };
 use crate::message::{ToolChoice, ToolName};
 use crate::operation::Completion;
@@ -34,11 +33,7 @@ fn every_field() -> CohereOptions {
 }
 
 fn with(options: &CohereOptions) -> CompletionRequest {
-    CompletionRequest::new("q").provider_options(
-        ProviderOptions::new()
-            .with::<CohereExt>(options)
-            .expect("the options serialize"),
-    )
+    CompletionRequest::new("q").provider_option(options.clone())
 }
 
 /// The path and body `wire` sends for `request`, prepared as the driver
@@ -196,15 +191,12 @@ fn no_field_writes_a_reserved_leaf() {
     for route in [ChatRoute::Native, ChatRoute::Compatibility] {
         for reasoning in [Reasoning::Off, Reasoning::Budget { tokens: 2048 }] {
             let mut request = CompletionRequest::new("q")
-                .options(
-                    GenerationOptions::default()
-                        .reasoning(reasoning)
-                        .top_p(0.5)
-                        .seed(1)
-                        .stop(["END"])
-                        .parallel_tool_calls(true)
-                        .on_unsupported(OnUnsupported::Ignore),
-                )
+                .reasoning(reasoning)
+                .top_p(0.5)
+                .seed(1)
+                .stop(["END"])
+                .parallel_tool_calls(true)
+                .on_unsupported(OnUnsupported::Ignore)
                 .preamble("be brief".to_owned());
             request.temperature = Some(0.5);
             request.max_tokens = Some(4096);

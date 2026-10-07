@@ -486,7 +486,7 @@ fn minimax_places_block_markers_for_a_short_cache() {
         CompletionRequest::new("hi")
             .preamble("Be brief.")
             .max_tokens(64)
-            .options(GenerationOptions::default().cache(CacheRetention::Short)),
+            .cache(CacheRetention::Short),
         Mode::Unary,
     )
     .expect("encodes");

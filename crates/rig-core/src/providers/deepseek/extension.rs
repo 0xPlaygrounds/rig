@@ -6,7 +6,7 @@
 //! use rig_core::providers::deepseek::extension::DeepSeekExt;
 //!
 //! fn cache_hits(reply: &CompletionResponse) -> Option<u64> {
-//!     reply.extras::<DeepSeekExt>()?.ok()?.prompt_cache_hit_tokens
+//!     reply.extras_lossy::<DeepSeekExt>().prompt_cache_hit_tokens
 //! }
 //! # let _ = cache_hits;
 //! ```

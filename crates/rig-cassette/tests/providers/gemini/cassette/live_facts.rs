@@ -10,7 +10,7 @@
 //! exchanges before a recording is written.
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, Effort, GenerationOptions, ToolDefinition};
+use rig::completion::{CompletionRequest, Effort, ToolDefinition};
 use rig::message::{AssistantContent, ToolName};
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 use serde_json::{Value, json};
@@ -84,7 +84,7 @@ async fn stream_function_call_arguments() {
                 json!({"type": "object", "properties": {"q": {"type": "string"}}, "required": ["q"]}),
             ))
             .max_tokens(4000)
-            .options(GenerationOptions::default().reasoning(Effort::Low))
+            .reasoning(Effort::Low)
             .additional_params(json!({
                 "toolConfig": {"functionCallingConfig": {
                     "mode": "ANY",

@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Reasoning};
+use crate::completion::{CompletionRequest, CompletionResponse, Reasoning};
 use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{AnthropicConfig, MOONSHOT as MESSAGES_MOONSHOT, Messages};
 use crate::providers::moonshot::{KIMI_K2_6, KIMI_K3};
@@ -29,7 +29,7 @@ fn thinking_keep_joins_the_mapped_thinking() {
     let request = request_with::<MoonshotExt>(&options(
         MoonshotChat::new().thinking_keep(ThinkingKeep::All),
     ))
-    .options(GenerationOptions::default().reasoning(Reasoning::Off));
+    .reasoning(Reasoning::Off);
     let body = encoded_body(&chat_wire(KIMI_K2_6), request, Mode::Unary)
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(body["thinking"], json!({"type": "disabled", "keep": "all"}));

@@ -19,10 +19,9 @@ use rig::providers::openai;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 
-use rig::completion::GenerationOptions;
 use rig::providers::openai::extension::{ChatOptions, OpenAiOptions};
 
-use super::super::support::{openai_options, with_openai_completions_cassette};
+use super::super::support::with_openai_completions_cassette;
 use crate::support::{AlphaSignal, BetaSignal, TWO_TOOL_STREAM_PREAMBLE, TWO_TOOL_STREAM_PROMPT};
 use rig::completion::CompletionRequest;
 
@@ -122,7 +121,7 @@ async fn parallel_tool_calls_stay_distinct() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
-                .options(GenerationOptions::default().parallel_tool_calls(true));
+                .parallel_tool_calls(true);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -176,9 +175,9 @@ async fn logprobs_chunks_are_forward_compatible() {
         |client| async move {
             let model = client.chat(openai::GPT_4O);
             let request = CompletionRequest::new("Reply with one short sentence about tides.")
-                .provider_options(openai_options(
-                    &OpenAiOptions::new().chat(ChatOptions::new().logprobs(true).top_logprobs(2)),
-                ));
+                .provider_option(
+                    OpenAiOptions::new().chat(ChatOptions::new().logprobs(true).top_logprobs(2)),
+                );
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Stop);

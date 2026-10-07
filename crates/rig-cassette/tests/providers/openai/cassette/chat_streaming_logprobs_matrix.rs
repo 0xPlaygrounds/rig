@@ -92,7 +92,7 @@ fn options(cell: Cell) -> rig::completion::ProviderOptions {
         Top::Absent => chat,
         Top::Zero => chat.top_logprobs(0),
     };
-    openai_options(&OpenAiOptions::new().chat(chat))
+    openai_options(OpenAiOptions::new().chat(chat))
 }
 
 fn prompt(cell: Cell) -> &'static str {

@@ -37,7 +37,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, FinishReason, GenerationOptions};
+use rig::completion::{AssistantContent, FinishReason};
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -155,7 +155,7 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
-        .options(GenerationOptions::default().parallel_tool_calls(cell.shape == Shape::Parallel))
+        .parallel_tool_calls(cell.shape == Shape::Parallel)
         .additional_params(json!({ "tool_choice": "required" }))
         .max_tokens(128);
     for name in expected_names(cell.shape) {
@@ -318,7 +318,7 @@ async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = rig::AgentBuilder::new(client.chat.completion(model_name(cell.model)))
         .preamble(PREAMBLE)
-        .options(GenerationOptions::default().parallel_tool_calls(cell.shape == Shape::Parallel))
+        .parallel_tool_calls(cell.shape == Shape::Parallel)
         .additional_params(json!({ "tool_choice": "required" }))
         .max_tokens(128)
         .default_max_turns(1);

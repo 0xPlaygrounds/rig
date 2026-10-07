@@ -8,7 +8,7 @@ use std::sync::atomic::AtomicUsize;
 
 use rig::completion::Message;
 
-use super::super::support::{effort, stateless, with_openai_cassette};
+use super::super::support::{stateless, with_openai_cassette};
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
@@ -21,7 +21,7 @@ async fn nonstreaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
-                .options(effort(rig::completion::Effort::High))
+                .reasoning(rig::completion::Effort::High)
                 .provider_options(stateless())
                 .default_max_turns(2)
                 .build();

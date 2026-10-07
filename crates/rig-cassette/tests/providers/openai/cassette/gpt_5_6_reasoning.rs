@@ -19,10 +19,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::super::support::with_openai_cassette;
-use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
+use rig::completion::{CompletionRequest, Effort, ProviderOptions};
 use rig::providers::openai::extension::{
-    OpenAiExt, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningContext,
-    ReasoningMode,
+    OpenAiExt, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, ReasoningContext, ReasoningMode,
 };
 
 const PROMPT: &str = "Reply with exactly: OK";
@@ -64,11 +63,9 @@ async fn prompt_with_reasoning(
     effort: Effort,
     responses: OpenAiResponsesOptions,
 ) -> (CompletionResponse, OpenAiExtras) {
-    let options = ProviderOptions::new()
-        .with::<OpenAiExt>(&OpenAiOptions::default().responses(responses))
-        .expect("the options are sections");
+    let options = ProviderOptions::new().set(OpenAiOptions::default().responses(responses));
     let request = CompletionRequest::new(PROMPT)
-        .options(GenerationOptions::default().reasoning(effort))
+        .reasoning(effort)
         .provider_options(options);
 
     let response = model
@@ -180,21 +177,15 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                     .iter()
                     .flat_map(|turn| [turn.user.clone(), turn.assistant.clone()]);
                 let user_message = Message::user(prompt);
-                let options = OpenAiOptions::default()
-                    .shared(OpenAiShared::default().store(false))
-                    .responses(
-                        OpenAiResponsesOptions::default()
-                            .reasoning_mode(ReasoningMode::Pro)
-                            .reasoning_context(ReasoningContext::AllTurns),
-                    );
+                let options = OpenAiOptions::default().store(false).responses(
+                    OpenAiResponsesOptions::default()
+                        .reasoning_mode(ReasoningMode::Pro)
+                        .reasoning_context(ReasoningContext::AllTurns),
+                );
                 let request = CompletionRequest::new(user_message.clone())
                     .messages(history)
-                    .options(GenerationOptions::default().reasoning(Effort::Low))
-                    .provider_options(
-                        ProviderOptions::new()
-                            .with::<OpenAiExt>(&options)
-                            .expect("the options are sections"),
-                    );
+                    .reasoning(Effort::Low)
+                    .provider_option(options);
                 // One request per turn: one call yields both views of it — the
                 // normalized response with its typed extras, and the
                 // provider's own wire response on `raw`, which the stored
@@ -290,12 +281,8 @@ async fn streaming_reasoning_metadata() {
                     .reasoning_context(ReasoningContext::CurrentTurn),
             );
             let request = CompletionRequest::new(PROMPT)
-                .options(GenerationOptions::default().reasoning(Effort::Low))
-                .provider_options(
-                    ProviderOptions::new()
-                        .with::<OpenAiExt>(&options)
-                        .expect("the options are sections"),
-                );
+                .reasoning(Effort::Low)
+                .provider_option(options);
             // The terminal record's typed extras read the reasoning metadata
             // from the provider-native response; the normalized response
             // carries none.

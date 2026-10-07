@@ -37,9 +37,7 @@ use rig_core::message::{
 };
 use rig_core::providers::anthropic;
 use rig_core::providers::anthropic::extension::AnthropicExt;
-use rig_core::providers::openai::extension::{
-    Include, OpenAiExt, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared,
-};
+use rig_core::providers::openai::extension::{Include, OpenAiOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -362,13 +360,10 @@ impl RequestOptions {
     }
 
     /// `generation` beside OpenAI's provider options.
-    fn openai(generation: GenerationOptions, options: &OpenAiOptions) -> Self {
-        let provider = ProviderOptions::new()
-            .with::<OpenAiExt>(options)
-            .unwrap_or_else(|error| panic!("OpenAI options serialize: {error}"));
+    fn openai(generation: GenerationOptions, options: OpenAiOptions) -> Self {
         Self {
             generation,
-            provider,
+            provider: ProviderOptions::new().set(options),
         }
     }
 
@@ -376,7 +371,7 @@ impl RequestOptions {
     fn stateless() -> Self {
         Self::openai(
             GenerationOptions::default(),
-            &OpenAiOptions::new().shared(OpenAiShared::default().store(false)),
+            OpenAiOptions::new().store(false),
         )
     }
 
@@ -955,7 +950,7 @@ pub async fn anthropic(
                 "Write these words separated by spaces: alpha bravo charlie delta echo.",
             )
             .max_tokens(256)
-            .options(GenerationOptions::default().stop(["charlie"])),
+            .stop(["charlie"]),
         )
         .await
         .unwrap_or_else(|error| panic!("{}: stop sequence: {error}", session.run));
@@ -965,10 +960,7 @@ pub async fn anthropic(
         "{}: stopped before delta: {text:?}",
         session.run
     );
-    let stop_reason = response
-        .extras::<AnthropicExt>()
-        .and_then(Result::ok)
-        .and_then(|extras| extras.stop_reason);
+    let stop_reason = response.extras_lossy::<AnthropicExt>().stop_reason;
     assert!(
         stop_reason.as_deref() == Some("stop_sequence"),
         "{}: stop_reason stop_sequence, saw {stop_reason:?}",
@@ -1367,21 +1359,16 @@ pub async fn openai(
     // Low effort, so every model reasons and its encrypted reasoning rides
     // the history; the pro models keep their default effort and ask for the
     // encrypted reasoning themselves (rig adds it only beside `reasoning`).
-    let shared = OpenAiShared::default()
+    let shared = OpenAiOptions::new()
         .prompt_cache_key(cache_key(profile.model))
         .store(false);
     let options = if profile.pro {
         RequestOptions::openai(
             GenerationOptions::default(),
-            &OpenAiOptions::new().shared(shared).responses(
-                OpenAiResponsesOptions::default().include([Include::ReasoningEncryptedContent]),
-            ),
+            shared.include([Include::ReasoningEncryptedContent]),
         )
     } else {
-        RequestOptions::openai(
-            GenerationOptions::default().reasoning(Effort::Low),
-            &OpenAiOptions::new().shared(shared),
-        )
+        RequestOptions::openai(GenerationOptions::default().reasoning(Effort::Low), shared)
     };
     let max_tokens = if profile.pro { PRO_MAX_TOKENS } else { 4096 };
     let agent = main_agent(responses.completion(profile.model), &options, max_tokens);

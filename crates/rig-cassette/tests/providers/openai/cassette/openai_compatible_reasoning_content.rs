@@ -24,7 +24,7 @@ use tokio::task::JoinHandle;
 
 use rig::completion::Effort;
 
-use super::super::support::{effort, stateless};
+use super::super::support::stateless;
 use crate::cassettes::{self, ProviderCassette};
 use crate::reasoning::{self, WeatherTool};
 
@@ -41,7 +41,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
             let agent = rig::AgentBuilder::new(client.completion("llama-cpp-reasoning-model"))
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .tool(WeatherTool::new(call_count.clone()))
-                .options(effort(Effort::Medium))
+                .reasoning(Effort::Medium)
                 .provider_options(stateless())
                 .default_max_turns(2)
                 .build();

@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
+use crate::completion::{CompletionRequest, Effort, ProviderOptions};
 use crate::providers::deepseek::extension::DeepSeekExt;
 use crate::providers::openai::wire::{Chat, OPENROUTER, OpenAIConfig};
 use crate::test_utils::provider_extensions::{
@@ -111,7 +111,7 @@ fn metadata_lands_under_metadata() {
 #[test]
 fn reasoning_exclude_joins_the_mapped_effort() {
     let request = request_with::<OpenRouterExt>(&OpenRouterOptions::new().reasoning_exclude(true))
-        .options(GenerationOptions::default().reasoning(Effort::High));
+        .reasoning(Effort::High);
     let body =
         encoded_body(&chat(MODEL), request, Mode::Unary).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(

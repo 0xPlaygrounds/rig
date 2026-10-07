@@ -1540,12 +1540,10 @@ fn options_become_generation_overrides() -> Result<(), CandleError> {
         CacheRetention, GenerationOptions, Reasoning, ServiceTier, options::Mapping,
     };
 
-    let mut options_request = request(vec![Message::user("hello")]).options(
-        GenerationOptions::default()
-            .top_p(0.7)
-            .seed(11)
-            .reasoning(Reasoning::Off),
-    );
+    let mut options_request = request(vec![Message::user("hello")])
+        .top_p(0.7)
+        .seed(11)
+        .reasoning(Reasoning::Off);
     options_request.additional_params = Some(serde_json::json!({"top_k": 4, "seed": 3}));
     let generation = settings(&options_request, &GenerationConfig::default(), 8)?;
     assert_eq!(generation.top_p, Some(0.7));

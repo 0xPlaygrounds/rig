@@ -15,7 +15,7 @@ use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig_test_support::cassette_models::{AnthropicModels, GeminiModels, OpenAiModels};
 
 use rig::completion::{Effort, GenerationOptions, ProviderOptions, Reasoning};
-use rig::providers::openai::extension::{OpenAiExt, OpenAiOptions, OpenAiShared};
+use rig::providers::openai::extension::{OpenAiOptions, OpenAiShared};
 
 use crate::ecs_matrix::{Wire, cells, cells::ThinkingWire, corpus::TypedOptions};
 
@@ -129,11 +129,7 @@ fn thinking_disabled() -> TypedOptions {
 /// `shared` as OpenAI's typed provider options.
 fn openai_shared(shared: OpenAiShared) -> TypedOptions {
     let options = OpenAiOptions::new().shared(shared);
-    TypedOptions::provider(
-        ProviderOptions::new()
-            .with::<OpenAiExt>(&options)
-            .expect("OpenAI options serialize"),
-    )
+    TypedOptions::provider(ProviderOptions::new().set(options))
 }
 
 pub(crate) fn deepseek_flash(http: DynHttpClient) -> OpenAi {

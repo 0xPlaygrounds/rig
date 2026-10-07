@@ -6,9 +6,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{
-    CompletionResponse, Effort, GenerationOptions, Message, OnUnsupported, ProviderOptions,
-};
+use crate::completion::{CompletionResponse, Effort, Message, OnUnsupported};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::anthropic::completion::{
@@ -33,10 +31,7 @@ fn sent_on(wire: &Messages, request: CompletionRequest) -> Result<Value, Provide
 
 /// `request` carrying `options` as the Anthropic entry.
 fn with(request: CompletionRequest, options: &AnthropicOptions) -> CompletionRequest {
-    let options = ProviderOptions::new()
-        .with::<AnthropicExt>(options)
-        .expect("Anthropic options are sections");
-    request.provider_options(options)
+    request.provider_option(options.clone())
 }
 
 /// The body Anthropic's `model` gets for a short prompt with `options`.
@@ -68,8 +63,7 @@ fn top_k_is_refused_on_a_model_that_fixes_its_sampling() {
         refused(sent_on(&wire(CLAUDE_OPUS_4_8), request.clone())),
         "anthropic.*.top_k"
     );
-    let ignored =
-        request.options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    let ignored = request.on_unsupported(OnUnsupported::Ignore);
     let body = sent_on(&wire(CLAUDE_OPUS_4_8), ignored).expect("ignored, not refused");
     assert!(body.get("top_k").is_none(), "{body}");
 }
@@ -127,7 +121,7 @@ fn task_budget_merges_into_output_config() {
     )
     .expect("a schema");
     let request = CompletionRequest::new("hi")
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .output_schema(schema);
     let options = AnthropicOptions::default().task_budget(TaskBudget::new(20_000).remaining(5_000));
     let body = sent_on(&wire(CLAUDE_OPUS_4_8), with(request, &options)).expect("the body encodes");

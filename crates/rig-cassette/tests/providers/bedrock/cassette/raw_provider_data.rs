@@ -8,7 +8,7 @@
 
 use rig::bedrock;
 use rig::bedrock::extension::{BedrockExt, BedrockOptions, Guardrail, GuardrailTrace};
-use rig::completion::{CompletionRequest, ProviderOptions};
+use rig::completion::CompletionRequest;
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
@@ -35,11 +35,7 @@ async fn guardrail_trace_survives_into_raw() {
             let request =
                 CompletionRequest::new("Explain a gravitational singularity in one sentence.")
                     .max_tokens(64)
-                    .provider_options(
-                        ProviderOptions::new()
-                            .with::<BedrockExt>(&guardrail)
-                            .expect("the options serialize"),
-                    );
+                    .provider_option(guardrail);
 
             let response = model
                 .call(request)

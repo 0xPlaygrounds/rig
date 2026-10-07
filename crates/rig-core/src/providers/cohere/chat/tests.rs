@@ -583,8 +583,7 @@ fn native_thinking(
     reasoning: crate::completion::Reasoning,
 ) -> Result<Option<Value>, String> {
     let wire = NativeChat::new(CohereConfig::new("key"), model);
-    let request = CompletionRequest::new("hi")
-        .options(crate::completion::GenerationOptions::default().reasoning(reasoning));
+    let request = CompletionRequest::new("hi").reasoning(reasoning);
     let encoded = Completion::prepare(request, &wire.describe())
         .map_err(|error| error.to_string())
         .and_then(|request| {
@@ -655,13 +654,12 @@ fn native_thinking_follows_the_catalog() {
 /// think, by the same catalog rule.
 #[test]
 fn compatibility_effort_follows_the_catalog() {
-    use crate::completion::{Effort, GenerationOptions};
+    use crate::completion::Effort;
     let effort = |model: &str| {
         let wire = CohereConfig::new("key")
             .completion(model)
             .with_route(ChatRoute::Compatibility);
-        let request = CompletionRequest::new("hi")
-            .options(GenerationOptions::default().reasoning(Effort::High));
+        let request = CompletionRequest::new("hi").reasoning(Effort::High);
         Completion::prepare(request, &wire.describe())
             .map_err(|error| error.to_string())
             .and_then(|request| {

@@ -19,10 +19,7 @@ async fn nonstreaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
-                .options(
-                    rig::completion::GenerationOptions::default()
-                        .reasoning(rig::completion::Effort::High),
-                )
+                .reasoning(rig::completion::Effort::High)
                 .additional_params(serde_json::json!({ "include_reasoning": true }))
                 .default_max_turns(2)
                 .build();

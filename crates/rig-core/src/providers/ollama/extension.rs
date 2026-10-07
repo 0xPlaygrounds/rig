@@ -4,15 +4,13 @@
 //! to the native route only and is skipped on `/v1`.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::ollama::extension::{KeepAlive, OllamaExt, OllamaOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::ollama::extension::{KeepAlive, OllamaOptions};
 //!
 //! let options = OllamaOptions::default()
 //!     .keep_alive(KeepAlive::duration("5m"))
 //!     .num_ctx(8192);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OllamaExt>(&options)?);
-//! # Ok::<(), rig_core::completion::OptionsError>(())
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
 use serde::{Deserialize, Serialize};

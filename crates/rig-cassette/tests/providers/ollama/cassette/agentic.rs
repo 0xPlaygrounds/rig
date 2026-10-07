@@ -178,7 +178,7 @@ async fn streaming_structured_output_with_tools() {
                 )
                 .tool(WeatherTool::new(call_count.clone()))
                 .output_schema_raw(schema)
-                .options(rig::completion::GenerationOptions::default().reasoning(rig::completion::Reasoning::Off))
+                .reasoning(rig::completion::Reasoning::Off)
                 .default_max_turns(5)
                 .build();
 
@@ -234,10 +234,7 @@ async fn native_mode_emits_structured_output() {
             .tool(WeatherTool::new(call_count.clone()))
             .output_schema_raw(schema)
             .output_mode(OutputMode::Native)
-            .options(
-                rig::completion::GenerationOptions::default()
-                    .reasoning(rig::completion::Reasoning::Off),
-            )
+            .reasoning(rig::completion::Reasoning::Off)
             .default_max_turns(3)
             .build();
 

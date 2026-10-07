@@ -5,7 +5,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Reasoning};
+use crate::completion::{CompletionRequest, CompletionResponse, Reasoning};
 use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{AnthropicConfig, Messages, ZAI as MESSAGES_ZAI};
 use crate::providers::openai::wire::{Chat, OpenAIConfig, ZAI};
@@ -46,7 +46,7 @@ fn user_id_lands_at_top_level() {
 fn clear_thinking_joins_the_mapped_thinking() {
     let request =
         request_with::<ZaiExt>(&ZaiOptions::new().chat(ZaiChat::new().clear_thinking(false)))
-            .options(GenerationOptions::default().reasoning(Reasoning::Off));
+            .reasoning(Reasoning::Off);
     let body =
         encoded_body(&chat_wire(), request, Mode::Unary).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(

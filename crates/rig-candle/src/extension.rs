@@ -6,13 +6,11 @@
 //! [`GenerationOptions`]: rig_core::completion::GenerationOptions
 //!
 //! ```
-//! use rig_candle::extension::{CandleExt, CandleOptions};
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
+//! use rig_candle::extension::{CandleOptions};
+//! use rig_core::completion::CompletionRequest;
 //!
 //! let options = CandleOptions::default().top_k(40).repeat_penalty(1.2);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<CandleExt>(&options)?);
-//! # Ok::<(), rig_core::completion::OptionsError>(())
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
 use rig_core::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};

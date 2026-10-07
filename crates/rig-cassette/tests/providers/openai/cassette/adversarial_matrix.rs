@@ -2,9 +2,7 @@
 //! `rig_test_support::history_survival::adversarial`.
 
 use rig::completion::Effort;
-use rig::providers::openai::extension::{
-    Include, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared,
-};
+use rig::providers::openai::extension::{Include, OpenAiOptions};
 
 use super::super::support::{effort, openai_options, with_openai_cassette};
 use crate::history_survival::Options;
@@ -14,11 +12,9 @@ fn reasoning(level: Effort) -> Options {
     Options::new(
         effort(level),
         openai_options(
-            &OpenAiOptions::new()
-                .shared(OpenAiShared::default().store(false))
-                .responses(
-                    OpenAiResponsesOptions::default().include([Include::ReasoningEncryptedContent]),
-                ),
+            OpenAiOptions::new()
+                .store(false)
+                .include([Include::ReasoningEncryptedContent]),
         ),
     )
 }

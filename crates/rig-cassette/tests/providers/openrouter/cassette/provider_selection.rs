@@ -6,7 +6,7 @@ use rig::providers::openrouter::extension::{
 
 use crate::support::assert_nonempty_response;
 
-use super::super::support::{openrouter_options, with_openrouter_cassette};
+use super::super::support::with_openrouter_cassette;
 
 const DEEPSEEK_V3_2: &str = "deepseek/deepseek-v3.2";
 
@@ -44,9 +44,7 @@ async fn provider_selection_scenarios() {
             for (prompt, preferences) in scenarios {
                 let agent = rig::AgentBuilder::new(client.completion(DEEPSEEK_V3_2))
                     .preamble("You are a helpful assistant.")
-                    .provider_options(openrouter_options(
-                        OpenRouterOptions::new().provider(preferences),
-                    ))
+                    .provider_option(OpenRouterOptions::new().provider(preferences))
                     .build();
                 let response = agent.prompt(prompt).await.expect("prompt should succeed");
                 assert_nonempty_response(&response.output());

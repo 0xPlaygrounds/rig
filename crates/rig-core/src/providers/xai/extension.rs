@@ -2,16 +2,12 @@
 //! Responses alike (<https://docs.x.ai/developers/cost-tracking>).
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::xai::extension::{XaiExt, XaiOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::xai::extension::{XaiOptions};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = XaiOptions::new().prompt_cache_key("conversation-42");
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<XaiExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

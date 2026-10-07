@@ -3,19 +3,14 @@
 //! AI's request declares, and [`VertexExtras`] reads its reply.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::gemini::extension::GenerationConfig;
-//! use rig_vertexai::extension::{VertexExt, VertexOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_vertexai::extension::{VertexOptions};
 //!
-//! # fn main() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = VertexOptions::new()
 //!     .label("team", "rig")
-//!     .generation_config(GenerationConfig::new().top_k(40));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<VertexExt>(&options)?);
+//!     .top_k(40);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use std::collections::BTreeMap;

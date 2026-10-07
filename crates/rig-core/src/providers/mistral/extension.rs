@@ -2,16 +2,12 @@
 //! (<https://docs.mistral.ai/api/endpoint/chat>).
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::mistral::extension::{MistralExt, MistralOptions, PromptMode};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::mistral::extension::{MistralOptions, PromptMode};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = MistralOptions::new().prompt_mode(PromptMode::Reasoning).safe_prompt(true);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<MistralExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::{Deserialize, Serialize};

@@ -173,7 +173,7 @@ fn reasoning_mode_matches_the_recorded_request() {
     let body = prepared_body_of(
         &wire,
         CompletionRequest::new("Reply with exactly: OK")
-            .options(GenerationOptions::default().reasoning(Effort::High))
+            .reasoning(Effort::High)
             .provider_options(responses(
                 OpenAiResponsesOptions::default().reasoning_mode(ReasoningMode::Pro),
             )),
@@ -303,7 +303,7 @@ fn background_is_refused_on_a_websocket_session() {
     let ignored = wire
         .responses_request(
             &prompt()
-                .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore))
+                .on_unsupported(OnUnsupported::Ignore)
                 .provider_options(typed),
             Delivery::WebSocket,
         )
@@ -337,7 +337,7 @@ fn top_logprobs_is_checked_like_a_raw_key() {
     let typed = responses(OpenAiResponsesOptions::default().top_logprobs(2));
     let strict = prompt()
         .provider_options(typed.clone())
-        .options(GenerationOptions::default().reasoning(crate::completion::Effort::Medium));
+        .reasoning(crate::completion::Effort::Medium);
     let error = wire
         .encode(strict, Mode::Unary)
         .expect_err("gpt-6 reasons by default");

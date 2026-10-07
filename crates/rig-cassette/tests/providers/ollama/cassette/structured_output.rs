@@ -17,10 +17,7 @@ async fn structured_output_smoke() {
         |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .output_schema::<SmokeStructuredOutput>()
-                .options(
-                    rig::completion::GenerationOptions::default()
-                        .reasoning(rig::completion::Reasoning::Off),
-                )
+                .reasoning(rig::completion::Reasoning::Off)
                 .build();
 
             let response = agent

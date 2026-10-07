@@ -8,7 +8,7 @@
 //! use rig_core::providers::copilot::extension::CopilotExt;
 //!
 //! fn billed(reply: &CompletionResponse) -> Option<u64> {
-//!     reply.extras::<CopilotExt>()?.ok()?.copilot_usage?.total_nano_aiu
+//!     reply.extras_lossy::<CopilotExt>().copilot_usage?.total_nano_aiu
 //! }
 //! # let _ = billed;
 //! ```

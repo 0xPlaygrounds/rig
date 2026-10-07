@@ -50,14 +50,12 @@ use std::time::Duration;
 
 use futures::{Stream, StreamExt};
 use rig::completion::Usage;
-use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
+use rig::completion::{CompletionRequest, Reasoning};
 use rig::error::ErrorReport;
 use rig::error::ProviderError;
 use rig::message::AssistantContent;
 use rig::providers::gemini::Gemini;
-use rig::providers::gemini::extension::{
-    GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
-};
+use rig::providers::gemini::extension::GeminiOptions;
 use rig::streaming::{Item, Relayed, StreamEvent, StreamEvents};
 
 const MODEL: &str = "gemini-2.5-flash";
@@ -320,14 +318,10 @@ async fn count_tokens(http: &reqwest::Client, api_key: &str, text: &str) -> anyh
 /// 2.5-flash spends seconds generating hidden thoughts (no chunks sent), which
 /// is indistinguishable from a stall and would trip the read timeout before any
 /// real partial output — masking the injected disruptions.
-fn no_thinking(request: CompletionRequest) -> anyhow::Result<CompletionRequest> {
-    let no_thoughts = GeminiOptions::new().generate_content(
-        GenerateContentOptions::new()
-            .generation_config(GenerationConfig::new().include_thoughts(false)),
-    );
-    Ok(request
-        .options(GenerationOptions::default().reasoning(Reasoning::Off))
-        .provider_options(ProviderOptions::new().with::<GeminiExt>(&no_thoughts)?))
+fn no_thinking(request: CompletionRequest) -> CompletionRequest {
+    request
+        .reasoning(Reasoning::Off)
+        .provider_option(GeminiOptions::new().include_thoughts(false))
 }
 
 async fn run_scenario(
@@ -343,7 +337,7 @@ async fn run_scenario(
         CompletionRequest::new(prompt)
             .temperature(0.7)
             .max_tokens(2000),
-    )?)?;
+    ))?;
 
     let disrupted = Disrupt::new(stream.into_relay(), mode, DISRUPT_AFTER_CHARS);
     drain_with_accounting(label, disrupted, http, api_key, prompt).await

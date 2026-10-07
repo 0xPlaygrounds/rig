@@ -177,10 +177,7 @@ fn shapes() -> Vec<(&'static str, CompletionRequest)> {
         ("max", base().max_tokens(1000)),
         (
             "sampling",
-            base()
-                .max_tokens(1000)
-                .temperature(0.5)
-                .options(GenerationOptions::default().top_p(0.9)),
+            base().max_tokens(1000).temperature(0.5).top_p(0.9),
         ),
         ("temp", base().temperature(0.5)),
         ("tools", base().max_tokens(1000).tool(lookup_tool())),

@@ -174,13 +174,11 @@ fn a_later_system_message_stays_in_place() {
 /// Reasoning another model made goes as text, so it does not.
 #[test]
 fn cache_points_follow_what_the_request_sends() {
-    use rig_core::completion::{CacheRetention, GenerationOptions, OnUnsupported};
+    use rig_core::completion::{CacheRetention, OnUnsupported};
     let cached = |history: Vec<Message>| {
-        CompletionRequest::from(history).options(
-            GenerationOptions::default()
-                .cache(CacheRetention::Short)
-                .on_unsupported(OnUnsupported::Ignore),
-        )
+        CompletionRequest::from(history)
+            .cache(CacheRetention::Short)
+            .on_unsupported(OnUnsupported::Ignore)
     };
     let sent_on = |wire: &Converse, history| encoded(wire, cached(history), Mode::Unary);
     let wire = Converse::new(CLAUDE);

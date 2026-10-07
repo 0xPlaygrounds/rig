@@ -7,19 +7,12 @@
 //! route taken does not return reads `None`.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::gemini::extension::{
-//!     GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
-//! };
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::gemini::extension::GeminiOptions;
 //!
-//! # fn main() -> Result<(), rig_core::completion::OptionsError> {
-//! let options = GeminiOptions::new()
-//!     .generate_content(GenerateContentOptions::new().generation_config(GenerationConfig::new().top_k(40)));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<GeminiExt>(&options)?);
+//! let options = GeminiOptions::new().top_k(40);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use std::collections::BTreeMap;

@@ -27,11 +27,8 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     // A checkpoint after the reasoning turn is refused by default; this
     // round trip skips it with a warning and checks the rest still works.
     let agent = AgentBuilder::new(model)
-        .options(
-            rig::completion::GenerationOptions::default()
-                .cache(rig::completion::CacheRetention::Short)
-                .on_unsupported(rig::completion::OnUnsupported::Ignore),
-        )
+        .cache(rig::completion::CacheRetention::Short)
+        .on_unsupported(rig::completion::OnUnsupported::Ignore)
         .preamble(
             "You must call tools when the user asks for their result. \
              After a tool result is available, answer with the exact result.",

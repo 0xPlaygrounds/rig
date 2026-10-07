@@ -4,8 +4,8 @@ use super::*;
 use crate::completion::{AMAZON_NOVA_LITE, ANTHROPIC_CLAUDE_SONNET_4_5, Converse};
 use crate::streaming::tests::{CLAUDE, NOVA};
 use rig_core::completion::{
-    CacheRetention, CompletionRequest, Effort, GenerationOptions, OnUnsupported, ProviderOptions,
-    Reasoning, ServiceTier, ToolDefinition, Verbosity,
+    CacheRetention, CompletionRequest, Effort, OnUnsupported, ProviderOptions, Reasoning,
+    ServiceTier, ToolDefinition, Verbosity,
 };
 use rig_core::message::{ToolChoice, ToolName};
 use rig_core::operation::Completion;
@@ -32,11 +32,7 @@ fn every_field() -> BedrockOptions {
 }
 
 fn with(options: &BedrockOptions) -> CompletionRequest {
-    CompletionRequest::new("q").provider_options(
-        ProviderOptions::new()
-            .with::<BedrockExt>(options)
-            .expect("the options serialize"),
-    )
+    CompletionRequest::new("q").provider_option(options.clone())
 }
 
 /// The body `request` sends to `model` in `mode`, prepared as the driver
@@ -104,7 +100,7 @@ fn response_field_paths_are_sent_as_given() {
 #[test]
 fn anthropic_beta_joins_the_model_fields() {
     let options = BedrockOptions::default().anthropic_beta("context-1m-2025-08-07");
-    let request = with(&options).options(GenerationOptions::default().reasoning(Effort::High));
+    let request = with(&options).reasoning(Effort::High);
     let body = encoded(CLAUDE, request, Mode::Unary);
     assert_eq!(
         body["additionalModelRequestFields"]["anthropic_beta"],
@@ -182,18 +178,15 @@ fn no_field_writes_a_reserved_leaf() {
     for model in [CLAUDE, ANTHROPIC_CLAUDE_SONNET_4_5, AMAZON_NOVA_LITE] {
         for reasoning in reasonings {
             let mut request = CompletionRequest::new("q")
-                .options(
-                    GenerationOptions::default()
-                        .reasoning(reasoning)
-                        .cache(CacheRetention::Short)
-                        .service_tier(ServiceTier::Priority)
-                        .verbosity(Verbosity::Low)
-                        .parallel_tool_calls(true)
-                        .top_p(0.5)
-                        .seed(1)
-                        .stop(["END"])
-                        .on_unsupported(OnUnsupported::Ignore),
-                )
+                .reasoning(reasoning)
+                .cache(CacheRetention::Short)
+                .service_tier(ServiceTier::Priority)
+                .verbosity(Verbosity::Low)
+                .parallel_tool_calls(true)
+                .top_p(0.5)
+                .seed(1)
+                .stop(["END"])
+                .on_unsupported(OnUnsupported::Ignore)
                 .preamble("be brief".to_owned());
             request.temperature = Some(0.5);
             request.max_tokens = Some(4096);

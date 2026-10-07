@@ -20,9 +20,7 @@ use super::super::{DEFAULT_MODEL, support::with_venice_cassette};
 
 /// A request carrying `parameters` with thinking disabled.
 fn request(prompt: &str, max_tokens: u64, parameters: VeniceParameters) -> CompletionRequest {
-    let options = ProviderOptions::new()
-        .with::<VeniceExt>(&VeniceOptions::new().venice_parameters(parameters))
-        .expect("Venice options serialize");
+    let options = ProviderOptions::new().set(VeniceOptions::new().venice_parameters(parameters));
     CompletionRequest::new(prompt)
         .max_tokens(max_tokens)
         .provider_options(options)

@@ -124,10 +124,7 @@ async fn reasoning_session_two_tool_calls_streaming() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(6000)
                 .tool(WeatherTool::new(call_count.clone()))
-                .options(
-                    rig::completion::GenerationOptions::default()
-                        .reasoning(rig::completion::Effort::Low),
-                )
+                .reasoning(rig::completion::Effort::Low)
                 .build();
 
             let stream = agent

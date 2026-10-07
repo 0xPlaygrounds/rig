@@ -5,9 +5,7 @@ use super::super::support::with_gemini_cassette;
 use crate::history_survival::Options;
 use crate::history_survival::driver::{Cell, Expect, Transport};
 use rig::completion::{GenerationOptions, ProviderOptions, Reasoning};
-use rig::providers::gemini::extension::{
-    GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
-};
+use rig::providers::gemini::extension::GeminiOptions;
 use rig_test_support::cassette_models::GeminiModels;
 
 /// Raw parameters for the image cell: its model takes a thinking level, so
@@ -27,14 +25,7 @@ fn no_params() -> Option<serde_json::Value> {
 fn options() -> Options {
     Options::new(
         GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 }),
-        ProviderOptions::new()
-            .with::<GeminiExt>(
-                &GeminiOptions::new().generate_content(
-                    GenerateContentOptions::new()
-                        .generation_config(GenerationConfig::new().include_thoughts(true)),
-                ),
-            )
-            .expect("Gemini options serialize"),
+        ProviderOptions::new().set(GeminiOptions::new().include_thoughts(true)),
     )
 }
 

@@ -4,16 +4,12 @@
 //! `"openai.responses"` section. An `openai` entry is not read here.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::chatgpt::extension::{ChatGptExt, ChatGptOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::chatgpt::extension::{ChatGptOptions};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = ChatGptOptions::default().prompt_cache_key("conversation-1");
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<ChatGptExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use std::collections::BTreeMap;

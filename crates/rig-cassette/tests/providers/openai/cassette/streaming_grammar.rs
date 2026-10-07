@@ -24,9 +24,7 @@ use rig::streaming::StreamEvent;
 use serde_json::json;
 
 use rig::completion::Effort;
-use rig::providers::openai::extension::{
-    Include, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared,
-};
+use rig::providers::openai::extension::{Include, OpenAiOptions};
 
 use super::super::support::{
     effort, openai_options, shared_options, stateless, with_openai_cassette,
@@ -164,7 +162,8 @@ async fn parallel_tool_calls_both_survive_aggregation() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
-                .options(effort(Effort::Low).parallel_tool_calls(true));
+                .reasoning(Effort::Low)
+                .parallel_tool_calls(true);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -212,7 +211,7 @@ async fn tool_call_then_followup_text_across_turns() {
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .options(effort(Effort::Low))
+                .reasoning(Effort::Low)
                 .provider_options(stateless());
             let first = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -250,7 +249,7 @@ async fn tool_call_then_followup_text_across_turns() {
                 assistant_message,
                 tool_result,
             ])
-            .options(effort(Effort::Low))
+            .reasoning(Effort::Low)
             .provider_options(stateless());
             let second = drain_stream(
                 model
@@ -295,12 +294,8 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                  the tool result arrives, answer with the count and the exact tool output.";
             let generation = effort(Effort::High);
             let provider = openai_options(
-                &OpenAiOptions::new()
-                    .shared(OpenAiShared::default().store(false))
-                    .responses(
-                        OpenAiResponsesOptions::default()
-                            .include([Include::ReasoningEncryptedContent]),
-                    ),
+                OpenAiOptions::new()
+                    .store(false).include([Include::ReasoningEncryptedContent]),
             );
 
             // Turn 1: forced tool work with encrypted reasoning.
@@ -442,7 +437,7 @@ async fn incomplete_mid_tool_call_normalizes_to_length() {
             .tool(rig::tool::tool_definition(&Adder))
             .tool_choice(rig::message::ToolChoice::Required)
             .max_tokens(16)
-            .options(effort(Effort::Low));
+            .reasoning(Effort::Low);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);
@@ -485,7 +480,7 @@ async fn structured_output_stream_yields_schema_conformant_text() {
             let request = CompletionRequest::new(
                 "Return a concise event object for a local Rust meetup in Seattle.",
             )
-            .options(effort(Effort::Low))
+            .reasoning(Effort::Low)
             .additional_params(json!({
                 "text": {
                     "format": {
@@ -549,7 +544,7 @@ async fn previous_response_id_chains_server_side_state() {
         |client| async move {
             let model = client.openai.completion(openai::GPT_5_6);
             let request = CompletionRequest::new("Reply with exactly one word: quartz")
-                .options(effort(Effort::Low))
+                .reasoning(Effort::Low)
                 .provider_options(shared_options(Some(true), None));
             let first = drain_stream(model.stream(request).expect("stream should start")).await;
             assert_terminal(&first, FinishReason::Stop);
@@ -567,7 +562,7 @@ async fn previous_response_id_chains_server_side_state() {
             let second_request = CompletionRequest::new(
                 "What exact word did you reply with just now? Reply with only that word.",
             )
-            .options(effort(Effort::Low))
+            .reasoning(Effort::Low)
             .provider_options(shared_options(Some(true), None))
             .additional_params(json!({ "previous_response_id": previous_response_id }));
             let second = drain_stream(
@@ -613,7 +608,7 @@ async fn incomplete_max_output_tokens_normalizes_to_length() {
             let request =
                 CompletionRequest::new("Write a 300-word essay about the history of lighthouses.")
                     .max_tokens(32)
-                    .options(effort(Effort::Low));
+                    .reasoning(Effort::Low);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::Length);

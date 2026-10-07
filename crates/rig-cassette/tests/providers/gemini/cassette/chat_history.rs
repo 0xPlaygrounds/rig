@@ -6,11 +6,9 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use rig::completion::{GenerationOptions, Message, ProviderOptions, Reasoning};
+use rig::completion::{Message, Reasoning};
 use rig::providers::gemini;
-use rig::providers::gemini::extension::{
-    GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
-};
+use rig::providers::gemini::extension::GeminiOptions;
 
 use crate::reasoning::{self, WeatherTool};
 
@@ -25,10 +23,8 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                     .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                     .max_tokens(4096)
                     .tool(WeatherTool::new(call_count.clone()))
-                    .options(
-                        GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 4096 }),
-                    )
-                    .provider_options(include_thoughts())
+                    .reasoning(Reasoning::Budget { tokens: 4096 })
+                    .provider_option(include_thoughts())
                     .default_max_turns(2)
                     .build();
             let mut chat_history = Vec::<Message>::new();
@@ -50,13 +46,6 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
 }
 
 /// `includeThoughts`, beside the typed thinking budget.
-fn include_thoughts() -> ProviderOptions {
-    ProviderOptions::new()
-        .with::<GeminiExt>(
-            &GeminiOptions::new().generate_content(
-                GenerateContentOptions::new()
-                    .generation_config(GenerationConfig::new().include_thoughts(true)),
-            ),
-        )
-        .expect("Gemini options serialize")
+fn include_thoughts() -> GeminiOptions {
+    GeminiOptions::new().include_thoughts(true)
 }

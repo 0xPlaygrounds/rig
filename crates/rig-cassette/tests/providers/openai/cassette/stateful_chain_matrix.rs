@@ -17,9 +17,7 @@ use serde_json::{Value, json};
 
 use rig::completion::Effort;
 
-use super::super::support::{
-    OpenAiCassette, effort, shared_options, stateless, with_openai_cassette,
-};
+use super::super::support::{OpenAiCassette, shared_options, stateless, with_openai_cassette};
 
 const MODEL: &str = "gpt-5-mini";
 const CODE: &str = "amber-5521";
@@ -176,7 +174,7 @@ async fn stored_chain_with_tool_call() {
                 let model = client.openai.responses(MODEL);
                 let stored = |request: CompletionRequest, previous: Option<&str>| {
                     let request = request
-                        .options(effort(Effort::Low))
+                        .reasoning(Effort::Low)
                         .provider_options(shared_options(Some(true), None));
                     match previous {
                         Some(previous) => {

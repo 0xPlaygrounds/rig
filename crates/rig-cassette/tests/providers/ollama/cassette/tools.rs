@@ -29,9 +29,7 @@ async fn two_tools_nonstreaming_chain() {
         // Greedy and seeded, so the thinking stays on task rather than quoting
         // the tool-call format it is reasoning about.
         let report = sequential_tools(client.completion(MODEL), |builder| {
-            builder
-                .temperature(0.0)
-                .options(rig::completion::GenerationOptions::default().seed(7))
+            builder.temperature(0.0).seed(7)
         })
         .await
         .expect("sequential-tool conformance scenario should succeed");

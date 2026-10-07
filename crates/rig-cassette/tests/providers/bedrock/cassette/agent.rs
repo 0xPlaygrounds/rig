@@ -58,10 +58,7 @@ async fn prompt_caching_completion_smoke() {
         |client| async move {
             let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let agent = AgentBuilder::new(model)
-                .options(
-                    rig::completion::GenerationOptions::default()
-                        .cache(rig::completion::CacheRetention::Short),
-                )
+                .cache(rig::completion::CacheRetention::Short)
                 .preamble(BASIC_PREAMBLE)
                 .build();
 

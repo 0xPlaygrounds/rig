@@ -6,9 +6,9 @@
 use rig::providers::openai;
 
 use rig::completion::Effort;
-use rig::providers::openai::extension::{OpenAiOptions, OpenAiResponsesOptions, ReasoningSummary};
+use rig::providers::openai::extension::{OpenAiOptions, ReasoningSummary};
 
-use super::super::support::{effort, openai_options, stateless, with_openai_cassette};
+use super::super::support::{effort, stateless, with_openai_cassette};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 #[tokio::test]
@@ -27,16 +27,10 @@ async fn nonstreaming() {
 #[tokio::test]
 async fn reasoning_delta_hook_streaming() {
     with_openai_cassette("reasoning_delta_hook/streaming", |client| async move {
-        let summary = openai_options(&OpenAiOptions::new().responses(
-            OpenAiResponsesOptions::default().reasoning_summary(ReasoningSummary::Detailed),
-        ));
+        let summary = OpenAiOptions::new().reasoning_summary(ReasoningSummary::Detailed);
         reasoning::run_reasoning_delta_hook_streaming_with(
             client.openai.completion(openai::GPT_5_6),
-            |builder| {
-                builder
-                    .options(effort(Effort::High))
-                    .provider_options(summary)
-            },
+            |builder| builder.reasoning(Effort::High).provider_option(summary),
             "openai",
         )
         .await;

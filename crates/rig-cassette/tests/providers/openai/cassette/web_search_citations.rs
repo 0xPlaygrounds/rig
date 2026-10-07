@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 
 use rig::completion::Effort;
 
-use super::super::support::{effort, sse_json_frames, stateless, with_openai_cassette};
+use super::super::support::{sse_json_frames, stateless, with_openai_cassette};
 use crate::stream_faults::{recorded_sse_frames, scripted, sse_bytes};
 
 const SCENARIO: &str = "web_search_citations/streamed_and_unary";
@@ -30,7 +30,7 @@ const SCRIPTED_KEY: &str = "sk-scripted-citation-key-5c1e";
 
 fn request() -> CompletionRequest {
     CompletionRequest::new(PROMPT)
-        .options(effort(Effort::Low))
+        .reasoning(Effort::Low)
         .provider_options(stateless())
         .provider_tool(ProviderToolDefinition::new("web_search"))
         .max_tokens(2048)

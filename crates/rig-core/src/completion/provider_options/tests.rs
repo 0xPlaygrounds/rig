@@ -6,9 +6,7 @@ use super::*;
 use crate::completion::options::{
     BaseInput, Mapping, OptionFields, OptionMap, RawAt, check, param, request_params,
 };
-use crate::completion::{
-    CompletionResponse, GenerationOptions, OnUnsupported, Usage, message::Origin,
-};
+use crate::completion::{CompletionResponse, OnUnsupported, Usage, message::Origin};
 use serde_json::json;
 
 /// The fake provider's marker.
@@ -263,7 +261,7 @@ fn the_layer_sits_between_the_mapped_options_and_additional_params() {
         },
         ..FakeOptions::default()
     })
-    .options(GenerationOptions::default().top_p(0.5));
+    .top_p(0.5);
     request.additional_params = Some(json!({"sampling": {"top_k": 9}}));
     let body = body(&RESPONSES, &request, RawAt::Top);
     assert_eq!(
@@ -396,7 +394,7 @@ fn under_ignore_a_refused_field_is_warned_once_and_not_sent() {
         },
         ..FakeOptions::default()
     })
-    .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    .on_unsupported(OnUnsupported::Ignore);
     let capture = crate::test_utils::TraceCapture::default();
     let body = tracing::subscriber::with_default(capture.subscriber(), || {
         check(&CHAT, &mut request).unwrap_or_else(|error| panic!("{error}"));
@@ -421,7 +419,7 @@ fn under_ignore_a_refused_field_is_warned_once_and_not_sent() {
         },
         ..FakeOptions::default()
     })
-    .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    .on_unsupported(OnUnsupported::Ignore);
     assert_eq!(self::body(&CHAT, &unchecked, RawAt::Top).get("store"), None);
 }
 
@@ -453,7 +451,7 @@ fn param_reads_the_provider_layer_under_the_raw_one() {
         },
         ..FakeOptions::default()
     })
-    .options(GenerationOptions::default().top_p(0.5));
+    .top_p(0.5);
     assert_eq!(param(&RESPONSES, &request, "top_k"), Some(json!(4)));
     assert_eq!(param(&RESPONSES, &request, "store"), Some(json!(true)));
     assert_eq!(

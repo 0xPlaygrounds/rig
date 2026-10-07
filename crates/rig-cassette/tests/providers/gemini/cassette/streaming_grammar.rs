@@ -12,7 +12,7 @@
 
 use futures::StreamExt;
 use rig::completion::FinishReason;
-use rig::completion::{CompletionResponse, Effort, GenerationOptions, ProviderOptions};
+use rig::completion::{CompletionResponse, Effort};
 use rig::message::{AssistantContent, Reasoning, ToolCall, ToolResultContent, UserContent};
 use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
@@ -143,7 +143,7 @@ async fn parallel_function_calls_stay_distinct() {
             .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
             .tool(rig::tool::tool_definition(&AlphaSignal))
             .tool(rig::tool::tool_definition(&BetaSignal))
-            .options(GenerationOptions::default().reasoning(rig::completion::Reasoning::Off));
+            .reasoning(rig::completion::Reasoning::Off);
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
             assert_terminal(&run, FinishReason::ToolCalls);
@@ -215,7 +215,7 @@ async fn interactions_requires_action_roundtrip() {
                         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                         .tool(tool)
                         .tool_choice(ToolChoice::Required)
-                        .provider_options(gemini_options(&GeminiOptions::new().store(true))),
+                        .provider_option(GeminiOptions::new().store(true)),
                 )
                 .await
                 .expect("tool-required interaction should succeed");
@@ -272,10 +272,8 @@ async fn interactions_requires_action_roundtrip() {
                         tool_call.function.name.clone(),
                         vec![ToolResultContent::text(ALPHA_SIGNAL_OUTPUT)],
                     )))
-                    .provider_options(gemini_options(
-                        &GeminiOptions::new().interactions(
-                            InteractionsOptions::new().previous_interaction_id(interaction_id),
-                        ),
+                    .provider_option(GeminiOptions::new().interactions(
+                        InteractionsOptions::new().previous_interaction_id(interaction_id),
                     )),
                 )
                 .await
@@ -317,11 +315,9 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
                 "How many positive integers n < 100 are divisible by 6 but not by 9? \
                      Think it through, then answer with just the number.",
             )
-            .options(GenerationOptions::default().reasoning(Effort::Medium))
-            .provider_options(gemini_options(
-                &GeminiOptions::new().store(true).interactions(
-                    InteractionsOptions::new().thinking_summaries(ThinkingSummaries::None),
-                ),
+            .reasoning(Effort::Medium)
+            .provider_option(GeminiOptions::new().store(true).interactions(
+                InteractionsOptions::new().thinking_summaries(ThinkingSummaries::None),
             ));
             let run = drain_stream(model.stream(request).expect("stream should start")).await;
 
@@ -361,10 +357,4 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
         },
     )
     .await;
-}
-
-fn gemini_options(options: &GeminiOptions) -> ProviderOptions {
-    ProviderOptions::new()
-        .with::<GeminiExt>(options)
-        .expect("Gemini options serialize")
 }

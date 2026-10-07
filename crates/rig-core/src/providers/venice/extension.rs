@@ -3,22 +3,15 @@
 //! parameter.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::venice::extension::{
-//!     VeniceExt, VeniceOptions, VeniceParameters, WebSearchMode,
-//! };
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::venice::extension::{VeniceOptions, WebSearchMode};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = VeniceOptions::new().venice_parameters(
-//!     VeniceParameters::new()
-//!         .enable_web_search(WebSearchMode::On)
-//!         .enable_web_citations(true),
-//! );
+//! let options = VeniceOptions::new()
+//!     .enable_web_search(WebSearchMode::On)
+//!     .enable_web_citations(true);
 //! let request = CompletionRequest::new("Summarize today's Rust news.")
-//!     .provider_options(ProviderOptions::new().with::<VeniceExt>(&options)?);
+//!     .provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::{Deserialize, Serialize};

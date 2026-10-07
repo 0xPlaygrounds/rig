@@ -107,7 +107,7 @@ fn off_on_a_claude_profile_the_table_does_not_name_sends_disabled() {
 fn checkpoints_follow_the_cache_retention() {
     let request = |cache| {
         CompletionRequest::from(vec![Message::system("Be brief."), Message::user("hi")])
-            .options(GenerationOptions::default().cache(cache))
+            .cache(cache)
     };
     let body = sent(ANTHROPIC_CLAUDE_SONNET_5, request(CacheRetention::Long)).expect("1h");
     assert_eq!(
@@ -147,11 +147,9 @@ fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
         Message::user("again"),
     ];
     let request = |policy| {
-        CompletionRequest::from(history.clone()).options(
-            GenerationOptions::default()
-                .cache(CacheRetention::Short)
-                .on_unsupported(policy),
-        )
+        CompletionRequest::from(history.clone())
+            .cache(CacheRetention::Short)
+            .on_unsupported(policy)
     };
     let wire = Converse::new(ANTHROPIC_CLAUDE_SONNET_5);
     let prepared = |policy| {

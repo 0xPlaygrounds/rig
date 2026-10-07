@@ -42,11 +42,7 @@ fn interactions() -> Interactions {
 
 /// A request carrying `options` as the Gemini entry.
 fn with(options: &GeminiOptions) -> CompletionRequest {
-    CompletionRequest::new("hi").provider_options(
-        ProviderOptions::new()
-            .with::<GeminiExt>(options)
-            .expect("Gemini options are sections"),
-    )
+    CompletionRequest::new("hi").provider_option(options.clone())
 }
 
 /// The GenerateContent body for `config`.
@@ -89,8 +85,7 @@ fn include_thoughts_joins_the_mapped_thinking_config() {
         GenerateContentOptions::new()
             .generation_config(GenerationConfig::new().include_thoughts(true)),
     );
-    let request = with(&options)
-        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 }));
+    let request = with(&options).reasoning(Reasoning::Budget { tokens: 1024 });
     let body = sent(&rest(), request).expect("the body builds");
     assert_eq!(
         body["generationConfig"]["thinkingConfig"],

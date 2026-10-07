@@ -91,9 +91,7 @@ use super::super::support::{
 };
 use crate::support::AUDIO_FIXTURE_PATH;
 use rig::completion::{CompletionRequest, GenerationOptions, ProviderOptions, Reasoning};
-use rig::providers::gemini::extension::{
-    GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
-};
+use rig::providers::gemini::extension::GeminiOptions;
 
 /// The sentence spoken in `tests/data/en-us-natural-speech.mp3`, as recorded
 /// by this matrix's own fixtures.
@@ -409,13 +407,7 @@ async fn text_response_with_structured_output() {
                     })),
                     options: Some((
                         GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 512 }),
-                        ProviderOptions::new()
-                            .with::<GeminiExt>(&GeminiOptions::new().generate_content(
-                                GenerateContentOptions::new().generation_config(
-                                    GenerationConfig::new().include_thoughts(true),
-                                ),
-                            ))
-                            .expect("Gemini options serialize"),
+                        ProviderOptions::new().set(GeminiOptions::new().include_thoughts(true)),
                     )),
                     max_tokens: Some(2000),
                     thoughts_expected: true,

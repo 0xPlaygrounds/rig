@@ -221,9 +221,7 @@ pub(super) async fn with_openrouter_prompt_caching_cassette<F, Fut>(
 pub(super) fn openrouter_options(
     options: rig::providers::openrouter::extension::OpenRouterOptions,
 ) -> rig::completion::ProviderOptions {
-    rig::completion::ProviderOptions::new()
-        .with::<rig::providers::openrouter::extension::OpenRouterExt>(&options)
-        .expect("OpenRouter options serialize")
+    rig::completion::ProviderOptions::new().set(options)
 }
 
 /// Provider preferences that pin `providers`, in order, with no fallback.

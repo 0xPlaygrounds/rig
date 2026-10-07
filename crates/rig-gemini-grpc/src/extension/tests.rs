@@ -3,7 +3,7 @@
 //! there is no gRPC recording, and the request side is deterministic
 //! encoding.
 
-use rig_core::completion::{CompletionRequest, GenerationOptions, OnUnsupported, ProviderOptions};
+use rig_core::completion::{CompletionRequest, OnUnsupported};
 use rig_core::error::ProviderError;
 use rig_core::operation::Completion;
 use rig_core::providers::gemini::extension::{
@@ -22,12 +22,8 @@ fn encoded(
     policy: OnUnsupported,
 ) -> Result<proto::GenerateContentRequest, ProviderError> {
     let request = CompletionRequest::new("hi")
-        .options(GenerationOptions::default().on_unsupported(policy))
-        .provider_options(
-            ProviderOptions::new()
-                .with::<GeminiGrpcExt>(&GeminiGrpcOptions::from(options))
-                .expect("Gemini options are sections"),
-        );
+        .on_unsupported(policy)
+        .provider_option(GeminiGrpcOptions::from(options));
     let wire = GenerateContent::new("gemini-2.5-flash");
     let request = Completion::prepare(request, &wire.describe())?;
     Ok(wire.encode(request, Mode::Unary)?)

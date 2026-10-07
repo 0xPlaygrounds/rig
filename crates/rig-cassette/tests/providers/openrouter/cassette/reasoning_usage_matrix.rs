@@ -64,10 +64,10 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::super::support::{openrouter_options, pinned_order, with_openrouter_usage_cassette};
+use super::super::support::{pinned_order, with_openrouter_usage_cassette};
 use crate::cassettes;
 use crate::support::collect_text_and_terminal;
-use rig::completion::{CompletionRequest, Effort, GenerationOptions};
+use rig::completion::{CompletionRequest, Effort};
 use rig::providers::openrouter::extension::{OpenRouterOptions, ProviderPreferences};
 
 /// Small enough to be cheap, hard enough that a reasoning route actually
@@ -82,7 +82,7 @@ const CAP: u64 = 2000;
 /// `request` reasoning at `effort`, pinned to OpenAI with no fallback.
 fn openai_reasoning(request: CompletionRequest, effort: Effort) -> CompletionRequest {
     request
-        .options(GenerationOptions::default().reasoning(effort))
+        .reasoning(effort)
         .provider_options(pinned_order(&["OpenAI"]))
 }
 
@@ -117,14 +117,14 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
             let model = client.completion(O4_MINI);
             let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .options(GenerationOptions::default().reasoning(Effort::Medium))
-                .provider_options(openrouter_options(
+                .reasoning(Effort::Medium)
+                .provider_option(
                     OpenRouterOptions::new().reasoning_exclude(true).provider(
                         ProviderPreferences::new()
                             .order(["OpenAI"])
                             .allow_fallbacks(false),
                     ),
-                ));
+                );
 
             let response = model.call(request).await.expect("reasoning turn");
 

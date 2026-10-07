@@ -4,16 +4,12 @@
 //! own.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::zai::extension::{ZaiExt, ZaiChat, ZaiOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::zai::extension::ZaiOptions;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = ZaiOptions::new().chat(ZaiChat::new().user_id("user-1"));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<ZaiExt>(&options)?);
+//! let options = ZaiOptions::new().user_id("user-1");
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

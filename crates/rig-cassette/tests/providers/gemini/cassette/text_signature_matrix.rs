@@ -13,9 +13,7 @@ use futures::StreamExt;
 use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
 use rig::message::{AssistantContent, Message};
 use rig::providers::gemini;
-use rig::providers::gemini::extension::{
-    GeminiExt, GeminiOptions, InteractionsOptions, ThinkingSummaries,
-};
+use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions, ThinkingSummaries};
 use rig_test_support::cassette_models::GeminiModels;
 use serde_json::Value;
 
@@ -41,11 +39,9 @@ fn options(cell: Cell) -> (GenerationOptions, ProviderOptions) {
     match (cell.api, cell.model) {
         (Api::Interactions, _) => (
             GenerationOptions::default().reasoning(Effort::Low),
-            ProviderOptions::new()
-                .with::<GeminiExt>(&GeminiOptions::new().store(false).interactions(
-                    InteractionsOptions::new().thinking_summaries(ThinkingSummaries::Auto),
-                ))
-                .expect("Gemini options serialize"),
+            ProviderOptions::new().set(GeminiOptions::new().store(false).interactions(
+                InteractionsOptions::new().thinking_summaries(ThinkingSummaries::Auto),
+            )),
         ),
     }
 }

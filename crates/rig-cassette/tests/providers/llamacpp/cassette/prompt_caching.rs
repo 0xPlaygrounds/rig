@@ -193,10 +193,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
-                        .options(
-                            rig::completion::GenerationOptions::default()
-                                .cache(rig::completion::CacheRetention::None),
-                        ),
+                        .cache(rig::completion::CacheRetention::None),
                 )
                 .await
                 .expect("cache_prompt: false should succeed");

@@ -7,7 +7,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{GenerationOptions, OnUnsupported, ProviderOptions, Reasoning};
+use crate::completion::{OnUnsupported, ProviderOptions, Reasoning};
 use crate::providers::openai::completion::{GPT_4_1_MINI, GPT_6_SOL};
 use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
 use crate::providers::openrouter::extension::OpenRouterExt;
@@ -138,15 +138,13 @@ fn raw_additional_params_beat_typed_options() {
 #[test]
 fn typed_logprobs_on_gpt_6_while_reasoning_fail_the_body_check() {
     let options = OpenAiOptions::new().chat(ChatOptions::new().logprobs(true));
-    let strict = request_with::<OpenAiExt>(&options)
-        .options(GenerationOptions::default().reasoning(crate::completion::Effort::Medium));
+    let strict = request_with::<OpenAiExt>(&options).reasoning(crate::completion::Effort::Medium);
     let error = encoded_body(&chat_wire(GPT_6_SOL), strict, Mode::Unary)
         .err()
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(error.contains("`logprobs`"), "{error}");
-    let lenient = request_with::<OpenAiExt>(&options)
-        .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
+    let lenient = request_with::<OpenAiExt>(&options).on_unsupported(OnUnsupported::Ignore);
     let body = encoded_body(&chat_wire(GPT_6_SOL), lenient, Mode::Unary)
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
@@ -161,11 +159,9 @@ fn typed_logprobs_on_gpt_6_while_reasoning_fail_the_body_check() {
     )
     .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(unset["logprobs"], true, "no option set: sent as built");
-    let off = request_with::<OpenAiExt>(&options).options(
-        GenerationOptions::default()
-            .reasoning(Reasoning::Off)
-            .on_unsupported(OnUnsupported::Error),
-    );
+    let off = request_with::<OpenAiExt>(&options)
+        .reasoning(Reasoning::Off)
+        .on_unsupported(OnUnsupported::Error);
     let body = encoded_body(&chat_wire(GPT_6_SOL), off, Mode::Unary)
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(body["logprobs"], true);

@@ -4,16 +4,12 @@
 //! Anthropic-format Messages API; each section goes only to its route.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::minimax::extension::{MiniMaxExt, MiniMaxChat, MiniMaxOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::minimax::extension::MiniMaxOptions;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = MiniMaxOptions::new().chat(MiniMaxChat::new().reasoning_split(true));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<MiniMaxExt>(&options)?);
+//! let options = MiniMaxOptions::new().reasoning_split(true);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::ser::SerializeMap;

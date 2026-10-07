@@ -368,12 +368,10 @@ fn options_take_the_cells_the_proto_declares() {
     use rig_core::wire::{Mode, Wire as _};
 
     let wire = GenerateContent::new("gemini-2.5-flash");
-    let request = CompletionRequest::new("hi").options(
-        GenerationOptions::default()
-            .top_p(0.5)
-            .seed(7)
-            .stop(["END"]),
-    );
+    let request = CompletionRequest::new("hi")
+        .top_p(0.5)
+        .seed(7)
+        .stop(["END"]);
     let encoded = wire
         .encode(request, Mode::Unary)
         .expect("the request encodes");

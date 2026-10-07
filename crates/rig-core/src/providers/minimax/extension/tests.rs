@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::completion::{CompletionRequest, CompletionResponse, ProviderOptions};
+use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
 use crate::operation::Completion;
 use crate::providers::anthropic::extension::AnthropicExt;
@@ -103,12 +103,8 @@ fn sent(request: CompletionRequest) -> Result<Value, ProviderError> {
 
 #[test]
 fn messages_metadata_user_id_is_sent_on_the_messages_route() {
-    let options = ProviderOptions::new()
-        .with::<MiniMaxExt>(
-            &MiniMaxOptions::new().messages(MiniMaxMessages::new().metadata_user_id("u-1")),
-        )
-        .expect("MiniMax options are sections");
-    let body = sent(CompletionRequest::new("hi").provider_options(options)).expect("encodes");
+    let options = MiniMaxOptions::new().messages(MiniMaxMessages::new().metadata_user_id("u-1"));
+    let body = sent(CompletionRequest::new("hi").provider_option(options)).expect("encodes");
     assert_eq!(body["metadata"], json!({"user_id": "u-1"}));
 }
 

@@ -104,12 +104,10 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
             ..probe()
         }
         .with_provider_options(
-            rig::completion::ProviderOptions::new()
-                .with::<rig::providers::venice::extension::VeniceExt>(
-                    &rig::providers::venice::extension::VeniceOptions::new()
-                        .prompt_cache_key("rig-cache-conformance-venice"),
-                )
-                .expect("Venice options serialize"),
+            rig::completion::ProviderOptions::new().set(
+                rig::providers::venice::extension::VeniceOptions::new()
+                    .prompt_cache_key("rig-cache-conformance-venice"),
+            ),
         );
         let observation = run_cache_probe(model, &probe).await;
         assert_cache_conformance(&observation, &VENICE_KEYED_SUPPORT, "keyed probe");

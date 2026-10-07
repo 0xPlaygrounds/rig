@@ -1,9 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use rig_core::completion::{
-    CompletionRequest, GenerationOptions, OnUnsupported, ProviderOptions, Reasoning,
-};
+use rig_core::completion::{CompletionRequest, OnUnsupported, ProviderOptions, Reasoning};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
 use rig_core::error::ProviderError;
 use rig_core::wire::{Mode, Wire};
@@ -24,11 +22,7 @@ fn scripted() -> Generation {
 }
 
 fn with(options: &CandleOptions) -> CompletionRequest {
-    CompletionRequest::new("hello").provider_options(
-        ProviderOptions::new()
-            .with::<CandleExt>(options)
-            .expect("the options serialize"),
-    )
+    CompletionRequest::new("hello").provider_option(options.clone())
 }
 
 /// The generation settings `request` gets over the default configuration.
@@ -64,7 +58,8 @@ fn repeat_last_n_is_applied() {
 #[test]
 fn the_options_join_the_mapped_ones_and_raw_beats_them() {
     let mut request = with(&CandleOptions::default().top_k(4).repeat_last_n(9))
-        .options(GenerationOptions::default().top_p(0.7).seed(11));
+        .top_p(0.7)
+        .seed(11);
     let generation = settings(request.clone()).expect("valid settings");
     assert_eq!(
         (generation.top_k, generation.top_p, generation.seed),
@@ -109,14 +104,12 @@ fn no_field_writes_a_reserved_key() {
     for section in options.get::<CandleExt>().expect("an entry").values() {
         keys(section, &mut provider);
     }
-    let request = CompletionRequest::new("hello").options(
-        GenerationOptions::default()
-            .reasoning(Reasoning::Off)
-            .top_p(0.5)
-            .seed(1)
-            .stop(["END"])
-            .on_unsupported(OnUnsupported::Ignore),
-    );
+    let request = CompletionRequest::new("hello")
+        .reasoning(Reasoning::Off)
+        .top_p(0.5)
+        .seed(1)
+        .stop(["END"])
+        .on_unsupported(OnUnsupported::Ignore);
     let encoded = scripted()
         .encode(request, Mode::Unary)
         .expect("the request encodes");

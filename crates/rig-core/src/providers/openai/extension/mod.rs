@@ -5,20 +5,14 @@
 //! the Responses route.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::openai::extension::{
-//!     OpenAiExt, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningSummary,
-//! };
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::openai::extension::{OpenAiOptions, ReasoningSummary};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = OpenAiOptions::default()
-//!     .shared(OpenAiShared::default().store(false))
-//!     .responses(OpenAiResponsesOptions::default().reasoning_summary(ReasoningSummary::Auto));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OpenAiExt>(&options)?);
+//!     .store(false)
+//!     .reasoning_summary(ReasoningSummary::Auto);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use std::collections::BTreeMap;

@@ -2,16 +2,12 @@
 //! (<https://docs.together.ai/reference/chat-completions-1>).
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::together::extension::{TogetherExt, TogetherOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::together::extension::{TogetherOptions};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = TogetherOptions::new().top_k(40).repetition_penalty(1.1);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<TogetherExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

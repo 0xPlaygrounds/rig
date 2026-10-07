@@ -122,18 +122,15 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
 #[test]
 fn options_take_the_generate_content_cells_with_vertex_tiers() {
     use rig_core::completion::ReplayTarget as _;
-    use rig_core::completion::{
-        CompletionRequest, Effort, GenerationOptions, ServiceTier, options::Mapping,
-    };
+    use rig_core::completion::{CompletionRequest, Effort, ServiceTier, options::Mapping};
     use rig_core::wire::{Mode, Wire as _};
 
     let wire = GenerateContent::new("gemini-3-flash-preview");
-    let request = CompletionRequest::new("hi").max_tokens(16).options(
-        GenerationOptions::default()
-            .reasoning(Effort::High)
-            .top_p(0.5)
-            .seed(7),
-    );
+    let request = CompletionRequest::new("hi")
+        .max_tokens(16)
+        .reasoning(Effort::High)
+        .top_p(0.5)
+        .seed(7);
     let encoded = wire
         .encode(request, Mode::Unary)
         .expect("the request encodes");
@@ -147,8 +144,7 @@ fn options_take_the_generate_content_cells_with_vertex_tiers() {
     assert_eq!(encoded.model, "gemini-3-flash-preview");
 
     let tier = |tier| {
-        let request =
-            CompletionRequest::new("hi").options(GenerationOptions::default().service_tier(tier));
+        let request = CompletionRequest::new("hi").service_tier(tier);
         wire.map_options(&request, request.options.fields())
             .service_tier
     };
@@ -164,13 +160,13 @@ fn options_take_the_generate_content_cells_with_vertex_tiers() {
 /// the typed fields and the mapped thinking still reach the SDK request.
 #[test]
 fn a_raw_null_generation_config_keeps_the_typed_fields() {
-    use rig_core::completion::{CompletionRequest, Effort, GenerationOptions};
+    use rig_core::completion::{CompletionRequest, Effort};
     use rig_core::wire::{Mode, Wire as _};
 
     let request = CompletionRequest::new("hi")
         .temperature(0.2)
         .max_tokens(64)
-        .options(GenerationOptions::default().reasoning(Effort::High))
+        .reasoning(Effort::High)
         .additional_params(serde_json::json!({"generationConfig": null}));
     let encoded = GenerateContent::new("gemini-3-flash-preview")
         .encode(request, Mode::Unary)

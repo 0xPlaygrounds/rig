@@ -3,16 +3,12 @@
 //! Anthropic-format Messages API, which takes no Moonshot field of its own.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::moonshot::extension::{MoonshotExt, MoonshotChat, MoonshotOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::moonshot::extension::MoonshotOptions;
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = MoonshotOptions::new().chat(MoonshotChat::new().prompt_cache_key("session-7"));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<MoonshotExt>(&options)?);
+//! let options = MoonshotOptions::new().prompt_cache_key("session-7");
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

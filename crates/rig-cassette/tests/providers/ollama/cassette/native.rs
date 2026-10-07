@@ -7,10 +7,7 @@
 //! `cargo xtask cassette record ollama/native/<scenario>.yaml`.
 
 use futures::StreamExt;
-use rig::completion::{
-    CompletionRequest, CompletionResponse, FinishReason, GenerationOptions, ProviderOptions,
-    Reasoning,
-};
+use rig::completion::{CompletionRequest, CompletionResponse, FinishReason, Reasoning};
 use rig::message::AssistantContent;
 use rig::providers::ollama::extension::{KeepAlive, OllamaExt, OllamaOptions};
 use rig::streaming::{Item, PartKind, StreamEvent};
@@ -118,16 +115,9 @@ async fn typed_options_reach_the_daemon_and_extras_read_the_reply() {
                 CompletionRequest::new("Reply with exactly the single word: pong")
                     .temperature(0.0)
                     .max_tokens(64)
-                    .options(
-                        GenerationOptions::default()
-                            .reasoning(Reasoning::Off)
-                            .seed(7),
-                    )
-                    .provider_options(
-                        ProviderOptions::new()
-                            .with::<OllamaExt>(&options)
-                            .expect("the options serialize"),
-                    ),
+                    .reasoning(Reasoning::Off)
+                    .seed(7)
+                    .provider_option(options),
             )
             .await
             .expect("the request succeeds");
@@ -161,11 +151,8 @@ async fn a_thinking_level_returns_reasoning() {
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .options(
-                        rig::completion::GenerationOptions::default()
-                            .reasoning(rig::completion::Effort::Low)
-                            .seed(7),
-                    ),
+                    .reasoning(rig::completion::Effort::Low)
+                    .seed(7),
             )
             .await
             .expect("the request succeeds");
@@ -198,11 +185,8 @@ async fn reasoning_without_an_opening_tag_is_text_whole() {
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .options(
-                        rig::completion::GenerationOptions::default()
-                            .reasoning(rig::completion::Reasoning::Off)
-                            .seed(7),
-                    ),
+                    .reasoning(rig::completion::Reasoning::Off)
+                    .seed(7),
             )
             .await
             .expect("the request succeeds");
@@ -231,11 +215,8 @@ async fn reasoning_without_an_opening_tag_is_text_streamed() {
             .stream(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .options(
-                        rig::completion::GenerationOptions::default()
-                            .reasoning(rig::completion::Reasoning::Off)
-                            .seed(7),
-                    ),
+                    .reasoning(rig::completion::Reasoning::Off)
+                    .seed(7),
             )
             .expect("the stream starts");
         let (mut streamed_text, mut first) = (String::new(), None);
@@ -278,11 +259,8 @@ async fn ndjson_tool_calls_stream() {
                     .preamble(TOOLS_PREAMBLE.to_owned())
                     .tool(rig::tool::tool_definition(&Adder))
                     .temperature(0.0)
-                    .options(
-                        rig::completion::GenerationOptions::default()
-                            .reasoning(rig::completion::Reasoning::Off)
-                            .seed(7),
-                    ),
+                    .reasoning(rig::completion::Reasoning::Off)
+                    .seed(7),
             )
             .expect("the stream starts");
         let (mut started, mut arguments) = (false, String::new());

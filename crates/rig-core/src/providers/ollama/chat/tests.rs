@@ -123,7 +123,7 @@ fn every_additional_param_lands_in_its_place() {
 /// sends; a raw `reasoning_effort` key is a model option like any other.
 #[test]
 fn reasoning_is_think_and_reasoning_effort_is_an_option() {
-    use crate::completion::{Effort, GenerationOptions, Reasoning};
+    use crate::completion::{Effort, Reasoning};
     let sent = body(with_params(json!({"reasoning_effort": "high"})));
     assert_eq!(sent["options"], json!({"reasoning_effort": "high"}));
     assert!(sent.get("think").is_none());
@@ -132,18 +132,14 @@ fn reasoning_is_think_and_reasoning_effort_is_an_option() {
         (Effort::Medium.into(), json!("medium")),
         (Effort::Max.into(), json!("max")),
     ] {
-        let sent = body(
-            CompletionRequest::new("hi").options(GenerationOptions::default().reasoning(reasoning)),
-        );
+        let sent = body(CompletionRequest::new("hi").reasoning(reasoning));
         assert_eq!(sent["think"], think, "{reasoning:?}");
     }
     let sent = body(
-        CompletionRequest::new("hi").options(
-            GenerationOptions::default()
-                .top_p(0.4)
-                .seed(3)
-                .stop(["END"]),
-        ),
+        CompletionRequest::new("hi")
+            .top_p(0.4)
+            .seed(3)
+            .stop(["END"]),
     );
     assert_eq!(
         sent["options"],

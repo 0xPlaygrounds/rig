@@ -76,7 +76,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                     CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .temperature(1.4)
-                        .options(rig::completion::GenerationOptions::default().seed(11))
+                        .seed(11)
                         .additional_params(json!({ "n": 2 })),
                 )
                 .await
@@ -99,7 +99,7 @@ async fn n_greater_than_one_answers_from_candidate_zero_on_both_transports() {
                     CompletionRequest::new(TWO_CANDIDATE_PROMPT)
                         .max_tokens(64)
                         .temperature(1.4)
-                        .options(rig::completion::GenerationOptions::default().seed(11))
+                        .seed(11)
                         .additional_params(json!({ "n": 2 })),
                 )
                 .expect("stream should start");

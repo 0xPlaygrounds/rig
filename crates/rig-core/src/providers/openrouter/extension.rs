@@ -3,17 +3,16 @@
 //! route alike.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
+//! use rig_core::completion::CompletionRequest;
 //! use rig_core::providers::openrouter::extension::{
-//!     ModelFallbacks, OpenRouterExt, OpenRouterOptions, ProviderPreferences,
+//!     ModelFallbacks, OpenRouterOptions, ProviderPreferences,
 //! };
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = OpenRouterOptions::new()
 //!     .provider(ProviderPreferences::new().only(["anthropic"]).zdr(true))
 //!     .models(ModelFallbacks::new(["openai/gpt-4o-mini"])?);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OpenRouterExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
 //! # Ok(())
 //! # }

@@ -219,7 +219,7 @@ mod no_silent_drop {
     //!
     //! Encode-only: a refused option sends no request to record.
 
-    use rig::completion::{CacheRetention, CompletionRequest, GenerationOptions, OnUnsupported};
+    use rig::completion::{CacheRetention, CompletionRequest, OnUnsupported};
     use rig::providers::cohere::{COMMAND_A_03_2025, CohereConfig};
     use rig::providers::deepseek::DEEPSEEK_FLASH;
     use rig::providers::openai::wire::{Chat, DEEPSEEK, OpenAIConfig};
@@ -230,11 +230,8 @@ mod no_silent_drop {
     fn request(cache: CacheRetention, policy: OnUnsupported) -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
             .max_tokens(16)
-            .options(
-                GenerationOptions::default()
-                    .cache(cache)
-                    .on_unsupported(policy),
-            )
+            .cache(cache)
+            .on_unsupported(policy)
     }
 
     /// Cohere's Compatibility route, the default `CohereChat` route.
@@ -312,7 +309,8 @@ mod no_silent_drop {
         let seed = |policy| {
             CompletionRequest::new("Reply with the single word: pong")
                 .max_tokens(16)
-                .options(GenerationOptions::default().seed(7).on_unsupported(policy))
+                .seed(7)
+                .on_unsupported(policy)
         };
         let error = prepared(&bedrock_wire(), seed(OnUnsupported::Error))
             .expect_err("Bedrock Converse has no seed");
@@ -1158,9 +1156,7 @@ mod precedence {
     //! refuses a raw `tools` that is not an array. The ChatGPT backend still
     //! gets no typed field it does not accept.
 
-    use rig::completion::{
-        CompletionRequest, GenerationOptions, ServiceTier, ToolDefinition, Verbosity,
-    };
+    use rig::completion::{CompletionRequest, ServiceTier, ToolDefinition, Verbosity};
     use rig::message::{ToolChoice, ToolName};
     use rig::providers::chatgpt;
     use rig::providers::gemini::GeminiConfig;
@@ -1178,7 +1174,7 @@ mod precedence {
     fn request() -> CompletionRequest {
         CompletionRequest::new("Reply with the single word: pong")
             .max_tokens(16)
-            .options(GenerationOptions::default().top_p(0.5))
+            .top_p(0.5)
     }
 
     fn lookup() -> ToolDefinition {
@@ -1282,12 +1278,9 @@ mod precedence {
                 .max_tokens(6000)
                 .temperature(0.5)
                 .output_schema(schema)
-                .options(
-                    GenerationOptions::default()
-                        .parallel_tool_calls(false)
-                        .service_tier(ServiceTier::Flex)
-                        .verbosity(Verbosity::Low),
-                )
+                .parallel_tool_calls(false)
+                .service_tier(ServiceTier::Flex)
+                .verbosity(Verbosity::Low)
                 .additional_params(json!({"metadata": {"run": "typed-options"}})),
         )
         .expect("the request encodes");

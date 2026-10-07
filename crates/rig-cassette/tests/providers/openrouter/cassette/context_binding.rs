@@ -9,14 +9,14 @@
 //! | 2 | `amazon_bedrock` | Amazon Bedrock |
 //! | 3 | `google_vertex` | Google Vertex |
 
-use rig::completion::{CompletionRequest, Effort, GenerationOptions, Message, ToolDefinition};
+use rig::completion::{CompletionRequest, Effort, Message, ToolDefinition};
 use rig::message::{ToolName, ToolResultContent, UserContent};
 use rig::providers::openrouter::extension::{OpenRouterOptions, ProviderPreferences};
 use serde_json::{Value, json};
 
 use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::{openrouter_options, with_openrouter_checked_cassette};
+use super::super::support::with_openrouter_checked_cassette;
 
 const MODEL: &str = "anthropic/claude-opus-5.5";
 
@@ -35,15 +35,13 @@ fn tool(name: &str) -> ToolDefinition {
 
 /// Reasoning on, pinned to one route with no fallback.
 fn with_params(request: CompletionRequest, route: &str) -> CompletionRequest {
-    request
-        .options(GenerationOptions::default().reasoning(Effort::High))
-        .provider_options(openrouter_options(
-            OpenRouterOptions::new().provider(
-                ProviderPreferences::new()
-                    .only([route])
-                    .allow_fallbacks(false),
-            ),
-        ))
+    request.reasoning(Effort::High).provider_option(
+        OpenRouterOptions::new().provider(
+            ProviderPreferences::new()
+                .only([route])
+                .allow_fallbacks(false),
+        ),
+    )
 }
 
 async fn two_turns(client: OpenAiModels, route: &'static str) {

@@ -9,9 +9,8 @@
 //!
 //! fn sources(reply: &CompletionResponse) -> Vec<String> {
 //!     reply
-//!         .extras::<PerplexityExt>()
-//!         .and_then(Result::ok)
-//!         .and_then(|extras| extras.citations)
+//!         .extras_lossy::<PerplexityExt>()
+//!         .citations
 //!         .unwrap_or_default()
 //! }
 //! # let _ = sources;

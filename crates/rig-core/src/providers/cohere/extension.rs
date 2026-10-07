@@ -4,15 +4,13 @@
 //! request the Compatibility API takes.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::cohere::extension::{CitationMode, CohereExt, CohereOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::cohere::extension::{CitationMode, CohereOptions};
 //!
 //! let options = CohereOptions::default()
 //!     .frequency_penalty(0.2)
 //!     .citation_mode(CitationMode::Fast);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<CohereExt>(&options)?);
-//! # Ok::<(), rig_core::completion::OptionsError>(())
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
 use serde::de::DeserializeOwned;

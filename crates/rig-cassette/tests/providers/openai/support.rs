@@ -544,11 +544,9 @@ pub(super) async fn with_openai_prompt_caching_cassette<F, Fut>(
 
 /// `options` as OpenAI's typed provider options.
 pub(super) fn openai_options(
-    options: &rig::providers::openai::extension::OpenAiOptions,
+    options: rig::providers::openai::extension::OpenAiOptions,
 ) -> rig::completion::ProviderOptions {
-    rig::completion::ProviderOptions::new()
-        .with::<rig::providers::openai::extension::OpenAiExt>(options)
-        .expect("OpenAI options serialize")
+    rig::completion::ProviderOptions::new().set(options)
 }
 
 /// OpenAI's shared provider options: `store`, and `prompt_cache_key` when
@@ -557,14 +555,14 @@ pub(super) fn shared_options(
     store: Option<bool>,
     prompt_cache_key: Option<&str>,
 ) -> rig::completion::ProviderOptions {
-    let mut shared = rig::providers::openai::extension::OpenAiShared::default();
+    let mut options = rig::providers::openai::extension::OpenAiOptions::new();
     if let Some(store) = store {
-        shared = shared.store(store);
+        options = options.store(store);
     }
     if let Some(key) = prompt_cache_key {
-        shared = shared.prompt_cache_key(key);
+        options = options.prompt_cache_key(key);
     }
-    openai_options(&rig::providers::openai::extension::OpenAiOptions::new().shared(shared))
+    openai_options(options)
 }
 
 /// `store: false` as a typed provider option.

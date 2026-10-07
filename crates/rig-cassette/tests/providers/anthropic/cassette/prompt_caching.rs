@@ -2,8 +2,8 @@
 
 use futures::StreamExt;
 use rig::completion::{
-    AssistantContent, CacheRetention, CompletionResponse as RigCompletionResponse,
-    GenerationOptions, ToolDefinition, Usage,
+    AssistantContent, CacheRetention, CompletionResponse as RigCompletionResponse, ToolDefinition,
+    Usage,
 };
 use rig::driver::Model;
 use rig::message::ToolChoice;
@@ -58,7 +58,7 @@ struct Matrix {
 
 impl Matrix {
     fn request(&self, request: CompletionRequest) -> CompletionRequest {
-        request.options(GenerationOptions::default().cache(self.cache))
+        request.cache(self.cache)
     }
 
     async fn call(

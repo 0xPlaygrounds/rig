@@ -22,7 +22,7 @@ use rig::message::{
 use rig::message::{ToolCall, ToolResultContent};
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, NewCachedContent};
-use rig::providers::gemini::extension::{GeminiExt, GeminiOptions, InteractionsOptions};
+use rig::providers::gemini::extension::{GeminiOptions, InteractionsOptions};
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -333,9 +333,7 @@ async fn interactions_chain_with_tool_call() {
                             InteractionsOptions::new().previous_interaction_id(previous),
                         );
                     }
-                    ProviderOptions::new()
-                        .with::<GeminiExt>(&options)
-                        .expect("Gemini options serialize")
+                    ProviderOptions::new().set(options)
                 };
 
                 let first = model

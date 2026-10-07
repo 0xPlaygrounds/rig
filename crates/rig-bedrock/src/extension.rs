@@ -6,14 +6,12 @@
 //! [`GenerationOptions`]: rig_core::completion::GenerationOptions
 //!
 //! ```
-//! use rig_bedrock::extension::{BedrockExt, BedrockOptions, Guardrail, GuardrailTrace};
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
+//! use rig_bedrock::extension::{BedrockOptions, Guardrail, GuardrailTrace};
+//! use rig_core::completion::CompletionRequest;
 //!
 //! let options = BedrockOptions::default()
 //!     .guardrail(Guardrail::new("gr-1", "DRAFT").trace(GuardrailTrace::Enabled));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<BedrockExt>(&options)?);
-//! # Ok::<(), rig_core::completion::OptionsError>(())
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! ```
 
 use std::collections::BTreeMap;

@@ -32,7 +32,7 @@
 //! | 18 | `raw_with_preamble_sequence_fires` | system prompt present | `charlie` | recorded |
 
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, GenerationOptions, ToolDefinition};
+use rig::completion::{CompletionRequest, ToolDefinition};
 use rig::driver::Model;
 use rig::providers::anthropic;
 use rig::providers::anthropic::extension::{AnthropicExt, AnthropicExtras};
@@ -190,7 +190,7 @@ async fn raw_with_tools_sequence_fires() {
             let request = CompletionRequest::new(LIST_PROMPT)
                 .max_tokens(64)
                 .tool(weather_tool())
-                .options(GenerationOptions::default().stop(["charlie"]));
+                .stop(["charlie"]);
             let terminal = terminal_extras(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },
@@ -212,7 +212,7 @@ async fn raw_with_preamble_sequence_fires() {
             let request = CompletionRequest::new(LIST_PROMPT)
                 .preamble("You follow formatting instructions exactly.")
                 .max_tokens(64)
-                .options(GenerationOptions::default().stop(["charlie"]));
+                .stop(["charlie"]);
             let terminal = terminal_extras(&model, request).await;
             assert_terminal(&terminal, Some("charlie"), "stop_sequence");
         },

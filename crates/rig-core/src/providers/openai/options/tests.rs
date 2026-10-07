@@ -977,12 +977,12 @@ fn on_responses(model: &str, request: CompletionRequest) -> Result<Value, String
 /// `request` with a generation option set, so the catalog's refusals apply
 /// under the default `Error` policy. The effort is GPT-6's default.
 fn strict(request: CompletionRequest) -> CompletionRequest {
-    request.options(GenerationOptions::default().reasoning(Effort::Medium))
+    request.reasoning(Effort::Medium)
 }
 
 /// `request` with the `Ignore` policy and no other option.
 fn lenient(request: CompletionRequest) -> CompletionRequest {
-    request.options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore))
+    request.on_unsupported(OnUnsupported::Ignore)
 }
 
 /// The refusal `result` carries: its option name, provider and model.
@@ -1085,8 +1085,7 @@ fn gpt_6_without_options_is_sent_and_left_to_the_provider() {
 #[test]
 fn a_policy_set_alone_turns_the_catalog_checks_on() {
     let request = || gpt_6_request(None).temperature(0.2);
-    let explicit_error =
-        request().options(GenerationOptions::default().on_unsupported(OnUnsupported::Error));
+    let explicit_error = request().on_unsupported(OnUnsupported::Error);
     assert_eq!(
         refusal(on_prepared_chat(GPT_6_SOL, explicit_error)).0,
         "temperature"
@@ -1103,11 +1102,10 @@ fn a_policy_set_alone_turns_the_catalog_checks_on() {
 /// `top_p` option) is left out, a raw key is sent as written.
 #[test]
 fn gpt_6_sampling_under_ignore_warns_and_sends() {
-    let typed = gpt_6_request(None).temperature(0.2).options(
-        GenerationOptions::default()
-            .top_p(0.9)
-            .on_unsupported(OnUnsupported::Ignore),
-    );
+    let typed = gpt_6_request(None)
+        .temperature(0.2)
+        .top_p(0.9)
+        .on_unsupported(OnUnsupported::Ignore);
     let (body, warnings) = sent_with_warnings(&chat(&OPENAI, GPT_6_SOL), typed.clone());
     assert_eq!(body.get("temperature"), None, "{body}");
     assert_eq!(body.get("top_p"), None, "{body}");
@@ -1153,9 +1151,7 @@ fn gpt_6_explicit_effort_other_than_none_still_rejects_sampling() {
 #[test]
 fn gpt_6_effort_none_allows_sampling_on_sol_and_luna() {
     for model in [GPT_6_SOL, GPT_6_LUNA] {
-        let off = |request: CompletionRequest| {
-            request.options(GenerationOptions::default().reasoning(Reasoning::Off))
-        };
+        let off = |request: CompletionRequest| request.reasoning(Reasoning::Off);
         let body =
             on_chat(model, off(gpt_6_request(None).temperature(0.2))).expect("effort none samples");
         assert_eq!(body["temperature"], json!(0.2));
@@ -1264,9 +1260,7 @@ fn gpt_6_rules_follow_a_per_request_model_override() {
 #[test]
 fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
     for model in ["gpt-5.1", "gpt-5.4", "gpt-5.6-sol"] {
-        let high = |request: CompletionRequest| {
-            request.options(GenerationOptions::default().reasoning(Effort::High))
-        };
+        let high = |request: CompletionRequest| request.reasoning(Effort::High);
         let result = on_prepared_chat(model, high(gpt_6_request(None).temperature(0.2)));
         assert_eq!(refusal(result).0, "temperature", "{model}");
         let result = on_prepared_chat(
@@ -1281,11 +1275,10 @@ fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
 
         let (body, warnings) = sent_with_warnings(
             &chat(&OPENAI, model),
-            gpt_6_request(None).temperature(0.2).options(
-                GenerationOptions::default()
-                    .reasoning(Effort::High)
-                    .on_unsupported(OnUnsupported::Ignore),
-            ),
+            gpt_6_request(None)
+                .temperature(0.2)
+                .reasoning(Effort::High)
+                .on_unsupported(OnUnsupported::Ignore),
         );
         assert_eq!(body.get("temperature"), None, "{model}: {body}");
         assert_eq!(body["reasoning_effort"], "high", "{model}");
@@ -1297,12 +1290,7 @@ fn gpt_5_1_and_later_refuse_sampling_while_they_reason() {
         )
         .expect("no option set: sent");
         assert_eq!(body["temperature"], json!(0.2), "{model}");
-        let no_effort = on_chat(
-            model,
-            gpt_6_request(None)
-                .temperature(0.2)
-                .options(GenerationOptions::default().seed(1)),
-        );
+        let no_effort = on_chat(model, gpt_6_request(None).temperature(0.2).seed(1));
         match model {
             // GPT-5.6 reasons at `medium` when no effort is set.
             "gpt-5.6-sol" => assert!(no_effort.is_err(), "{model}: {no_effort:?}"),
@@ -1340,8 +1328,7 @@ fn gpt_5_6_refuses_top_p_while_it_reasons_by_default() {
             Some("top_p"),
             "{model}"
         );
-        let raw = gpt_6_request(Some(json!({"top_p": 0.9})))
-            .options(GenerationOptions::default().on_unsupported(OnUnsupported::Error));
+        let raw = gpt_6_request(Some(json!({"top_p": 0.9}))).on_unsupported(OnUnsupported::Error);
         assert_eq!(refusal(on_prepared_chat(model, raw.clone())).0, "top_p");
         assert_eq!(refusal(on_prepared_responses(model, raw)).0, "top_p");
 

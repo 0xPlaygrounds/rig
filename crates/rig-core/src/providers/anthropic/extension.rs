@@ -8,18 +8,14 @@
 //! without it the API rejects the request.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::anthropic::extension::{AnthropicExt, AnthropicOptions, InferenceGeo};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::anthropic::extension::{AnthropicOptions, InferenceGeo};
 //!
-//! # fn run() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = AnthropicOptions::default()
 //!     .metadata_user_id("user-7")
 //!     .inference_geo(InferenceGeo::Us);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<AnthropicExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::ser::SerializeMap;

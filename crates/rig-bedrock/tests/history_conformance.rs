@@ -620,10 +620,8 @@ fn the_transport_sends_the_encoded_body() {
                 event_stream(&events(&[json!({ "text": "ok" })], "end_turn")),
             ),
         };
-        let mut request = CompletionRequest::new("hi").options(
-            rig_core::completion::GenerationOptions::default()
-                .cache(rig_core::completion::CacheRetention::Short),
-        );
+        let mut request =
+            CompletionRequest::new("hi").cache(rig_core::completion::CacheRetention::Short);
         request.temperature = Some(0.5);
         let wire = Converse::new(CLAUDE);
         let prepared = rig_core::operation::Completion::prepare(request.clone(), &wire.describe())

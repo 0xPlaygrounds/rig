@@ -8,9 +8,8 @@
 //!
 //! fn annotations(reply: &CompletionResponse) -> usize {
 //!     reply
-//!         .extras::<XiaomiMimoExt>()
-//!         .and_then(Result::ok)
-//!         .and_then(|extras| extras.annotations)
+//!         .extras_lossy::<XiaomiMimoExt>()
+//!         .annotations
 //!         .map_or(0, |annotations| annotations.len())
 //! }
 //! # let _ = annotations;

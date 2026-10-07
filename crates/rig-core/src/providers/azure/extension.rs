@@ -2,17 +2,12 @@
 //! Completions: OpenAI's Chat fields and Azure's own data sources.
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::azure::extension::{AzureExt, AzureOptions};
-//! use rig_core::providers::openai::extension::ChatOptions;
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::azure::extension::{AzureOptions};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let options = AzureOptions::new().chat(ChatOptions::new().logprobs(true));
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<AzureExt>(&options)?);
+//! let options = AzureOptions::new().logprobs(true);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::Serialize;

@@ -2,16 +2,12 @@
 //! (<https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md>).
 //!
 //! ```
-//! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::llamacpp::extension::{LlamaCppExt, LlamaCppOptions};
+//! use rig_core::completion::CompletionRequest;
+//! use rig_core::providers::llamacpp::extension::{LlamaCppOptions};
 //!
-//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = LlamaCppOptions::new().top_k(40).min_p(0.05);
-//! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<LlamaCppExt>(&options)?);
+//! let request = CompletionRequest::new("hi").provider_option(options);
 //! # let _ = request;
-//! # Ok(())
-//! # }
 //! ```
 
 use serde::{Deserialize, Serialize};

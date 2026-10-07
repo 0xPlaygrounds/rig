@@ -4,8 +4,7 @@ use serde_json::json;
 
 use super::*;
 use crate::completion::{
-    CompletionRequest, Effort, GenerationOptions, OnUnsupported, ProviderOptions, Reasoning,
-    ToolDefinition,
+    CompletionRequest, Effort, OnUnsupported, ProviderOptions, Reasoning, ToolDefinition,
 };
 use crate::message::ToolName;
 use crate::operation::Completion;
@@ -31,11 +30,7 @@ fn every_field() -> OllamaOptions {
 }
 
 fn with(options: &OllamaOptions) -> CompletionRequest {
-    CompletionRequest::new("q").provider_options(
-        ProviderOptions::new()
-            .with::<OllamaExt>(options)
-            .expect("the options serialize"),
-    )
+    CompletionRequest::new("q").provider_option(options.clone())
 }
 
 /// The body `wire` sends for `request`, prepared as the driver prepares it.
@@ -136,7 +131,8 @@ fn top_logprobs_goes_top_level() {
 #[test]
 fn model_options_join_the_request_options() {
     let mut request = with(&OllamaOptions::default().num_ctx(4096).top_k(20))
-        .options(GenerationOptions::default().seed(7).top_p(0.9));
+        .seed(7)
+        .top_p(0.9);
     request.temperature = Some(0.0);
     request.max_tokens = Some(64);
     assert_eq!(
@@ -192,14 +188,12 @@ fn no_field_writes_a_reserved_leaf() {
         leaves(section, "", &mut provider);
     }
     for reasoning in [Reasoning::Off, Reasoning::Effort(Effort::High)] {
-        let mut request = CompletionRequest::new("q").options(
-            GenerationOptions::default()
-                .reasoning(reasoning)
-                .top_p(0.5)
-                .seed(1)
-                .stop(["END"])
-                .on_unsupported(OnUnsupported::Ignore),
-        );
+        let mut request = CompletionRequest::new("q")
+            .reasoning(reasoning)
+            .top_p(0.5)
+            .seed(1)
+            .stop(["END"])
+            .on_unsupported(OnUnsupported::Ignore);
         request.temperature = Some(0.5);
         request.max_tokens = Some(64);
         request.tools = vec![ToolDefinition::new(

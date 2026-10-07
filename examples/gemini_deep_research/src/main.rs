@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::{CompletionRequest, CompletionResponse, ProviderOptions};
+use rig::completion::{CompletionRequest, CompletionResponse};
 use rig::providers::gemini::Gemini;
 use rig::providers::gemini::extension::{
     AgentConfig, GeminiExt, GeminiOptions, InteractionStatus, InteractionsOptions,
@@ -51,9 +51,8 @@ fn deep_research_request(
         });
     }
 
-    let options = GeminiOptions::new().interactions(interactions);
     Ok(CompletionRequest::new(prompt.into())
-        .provider_options(ProviderOptions::new().with::<GeminiExt>(&options)?))
+        .provider_option(GeminiOptions::new().interactions(interactions)))
 }
 
 /// The text items of a model output step's `content`, one per line.

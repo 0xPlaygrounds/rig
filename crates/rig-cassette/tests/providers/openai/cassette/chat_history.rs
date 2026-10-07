@@ -11,7 +11,7 @@ use rig::agent::AgentBuilder;
 use rig::completion::Message;
 use rig::providers::openai;
 
-use super::super::support::{effort, with_openai_cassette};
+use super::super::support::with_openai_cassette;
 use crate::reasoning::{self, WeatherTool};
 
 #[tokio::test]
@@ -29,7 +29,7 @@ async fn chat_appends_reasoning_tool_turns_to_caller_history() {
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)
                 .tool(WeatherTool::new(call_count.clone()))
-                .options(effort(rig::completion::Effort::High))
+                .reasoning(rig::completion::Effort::High)
                 .default_max_turns(2)
                 .build();
             let mut chat_history = Vec::<Message>::new();

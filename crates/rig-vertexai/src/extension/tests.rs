@@ -3,7 +3,7 @@
 //! Vertex AI recording, and the request side is deterministic encoding.
 
 use google_cloud_aiplatform_v1 as vertexai;
-use rig_core::completion::{CompletionRequest, ProviderOptions};
+use rig_core::completion::CompletionRequest;
 use rig_core::providers::gemini::extension::{
     CandidateCount, ImageConfig, MediaResolution, ResponseModality, SpeechConfig,
 };
@@ -15,11 +15,7 @@ use crate::completion::GenerateContent;
 
 /// The SDK request the Vertex AI wire builds for `options`.
 fn sent(options: &VertexOptions) -> vertexai::model::GenerateContentRequest {
-    let request = CompletionRequest::new("hi").provider_options(
-        ProviderOptions::new()
-            .with::<VertexExt>(options)
-            .expect("Vertex options are sections"),
-    );
+    let request = CompletionRequest::new("hi").provider_option(options.clone());
     let wire = GenerateContent::new("gemini-2.5-flash");
     let request = rig_core::operation::Completion::prepare(request, &wire.describe())
         .expect("the request prepares");
