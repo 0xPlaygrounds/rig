@@ -8,7 +8,7 @@
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::openrouter;
 //! use rig_core::providers::openrouter::extension::{
-//!     OpenRouter, OpenRouterOptions, ProviderPreferences, ProviderSortStrategy,
+//!     OpenRouterExt, OpenRouterOptions, ProviderPreferences, ProviderSortStrategy,
 //! };
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +17,7 @@
 //! let routing = OpenRouterOptions::new()
 //!     .provider(ProviderPreferences::new().sort(ProviderSortStrategy::Price));
 //! let request = CompletionRequest::new("What is Rig?")
-//!     .provider_options(ProviderOptions::new().with::<OpenRouter>(&routing)?);
+//!     .provider_options(ProviderOptions::new().with::<OpenRouterExt>(&routing)?);
 //! # let _ = (sonar, request);
 //! # Ok(())
 //! # }

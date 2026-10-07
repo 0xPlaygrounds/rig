@@ -18,7 +18,7 @@ fn chat_wire() -> Chat {
 }
 
 fn body(options: &TogetherOptions) -> Value {
-    body_with::<Together, _>(&chat_wire(), options)
+    body_with::<TogetherExt, _>(&chat_wire(), options)
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .min_p(0.1)
         .repetition_penalty(1.0)
         .safety_model("guard");
-    assert_no_reserved_leaf::<Together, _>(&[chat_wire()], &options);
+    assert_no_reserved_leaf::<TogetherExt, _>(&[chat_wire()], &options);
 }
 
 #[tokio::test]
@@ -74,7 +74,7 @@ async fn extras_from_a_built_reply() {
     )
     .await;
     let extras = reply
-        .extras::<Together>()
+        .extras::<TogetherExt>()
         .unwrap_or_else(|| panic!("a Together reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(

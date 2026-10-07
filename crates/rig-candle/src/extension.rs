@@ -6,12 +6,12 @@
 //! [`GenerationOptions`]: rig_core::completion::GenerationOptions
 //!
 //! ```
-//! use rig_candle::extension::{Candle, CandleOptions};
+//! use rig_candle::extension::{CandleExt, CandleOptions};
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //!
 //! let options = CandleOptions::default().top_k(40).repeat_penalty(1.2);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Candle>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<CandleExt>(&options)?);
 //! # Ok::<(), rig_core::completion::OptionsError>(())
 //! ```
 
@@ -23,10 +23,10 @@ use serde_json::Value;
 use crate::FinishReason;
 
 /// The `candle` provider: its key, [`CandleOptions`] and [`CandleExtras`].
-#[derive(Debug)]
-pub enum Candle {}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CandleExt;
 
-impl ProviderExtension for Candle {
+impl ProviderExtension for CandleExt {
     const PROVIDER: &'static str = crate::types::PROVIDER_NAME;
     type Options = CandleOptions;
     type Extras = CandleExtras;

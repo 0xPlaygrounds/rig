@@ -5,12 +5,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::zai::extension::{Zai, ZaiChat, ZaiOptions};
+//! use rig_core::providers::zai::extension::{ZaiExt, ZaiChat, ZaiOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = ZaiOptions::new().chat(ZaiChat::new().user_id("user-1"));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Zai>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<ZaiExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -27,9 +27,9 @@ use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// Z.AI's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Zai;
+pub struct ZaiExt;
 
-impl ProviderExtension for Zai {
+impl ProviderExtension for ZaiExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = ZaiOptions;
     type Extras = ZaiExtras;

@@ -5,12 +5,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::chatgpt::extension::{ChatGpt, ChatGptOptions};
+//! use rig_core::providers::chatgpt::extension::{ChatGptExt, ChatGptOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = ChatGptOptions::default().prompt_cache_key("conversation-1");
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<ChatGpt>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<ChatGptExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -27,9 +27,9 @@ use crate::providers::openai::extension::{AccessPrograms, Envelope, ItemPhase};
 
 /// ChatGPT's provider extension.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct ChatGpt;
+pub struct ChatGptExt;
 
-impl ProviderExtension for ChatGpt {
+impl ProviderExtension for ChatGptExt {
     const PROVIDER: &'static str = crate::providers::chatgpt::PROVIDER_NAME;
     type Options = ChatGptOptions;
     type Extras = ChatGptExtras;

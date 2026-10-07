@@ -5,7 +5,7 @@
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::openrouter::extension::{
-//!     ModelFallbacks, OpenRouter, OpenRouterOptions, ProviderPreferences,
+//!     ModelFallbacks, OpenRouterExt, OpenRouterOptions, ProviderPreferences,
 //! };
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,7 +13,7 @@
 //!     .provider(ProviderPreferences::new().only(["anthropic"]).zdr(true))
 //!     .models(ModelFallbacks::new(["openai/gpt-4o-mini"])?);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OpenRouter>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<OpenRouterExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -30,9 +30,9 @@ use crate::message::Api;
 
 /// OpenRouter's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OpenRouter;
+pub struct OpenRouterExt;
 
-impl ProviderExtension for OpenRouter {
+impl ProviderExtension for OpenRouterExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = OpenRouterOptions;
     type Extras = OpenRouterExtras;

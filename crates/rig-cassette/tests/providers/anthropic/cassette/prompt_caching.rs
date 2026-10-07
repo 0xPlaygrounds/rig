@@ -425,7 +425,7 @@ async fn static_prefix_with_explicit_tool_marker_at_marker_limit() {
             assert_cache_created_or_read(&response.usage, "marker-budget-limit request");
             // The typed view splits the recorded cache writes by lifetime.
             let extras = response
-                .extras::<rig::providers::anthropic::extension::Anthropic>()
+                .extras::<rig::providers::anthropic::extension::AnthropicExt>()
                 .expect("an Anthropic reply")
                 .expect("the extras read the recorded reply");
             assert_eq!(

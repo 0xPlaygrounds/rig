@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{
     AnthropicConfig, Messages, XIAOMIMIMO as MESSAGES_XIAOMIMIMO,
 };
@@ -25,7 +25,7 @@ async fn extras_from_a_built_reply() {
     )
     .await;
     let extras = reply
-        .extras::<XiaomiMimo>()
+        .extras::<XiaomiMimoExt>()
         .unwrap_or_else(|| panic!("a MiMo reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.annotations, Some(vec![annotation]));
@@ -59,10 +59,10 @@ fn extras_read_the_messages_stop_fields() {
     });
     let response = folded(&reply);
     let extras = response
-        .extras::<XiaomiMimo>()
+        .extras::<XiaomiMimoExt>()
         .expect("a Xiaomi MiMo reply")
         .expect("the extras read");
     assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
-    assert!(response.extras::<Anthropic>().is_none());
+    assert!(response.extras::<AnthropicExt>().is_none());
 }

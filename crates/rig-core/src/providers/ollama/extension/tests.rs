@@ -33,7 +33,7 @@ fn every_field() -> OllamaOptions {
 fn with(options: &OllamaOptions) -> CompletionRequest {
     CompletionRequest::new("q").provider_options(
         ProviderOptions::new()
-            .with::<Ollama>(options)
+            .with::<OllamaExt>(options)
             .expect("the options serialize"),
     )
 }
@@ -185,10 +185,10 @@ fn leaves(value: &Value, at: &str, out: &mut BTreeSet<String>) {
 #[test]
 fn no_field_writes_a_reserved_leaf() {
     let options = ProviderOptions::new()
-        .with::<Ollama>(&every_field())
+        .with::<OllamaExt>(&every_field())
         .expect("the options serialize");
     let mut provider = BTreeSet::new();
-    for section in options.get::<Ollama>().expect("an entry").values() {
+    for section in options.get::<OllamaExt>().expect("an entry").values() {
         leaves(section, "", &mut provider);
     }
     for reasoning in [Reasoning::Off, Reasoning::Effort(Effort::High)] {

@@ -12,7 +12,7 @@ use rig::completion::{
     Reasoning,
 };
 use rig::message::AssistantContent;
-use rig::providers::ollama::extension::{KeepAlive, Ollama, OllamaOptions};
+use rig::providers::ollama::extension::{KeepAlive, OllamaExt, OllamaOptions};
 use rig::streaming::{Item, PartKind, StreamEvent};
 use serde_json::{Value, json};
 
@@ -55,7 +55,7 @@ fn recorded_content(scenario: &str) -> String {
 /// The reason and counts a reply's typed extras read.
 fn counted(response: &CompletionResponse) -> (Option<String>, Option<u64>, Option<u64>) {
     let extras = response
-        .extras::<Ollama>()
+        .extras::<OllamaExt>()
         .expect("an Ollama reply")
         .expect("the extras read");
     assert_eq!(extras.model.as_deref(), Some("qwen3:4b"));
@@ -125,14 +125,14 @@ async fn typed_options_reach_the_daemon_and_extras_read_the_reply() {
                     )
                     .provider_options(
                         ProviderOptions::new()
-                            .with::<Ollama>(&options)
+                            .with::<OllamaExt>(&options)
                             .expect("the options serialize"),
                     ),
             )
             .await
             .expect("the request succeeds");
         let extras = response
-            .extras::<Ollama>()
+            .extras::<OllamaExt>()
             .expect("an Ollama reply")
             .expect("the extras read");
         assert_eq!(extras.model.as_deref(), Some("qwen3:4b"));

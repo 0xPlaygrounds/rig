@@ -25,120 +25,120 @@ fn extension_keys() -> Vec<(&'static str, &'static str, &'static str)> {
     let mut keys = vec![
         (
             core,
-            key::<providers::anthropic::extension::Anthropic>(),
+            key::<providers::anthropic::extension::AnthropicExt>(),
             "anthropic",
         ),
         (
             core,
-            key::<providers::azure::extension::Azure>(),
+            key::<providers::azure::extension::AzureExt>(),
             "azure.openai",
         ),
         (
             core,
-            key::<providers::chatgpt::extension::ChatGpt>(),
+            key::<providers::chatgpt::extension::ChatGptExt>(),
             "chatgpt",
         ),
         (
             core,
-            key::<providers::cohere::extension::Cohere>(),
+            key::<providers::cohere::extension::CohereExt>(),
             "cohere",
         ),
         (
             core,
-            key::<providers::copilot::extension::Copilot>(),
+            key::<providers::copilot::extension::CopilotExt>(),
             "copilot",
         ),
         (
             core,
-            key::<providers::deepseek::extension::DeepSeek>(),
+            key::<providers::deepseek::extension::DeepSeekExt>(),
             "deepseek",
         ),
         (
             core,
-            key::<providers::gemini::extension::Gemini>(),
+            key::<providers::gemini::extension::GeminiExt>(),
             "gcp.gemini",
         ),
-        (core, key::<providers::groq::extension::Groq>(), "groq"),
+        (core, key::<providers::groq::extension::GroqExt>(), "groq"),
         (
             core,
-            key::<providers::llamacpp::extension::LlamaCpp>(),
+            key::<providers::llamacpp::extension::LlamaCppExt>(),
             "llamacpp",
         ),
         (
             core,
-            key::<providers::minimax::extension::MiniMax>(),
+            key::<providers::minimax::extension::MiniMaxExt>(),
             "minimax",
         ),
         (
             core,
-            key::<providers::mistral::extension::Mistral>(),
+            key::<providers::mistral::extension::MistralExt>(),
             "mistral",
         ),
         (
             core,
-            key::<providers::moonshot::extension::Moonshot>(),
+            key::<providers::moonshot::extension::MoonshotExt>(),
             "moonshot",
         ),
         (
             core,
-            key::<providers::ollama::extension::Ollama>(),
+            key::<providers::ollama::extension::OllamaExt>(),
             "ollama",
         ),
         (
             core,
-            key::<providers::openai::extension::OpenAi>(),
+            key::<providers::openai::extension::OpenAiExt>(),
             "openai",
         ),
         (
             core,
-            key::<providers::openrouter::extension::OpenRouter>(),
+            key::<providers::openrouter::extension::OpenRouterExt>(),
             "openrouter",
         ),
         (
             core,
-            key::<providers::perplexity::extension::Perplexity>(),
+            key::<providers::perplexity::extension::PerplexityExt>(),
             "perplexity",
         ),
         (
             core,
-            key::<providers::together::extension::Together>(),
+            key::<providers::together::extension::TogetherExt>(),
             "together",
         ),
         (
             core,
-            key::<providers::venice::extension::Venice>(),
+            key::<providers::venice::extension::VeniceExt>(),
             "venice",
         ),
-        (core, key::<providers::xai::extension::Xai>(), "xai"),
+        (core, key::<providers::xai::extension::XaiExt>(), "xai"),
         (
             core,
-            key::<providers::xiaomimimo::extension::XiaomiMimo>(),
+            key::<providers::xiaomimimo::extension::XiaomiMimoExt>(),
             "xiaomimimo",
         ),
-        (core, key::<providers::zai::extension::Zai>(), "zai"),
+        (core, key::<providers::zai::extension::ZaiExt>(), "zai"),
     ];
     #[cfg(feature = "bedrock")]
     keys.push((
         "crates/rig-bedrock/src",
-        key::<rig::bedrock::extension::Bedrock>(),
+        key::<rig::bedrock::extension::BedrockExt>(),
         "aws_bedrock",
     ));
     #[cfg(feature = "candle")]
     keys.push((
         "crates/rig-candle/src",
-        key::<rig::candle::extension::Candle>(),
+        key::<rig::candle::extension::CandleExt>(),
         "candle",
     ));
     #[cfg(feature = "gemini-grpc")]
     keys.push((
         "crates/rig-gemini-grpc/src",
-        key::<rig::gemini_grpc::extension::GeminiGrpc>(),
+        key::<rig::gemini_grpc::extension::GeminiGrpcExt>(),
         "gemini-grpc",
     ));
     #[cfg(feature = "vertexai")]
     keys.push((
         "crates/rig-vertexai/src",
-        key::<rig::vertexai::extension::Vertex>(),
+        key::<rig::vertexai::extension::VertexExt>(),
         "vertexai",
     ));
     keys

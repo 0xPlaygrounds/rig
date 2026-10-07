@@ -36,7 +36,7 @@ fn every_field() -> CohereOptions {
 fn with(options: &CohereOptions) -> CompletionRequest {
     CompletionRequest::new("q").provider_options(
         ProviderOptions::new()
-            .with::<Cohere>(options)
+            .with::<CohereExt>(options)
             .expect("the options serialize"),
     )
 }
@@ -182,15 +182,15 @@ fn leaves(value: &Value, at: &str, out: &mut BTreeSet<String>) {
 #[test]
 fn no_field_writes_a_reserved_leaf() {
     let options = ProviderOptions::new()
-        .with::<Cohere>(&every_field())
+        .with::<CohereExt>(&every_field())
         .expect("the options serialize");
     let mut provider = BTreeSet::new();
-    for section in options.get::<Cohere>().expect("an entry").values() {
+    for section in options.get::<CohereExt>().expect("an entry").values() {
         leaves(section, "", &mut provider);
     }
     assert!(
         options
-            .get::<Cohere>()
+            .get::<CohereExt>()
             .is_some_and(|entry| entry.contains_key(SHARED))
     );
     for route in [ChatRoute::Native, ChatRoute::Compatibility] {

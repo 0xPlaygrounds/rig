@@ -3,12 +3,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::together::extension::{Together, TogetherOptions};
+//! use rig_core::providers::together::extension::{TogetherExt, TogetherOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = TogetherOptions::new().top_k(40).repetition_penalty(1.1);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Together>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<TogetherExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -23,9 +23,9 @@ use crate::message::Api;
 
 /// Together AI's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Together;
+pub struct TogetherExt;
 
-impl ProviderExtension for Together {
+impl ProviderExtension for TogetherExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = TogetherOptions;
     type Extras = TogetherExtras;

@@ -4,7 +4,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, Message, ProviderToolDefinition,
 };
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
-use rig::providers::anthropic::extension::Anthropic;
+use rig::providers::anthropic::extension::AnthropicExt;
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
@@ -67,7 +67,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
             );
 
             let extras = response
-                .extras::<Anthropic>()
+                .extras::<AnthropicExt>()
                 .expect("an Anthropic reply")
                 .expect("the extras read the recorded reply");
             assert_eq!(extras.stop_reason.as_deref(), Some("end_turn"));

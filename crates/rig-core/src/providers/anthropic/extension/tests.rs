@@ -34,7 +34,7 @@ fn sent_on(wire: &Messages, request: CompletionRequest) -> Result<Value, Provide
 /// `request` carrying `options` as the Anthropic entry.
 fn with(request: CompletionRequest, options: &AnthropicOptions) -> CompletionRequest {
     let options = ProviderOptions::new()
-        .with::<Anthropic>(options)
+        .with::<AnthropicExt>(options)
         .expect("Anthropic options are sections");
     request.provider_options(options)
 }
@@ -385,7 +385,7 @@ fn extras_read_speed_stop_details_and_a_leading_fallback() {
         json!({"stop_details": {"type": "refusal", "category": "cyber", "explanation": "no"}}),
     );
     let extras = folded(&wire(CLAUDE_OPUS_5_5), &refusal)
-        .extras::<Anthropic>()
+        .extras::<AnthropicExt>()
         .expect("an Anthropic reply")
         .expect("the extras read");
     assert_eq!(extras.speed.as_deref(), Some("fast"));
@@ -423,6 +423,6 @@ fn extras_are_none_for_another_provider_and_an_error_for_another_route() {
         json!({}),
     );
     let gateway = AnthropicConfig::with_key(&MINIMAX, "sk-test").completion("MiniMax-M2.7");
-    assert!(folded(&gateway, &body).extras::<Anthropic>().is_none());
+    assert!(folded(&gateway, &body).extras::<AnthropicExt>().is_none());
     assert!(AnthropicExtras::from_reply(&Api::from_static("openai.chat"), &body).is_err());
 }

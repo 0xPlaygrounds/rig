@@ -3,12 +3,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::xai::extension::{Xai, XaiOptions};
+//! use rig_core::providers::xai::extension::{XaiExt, XaiOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = XaiOptions::new().prompt_cache_key("conversation-42");
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Xai>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<XaiExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -23,9 +23,9 @@ use crate::message::Api;
 
 /// xAI's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Xai;
+pub struct XaiExt;
 
-impl ProviderExtension for Xai {
+impl ProviderExtension for XaiExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = XaiOptions;
     type Extras = XaiExtras;

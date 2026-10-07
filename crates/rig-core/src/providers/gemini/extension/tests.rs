@@ -44,7 +44,7 @@ fn interactions() -> Interactions {
 fn with(options: &GeminiOptions) -> CompletionRequest {
     CompletionRequest::new("hi").provider_options(
         ProviderOptions::new()
-            .with::<Gemini>(options)
+            .with::<GeminiExt>(options)
             .expect("Gemini options are sections"),
     )
 }
@@ -393,7 +393,7 @@ fn raw_generation_config_beats_typed() {
 fn unset_options_leave_the_body_alone() {
     let request = CompletionRequest::new("hi").provider_options(
         ProviderOptions::new()
-            .with::<Gemini>(&GeminiOptions::new())
+            .with::<GeminiExt>(&GeminiOptions::new())
             .expect("sections"),
     );
     assert!(request.provider_options.is_empty());

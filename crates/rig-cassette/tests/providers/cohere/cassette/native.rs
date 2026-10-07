@@ -7,9 +7,9 @@ use std::collections::HashMap;
 use futures::StreamExt;
 use rig::completion::{CompletionRequest, CompletionResponse, Cost, Document, Message};
 use rig::message::{AssistantContent, Source, SourceLocation, ToolResultContent, UserContent};
-use rig::providers::cohere::extension::{Cohere, CohereExtras};
+use rig::providers::cohere::extension::{CohereExt, CohereExtras};
 use rig::providers::cohere::{ChatRoute, CohereChat};
-use rig::providers::ollama::extension::Ollama;
+use rig::providers::ollama::extension::OllamaExt;
 use rig::streaming::{Item, StreamEvent};
 use rig::tool::Tool;
 use serde_json::Value;
@@ -243,7 +243,7 @@ async fn a_streamed_tool_plan_and_call_replay_natively() {
 /// The typed extras of `reply`, a Cohere reply.
 fn extras(reply: &CompletionResponse) -> CohereExtras {
     reply
-        .extras::<Cohere>()
+        .extras::<CohereExt>()
         .expect("a Cohere reply")
         .expect("the extras read")
 }
@@ -304,7 +304,7 @@ async fn a_conversation_switching_routes_replays() {
             assert_eq!(first_extras.cached_tokens, Some(704.0));
             assert_eq!(first_extras.tool_plan, None);
             assert_eq!(first_extras.logprobs, None);
-            assert!(first.extras::<Ollama>().is_none());
+            assert!(first.extras::<OllamaExt>().is_none());
             history.push(Message::user(question));
             history.push(first.message().expect("an assistant turn"));
 

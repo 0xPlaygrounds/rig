@@ -15,7 +15,7 @@ fn chat_wire(model: &str) -> Chat {
 }
 
 fn body(options: &MistralOptions) -> Value {
-    body_with::<Mistral, _>(&chat_wire("magistral-medium-latest"), options)
+    body_with::<MistralExt, _>(&chat_wire("magistral-medium-latest"), options)
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .frequency_penalty(0.1)
         .presence_penalty(0.1)
         .prediction("p");
-    assert_no_reserved_leaf::<Mistral, _>(
+    assert_no_reserved_leaf::<MistralExt, _>(
         &[
             chat_wire("magistral-medium-latest"),
             chat_wire("mistral-large-latest"),
@@ -89,7 +89,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Mistral>()
+        .extras::<MistralExt>()
         .unwrap_or_else(|| panic!("a Mistral reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.service_tier.as_deref(), Some("standard"));
@@ -109,7 +109,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<Mistral>()
+            .extras::<MistralExt>()
             .unwrap_or_else(|| panic!("a Mistral reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

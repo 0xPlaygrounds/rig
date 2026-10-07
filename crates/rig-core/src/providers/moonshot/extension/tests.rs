@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Reasoning};
-use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{AnthropicConfig, MOONSHOT as MESSAGES_MOONSHOT, Messages};
 use crate::providers::moonshot::{KIMI_K2_6, KIMI_K3};
 use crate::providers::openai::wire::{Chat, MOONSHOT, OpenAIConfig};
@@ -26,7 +26,7 @@ fn options(chat: MoonshotChat) -> MoonshotOptions {
 
 #[test]
 fn thinking_keep_joins_the_mapped_thinking() {
-    let request = request_with::<Moonshot>(&options(
+    let request = request_with::<MoonshotExt>(&options(
         MoonshotChat::new().thinking_keep(ThinkingKeep::All),
     ))
     .options(GenerationOptions::default().reasoning(Reasoning::Off));
@@ -37,7 +37,7 @@ fn thinking_keep_joins_the_mapped_thinking() {
 
 #[test]
 fn prompt_cache_key_lands_at_top_level() {
-    let body = body_with::<Moonshot, _>(
+    let body = body_with::<MoonshotExt, _>(
         &chat_wire(KIMI_K3),
         &options(MoonshotChat::new().prompt_cache_key("k")),
     );
@@ -51,7 +51,10 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
             .thinking_keep(ThinkingKeep::All)
             .prompt_cache_key("k"),
     );
-    assert_no_reserved_leaf::<Moonshot, _>(&[chat_wire(KIMI_K2_6), chat_wire(KIMI_K3)], &options);
+    assert_no_reserved_leaf::<MoonshotExt, _>(
+        &[chat_wire(KIMI_K2_6), chat_wire(KIMI_K3)],
+        &options,
+    );
 }
 
 #[tokio::test]
@@ -65,7 +68,7 @@ async fn extras_from_a_built_reply() {
     )
     .await;
     let extras = reply
-        .extras::<Moonshot>()
+        .extras::<MoonshotExt>()
         .unwrap_or_else(|| panic!("a Moonshot reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
@@ -109,10 +112,10 @@ fn extras_read_the_messages_stop_fields() {
     });
     let response = folded(&reply);
     let extras = response
-        .extras::<Moonshot>()
+        .extras::<MoonshotExt>()
         .expect("a Moonshot reply")
         .expect("the extras read");
     assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
-    assert!(response.extras::<Anthropic>().is_none());
+    assert!(response.extras::<AnthropicExt>().is_none());
 }

@@ -3,12 +3,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::mistral::extension::{Mistral, MistralOptions, PromptMode};
+//! use rig_core::providers::mistral::extension::{MistralExt, MistralOptions, PromptMode};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = MistralOptions::new().prompt_mode(PromptMode::Reasoning).safe_prompt(true);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Mistral>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<MistralExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -24,9 +24,9 @@ use crate::providers::openai::extension::Prediction;
 
 /// Mistral's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Mistral;
+pub struct MistralExt;
 
-impl ProviderExtension for Mistral {
+impl ProviderExtension for MistralExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = MistralOptions;
     type Extras = MistralExtras;

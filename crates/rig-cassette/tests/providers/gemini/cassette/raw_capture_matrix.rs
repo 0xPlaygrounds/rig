@@ -35,7 +35,7 @@ use rig::completion::{
     AssistantContent, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::message::ToolChoice;
-use rig::providers::gemini::extension::Gemini;
+use rig::providers::gemini::extension::GeminiExt;
 use rig::tool::Tool;
 use serde_json::Value;
 
@@ -249,7 +249,7 @@ async fn raw_exposes_forced_function_call() {
 
     // The typed extras read the same recorded reply.
     let extras = response
-        .extras::<Gemini>()
+        .extras::<GeminiExt>()
         .expect("a Gemini API reply has Gemini extras")
         .expect("the recorded reply holds the extras' shape");
     assert_eq!(

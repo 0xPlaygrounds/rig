@@ -26,7 +26,7 @@ fn scripted() -> Generation {
 fn with(options: &CandleOptions) -> CompletionRequest {
     CompletionRequest::new("hello").provider_options(
         ProviderOptions::new()
-            .with::<Candle>(options)
+            .with::<CandleExt>(options)
             .expect("the options serialize"),
     )
 }
@@ -98,7 +98,7 @@ fn keys(value: &Value, out: &mut BTreeSet<String>) {
 #[test]
 fn no_field_writes_a_reserved_key() {
     let options = ProviderOptions::new()
-        .with::<Candle>(
+        .with::<CandleExt>(
             &CandleOptions::default()
                 .top_k(4)
                 .repeat_penalty(1.3)
@@ -106,7 +106,7 @@ fn no_field_writes_a_reserved_key() {
         )
         .expect("the options serialize");
     let mut provider = BTreeSet::new();
-    for section in options.get::<Candle>().expect("an entry").values() {
+    for section in options.get::<CandleExt>().expect("an entry").values() {
         keys(section, &mut provider);
     }
     let request = CompletionRequest::new("hello").options(
@@ -186,7 +186,7 @@ async fn extras_read_the_local_generation_record() {
     }
     let response = stream.finish().await.expect("the stream finishes");
     let extras = response
-        .extras::<Candle>()
+        .extras::<CandleExt>()
         .expect("a Candle reply")
         .expect("the extras read");
     assert_eq!(

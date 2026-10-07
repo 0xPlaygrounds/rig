@@ -38,7 +38,7 @@
 use futures::StreamExt;
 use rig::completion::FinishReason;
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
-use rig::providers::gemini::extension::Gemini;
+use rig::providers::gemini::extension::GeminiExt;
 use rig::streaming::Item;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
@@ -243,7 +243,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
         let mut response = terminal.clone();
         response.raw = raw;
         response
-            .extras::<Gemini>()
+            .extras::<GeminiExt>()
             .expect("a Gemini API reply has Gemini extras")
             .expect("the document holds the extras' shape")
     };

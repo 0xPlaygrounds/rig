@@ -50,8 +50,8 @@
 use rig::completion::{CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::providers::anthropic;
-use rig::providers::anthropic::extension::Anthropic;
-use rig::providers::minimax::extension::MiniMax;
+use rig::providers::anthropic::extension::AnthropicExt;
+use rig::providers::minimax::extension::MiniMaxExt;
 use serde_json::{Value, json};
 
 use super::super::support::{
@@ -334,7 +334,7 @@ async fn raw_exposes_stop_sequence() {
     // The typed view reads the same recorded fields, and only for the
     // provider that produced them.
     let extras = response
-        .extras::<Anthropic>()
+        .extras::<AnthropicExt>()
         .expect("an Anthropic reply")
         .expect("the extras read the recorded reply");
     assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
@@ -349,7 +349,7 @@ async fn raw_exposes_stop_sequence() {
         )),
         Some((0, 0))
     );
-    assert!(response.extras::<MiniMax>().is_none());
+    assert!(response.extras::<MiniMaxExt>().is_none());
 }
 
 // ---------------------------------------------------------------------------

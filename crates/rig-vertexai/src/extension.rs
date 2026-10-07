@@ -5,14 +5,14 @@
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::gemini::extension::GenerationConfig;
-//! use rig_vertexai::extension::{Vertex, VertexOptions};
+//! use rig_vertexai::extension::{VertexExt, VertexOptions};
 //!
 //! # fn main() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = VertexOptions::new()
 //!     .label("team", "rig")
 //!     .generation_config(GenerationConfig::new().top_k(40));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Vertex>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<VertexExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -35,10 +35,10 @@ use serde_json::Value;
 const API: &str = "vertexai.generate_content";
 
 /// Vertex AI's extension: [`VertexOptions`] and [`VertexExtras`].
-#[derive(Clone, Copy, Debug)]
-pub struct Vertex;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct VertexExt;
 
-impl ProviderExtension for Vertex {
+impl ProviderExtension for VertexExt {
     const PROVIDER: &'static str = crate::types::completion_response::PROVIDER_NAME;
     type Options = VertexOptions;
     type Extras = VertexExtras;

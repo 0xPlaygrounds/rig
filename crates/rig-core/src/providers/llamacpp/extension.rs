@@ -3,12 +3,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::llamacpp::extension::{LlamaCpp, LlamaCppOptions};
+//! use rig_core::providers::llamacpp::extension::{LlamaCppExt, LlamaCppOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = LlamaCppOptions::new().top_k(40).min_p(0.05);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<LlamaCpp>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<LlamaCppExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -23,9 +23,9 @@ use crate::message::Api;
 
 /// llama.cpp's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct LlamaCpp;
+pub struct LlamaCppExt;
 
-impl ProviderExtension for LlamaCpp {
+impl ProviderExtension for LlamaCppExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = LlamaCppOptions;
     type Extras = LlamaCppExtras;

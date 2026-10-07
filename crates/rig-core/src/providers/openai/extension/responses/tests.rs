@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::completion::ProviderOptions;
-use crate::providers::openai::extension::{OpenAi, OpenAiOptions};
+use crate::providers::openai::extension::{OpenAiExt, OpenAiOptions};
 use serde_json::json;
 
 fn fully_set() -> OpenAiResponsesOptions {
@@ -28,9 +28,9 @@ fn fully_set() -> OpenAiResponsesOptions {
 
 fn sections() -> Value {
     let entry = ProviderOptions::new()
-        .with::<OpenAi>(&OpenAiOptions::default().responses(fully_set()))
+        .with::<OpenAiExt>(&OpenAiOptions::default().responses(fully_set()))
         .expect("the options are sections");
-    serde_json::to_value(entry.get::<OpenAi>()).expect("the sections serialize")
+    serde_json::to_value(entry.get::<OpenAiExt>()).expect("the sections serialize")
 }
 
 #[test]

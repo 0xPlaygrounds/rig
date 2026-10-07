@@ -15,7 +15,7 @@ fn chat_wire(model: &str) -> Chat {
 }
 
 fn body(options: &GroqOptions) -> Value {
-    body_with::<Groq, _>(&chat_wire("qwen/qwen3-32b"), options)
+    body_with::<GroqExt, _>(&chat_wire("qwen/qwen3-32b"), options)
 }
 
 #[test]
@@ -78,14 +78,14 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .include_reasoning(true)
         .search_settings(SearchSettings::new().country("us"))
         .citation_options(CitationOptions::Enabled);
-    assert_no_reserved_leaf::<Groq, _>(
+    assert_no_reserved_leaf::<GroqExt, _>(
         &[
             chat_wire("qwen/qwen3-32b"),
             chat_wire("openai/gpt-oss-120b"),
         ],
         &options,
     );
-    assert_no_reserved_leaf::<Groq, _>(
+    assert_no_reserved_leaf::<GroqExt, _>(
         &[chat_wire("qwen/qwen3-32b")],
         &GroqOptions::new().reasoning_format(ReasoningFormat::Parsed),
     );
@@ -103,7 +103,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Groq>()
+        .extras::<GroqExt>()
         .unwrap_or_else(|| panic!("a Groq reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
@@ -133,7 +133,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     const SCENARIO: &str = "agent_tool_sessions/parallel_tool_calls_single_turn_{}";
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<Groq>()
+            .extras::<GroqExt>()
             .unwrap_or_else(|| panic!("a Groq reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

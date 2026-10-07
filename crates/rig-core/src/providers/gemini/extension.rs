@@ -9,14 +9,14 @@
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::gemini::extension::{
-//!     Gemini, GeminiOptions, GenerateContentOptions, GenerationConfig,
+//!     GeminiExt, GeminiOptions, GenerateContentOptions, GenerationConfig,
 //! };
 //!
 //! # fn main() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = GeminiOptions::new()
 //!     .generate_content(GenerateContentOptions::new().generation_config(GenerationConfig::new().top_k(40)));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Gemini>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<GeminiExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -39,10 +39,10 @@ const GENERATE_CONTENT: &str = "gemini.generate_content";
 const INTERACTIONS: &str = "gemini.interactions";
 
 /// The Gemini API's extension: [`GeminiOptions`] and [`GeminiExtras`].
-#[derive(Clone, Copy, Debug)]
-pub struct Gemini;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GeminiExt;
 
-impl ProviderExtension for Gemini {
+impl ProviderExtension for GeminiExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = GeminiOptions;
     type Extras = GeminiExtras;

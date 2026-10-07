@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 
 use super::Message;
 use crate::completion::{CompletionRequest, CompletionResponse};
-use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{
     ANTHROPIC, AnthropicConfig, Dialect, MINIMAX, MOONSHOT, Messages, XIAOMIMIMO, ZAI,
 };
@@ -251,7 +251,7 @@ fn server_tools_a_fallback_and_the_container_read_the_same_both_ways() {
     let unary = server_tools_unary();
     let extras = |mode, frames, raw| {
         decoded(&wire, mode, frames, raw)
-            .extras::<Anthropic>()
+            .extras::<AnthropicExt>()
             .expect("an Anthropic reply")
             .expect("the extras read")
     };

@@ -4,11 +4,11 @@
 //!
 //! ```
 //! use rig_core::completion::CompletionResponse;
-//! use rig_core::providers::xiaomimimo::extension::XiaomiMimo;
+//! use rig_core::providers::xiaomimimo::extension::XiaomiMimoExt;
 //!
 //! fn annotations(reply: &CompletionResponse) -> usize {
 //!     reply
-//!         .extras::<XiaomiMimo>()
+//!         .extras::<XiaomiMimoExt>()
 //!         .and_then(Result::ok)
 //!         .and_then(|extras| extras.annotations)
 //!         .map_or(0, |annotations| annotations.len())
@@ -27,9 +27,9 @@ use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// Xiaomi MiMo's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct XiaomiMimo;
+pub struct XiaomiMimoExt;
 
-impl ProviderExtension for XiaomiMimo {
+impl ProviderExtension for XiaomiMimoExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = XiaomiMimoOptions;
     type Extras = XiaomiMimoExtras;

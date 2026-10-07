@@ -15,7 +15,7 @@ fn chat_wire() -> Chat {
 }
 
 fn body(options: &LlamaCppOptions) -> Value {
-    body_with::<LlamaCpp, _>(&chat_wire(), options)
+    body_with::<LlamaCppExt, _>(&chat_wire(), options)
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .mirostat_eta(0.1)
         .id_slot(0)
         .timings_per_token(false);
-    assert_no_reserved_leaf::<LlamaCpp, _>(&[chat_wire()], &options);
+    assert_no_reserved_leaf::<LlamaCppExt, _>(&[chat_wire()], &options);
 }
 
 #[tokio::test]
@@ -120,7 +120,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<LlamaCpp>()
+        .extras::<LlamaCppExt>()
         .unwrap_or_else(|| panic!("a llama.cpp reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let timings = extras.timings.unwrap_or_default();
@@ -140,7 +140,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<LlamaCpp>()
+            .extras::<LlamaCppExt>()
             .unwrap_or_else(|| panic!("a llama.cpp reply"))
             .unwrap_or_else(|error| panic!("{error}"))
             .timings

@@ -1,4 +1,4 @@
-//! OpenAI's typed request options and reply extras. [`OpenAi`] keys one
+//! OpenAI's typed request options and reply extras. [`OpenAiExt`] keys one
 //! entry that serves both routes: [`OpenAiShared`] (`"*"`) goes to whichever
 //! route the request takes, [`ChatOptions`] (`"openai.chat"`) only to Chat
 //! Completions and [`OpenAiResponsesOptions`] (`"openai.responses"`) only to
@@ -7,7 +7,7 @@
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::openai::extension::{
-//!     OpenAi, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningSummary,
+//!     OpenAiExt, OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningSummary,
 //! };
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +15,7 @@
 //!     .shared(OpenAiShared::default().store(false))
 //!     .responses(OpenAiResponsesOptions::default().reasoning_summary(ReasoningSummary::Auto));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<OpenAi>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<OpenAiExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -47,9 +47,9 @@ pub use responses::{
 /// OpenAI's provider extension, keyed by
 /// [`PROVIDER_NAME`](crate::providers::openai::PROVIDER_NAME).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct OpenAi;
+pub struct OpenAiExt;
 
-impl ProviderExtension for OpenAi {
+impl ProviderExtension for OpenAiExt {
     const PROVIDER: &'static str = crate::providers::openai::PROVIDER_NAME;
     type Options = OpenAiOptions;
     type Extras = OpenAiExtras;

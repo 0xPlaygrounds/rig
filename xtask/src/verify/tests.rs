@@ -1246,11 +1246,11 @@ fn a_decoder_names_no_extension_module_in_any_import_form() {
          fn read(extras: openrouter::extension::OpenRouterExtras) {}",
         "type Extras = crate::providers::openrouter::extension::OpenRouterExtras;",
         "fn read(reply: &CompletionResponse) {
-             let extras = reply.extras::<crate::providers::openrouter::extension::OpenRouter>();
+             let extras = reply.extras::<crate::providers::openrouter::extension::OpenRouterExt>();
          }",
         "macro_rules! extras { ($i:ident) => { crate::providers::openrouter::extension::$i } }",
         "macro_rules! extras { ($i:ident) => { super::extension::$i } }",
-        "pub use super::extension::OpenRouter;",
+        "pub use super::extension::OpenRouterExt;",
     ] {
         let findings = decoding(CHAT, source);
         assert!(!findings.is_empty(), "{source}");
@@ -1328,7 +1328,7 @@ fn a_decoder_writes_no_citation_past_the_fold() {
 fn a_companion_crates_extension_is_off_its_decode_path_too() {
     let findings = decoding(
         "crates/rig-bedrock/src/completion.rs",
-        "use crate::extension::Bedrock;",
+        "use crate::extension::BedrockExt;",
     );
     assert_eq!(findings.len(), 1, "{findings:?}");
     assert!(
@@ -1362,7 +1362,7 @@ fn what_the_decode_path_may_still_write() {
              extension.is_some()
          }",
         "#[cfg(test)]
-         mod tests { use super::extension::OpenRouter; }",
+         mod tests { use super::extension::OpenRouterExt; }",
         "use crate::completion::{CompletionResponse, ProviderOptions};",
     ] {
         assert_eq!(decoding(CHAT, source), Vec::<String>::new(), "{source}");
@@ -1376,15 +1376,15 @@ fn an_extension_item_is_re_exported_nowhere() {
             .unwrap_or_else(|error| panic!("the source parses: {error}"))
     };
     for source in [
-        "pub use rig_core::providers::openrouter::extension::OpenRouter;",
+        "pub use rig_core::providers::openrouter::extension::OpenRouterExt;",
         "pub use rig_core::providers::openrouter::{extension::*};",
         "pub(crate) use rig_core::providers::openrouter::extension;",
-        "pub type OpenRouter = rig_core::providers::openrouter::extension::OpenRouter;",
+        "pub type OpenRouter = rig_core::providers::openrouter::extension::OpenRouterExt;",
     ] {
         assert_eq!(reexports(source).len(), 1, "{source}");
     }
     for source in [
-        "use rig_core::providers::openrouter::extension::OpenRouter;",
+        "use rig_core::providers::openrouter::extension::OpenRouterExt;",
         "pub use rig_core::completion::{ProviderExtension, ReplyExtras};",
         "pub use rig_core::providers;",
     ] {

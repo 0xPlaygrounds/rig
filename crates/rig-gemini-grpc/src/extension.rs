@@ -8,13 +8,13 @@
 //! use rig_core::providers::gemini::extension::{
 //!     GeminiOptions, GenerateContentOptions, GenerationConfig,
 //! };
-//! use rig_gemini_grpc::extension::{GeminiGrpc, GeminiGrpcOptions};
+//! use rig_gemini_grpc::extension::{GeminiGrpcExt, GeminiGrpcOptions};
 //!
 //! # fn main() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = GeminiOptions::new()
 //!     .generate_content(GenerateContentOptions::new().generation_config(GenerationConfig::new().top_k(40)));
 //! let request = CompletionRequest::new("hi").provider_options(
-//!     ProviderOptions::new().with::<GeminiGrpc>(&GeminiGrpcOptions::from(options))?,
+//!     ProviderOptions::new().with::<GeminiGrpcExt>(&GeminiGrpcOptions::from(options))?,
 //! );
 //! # let _ = request;
 //! # Ok(())
@@ -38,10 +38,10 @@ const API: &str = "gemini.generate_content";
 
 /// The Gemini gRPC API's extension: [`GeminiGrpcOptions`] and
 /// [`GeminiGrpcExtras`].
-#[derive(Clone, Copy, Debug)]
-pub struct GeminiGrpc;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct GeminiGrpcExt;
 
-impl ProviderExtension for GeminiGrpc {
+impl ProviderExtension for GeminiGrpcExt {
     const PROVIDER: &'static str = crate::completion::PROVIDER_NAME;
     type Options = GeminiGrpcOptions;
     type Extras = GeminiGrpcExtras;

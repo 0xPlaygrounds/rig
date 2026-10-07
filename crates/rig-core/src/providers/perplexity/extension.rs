@@ -5,11 +5,11 @@
 //!
 //! ```
 //! use rig_core::completion::CompletionResponse;
-//! use rig_core::providers::perplexity::extension::Perplexity;
+//! use rig_core::providers::perplexity::extension::PerplexityExt;
 //!
 //! fn sources(reply: &CompletionResponse) -> Vec<String> {
 //!     reply
-//!         .extras::<Perplexity>()
+//!         .extras::<PerplexityExt>()
 //!         .and_then(Result::ok)
 //!         .and_then(|extras| extras.citations)
 //!         .unwrap_or_default()
@@ -26,9 +26,9 @@ use crate::message::Api;
 
 /// Perplexity's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Perplexity;
+pub struct PerplexityExt;
 
-impl ProviderExtension for Perplexity {
+impl ProviderExtension for PerplexityExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = PerplexityOptions;
     type Extras = PerplexityExtras;

@@ -3,13 +3,13 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::azure::extension::{Azure, AzureOptions};
+//! use rig_core::providers::azure::extension::{AzureExt, AzureOptions};
 //! use rig_core::providers::openai::extension::ChatOptions;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = AzureOptions::new().chat(ChatOptions::new().logprobs(true));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Azure>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<AzureExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -27,9 +27,9 @@ use crate::providers::openai::extension::{
 
 /// Azure OpenAI's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Azure;
+pub struct AzureExt;
 
-impl ProviderExtension for Azure {
+impl ProviderExtension for AzureExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = AzureOptions;
     type Extras = AzureExtras;

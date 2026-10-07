@@ -6,9 +6,9 @@
 use super::*;
 use crate::completion::options::{CacheRetention, Effort, GenerationOptions, OnUnsupported};
 use crate::completion::{ProviderOptions, ReplayTarget};
-use crate::providers::chatgpt::extension::{ChatGpt, ChatGptExtras, ChatGptOptions};
+use crate::providers::chatgpt::extension::{ChatGptExt, ChatGptExtras, ChatGptOptions};
 use crate::providers::openai::extension::{
-    AccessPrograms, ContextManagement, CyberAccess, Include, ItemPhase, OpenAi, OpenAiExtras,
+    AccessPrograms, ContextManagement, CyberAccess, Include, ItemPhase, OpenAiExt, OpenAiExtras,
     OpenAiOptions, OpenAiResponsesOptions, OpenAiShared, ReasoningContext, ReasoningMode,
     ReasoningSummary, Truncation,
 };
@@ -28,11 +28,11 @@ fn entry<P: crate::completion::ProviderExtension>(options: &P::Options) -> Provi
 }
 
 fn shared(shared: OpenAiShared) -> ProviderOptions {
-    entry::<OpenAi>(&OpenAiOptions::default().shared(shared))
+    entry::<OpenAiExt>(&OpenAiOptions::default().shared(shared))
 }
 
 fn responses(responses: OpenAiResponsesOptions) -> ProviderOptions {
-    entry::<OpenAi>(&OpenAiOptions::default().responses(responses))
+    entry::<OpenAiExt>(&OpenAiOptions::default().responses(responses))
 }
 
 /// The unary body `wire` sends for the bare prompt with `generation` and
@@ -406,7 +406,7 @@ fn an_openai_entry_is_not_read_by_chatgpt() {
 /// `store: false`.
 #[test]
 fn chatgpt_prompt_cache_key_reaches_the_body() {
-    let options = entry::<ChatGpt>(&ChatGptOptions::default().prompt_cache_key("k"));
+    let options = entry::<ChatGptExt>(&ChatGptOptions::default().prompt_cache_key("k"));
     let wire = chatgpt();
     assert_adds(
         &wire,
@@ -425,7 +425,7 @@ fn chatgpt_client_metadata_reaches_the_body() {
     assert_adds(
         &chatgpt(),
         GenerationOptions::default(),
-        entry::<ChatGpt>(&ChatGptOptions::default().client_metadata("x", "y")),
+        entry::<ChatGptExt>(&ChatGptOptions::default().client_metadata("x", "y")),
         json!({"client_metadata": {"x": "y"}}),
     );
 }
@@ -435,7 +435,7 @@ fn chatgpt_access_programs_reaches_the_body() {
     assert_adds(
         &chatgpt(),
         GenerationOptions::default(),
-        entry::<ChatGpt>(
+        entry::<ChatGptExt>(
             &ChatGptOptions::default()
                 .access_programs(AccessPrograms::cyber(CyberAccess::Standard)),
         ),
@@ -494,7 +494,7 @@ async fn openai_extras_from_a_unary_recording() {
     let response = folded_unary(OpenAIConfig::new("test-key").responses(GPT_5_6_SOL), &body).await;
 
     let extras = response
-        .extras::<OpenAi>()
+        .extras::<OpenAiExt>()
         .expect("the reply is OpenAI's")
         .expect("the reply holds the extras");
     assert_eq!(
@@ -515,7 +515,7 @@ async fn openai_extras_from_a_unary_recording() {
             ..OpenAiExtras::default()
         }
     );
-    assert!(response.extras::<ChatGpt>().is_none());
+    assert!(response.extras::<ChatGptExt>().is_none());
 }
 
 /// A reply capped by its output limit, whose only item is reasoning.
@@ -525,7 +525,7 @@ async fn openai_extras_of_an_incomplete_unary_recording() {
     let response = folded_unary(gpt_6(), &body).await;
 
     let extras = response
-        .extras::<OpenAi>()
+        .extras::<OpenAiExt>()
         .expect("the reply is OpenAI's")
         .expect("the reply holds the extras");
     assert_eq!(
@@ -550,7 +550,7 @@ async fn chatgpt_extras_from_a_unary_recording() {
     let response = folded_unary(chatgpt(), &sse).await;
 
     let extras = response
-        .extras::<ChatGpt>()
+        .extras::<ChatGptExt>()
         .expect("the reply is ChatGPT's")
         .expect("the reply holds the extras");
     assert_eq!(
@@ -566,7 +566,7 @@ async fn chatgpt_extras_from_a_unary_recording() {
             phases: None,
         }
     );
-    assert!(response.extras::<OpenAi>().is_none());
+    assert!(response.extras::<OpenAiExt>().is_none());
 }
 
 /// One prompt answered unary and streamed: every field reads the same from
@@ -581,7 +581,7 @@ async fn openai_extras_read_the_same_from_streamed_and_unary_recordings() {
         cassette_body("openai/raw_stream_capture_matrix/responses_stream_raw_exposes_status.yaml");
     let extras = |response: completion::CompletionResponse| {
         response
-            .extras::<OpenAi>()
+            .extras::<OpenAiExt>()
             .expect("the reply is OpenAI's")
             .expect("the reply holds the extras")
     };
@@ -619,7 +619,7 @@ async fn chatgpt_extras_read_the_same_phases_from_both_paths() {
     let sse = cassette_body("chatgpt/codex_sessions/streamed_phase_round_trips_on_follow_up.yaml");
     let extras = |response: completion::CompletionResponse| {
         response
-            .extras::<ChatGpt>()
+            .extras::<ChatGptExt>()
             .expect("the reply is ChatGPT's")
             .expect("the reply holds the extras")
     };

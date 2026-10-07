@@ -5,7 +5,7 @@
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //! use rig_core::providers::venice::extension::{
-//!     Venice, VeniceOptions, VeniceParameters, WebSearchMode,
+//!     VeniceExt, VeniceOptions, VeniceParameters, WebSearchMode,
 //! };
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +15,7 @@
 //!         .enable_web_citations(true),
 //! );
 //! let request = CompletionRequest::new("Summarize today's Rust news.")
-//!     .provider_options(ProviderOptions::new().with::<Venice>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<VeniceExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -30,9 +30,9 @@ use crate::message::Api;
 
 /// Venice's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Venice;
+pub struct VeniceExt;
 
-impl ProviderExtension for Venice {
+impl ProviderExtension for VeniceExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = VeniceOptions;
     type Extras = VeniceExtras;

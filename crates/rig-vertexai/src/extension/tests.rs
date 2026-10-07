@@ -17,7 +17,7 @@ use crate::completion::GenerateContent;
 fn sent(options: &VertexOptions) -> vertexai::model::GenerateContentRequest {
     let request = CompletionRequest::new("hi").provider_options(
         ProviderOptions::new()
-            .with::<Vertex>(options)
+            .with::<VertexExt>(options)
             .expect("Vertex options are sections"),
     );
     let wire = GenerateContent::new("gemini-2.5-flash");
@@ -260,7 +260,7 @@ fn extras_read_a_vertex_reply() {
     )
     .expect("the reply decodes");
     let extras = response
-        .extras::<Vertex>()
+        .extras::<VertexExt>()
         .expect("a Vertex AI reply has Vertex extras")
         .expect("the reply holds the extras' shape");
     assert_eq!(
@@ -299,7 +299,7 @@ fn extras_read_a_vertex_reply() {
     );
     assert!(
         response
-            .extras::<rig_core::providers::gemini::extension::Gemini>()
+            .extras::<rig_core::providers::gemini::extension::GeminiExt>()
             .is_none(),
         "a Vertex AI reply is not the Gemini API's"
     );

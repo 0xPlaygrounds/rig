@@ -3,10 +3,10 @@
 //!
 //! ```
 //! use rig_core::completion::CompletionResponse;
-//! use rig_core::providers::deepseek::extension::DeepSeek;
+//! use rig_core::providers::deepseek::extension::DeepSeekExt;
 //!
 //! fn cache_hits(reply: &CompletionResponse) -> Option<u64> {
-//!     reply.extras::<DeepSeek>()?.ok()?.prompt_cache_hit_tokens
+//!     reply.extras::<DeepSeekExt>()?.ok()?.prompt_cache_hit_tokens
 //! }
 //! # let _ = cache_hits;
 //! ```
@@ -20,9 +20,9 @@ use crate::message::Api;
 
 /// DeepSeek's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct DeepSeek;
+pub struct DeepSeekExt;
 
-impl ProviderExtension for DeepSeek {
+impl ProviderExtension for DeepSeekExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = DeepSeekOptions;
     type Extras = DeepSeekExtras;

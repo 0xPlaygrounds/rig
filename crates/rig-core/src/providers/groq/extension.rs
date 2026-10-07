@@ -3,12 +3,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::groq::extension::{Groq, GroqOptions, ReasoningFormat};
+//! use rig_core::providers::groq::extension::{GroqExt, GroqOptions, ReasoningFormat};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = GroqOptions::new().reasoning_format(ReasoningFormat::Parsed);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Groq>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<GroqExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -23,9 +23,9 @@ use crate::message::Api;
 
 /// Groq's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Groq;
+pub struct GroqExt;
 
-impl ProviderExtension for Groq {
+impl ProviderExtension for GroqExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = GroqOptions;
     type Extras = GroqExtras;

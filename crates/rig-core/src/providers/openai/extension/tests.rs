@@ -10,7 +10,7 @@ use super::*;
 use crate::completion::{GenerationOptions, OnUnsupported, ProviderOptions, Reasoning};
 use crate::providers::openai::completion::{GPT_4_1_MINI, GPT_6_SOL};
 use crate::providers::openai::wire::{OPENAI, OpenAIConfig};
-use crate::providers::openrouter::extension::OpenRouter;
+use crate::providers::openrouter::extension::OpenRouterExt;
 use crate::test_utils::TraceCapture;
 use crate::test_utils::provider_extensions::{
     assert_no_reserved_leaf, body_with, encoded_body, recorded_reply, reply_of, request_with,
@@ -22,7 +22,7 @@ fn chat_wire(model: &str) -> crate::providers::openai::wire::Chat {
 }
 
 fn body(chat: ChatOptions) -> Value {
-    body_with::<OpenAi, _>(&chat_wire(GPT_4_1_MINI), &OpenAiOptions::new().chat(chat))
+    body_with::<OpenAiExt, _>(&chat_wire(GPT_4_1_MINI), &OpenAiOptions::new().chat(chat))
 }
 
 #[test]
@@ -115,7 +115,7 @@ fn the_chat_section_is_not_sent_on_responses() {
     let options = OpenAiOptions::new().chat(ChatOptions::new().logprobs(true));
     let capture = TraceCapture::default();
     let body = tracing::subscriber::with_default(capture.subscriber(), || {
-        body_with::<OpenAi, _>(&wire, &options)
+        body_with::<OpenAiExt, _>(&wire, &options)
     });
     assert!(body.get("logprobs").is_none(), "{body}");
     assert!(capture.warnings().is_empty(), "{:?}", capture.warnings());
@@ -124,7 +124,7 @@ fn the_chat_section_is_not_sent_on_responses() {
 /// Raw `additional_params` rank above typed options.
 #[test]
 fn raw_additional_params_beat_typed_options() {
-    let request = request_with::<OpenAi>(
+    let request = request_with::<OpenAiExt>(
         &OpenAiOptions::new().chat(ChatOptions::new().frequency_penalty(0.5)),
     )
     .additional_params(json!({"frequency_penalty": 1.0}));
@@ -138,14 +138,14 @@ fn raw_additional_params_beat_typed_options() {
 #[test]
 fn typed_logprobs_on_gpt_6_while_reasoning_fail_the_body_check() {
     let options = OpenAiOptions::new().chat(ChatOptions::new().logprobs(true));
-    let strict = request_with::<OpenAi>(&options)
+    let strict = request_with::<OpenAiExt>(&options)
         .options(GenerationOptions::default().reasoning(crate::completion::Effort::Medium));
     let error = encoded_body(&chat_wire(GPT_6_SOL), strict, Mode::Unary)
         .err()
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(error.contains("`logprobs`"), "{error}");
-    let lenient = request_with::<OpenAi>(&options)
+    let lenient = request_with::<OpenAiExt>(&options)
         .options(GenerationOptions::default().on_unsupported(OnUnsupported::Ignore));
     let body = encoded_body(&chat_wire(GPT_6_SOL), lenient, Mode::Unary)
         .unwrap_or_else(|error| panic!("{error}"));
@@ -156,12 +156,12 @@ fn typed_logprobs_on_gpt_6_while_reasoning_fail_the_body_check() {
     );
     let unset = encoded_body(
         &chat_wire(GPT_6_SOL),
-        request_with::<OpenAi>(&options),
+        request_with::<OpenAiExt>(&options),
         Mode::Unary,
     )
     .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(unset["logprobs"], true, "no option set: sent as built");
-    let off = request_with::<OpenAi>(&options).options(
+    let off = request_with::<OpenAiExt>(&options).options(
         GenerationOptions::default()
             .reasoning(Reasoning::Off)
             .on_unsupported(OnUnsupported::Error),
@@ -183,7 +183,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .modalities([Modality::Text])
         .audio("alloy", AudioFormat::Mp3)
         .web_search_options(WebSearchOptions::new().search_context_size(SearchContextSize::High));
-    assert_no_reserved_leaf::<OpenAi, _>(
+    assert_no_reserved_leaf::<OpenAiExt, _>(
         &[
             chat_wire(GPT_4_1_MINI),
             chat_wire("gpt-5.6"),
@@ -201,7 +201,7 @@ async fn chat_extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<OpenAi>()
+        .extras::<OpenAiExt>()
         .unwrap_or_else(|| panic!("an OpenAI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.service_tier.as_deref(), Some("default"));
@@ -212,7 +212,7 @@ async fn chat_extras_from_a_unary_recording() {
     let prompt = extras.prompt_tokens_details.unwrap_or_default();
     assert_eq!(prompt.cached_tokens, Some(0));
     assert_eq!(prompt.audio_tokens, Some(0));
-    assert!(reply.extras::<OpenRouter>().is_none());
+    assert!(reply.extras::<OpenRouterExt>().is_none());
 }
 
 /// A fully set shared section serializes under `"*"`, and no section is
@@ -227,10 +227,10 @@ fn the_shared_section_serializes_under_the_shared_key() {
             .safety_identifier("u-1"),
     );
     let entry = ProviderOptions::new()
-        .with::<OpenAi>(&options)
+        .with::<OpenAiExt>(&options)
         .expect("the options are sections");
     assert_eq!(
-        serde_json::to_value(entry.get::<OpenAi>()).expect("the sections serialize"),
+        serde_json::to_value(entry.get::<OpenAiExt>()).expect("the sections serialize"),
         json!({"*": {
             "store": false,
             "metadata": {"tenant": "acme"},
@@ -244,7 +244,7 @@ fn the_shared_section_serializes_under_the_shared_key() {
 #[test]
 fn empty_options_leave_no_entry() {
     let entry = ProviderOptions::new()
-        .with::<OpenAi>(&OpenAiOptions::default())
+        .with::<OpenAiExt>(&OpenAiOptions::default())
         .expect("the options are sections");
     assert!(entry.is_empty());
 }
@@ -281,7 +281,7 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<OpenAi>()
+            .extras::<OpenAiExt>()
             .unwrap_or_else(|| panic!("an OpenAI reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

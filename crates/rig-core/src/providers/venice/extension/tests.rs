@@ -15,7 +15,7 @@ fn chat_wire() -> Chat {
 }
 
 fn parameters(parameters: VeniceParameters) -> Value {
-    body_with::<Venice, _>(
+    body_with::<VeniceExt, _>(
         &chat_wire(),
         &VeniceOptions::new().venice_parameters(parameters),
     )["venice_parameters"]
@@ -78,7 +78,8 @@ fn include_venice_system_prompt_lands_under_venice_parameters() {
 
 #[test]
 fn prompt_cache_key_lands_at_top_level() {
-    let body = body_with::<Venice, _>(&chat_wire(), &VeniceOptions::new().prompt_cache_key("k1"));
+    let body =
+        body_with::<VeniceExt, _>(&chat_wire(), &VeniceOptions::new().prompt_cache_key("k1"));
     assert_eq!(body["prompt_cache_key"], "k1");
 }
 
@@ -98,7 +99,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
                 .return_search_results_as_documents(true)
                 .include_venice_system_prompt(true),
         );
-    assert_no_reserved_leaf::<Venice, _>(&[chat_wire()], &options);
+    assert_no_reserved_leaf::<VeniceExt, _>(&[chat_wire()], &options);
 }
 
 #[tokio::test]
@@ -109,7 +110,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Venice>()
+        .extras::<VeniceExt>()
         .unwrap_or_else(|| panic!("a Venice reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let cost = extras.cost.unwrap_or_default();
@@ -133,7 +134,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     const SCENARIO: &str = "turn_termination_matrix/{}_truncated_turn_reports_length_and_cap";
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<Venice>()
+            .extras::<VeniceExt>()
             .unwrap_or_else(|| panic!("a Venice reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

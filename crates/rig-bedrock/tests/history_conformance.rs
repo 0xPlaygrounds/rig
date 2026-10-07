@@ -714,7 +714,7 @@ fn raw_is_the_json_bedrock_sent() {
     // One extras type reads both replies.
     let read = |response: &rig_core::completion::CompletionResponse| {
         response
-            .extras::<rig_bedrock::extension::Bedrock>()
+            .extras::<rig_bedrock::extension::BedrockExt>()
             .expect("a Bedrock reply")
             .expect("the extras read")
     };

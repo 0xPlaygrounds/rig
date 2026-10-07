@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::providers::openai::wire::{OpenAIConfig, PERPLEXITY};
-use crate::providers::openrouter::extension::OpenRouter;
+use crate::providers::openrouter::extension::OpenRouterExt;
 use crate::test_utils::provider_extensions::{recorded_reply, reply_of};
 
 #[tokio::test]
@@ -13,7 +13,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Perplexity>()
+        .extras::<PerplexityExt>()
         .unwrap_or_else(|| panic!("a Perplexity reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let citations = extras.citations.unwrap_or_default();
@@ -42,7 +42,7 @@ async fn extras_from_a_unary_recording() {
     assert_eq!(cost.output_tokens_cost, Some(5e-5));
     assert_eq!(extras.search_context_size.as_deref(), Some("low"));
     assert_eq!(extras.images, None);
-    assert!(reply.extras::<OpenRouter>().is_none());
+    assert!(reply.extras::<OpenRouterExt>().is_none());
 }
 
 /// A stream's `raw` is the unary document, so the extras of the recorded
@@ -56,7 +56,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
         || OpenAIConfig::with_key(&PERPLEXITY, "key").chat(crate::providers::perplexity::SONAR);
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<Perplexity>()
+            .extras::<PerplexityExt>()
             .unwrap_or_else(|| panic!("a Perplexity reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

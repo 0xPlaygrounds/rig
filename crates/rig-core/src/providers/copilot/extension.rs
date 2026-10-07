@@ -5,10 +5,10 @@
 //!
 //! ```
 //! use rig_core::completion::CompletionResponse;
-//! use rig_core::providers::copilot::extension::Copilot;
+//! use rig_core::providers::copilot::extension::CopilotExt;
 //!
 //! fn billed(reply: &CompletionResponse) -> Option<u64> {
-//!     reply.extras::<Copilot>()?.ok()?.copilot_usage?.total_nano_aiu
+//!     reply.extras::<CopilotExt>()?.ok()?.copilot_usage?.total_nano_aiu
 //! }
 //! # let _ = billed;
 //! ```
@@ -22,9 +22,9 @@ use crate::message::Api;
 
 /// Copilot's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Copilot;
+pub struct CopilotExt;
 
-impl ProviderExtension for Copilot {
+impl ProviderExtension for CopilotExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = CopilotOptions;
     type Extras = CopilotExtras;

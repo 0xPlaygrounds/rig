@@ -5,7 +5,7 @@
 use super::*;
 use crate::completion::{CompletionRequest, ProviderOptions};
 use crate::providers::openai::wire::{DEEPSEEK, OpenAIConfig};
-use crate::providers::openrouter::extension::OpenRouter;
+use crate::providers::openrouter::extension::OpenRouterExt;
 use crate::test_utils::provider_extensions::{encoded_body, recorded_reply, reply_of};
 use crate::wire::Mode;
 
@@ -15,7 +15,7 @@ const MODEL: &str = crate::providers::deepseek::DEEPSEEK_FLASH;
 fn empty_options_change_nothing() {
     let wire = OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL);
     let options = ProviderOptions::new()
-        .with::<DeepSeek>(&DeepSeekOptions::new())
+        .with::<DeepSeekExt>(&DeepSeekOptions::new())
         .unwrap_or_else(|error| panic!("{error}"));
     assert!(options.is_empty());
     let with = encoded_body(
@@ -38,7 +38,7 @@ async fn extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<DeepSeek>()
+        .extras::<DeepSeekExt>()
         .unwrap_or_else(|| panic!("a DeepSeek reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.prompt_cache_hit_tokens, Some(256));
@@ -48,7 +48,7 @@ async fn extras_from_a_unary_recording() {
         extras.system_fingerprint.as_deref(),
         Some("aeb56401ca74e127821c4f9126dcb669")
     );
-    assert!(reply.extras::<OpenRouter>().is_none());
+    assert!(reply.extras::<OpenRouterExt>().is_none());
 }
 
 /// A stream's `raw` is the unary document, so the extras of the recorded
@@ -63,7 +63,7 @@ async fn extras_read_alike_from_a_recorded_stream() {
     let wire = || OpenAIConfig::with_key(&DEEPSEEK, "key").chat(MODEL);
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<DeepSeek>()
+            .extras::<DeepSeekExt>()
             .unwrap_or_else(|| panic!("a DeepSeek reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

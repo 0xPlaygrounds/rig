@@ -4,12 +4,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::moonshot::extension::{Moonshot, MoonshotChat, MoonshotOptions};
+//! use rig_core::providers::moonshot::extension::{MoonshotExt, MoonshotChat, MoonshotOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = MoonshotOptions::new().chat(MoonshotChat::new().prompt_cache_key("session-7"));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Moonshot>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<MoonshotExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -26,9 +26,9 @@ use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// Moonshot's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Moonshot;
+pub struct MoonshotExt;
 
-impl ProviderExtension for Moonshot {
+impl ProviderExtension for MoonshotExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = MoonshotOptions;
     type Extras = MoonshotExtras;

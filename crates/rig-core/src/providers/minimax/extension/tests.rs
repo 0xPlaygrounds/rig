@@ -9,7 +9,7 @@ use super::*;
 use crate::completion::{CompletionRequest, CompletionResponse, ProviderOptions};
 use crate::error::ProviderError;
 use crate::operation::Completion;
-use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{AnthropicConfig, MINIMAX as MESSAGES_MINIMAX, Messages};
 use crate::providers::minimax::{MINIMAX_M2_5, MINIMAX_M2_7};
 use crate::providers::openai::wire::{Chat, MINIMAX, OpenAIConfig};
@@ -30,13 +30,13 @@ fn options() -> MiniMaxOptions {
 
 #[test]
 fn reasoning_split_lands_at_top_level() {
-    let body = body_with::<MiniMax, _>(&chat_wire(MINIMAX_M2_7), &options());
+    let body = body_with::<MiniMaxExt, _>(&chat_wire(MINIMAX_M2_7), &options());
     assert_eq!(body["reasoning_split"], true);
 }
 
 #[test]
 fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
-    assert_no_reserved_leaf::<MiniMax, _>(
+    assert_no_reserved_leaf::<MiniMaxExt, _>(
         &[
             chat_wire(MINIMAX_M2_7),
             chat_wire(MINIMAX_M2_5),
@@ -57,7 +57,7 @@ async fn extras_from_a_built_reply() {
     )
     .await;
     let extras = reply
-        .extras::<MiniMax>()
+        .extras::<MiniMaxExt>()
         .unwrap_or_else(|| panic!("a MiniMax reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
@@ -104,7 +104,7 @@ fn sent(request: CompletionRequest) -> Result<Value, ProviderError> {
 #[test]
 fn messages_metadata_user_id_is_sent_on_the_messages_route() {
     let options = ProviderOptions::new()
-        .with::<MiniMax>(
+        .with::<MiniMaxExt>(
             &MiniMaxOptions::new().messages(MiniMaxMessages::new().metadata_user_id("u-1")),
         )
         .expect("MiniMax options are sections");
@@ -123,10 +123,10 @@ fn extras_read_the_messages_stop_fields() {
     });
     let response = folded(&reply);
     let extras = response
-        .extras::<MiniMax>()
+        .extras::<MiniMaxExt>()
         .expect("a MiniMax reply")
         .expect("the extras read");
     assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
-    assert!(response.extras::<Anthropic>().is_none());
+    assert!(response.extras::<AnthropicExt>().is_none());
 }

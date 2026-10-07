@@ -1403,9 +1403,9 @@ mod typed_extras_unary {
     use rig::completion::{CompletionRequest, CompletionResponse};
     use rig::driver::Transport;
     use rig::providers::deepseek::DEEPSEEK_FLASH;
-    use rig::providers::deepseek::extension::DeepSeek;
+    use rig::providers::deepseek::extension::DeepSeekExt;
     use rig::providers::openai::wire::{Chat, DEEPSEEK, OPENROUTER, OpenAIConfig};
-    use rig::providers::openrouter::extension::OpenRouter;
+    use rig::providers::openrouter::extension::OpenRouterExt;
     use rig::test_utils::RecordingHttpClient;
     use rig_core::operation::Completion;
     use rig_core::wire::Wire;
@@ -1464,13 +1464,13 @@ mod typed_extras_unary {
         )
         .await;
         let extras = openrouter_reply
-            .extras::<OpenRouter>()
+            .extras::<OpenRouterExt>()
             .expect("an OpenRouter reply has OpenRouter extras")
             .expect("the extras deserialize");
         assert_eq!(extras.provider.as_deref(), Some("Azure"));
         assert_eq!(extras.cost, Some(2.7e-6));
         assert_eq!(extras.native_finish_reason.as_deref(), Some("stop"));
-        assert!(openrouter_reply.extras::<DeepSeek>().is_none());
+        assert!(openrouter_reply.extras::<DeepSeekExt>().is_none());
 
         let deepseek_reply = unary(
             deepseek(),
@@ -1479,12 +1479,12 @@ mod typed_extras_unary {
         )
         .await;
         let extras = deepseek_reply
-            .extras::<DeepSeek>()
+            .extras::<DeepSeekExt>()
             .expect("a DeepSeek reply has DeepSeek extras")
             .expect("the extras deserialize");
         assert_eq!(extras.prompt_cache_hit_tokens, Some(256));
         assert_eq!(extras.prompt_cache_miss_tokens, Some(247));
-        assert!(deepseek_reply.extras::<OpenRouter>().is_none());
+        assert!(deepseek_reply.extras::<OpenRouterExt>().is_none());
     }
 }
 
@@ -1497,7 +1497,7 @@ mod anthropic_extras_both_ways {
     use futures::StreamExt;
     use rig::completion::{CompletionRequest, CompletionResponse};
     use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
-    use rig::providers::anthropic::extension::{Anthropic, AnthropicExtras, CacheCreation};
+    use rig::providers::anthropic::extension::{AnthropicExt, AnthropicExtras, CacheCreation};
     use rig::providers::anthropic::wire::AnthropicConfig;
     use rig::test_utils::MockStreamingClient;
     use rig_test_support::cassette_models::AnthropicModels;
@@ -1549,7 +1549,7 @@ mod anthropic_extras_both_ways {
         .await;
         [from_body, from_stream].map(|reply| {
             reply
-                .extras::<Anthropic>()
+                .extras::<AnthropicExt>()
                 .expect("an Anthropic reply has Anthropic extras")
                 .expect("the extras deserialize")
         })
@@ -1590,8 +1590,8 @@ mod typed_extras_streamed {
     use futures::StreamExt;
     use rig::completion::{CompletionRequest, CompletionResponse};
     use rig::driver::Transport;
-    use rig::providers::deepseek::extension::DeepSeek;
-    use rig::providers::openrouter::extension::OpenRouter;
+    use rig::providers::deepseek::extension::DeepSeekExt;
+    use rig::providers::openrouter::extension::OpenRouterExt;
     use rig::test_utils::MockStreamingClient;
     use rig_core::operation::Completion;
     use rig_core::wire::Wire;
@@ -1635,7 +1635,7 @@ mod typed_extras_streamed {
             prompt(),
         )
         .await
-        .extras::<OpenRouter>()
+        .extras::<OpenRouterExt>()
         .expect("an OpenRouter reply has OpenRouter extras")
         .expect("the extras deserialize");
         let from_body = unary(
@@ -1644,7 +1644,7 @@ mod typed_extras_streamed {
             prompt(),
         )
         .await
-        .extras::<OpenRouter>()
+        .extras::<OpenRouterExt>()
         .expect("an OpenRouter reply has OpenRouter extras")
         .expect("the extras deserialize");
         assert_eq!(from_stream.provider.as_deref(), Some("Azure"));
@@ -1659,7 +1659,7 @@ mod typed_extras_streamed {
         )
         .await;
         let extras = deepseek_reply
-            .extras::<DeepSeek>()
+            .extras::<DeepSeekExt>()
             .expect("a DeepSeek reply has DeepSeek extras")
             .expect("the extras deserialize");
         assert_eq!(extras.prompt_cache_hit_tokens, Some(4864));

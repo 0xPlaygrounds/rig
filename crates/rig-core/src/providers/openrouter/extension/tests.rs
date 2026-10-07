@@ -7,7 +7,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
-use crate::providers::deepseek::extension::DeepSeek;
+use crate::providers::deepseek::extension::DeepSeekExt;
 use crate::providers::openai::wire::{Chat, OPENROUTER, OpenAIConfig};
 use crate::test_utils::provider_extensions::{
     assert_no_reserved_leaf, body_with, encoded_body, recorded_reply, reply_of, request_with,
@@ -21,7 +21,7 @@ fn chat(model: &str) -> Chat {
 }
 
 fn body(options: &OpenRouterOptions) -> Value {
-    body_with::<OpenRouter, _>(&chat(MODEL), options)
+    body_with::<OpenRouterExt, _>(&chat(MODEL), options)
 }
 
 fn fallbacks(models: &[&str]) -> ModelFallbacks {
@@ -110,7 +110,7 @@ fn metadata_lands_under_metadata() {
 
 #[test]
 fn reasoning_exclude_joins_the_mapped_effort() {
-    let request = request_with::<OpenRouter>(&OpenRouterOptions::new().reasoning_exclude(true))
+    let request = request_with::<OpenRouterExt>(&OpenRouterOptions::new().reasoning_exclude(true))
         .options(GenerationOptions::default().reasoning(Effort::High));
     let body =
         encoded_body(&chat(MODEL), request, Mode::Unary).unwrap_or_else(|error| panic!("{error}"));
@@ -165,7 +165,7 @@ fn options_reach_the_responses_route() {
     let options = OpenRouterOptions::new()
         .provider(ProviderPreferences::new().only(["openai"]))
         .top_k(5);
-    let body = body_with::<OpenRouter, _>(&wire, &options);
+    let body = body_with::<OpenRouterExt, _>(&wire, &options);
     assert_eq!(body["provider"], json!({"only": ["openai"]}));
     assert_eq!(body["top_k"], 5);
 }
@@ -185,7 +185,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .top_a(0.1)
         .repetition_penalty(1.0)
         .user("u");
-    assert_no_reserved_leaf::<OpenRouter, _>(
+    assert_no_reserved_leaf::<OpenRouterExt, _>(
         &[chat(MODEL), chat("anthropic/claude-sonnet-4.6")],
         &options,
     );
@@ -196,7 +196,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
 
 #[test]
 fn model_fallbacks_serialize_model_and_models() {
-    let body = body_with::<OpenRouter, _>(
+    let body = body_with::<OpenRouterExt, _>(
         &chat("openai/gpt-4o"),
         &OpenRouterOptions::new().models(fallbacks(&[
             "anthropic/claude-sonnet-4.6",
@@ -212,7 +212,7 @@ fn model_fallbacks_serialize_model_and_models() {
 
 #[test]
 fn model_fallbacks_keep_the_request_model_override_as_primary() {
-    let mut request = request_with::<OpenRouter>(
+    let mut request = request_with::<OpenRouterExt>(
         &OpenRouterOptions::new().models(fallbacks(&["anthropic/claude-sonnet-4.6"])),
     );
     request.model = Some("google/gemini-2.5-flash".to_owned());
@@ -241,7 +241,7 @@ fn model_fallbacks_reject_an_empty_list() {
 /// Raw `additional_params` rank above typed options, so the raw list wins.
 #[test]
 fn raw_models_beat_typed_fallbacks() {
-    let request = request_with::<OpenRouter>(
+    let request = request_with::<OpenRouterExt>(
         &OpenRouterOptions::new().models(fallbacks(&["typed-fallback"])),
     )
     .additional_params(json!({"models": ["from-additional-params"]}));
@@ -261,7 +261,7 @@ fn model_fallbacks_are_omitted_when_unset() {
 
 #[test]
 fn model_fallbacks_survive_a_streaming_encode() {
-    let request = request_with::<OpenRouter>(
+    let request = request_with::<OpenRouterExt>(
         &OpenRouterOptions::new().models(fallbacks(&["anthropic/claude-sonnet-4.6"])),
     );
     let body = encoded_body(&chat("openai/gpt-4o"), request, Mode::Streaming)
@@ -283,7 +283,7 @@ async fn chat_extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<OpenRouter>()
+        .extras::<OpenRouterExt>()
         .unwrap_or_else(|| panic!("an OpenRouter reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.provider.as_deref(), Some("Azure"));
@@ -307,7 +307,7 @@ async fn chat_extras_from_a_unary_recording() {
         Some(&json!(0))
     );
     assert_eq!(extras.annotations, None);
-    assert!(reply.extras::<DeepSeek>().is_none());
+    assert!(reply.extras::<DeepSeekExt>().is_none());
 }
 
 #[tokio::test]
@@ -322,7 +322,7 @@ async fn responses_extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<OpenRouter>()
+        .extras::<OpenRouterExt>()
         .unwrap_or_else(|| panic!("an OpenRouter reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.cost, Some(2.85e-5));
@@ -348,7 +348,7 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
 
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<OpenRouter>()
+            .extras::<OpenRouterExt>()
             .unwrap_or_else(|| panic!("an OpenRouter reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

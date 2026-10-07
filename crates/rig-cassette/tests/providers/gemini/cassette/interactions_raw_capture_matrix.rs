@@ -38,7 +38,7 @@
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
 use rig::completion::FinishReason;
-use rig::providers::gemini::extension::{Gemini, InteractionStatus};
+use rig::providers::gemini::extension::{GeminiExt, InteractionStatus};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
@@ -172,7 +172,7 @@ async fn raw_exposes_lifecycle_fields() {
 
             // The typed extras read the same recorded interaction.
             let extras = response
-                .extras::<Gemini>()
+                .extras::<GeminiExt>()
                 .expect("an Interactions reply has Gemini extras")
                 .expect("the recorded interaction holds the extras' shape");
             assert_eq!(

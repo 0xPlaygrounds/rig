@@ -941,7 +941,7 @@ pub fn extras<P: ProviderExtension>(&self) -> Option<Result<P::Extras, serde_jso
 ```
 
 Each provider's marker, `Options` and `Extras` live in
-`providers::<p>::extension` (for example `rig::providers::openrouter::extension::{OpenRouter, OpenRouterOptions, OpenRouterExtras}`).
+`providers::<p>::extension` (for example `rig::providers::openrouter::extension::{OpenRouterExt, OpenRouterOptions, OpenRouterExtras}`).
 Each dialect constant and each `PROVIDER` take the provider module's one
 `PROVIDER_NAME` const, so the option key, the dialect name, the replay
 identity and `Origin` cannot drift apart. Today `"cohere"` is written twice
@@ -965,14 +965,14 @@ Cohere native) and four extension modules (OpenAI with two routes, OpenRouter,
 DeepSeek, Cohere with two routes). `cargo clippy -p rig-core --all-features --tests -- -D warnings`
 clean; 9 of 9 new tests and 897 rig-core tests passed; no existing test or
 snapshot moved. The captured errors:
-- `ProviderOptions::new().with::<DeepSeek>(&OpenRouterOptions::default())`: `error[E0308]: mismatched types ... expected '&DeepSeekOptions', found '&OpenRouterOptions'`;
+- `ProviderOptions::new().with::<DeepSeekExt>(&OpenRouterOptions::default())`: `error[E0308]: mismatched types ... expected '&DeepSeekOptions', found '&OpenRouterOptions'`;
 - `options.shared.logit_bias.insert(..)`: `error[E0609]: no field 'logit_bias' on type 'providers::openai::extension::Shared'`;
 - `request.provider_options.0.contains_key("openrouter")` in `chat.rs`: `error[E0616]: field '0' of struct 'ProviderOptions' is private`.
 
-The spike read `extras::<OpenRouter>()` from the recorded reply of
+The spike read `extras::<OpenRouterExt>()` from the recorded reply of
 `crates/rig-cassette/fixtures/cassettes/openrouter/agent/completion_smoke.yaml`
 (`provider = "OpenAI"`, `cost = 0.0000351`, `native_finish_reason = "stop"`),
-got `None` for `extras::<DeepSeek>()` on it, and read
+got `None` for `extras::<DeepSeekExt>()` on it, and read
 `prompt_cache_miss_tokens = 57` from a DeepSeek recording. It found that the
 merge must be deep, which section 2.1 adopts.
 
@@ -2272,7 +2272,7 @@ phase removed the gate.
 | `precedence::post_merge_rewrites_read_raw_keys` | P2 | a raw `additional_params.reasoning` still adds `include: ["reasoning.encrypted_content"]` on Responses, and a raw `thinking: {"type": "disabled"}` still keeps a forced `tool_choice: "required"` on DeepSeek: the post-merge rewrites read the merged body, as today |
 | `usage_cost_sum::cost_sums_only_when_every_turn_has_one` | P1 | the table in section 2.3: two priced turns sum each part, a priced and an unpriced turn give no cost, a fold from `Usage::default()` keeps the first turn's cost; token counters sum as today |
 | `catalog_validation::validate_rejects_a_reasoning_level_the_model_lacks` | P3 | Gemini 3.8 Flash rejects `Minimal` and takes `High`; Claude Haiku 4.5 rejects any effort and takes a budget inside 1024 and up |
-| `typed_extras_unary::openrouter_and_deepseek_extras_from_unary_recordings` | P4 | `extras::<OpenRouter>()` gives `provider = "Azure"`, `cost = 2.7e-6`, `native_finish_reason = "stop"`; `extras::<DeepSeek>()` gives 256 cache hits; each is `None` on the other's reply |
+| `typed_extras_unary::openrouter_and_deepseek_extras_from_unary_recordings` | P4 | `extras::<OpenRouterExt>()` gives `provider = "Azure"`, `cost = 2.7e-6`, `native_finish_reason = "stop"`; `extras::<DeepSeekExt>()` gives 256 cache hits; each is `None` on the other's reply |
 | `typed_extras_streamed::the_same_extras_from_streamed_recordings` | P5 | the same fields from the streamed recordings, and OpenRouter's agree across paths; DeepSeek gives 4864 hits |
 | `citations_and_cost::a_cohere_citation_reply_decodes_with_citations` | P6 | the recorded Cohere native reply has one citation spanning "Dock Seven" from document `harbor-record-1`, and replay sends the recorded native citation unchanged |
 | `citations_and_cost::reported_cost_wins` | P6 | OpenRouter's `usage.cost` becomes `Cost.total` on both paths |

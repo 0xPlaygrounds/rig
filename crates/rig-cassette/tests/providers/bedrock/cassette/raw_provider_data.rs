@@ -7,7 +7,7 @@
 //! only the trace says which policy fired and on what text.
 
 use rig::bedrock;
-use rig::bedrock::extension::{Bedrock, BedrockOptions, Guardrail, GuardrailTrace};
+use rig::bedrock::extension::{BedrockExt, BedrockOptions, Guardrail, GuardrailTrace};
 use rig::completion::{CompletionRequest, ProviderOptions};
 use serde_json::Value;
 
@@ -37,7 +37,7 @@ async fn guardrail_trace_survives_into_raw() {
                     .max_tokens(64)
                     .provider_options(
                         ProviderOptions::new()
-                            .with::<Bedrock>(&guardrail)
+                            .with::<BedrockExt>(&guardrail)
                             .expect("the options serialize"),
                     );
 
@@ -62,7 +62,7 @@ async fn guardrail_trace_survives_into_raw() {
             );
 
             let extras = response
-                .extras::<Bedrock>()
+                .extras::<BedrockExt>()
                 .expect("a Bedrock reply")
                 .expect("the extras read");
             assert_eq!(extras.stop_reason.as_deref(), Some("guardrail_intervened"));

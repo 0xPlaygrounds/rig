@@ -4,7 +4,7 @@ use serde_json::json;
 
 use super::*;
 use crate::providers::copilot::CopilotConfig;
-use crate::providers::openai::extension::OpenAi;
+use crate::providers::openai::extension::OpenAiExt;
 use crate::test_utils::provider_extensions::{recorded_reply, reply_of};
 
 fn copilot() -> CopilotConfig {
@@ -19,7 +19,7 @@ async fn chat_extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Copilot>()
+        .extras::<CopilotExt>()
         .unwrap_or_else(|| panic!("a Copilot reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let usage = extras.copilot_usage.unwrap_or_default();
@@ -39,7 +39,7 @@ async fn chat_extras_from_a_unary_recording() {
         filters.first().map(|result| &result["prompt_index"]),
         Some(&json!(0))
     );
-    assert!(reply.extras::<OpenAi>().is_none());
+    assert!(reply.extras::<OpenAiExt>().is_none());
 }
 
 #[tokio::test]
@@ -50,7 +50,7 @@ async fn responses_extras_from_a_unary_recording() {
     )
     .await;
     let extras = reply
-        .extras::<Copilot>()
+        .extras::<CopilotExt>()
         .unwrap_or_else(|| panic!("a Copilot reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let usage = extras.copilot_usage.unwrap_or_default();
@@ -78,7 +78,7 @@ async fn chat_extras_from_a_recorded_stream() {
     )
     .await;
     let extras = reply
-        .extras::<Copilot>()
+        .extras::<CopilotExt>()
         .unwrap_or_else(|| panic!("a Copilot reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let filters = extras.prompt_filter_results.unwrap_or_default();

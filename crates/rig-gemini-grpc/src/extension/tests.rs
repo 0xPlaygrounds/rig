@@ -25,7 +25,7 @@ fn encoded(
         .options(GenerationOptions::default().on_unsupported(policy))
         .provider_options(
             ProviderOptions::new()
-                .with::<GeminiGrpc>(&GeminiGrpcOptions::from(options))
+                .with::<GeminiGrpcExt>(&GeminiGrpcOptions::from(options))
                 .expect("Gemini options are sections"),
         );
     let wire = GenerateContent::new("gemini-2.5-flash");
@@ -260,7 +260,7 @@ fn extras_read_a_grpc_reply() {
     )
     .expect("the reply decodes");
     let extras = response
-        .extras::<GeminiGrpc>()
+        .extras::<GeminiGrpcExt>()
         .expect("a gRPC reply has gRPC extras")
         .expect("the reply holds the extras' shape");
     assert_eq!(
@@ -285,7 +285,7 @@ fn extras_read_a_grpc_reply() {
     assert_eq!(detail.token_count, Some(67));
     assert!(
         response
-            .extras::<rig_core::providers::gemini::extension::Gemini>()
+            .extras::<rig_core::providers::gemini::extension::GeminiExt>()
             .is_none(),
         "a gRPC reply is not the Gemini API's"
     );

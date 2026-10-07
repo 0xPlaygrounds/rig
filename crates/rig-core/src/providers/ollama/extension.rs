@@ -5,13 +5,13 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::ollama::extension::{KeepAlive, Ollama, OllamaOptions};
+//! use rig_core::providers::ollama::extension::{KeepAlive, OllamaExt, OllamaOptions};
 //!
 //! let options = OllamaOptions::default()
 //!     .keep_alive(KeepAlive::duration("5m"))
 //!     .num_ctx(8192);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Ollama>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<OllamaExt>(&options)?);
 //! # Ok::<(), rig_core::completion::OptionsError>(())
 //! ```
 
@@ -22,10 +22,10 @@ use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 
 /// The `ollama` provider: its key, [`OllamaOptions`] and [`OllamaExtras`].
-#[derive(Debug)]
-pub enum Ollama {}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct OllamaExt;
 
-impl ProviderExtension for Ollama {
+impl ProviderExtension for OllamaExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = OllamaOptions;
     type Extras = OllamaExtras;

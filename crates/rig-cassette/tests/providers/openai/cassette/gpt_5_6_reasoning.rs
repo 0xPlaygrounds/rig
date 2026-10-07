@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use super::super::support::with_openai_cassette;
 use rig::completion::{CompletionRequest, Effort, GenerationOptions, ProviderOptions};
 use rig::providers::openai::extension::{
-    OpenAi, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, ReasoningContext, ReasoningMode,
+    OpenAiExt, OpenAiExtras, OpenAiOptions, OpenAiResponsesOptions, ReasoningContext, ReasoningMode,
 };
 
 const PROMPT: &str = "Reply with exactly: OK";
@@ -64,7 +64,7 @@ async fn prompt_with_reasoning(
     responses: OpenAiResponsesOptions,
 ) -> (CompletionResponse, OpenAiExtras) {
     let options = ProviderOptions::new()
-        .with::<OpenAi>(&OpenAiOptions::default().responses(responses))
+        .with::<OpenAiExt>(&OpenAiOptions::default().responses(responses))
         .expect("the options are sections");
     let request = CompletionRequest::new(PROMPT)
         .options(GenerationOptions::default().reasoning(effort))
@@ -75,7 +75,7 @@ async fn prompt_with_reasoning(
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
     let extras = response
-        .extras::<OpenAi>()
+        .extras::<OpenAiExt>()
         .expect("the reply is OpenAI's")
         .expect("the reply holds the extras");
 

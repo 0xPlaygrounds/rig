@@ -6,13 +6,13 @@
 //! [`GenerationOptions`]: rig_core::completion::GenerationOptions
 //!
 //! ```
-//! use rig_bedrock::extension::{Bedrock, BedrockOptions, Guardrail, GuardrailTrace};
+//! use rig_bedrock::extension::{BedrockExt, BedrockOptions, Guardrail, GuardrailTrace};
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
 //!
 //! let options = BedrockOptions::default()
 //!     .guardrail(Guardrail::new("gr-1", "DRAFT").trace(GuardrailTrace::Enabled));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Bedrock>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<BedrockExt>(&options)?);
 //! # Ok::<(), rig_core::completion::OptionsError>(())
 //! ```
 
@@ -27,10 +27,10 @@ use serde_json::Value;
 
 /// The `aws_bedrock` provider: its key, [`BedrockOptions`] and
 /// [`BedrockExtras`].
-#[derive(Debug)]
-pub enum Bedrock {}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BedrockExt;
 
-impl ProviderExtension for Bedrock {
+impl ProviderExtension for BedrockExt {
     const PROVIDER: &'static str = crate::completion::PROVIDER_NAME;
     type Options = BedrockOptions;
     type Extras = BedrockExtras;

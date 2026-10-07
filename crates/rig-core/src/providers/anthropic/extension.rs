@@ -1,5 +1,5 @@
 //! Typed request options and reply extras for Anthropic's own Messages API.
-//! [`Anthropic`] keys them by [`PROVIDER_NAME`](super::PROVIDER_NAME); the
+//! [`AnthropicExt`] keys them by [`PROVIDER_NAME`](super::PROVIDER_NAME); the
 //! Messages wire reads the entry only when its dialect is Anthropic, so a
 //! gateway speaking the same format never receives them.
 //!
@@ -9,14 +9,14 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::anthropic::extension::{Anthropic, AnthropicOptions, InferenceGeo};
+//! use rig_core::providers::anthropic::extension::{AnthropicExt, AnthropicOptions, InferenceGeo};
 //!
 //! # fn run() -> Result<(), rig_core::completion::OptionsError> {
 //! let options = AnthropicOptions::default()
 //!     .metadata_user_id("user-7")
 //!     .inference_geo(InferenceGeo::Us);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Anthropic>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<AnthropicExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -53,10 +53,10 @@ pub const CACHE_DIAGNOSIS_BETA: &str = "cache-diagnosis-2026-04-07";
 const FAST_MODELS: &[&str] = &[CLAUDE_OPUS_5_5, CLAUDE_OPUS_5, CLAUDE_OPUS_4_8];
 
 /// Anthropic's typed options and extras.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Anthropic;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct AnthropicExt;
 
-impl ProviderExtension for Anthropic {
+impl ProviderExtension for AnthropicExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = AnthropicOptions;
     type Extras = AnthropicExtras;

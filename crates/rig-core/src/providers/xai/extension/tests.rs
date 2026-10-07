@@ -20,7 +20,7 @@ fn config() -> OpenAIConfig {
 
 #[test]
 fn prompt_cache_key_lands_on_chat() {
-    let body = body_with::<Xai, _>(
+    let body = body_with::<XaiExt, _>(
         &config().chat(MODEL),
         &XaiOptions::new().prompt_cache_key("k"),
     );
@@ -29,7 +29,7 @@ fn prompt_cache_key_lands_on_chat() {
 
 #[test]
 fn prompt_cache_key_lands_on_responses() {
-    let body = body_with::<Xai, _>(
+    let body = body_with::<XaiExt, _>(
         &config().responses(MODEL),
         &XaiOptions::new().prompt_cache_key("k"),
     );
@@ -39,8 +39,11 @@ fn prompt_cache_key_lands_on_responses() {
 #[test]
 fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
     let options = XaiOptions::new().prompt_cache_key("k");
-    assert_no_reserved_leaf::<Xai, _>(&[config().chat(MODEL), config().chat("grok-3")], &options);
-    assert_no_reserved_leaf::<Xai, _>(&[config().responses(MODEL)], &options);
+    assert_no_reserved_leaf::<XaiExt, _>(
+        &[config().chat(MODEL), config().chat("grok-3")],
+        &options,
+    );
+    assert_no_reserved_leaf::<XaiExt, _>(&[config().responses(MODEL)], &options);
 }
 
 #[tokio::test]
@@ -51,7 +54,7 @@ async fn responses_extras_from_unary_recordings() {
     )
     .await;
     let extras = reply
-        .extras::<Xai>()
+        .extras::<XaiExt>()
         .unwrap_or_else(|| panic!("an xAI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.cost_in_usd_ticks, Some(6_734_000));
@@ -64,7 +67,7 @@ async fn responses_extras_from_unary_recordings() {
     )
     .await;
     let extras = reply
-        .extras::<Xai>()
+        .extras::<XaiExt>()
         .unwrap_or_else(|| panic!("an xAI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.num_server_side_tools_used, Some(2));
@@ -86,7 +89,7 @@ async fn chat_extras_from_a_built_reply() {
     )
     .await;
     let extras = reply
-        .extras::<Xai>()
+        .extras::<XaiExt>()
         .unwrap_or_else(|| panic!("an xAI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.cost_in_usd_ticks, Some(1200));
@@ -118,7 +121,7 @@ async fn chat_extras_read_alike_from_a_built_stream() {
     ]);
     let read = |reply: crate::completion::CompletionResponse| {
         reply
-            .extras::<Xai>()
+            .extras::<XaiExt>()
             .unwrap_or_else(|| panic!("an xAI reply"))
             .unwrap_or_else(|error| panic!("{error}"))
     };

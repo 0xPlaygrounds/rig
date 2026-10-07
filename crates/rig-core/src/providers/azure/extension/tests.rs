@@ -20,7 +20,7 @@ fn chat_wire(api_version: &str) -> Chat {
 }
 
 fn body(options: &AzureOptions) -> Value {
-    body_with::<Azure, _>(&chat_wire("2025-04-01-preview"), options)
+    body_with::<AzureExt, _>(&chat_wire("2025-04-01-preview"), options)
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
     let options = AzureOptions::new()
         .chat(ChatOptions::new().logit_bias(1, 1).presence_penalty(0.2))
         .data_source(json!({"type": "azure_search"}));
-    assert_no_reserved_leaf::<Azure, _>(
+    assert_no_reserved_leaf::<AzureExt, _>(
         &[chat_wire("2024-10-21"), chat_wire("2025-04-01-preview")],
         &options,
     );
@@ -59,7 +59,7 @@ async fn extras_from_a_recorded_content_filtered_reply() {
     )
     .await;
     let extras = reply
-        .extras::<Azure>()
+        .extras::<AzureExt>()
         .unwrap_or_else(|| panic!("an Azure reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     let prompt_filter = extras.prompt_filter_results.unwrap_or_default();

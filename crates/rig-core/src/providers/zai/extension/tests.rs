@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Reasoning};
-use crate::providers::anthropic::extension::Anthropic;
+use crate::providers::anthropic::extension::AnthropicExt;
 use crate::providers::anthropic::wire::{AnthropicConfig, Messages, ZAI as MESSAGES_ZAI};
 use crate::providers::openai::wire::{Chat, OpenAIConfig, ZAI};
 use crate::test_utils::provider_extensions::{
@@ -21,7 +21,7 @@ fn chat_wire() -> Chat {
 }
 
 fn body(chat: ZaiChat) -> Value {
-    body_with::<Zai, _>(&chat_wire(), &ZaiOptions::new().chat(chat))
+    body_with::<ZaiExt, _>(&chat_wire(), &ZaiOptions::new().chat(chat))
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn user_id_lands_at_top_level() {
 #[test]
 fn clear_thinking_joins_the_mapped_thinking() {
     let request =
-        request_with::<Zai>(&ZaiOptions::new().chat(ZaiChat::new().clear_thinking(false)))
+        request_with::<ZaiExt>(&ZaiOptions::new().chat(ZaiChat::new().clear_thinking(false)))
             .options(GenerationOptions::default().reasoning(Reasoning::Off));
     let body =
         encoded_body(&chat_wire(), request, Mode::Unary).unwrap_or_else(|error| panic!("{error}"));
@@ -62,7 +62,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
         .request_id("r")
         .user_id("u")
         .clear_thinking(true);
-    assert_no_reserved_leaf::<Zai, _>(
+    assert_no_reserved_leaf::<ZaiExt, _>(
         &[
             chat_wire(),
             OpenAIConfig::with_key(&ZAI, "key").chat("glm-5"),
@@ -75,7 +75,7 @@ fn no_option_writes_a_leaf_the_request_or_a_mapped_option_owns() {
 async fn extras_from_a_built_reply() {
     let reply = reply_of(chat_wire(), chat_reply(json!({"request_id": "req-9"}))).await;
     let extras = reply
-        .extras::<Zai>()
+        .extras::<ZaiExt>()
         .unwrap_or_else(|| panic!("a Z.AI reply"))
         .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(extras.request_id.as_deref(), Some("req-9"));
@@ -108,10 +108,10 @@ fn extras_read_the_messages_stop_fields() {
     });
     let response = folded(&reply);
     let extras = response
-        .extras::<Zai>()
+        .extras::<ZaiExt>()
         .expect("a Z.AI reply")
         .expect("the extras read");
     assert_eq!(extras.stop_reason.as_deref(), Some("stop_sequence"));
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
-    assert!(response.extras::<Anthropic>().is_none());
+    assert!(response.extras::<AnthropicExt>().is_none());
 }

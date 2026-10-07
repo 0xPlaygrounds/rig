@@ -15,9 +15,9 @@ fn a_fully_set_section_serializes_under_the_responses_route() {
         .client_metadata("originator", "rig")
         .access_programs(AccessPrograms::cyber(CyberAccess::Standard));
     let entry = ProviderOptions::new()
-        .with::<ChatGpt>(&options)
+        .with::<ChatGptExt>(&options)
         .expect("the options are sections");
-    let sections = serde_json::to_value(entry.get::<ChatGpt>()).expect("the sections serialize");
+    let sections = serde_json::to_value(entry.get::<ChatGptExt>()).expect("the sections serialize");
     assert_eq!(
         sections,
         json!({"openai.responses": {

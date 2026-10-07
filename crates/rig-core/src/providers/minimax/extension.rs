@@ -5,12 +5,12 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::minimax::extension::{MiniMax, MiniMaxChat, MiniMaxOptions};
+//! use rig_core::providers::minimax::extension::{MiniMaxExt, MiniMaxChat, MiniMaxOptions};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let options = MiniMaxOptions::new().chat(MiniMaxChat::new().reasoning_split(true));
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<MiniMax>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<MiniMaxExt>(&options)?);
 //! # let _ = request;
 //! # Ok(())
 //! # }
@@ -28,9 +28,9 @@ use crate::providers::anthropic::wire::MESSAGES_API;
 
 /// MiniMax's extension marker.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct MiniMax;
+pub struct MiniMaxExt;
 
-impl ProviderExtension for MiniMax {
+impl ProviderExtension for MiniMaxExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = MiniMaxOptions;
     type Extras = MiniMaxExtras;

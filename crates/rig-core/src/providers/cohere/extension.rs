@@ -5,13 +5,13 @@
 //!
 //! ```
 //! use rig_core::completion::{CompletionRequest, ProviderOptions};
-//! use rig_core::providers::cohere::extension::{CitationMode, Cohere, CohereOptions};
+//! use rig_core::providers::cohere::extension::{CitationMode, CohereExt, CohereOptions};
 //!
 //! let options = CohereOptions::default()
 //!     .frequency_penalty(0.2)
 //!     .citation_mode(CitationMode::Fast);
 //! let request = CompletionRequest::new("hi")
-//!     .provider_options(ProviderOptions::new().with::<Cohere>(&options)?);
+//!     .provider_options(ProviderOptions::new().with::<CohereExt>(&options)?);
 //! # Ok::<(), rig_core::completion::OptionsError>(())
 //! ```
 
@@ -23,10 +23,10 @@ use crate::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use crate::message::Api;
 
 /// The `cohere` provider: its key, [`CohereOptions`] and [`CohereExtras`].
-#[derive(Debug)]
-pub enum Cohere {}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CohereExt;
 
-impl ProviderExtension for Cohere {
+impl ProviderExtension for CohereExt {
     const PROVIDER: &'static str = super::PROVIDER_NAME;
     type Options = CohereOptions;
     type Extras = CohereExtras;

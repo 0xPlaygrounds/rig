@@ -34,7 +34,7 @@ fn every_field() -> BedrockOptions {
 fn with(options: &BedrockOptions) -> CompletionRequest {
     CompletionRequest::new("q").provider_options(
         ProviderOptions::new()
-            .with::<Bedrock>(options)
+            .with::<BedrockExt>(options)
             .expect("the options serialize"),
     )
 }
@@ -166,11 +166,11 @@ fn leaves(value: &Value, at: &str, out: &mut BTreeSet<String>) {
 #[test]
 fn no_field_writes_a_reserved_leaf() {
     let sections = ProviderOptions::new()
-        .with::<Bedrock>(&every_field())
+        .with::<BedrockExt>(&every_field())
         .expect("the options serialize");
     let mut provider = BTreeSet::new();
     leaves(
-        &sections.get::<Bedrock>().expect("an entry")[rig_core::completion::SHARED],
+        &sections.get::<BedrockExt>().expect("an entry")[rig_core::completion::SHARED],
         "",
         &mut provider,
     );
