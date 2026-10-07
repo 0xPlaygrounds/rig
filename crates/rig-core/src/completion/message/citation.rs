@@ -51,8 +51,10 @@ impl Citation {
     }
 }
 
-/// A byte range of a text, on character boundaries. Only the fold and
-/// [`Text::span`] make one.
+/// A byte range of a text, on character boundaries. The fold and
+/// [`Text::span`] make one, and stored history deserializes one;
+/// [`Text::with_citations`] drops any that is off a character boundary of
+/// its text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Span {
     start: usize,

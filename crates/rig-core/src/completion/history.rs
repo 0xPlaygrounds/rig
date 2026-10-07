@@ -178,7 +178,11 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
     /// How this wire answers each option of `request`, whose resolved model
     /// and typed fields an answer may depend on. No default: every
     /// completion wire writes one, destructuring `fields` with no `..`, so a
-    /// new option fails to compile until the wire answers for it.
+    /// new option fails to compile until the wire answers for it. An unset
+    /// option answers `Mapping::Nothing`, so wrap each answer in
+    /// `Mapping::of` (`Mapping::of_stop` for `stop`), as in
+    /// `seed: Mapping::of(seed, |_| Mapping::unsupported("no such field"))`;
+    /// any other answer for an unset option fails every request.
     /// `Completion::prepare` reports each refusal before the wire encodes.
     fn map_options(
         &self,

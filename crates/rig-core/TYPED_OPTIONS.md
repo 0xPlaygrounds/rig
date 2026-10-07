@@ -177,7 +177,10 @@ listed with what covers it.
   takes byte offsets into that text and refuses a range off a character
   boundary, but it cannot know what the offsets meant. Decoders cannot call
   either: the `extras-off-decode-path` guard also rejects them under the
-  `providers` tree (section 5).
+  `providers` tree (section 5). `Span` and `Citation` derive `Deserialize`
+  for stored history, so `serde_json::from_value` builds either without the
+  guard seeing a constructor; `Text::with_citations` still drops a span off
+  a character boundary of its text.
 
 ## 2. Fixed decisions
 
@@ -756,6 +759,13 @@ pub struct Cost { pub input: f64, pub output: f64, pub cache_read: f64, pub cach
   request model (`Origin::provider`, `Origin::model`; a dated snapshot of a
   listed id is priced as that id). It needs both input and output tokens.
 - Otherwise it is `None`.
+- A catalog-priced cost is the standard-tier list price of the counted
+  tokens. It leaves out the service tier (flex, priority, batch),
+  long-context price tiers, hosted-tool fees (Anthropic's web search bills
+  USD 0.01 per search beside the tokens) and per-retention cache-write
+  prices (section 2.4), so it is a lower bound of the bill. A cost the
+  provider reports (OpenRouter's plugin fee, Venice's search fee) includes
+  what the provider bills.
 - Cost is never part of token arithmetic: no counter is derived from it and
   it is derived from no counter except through `Pricing`.
 - A provider that reports only a total gives `total` its figure and the
@@ -798,10 +808,10 @@ with `cost` always `None`, so every existing sum is unchanged. The
 | `Catalog::resolve("anthropic/claude-opus-5-5")` collides with `ProviderRef`'s grammar `vendor[/format]:model` (`crates/rig-core/src/providers/registry.rs:623-636`), where `/` separates the format. | `resolve` reads `vendor[/format]:model` when the text holds a `:`, and otherwise splits at the first `/` as `vendor/model` (so `openrouter/anthropic/claude-sonnet-4.5` is OpenRouter's model `anthropic/claude-sonnet-4.5`). | P3 |
 | `ModelSpec.provider: ProviderId` cannot name `aws_bedrock`, `vertexai`, `gemini-grpc` or `candle`: the registry registers the OpenAI, Anthropic and Gemini formats only (`crates/rig-core/src/providers/registry.rs:63-73`). Guarantee 4 still needs entries for rig-bedrock's constants. | Settled in P3: a catalog-only `ProviderId` kind for `aws_bedrock`, `vertexai`, `gemini-grpc`, `candle` and `voyageai`, made only by `ProviderId::catalog` and the catalog. `ProviderId::new` and `resolve` keep rejecting them, `ProviderRef::registered` refuses them, `get` and `validate` work, and `connect` returns `ConnectError::CatalogOnly` naming where the models are served. It has no format and no preset, so `ProviderId::format`, `config` and `api_key_env` return `Option`; `ProviderRef` keeps its registered preset privately, so `ProviderRef::config` stays total and `ProviderRef::provider` returns its `Provider` by value. | P3 |
 | The harness-switch test asks for a long cache on Gemini, and GenerateContent has no request field for it: explicit caching is a separate `cachedContents` resource (`crates/rig-core/src/providers/gemini/cached_content.rs:388-430`). | `CacheRetention::Long` on Gemini GenerateContent, Vertex, gRPC and Interactions is `UnsupportedOption`. The test runs under `OnUnsupported::Ignore` and asserts the warning, and asserts the error under `Error`. Mapping `Long` to the `Caching` transport is a later extension. | P2 |
-| Decision D's text reads extras as one `Deserialize` of `raw`; decision B needs per-route dispatch (`OpenAiExtras::{Chat, Responses}`). | B's `ReplyExtras::from_reply(api, raw)` is the contract. A one-route provider implements it as `serde_json::from_value(raw.clone())`. | P4 |
+| Decision D's text reads extras as one `Deserialize` of `raw`; decision B needs per-route dispatch (`OpenAiExtras::{Chat, Responses}`). | B's `ReplyExtras::from_reply(api, raw)` is the contract. A provider implements it by reading each field with `reply_field`, which treats absent, `null` and an empty list alike (section 4), so one `Extras` reads both paths. | P4 |
 | `Pricing` has one `cache_write` price; Anthropic and Bedrock bill 1 h writes at 2x input and 5 min writes at 1.25x, and Anthropic's reply splits them (`usage.cache_creation`). Tier, fast-mode, US-only and context-tier prices are absent too. | P6 prices every write at `cache_write` and documents catalog cost as a lower bound for those cases. `Pricing` is `#[non_exhaustive]`, so a later PR can add `cache_write_1h` and tiers without a break. | P6 |
 | Decision C gives `Pricing` four prices, "input, output, cache_read, cache_write", none optional. models.dev rows often carry `cost.input` and `cost.output` with no `cache_read` or `cache_write`, and a `0.0` would claim cache reads are free. | Settled in P3: `Pricing { input: f64, output: f64, cache_read: Option<f64>, cache_write: Option<f64> }`. `None` means unknown, and cost prices those tokens at `input` (section 2.3). | P3 |
-| The prompt fixes P1 as the only breaking phase, and also requires each phase to delete the knobs it replaces. P2 deletes the knobs `GenerationOptions` fully replaces, and only those: `Messages::with_automatic_caching`, `with_automatic_caching_1h` (`crates/rig-core/src/providers/anthropic/wire.rs:410`, `:429`) and the pub fields `automatic_caching`, `automatic_caching_ttl` (`wire.rs:367-369`), replaced by `cache(Short)` and `cache(Long)`; `Chat::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/chat.rs:266`), `OpenAiWire::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/route.rs:109`) and `Converse::with_prompt_caching` (`crates/rig-bedrock/src/completion.rs:199`), replaced by `cache(Short)`. P4 deletes the setters a typed body option replaces: `Converse::with_guardrail` (`crates/rig-bedrock/src/completion.rs:210`), `GenerateContent::with_cached_content` (`crates/rig-core/src/providers/gemini/completion.rs:121`) and Cohere's `with_strict_tools` (`crates/rig-core/src/providers/cohere/wire.rs:123-128`). Both also change wire bodies for callers who set no option (section 12.0). | P2 and P4 are titled `feat(...)!` and carry a Migration entry for every deleted item and every body change in section 12.0. Keeping a knob next to the option that replaces it would leave two ways to set one thing. Knobs that choose placement rather than retention (Anthropic `with_prompt_caching`, `with_static_prefix_cache_ttl`) are not replaced, so they stay unchanged. **For the user to confirm.** | P2, P4 |
+| The prompt fixes P1 as the only breaking phase, and also requires each phase to delete the knobs it replaces. P2 deletes the knobs `GenerationOptions` fully replaces, and only those: `Messages::with_automatic_caching`, `with_automatic_caching_1h` (`crates/rig-core/src/providers/anthropic/wire.rs:410`, `:429`) and the pub fields `automatic_caching`, `automatic_caching_ttl` (`wire.rs:367-369`), replaced by `cache(Short)` and `cache(Long)`; `Chat::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/chat.rs:266`), `OpenAiWire::with_prompt_caching` (`crates/rig-core/src/providers/openai/wire/route.rs:109`) and `Converse::with_prompt_caching` (`crates/rig-bedrock/src/completion.rs:199`), replaced by `cache(Short)`. P4 deletes the one setter a typed body option replaces: `Converse::with_guardrail` (`crates/rig-bedrock/src/completion.rs:210`). `GenerateContent::with_cached_content` and Cohere's `with_strict_tools` stay: one is the one typed way to name a cache (R19), and the other is an encoder directive, not a body key (section 3). Both also change wire bodies for callers who set no option (section 12.0). | P2 and P4 are titled `feat(...)!` and carry a Migration entry for every deleted item and every body change in section 12.0. Keeping a knob next to the option that replaces it would leave two ways to set one thing. Knobs that choose placement rather than retention (Anthropic `with_prompt_caching`, `with_static_prefix_cache_ttl`) are not replaced, so they stay unchanged. **For the user to confirm.** | P2, P4 |
 | The prompt lists "the copied caching state behind `Model::thought_replay`" among the knobs to absorb (`crates/rig-core/src/client/gemini_caching.rs:69`, `:84-92`, `:354-359`). `ThoughtReplay` edits the encoded `contents`; it is neither a portable option nor a body key, and the caching transport sees only the encoded request. | Not absorbed in this stack. `thought_replay` stays a wire setter, and the "call it before `caching`" rule stays documented. Absorbing it needs a transport API that reads per-request wire settings, which none of the five additions provides. **For the user to confirm.** | none |
 
 Conflicts with open pull requests, which this stack does not build on:
@@ -1114,10 +1124,16 @@ impl<Op: Operation<Emit = Free>> Out<'_, Op> { pub fn raw(&mut self, raw: serde_
 
 One reassembler per API: `openai::wire::chat::document::ChatCompletion`
 (`"openai.chat"`), `openai::responses_api::streaming::document::Response`,
-`anthropic::document::Message`, `gemini::document::GenerateContentResponse`
-(shared by Vertex and gRPC), `gemini::interactions_api::document::Interaction`,
-`cohere::document::ChatResponse`, `ollama::document::ChatResponse`,
-`rig_bedrock::document::ConverseOutput` and an identity reassembler for Candle.
+`anthropic::streaming::document::Message`,
+`gemini::streaming::document::GenerateContentResponse` (shared by gRPC;
+Vertex wraps it in `rig_vertexai`'s `VertexDocument`),
+`gemini::interactions_api::streaming::document::Interaction`,
+`cohere::streaming::document::ChatResponse` (with the per-route
+`cohere::wire::document::Routed`), `ollama::streaming::document::ChatResponse`,
+`rig_bedrock::streaming::document::ConverseOutput` and an identity
+reassembler for Candle. The two Gemini documents and
+`openai::wire::OpenAiReassembler` are public; the others sit in
+`pub(crate)` modules and are named only as `<W as Wire>::Reassembler`.
 `GenerateContentDecoder::keep_raw` is deleted; the unary values it and
 Candle's `out.raw` carried move to the transports, as above. P5 is breaking because every
 `Wire` impl, companion crates included, must name its `Reassembler`.
@@ -1981,8 +1997,12 @@ Recorded pairs exist for `anthropic`, `bedrock`, `cohere`, `copilot`,
 Interactions and the ChatGPT backend have no pair. Where a dialect's unary body states a field its
 stream never sends (OpenRouter and Mistral keep the stream `index` on calls,
 llama.cpp, Mistral and Venice an empty `content` beside calls, Groq
-`x_groq.seed`, Venice `venice_parameters`, Doubleword `service_tier`), the
-parity row names the pointer as one the two answers cannot share.
+`x_groq.seed`, Venice `venice_parameters` and
+`choices[].message.reasoning_encrypted`, Doubleword `service_tier`), the
+parity row names the pointer as one the two answers cannot share. Venice
+states `reasoning_encrypted` in a unary reply only (its stream deltas carry
+`content`, `reasoning_content` and `role`), so its row names that pointer
+too, although the recorded pair predates the field.
 
 ## 10. Citations per provider
 
@@ -2028,7 +2048,9 @@ writes and storage from caller rates; P6 builds `Cost` from catalog `Pricing`
 and keeps `CacheCost` for storage token-hours, which `Pricing` cannot hold.
 Pricing by the served tier (pi multiplies by 2 for priority and 0.5 for flex,
 `references/pi/packages/ai/src/api/openai-responses.ts:389-415`) is a later
-extension.
+extension. Until then a "catalog" cost is the standard-tier list price of
+the tokens and leaves out the served tier, long-context tiers and
+hosted-tool fees such as Anthropic's USD 0.01 per web search (section 2.3).
 
 ## 12. Existing knobs each phase absorbs and deletes
 

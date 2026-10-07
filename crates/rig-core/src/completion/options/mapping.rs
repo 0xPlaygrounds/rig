@@ -93,7 +93,9 @@ impl Mapping {
         }
     }
 
-    /// The refusal for `reason`.
+    /// The refusal for `reason`. Answer it only for a set option, through
+    /// [`Mapping::of`] or [`Mapping::of_stop`]: an unset option answers
+    /// [`Mapping::Nothing`].
     pub fn unsupported(reason: impl Into<String>) -> Mapping {
         Mapping::Unsupported(reason.into())
     }

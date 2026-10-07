@@ -112,7 +112,9 @@ impl Pricing {
     /// those read from and written to the cache; cache reads and writes
     /// with no price of their own are charged at [`Self::input`]. Every
     /// cache write is charged at one price, so a provider that bills longer
-    /// retention higher costs more than this says.
+    /// retention higher costs more than this says. It is the standard-tier
+    /// list price of the tokens: the service tier, long-context price tiers
+    /// and hosted-tool fees (web search, code execution) are not in it.
     pub fn cost(&self, usage: &Usage) -> Option<Cost> {
         let input = usage.input_tokens?;
         let output = usage.output_tokens?;
