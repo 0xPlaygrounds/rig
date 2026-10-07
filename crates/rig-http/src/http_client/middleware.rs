@@ -19,8 +19,10 @@ use crate::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 ///
 /// Methods default to no-ops. All header hooks run in attachment order, then
 /// all body hooks run in that order with the final headers and preceding body
-/// replacements. Response hooks run in attachment order after transport returns,
-/// before streaming-body consumption. Multipart requests skip body hooks.
+/// replacements. Response hooks run in attachment order after the transport
+/// returns a response, before streaming-body consumption. A transport that
+/// returns an error for an error status, as `rig-reqwest` does, skips them
+/// for that reply. Multipart requests skip body hooks.
 ///
 /// Any hook error fails the request; request-side errors abort before sending.
 /// Response hooks cannot modify responses. Hooks run on the request future and
@@ -56,6 +58,8 @@ pub trait HttpMiddleware: WasmCompatSend + WasmCompatSync {
     }
 
     /// Observe the response status and headers as soon as they arrive.
+    /// Not invoked when the transport fails the request, which includes a
+    /// non-success status on a transport that reports one as an error.
     ///
     /// For streaming responses this runs before any of the body stream is
     /// consumed. Observe-only: the response cannot be modified, but returning
