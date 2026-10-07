@@ -57,6 +57,12 @@ impl ProviderExtension for OpenAiExt {
 
 /// OpenAI's request options, one section per route plus the shared one.
 /// Serialize-only; an unset field is not sent.
+///
+/// The field setters here write the same field as the section setters and
+/// name the route that sends it. A field both routes take with different
+/// spellings, such as `top_logprobs` or Chat's `logprobs`, is set on its
+/// section only. A section setter replaces every field of that section set
+/// before it.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct OpenAiOptions {
@@ -96,6 +102,124 @@ impl OpenAiOptions {
     pub fn responses(mut self, responses: OpenAiResponsesOptions) -> Self {
         self.responses = responses;
         self
+    }
+
+    /// Apply `set` to the shared section.
+    fn with_shared(mut self, set: impl FnOnce(OpenAiShared) -> OpenAiShared) -> Self {
+        self.shared = set(std::mem::take(&mut self.shared));
+        self
+    }
+
+    /// Apply `set` to the Chat Completions section.
+    fn with_chat(mut self, set: impl FnOnce(ChatOptions) -> ChatOptions) -> Self {
+        self.chat = set(std::mem::take(&mut self.chat));
+        self
+    }
+
+    /// Apply `set` to the Responses section.
+    fn with_responses(
+        mut self,
+        set: impl FnOnce(OpenAiResponsesOptions) -> OpenAiResponsesOptions,
+    ) -> Self {
+        self.responses = set(std::mem::take(&mut self.responses));
+        self
+    }
+
+    /// Send `store` on either route, as [`OpenAiShared::store`].
+    #[must_use]
+    pub fn store(self, store: bool) -> Self {
+        self.with_shared(|shared| shared.store(store))
+    }
+
+    /// Add `key: value` to `metadata` on either route, as
+    /// [`OpenAiShared::metadata`].
+    #[must_use]
+    pub fn metadata(self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.with_shared(|shared| shared.metadata(key, value))
+    }
+
+    /// Send `prompt_cache_key` on either route, as
+    /// [`OpenAiShared::prompt_cache_key`].
+    #[must_use]
+    pub fn prompt_cache_key(self, key: impl Into<String>) -> Self {
+        self.with_shared(|shared| shared.prompt_cache_key(key))
+    }
+
+    /// Send `safety_identifier` on either route, as
+    /// [`OpenAiShared::safety_identifier`].
+    #[must_use]
+    pub fn safety_identifier(self, id: impl Into<String>) -> Self {
+        self.with_shared(|shared| shared.safety_identifier(id))
+    }
+
+    /// Send `reasoning.summary` on Responses only, as
+    /// [`OpenAiResponsesOptions::reasoning_summary`].
+    #[must_use]
+    pub fn reasoning_summary(self, summary: ReasoningSummary) -> Self {
+        self.with_responses(|responses| responses.reasoning_summary(summary))
+    }
+
+    /// Add `include` entries on Responses only, as
+    /// [`OpenAiResponsesOptions::include`].
+    #[must_use]
+    pub fn include(self, include: impl IntoIterator<Item = Include>) -> Self {
+        self.with_responses(|responses| responses.include(include))
+    }
+
+    /// Send `conversation` on Responses only, as
+    /// [`OpenAiResponsesOptions::conversation`].
+    #[must_use]
+    pub fn conversation(self, id: impl Into<String>) -> Self {
+        self.with_responses(|responses| responses.conversation(id))
+    }
+
+    /// Send `truncation` on Responses only, as
+    /// [`OpenAiResponsesOptions::truncation`].
+    #[must_use]
+    pub fn truncation(self, truncation: Truncation) -> Self {
+        self.with_responses(|responses| responses.truncation(truncation))
+    }
+
+    /// Send `background` on Responses only, as
+    /// [`OpenAiResponsesOptions::background`].
+    #[must_use]
+    pub fn background(self, background: bool) -> Self {
+        self.with_responses(|responses| responses.background(background))
+    }
+
+    /// Send `max_tool_calls` on Responses only, as
+    /// [`OpenAiResponsesOptions::max_tool_calls`].
+    #[must_use]
+    pub fn max_tool_calls(self, max: u32) -> Self {
+        self.with_responses(|responses| responses.max_tool_calls(max))
+    }
+
+    /// Bias token id `token` by `bias` on Chat Completions only, as
+    /// [`ChatOptions::logit_bias`].
+    #[must_use]
+    pub fn logit_bias(self, token: u32, bias: i32) -> Self {
+        self.with_chat(|chat| chat.logit_bias(token, bias))
+    }
+
+    /// Predict the output as `content` on Chat Completions only, as
+    /// [`ChatOptions::prediction`].
+    #[must_use]
+    pub fn prediction(self, content: impl Into<String>) -> Self {
+        self.with_chat(|chat| chat.prediction(content))
+    }
+
+    /// Set the frequency penalty on Chat Completions only, as
+    /// [`ChatOptions::frequency_penalty`].
+    #[must_use]
+    pub fn frequency_penalty(self, penalty: f64) -> Self {
+        self.with_chat(|chat| chat.frequency_penalty(penalty))
+    }
+
+    /// Set the presence penalty on Chat Completions only, as
+    /// [`ChatOptions::presence_penalty`].
+    #[must_use]
+    pub fn presence_penalty(self, penalty: f64) -> Self {
+        self.with_chat(|chat| chat.presence_penalty(penalty))
     }
 }
 

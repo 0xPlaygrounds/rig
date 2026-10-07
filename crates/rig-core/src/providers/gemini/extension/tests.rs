@@ -554,3 +554,94 @@ fn extras_refuse_another_api() {
     let result = GeminiExtras::from_reply(&Api::from_static("openai.chat"), &json!({}));
     assert!(result.is_err());
 }
+
+/// Each `GeminiOptions` field setter equals its nested GenerateContent form,
+/// as a value and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_nested_form() {
+    let nested = |config: GenerationConfig| {
+        GeminiOptions::new()
+            .generate_content(GenerateContentOptions::new().generation_config(config))
+    };
+    let pairs = [
+        (
+            GeminiOptions::new().include_thoughts(false),
+            nested(GenerationConfig::new().include_thoughts(false)),
+        ),
+        (
+            GeminiOptions::new().top_k(40),
+            nested(GenerationConfig::new().top_k(40)),
+        ),
+        (
+            GeminiOptions::new().presence_penalty(0.5),
+            nested(GenerationConfig::new().presence_penalty(0.5)),
+        ),
+        (
+            GeminiOptions::new().frequency_penalty(0.25),
+            nested(GenerationConfig::new().frequency_penalty(0.25)),
+        ),
+        (
+            GeminiOptions::new().response_logprobs(true),
+            nested(GenerationConfig::new().response_logprobs(true)),
+        ),
+        (
+            GeminiOptions::new().logprobs(3),
+            nested(GenerationConfig::new().logprobs(3)),
+        ),
+        (
+            GeminiOptions::new().candidate_count(CandidateCount::One),
+            nested(GenerationConfig::new().candidate_count(CandidateCount::One)),
+        ),
+        (
+            GeminiOptions::new().response_modalities([ResponseModality::Text]),
+            nested(GenerationConfig::new().response_modalities([ResponseModality::Text])),
+        ),
+        (
+            GeminiOptions::new().media_resolution(MediaResolution::Low),
+            nested(GenerationConfig::new().media_resolution(MediaResolution::Low)),
+        ),
+        (
+            GeminiOptions::new()
+                .store(false)
+                .top_k(40)
+                .include_thoughts(true),
+            GeminiOptions::new().store(false).generate_content(
+                GenerateContentOptions::new()
+                    .generation_config(GenerationConfig::new().top_k(40).include_thoughts(true)),
+            ),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["gemini.generate_content"], json!({}));
+    }
+}
+
+/// A field setter keeps the other entries and the safety settings of the
+/// GenerateContent section, and the section setter replaces them.
+#[test]
+fn field_setters_compose_with_the_section() {
+    let section = GenerateContentOptions::new()
+        .safety_setting(HarmCategory::Harassment, HarmBlockThreshold::BlockNone)
+        .generation_config(GenerationConfig::new().top_k(5));
+    let options = GeminiOptions::new()
+        .generate_content(section.clone())
+        .include_thoughts(true);
+    assert_eq!(
+        options.generate_content.safety_settings,
+        section.safety_settings
+    );
+    assert_eq!(
+        options.generate_content.generation_config.common,
+        GenerationConfig::new().top_k(5).include_thoughts(true)
+    );
+    let replaced = GeminiOptions::new()
+        .top_k(1)
+        .generate_content(section.clone());
+    assert_eq!(replaced.generate_content, section);
+}

@@ -82,3 +82,54 @@ async fn extras_from_a_recorded_content_filtered_reply() {
         Some(0)
     );
 }
+
+/// Each `AzureOptions` Chat field setter equals the `chat` form, as a value
+/// and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_section_form() {
+    let chat = |section: ChatOptions| AzureOptions::new().chat(section);
+    let pairs = [
+        (
+            AzureOptions::new().logprobs(true),
+            chat(ChatOptions::new().logprobs(true)),
+        ),
+        (
+            AzureOptions::new().top_logprobs(3),
+            chat(ChatOptions::new().top_logprobs(3)),
+        ),
+        (
+            AzureOptions::new().frequency_penalty(0.5),
+            chat(ChatOptions::new().frequency_penalty(0.5)),
+        ),
+        (
+            AzureOptions::new().presence_penalty(0.25),
+            chat(ChatOptions::new().presence_penalty(0.25)),
+        ),
+        (
+            AzureOptions::new().logit_bias(42, -100),
+            chat(ChatOptions::new().logit_bias(42, -100)),
+        ),
+        (
+            AzureOptions::new().prediction("draft"),
+            chat(ChatOptions::new().prediction("draft")),
+        ),
+        (
+            AzureOptions::new()
+                .data_source(json!({"type": "azure_search"}))
+                .logprobs(true)
+                .top_logprobs(2),
+            AzureOptions::new()
+                .data_source(json!({"type": "azure_search"}))
+                .chat(ChatOptions::new().logprobs(true).top_logprobs(2)),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["openai.chat"], json!({}));
+    }
+}

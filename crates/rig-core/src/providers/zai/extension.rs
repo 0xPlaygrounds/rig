@@ -35,7 +35,9 @@ impl ProviderExtension for ZaiExt {
     type Extras = ZaiExtras;
 }
 
-/// Z.AI's request options, by route.
+/// Z.AI's request options, by route. The field setters here write the
+/// same field as [`chat`](Self::chat), which replaces every field set
+/// before it; the Messages API takes none of them.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ZaiOptions {
@@ -54,6 +56,36 @@ impl ZaiOptions {
     pub fn chat(mut self, chat: ZaiChat) -> Self {
         self.chat = chat;
         self
+    }
+
+    /// Apply `set` to the OpenAI-format section.
+    fn with_chat(mut self, set: impl FnOnce(ZaiChat) -> ZaiChat) -> Self {
+        self.chat = set(std::mem::take(&mut self.chat));
+        self
+    }
+
+    /// Whether to sample, on the OpenAI-format API, as
+    /// [`ZaiChat::do_sample`].
+    pub fn do_sample(self, sample: bool) -> Self {
+        self.with_chat(|chat| chat.do_sample(sample))
+    }
+
+    /// Identify the request as `id`, on the OpenAI-format API, as
+    /// [`ZaiChat::request_id`].
+    pub fn request_id(self, id: impl Into<String>) -> Self {
+        self.with_chat(|chat| chat.request_id(id))
+    }
+
+    /// Name the end user, on the OpenAI-format API, as
+    /// [`ZaiChat::user_id`].
+    pub fn user_id(self, id: impl Into<String>) -> Self {
+        self.with_chat(|chat| chat.user_id(id))
+    }
+
+    /// Whether earlier turns' thinking is dropped from context, on the
+    /// OpenAI-format API, as [`ZaiChat::clear_thinking`].
+    pub fn clear_thinking(self, clear: bool) -> Self {
+        self.with_chat(|chat| chat.clear_thinking(clear))
     }
 }
 

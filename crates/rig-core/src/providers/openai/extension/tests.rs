@@ -306,3 +306,100 @@ async fn chat_extras_read_alike_from_a_recorded_stream() {
     assert_eq!(streamed, unary);
     assert_eq!(streamed.service_tier.as_deref(), Some("default"));
 }
+
+/// Each `OpenAiOptions` field setter equals its section form, as a value
+/// and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_section_form() {
+    let shared = |section: OpenAiShared| OpenAiOptions::new().shared(section);
+    let chat = |section: ChatOptions| OpenAiOptions::new().chat(section);
+    let responses = |section: OpenAiResponsesOptions| OpenAiOptions::new().responses(section);
+    let pairs = [
+        (
+            OpenAiOptions::new().store(false),
+            shared(OpenAiShared::default().store(false)),
+        ),
+        (
+            OpenAiOptions::new().metadata("k", "v"),
+            shared(OpenAiShared::default().metadata("k", "v")),
+        ),
+        (
+            OpenAiOptions::new().prompt_cache_key("key"),
+            shared(OpenAiShared::default().prompt_cache_key("key")),
+        ),
+        (
+            OpenAiOptions::new().safety_identifier("user"),
+            shared(OpenAiShared::default().safety_identifier("user")),
+        ),
+        (
+            OpenAiOptions::new().reasoning_summary(ReasoningSummary::Auto),
+            responses(OpenAiResponsesOptions::default().reasoning_summary(ReasoningSummary::Auto)),
+        ),
+        (
+            OpenAiOptions::new().include([Include::ReasoningEncryptedContent]),
+            responses(
+                OpenAiResponsesOptions::default().include([Include::ReasoningEncryptedContent]),
+            ),
+        ),
+        (
+            OpenAiOptions::new().conversation("conv"),
+            responses(OpenAiResponsesOptions::default().conversation("conv")),
+        ),
+        (
+            OpenAiOptions::new().truncation(Truncation::Auto),
+            responses(OpenAiResponsesOptions::default().truncation(Truncation::Auto)),
+        ),
+        (
+            OpenAiOptions::new().background(true),
+            responses(OpenAiResponsesOptions::default().background(true)),
+        ),
+        (
+            OpenAiOptions::new().max_tool_calls(3),
+            responses(OpenAiResponsesOptions::default().max_tool_calls(3)),
+        ),
+        (
+            OpenAiOptions::new().logit_bias(42, -100),
+            chat(ChatOptions::new().logit_bias(42, -100)),
+        ),
+        (
+            OpenAiOptions::new().prediction("draft"),
+            chat(ChatOptions::new().prediction("draft")),
+        ),
+        (
+            OpenAiOptions::new().frequency_penalty(0.5),
+            chat(ChatOptions::new().frequency_penalty(0.5)),
+        ),
+        (
+            OpenAiOptions::new().presence_penalty(0.25),
+            chat(ChatOptions::new().presence_penalty(0.25)),
+        ),
+        (
+            OpenAiOptions::new()
+                .store(false)
+                .metadata("k", "v")
+                .reasoning_summary(ReasoningSummary::Detailed)
+                .background(true)
+                .frequency_penalty(0.5),
+            OpenAiOptions::new()
+                .shared(OpenAiShared::default().store(false).metadata("k", "v"))
+                .responses(
+                    OpenAiResponsesOptions::default()
+                        .reasoning_summary(ReasoningSummary::Detailed)
+                        .background(true),
+                )
+                .chat(ChatOptions::new().frequency_penalty(0.5)),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(
+            short,
+            serde_json::to_value(OpenAiOptions::new()).expect("options serialize")
+        );
+    }
+}

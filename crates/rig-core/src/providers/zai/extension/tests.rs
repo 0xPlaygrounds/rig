@@ -115,3 +115,41 @@ fn extras_read_the_messages_stop_fields() {
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
     assert!(response.extras::<AnthropicExt>().is_none());
 }
+
+/// Each `ZaiOptions` field setter equals the `chat` form, as a value and as
+/// the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_section_form() {
+    let chat = |section: ZaiChat| ZaiOptions::new().chat(section);
+    let pairs = [
+        (
+            ZaiOptions::new().do_sample(false),
+            chat(ZaiChat::new().do_sample(false)),
+        ),
+        (
+            ZaiOptions::new().request_id("r-1"),
+            chat(ZaiChat::new().request_id("r-1")),
+        ),
+        (
+            ZaiOptions::new().user_id("u-1"),
+            chat(ZaiChat::new().user_id("u-1")),
+        ),
+        (
+            ZaiOptions::new().clear_thinking(true),
+            chat(ZaiChat::new().clear_thinking(true)),
+        ),
+        (
+            ZaiOptions::new().user_id("u-1").clear_thinking(false),
+            chat(ZaiChat::new().user_id("u-1").clear_thinking(false)),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["openai.chat"], json!({}));
+    }
+}

@@ -304,3 +304,66 @@ fn extras_read_a_vertex_reply() {
         "a Vertex AI reply is not the Gemini API's"
     );
 }
+
+/// Each `VertexOptions` `generationConfig` field setter equals the
+/// `generation_config` form, as a value and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_nested_form() {
+    let nested = |config: GenerationConfig| VertexOptions::new().generation_config(config);
+    let pairs = [
+        (
+            VertexOptions::new().include_thoughts(false),
+            nested(GenerationConfig::new().include_thoughts(false)),
+        ),
+        (
+            VertexOptions::new().top_k(40),
+            nested(GenerationConfig::new().top_k(40)),
+        ),
+        (
+            VertexOptions::new().presence_penalty(0.5),
+            nested(GenerationConfig::new().presence_penalty(0.5)),
+        ),
+        (
+            VertexOptions::new().frequency_penalty(0.25),
+            nested(GenerationConfig::new().frequency_penalty(0.25)),
+        ),
+        (
+            VertexOptions::new().response_logprobs(true),
+            nested(GenerationConfig::new().response_logprobs(true)),
+        ),
+        (
+            VertexOptions::new().logprobs(3),
+            nested(GenerationConfig::new().logprobs(3)),
+        ),
+        (
+            VertexOptions::new().candidate_count(CandidateCount::One),
+            nested(GenerationConfig::new().candidate_count(CandidateCount::One)),
+        ),
+        (
+            VertexOptions::new().response_modalities([ResponseModality::Text]),
+            nested(GenerationConfig::new().response_modalities([ResponseModality::Text])),
+        ),
+        (
+            VertexOptions::new().media_resolution(MediaResolution::Low),
+            nested(GenerationConfig::new().media_resolution(MediaResolution::Low)),
+        ),
+        (
+            VertexOptions::new()
+                .audio_timestamp(true)
+                .top_k(40)
+                .include_thoughts(true),
+            VertexOptions::new()
+                .audio_timestamp(true)
+                .generation_config(GenerationConfig::new().top_k(40).include_thoughts(true)),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["vertexai.generate_content"], json!({}));
+    }
+}

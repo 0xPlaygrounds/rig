@@ -23,8 +23,9 @@ use std::collections::BTreeMap;
 use rig_core::completion::{ExtensionOptions, ProviderExtension, ReplyExtras};
 use rig_core::message::Api;
 use rig_core::providers::gemini::extension::{
-    GeminiExtras, GenerationConfig, GroundingMetadata, HarmBlockThreshold, HarmCategory,
-    LogprobsResult, ModalityTokenCount, PromptFeedback, SafetyRating, UrlContextMetadata,
+    CandidateCount, GeminiExtras, GenerationConfig, GroundingMetadata, HarmBlockThreshold,
+    HarmCategory, LogprobsResult, MediaResolution, ModalityTokenCount, PromptFeedback,
+    ResponseModality, SafetyRating, UrlContextMetadata,
 };
 use serde::de::Error as _;
 use serde::ser::SerializeMap;
@@ -52,6 +53,10 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 
 /// Vertex AI's request options. Vertex AI has one route, so every field is
 /// in its section.
+///
+/// The `generationConfig` setters here (`top_k`, `include_thoughts`, ...)
+/// write the same entry as [`generation_config`](Self::generation_config),
+/// which replaces every such entry set before it.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct VertexOptions {
@@ -104,6 +109,73 @@ impl VertexOptions {
     pub fn model_armor(mut self, config: ModelArmorConfig) -> Self {
         self.generate_content.model_armor_config = Some(config);
         self
+    }
+
+    /// Apply `set` to the `generationConfig` entries every GenerateContent
+    /// route takes.
+    fn generation_config_entry(
+        mut self,
+        set: impl FnOnce(GenerationConfig) -> GenerationConfig,
+    ) -> Self {
+        let common = std::mem::take(&mut self.generate_content.generation_config.common);
+        self.generate_content.generation_config.common = set(common);
+        self
+    }
+
+    /// `generationConfig.thinkingConfig.includeThoughts`, as
+    /// [`GenerationConfig::include_thoughts`] through
+    /// [`generation_config`](Self::generation_config).
+    pub fn include_thoughts(self, include: bool) -> Self {
+        self.generation_config_entry(|config| config.include_thoughts(include))
+    }
+
+    /// `generationConfig.topK`, as [`GenerationConfig::top_k`].
+    pub fn top_k(self, top_k: u32) -> Self {
+        self.generation_config_entry(|config| config.top_k(top_k))
+    }
+
+    /// `generationConfig.presencePenalty`, as
+    /// [`GenerationConfig::presence_penalty`].
+    pub fn presence_penalty(self, penalty: f64) -> Self {
+        self.generation_config_entry(|config| config.presence_penalty(penalty))
+    }
+
+    /// `generationConfig.frequencyPenalty`, as
+    /// [`GenerationConfig::frequency_penalty`].
+    pub fn frequency_penalty(self, penalty: f64) -> Self {
+        self.generation_config_entry(|config| config.frequency_penalty(penalty))
+    }
+
+    /// `generationConfig.responseLogprobs`, as
+    /// [`GenerationConfig::response_logprobs`].
+    pub fn response_logprobs(self, enable: bool) -> Self {
+        self.generation_config_entry(|config| config.response_logprobs(enable))
+    }
+
+    /// `generationConfig.logprobs`, as [`GenerationConfig::logprobs`].
+    pub fn logprobs(self, top: u32) -> Self {
+        self.generation_config_entry(|config| config.logprobs(top))
+    }
+
+    /// `generationConfig.candidateCount`, as
+    /// [`GenerationConfig::candidate_count`].
+    pub fn candidate_count(self, count: CandidateCount) -> Self {
+        self.generation_config_entry(|config| config.candidate_count(count))
+    }
+
+    /// `generationConfig.responseModalities`, as
+    /// [`GenerationConfig::response_modalities`].
+    pub fn response_modalities(
+        self,
+        modalities: impl IntoIterator<Item = ResponseModality>,
+    ) -> Self {
+        self.generation_config_entry(|config| config.response_modalities(modalities))
+    }
+
+    /// `generationConfig.mediaResolution`, as
+    /// [`GenerationConfig::media_resolution`].
+    pub fn media_resolution(self, resolution: MediaResolution) -> Self {
+        self.generation_config_entry(|config| config.media_resolution(resolution))
     }
 }
 

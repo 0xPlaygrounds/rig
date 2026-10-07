@@ -56,6 +56,12 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 
 /// The Gemini API's request options: a section both routes read, and one
 /// per route.
+///
+/// The `generationConfig` setters here (`top_k`, `include_thoughts`, ...)
+/// write the same entry as the nested [`GenerateContentOptions`] form, so
+/// only GenerateContent sends them. [`generate_content`](Self::generate_content)
+/// replaces the whole section, including entries set before it. Safety
+/// settings stay per section, because each route spells them differently.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct GeminiOptions {
@@ -99,6 +105,78 @@ impl GeminiOptions {
     pub fn interactions(mut self, section: InteractionsOptions) -> Self {
         self.interactions = section;
         self
+    }
+
+    /// Apply `set` to the GenerateContent `generationConfig` entries.
+    fn generation_config_entry(
+        mut self,
+        set: impl FnOnce(GenerationConfig) -> GenerationConfig,
+    ) -> Self {
+        let common = std::mem::take(&mut self.generate_content.generation_config.common);
+        self.generate_content.generation_config.common = set(common);
+        self
+    }
+
+    /// GenerateContent `generationConfig.thinkingConfig.includeThoughts`,
+    /// as [`GenerationConfig::include_thoughts`] in the GenerateContent
+    /// section. Interactions reads its own `thinking_summaries` instead.
+    pub fn include_thoughts(self, include: bool) -> Self {
+        self.generation_config_entry(|config| config.include_thoughts(include))
+    }
+
+    /// GenerateContent `generationConfig.topK`, as
+    /// [`GenerationConfig::top_k`] in the GenerateContent section.
+    pub fn top_k(self, top_k: u32) -> Self {
+        self.generation_config_entry(|config| config.top_k(top_k))
+    }
+
+    /// GenerateContent `generationConfig.presencePenalty`, as
+    /// [`GenerationConfig::presence_penalty`] in the GenerateContent section.
+    pub fn presence_penalty(self, penalty: f64) -> Self {
+        self.generation_config_entry(|config| config.presence_penalty(penalty))
+    }
+
+    /// GenerateContent `generationConfig.frequencyPenalty`, as
+    /// [`GenerationConfig::frequency_penalty`] in the GenerateContent
+    /// section.
+    pub fn frequency_penalty(self, penalty: f64) -> Self {
+        self.generation_config_entry(|config| config.frequency_penalty(penalty))
+    }
+
+    /// GenerateContent `generationConfig.responseLogprobs`, as
+    /// [`GenerationConfig::response_logprobs`] in the GenerateContent
+    /// section.
+    pub fn response_logprobs(self, enable: bool) -> Self {
+        self.generation_config_entry(|config| config.response_logprobs(enable))
+    }
+
+    /// GenerateContent `generationConfig.logprobs`, as
+    /// [`GenerationConfig::logprobs`] in the GenerateContent section.
+    pub fn logprobs(self, top: u32) -> Self {
+        self.generation_config_entry(|config| config.logprobs(top))
+    }
+
+    /// GenerateContent `generationConfig.candidateCount`, as
+    /// [`GenerationConfig::candidate_count`] in the GenerateContent section.
+    pub fn candidate_count(self, count: CandidateCount) -> Self {
+        self.generation_config_entry(|config| config.candidate_count(count))
+    }
+
+    /// GenerateContent `generationConfig.responseModalities`, as
+    /// [`GenerationConfig::response_modalities`] in the GenerateContent
+    /// section.
+    pub fn response_modalities(
+        self,
+        modalities: impl IntoIterator<Item = ResponseModality>,
+    ) -> Self {
+        self.generation_config_entry(|config| config.response_modalities(modalities))
+    }
+
+    /// GenerateContent `generationConfig.mediaResolution`, as
+    /// [`GenerationConfig::media_resolution`] in the GenerateContent
+    /// section.
+    pub fn media_resolution(self, resolution: MediaResolution) -> Self {
+        self.generation_config_entry(|config| config.media_resolution(resolution))
     }
 }
 

@@ -130,3 +130,39 @@ fn extras_read_the_messages_stop_fields() {
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
     assert!(response.extras::<AnthropicExt>().is_none());
 }
+
+/// Each `MiniMaxOptions` field setter equals its section form, as a value
+/// and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_section_form() {
+    let pairs = [
+        (
+            MiniMaxOptions::new().reasoning_split(true),
+            MiniMaxOptions::new().chat(MiniMaxChat::new().reasoning_split(true)),
+        ),
+        (
+            MiniMaxOptions::new().metadata_user_id("u-1"),
+            MiniMaxOptions::new().messages(MiniMaxMessages::new().metadata_user_id("u-1")),
+        ),
+        (
+            MiniMaxOptions::new()
+                .reasoning_split(false)
+                .metadata_user_id("u-1"),
+            MiniMaxOptions::new()
+                .chat(MiniMaxChat::new().reasoning_split(false))
+                .messages(MiniMaxMessages::new().metadata_user_id("u-1")),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(
+            short,
+            serde_json::to_value(MiniMaxOptions::new()).expect("options serialize")
+        );
+    }
+}

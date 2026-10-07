@@ -38,7 +38,10 @@ impl ProviderExtension for VeniceExt {
     type Extras = VeniceExtras;
 }
 
-/// Venice's request options.
+/// Venice's request options. The parameter setters here write the same
+/// `venice_parameters` entry as
+/// [`venice_parameters`](Self::venice_parameters), which replaces every
+/// entry set before it.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct VeniceOptions {
@@ -75,6 +78,42 @@ impl VeniceOptions {
     pub fn prompt_cache_key(mut self, key: impl Into<String>) -> Self {
         self.shared.prompt_cache_key = Some(key.into());
         self
+    }
+
+    /// Apply `set` to the parameter block, starting from an empty one.
+    fn with_parameters(mut self, set: impl FnOnce(VeniceParameters) -> VeniceParameters) -> Self {
+        let parameters = self.shared.venice_parameters.take().unwrap_or_default();
+        self.shared.venice_parameters = Some(set(parameters));
+        self
+    }
+
+    /// Converse with the public character `slug`, as
+    /// [`VeniceParameters::character_slug`].
+    pub fn character_slug(self, slug: impl Into<String>) -> Self {
+        self.with_parameters(|parameters| parameters.character_slug(slug))
+    }
+
+    /// Strip `<think>` blocks from the reply, as
+    /// [`VeniceParameters::strip_thinking_response`].
+    pub fn strip_thinking_response(self, strip: bool) -> Self {
+        self.with_parameters(|parameters| parameters.strip_thinking_response(strip))
+    }
+
+    /// Set the web-search mode, as [`VeniceParameters::enable_web_search`].
+    pub fn enable_web_search(self, mode: WebSearchMode) -> Self {
+        self.with_parameters(|parameters| parameters.enable_web_search(mode))
+    }
+
+    /// Cite sources as `[REF]` markers, as
+    /// [`VeniceParameters::enable_web_citations`].
+    pub fn enable_web_citations(self, enable: bool) -> Self {
+        self.with_parameters(|parameters| parameters.enable_web_citations(enable))
+    }
+
+    /// Include Venice's default system prompt, as
+    /// [`VeniceParameters::include_venice_system_prompt`].
+    pub fn include_venice_system_prompt(self, include: bool) -> Self {
+        self.with_parameters(|parameters| parameters.include_venice_system_prompt(include))
     }
 }
 

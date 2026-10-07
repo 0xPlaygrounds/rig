@@ -119,3 +119,39 @@ fn extras_read_the_messages_stop_fields() {
     assert_eq!(extras.stop_sequence.as_deref(), Some("alpha"));
     assert!(response.extras::<AnthropicExt>().is_none());
 }
+
+/// Each `MoonshotOptions` field setter equals the `chat` form, as a value
+/// and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_section_form() {
+    let chat = |section: MoonshotChat| MoonshotOptions::new().chat(section);
+    let pairs = [
+        (
+            MoonshotOptions::new().thinking_keep(ThinkingKeep::All),
+            chat(MoonshotChat::new().thinking_keep(ThinkingKeep::All)),
+        ),
+        (
+            MoonshotOptions::new().prompt_cache_key("session-7"),
+            chat(MoonshotChat::new().prompt_cache_key("session-7")),
+        ),
+        (
+            MoonshotOptions::new()
+                .prompt_cache_key("session-7")
+                .thinking_keep(ThinkingKeep::All),
+            chat(
+                MoonshotChat::new()
+                    .prompt_cache_key("session-7")
+                    .thinking_keep(ThinkingKeep::All),
+            ),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["openai.chat"], json!({}));
+    }
+}

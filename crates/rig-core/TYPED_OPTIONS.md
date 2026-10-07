@@ -1973,6 +1973,34 @@ phase. Per-block cache
 breakpoints are out of scope: a content-level marker belongs to neither
 `GenerationOptions` nor a request-level `Options` type.
 
+**Field setters on the top-level `Options` type.** Where a common field
+sits two builder levels deep, the top-level type has a setter that writes
+the same leaf, through the nested builder, and a test pins it to the
+nested form's JSON:
+- Gemini `GeminiOptions` and Vertex `VertexOptions`: the
+  `generationConfig` entries `include_thoughts`, `top_k`,
+  `presence_penalty`, `frequency_penalty`, `response_logprobs`, `logprobs`,
+  `candidate_count`, `response_modalities`, `media_resolution`
+  (GenerateContent only);
+- OpenAI `OpenAiOptions`: `store`, `metadata`, `prompt_cache_key`,
+  `safety_identifier` (both routes); `reasoning_summary`, `include`,
+  `conversation`, `truncation`, `background`, `max_tool_calls` (Responses);
+  `logit_bias`, `prediction`, `frequency_penalty`, `presence_penalty`
+  (Chat);
+- Azure `AzureOptions`: `logprobs`, `top_logprobs`, `frequency_penalty`,
+  `presence_penalty`, `logit_bias`, `prediction`;
+- Venice `VeniceOptions`: the `venice_parameters` entries `character_slug`,
+  `strip_thinking_response`, `enable_web_search`, `enable_web_citations`,
+  `include_venice_system_prompt`;
+- Z.AI, Moonshot and MiniMax: every field of their route sections.
+
+A field two routes spell differently stays on its section, because a
+setter on the top-level type would hide which route it writes: Gemini's
+safety settings (GenerateContent `safetySettings` vs Interactions
+`safety_settings`), OpenAI's `top_logprobs` (on both sections) and Chat's
+`logprobs` (Responses asks through `include`). A section setter replaces
+the whole section, including fields set before it.
+
 ## 8. Catalog schema and the models.dev mapping
 
 The data file is models.dev-shaped JSON: an object of provider keys, each with

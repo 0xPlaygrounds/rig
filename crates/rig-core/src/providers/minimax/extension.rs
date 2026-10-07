@@ -36,7 +36,9 @@ impl ProviderExtension for MiniMaxExt {
     type Extras = MiniMaxExtras;
 }
 
-/// MiniMax's request options, by route.
+/// MiniMax's request options, by route. The field setters here write the
+/// same field as the section setters, which replace every field of their
+/// section set before them, and each names the one route that sends it.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct MiniMaxOptions {
@@ -63,6 +65,20 @@ impl MiniMaxOptions {
     /// Send `messages` on the Messages API.
     pub fn messages(mut self, messages: MiniMaxMessages) -> Self {
         self.messages = messages;
+        self
+    }
+
+    /// Return the reasoning apart from the content when `split`, on the
+    /// OpenAI-format API only, as [`MiniMaxChat::reasoning_split`].
+    pub fn reasoning_split(mut self, split: bool) -> Self {
+        self.chat = std::mem::take(&mut self.chat).reasoning_split(split);
+        self
+    }
+
+    /// Send `user_id` as `metadata.user_id`, on the Messages API only, as
+    /// [`MiniMaxMessages::metadata_user_id`].
+    pub fn metadata_user_id(mut self, user_id: impl Into<String>) -> Self {
+        self.messages = std::mem::take(&mut self.messages).metadata_user_id(user_id);
         self
     }
 }

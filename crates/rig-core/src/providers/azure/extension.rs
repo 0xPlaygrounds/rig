@@ -36,6 +36,9 @@ impl ProviderExtension for AzureExt {
 }
 
 /// Azure OpenAI's request options, sent on Chat Completions.
+///
+/// The Chat field setters here write the same field as
+/// [`chat`](Self::chat), which replaces every such field set before it.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct AzureOptions {
@@ -74,6 +77,44 @@ impl AzureOptions {
     pub fn data_source(mut self, source: Value) -> Self {
         self.chat.data_sources.push(source);
         self
+    }
+
+    /// Apply `set` to OpenAI's Chat fields.
+    fn with_openai(mut self, set: impl FnOnce(ChatOptions) -> ChatOptions) -> Self {
+        self.chat.openai = set(std::mem::take(&mut self.chat.openai));
+        self
+    }
+
+    /// Whether the reply carries log probabilities, as
+    /// [`ChatOptions::logprobs`].
+    pub fn logprobs(self, logprobs: bool) -> Self {
+        self.with_openai(|chat| chat.logprobs(logprobs))
+    }
+
+    /// Report the `count` most likely tokens per position, as
+    /// [`ChatOptions::top_logprobs`].
+    pub fn top_logprobs(self, count: u8) -> Self {
+        self.with_openai(|chat| chat.top_logprobs(count))
+    }
+
+    /// Set the frequency penalty, as [`ChatOptions::frequency_penalty`].
+    pub fn frequency_penalty(self, penalty: f64) -> Self {
+        self.with_openai(|chat| chat.frequency_penalty(penalty))
+    }
+
+    /// Set the presence penalty, as [`ChatOptions::presence_penalty`].
+    pub fn presence_penalty(self, penalty: f64) -> Self {
+        self.with_openai(|chat| chat.presence_penalty(penalty))
+    }
+
+    /// Bias token id `token` by `bias`, as [`ChatOptions::logit_bias`].
+    pub fn logit_bias(self, token: u32, bias: i32) -> Self {
+        self.with_openai(|chat| chat.logit_bias(token, bias))
+    }
+
+    /// Predict the output as `content`, as [`ChatOptions::prediction`].
+    pub fn prediction(self, content: impl Into<String>) -> Self {
+        self.with_openai(|chat| chat.prediction(content))
     }
 }
 

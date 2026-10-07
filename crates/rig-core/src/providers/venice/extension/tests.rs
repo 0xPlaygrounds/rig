@@ -157,3 +157,54 @@ async fn extras_read_alike_from_a_recorded_stream() {
     assert!(unary.venice_parameters.is_some());
     assert_eq!(streamed.venice_parameters, None);
 }
+
+/// Each `VeniceOptions` parameter setter equals the `venice_parameters`
+/// form, as a value and as the JSON it serializes to.
+#[test]
+fn field_setters_equal_the_nested_form() {
+    let nested = |parameters: VeniceParameters| VeniceOptions::new().venice_parameters(parameters);
+    let pairs = [
+        (
+            VeniceOptions::new().character_slug("alan"),
+            nested(VeniceParameters::new().character_slug("alan")),
+        ),
+        (
+            VeniceOptions::new().strip_thinking_response(true),
+            nested(VeniceParameters::new().strip_thinking_response(true)),
+        ),
+        (
+            VeniceOptions::new().enable_web_search(WebSearchMode::Auto),
+            nested(VeniceParameters::new().enable_web_search(WebSearchMode::Auto)),
+        ),
+        (
+            VeniceOptions::new().enable_web_citations(true),
+            nested(VeniceParameters::new().enable_web_citations(true)),
+        ),
+        (
+            VeniceOptions::new().include_venice_system_prompt(false),
+            nested(VeniceParameters::new().include_venice_system_prompt(false)),
+        ),
+        (
+            VeniceOptions::new()
+                .prompt_cache_key("k")
+                .enable_web_search(WebSearchMode::On)
+                .enable_web_citations(true),
+            VeniceOptions::new()
+                .prompt_cache_key("k")
+                .venice_parameters(
+                    VeniceParameters::new()
+                        .enable_web_search(WebSearchMode::On)
+                        .enable_web_citations(true),
+                ),
+        ),
+    ];
+    for (short, long) in pairs {
+        assert_eq!(short, long);
+        let short = serde_json::to_value(&short).expect("options serialize");
+        assert_eq!(
+            short,
+            serde_json::to_value(&long).expect("options serialize")
+        );
+        assert_ne!(short["*"]["venice_parameters"], json!({}));
+    }
+}

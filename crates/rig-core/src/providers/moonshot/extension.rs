@@ -34,7 +34,9 @@ impl ProviderExtension for MoonshotExt {
     type Extras = MoonshotExtras;
 }
 
-/// Moonshot's request options, by route.
+/// Moonshot's request options, by route. The field setters here write the
+/// same field as [`chat`](Self::chat), which replaces every field set
+/// before it; the Messages API takes none of them.
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct MoonshotOptions {
@@ -52,6 +54,20 @@ impl MoonshotOptions {
     /// Send `chat` on the OpenAI-format API.
     pub fn chat(mut self, chat: MoonshotChat) -> Self {
         self.chat = chat;
+        self
+    }
+
+    /// Keep `keep` earlier turns' thinking in context, on the OpenAI-format
+    /// API, as [`MoonshotChat::thinking_keep`].
+    pub fn thinking_keep(mut self, keep: ThinkingKeep) -> Self {
+        self.chat = std::mem::take(&mut self.chat).thinking_keep(keep);
+        self
+    }
+
+    /// Route the prompt cache by `key`, on the OpenAI-format API, as
+    /// [`MoonshotChat::prompt_cache_key`].
+    pub fn prompt_cache_key(mut self, key: impl Into<String>) -> Self {
+        self.chat = std::mem::take(&mut self.chat).prompt_cache_key(key);
         self
     }
 }
