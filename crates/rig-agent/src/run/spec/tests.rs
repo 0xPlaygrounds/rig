@@ -60,3 +60,13 @@ fn malformed_call_limit_defaults_to_none_and_round_trips() {
         );
     }
 }
+
+/// A run spec and a prepared request stay unwind safe with provider
+/// options in their request.
+#[test]
+fn run_requests_stay_unwind_safe() {
+    fn unwind_safe<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    unwind_safe::<crate::run::RunSpec>();
+    unwind_safe::<crate::run::PreparedRequest>();
+    unwind_safe::<crate::agent::hook::DispatchAction>();
+}

@@ -20,6 +20,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
+use std::panic::{RefUnwindSafe, UnwindSafe};
 use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -49,8 +50,11 @@ pub trait ProviderExtension {
 
 /// A provider's request options. Serialize-only: the body keys they write
 /// are their only output. They are plain data, `Send + Sync` on every
-/// target, since a request carrying them is a component of an ECS world.
-pub trait ExtensionOptions: Serialize + Clone + fmt::Debug + Send + Sync + 'static {
+/// target, since a request carrying them is a component of an ECS world,
+/// and unwind safe, so a request holding them stays unwind safe.
+pub trait ExtensionOptions:
+    Serialize + Clone + fmt::Debug + Send + Sync + UnwindSafe + RefUnwindSafe + 'static
+{
     /// The fields `target` cannot send for `request`, each a top-level body
     /// key with the reason. Each one set is reported through the request's
     /// [`OnUnsupported`](crate::completion::OnUnsupported) policy under the
@@ -118,7 +122,7 @@ pub enum OptionsError {
 }
 
 /// The refusal check of the typed options an entry was made from.
-trait Refusals: fmt::Debug + Send + Sync {
+trait Refusals: fmt::Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     fn refusals(
         &self,
         target: &dyn ReplayTarget,

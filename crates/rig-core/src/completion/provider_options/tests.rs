@@ -533,3 +533,14 @@ fn extras_of_the_wrong_shape_are_an_error() {
     let reply = reply("fake", json!({"cost": "free"}));
     assert!(matches!(reply.extras::<Fake>(), Some(Err(_))));
 }
+
+/// A request and what carries one stay unwind safe with provider options
+/// in them, as they were before options held typed entries.
+#[test]
+fn requests_stay_unwind_safe() {
+    fn unwind_safe<T: std::panic::UnwindSafe + std::panic::RefUnwindSafe>() {}
+    unwind_safe::<ProviderOptions>();
+    unwind_safe::<CompletionRequest>();
+    unwind_safe::<crate::effect::EffectKind>();
+    unwind_safe::<crate::serve::Decision>();
+}

@@ -892,7 +892,7 @@ pub trait ProviderExtension {
     type Options: ExtensionOptions; // an object of sections: "*" and Api names
     type Extras: ReplyExtras;
 }
-pub trait ExtensionOptions: Serialize + Clone + Debug + Send + Sync + 'static {
+pub trait ExtensionOptions: Serialize + Clone + Debug + Send + Sync + UnwindSafe + RefUnwindSafe + 'static {
     fn unsupported(&self, target: &dyn ReplayTarget, request: &CompletionRequest)
         -> Vec<(&'static str, String)> { Vec::new() }
 }
