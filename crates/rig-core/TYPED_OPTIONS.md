@@ -727,6 +727,7 @@ pub struct ModelSpec {
 impl Catalog {
     pub fn builtin() -> &'static Catalog;
     pub fn get(&self, provider: ProviderId, model: &str) -> Option<&ModelSpec>;
+    pub fn find(&self, provider: ProviderId, model: &str) -> Option<&ModelSpec>; // as the encoders look up
     pub fn resolve(&self, reference: &str) -> Option<&ModelSpec>; // "anthropic/claude-opus-5-5"
     pub fn iter(&self) -> impl Iterator<Item = &ModelSpec>;
     pub fn from_json(json: &str) -> Result<Catalog, CatalogError>; // a models.dev-style override file
@@ -746,6 +747,13 @@ impl ModelSpec {
 - **`get`** matches `provider.vendor()`. A vendor served over two formats
   (Z.AI, MiniMax, Moonshot, MiMo) has one entry per model, because both
   halves serve the same ids.
+- **`find`** is the lookup the encoders use: the exact id, else the id
+  without a dated snapshot suffix (`-YYYYMMDD`, `-YYYY-MM-DD`). rig-agent's
+  check of a switched model uses it too. Cost and Anthropic's model facts
+  keep a looser snapshot rule (any suffix from `-20`, so
+  `claude-opus-5-5-20260601-v1:0` is priced as `claude-opus-5-5`); a test
+  over every catalog row shows the two agree on every listed id and its
+  eight-digit dated form, and differ only past the date.
 - **Connecting.** `registry::connect(spec_or_reference, credentials)` returns
   the existing `DynModel<Completion>` that `ProviderRef::completion_model`
   builds (`crates/rig-core/src/providers/registry.rs:662`).

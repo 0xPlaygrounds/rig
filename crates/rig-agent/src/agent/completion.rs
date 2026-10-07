@@ -437,8 +437,12 @@ impl AgentConfig {
     }
 
     /// The built-in catalog's entry for the model registered under `key`:
-    /// by the provider and model id it was registered with, else by `label`
-    /// read as a catalog reference (`anthropic/claude-opus-4-8`).
+    /// by the provider and model id it was registered with, looked up as
+    /// the encoders look it up ([`Catalog::find`], so a dated snapshot id
+    /// finds its model), else by `label` read as a catalog reference
+    /// (`anthropic/claude-opus-4-8`).
+    ///
+    /// [`Catalog::find`]: rig_core::catalog::Catalog::find
     fn catalog_entry(
         &self,
         key: &Key<family::Completion>,
@@ -451,7 +455,9 @@ impl AgentConfig {
             Some(super::drive::ModelId {
                 provider,
                 model: Some(model),
-            }) => ProviderId::catalog(&provider).and_then(|provider| catalog.get(provider, &model)),
+            }) => {
+                ProviderId::catalog(&provider).and_then(|provider| catalog.find(provider, &model))
+            }
             Some(_) => None,
             None => catalog.resolve(label.as_str()),
         }

@@ -748,6 +748,15 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
         .expect_err("Haiku 4.5 by value takes no effort level");
     assert!(refused(&error), "{error:?}");
 
+    // A dated snapshot id finds its model, as the encoders find it.
+    let error = agent
+        .prompt("go")
+        .using_model_value(scripted("anthropic", "claude-haiku-4-5-20251001"))
+        .run()
+        .await
+        .expect_err("a Haiku 4.5 snapshot takes no effort level");
+    assert!(refused(&error), "{error:?}");
+
     // A model the catalog does not list is let through, with a warning.
     let unlisted = scripted("anthropic", "claude-unlisted-9");
     capture.clear();

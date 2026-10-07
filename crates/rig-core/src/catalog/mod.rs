@@ -147,10 +147,16 @@ impl Catalog {
         self
     }
 
-    /// The model `vendor` serves as `model`, by exact id or, failing that,
-    /// without a dated snapshot suffix (`-20251001`, `-2025-08-07`): the
-    /// lookup the encoders use.
-    pub(crate) fn find(&self, vendor: &str, model: &str) -> Option<&ModelSpec> {
+    /// The model `provider` serves as `model`, as the encoders look it up:
+    /// by exact id or, failing that, without a dated snapshot suffix
+    /// (`-20251001`, `-2025-08-07`), so `claude-sonnet-4-5-20250929` finds
+    /// `claude-sonnet-4-5`. [`Self::get`] matches the exact id only.
+    pub fn find(&self, provider: ProviderId, model: &str) -> Option<&ModelSpec> {
+        self.find_vendor(provider.vendor(), model)
+    }
+
+    /// [`Self::find`] by vendor name.
+    pub(crate) fn find_vendor(&self, vendor: &str, model: &str) -> Option<&ModelSpec> {
         self.exact(vendor, model)
             .or_else(|| self.exact(vendor, undated(model)?))
     }
@@ -189,7 +195,7 @@ impl Catalog {
 /// The model of the built-in catalog `vendor` serves as `model`, looked up
 /// as the encoders look models up ([`Catalog::find`]).
 pub(crate) fn lookup(vendor: &str, model: &str) -> Option<&'static ModelSpec> {
-    Catalog::builtin().find(vendor, model)
+    Catalog::builtin().find_vendor(vendor, model)
 }
 
 /// The model of the built-in catalog `vendor` serves as `model`, or as a

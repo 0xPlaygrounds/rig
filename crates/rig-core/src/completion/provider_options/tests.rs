@@ -552,9 +552,8 @@ fn lossy_extras_are_the_view_or_the_empty_one() {
 
     let capture = crate::test_utils::TraceCapture::default();
     let wrong = reply("fake", json!({"cost": "free"}));
-    let extras = tracing::subscriber::with_default(capture.subscriber(), || {
-        wrong.extras_lossy::<Fake>()
-    });
+    let extras =
+        tracing::subscriber::with_default(capture.subscriber(), || wrong.extras_lossy::<Fake>());
     assert_eq!(extras, FakeExtras::default());
     let logged = capture
         .events()

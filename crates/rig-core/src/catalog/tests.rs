@@ -189,7 +189,7 @@ fn the_encoders_find_a_dated_snapshot_by_its_model() {
     for model in ["claude-x", "claude-x-20251001", "claude-x-2025-10-01"] {
         assert_eq!(
             catalog
-                .find("anthropic", model)
+                .find_vendor("anthropic", model)
                 .map(|spec| spec.id.as_str()),
             Some("claude-x"),
             "{model}"
@@ -201,8 +201,56 @@ fn the_encoders_find_a_dated_snapshot_by_its_model() {
         "claude-x-0",
         "claude-x-25-10-01",
     ] {
-        assert!(catalog.find("anthropic", model).is_none(), "{model}");
+        assert!(catalog.find_vendor("anthropic", model).is_none(), "{model}");
     }
+}
+
+/// `find` is `get` on every listed id, and finds every listed id from its
+/// dated snapshot ids.
+#[test]
+fn find_reads_every_row_and_its_dated_snapshots() {
+    let catalog = Catalog::builtin();
+    let mut rows = 0;
+    for spec in catalog.iter() {
+        let found = |model: &str| catalog.find(spec.provider, model).map(|found| &found.id);
+        assert_eq!(found(&spec.id), Some(&spec.id), "{}", spec.id);
+        assert_eq!(
+            catalog.find(spec.provider, &spec.id),
+            catalog.get(spec.provider, &spec.id)
+        );
+        for dated in [
+            format!("{}-20260601", spec.id),
+            format!("{}-2026-06-01", spec.id),
+        ] {
+            let listed = catalog.get(spec.provider, &dated).map(|listed| &listed.id);
+            assert_eq!(found(&dated), listed.or(Some(&spec.id)), "{dated}");
+        }
+        rows += 1;
+    }
+    assert!(rows > 0, "the built-in catalog has rows");
+}
+
+/// On every listed id and every eight-digit dated snapshot of one, the
+/// snapshot lookup cost and Anthropic read agrees with `find`. It differs
+/// only on a suffix past the date (`-20260601-v1:0`), which `find` does
+/// not strip, so the two stay apart.
+#[test]
+fn the_snapshot_lookup_agrees_with_find_up_to_a_suffix_past_the_date() {
+    let catalog = Catalog::builtin();
+    for spec in catalog.iter() {
+        let vendor = spec.provider.vendor();
+        for model in [spec.id.clone(), format!("{}-20260601", spec.id)] {
+            assert_eq!(
+                lookup_snapshot(vendor, &model).map(|found| &found.id),
+                catalog.find(spec.provider, &model).map(|found| &found.id),
+                "{vendor}/{model}"
+            );
+        }
+    }
+    let past_the_date = "claude-opus-5-5-20260601-v1:0";
+    assert!(lookup_snapshot("anthropic", past_the_date).is_some());
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    assert!(catalog.find(anthropic, past_the_date).is_none());
 }
 
 /// A snapshot is any suffix from `-20` after a listed id, the longest such
