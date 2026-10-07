@@ -89,7 +89,8 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
             r#"{"error":{"code":"","status":"","type":"overloaded_error"}}"#,
             Some("overloaded_error"),
         ),
-        (r#"{"error":{"code":429}}"#, None),
+        // A numeric code is the code when the envelope names no other.
+        (r#"{"error":{"code":429}}"#, Some("429")),
         (r#"{"error":{"code":""}}"#, None),
         (r#"{"error":"slow down"}"#, None),
         (" plain text\n", None),

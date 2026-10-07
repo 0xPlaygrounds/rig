@@ -121,7 +121,7 @@ pub struct ErrorReport {
     /// A provider- or tool-specific machine code, when one was reported:
     /// for a provider's reply, the transport's own code when it gave one
     /// apart from the body, else the code the body names
-    /// (`provider_response::body_code`).
+    /// ([`ProviderResponseError::machine_code`]).
     pub code: Option<String>,
     /// The HTTP status, when the failure had one.
     pub http_status: Option<u16>,
@@ -334,7 +334,10 @@ pub enum ProviderError {
     Request(SharedError),
     /// The reply decoded but does not answer the request.
     Response(String),
-    /// The provider reported a failure without a preserved reply.
+    /// The provider reported a failure without a preserved reply: a Rig
+    /// diagnostic, never classified as retryable. A provider's own error
+    /// payload belongs in [`Self::ProviderResponse`], whose envelope decides
+    /// its code and retry verdict; never put provider JSON here.
     Provider(String),
     /// The provider's reply, preserved: a non-success status with its body, a
     /// 2xx error envelope, or a non-HTTP transport's error payload.
@@ -442,9 +445,9 @@ impl ProviderError {
     }
 
     /// Preserves a verbatim provider error body with no HTTP status as
-    /// [`Self::ProviderResponse`].
+    /// [`Self::ProviderResponse`] (see [`ProviderResponseError::from_body`]).
     pub fn from_provider_body(body: impl Into<String>) -> Self {
-        Self::ProviderResponse(ProviderResponseError::without_status(body))
+        Self::ProviderResponse(ProviderResponseError::from_body(body))
     }
 
     /// Converts a non-success reply the transport reported as an error to

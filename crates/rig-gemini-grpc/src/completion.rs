@@ -192,7 +192,6 @@ pub const PROVIDER_NAME: &str = "gemini-grpc";
 pub(crate) fn rpc_error(status: &tonic::Status) -> ProviderError {
     ProviderError::from_provider_body(status.to_string())
         .with_provider_code(Some(grpc_code_name(status.code())))
-        .with_transient(Some(transient_grpc_code(status.code())))
 }
 
 /// The gRPC status code's canonical name (`UNAVAILABLE`): the code the
@@ -208,17 +207,6 @@ pub(crate) fn grpc_code_name(code: tonic::Code) -> String {
             name.push(c.to_ascii_uppercase());
             name
         })
-}
-
-/// Recognizes transient gRPC codes; other codes are non-transient.
-pub(crate) fn transient_grpc_code(code: tonic::Code) -> bool {
-    matches!(
-        code,
-        tonic::Code::Unavailable
-            | tonic::Code::ResourceExhausted
-            | tonic::Code::DeadlineExceeded
-            | tonic::Code::Aborted
-    )
 }
 
 #[cfg(test)]

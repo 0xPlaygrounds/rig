@@ -57,20 +57,6 @@ fn raw_body(raw: &HttpResponse) -> Option<String> {
     (!body.is_empty()).then(|| body.to_owned())
 }
 
-/// Classifies known transient exception codes when no HTTP status is available.
-/// Unlisted codes are non-transient.
-fn transient_exception(code: &str) -> bool {
-    matches!(
-        code,
-        "ThrottlingException"
-            | "ServiceUnavailableException"
-            | "InternalServerException"
-            | "ModelNotReadyException"
-            | "ModelTimeoutException"
-            | "ModelStreamErrorException"
-    )
-}
-
 /// The provider's reply when it sent a message or an HTTP status, with the
 /// exception type deciding retryability when no status does. Otherwise a
 /// transport error for a `transient` failure, or Rig's `fallback`
@@ -95,7 +81,9 @@ fn reply(
             ProviderError::Provider(fallback)
         };
     }
-    let transient = code.as_deref().map(transient_exception).or(transient);
+    // The exception type decides through the one provider code table; the
+    // SDK's hint stands in only when there is none.
+    let transient = if code.is_some() { None } else { transient };
     ProviderError::from_provider_body(message.unwrap_or_default())
         .with_provider_status(status)
         .with_provider_code(code)

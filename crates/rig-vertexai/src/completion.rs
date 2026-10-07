@@ -261,23 +261,15 @@ fn rpc_error(error: &google_cloud_aiplatform_v1::Error) -> ProviderError {
         .http_status_code()
         .and_then(|code| rig_core::http_client::StatusCode::from_u16(code).ok());
     let code = error.status().map(|status| status.code.name());
-    // SDK transport classifications supply retry hints when no RPC code exists.
-    let transient = code.map(transient_rpc_code).or_else(|| {
-        (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect())
-            .then_some(true)
-    });
+    // SDK transport classifications supply retry hints when no RPC code
+    // exists; an RPC code decides through the one provider code table.
+    let transient = (code.is_none()
+        && (error.is_transport() || error.is_io() || error.is_timeout() || error.is_connect()))
+    .then_some(true);
     ProviderError::from_provider_body(error.to_string())
         .with_provider_status(status)
         .with_provider_code(code.map(str::to_owned))
         .with_transient(transient)
-}
-
-/// Recognizes transient RPC codes; unlisted codes are non-transient.
-fn transient_rpc_code(code: &str) -> bool {
-    matches!(
-        code,
-        "UNAVAILABLE" | "RESOURCE_EXHAUSTED" | "DEADLINE_EXCEEDED" | "ABORTED"
-    )
 }
 
 #[cfg(test)]
