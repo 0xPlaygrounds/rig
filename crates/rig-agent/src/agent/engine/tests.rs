@@ -5283,3 +5283,141 @@ async fn retried_attempt_closes_its_completion_dispatch() -> anyhow::Result<()> 
     );
     Ok(())
 }
+
+/// A turn whose invalid tool call a hook repaired is recovered: it fires no
+/// accepted-turn hooks, but its dispatch is still closed by an outcome.
+#[tokio::test]
+async fn recovered_turn_closes_its_completion_dispatch() -> anyhow::Result<()> {
+    let blocking_hook = CompletionPairingHook::default();
+    let blocking = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("the answer is 5"),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(blocking_hook.clone())
+    .add_hook(RepairInvalidToHook("add"))
+    .build()
+    .prompt("add 2 and 3")
+    .max_turns(3)
+    .run()
+    .await;
+    anyhow::ensure!(blocking.is_ok(), "the repair recovers: {blocking:?}");
+    let outcomes = blocking_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "run: the recovered and the answer turn closed, got {outcomes:?}"
+    );
+
+    let streaming_hook = CompletionPairingHook::default();
+    let stream = AgentBuilder::new(MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+        vec![
+            MockStreamEvent::text("the answer is 5"),
+            MockStreamEvent::final_response_with_total_tokens(0),
+        ],
+    ]))
+    .tool(MockAddTool)
+    .add_hook(streaming_hook.clone())
+    .add_hook(RepairInvalidToHook("add"))
+    .build()
+    .prompt("add 2 and 3")
+    .max_turns(3)
+    .stream();
+    anyhow::ensure!(!drain_stream(stream).await, "the streamed repair recovers");
+    let outcomes = streaming_hook.paired_outcomes()?;
+    anyhow::ensure!(
+        outcomes == [false, false],
+        "stream: the recovered and the answer turn closed, got {outcomes:?}"
+    );
+    Ok(())
+}
+
+/// A denied completion never reaches the bus, so it has no outcome, as for
+/// any other denied effect.
+#[tokio::test]
+async fn denied_completion_has_no_outcome() -> anyhow::Result<()> {
+    struct DenyCompletion;
+    impl AgentHook for DenyCompletion {
+        async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+            match event.kind {
+                rig_core::effect::EffectKind::Completion { .. } => DispatchAction::deny(
+                    rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Denied, "no"),
+                ),
+                _ => DispatchAction::proceed(),
+            }
+        }
+    }
+
+    let hook = CompletionPairingHook::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("unused")]))
+        .add_hook(hook.clone())
+        .add_hook(DenyCompletion)
+        .build()
+        .prompt(Message::user("hi"))
+        .run()
+        .await;
+    anyhow::ensure!(result.is_err(), "the denial fails the run");
+    let events = hook.events()?;
+    anyhow::ensure!(
+        matches!(events.as_slice(), [CompletionHookEvent::Dispatch(_)]),
+        "a dispatch with no outcome, got {events:?}"
+    );
+    Ok(())
+}
+
+/// The outcome that closes a rejected attempt is observe-only: a hook's
+/// replacement of it is ignored and the retried run still succeeds.
+#[tokio::test]
+async fn unsettled_close_ignores_a_replacement() -> anyhow::Result<()> {
+    #[derive(Clone, Default)]
+    struct ReplaceFirstOutcome(Arc<AtomicU32>);
+    impl AgentHook for ReplaceFirstOutcome {
+        async fn on_invalid_tool_call(
+            &self,
+            _: &HookContext,
+            _: &InvalidToolCallContext,
+        ) -> Option<InvalidToolCallAction> {
+            Some(InvalidToolCallAction::retry("no such tool"))
+        }
+        async fn on_outcome(&self, _: &HookContext, event: OutcomeEvent<'_>) -> OutcomeAction {
+            let completion = matches!(event.kind, rig_core::effect::EffectKind::Completion { .. });
+            if completion && self.0.fetch_add(1, SeqCst) == 0 {
+                return OutcomeAction::Replace(Err(rig_core::error::ErrorReport::new(
+                    rig_core::error::ErrorKind::Other,
+                    "replaced",
+                )));
+            }
+            OutcomeAction::proceed()
+        }
+    }
+
+    let hook = ReplaceFirstOutcome::default();
+    let result = AgentBuilder::new(MockCompletionModel::from_turns([
+        MockTurn::tool_call("tc1", "default_api", json!({"x": 2, "y": 3})),
+        MockTurn::text("done"),
+    ]))
+    .tool(MockAddTool)
+    .add_hook(hook.clone())
+    .build()
+    .prompt("do the thing")
+    .max_turns(3)
+    .max_invalid_tool_call_retries(1)
+    .run()
+    .await;
+    anyhow::ensure!(result.is_ok(), "the replacement is ignored: {result:?}");
+    anyhow::ensure!(hook.0.load(SeqCst) == 2, "both attempts closed");
+    Ok(())
+}
+
+/// Dispatch ids are minted, and dispatch and outcome events built, only in
+/// the dispatch scope module.
+#[test]
+fn engine_builds_no_dispatch_events_outside_the_scope() {
+    let engine = include_str!("../engine.rs");
+    for needle in ["DispatchEvent {", "OutcomeEvent {", "mint_id("] {
+        assert!(!engine.contains(needle), "engine.rs contains `{needle}`");
+    }
+}
