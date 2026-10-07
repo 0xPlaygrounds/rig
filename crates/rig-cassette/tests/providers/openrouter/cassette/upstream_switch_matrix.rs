@@ -42,9 +42,9 @@ fn request(route: Route, history: Vec<Message>) -> CompletionRequest {
     request.tools = vec![lookup()];
     request.max_tokens = Some(4096);
     // The Responses route takes an effort, not a token budget.
-    request.additional_params = Some(match route {
-        Route::Chat => json!({ "reasoning": { "max_tokens": 1024 } }),
-        Route::Responses => json!({ "reasoning": { "effort": "low" } }),
+    request.options = rig::completion::GenerationOptions::default().reasoning(match route {
+        Route::Chat => rig::completion::Reasoning::Budget { tokens: 1024 },
+        Route::Responses => rig::completion::Reasoning::Effort(rig::completion::Effort::Low),
     });
     request
 }

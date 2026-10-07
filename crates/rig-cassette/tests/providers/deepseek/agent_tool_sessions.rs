@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::Message;
+use rig::completion::{GenerationOptions, Message, Reasoning};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::providers::deepseek;
 use rig::tool::Tool;
@@ -26,10 +26,9 @@ use rig::completion::CompletionRequest;
 
 pub(super) const SESSION_MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
-pub(super) fn non_thinking_params() -> serde_json::Value {
-    json!({
-        "thinking": { "type": "disabled" }
-    })
+/// Thinking off: `{"thinking":{"type":"disabled"}}` on DeepSeek.
+pub(super) fn non_thinking() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Reasoning::Off)
 }
 
 fn thinking_params() -> serde_json::Value {
@@ -419,10 +418,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .tool(manifest)
                 .tool(labels)
                 .tool(echo)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": false}),
-                ))
+                .options(non_thinking())
+                .additional_params(json!({"parallel_tool_calls": false}))
                 .build();
 
             let mut stream = agent
@@ -478,10 +475,8 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
-                .additional_params(json_utils_merge(
-                    non_thinking_params(),
-                    json!({"parallel_tool_calls": true}),
-                ))
+                .options(non_thinking())
+                .additional_params(json!({"parallel_tool_calls": true}))
                 .default_max_turns(5)
                 .build();
             let mut history = Vec::<Message>::new();
@@ -531,7 +526,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::Required)
-                        .additional_params(non_thinking_params()))
+                        .options(non_thinking()))
                 .await?;
             anyhow::ensure!(
                 required.choice.iter().any(|content| matches!(
@@ -552,7 +547,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         .tool_choice(ToolChoice::Specific {
                             function_names: vec![rig_core::message::ToolName::new(BetaSignal::NAME).expect("tool name")],
                         })
-                        .additional_params(non_thinking_params()))
+                        .options(non_thinking()))
                 .await?;
             let specific_calls = specific
                 .choice
@@ -573,7 +568,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
                         )
                         .tool(rig::tool::tool_definition(&AlphaSignal))
                         .tool_choice(ToolChoice::None)
-                        .additional_params(non_thinking_params()))
+                        .options(non_thinking()))
                 .await?;
             let none_text = assistant_text_response(&none.choice)
                 .ok_or_else(|| anyhow::anyhow!("ToolChoice::None response should contain text"))?;
@@ -667,9 +662,10 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
                 )
                 .preamble("Return only valid JSON. No markdown.")
-                .additional_params(json_utils_merge(non_thinking_params(), json!({
+                .options(non_thinking())
+                .additional_params(json!({
                     "response_format": { "type": "json_object" }
-                })));
+                }));
 
             let response = model.call(request).await?;
             let text = assistant_text_response(&response.choice)
@@ -684,23 +680,4 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
         },
     )
     .await
-}
-
-pub(super) fn json_utils_merge(
-    left: serde_json::Value,
-    right: serde_json::Value,
-) -> serde_json::Value {
-    let mut left = left;
-    let Some(left_obj) = left.as_object_mut() else {
-        return right;
-    };
-    let Some(right_obj) = right.as_object() else {
-        return left;
-    };
-
-    for (key, value) in right_obj {
-        left_obj.insert(key.clone(), value.clone());
-    }
-
-    left
 }

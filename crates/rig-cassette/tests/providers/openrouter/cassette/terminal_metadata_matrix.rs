@@ -84,19 +84,12 @@ struct Observation {
 
 type SharedObservation = Arc<Mutex<Option<Observation>>>;
 
-fn params(cell: Cell) -> Value {
+/// The raw keys no typed option covers.
+fn params(cell: Cell) -> Option<Value> {
     match cell.shape {
-        Shape::PlainOne => {
-            json!({ "provider": { "order": ["OpenAI"], "allow_fallbacks": false } })
-        }
-        Shape::PlainTwo => json!({
-            "n": 2,
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }),
-        Shape::Tool => json!({
-            "tool_choice": "required",
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }),
+        Shape::PlainOne => None,
+        Shape::PlainTwo => Some(json!({ "n": 2 })),
+        Shape::Tool => Some(json!({ "tool_choice": "required" })),
     }
 }
 
@@ -126,6 +119,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 async fn run_cell(client: OpenAiModels, cell: Cell, observed: SharedObservation) -> Result<()> {
     let model = client.completion(model_name(cell.model));
     let mut builder = CompletionRequest::new(prompt(cell))
+        .provider_options(super::super::support::pinned_order(&["OpenAI"]))
         .additional_params(params(cell))
         .max_tokens(max_tokens(cell));
     if cell.shape == Shape::Tool {

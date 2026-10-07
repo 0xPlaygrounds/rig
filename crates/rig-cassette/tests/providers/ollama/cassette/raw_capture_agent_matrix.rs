@@ -54,7 +54,7 @@ use rig::agent::{
 use rig::completion::Message;
 use rig::message::AssistantContent;
 use rig::tool::Tool;
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
@@ -308,7 +308,10 @@ async fn hooks_observe_raw_streamed() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .max_tokens(64)
-                .additional_params(json!({ "reasoning_effort": "none" }))
+                .options(
+                    rig::completion::GenerationOptions::default()
+                        .reasoning(rig::completion::Reasoning::Off),
+                )
                 .add_hook(hook)
                 .build();
             let run = drain(agent.prompt(Message::user(TEXT_PROMPT)).stream()).await;
@@ -363,7 +366,10 @@ async fn multi_turn_tool_run_records_distinct_raw_blocking() {
         move |client| async move {
             let agent = rig::AgentBuilder::new(client.completion(MODEL))
                 .preamble(TOOLS_PREAMBLE)
-                .additional_params(json!({ "reasoning_effort": "none" }))
+                .options(
+                    rig::completion::GenerationOptions::default()
+                        .reasoning(rig::completion::Reasoning::Off),
+                )
                 .tool(Adder)
                 .add_hook(hook)
                 .build();

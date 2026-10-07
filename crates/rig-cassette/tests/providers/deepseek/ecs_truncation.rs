@@ -4,7 +4,7 @@
 use super::truncation_matrix::*;
 use crate::{ecs_agent::EcsAgent, ecs_observation};
 use rig_ecs::{
-    agent::{AdditionalParams, DefaultMaxTurns, Failure, MaxTokens},
+    agent::{DefaultMaxTurns, Failure, MaxTokens, Options},
     systems::RunCommands,
 };
 use std::sync::{
@@ -26,7 +26,7 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                     ecs.app.world_mut().entity_mut(ecs.agent).insert((
                         DefaultMaxTurns(None),
                         MaxTokens(Some(16)),
-                        AdditionalParams(Some(non_thinking_params())),
+                        Options(non_thinking()),
                     ));
                     ecs.tool(ZeroArgumentFileReport {
                         invocations: invocations.clone(),

@@ -164,9 +164,7 @@ fn history(shape: Shape) -> Vec<Message> {
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt(cell.shape))
         .max_tokens(24)
-        .additional_params(json!({
-            "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-        }));
+        .provider_options(super::super::support::pinned_order(&["OpenAI"]));
     // A history that carries calls continues a tool loop, so the request
     // declares their tools, as an agent's does; without them the calls and
     // their results reach the model as text.

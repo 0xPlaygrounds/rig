@@ -3,8 +3,8 @@ use super::super::support::with_openrouter_cassette_result;
 use super::agent_tool_sessions::*;
 use crate::ecs_agent::EcsAgent;
 use anyhow::Result;
+use rig::providers::openrouter::extension::{OpenRouterOptions, ProviderPreferences};
 use rig_ecs::systems::RunCommands;
-use serde_json::json;
 
 #[tokio::test]
 async fn nested_structured_output_schema_roundtrip() -> Result<()> {
@@ -21,12 +21,13 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
             );
             agent.app.world_mut().entity_mut(agent.agent).insert((
                 rig_ecs::agent::DefaultMaxTurns(None),
-                rig_ecs::agent::AdditionalParams(Some(json!({
-                    "provider": {
-                        "require_parameters": true,
-                        "order": ["Google AI Studio", "Google Vertex"]
-                    }
-                }))),
+                rig_ecs::agent::ProviderOptions(super::super::support::openrouter_options(
+                    OpenRouterOptions::new().provider(
+                        ProviderPreferences::new()
+                            .require_parameters(true)
+                            .order(["Google AI Studio", "Google Vertex"]),
+                    ),
+                )),
             ));
             let run = agent.app.world_mut().spawn_run(
                 agent.agent,

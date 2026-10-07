@@ -70,7 +70,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
             .call(
                 CompletionRequest::new(format!("{NO_THINK}Say ok."))
                     .max_tokens(32)
-                    .additional_params(json!({ "seed": 7 })),
+                    .options(rig::completion::GenerationOptions::default().seed(7)),
             )
             .await
             .expect("an explicit seed should be accepted");

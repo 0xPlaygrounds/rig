@@ -53,12 +53,12 @@ use super::support::{
     recorded_interactions, with_deepseek_cassette_bogus_key_result,
     with_deepseek_wire_shape_cassette_result,
 };
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
 
-fn non_thinking_params() -> Value {
-    json!({ "thinking": { "type": "disabled" } })
+fn non_thinking() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Reasoning::Off)
 }
 
 // ================================================================
@@ -155,7 +155,7 @@ async fn chat_completion_rejects_a_bogus_key_with_the_provider_body() {
             let model = client.completion(MODEL);
             let error = model
                 .call(CompletionRequest::new("hi")
-                        .additional_params(non_thinking_params())
+                        .options(non_thinking())
                         .max_tokens(8))
                 .await
                 .expect_err("a rejected key is an error");

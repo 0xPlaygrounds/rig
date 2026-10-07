@@ -161,7 +161,11 @@ async fn a_thinking_level_returns_reasoning() {
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .additional_params(json!({"think": "low", "options": {"seed": 7}})),
+                    .options(
+                        rig::completion::GenerationOptions::default()
+                            .reasoning(rig::completion::Effort::Low)
+                            .seed(7),
+                    ),
             )
             .await
             .expect("the request succeeds");
@@ -194,7 +198,11 @@ async fn reasoning_without_an_opening_tag_is_text_whole() {
             .call(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .additional_params(json!({"think": false, "seed": 7})),
+                    .options(
+                        rig::completion::GenerationOptions::default()
+                            .reasoning(rig::completion::Reasoning::Off)
+                            .seed(7),
+                    ),
             )
             .await
             .expect("the request succeeds");
@@ -223,7 +231,11 @@ async fn reasoning_without_an_opening_tag_is_text_streamed() {
             .stream(
                 CompletionRequest::new("What is 2 + 2? Answer with one number.")
                     .temperature(0.0)
-                    .additional_params(json!({"think": false, "seed": 7})),
+                    .options(
+                        rig::completion::GenerationOptions::default()
+                            .reasoning(rig::completion::Reasoning::Off)
+                            .seed(7),
+                    ),
             )
             .expect("the stream starts");
         let (mut streamed_text, mut first) = (String::new(), None);
@@ -266,7 +278,11 @@ async fn ndjson_tool_calls_stream() {
                     .preamble(TOOLS_PREAMBLE.to_owned())
                     .tool(rig::tool::tool_definition(&Adder))
                     .temperature(0.0)
-                    .additional_params(json!({"think": false, "seed": 7})),
+                    .options(
+                        rig::completion::GenerationOptions::default()
+                            .reasoning(rig::completion::Reasoning::Off)
+                            .seed(7),
+                    ),
             )
             .expect("the stream starts");
         let (mut started, mut arguments) = (false, String::new());

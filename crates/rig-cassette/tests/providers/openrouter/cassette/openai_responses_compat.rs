@@ -5,6 +5,7 @@ use crate::support::{assert_nonempty_response, collect_stream_final_response_and
 
 use super::super::support::with_openrouter_openai_cassette;
 use rig::completion::{CompletionRequest, Cost};
+use rig::providers::openrouter::extension::OpenRouterExt;
 use serde_json::Value;
 
 /// The cost the recorded Responses reply of `scenario` reports in its
@@ -43,15 +44,17 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 );
 
             // `service_tier` is Responses-API metadata rig does not normalize,
-            // so it is read off the provider's own reply document, which the
-            // driver keeps verbatim on `raw`. One interaction either way.
+            // so it is read from OpenRouter's typed reply extras.
             let response = model
                 .call(request)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
-            let service_tier = response.raw["service_tier"]
-                .as_str()
+            let service_tier = response
+                .extras::<OpenRouterExt>()
+                .expect("an OpenRouter reply")
+                .expect("OpenRouter extras decode")
+                .service_tier
                 .expect("OpenRouter response should include service_tier");
 
             assert!(

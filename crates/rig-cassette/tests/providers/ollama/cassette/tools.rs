@@ -31,7 +31,7 @@ async fn two_tools_nonstreaming_chain() {
         let report = sequential_tools(client.completion(MODEL), |builder| {
             builder
                 .temperature(0.0)
-                .additional_params(serde_json::json!({ "seed": 7 }))
+                .options(rig::completion::GenerationOptions::default().seed(7))
         })
         .await
         .expect("sequential-tool conformance scenario should succeed");

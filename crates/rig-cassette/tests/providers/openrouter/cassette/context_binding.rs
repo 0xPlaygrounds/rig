@@ -9,13 +9,14 @@
 //! | 2 | `amazon_bedrock` | Amazon Bedrock |
 //! | 3 | `google_vertex` | Google Vertex |
 
-use rig::completion::{CompletionRequest, Message, ToolDefinition};
+use rig::completion::{CompletionRequest, Effort, GenerationOptions, Message, ToolDefinition};
 use rig::message::{ToolName, ToolResultContent, UserContent};
+use rig::providers::openrouter::extension::{OpenRouterOptions, ProviderPreferences};
 use serde_json::{Value, json};
 
 use rig_test_support::cassette_models::OpenAiModels;
 
-use super::super::support::with_openrouter_checked_cassette;
+use super::super::support::{openrouter_options, with_openrouter_checked_cassette};
 
 const MODEL: &str = "anthropic/claude-opus-5.5";
 
@@ -33,22 +34,27 @@ fn tool(name: &str) -> ToolDefinition {
 }
 
 /// Reasoning on, pinned to one route with no fallback.
-fn params(route: &str) -> Value {
-    json!({
-        "reasoning": {"effort": "high"},
-        "provider": {"only": [route], "allow_fallbacks": false}
-    })
+fn with_params(request: CompletionRequest, route: &str) -> CompletionRequest {
+    request
+        .options(GenerationOptions::default().reasoning(Effort::High))
+        .provider_options(openrouter_options(
+            OpenRouterOptions::new().provider(
+                ProviderPreferences::new()
+                    .only([route])
+                    .allow_fallbacks(false),
+            ),
+        ))
 }
 
 async fn two_turns(client: OpenAiModels, route: &'static str) {
     let model = client.completion(MODEL);
     let first = model
-        .call(
+        .call(with_params(
             CompletionRequest::new(PROMPT)
                 .max_tokens(6000)
-                .tool(tool("calc"))
-                .additional_params(params(route)),
-        )
+                .tool(tool("calc")),
+            route,
+        ))
         .await
         .expect("the first turn succeeds");
     let message = &first.raw["choices"][0]["message"];
@@ -71,13 +77,13 @@ async fn two_turns(client: OpenAiModels, route: &'static str) {
             .collect(),
     };
     let second = model
-        .call(
+        .call(with_params(
             CompletionRequest::new(answers)
                 .messages([Message::user(PROMPT), Message::Assistant(turn)])
                 .max_tokens(6000)
-                .tools(vec![tool("calc"), tool("plot")])
-                .additional_params(params(route)),
-        )
+                .tools(vec![tool("calc"), tool("plot")]),
+            route,
+        ))
         .await
         .expect("OpenRouter accepts the reasoning made under the old tools");
     assert!(!second.choice.is_empty(), "the second turn answers");

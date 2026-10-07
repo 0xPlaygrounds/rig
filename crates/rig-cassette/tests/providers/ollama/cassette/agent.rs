@@ -13,7 +13,10 @@ async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
         let agent = rig::AgentBuilder::new(client.completion(MODEL))
             .preamble(BASIC_PREAMBLE)
-            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+            .options(
+                rig::completion::GenerationOptions::default()
+                    .reasoning(rig::completion::Reasoning::Off),
+            )
             .build();
 
         let response = agent
@@ -38,7 +41,10 @@ async fn completion_respects_max_tokens() {
             // Small enough to truncate the answer well before the model would
             // stop on its own, so the budget is what ends generation.
             .max_tokens(24)
-            .additional_params(serde_json::json!({ "reasoning_effort": "none" }))
+            .options(
+                rig::completion::GenerationOptions::default()
+                    .reasoning(rig::completion::Reasoning::Off),
+            )
             .build();
 
         let response = agent

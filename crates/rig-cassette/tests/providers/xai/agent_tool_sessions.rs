@@ -23,7 +23,7 @@ use crate::support::{
 };
 
 use super::support::with_xai_cassette_result;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, Effort, GenerationOptions};
 
 pub(super) const SESSION_MODEL: &str = "grok-4.3";
 const SESSION_MAX_TOKENS: Option<u64> = None;
@@ -453,7 +453,8 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .tool(manifest)
                 .tool(labels)
                 .tool(echo)
-                .additional_params(json!({"parallel_tool_calls": false, "store": false}))
+                .options(GenerationOptions::default().parallel_tool_calls(false))
+                .additional_params(json!({"store": false}))
                 .build();
 
             let mut stream = agent
@@ -667,9 +668,8 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
                 )
                 .preamble("You are a concise reliability engineer.")
-                .additional_params(json!({
-                    "reasoning": { "effort": "low", "summary": "detailed" }
-                }));
+                .options(GenerationOptions::default().reasoning(Effort::Low))
+                .additional_params(json!({ "reasoning": { "summary": "detailed" } }));
 
             let response = model.call(request).await?;
             let raw = &response.raw;

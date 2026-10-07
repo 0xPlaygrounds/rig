@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::Message;
+use rig::completion::{GenerationOptions, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -411,7 +411,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 .tool(manifest)
                 .tool(labels)
                 .tool(echo)
-                .additional_params(json!({"parallel_tool_calls": false}))
+                .options(GenerationOptions::default().parallel_tool_calls(false))
                 .build();
 
             let mut stream = agent

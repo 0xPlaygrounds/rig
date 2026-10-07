@@ -11,12 +11,10 @@ use crate::support::{
     assert_stream_contains_zero_arg_tool_call_named, collect_raw_stream_observation,
     zero_arg_tool_definition,
 };
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
-fn non_thinking_params() -> serde_json::Value {
-    serde_json::json!({
-        "thinking": { "type": "disabled" }
-    })
+fn non_thinking() -> GenerationOptions {
+    GenerationOptions::default().reasoning(Reasoning::Off)
 }
 
 #[tokio::test]
@@ -28,7 +26,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
             let request = CompletionRequest::new(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
                 .tool_choice(ToolChoice::Required)
-                .additional_params(non_thinking_params());
+                .options(non_thinking());
             let stream = model.stream(request).expect("stream should start");
 
             assert_stream_contains_zero_arg_tool_call_named(stream, "ping", true).await;
@@ -48,7 +46,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
                 .tool(rig::tool::tool_definition(&BetaSignal))
-                .additional_params(non_thinking_params());
+                .options(non_thinking());
 
             let observation = collect_raw_stream_observation(
                 model.stream(request).expect("raw stream should start"),
@@ -73,7 +71,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
             let request = CompletionRequest::new(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())
                 .tool(rig::tool::tool_definition(&AlphaSignal))
-                .additional_params(non_thinking_params());
+                .options(non_thinking());
 
             let first_turn = collect_raw_stream_observation(
                 model
@@ -100,7 +98,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
                 .preamble("Use the provided tool result and answer directly.")
                 .message(assistant_message)
                 .message(tool_result_message)
-                .additional_params(non_thinking_params());
+                .options(non_thinking());
 
             let second_turn = collect_raw_stream_observation(
                 model

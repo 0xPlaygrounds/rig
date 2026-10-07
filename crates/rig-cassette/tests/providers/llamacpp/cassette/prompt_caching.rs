@@ -36,7 +36,7 @@
 //! ```
 //!
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -193,7 +193,10 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                         .preamble(probe.preamble.clone())
                         .temperature(0.0)
                         .max_tokens(16)
-                        .additional_params(json!({ "cache_prompt": false })),
+                        .options(
+                            rig::completion::GenerationOptions::default()
+                                .cache(rig::completion::CacheRetention::None),
+                        ),
                 )
                 .await
                 .expect("cache_prompt: false should succeed");

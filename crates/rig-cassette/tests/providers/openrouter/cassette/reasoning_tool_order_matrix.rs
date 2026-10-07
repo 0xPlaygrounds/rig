@@ -45,8 +45,8 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_reasoning_tool_order_cassette_result;
-use rig::completion::CompletionRequest;
+use super::super::support::{pinned_order, with_openrouter_reasoning_tool_order_cassette_result};
+use rig::completion::{CompletionRequest, GenerationOptions, Reasoning};
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -143,11 +143,12 @@ fn prompt(shape: Shape) -> &'static str {
 fn request(cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = CompletionRequest::new(prompt(cell.shape))
         .preamble("Reason first, then obey the requested tool calls exactly.")
-        .additional_params(json!({
-            "reasoning": { "max_tokens": 1024 },
-            "parallel_tool_calls": cell.shape == Shape::Parallel,
-            "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-        }))
+        .options(
+            GenerationOptions::default()
+                .reasoning(Reasoning::Budget { tokens: 1024 })
+                .parallel_tool_calls(cell.shape == Shape::Parallel),
+        )
+        .provider_options(pinned_order(&["Anthropic"]))
         .max_tokens(1200);
     for name in expected_names(cell.shape) {
         builder = builder.tool(tool(name));
@@ -183,10 +184,8 @@ async fn run_signed_agent(
             "Reason before the requested first tool call. After its result, answer exactly DONE without calling another tool.",
         )
         .tool(Lookup { invocations })
-        .additional_params(json!({
-            "reasoning": { "max_tokens": 1024 },
-            "provider": { "order": ["Anthropic"], "allow_fallbacks": false }
-        }))
+        .options(GenerationOptions::default().reasoning(Reasoning::Budget { tokens: 1024 }))
+        .provider_options(pinned_order(&["Anthropic"]))
         .max_tokens(1200)
         .default_max_turns(2)
         .build();

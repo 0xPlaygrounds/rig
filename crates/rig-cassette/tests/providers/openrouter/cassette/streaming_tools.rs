@@ -116,15 +116,15 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
             let model = client.completion(ENCRYPTED_REASONING_MODEL);
             let weather_tool = WeatherTool::new(Arc::new(AtomicUsize::new(0)));
             let tool_definition = rig::tool::tool_definition(&weather_tool);
-            let reasoning_params = serde_json::json!({
-                "reasoning": { "effort": "high" },
-                "include_reasoning": true
-            });
+            let reasoning = rig::completion::GenerationOptions::default()
+                .reasoning(rig::completion::Effort::High);
+            let reasoning_params = serde_json::json!({ "include_reasoning": true });
 
             let request = CompletionRequest::new(crate::reasoning::TOOL_USER_PROMPT)
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition.clone())
+                .options(reasoning.clone())
                 .additional_params(reasoning_params.clone());
 
             let mut stream = model.stream(request).expect("stream should start");
@@ -159,6 +159,7 @@ async fn stream_encrypted_reasoning_survives_into_the_next_turn() {
                 .preamble(crate::reasoning::TOOL_SYSTEM_PROMPT.to_string())
                 .max_tokens(4096)
                 .tool(tool_definition)
+                .options(reasoning)
                 .additional_params(reasoning_params)
                 .message(assistant_message)
                 .message(tool_result_message);

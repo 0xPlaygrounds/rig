@@ -61,13 +61,14 @@
 //! the normalized `Usage` and the reply document on `raw`.
 
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
-use super::super::support::with_openrouter_usage_cassette;
+use super::super::support::{openrouter_options, pinned_order, with_openrouter_usage_cassette};
 use crate::cassettes;
 use crate::support::collect_text_and_terminal;
-use rig::completion::CompletionRequest;
+use rig::completion::{CompletionRequest, Effort, GenerationOptions};
+use rig::providers::openrouter::extension::{OpenRouterOptions, ProviderPreferences};
 
 /// Small enough to be cheap, hard enough that a reasoning route actually
 /// spends tokens thinking about it.
@@ -78,11 +79,11 @@ const REASONING_PROMPT: &str = "A farmer has 17 sheep; all but 9 run away. He th
 const O4_MINI: &str = "openai/o4-mini";
 const CAP: u64 = 2000;
 
-fn openai_reasoning(effort: &str) -> Value {
-    json!({
-        "reasoning": { "effort": effort },
-        "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-    })
+/// `request` reasoning at `effort`, pinned to OpenAI with no fallback.
+fn openai_reasoning(request: CompletionRequest, effort: Effort) -> CompletionRequest {
+    request
+        .options(GenerationOptions::default().reasoning(effort))
+        .provider_options(pinned_order(&["OpenAI"]))
 }
 
 // ---------------------------------------------------------------------------
@@ -116,10 +117,14 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
             let model = client.completion(O4_MINI);
             let request = CompletionRequest::new(REASONING_PROMPT)
                 .max_tokens(CAP)
-                .additional_params(json!({
-                    "reasoning": { "effort": "medium", "exclude": true },
-                    "provider": { "order": ["OpenAI"], "allow_fallbacks": false }
-                }));
+                .options(GenerationOptions::default().reasoning(Effort::Medium))
+                .provider_options(openrouter_options(
+                    OpenRouterOptions::new().reasoning_exclude(true).provider(
+                        ProviderPreferences::new()
+                            .order(["OpenAI"])
+                            .allow_fallbacks(false),
+                    ),
+                ));
 
             let response = model.call(request).await.expect("reasoning turn");
 
@@ -158,20 +163,18 @@ async fn transports_agree_on_reasoning_tokens() {
             let model = client.completion(O4_MINI);
 
             let blocking = model
-                .call(
-                    CompletionRequest::new(REASONING_PROMPT)
-                        .max_tokens(CAP)
-                        .additional_params(openai_reasoning("medium")),
-                )
+                .call(openai_reasoning(
+                    CompletionRequest::new(REASONING_PROMPT).max_tokens(CAP),
+                    Effort::Medium,
+                ))
                 .await
                 .expect("blocking reasoning turn");
 
             let stream = model
-                .stream(
-                    CompletionRequest::new(REASONING_PROMPT)
-                        .max_tokens(CAP)
-                        .additional_params(openai_reasoning("medium")),
-                )
+                .stream(openai_reasoning(
+                    CompletionRequest::new(REASONING_PROMPT).max_tokens(CAP),
+                    Effort::Medium,
+                ))
                 .expect("stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
