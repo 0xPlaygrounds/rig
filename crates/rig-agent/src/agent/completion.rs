@@ -745,11 +745,11 @@ impl Agent {
     /// [`tool_context`](AgentRunner::tool_context),
     /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
     /// selection and telemetry settings (inbound tool context is driver
-    /// state, never part of the persisted run). Two run-side values still show
-    /// through: the run's persisted tool choice is what invalid-call hooks
-    /// see and what gates a `Skip`, while the request's tool choice is the
-    /// runner's; and the output tool the run committed stays committed even
-    /// though the schema and mode advertising it are the runner's.
+    /// state, never part of the persisted run). Invalid-call hooks see, and a
+    /// `Skip` is gated by, the tool choice each turn was sent with. One
+    /// run-side value still shows through: the output tool the run pinned
+    /// stays pinned even though the schema and mode advertising it are the
+    /// runner's.
     /// Conversation memory is neither
     /// loaded nor appended: the history is already in the run, and the driver
     /// that persisted it owns memory persistence and appends the finished run's
