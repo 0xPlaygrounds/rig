@@ -23,7 +23,7 @@ pub use patch::RequestPatch;
 pub use prepare::{PrepareError, PreparedRequest, prepare_request};
 pub use spec::RunSpec;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -31,8 +31,8 @@ use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
 use rig_core::message::{
-    AssistantContent, AssistantMessage, ToolCall, ToolChoice, ToolName, ToolResult,
-    ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, ToolCall, ToolName, ToolResult, ToolResultContent,
+    UserContent,
 };
 
 use rig_core::completion::{Message, ResponseIdentity, Usage};
@@ -41,7 +41,7 @@ pub mod response;
 pub mod streamed;
 
 pub use policy::{
-    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest, TurnPolicy,
 };
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
@@ -57,49 +57,6 @@ pub use streamed::{
     PartialStreamedTurn, StreamedInvalidToolCall, StreamedResolution, StreamedTurn,
     StreamedTurnAssembler, StreamedTurnEvent,
 };
-
-/// Build an unknown-tool error with advertised names and diagnostic history.
-fn unknown_tool_call_error(
-    tool_name: String,
-    available_tools: Vec<String>,
-    allowed_tools: Vec<String>,
-    chat_history: Vec<Message>,
-) -> PromptError {
-    PromptError::UnknownToolCall {
-        tool_name,
-        available_tools,
-        allowed_tools,
-        chat_history,
-    }
-}
-
-#[derive(Clone, Copy)]
-struct InvalidToolCallDiagnostic<'a> {
-    tool_call: &'a ToolCall,
-    executable_tool_names: &'a BTreeSet<String>,
-    allowed_tool_names: &'a BTreeSet<String>,
-    history: &'a [Message],
-}
-
-impl InvalidToolCallDiagnostic<'_> {
-    fn unknown(&self, tool_name: String) -> PromptError {
-        unknown_tool_call_error(
-            tool_name,
-            self.executable_tool_names.iter().cloned().collect(),
-            self.allowed_tool_names.iter().cloned().collect(),
-            self.history.to_vec(),
-        )
-    }
-
-    /// Report the rejected call as an unknown tool.
-    fn unknown_current(&self) -> PromptError {
-        self.unknown(self.tool_call.function.name.to_string())
-    }
-
-    fn cancelled(&self, reason: String) -> PromptError {
-        PromptError::cancelled(self.history.to_vec(), reason)
-    }
-}
 
 enum ValidatedInvalidToolCallAction {
     Retry { feedback: String },
@@ -155,10 +112,8 @@ pub struct ModelTurn {
     pub choice: Vec<AssistantContent>,
     /// Token usage reported by the provider for this completion request.
     pub usage: Usage,
-    /// Executable Rig tools advertised to the provider for this turn.
-    pub executable_tool_names: BTreeSet<String>,
-    /// Tools allowed by the active [`ToolChoice`] for this turn.
-    pub allowed_tool_names: BTreeSet<String>,
+    /// The tool policy this attempt was prepared with.
+    pub policy: TurnPolicy,
     /// Provider-reported terminal reason for this attempt, when available.
     pub finish_reason: Option<FinishReason>,
     /// This attempt's decoded provider response, recorded on its [`CompletionCall`].
@@ -166,31 +121,23 @@ pub struct ModelTurn {
 }
 
 impl ModelTurn {
-    /// Convert a response using the same attempt's prepared tool sets and the
+    /// Convert a response using the same attempt's prepared policy and the
     /// response's normalized finish reason. `prepared` must describe this call.
     pub fn from_response(resp: &CompletionResponse, prepared: &prepare::PreparedRequest) -> Self {
-        Self::from_response_parts(
-            resp,
-            prepared.executable_tool_names.clone(),
-            prepared.allowed_tool_names.clone(),
-        )
+        Self::from_policy(resp, prepared.policy.clone())
     }
 
     /// [`from_response`](Self::from_response) for a driver that carries the
-    /// per-turn tool-name sets by value instead of the whole prepared
-    /// request. The sets must originate from the prepared request of the same
-    /// attempt.
-    pub fn from_response_parts(
-        resp: &CompletionResponse,
-        executable_tool_names: BTreeSet<String>,
-        allowed_tool_names: BTreeSet<String>,
-    ) -> Self {
+    /// turn's [`TurnPolicy`] by value instead of the whole prepared request.
+    /// `policy` must be the [`PreparedRequest::policy`](prepare::PreparedRequest::policy)
+    /// of this attempt: it alone carries the turn's tool choice to the Skip
+    /// gate and the invalid-call context.
+    pub fn from_policy(resp: &CompletionResponse, policy: TurnPolicy) -> Self {
         Self::new(
             resp.head(),
             resp.choice.clone(),
             resp.usage,
-            executable_tool_names,
-            allowed_tool_names,
+            policy,
             resp.raw.clone(),
         )
         .with_identity(
@@ -200,15 +147,14 @@ impl ModelTurn {
         .with_finish_reason(resp.finish_reason())
     }
 
-    /// Create a model turn from response parts, the tool names advertised
-    /// for the turn, and the provider's own response `raw` (see
+    /// Create a model turn from response parts, the policy the turn was
+    /// prepared with, and the provider's own response `raw` (see
     /// [`Self::raw`]).
     pub fn new(
         head: AssistantMessage,
         choice: Vec<AssistantContent>,
         usage: Usage,
-        executable_tool_names: BTreeSet<String>,
-        allowed_tool_names: BTreeSet<String>,
+        policy: TurnPolicy,
         raw: serde_json::Value,
     ) -> Self {
         Self {
@@ -217,8 +163,7 @@ impl ModelTurn {
             provider_request_id: None,
             choice,
             usage,
-            executable_tool_names,
-            allowed_tool_names,
+            policy,
             finish_reason: None,
             raw,
         }
@@ -278,8 +223,7 @@ struct ResolvingState {
     items: Vec<AssistantContent>,
     /// Index of the next item to validate.
     next_index: usize,
-    executable_tool_names: BTreeSet<String>,
-    allowed_tool_names: BTreeSet<String>,
+    policy: TurnPolicy,
     /// Synthetic results keyed by content position so repeated call IDs cannot
     /// assign a skipped result to a different call.
     skipped: BTreeMap<usize, UserContent>,
@@ -293,23 +237,11 @@ struct ResolvingState {
 fn pending_invalid_call(resolving: &ResolvingState) -> Option<&ToolCall> {
     match resolving.items.get(resolving.next_index) {
         Some(AssistantContent::ToolCall(tool_call))
-            if !resolving
-                .allowed_tool_names
-                .contains(tool_call.function.name.as_str()) =>
+            if !resolving.policy.allows(tool_call.function.name.as_str()) =>
         {
             Some(tool_call)
         }
         _ => None,
-    }
-}
-
-/// Why a call named `name` is outside the allowed set: not executable at
-/// all, or executable but excluded by the tool choice.
-fn name_reason(executable_tool_names: &BTreeSet<String>, name: &str) -> InvalidToolCallReason {
-    if executable_tool_names.contains(name) {
-        InvalidToolCallReason::DisallowedByToolChoice
-    } else {
-        InvalidToolCallReason::UnknownTool
     }
 }
 
@@ -326,15 +258,9 @@ struct TurnState {
     has_tool_calls: bool,
     /// Keyed by position in `items` (see `ResolvingState::skipped`).
     skipped: BTreeMap<usize, UserContent>,
-    tool_names: ToolNames,
-}
-
-/// The tool names a turn was validated against, kept until its calls are
-/// answered so an invalid-call context raised in the tool step reports them.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct ToolNames {
-    executable: BTreeSet<String>,
-    allowed: BTreeSet<String>,
+    /// Kept until the turn's calls are answered, so an invalid-call context
+    /// raised in the tool step reports the policy the turn was judged by.
+    policy: TurnPolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -352,7 +278,7 @@ enum RunState {
     /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
     /// Carrying the calls in the state keeps a serialized run self-contained:
     /// a resumed process re-obtains them from [`AgentRun::next_step`].
-    ExecutingTools(Vec<PendingToolCall>, ToolNames),
+    ExecutingTools(Vec<PendingToolCall>, TurnPolicy),
     /// Terminal: the run completed successfully.
     Done(PromptResponse),
     /// Terminal: the run returned an error.
@@ -377,9 +303,9 @@ pub struct AgentRun {
     max_consecutive_malformed_tool_calls: Option<usize>,
     /// See [`RunSpec::unhandled_invalid_tool_call`].
     unhandled_invalid_tool_call: UnhandledInvalidToolCall,
-    tool_choice: Option<ToolChoice>,
-    /// Synthetic output-tool name. Its first call finalizes with arguments as
-    /// output instead of executing tools.
+    /// Synthetic output-tool name, pinned by the first turn whose policy
+    /// names one. Its first call finalizes with arguments as output instead
+    /// of executing tools.
     output_tool_name: Option<String>,
     /// Schema whose top-level required fields are checked before finalization.
     output_schema: Option<serde_json::Value>,
@@ -422,7 +348,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 2;
+pub const RUN_FORMAT: u32 = 3;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -482,7 +408,6 @@ impl AgentRun {
             max_invalid_tool_call_retries: 0,
             max_consecutive_malformed_tool_calls: None,
             unhandled_invalid_tool_call: UnhandledInvalidToolCall::Fail,
-            tool_choice: None,
             output_tool_name: None,
             output_schema: None,
             max_output_retries: 0,
@@ -651,43 +576,36 @@ impl AgentRun {
         self
     }
 
-    /// Set the tool choice active for this run. Used to reject
-    /// [`InvalidToolCallAction::Skip`] resolutions under
-    /// [`ToolChoice::None`] and reported in invalid tool-call contexts.
-    pub fn with_tool_choice(mut self, tool_choice: ToolChoice) -> Self {
-        self.tool_choice = Some(tool_choice);
-        self
-    }
-
-    /// Set the synthetic output-tool name for Tool output mode.
-    /// When a model turn calls this tool, the run finalizes with the call's
-    /// arguments (serialized JSON) as the response.
+    /// Pin the synthetic output-tool name for Tool output mode up front.
+    ///
+    /// This only seeds [`output_tool_name`](Self::output_tool_name), which the
+    /// driver passes to [`prepare_request`] as `committed_output_tool` for
+    /// later turns. It does not by itself make a call to the tool finalize the
+    /// run: a turn intercepts the call only when its [`TurnPolicy`] names the
+    /// tool, as `prepared.policy` does when `prepare_request` resolved Tool
+    /// output mode, or a hand-built `TurnPolicy::new(.., Some(name))`. Under a
+    /// policy that does not name it, a call to the tool is an invalid
+    /// (unknown) tool call.
     pub fn with_output_tool_name(mut self, name: impl Into<String>) -> Self {
         self.output_tool_name = Some(name.into());
         self
     }
 
-    /// Commit the output-tool name once the driver has resolved it from the
-    /// prepared request inside the run loop, where the agent's tool set (and
-    /// thus the resolved output mode) is known. Returns whether this call
-    /// committed it: the name is pinned for the whole run, so the request
-    /// the driver builds each turn stays consistent with the intercept (and
-    /// a tool set that shifts mid-run cannot flip the mode); a later call
-    /// with a different name is refused, not applied.
-    #[must_use = "a refused commit means the run already pinned a name"]
-    pub fn commit_output_tool_name(&mut self, name: impl Into<String>) -> bool {
-        if self.output_tool_name.is_some() {
-            return false;
-        }
-        self.output_tool_name = Some(name.into());
-        true
-    }
-
-    /// The synthetic output-tool name committed for this run, if any. The driver
+    /// The synthetic output-tool name pinned for this run, if any: set up
+    /// front, or by the first model turn whose policy names one. The driver
     /// passes this back when preparing later turns so Tool output mode stays
     /// pinned even if the per-turn tool set changes.
     pub fn output_tool_name(&self) -> Option<&str> {
         self.output_tool_name.as_deref()
+    }
+
+    /// Pin the output tool `policy` names unless one is already pinned. The
+    /// first name wins and is never unpinned, so a tool set that shifts
+    /// mid-run cannot flip the output mode.
+    fn pin_output_tool(&mut self, policy: &TurnPolicy) {
+        if self.output_tool_name.is_none() {
+            self.output_tool_name = policy.output_tool().map(str::to_owned);
+        }
     }
 
     /// The policy for an invalid tool call no hook resolves.
@@ -850,20 +768,13 @@ impl AgentRun {
         };
         let tool_call = pending_invalid_call(resolving)?;
 
-        Some(InvalidToolCallContext {
-            tool_name: tool_call.function.name.to_string(),
-            tool_call_id: Some(tool_call.id.clone()),
-            args: Some(tool_call.function.arguments_value().to_string()),
-            available_tools: resolving.executable_tool_names.iter().cloned().collect(),
-            allowed_tools: resolving.allowed_tool_names.iter().cloned().collect(),
-            tool_choice: self.tool_choice.clone(),
-            chat_history: self.diagnostic_history(resolving),
-            is_streaming: false,
-            reason: name_reason(
-                &resolving.executable_tool_names,
-                tool_call.function.name.as_str(),
-            ),
-        })
+        Some(resolving.policy.invalid_call_context(
+            tool_call,
+            Some(tool_call.function.arguments_value().to_string()),
+            self.diagnostic_history(resolving),
+            false,
+            resolving.policy.name_reason(tool_call),
+        ))
     }
 
     /// Advance the machine and return the next action for the driver.
@@ -910,7 +821,7 @@ impl AgentRun {
                     items,
                     has_tool_calls,
                     skipped,
-                    tool_names,
+                    policy,
                 } = turn_state;
                 // A failed turn runs no tool and finalizes no output; reasoning
                 // alone is not an answer. A failed turn's calls never run, and
@@ -930,7 +841,7 @@ impl AgentRun {
                 // The first output-tool call is the answer, not executable work;
                 // sibling calls must not run after finalization.
                 if has_tool_calls
-                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(output_tool_name) = policy.output_tool().map(str::to_owned)
                     && let Some(tool_call) = items.iter().find_map(|item| match item {
                         AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
                             Some(tc)
@@ -1029,12 +940,12 @@ impl AgentRun {
                         })
                         .collect();
                     self.count_malformed_tool_calls(&calls)?;
-                    self.state = RunState::ExecutingTools(calls.clone(), tool_names);
+                    self.state = RunState::ExecutingTools(calls.clone(), policy);
                     Ok(AgentRunStep::CallTools { calls })
                 } else {
                     // Accept schema-compatible JSON text without requiring a tool call;
                     // other nonempty answers may consume an output retry.
-                    if let Some(output_tool_name) = self.output_tool_name.clone()
+                    if let Some(output_tool_name) = policy.output_tool()
                         && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
                         && !structured_output::text_satisfies_schema(
@@ -1043,7 +954,7 @@ impl AgentRun {
                         )
                     {
                         self.new_messages.push(Message::user(
-                            structured_output::reprompt_text_answer(&output_tool_name),
+                            structured_output::reprompt_text_answer(output_tool_name),
                         ));
                         return self.reprompt_for_output();
                     }
@@ -1051,13 +962,13 @@ impl AgentRun {
                     Ok(self.finish(items, 0))
                 }
             }
-            RunState::ExecutingTools(calls, tool_names) => {
+            RunState::ExecutingTools(calls, policy) => {
                 // Idempotent, like Done: a process resuming a serialized run
                 // re-obtains the pending tool calls from the state itself.
                 let step = AgentRunStep::CallTools {
                     calls: calls.clone(),
                 };
-                self.state = RunState::ExecutingTools(calls, tool_names);
+                self.state = RunState::ExecutingTools(calls, policy);
                 Ok(step)
             }
             RunState::Done(response) => {
@@ -1109,6 +1020,7 @@ impl AgentRun {
             turn.finish_reason,
             turn.raw,
         );
+        self.pin_output_tool(&turn.policy);
 
         let items: Vec<AssistantContent> = turn.choice.clone();
         let has_tool_calls = has_tool_calls(&items);
@@ -1118,8 +1030,7 @@ impl AgentRun {
             original_choice: turn.choice,
             items,
             next_index: 0,
-            executable_tool_names: turn.executable_tool_names,
-            allowed_tool_names: turn.allowed_tool_names,
+            policy: turn.policy,
             skipped: BTreeMap::new(),
             recovered: false,
             any_skipped: false,
@@ -1168,14 +1079,14 @@ impl AgentRun {
         items: Vec<AssistantContent>,
         has_tool_calls: bool,
         skipped: BTreeMap<usize, UserContent>,
-        tool_names: ToolNames,
+        policy: TurnPolicy,
     ) {
         self.state = RunState::AwaitingAdvance(TurnState {
             head,
             items,
             has_tool_calls,
             skipped,
-            tool_names,
+            policy,
         });
     }
 
@@ -1225,21 +1136,17 @@ impl AgentRun {
         tool_call: &ToolCall,
         is_streaming: bool,
     ) -> Option<InvalidToolCallContext> {
-        let RunState::ExecutingTools(_, tool_names) = &self.state else {
+        let RunState::ExecutingTools(_, policy) = &self.state else {
             return None;
         };
         let raw = tool_call.function.invalid_arguments.as_ref()?;
-        Some(InvalidToolCallContext {
-            tool_name: tool_call.function.name.to_string(),
-            tool_call_id: Some(tool_call.id.clone()),
-            args: Some(raw.clone()),
-            available_tools: tool_names.executable.iter().cloned().collect(),
-            allowed_tools: tool_names.allowed.iter().cloned().collect(),
-            tool_choice: self.tool_choice.clone(),
-            chat_history: self.full_history(),
+        Some(policy.invalid_call_context(
+            tool_call,
+            Some(raw.clone()),
+            self.full_history(),
             is_streaming,
-            reason: InvalidToolCallReason::malformed_arguments(raw),
-        })
+            InvalidToolCallReason::malformed_arguments(raw),
+        ))
     }
 
     /// Validate the recovery policy shared by buffered and streamed turns.
@@ -1249,29 +1156,35 @@ impl AgentRun {
     fn validate_invalid_tool_call_action(
         &mut self,
         action: InvalidToolCallAction,
-        diagnostic: InvalidToolCallDiagnostic<'_>,
+        tool_call: &ToolCall,
+        policy: &TurnPolicy,
+        history: &[Message],
     ) -> Result<ValidatedInvalidToolCallAction, PromptError> {
+        let unknown = |name: String| policy.unknown_call(name, history.to_vec());
+        let rejected = || unknown(tool_call.function.name.to_string());
         let result = match action {
-            InvalidToolCallAction::Fail => Err(diagnostic.unknown_current()),
+            InvalidToolCallAction::Fail => Err(rejected()),
             InvalidToolCallAction::Retry { feedback } => {
                 if self.invalid_tool_call_retries >= self.max_invalid_tool_call_retries {
-                    Err(diagnostic.unknown_current())
+                    Err(rejected())
                 } else {
                     self.invalid_tool_call_retries += 1;
                     Ok(ValidatedInvalidToolCallAction::Retry { feedback })
                 }
             }
             InvalidToolCallAction::Repair { tool_name } => {
-                if diagnostic.allowed_tool_names.contains(&tool_name) {
+                if policy.allows(&tool_name) {
                     Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
                 } else {
-                    Err(diagnostic.unknown(tool_name))
+                    Err(unknown(tool_name))
                 }
             }
-            InvalidToolCallAction::Stop { reason } => Err(diagnostic.cancelled(reason)),
+            InvalidToolCallAction::Stop { reason } => {
+                Err(PromptError::cancelled(history.to_vec(), reason))
+            }
             InvalidToolCallAction::Skip { reason } => {
-                if matches!(self.tool_choice, Some(ToolChoice::None)) {
-                    Err(diagnostic.unknown_current())
+                if policy.forbids_calls() {
+                    Err(rejected())
                 } else {
                     Ok(ValidatedInvalidToolCallAction::Skip { reason })
                 }
@@ -1298,7 +1211,7 @@ impl AgentRun {
     ///   `PromptError::cancelled` and the supplied reason.
     /// - [`InvalidToolCallAction::Skip`] records a synthetic tool result
     ///   and suppresses execution of every tool call in the turn. Rejected
-    ///   under [`ToolChoice::None`].
+    ///   under a turn whose policy [`forbids_calls`](TurnPolicy::forbids_calls).
     pub fn resolve_invalid_tool_call(
         &mut self,
         action: InvalidToolCallAction,
@@ -1316,12 +1229,9 @@ impl AgentRun {
         let diagnostic_history = self.diagnostic_history(&resolving);
         let action = self.validate_invalid_tool_call_action(
             action,
-            InvalidToolCallDiagnostic {
-                tool_call: &tool_call,
-                executable_tool_names: &resolving.executable_tool_names,
-                allowed_tool_names: &resolving.allowed_tool_names,
-                history: &diagnostic_history,
-            },
+            &tool_call,
+            &resolving.policy,
+            &diagnostic_history,
         )?;
 
         match action {
@@ -1478,9 +1388,7 @@ impl AgentRun {
         while let Some(item) = resolving.items.get(resolving.next_index) {
             match item {
                 AssistantContent::ToolCall(tool_call)
-                    if !resolving
-                        .allowed_tool_names
-                        .contains(tool_call.function.name.as_str()) =>
+                    if !resolving.policy.allows(tool_call.function.name.as_str()) =>
                 {
                     break;
                 }
@@ -1505,8 +1413,7 @@ impl AgentRun {
             recovered,
             any_skipped,
             has_tool_calls,
-            executable_tool_names,
-            allowed_tool_names,
+            policy,
             ..
         } = resolving;
 
@@ -1522,16 +1429,7 @@ impl AgentRun {
             }
         }
 
-        self.finalize_turn(
-            head,
-            items,
-            has_tool_calls,
-            skipped,
-            ToolNames {
-                executable: executable_tool_names,
-                allowed: allowed_tool_names,
-            },
-        );
+        self.finalize_turn(head, items, has_tool_calls, skipped, policy);
         Ok(ModelTurnOutcome::Continue {
             response_hook_suppressed: recovered,
         })
@@ -1575,21 +1473,13 @@ impl AgentRun {
         partial: &PartialStreamedTurn,
         invalid: &StreamedInvalidToolCall,
     ) -> InvalidToolCallContext {
-        InvalidToolCallContext {
-            tool_name: invalid.tool_call.function.name.to_string(),
-            tool_call_id: Some(invalid.tool_call.id.clone()),
-            args: invalid.args.clone(),
-            available_tools: invalid.executable_tool_names.iter().cloned().collect(),
-            allowed_tools: invalid.allowed_tool_names.iter().cloned().collect(),
-            tool_choice: self.tool_choice.clone(),
-            chat_history: self
-                .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
-            is_streaming: true,
-            reason: name_reason(
-                &invalid.executable_tool_names,
-                invalid.tool_call.function.name.as_str(),
-            ),
-        }
+        invalid.policy.invalid_call_context(
+            &invalid.tool_call,
+            invalid.args.clone(),
+            self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
+            true,
+            invalid.policy.name_reason(&invalid.tool_call),
+        )
     }
 
     /// Resolve an invalid tool call surfaced mid-stream.
@@ -1609,16 +1499,16 @@ impl AgentRun {
             ));
         }
 
+        // A streamed turn abandoned here never reaches `streamed_turn`, so
+        // it pins like a buffered turn that is later retried.
+        self.pin_output_tool(&invalid.policy);
         let diagnostic_history =
             self.streamed_diagnostic_history(partial, Some(invalid.tool_call.clone()));
         let action = self.validate_invalid_tool_call_action(
             action,
-            InvalidToolCallDiagnostic {
-                tool_call: &invalid.tool_call,
-                executable_tool_names: &invalid.executable_tool_names,
-                allowed_tool_names: &invalid.allowed_tool_names,
-                history: &diagnostic_history,
-            },
+            &invalid.tool_call,
+            &invalid.policy,
+            &diagnostic_history,
         )?;
 
         match action {
@@ -1719,33 +1609,25 @@ impl AgentRun {
             let AssistantContent::ToolCall(tool_call) = item else {
                 continue;
             };
-            if !turn
-                .allowed_tool_names
-                .contains(tool_call.function.name.as_str())
-            {
+            if !turn.policy.allows(tool_call.function.name.as_str()) {
                 let mut diagnostic_messages = self.new_messages.clone();
                 diagnostic_messages.extend(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
                 self.state = RunState::Failed;
-                return Err(unknown_tool_call_error(
-                    tool_call.function.name.to_string(),
-                    turn.executable_tool_names.iter().cloned().collect(),
-                    turn.allowed_tool_names.iter().cloned().collect(),
-                    diagnostic_history,
-                ));
+                return Err(turn
+                    .policy
+                    .unknown_call(tool_call.function.name.to_string(), diagnostic_history));
             }
         }
 
+        self.pin_output_tool(&turn.policy);
         self.finalize_turn(
             turn.head,
             turn.choice,
             has_tool_calls,
             BTreeMap::new(),
-            ToolNames {
-                executable: turn.executable_tool_names,
-                allowed: turn.allowed_tool_names,
-            },
+            turn.policy,
         );
         Ok(())
     }
@@ -1786,9 +1668,12 @@ impl AgentRun {
 impl AgentRun {
     /// Build a run from a [`RunSpec`], a prompt and an optional prior history.
     ///
-    /// Applies the spec's budget, invalid-call retries, output validation and
-    /// tool choice; everything else in the spec is request-shaping the driver
-    /// reads when it prepares each model call.
+    /// Applies the spec's budget, invalid-call retries and output validation;
+    /// everything else in the spec is request-shaping the driver reads when it
+    /// prepares each model call. `spec.tool_choice` reaches invalid-call
+    /// validation only through the turn's [`TurnPolicy`]: pass
+    /// `prepared.policy` from [`prepare_request`] to
+    /// [`ModelTurn::from_policy`] or [`ModelTurn::new`].
     pub fn from_spec(
         spec: &RunSpec,
         prompt: impl Into<Message>,
@@ -1802,9 +1687,6 @@ impl AgentRun {
         run.max_consecutive_malformed_tool_calls = spec.max_consecutive_malformed_tool_calls;
         if let Some(history) = history {
             run = run.with_history(history);
-        }
-        if let Some(tool_choice) = spec.tool_choice.clone() {
-            run = run.with_tool_choice(tool_choice);
         }
         if let Some(name) = spec.output_tool_name.clone() {
             run = run.with_output_tool_name(name);

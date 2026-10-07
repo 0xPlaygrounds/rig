@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall};
+use rig::agent::run::{ModelTurn, PendingToolCall, TurnPolicy};
 use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
@@ -172,6 +172,27 @@ pub(crate) fn tool_names(names: &[&str]) -> BTreeSet<String> {
     names.iter().map(|name| (*name).to_string()).collect()
 }
 
+/// The machine's policy for a turn advertising `names` under the default
+/// tool choice.
+pub(crate) fn policy(names: &[&str]) -> TurnPolicy {
+    TurnPolicy::new(tool_names(names), None, None).expect("an auto policy")
+}
+
+/// The machine's policy for a turn advertising `executable` whose
+/// `ToolChoice::Specific` allows only `allowed`.
+pub(crate) fn restricted_policy(executable: &[&str], allowed: &[&str]) -> TurnPolicy {
+    let function_names = allowed
+        .iter()
+        .map(|name| rig::message::ToolName::new(*name).expect("tool name"))
+        .collect();
+    TurnPolicy::new(
+        tool_names(executable),
+        Some(ToolChoice::Specific { function_names }),
+        None,
+    )
+    .expect("a specific policy")
+}
+
 /// Execute one arithmetic tool call by name, the way a driver would.
 pub(crate) fn execute_arithmetic(name: &str, arguments: &serde_json::Value) -> i64 {
     let operand = |key: &str| {
@@ -218,8 +239,7 @@ pub(crate) async fn call_model(
     agent: &GeminiAgent,
     prompt: Message,
     history: Vec<Message>,
-    executable: &BTreeSet<String>,
-    allowed: &BTreeSet<String>,
+    policy: &TurnPolicy,
 ) -> ModelTurn {
     let response = agent
         .model
@@ -230,8 +250,7 @@ pub(crate) async fn call_model(
         response.head(),
         response.choice.clone(),
         response.usage,
-        executable.clone(),
-        allowed.clone(),
+        policy.clone(),
         response.raw.clone(),
     )
 }

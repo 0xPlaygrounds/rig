@@ -1069,8 +1069,7 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
                 let prepared =
                     prepare_request(&spec, &Default::default(), &history, Vec::new(), None, None)
                         .expect("prepared");
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
+                let policy = prepared.policy.clone();
                 let request = prepared.apply(CompletionRequest::new(prompt));
                 assert!(request.accept_unknown_finish_reasons);
                 let response = model.call(request).await.expect("the reply folds");
@@ -1078,8 +1077,7 @@ async fn a_sans_io_run_from_the_agent_spec_accepts_unknown_finish_reasons() {
                     response.head(),
                     response.choice,
                     response.usage,
-                    executable,
-                    allowed,
+                    policy,
                     response.raw,
                 ))
                 .expect("the accepted turn is no failure");
@@ -1121,4 +1119,129 @@ async fn calls_with_an_unknown_finish_reason_run_only_when_accepted() {
             assert_eq!(model.request_count(), 1);
         }
     }
+}
+
+/// Patches every turn's tool choice and answers invalid calls with a Skip,
+/// recording the tool choice each invalid-call context reports.
+#[derive(Clone)]
+pub(crate) struct PatchChoiceThenSkip {
+    choice: ToolChoice,
+    seen: std::sync::Arc<std::sync::Mutex<Vec<Option<ToolChoice>>>>,
+}
+
+impl PatchChoiceThenSkip {
+    pub(crate) fn new(choice: ToolChoice) -> Self {
+        Self {
+            choice,
+            seen: std::sync::Arc::default(),
+        }
+    }
+
+    pub(crate) fn seen(&self) -> Vec<Option<ToolChoice>> {
+        self.seen
+            .lock()
+            .map(|seen| seen.clone())
+            .unwrap_or_default()
+    }
+}
+
+impl AgentHook for PatchChoiceThenSkip {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: crate::agent::CompletionCallEvent<'_>,
+    ) -> crate::agent::CompletionCallAction {
+        crate::agent::CompletionCallAction::patch(
+            crate::agent::RequestPatch::new().tool_choice(self.choice.clone()),
+        )
+    }
+
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        event: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(event.tool_choice.clone());
+        }
+        Some(InvalidToolCallAction::skip("skipped"))
+    }
+}
+
+/// A turn patched to `ToolChoice::None` forbids every tool call, so a Skip is
+/// rejected exactly as it is under an agent-level `ToolChoice::None`
+/// (`tool_choice_none_rejects_non_streaming_tool_call`).
+#[tokio::test]
+async fn a_turn_patched_to_tool_choice_none_rejects_a_skip() -> anyhow::Result<()> {
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2})),
+        MockTurn::text("the skip was accepted"),
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let result = agent
+        .prompt("do not use tools")
+        .add_hook(PatchChoiceThenSkip::new(ToolChoice::None))
+        .max_turns(3)
+        .await;
+
+    anyhow::ensure!(
+        matches!(result, Err(PromptError::UnknownToolCall { ref tool_name, .. }) if tool_name == "add"),
+        "a Skip under a turn patched to ToolChoice::None must fail with UnknownToolCall, got {result:?}"
+    );
+    anyhow::ensure!(recorded.request_count() == 1);
+    Ok(())
+}
+
+/// An agent-level `ToolChoice::None` patched to `Auto` for the turn permits
+/// tools, so a Skip of an unknown call is valid and the run continues.
+#[tokio::test]
+async fn a_turn_patched_away_from_tool_choice_none_accepts_a_skip() -> anyhow::Result<()> {
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+        MockTurn::text("done"),
+    ]);
+    let agent = AgentBuilder::new(model)
+        .tool(MockAddTool)
+        .tool_choice(ToolChoice::None)
+        .build();
+
+    let result = agent
+        .prompt("use tools")
+        .add_hook(PatchChoiceThenSkip::new(ToolChoice::Auto))
+        .max_turns(3)
+        .await;
+
+    anyhow::ensure!(
+        matches!(result, Ok(ref answer) if answer.output() == "done"),
+        "a Skip under a turn patched to ToolChoice::Auto must be accepted, got {result:?}"
+    );
+    Ok(())
+}
+
+/// The invalid-call context reports the tool choice the turn was sent with,
+/// not the run-level default it was patched from.
+#[tokio::test]
+async fn invalid_tool_call_context_reports_the_patched_tool_choice() -> anyhow::Result<()> {
+    let model = MockCompletionModel::from_turns([
+        MockTurn::tool_call("tool_call_1", "default_api", json!({"x": 1, "y": 2})),
+        MockTurn::text("done"),
+    ]);
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+    let hook = PatchChoiceThenSkip::new(ToolChoice::Required);
+
+    let result = agent
+        .prompt("use tools")
+        .add_hook(hook.clone())
+        .max_turns(3)
+        .await;
+
+    anyhow::ensure!(result.is_ok(), "run should succeed, got {result:?}");
+    let seen = hook.seen();
+    anyhow::ensure!(
+        seen == vec![Some(ToolChoice::Required)],
+        "invalid-call context must report the patched ToolChoice::Required, got {seen:?}"
+    );
+    Ok(())
 }

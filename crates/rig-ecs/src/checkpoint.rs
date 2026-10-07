@@ -56,7 +56,7 @@ pub type CheckpointEntity = serde_json::Map<String, serde_json::Value>;
 type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 
 /// The [`Checkpoint`] envelope format this crate writes and reads.
-pub const CHECKPOINT_FORMAT: u32 = 2;
+pub const CHECKPOINT_FORMAT: u32 = 3;
 
 /// Reflected execution state with binary assets and counters.
 /// Deserialization rejects unknown envelope fields and formats other than

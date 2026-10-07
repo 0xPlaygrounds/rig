@@ -22,7 +22,7 @@ use crate::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
         DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
         OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
-        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome},
+        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy},
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
     tool::{Tool, ToolContext},
@@ -1436,8 +1436,7 @@ where
                 response.head(),
                 response.choice.clone(),
                 response.usage,
-                BTreeSet::new(),
-                BTreeSet::new(),
+                TurnPolicy::default(),
                 response.raw.clone(),
             ));
             OutcomeAction::stop("captured conformance model turn")
@@ -1476,13 +1475,19 @@ where
         ));
     }
     let executable = BTreeSet::from([CountingAdd::NAME.to_string(), CountingSum::NAME.to_string()]);
-    let allowed = BTreeSet::from([CountingSum::NAME.to_string()]);
+    let only_sum = ToolChoice::Specific {
+        function_names: vec![
+            rig_core::message::ToolName::new(CountingSum::NAME)
+                .map_err(|error| ScenarioError::contract(SCENARIO, error.to_string()))?,
+        ],
+    };
+    let policy = TurnPolicy::new(executable, Some(only_sum), None)
+        .map_err(|error| ScenarioError::contract(SCENARIO, error.to_string()))?;
     let turn = ModelTurn::new(
         response.head,
         response.choice,
         response.usage,
-        executable,
-        allowed,
+        policy,
         response.raw,
     );
 

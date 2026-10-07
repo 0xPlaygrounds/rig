@@ -20,7 +20,7 @@ pub(super) fn validation_len(stream: &BusStreamed) -> usize {
 pub fn discover_streamed_invalid_calls(
     mut commands: Commands,
     effects: Query<(&ChildOf, &BusStreamed), NotRetrieval>,
-    mut turns: Query<(&ChildOf, &mut Outputs), Unread>,
+    mut turns: Query<(&ChildOf, &mut Outputs, &Folded), Unread>,
     runs: Query<(&OutputToolName, &RunPhase), LiveRun>,
     children: Query<&Children>,
     adverts: Query<&Advert>,
@@ -30,7 +30,7 @@ pub fn discover_streamed_invalid_calls(
 ) {
     for (parent, stream) in &effects {
         let turn = parent.parent();
-        let Ok((run_of, mut outputs)) = turns.get_mut(turn) else {
+        let Ok((run_of, mut outputs, folded)) = turns.get_mut(turn) else {
             continue;
         };
         let Ok((minted, &RunPhase::AwaitingModel)) = runs.get(run_of.parent()) else {
@@ -50,19 +50,9 @@ pub fn discover_streamed_invalid_calls(
         }) {
             continue;
         }
-        let mut allowed: Vec<String> = links_in_order(turn, &children, &adverts)
-            .into_iter()
-            .filter_map(|Advert(entity)| bound.get(*entity).ok())
-            .filter_map(|bound| crate::policy::tool_name(&bound.descriptor).map(str::to_owned))
-            .collect();
-        if let Some(names) = access
-            .get(turn)
-            .ok()
-            .and_then(|access| access.allowed.as_ref())
-        {
-            allowed = names.iter().cloned().collect();
-        }
-        allowed.extend(minted.0.iter().cloned());
+        let access = access.get(turn).ok();
+        let granted = granted_tools(turn, &children, &adverts, &bound, access);
+        let allowed = folded.allowed_calls(&granted, access, minted.0.as_deref());
         // Track the validated offset to avoid rescanning valid stream prefixes.
         let items = stream.events.items();
         for (index, item) in items
@@ -80,7 +70,7 @@ pub fn discover_streamed_invalid_calls(
                 continue;
             };
             let name = call.function.name.as_str();
-            if allowed.iter().any(|allowed| allowed == name) {
+            if allowed.contains(name) {
                 continue;
             }
             // A call already decided on stays decided.

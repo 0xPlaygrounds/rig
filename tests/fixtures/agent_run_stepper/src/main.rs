@@ -177,8 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     None,
                 )?;
                 run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
+                let policy = prepared.policy.clone();
                 let request = prepared
                     .apply(CompletionRequest::new(prompt));
                 let response = drive(model.call(request), &mut driver)?;
@@ -187,8 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     response.head(),
                     response.choice,
                     response.usage,
-                    executable,
-                    allowed,
+                    policy,
                     response.raw,
                 ))?;
             }

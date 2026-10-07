@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
 use serde_json::json;
 
@@ -107,8 +108,13 @@ fn run_step_and_outcome_round_trip_through_serde() {
     ));
 }
 
-fn tool_names(names: &[&str]) -> BTreeSet<String> {
+fn tool_names(names: &[&str]) -> std::collections::BTreeSet<String> {
     names.iter().map(|name| (*name).to_string()).collect()
+}
+
+/// The policy of a turn advertising `names` under the default tool choice.
+fn policy(names: &[&str]) -> TurnPolicy {
+    TurnPolicy::new(tool_names(names), None, None).expect("policy")
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
@@ -133,8 +139,7 @@ fn text_turn_with_raw(text: &str, raw: serde_json::Value) -> ModelTurn {
         rig_core::message::AssistantMessage::default(),
         vec![AssistantContent::text(text)],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add"]),
+        policy(&["add"]),
         raw,
     )
 }
@@ -161,8 +166,7 @@ fn tool_call_turn_with_raw(id: &str, name: &str, raw: serde_json::Value) -> Mode
         rig_core::message::AssistantMessage::default(),
         vec![tool_call(id, name)],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add"]),
+        policy(&["add"]),
         raw,
     )
 }
@@ -330,8 +334,7 @@ fn ended_call_turn(stop: StopReason, finish: FinishReason) -> ModelTurn {
             tool_call("call_1", "add"),
         ],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add"]),
+        policy(&["add"]),
         hand_raw(),
     )
     .with_finish_reason(Some(finish))
@@ -746,8 +749,8 @@ fn malformed_output_tool_turn() -> ModelTurn {
             ),
         ))],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add", "final_result"]),
+        TurnPolicy::new(tool_names(&["add"]), None, Some("final_result".to_string()))
+            .expect("policy"),
         hand_raw(),
     )
 }
@@ -788,6 +791,47 @@ fn tool_mode_reprompts_when_output_args_are_not_a_json_object() {
     assert!(!run.is_done());
 }
 
+/// A run pinned to an output tool whose turn policy names none (a resumed
+/// runner without a schema prepares Native turns) does not ask the model to
+/// call that tool: the turn did not advertise it.
+#[test]
+fn a_text_answer_is_not_reprompted_for_an_output_tool_the_turn_did_not_advertise() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result")
+        .with_output_validation(None, 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("plain prose"))
+            .expect("model_response should succeed"),
+    );
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), "plain prose");
+}
+
+/// A skipped call to the pinned output tool on a turn whose policy does not
+/// name it is an ordinary skipped call, not the run's answer.
+#[test]
+fn a_skipped_call_to_an_unadvertised_output_tool_does_not_finalize_the_run() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result");
+    expect_call_model(&mut run);
+    let context = expect_needs_resolution(
+        run.model_response(tool_call_turn("c1", "final_result"))
+            .expect("model_response should succeed"),
+    );
+    assert_eq!(context.reason, InvalidToolCallReason::UnknownTool);
+    expect_continue(
+        run.resolve_invalid_tool_call(InvalidToolCallAction::skip("not this turn"))
+            .expect("the skip is accepted"),
+    );
+    let calls = expect_call_tools(&mut run);
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].preresolved_result.is_some());
+    assert!(!run.is_done());
+}
+
 impl ModelTurn {
     fn with_usage_for_test(mut self, usage: Usage) -> Self {
         self.usage = usage;
@@ -814,8 +858,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
             rig_core::message::AssistantMessage::default(),
             two_calls,
             Usage::default(),
-            tool_names(&["add"]),
-            tool_names(&["add"]),
+            policy(&["add"]),
             hand_raw(),
         ))
         .expect("model_response");
@@ -1028,8 +1071,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
             rig_core::message::Reasoning::new("thinking, never answering"),
         )],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add"]),
+        policy(&["add"]),
         hand_raw(),
     )
     .with_finish_reason(Some(FinishReason::Length));
@@ -1085,8 +1127,7 @@ fn malformed_call_turn(id: &str) -> ModelTurn {
             ),
         ))],
         Usage::default(),
-        tool_names(&["add"]),
-        tool_names(&["add"]),
+        policy(&["add"]),
         hand_raw(),
     )
 }
@@ -1228,8 +1269,16 @@ fn invalid_call_contexts_name_why_the_name_was_rejected() {
             rig_core::message::AssistantMessage::default(),
             vec![tool_call("c1", "sub")],
             Usage::default(),
-            tool_names(&["add", "sub"]),
-            tool_names(&["add"]),
+            TurnPolicy::new(
+                tool_names(&["add", "sub"]),
+                Some(ToolChoice::Specific {
+                    function_names: vec![
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                    ],
+                }),
+                None,
+            )
+            .expect("policy"),
             hand_raw(),
         ))
         .expect("model_response"),
@@ -1237,5 +1286,129 @@ fn invalid_call_contexts_name_why_the_name_was_rejected() {
     assert_eq!(
         context.reason,
         InvalidToolCallReason::DisallowedByToolChoice
+    );
+}
+
+/// A turn calling `name` under a policy that advertises `add` and reserves
+/// `output` as the output tool.
+fn output_policy_turn(id: &str, name: &str, output: &str) -> ModelTurn {
+    ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![tool_call(id, name)],
+        Usage::default(),
+        TurnPolicy::new(tool_names(&["add"]), None, Some(output.to_string())).expect("policy"),
+        hand_raw(),
+    )
+}
+
+#[test]
+fn the_first_turn_policy_pins_the_output_tool() {
+    let mut run = AgentRun::new("go").max_turns(3);
+    assert_eq!(run.output_tool_name(), None);
+
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_policy_turn("c1", "add", "final_result"))
+            .expect("model_response"),
+    );
+    assert_eq!(run.output_tool_name(), Some("final_result"));
+    expect_call_tools(&mut run);
+    run.tool_results(vec![tool_result("c1", "2")])
+        .expect("tool results");
+
+    // A later turn naming another output tool never unpins the first.
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_policy_turn("c2", "add", "other_result"))
+            .expect("model_response"),
+    );
+    assert_eq!(run.output_tool_name(), Some("final_result"));
+    expect_call_tools(&mut run);
+    run.tool_results(vec![tool_result("c2", "2")])
+        .expect("tool results");
+
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(output_policy_turn("c3", "final_result", "final_result"))
+            .expect("model_response"),
+    );
+    let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
+        panic!("the pinned output tool's call finalizes the run");
+    };
+    assert_eq!(response.output(), r#"{"x":1}"#);
+}
+
+/// A driver that retries a provider error before any response re-prepares
+/// with no pinned name; the turn that does answer pins it, and its output
+/// call is intercepted as the answer.
+#[test]
+fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
+    let spec = RunSpec {
+        output_schema: Some(json!({
+            "type": "object",
+            "properties": {"x": {"type": "integer"}},
+            "required": ["x"],
+        })),
+        max_turns: Some(2),
+        ..RunSpec::new()
+    };
+    let tools = vec![ToolDefinition {
+        name: rig_core::message::ToolName::new("add").expect("tool name"),
+        description: "adds".to_string(),
+        parameters: json!({"type": "object"}),
+    }];
+    let mut run = AgentRun::from_spec(&spec, "go", None);
+    let (_, history, _) = expect_call_model(&mut run);
+
+    let prepare = |run: &AgentRun| {
+        prepare_request(
+            &spec,
+            &Default::default(),
+            &history,
+            tools.clone(),
+            run.output_tool_name(),
+            None,
+        )
+        .expect("prepared")
+    };
+    // The first attempt fails at the provider: no response reaches the run.
+    let failed = prepare(&run);
+    assert_eq!(run.output_tool_name(), None);
+
+    let prepared = prepare(&run);
+    assert_eq!(prepared.policy, failed.policy);
+    let output_tool = prepared
+        .policy
+        .output_tool()
+        .expect("Tool output mode")
+        .to_string();
+    expect_continue(
+        run.model_response(ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![tool_call("c1", &output_tool)],
+            Usage::default(),
+            prepared.policy.clone(),
+            hand_raw(),
+        ))
+        .expect("model_response"),
+    );
+    assert_eq!(run.output_tool_name(), Some(output_tool.as_str()));
+    let AgentRunStep::Done(response) = run.next_step().expect("next_step") else {
+        panic!("the output tool call is the answer");
+    };
+    assert_eq!(response.output(), r#"{"x":1}"#);
+}
+
+#[test]
+fn a_format_2_run_is_refused_by_name() {
+    let run = AgentRun::new("go");
+    let mut value = serde_json::to_value(&run).expect("serialize");
+    value["format"] = json!(2);
+    let error = serde_json::from_value::<AgentRun>(value).expect_err("format 2 is refused");
+    assert!(
+        error
+            .to_string()
+            .contains("the run is format 2, this rig reads format 3"),
+        "{error}"
     );
 }

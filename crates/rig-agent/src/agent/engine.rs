@@ -333,10 +333,6 @@ where
                     {
                         fail!(PromptError::from(err), break 'outer);
                     }
-                    if let Some(name) = &prepared.output_tool_name {
-                        // Refused after the first turn by design: the name is pinned.
-                        let _ = run.commit_output_tool_name(name.clone());
-                    }
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
                     // What this request advertises becomes run data, so a
                     // resumed run or another driver can re-pair the calls
@@ -784,10 +780,7 @@ impl TurnSource for StreamingTurnSource {
                     return;
                 }
             };
-            let mut assembler = StreamedTurnAssembler::new(
-                prepared.executable_tool_names.clone(),
-                prepared.allowed_tool_names.clone(),
-            );
+            let mut assembler = StreamedTurnAssembler::new(prepared.policy);
             // A turn whose invalid tool call was repaired is a recovered turn:
             // neither the response hook nor `ModelTurnFinished` fires for it.
             let mut turn_recovered = false;
@@ -1655,10 +1648,9 @@ impl TurnSource for UnaryTurnSource {
                 }
             };
 
-            let mut outcome = match run.model_response(ModelTurn::from_response_parts(
+            let mut outcome = match run.model_response(ModelTurn::from_policy(
                 response,
-                prepared.executable_tool_names,
-                prepared.allowed_tool_names,
+                prepared.policy,
             )) {
                 Ok(outcome) => outcome,
                 Err(err) => {

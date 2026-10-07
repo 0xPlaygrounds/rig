@@ -254,10 +254,17 @@ pub struct TurnState {
 #[reflect(Component)]
 pub struct Fresh;
 
-/// The output mode the turn was folded under, pinned.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+/// The output mode and effective tool choice (patch over program) the turn
+/// was folded under, pinned. Judgments of the turn read these.
+#[derive(Component, Debug, Clone, PartialEq, Reflect)]
 #[reflect(Component)]
-pub struct Folded(pub OutputKind);
+pub struct Folded {
+    /// The output mode.
+    pub mode: OutputKind,
+    /// The effective tool choice.
+    #[reflect(remote = crate::agent::reflect::ToolChoiceReflect)]
+    pub tool_choice: Option<ToolChoice>,
+}
 
 /// A turn `Materialise` has read.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
@@ -1611,13 +1618,17 @@ pub fn fold_turn(
                     request,
                     stream: view.stream.0,
                 };
-                folded.push((turn.entity, run, model, model_bound.key.clone(), kind, mode));
+                let pin = Folded {
+                    mode,
+                    tool_choice: resolved.tool_choice.clone(),
+                };
+                folded.push((turn.entity, run, model, model_bound.key.clone(), kind, pin));
             }
             Err(error) => fail_content(&mut commands, run, error),
         }
     }
     // Completions follow this pass's retrievals, keeping their dispatch order.
-    for (turn, run, model, key, kind, mode) in folded {
+    for (turn, run, model, key, kind, folded) in folded {
         commands.spawn((
             PendingEffect::new(key, kind),
             ServedBy(model),
@@ -1626,7 +1637,7 @@ pub fn fold_turn(
         commands
             .entity(turn)
             .remove::<(Fresh, RequestPatch)>()
-            .insert((Folded(mode), Outputs::default()));
+            .insert((folded, Outputs::default()));
         commands.entity(run).phase(RunPhase::AwaitingModel);
     }
 }
@@ -1998,6 +2009,36 @@ fn granted_tools(
         .collect()
 }
 
+impl Folded {
+    /// Names the turn may call: the `granted` tools narrowed by
+    /// `ToolAccess.allowed` and by the folded tool choice, plus the minted
+    /// `output` tool. `ToolChoice::None` leaves only the output tool, and
+    /// `Specific` only its granted names and the output tool, as the request
+    /// advertised them. Every invalid-call check of the turn reads this set.
+    pub(super) fn allowed_calls(
+        &self,
+        granted: &[GrantedTool],
+        access: Option<&ToolAccess>,
+        output: Option<&str>,
+    ) -> std::collections::BTreeSet<String> {
+        let access = access.and_then(|access| access.allowed.as_ref());
+        let chosen = |name: &str| match &self.tool_choice {
+            None | Some(ToolChoice::Auto | ToolChoice::Required) => true,
+            Some(ToolChoice::None) => false,
+            Some(ToolChoice::Specific { function_names }) => {
+                function_names.iter().any(|chosen| chosen.as_str() == name)
+            }
+        };
+        granted
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .filter(|name| access.is_none_or(|access| access.contains(*name)) && chosen(name))
+            .chain(output)
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
 /// Count a landed completion's usage once before deferred invalid-call decisions
 /// consume the turn, including responses completed after an early stream decision.
 pub fn record_usage(
@@ -2142,31 +2183,30 @@ fn abandon_turn(
 }
 
 /// Apply invalid-call resolutions after usage accounting, in fail/retry/skip/edit
-/// precedence. Failure, exhausted retries, and skips under `ToolChoice::None`
-/// fail immediately, including mid-stream. Other decisions wait for completion;
+/// precedence. Failure, exhausted retries, and skips under the turn's folded
+/// `ToolChoice::None` fail immediately, including mid-stream. Other decisions wait for completion;
 /// edits also wait for all delivered names to be validated. Retries and skips
 /// preserve the rejected prefix as history. Consumed call entities are despawned.
 pub fn judge_invalid_calls(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
-    mut turns: Query<(Entity, &ChildOf, &mut Outputs), Unread>,
+    mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded), Unread>,
     effects: Query<LandedEffect, NotRetrieval>,
     runs: Query<(&RunOf, &RunSeq, &InvalidRetries, &OutputToolName, &RunPhase)>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
-    choices: Query<&ToolChoiceSpec>,
     policies: Query<&InvalidCalls>,
 ) {
     let mut turns: Vec<_> = turns
         .iter_mut()
-        .filter_map(|(turn, turn_of, outs)| {
+        .filter_map(|(turn, turn_of, outs, folded)| {
             let run = turn_of.parent();
             runs.get(run)
                 .ok()
-                .map(|(_, seq, ..)| (*seq, turn, run, outs))
+                .map(|(_, seq, ..)| (*seq, turn, run, outs, folded))
         })
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
-    for (_, turn, run, mut outs) in turns {
+    for (_, turn, run, mut outs, folded) in turns {
         let Ok((RunOf(agent), _, invalid_retries, _, &RunPhase::AwaitingModel)) = runs.get(run)
         else {
             continue;
@@ -2178,12 +2218,11 @@ pub fn judge_invalid_calls(
             continue;
         }
         let budget = setting(run, agent, &policies).map_or(0, |p| p.retries);
-        let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.as_ref());
         let verdict = match invalid_verdict(&pending) {
             InvalidVerdict::Retry(call, _) if invalid_retries.0 >= budget => {
                 InvalidVerdict::Fail(call)
             }
-            InvalidVerdict::Skip(call, _) if matches!(tool_choice, Some(ToolChoice::None)) => {
+            InvalidVerdict::Skip(call, _) if folded.tool_choice == Some(ToolChoice::None) => {
                 InvalidVerdict::Fail(call)
             }
             verdict => verdict,
@@ -2279,7 +2318,7 @@ fn provider_failed(
 /// entities and leave the turn unread until resolved.
 pub fn read_turn(
     mut commands: Commands,
-    turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
+    turns: Query<(Entity, &ChildOf, &Outputs, &Folded), Unread>,
     effects: Query<LandedEffect, NotRetrieval>,
     runs: Query<(
         &RunOf,
@@ -2300,15 +2339,15 @@ pub fn read_turn(
 ) {
     let mut turns: Vec<_> = turns
         .iter()
-        .filter_map(|(turn, turn_of, outs)| {
+        .filter_map(|(turn, turn_of, outs, folded)| {
             let run = turn_of.parent();
             runs.get(run)
                 .ok()
-                .map(|(_, seq, ..)| (*seq, turn, run, outs))
+                .map(|(_, seq, ..)| (*seq, turn, run, outs, folded))
         })
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
-    for (_, turn, run, outs) in turns {
+    for (_, turn, run, outs, folded) in turns {
         let Ok((RunOf(agent), _, provider_retried, minted, &RunPhase::AwaitingModel)) =
             runs.get(run)
         else {
@@ -2375,7 +2414,7 @@ pub fn read_turn(
         }
         let access = access.get(turn).ok();
         let granted = granted_tools(turn, &children, &adverts, &bound, access);
-        let allowed = access.and_then(|access| access.allowed.as_ref());
+        let allowed = folded.allowed_calls(&granted, access, minted.0.as_deref());
         let read = TurnRead {
             head: AssistantHead::of(&response.head()),
             content: outs.content.clone(),
@@ -2384,12 +2423,7 @@ pub fn read_turn(
         };
         let invalid: Vec<_> = read
             .calls()
-            .filter(|call| {
-                let name = call.function.name.as_str();
-                (!read.granted.iter().any(|tool| tool.name == name)
-                    || allowed.is_some_and(|allowed| !allowed.contains(name)))
-                    && minted.0.as_deref() != Some(name)
-            })
+            .filter(|call| !allowed.contains(call.function.name.as_str()))
             .collect();
         if !invalid.is_empty() {
             commands.entity(turn).remove::<Materialised>();
@@ -2654,7 +2688,7 @@ pub fn materialise_reprompt(
 ) {
     let mut turns: Vec<_> = turns
         .iter()
-        .filter(|(_, _, _, Folded(mode))| *mode == OutputKind::Tool)
+        .filter(|(_, _, _, Folded { mode, .. })| *mode == OutputKind::Tool)
         .filter_map(|(turn, turn_of, read, _)| {
             let run = turn_of.parent();
             runs.get(run)
@@ -2713,7 +2747,7 @@ pub fn materialise_answer(
         })
         .collect();
     turns.sort_by_key(|(seq, ..)| *seq);
-    for (_, turn, run, read, Folded(mode), minted) in turns {
+    for (_, turn, run, read, Folded { mode, .. }, minted) in turns {
         commands.entity(turn).remove::<TurnRead>();
         let output_call = match (mode, minted.0.as_deref(), read.assistant) {
             (OutputKind::Tool, Some(name), Some(assistant)) => read

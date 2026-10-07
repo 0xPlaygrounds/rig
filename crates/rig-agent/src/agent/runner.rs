@@ -572,7 +572,6 @@ impl<O> AgentRunner<O> {
                 .output_schema
                 .as_ref()
                 .map(|schema| schema.as_value().clone()),
-            tool_choice: self.config.tool_choice.clone(),
             ..crate::run::spec::RunSpec::new()
         };
         let run = AgentRun::from_spec(
@@ -814,7 +813,7 @@ mod settled_tests;
 mod tests;
 
 #[cfg(test)]
-mod prompt_tests;
+pub(crate) mod prompt_tests;
 
 /// A memory report back into the memory error the run surface names.
 pub(crate) fn memory_error_from_report(

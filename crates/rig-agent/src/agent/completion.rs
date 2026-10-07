@@ -28,7 +28,7 @@ use rig_core::id::ConversationId;
 
 use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use super::UNKNOWN_AGENT_NAME;
 
@@ -44,11 +44,8 @@ pub(crate) struct PreparedCompletionRequest {
     /// The definitions the request carries (executable tools plus, in Tool
     /// output mode, the synthetic output tool), for the run's `TurnTools`.
     pub(crate) advertised_tools: Vec<ToolDefinition>,
-    pub(crate) executable_tool_names: BTreeSet<String>,
-    pub(crate) allowed_tool_names: BTreeSet<String>,
-    /// When Tool output mode is active, the name of the synthetic output tool
-    /// advertised to the model, allowed but not executable.
-    pub(crate) output_tool_name: Option<String>,
+    /// The turn's tool policy, fed back to the run with the response.
+    pub(crate) policy: crate::run::TurnPolicy,
     /// Effective structured output-token cap after runner overrides and request
     /// patches. Does not interpret caps passed through additional parameters.
     pub(crate) max_tokens: Option<u64>,
@@ -118,12 +115,10 @@ pub(crate) async fn build_prepared_completion_request(
     // Narrow dispatch to the tools actually advertised this turn (a per-turn
     // `active_tools` allow-list), so the implementation behind every definition
     // the provider received is the one that runs.
-    tool_snapshot.retain_names(&prepared.executable_tool_names);
+    tool_snapshot.retain_names(prepared.policy.executable());
 
     let advertised_tools = prepared.tools.clone();
-    let executable_tool_names = prepared.executable_tool_names.clone();
-    let allowed_tool_names = prepared.allowed_tool_names.clone();
-    let output_tool_name = prepared.output_tool_name.clone();
+    let policy = prepared.policy.clone();
     let max_tokens = prepared.max_tokens;
     // The agent records the input itself, so the request the provider sees
     // carries the telemetry flag off: one span, no double recording.
@@ -140,9 +135,7 @@ pub(crate) async fn build_prepared_completion_request(
         model: model.clone(),
         tool_snapshot: Arc::new(tool_snapshot),
         advertised_tools,
-        executable_tool_names,
-        allowed_tool_names,
-        output_tool_name,
+        policy,
         max_tokens,
     };
     Ok((request, prepared))
@@ -752,11 +745,11 @@ impl Agent {
     /// [`tool_context`](AgentRunner::tool_context),
     /// [`tool_concurrency`](AgentRunner::tool_concurrency), the model
     /// selection and telemetry settings (inbound tool context is driver
-    /// state, never part of the persisted run). Two run-side values still show
-    /// through: the run's persisted tool choice is what invalid-call hooks
-    /// see and what gates a `Skip`, while the request's tool choice is the
-    /// runner's; and the output tool the run committed stays committed even
-    /// though the schema and mode advertising it are the runner's.
+    /// state, never part of the persisted run). Invalid-call hooks see, and a
+    /// `Skip` is gated by, the tool choice each turn was sent with. One
+    /// run-side value still shows through: the output tool the run pinned
+    /// stays pinned even though the schema and mode advertising it are the
+    /// runner's.
     /// Conversation memory is neither
     /// loaded nor appended: the history is already in the run, and the driver
     /// that persisted it owns memory persistence and appends the finished run's

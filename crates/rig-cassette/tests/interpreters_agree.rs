@@ -238,8 +238,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 )
                 .expect("prepared");
                 run.advertise_tools(turn, prepared.tools.clone());
-                let executable = prepared.executable_tool_names.clone();
-                let allowed = prepared.allowed_tool_names.clone();
+                let policy = prepared.policy.clone();
                 let request = prepared.apply(CompletionRequest::new(prompt));
                 let response = tokio::time::timeout(Duration::from_secs(5), model.call(request))
                     .await
@@ -249,8 +248,7 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                     response.head(),
                     response.choice,
                     response.usage,
-                    executable,
-                    allowed,
+                    policy,
                     response.raw,
                 ))
                 .expect("a model turn");

@@ -15,13 +15,15 @@ use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::{
     AgentBuilder, AgentRunner, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
 };
-use crate::run::{AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, UnhandledInvalidToolCall};
+use crate::run::{
+    AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, TurnPolicy, UnhandledInvalidToolCall,
+};
 use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
 use futures::StreamExt;
 use rig_core::completion::{CompletionRequest, Usage};
 use rig_core::message::{
-    AssistantContent, AssistantMessage, Message, ToolCall, ToolFunction, ToolName, ToolResult,
-    ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, Message, ToolCall, ToolChoice, ToolFunction, ToolName,
+    ToolResult, ToolResultContent, UserContent,
 };
 use serde_json::json;
 
@@ -92,10 +94,12 @@ fn model(surface: Surface, script: &[Turn]) -> MockCompletionModel {
     }
 }
 
-/// Answers every invalid call with `action` and records what it saw.
+/// Answers every invalid call with `action` and records what it saw. With a
+/// `choice`, it also patches every turn's tool choice to it.
 #[derive(Clone, Default)]
 struct Decide {
     action: Option<InvalidToolCallAction>,
+    choice: Option<ToolChoice>,
     seen: Arc<Mutex<Vec<InvalidToolCallContext>>>,
 }
 
@@ -103,8 +107,14 @@ impl Decide {
     fn new(action: Option<InvalidToolCallAction>) -> Self {
         Self {
             action,
+            choice: None,
             seen: Arc::default(),
         }
+    }
+
+    fn patching(mut self, choice: ToolChoice) -> Self {
+        self.choice = Some(choice);
+        self
     }
 
     fn seen(&self) -> Vec<InvalidToolCallContext> {
@@ -116,6 +126,19 @@ impl Decide {
 }
 
 impl AgentHook for Decide {
+    async fn on_completion_call(
+        &self,
+        _ctx: &HookContext,
+        _event: crate::agent::CompletionCallEvent<'_>,
+    ) -> crate::agent::CompletionCallAction {
+        match &self.choice {
+            Some(choice) => crate::agent::CompletionCallAction::patch(
+                crate::agent::RequestPatch::new().tool_choice(choice.clone()),
+            ),
+            None => crate::agent::CompletionCallAction::Continue,
+        }
+    }
+
     async fn on_invalid_tool_call(
         &self,
         _ctx: &HookContext,
@@ -482,8 +505,7 @@ async fn the_count_survives_a_serialize_and_resume() {
             AssistantMessage::default(),
             vec![AssistantContent::ToolCall(call.clone())],
             Usage::default(),
-            ["add".to_owned()].into(),
-            ["add".to_owned()].into(),
+            TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
             json!({}),
         ));
         assert!(matches!(outcome, Ok(ModelTurnOutcome::Continue { .. })));
@@ -579,5 +601,21 @@ async fn the_structured_output_path_is_unchanged() {
             reprompt.contains("not a JSON object"),
             "{surface:?}: {reprompt}"
         );
+    }
+}
+
+/// The malformed-arguments context, built while the call's tools are
+/// pending, reports the tool choice the turn was sent with.
+#[tokio::test]
+async fn the_malformed_call_context_reports_the_patched_tool_choice() {
+    for surface in SURFACES {
+        let hook = Decide::new(None).patching(ToolChoice::Required);
+        let (outcome, _) = run(surface, &[Turn::Malformed, Turn::Answer], |r| {
+            r.add_hook(hook.clone())
+        })
+        .await;
+        assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
+        let choices: Vec<_> = hook.seen().into_iter().map(|c| c.tool_choice).collect();
+        assert_eq!(choices, [Some(ToolChoice::Required)], "{surface:?}");
     }
 }

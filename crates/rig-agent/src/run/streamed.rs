@@ -7,11 +7,11 @@
 //!
 //! ```
 //! use rig_agent::run::streamed::StreamedTurnAssembler;
-//! let assembler = StreamedTurnAssembler::new(Default::default(), Default::default());
+//! let assembler = StreamedTurnAssembler::new(Default::default());
 //! assert!(assembler.aggregated_text().is_empty());
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +21,8 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolName, ToolResult,
 };
 use rig_core::streaming::{Item, PartKind, StreamEvent};
+
+use super::policy::TurnPolicy;
 
 /// Detect unknown payloads containing assistant content that assembly would lose:
 /// tagged assistant blocks or text with a malformed provider item.
@@ -44,10 +46,8 @@ pub struct StreamedInvalidToolCall {
     pub tool_call: ToolCall,
     /// Raw argument payload for diagnostics, when available.
     pub args: Option<String>,
-    /// Executable Rig tools advertised to the provider for this turn.
-    pub executable_tool_names: BTreeSet<String>,
-    /// Tools allowed by the active tool choice for this turn.
-    pub allowed_tool_names: BTreeSet<String>,
+    /// The tool policy of the turn the call was judged under.
+    pub policy: TurnPolicy,
 }
 
 /// Snapshot of a streamed turn at the moment an invalid tool call appeared.
@@ -137,10 +137,8 @@ pub struct StreamedTurn {
     /// The assistant content to record in history, in the order its parts
     /// started, with ignored calls left out and repaired calls renamed.
     pub choice: Vec<AssistantContent>,
-    /// Executable Rig tools advertised to the provider for this turn.
-    pub executable_tool_names: BTreeSet<String>,
-    /// Tools allowed by the active tool choice for this turn.
-    pub allowed_tool_names: BTreeSet<String>,
+    /// The tool policy the turn was prepared with.
+    pub policy: TurnPolicy,
     /// Provider-reported terminal reason for this turn, when available.
     pub finish_reason: Option<FinishReason>,
 }
@@ -218,8 +216,7 @@ struct PendingInvalid {
 /// Dropping warns once if assistant content was excluded, otherwise stays silent.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StreamedTurnAssembler {
-    executable_tool_names: BTreeSet<String>,
-    allowed_tool_names: BTreeSet<String>,
+    policy: TurnPolicy,
     text: String,
     /// Reasoning text per part, by the part's position.
     reasoning: BTreeMap<usize, String>,
@@ -262,15 +259,11 @@ impl Drop for ExclusionCount {
 }
 
 impl StreamedTurnAssembler {
-    /// Create an assembler for one streamed turn with the tool names
-    /// advertised to the provider for that turn.
-    pub fn new(
-        executable_tool_names: BTreeSet<String>,
-        allowed_tool_names: BTreeSet<String>,
-    ) -> Self {
+    /// Create an assembler for one streamed turn with the policy the turn
+    /// was prepared with.
+    pub fn new(policy: TurnPolicy) -> Self {
         Self {
-            executable_tool_names,
-            allowed_tool_names,
+            policy,
             text: String::new(),
             reasoning: BTreeMap::new(),
             open_calls: BTreeMap::new(),
@@ -362,7 +355,7 @@ impl StreamedTurnAssembler {
             } => {
                 let live = name
                     .as_ref()
-                    .is_some_and(|name| self.allowed_tool_names.contains(name.as_str()));
+                    .is_some_and(|name| self.policy.allows(name.as_str()));
                 self.open_calls.insert(
                     part.index(),
                     OpenCall {
@@ -395,10 +388,7 @@ impl StreamedTurnAssembler {
                 content: AssistantContent::ToolCall(tool_call),
             } => {
                 self.open_calls.remove(&part.index());
-                if !self
-                    .allowed_tool_names
-                    .contains(tool_call.function.name.as_str())
-                {
+                if !self.policy.allows(tool_call.function.name.as_str()) {
                     return Ok(self.surface_invalid_call(
                         tool_call.clone(),
                         Some(tool_call.function.arguments_value().to_string()),
@@ -487,8 +477,7 @@ impl StreamedTurnAssembler {
         StreamedTurn {
             head: response.head(),
             choice,
-            executable_tool_names: self.executable_tool_names.clone(),
-            allowed_tool_names: self.allowed_tool_names.clone(),
+            policy: self.policy,
             finish_reason: response.finish_reason(),
         }
     }
@@ -503,8 +492,7 @@ impl StreamedTurnAssembler {
         let invalid = StreamedInvalidToolCall {
             tool_call: tool_call.clone(),
             args,
-            executable_tool_names: self.executable_tool_names.clone(),
-            allowed_tool_names: self.allowed_tool_names.clone(),
+            policy: self.policy.clone(),
         };
         self.pending_invalid = Some(PendingInvalid { tool_call });
         vec![StreamedTurnEvent::InvalidToolCall(invalid)]
