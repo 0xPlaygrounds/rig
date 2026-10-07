@@ -1148,6 +1148,52 @@ now keeps where the unary body has it.
 content). Rejected: it strips content from unary `raw`, a second breaking
 change to recorded data, and keeps two `raw` contracts.
 
+### 4.1 Adding a reassembler for a new API
+
+Full streamed-`raw` parity is kept: for every completion API, the document a
+stream rebuilds equals the unary body of the same turn, after `comparable`.
+**The parity tests are the contract.** They are
+`every_recorded_pair_agrees`, over the `PAIRS` rows, and
+`every_recorded_pair_has_a_row`, both in
+`crates/rig-core/src/test_utils/raw_parity/tests.rs`, and the companion
+crates' own pair tests listed in `CHECKED_ELSEWHERE` (Bedrock's, through
+`raw_pair_over`). A reassembler is correct when its rows pass. A change that
+makes a row disagree changes streamed `raw` for every caller, so it is fixed
+in the fold, not by loosening the row. A row's `minted` pointers name only
+what two answers to one prompt cannot share (generated text, signatures,
+token counts), never a field the fold fails to rebuild.
+
+To add a completion API:
+1. **Write the fold** in the provider module, beside its decoder
+   (a `document` module with sibling tests, as in
+   `providers::anthropic::streaming::document`). It is a plain JSON fold: a `#[derive(Default)]`
+   struct named for the unary document type, with
+   `impl Reassemble<W::Frame>` and `impl Serves<Completion>`. `absorb` sees
+   every frame in arrival order, frames the decoder skips included; `finish`
+   returns the unary document, partial when the stream was cut, or `Null`
+   for none. It names no typed provider struct and no `Extras` type, since
+   the `extras-off-decode-path` guard covers it. It follows the shared rules
+   of section 4: a non-null value replaces, `null` only fills an absent key,
+   stream-only transport fields are dropped, and the stream's tag becomes
+   the unary tag.
+2. **Name it on the wire**: `type Reassembler = ..;`. A wire that picks its
+   API per reply also overrides `Wire::reassembler(&self)` to build the
+   matching one, as `OpenAiWire`, Copilot and `CohereChat` do.
+3. **Keep unary `raw` the provider body.** An HTTP transport reports it. A
+   transport that does not (an SDK or a local model) attaches it with
+   `Opened::with_document`, so the driver feeds the reassembler in stream
+   mode only.
+4. **Add the parity row.** Record one turn both ways (the same request
+   body, streaming switches aside, to the same endpoint), add a `Pair` row,
+   and teach `decoded` the wire. A wire whose transport is not HTTP gets its
+   pair test in its own crate with `raw_pair_over` and a `CHECKED_ELSEWHERE`
+   entry. Once the corpus holds such a pair, `every_recorded_pair_has_a_row`
+   fails until the row exists. An API with no recorded pair is checked with
+   `raw_pair` over a hand-built pair and listed as such in section 1.1
+   (guarantee 5) and section 9 until a pair is recorded.
+5. **Write its `Extras`** against the unary document only (section 3); the
+   parity row is what makes it read the streamed reply the same way.
+
 ## 5. Decision E: citations live on `message::Text`
 
 **Decided.** A private `citations` field on `message::Text`. Decoders set it
