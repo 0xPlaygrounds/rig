@@ -70,7 +70,7 @@ impl ExtensionOptions for FakeOptions {
     }
 }
 
-#[derive(Debug, PartialEq, Deserialize)]
+#[derive(Debug, Default, PartialEq, Deserialize)]
 struct FakeExtras {
     route: String,
     cost: Option<f64>,
@@ -536,6 +536,33 @@ fn extras_are_read_only_from_the_providers_own_reply() {
 fn extras_of_the_wrong_shape_are_an_error() {
     let reply = reply("fake", json!({"cost": "free"}));
     assert!(matches!(reply.extras::<Fake>(), Some(Err(_))));
+}
+
+#[test]
+fn lossy_extras_are_the_view_or_the_empty_one() {
+    let own = reply("fake", json!({"cost": 0.25}));
+    assert_eq!(
+        own.extras_lossy::<Fake>(),
+        FakeExtras {
+            route: "fake.responses".to_owned(),
+            cost: Some(0.25),
+        }
+    );
+    assert_eq!(own.extras_lossy::<Other>(), FakeExtras::default());
+
+    let capture = crate::test_utils::TraceCapture::default();
+    let wrong = reply("fake", json!({"cost": "free"}));
+    let extras = tracing::subscriber::with_default(capture.subscriber(), || {
+        wrong.extras_lossy::<Fake>()
+    });
+    assert_eq!(extras, FakeExtras::default());
+    let logged = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.level == tracing::Level::DEBUG)
+        .filter(|event| event.fields.get("provider") == Some(&json!("fake")))
+        .count();
+    assert_eq!(logged, 1);
 }
 
 /// A request and what carries one stay unwind safe with provider options

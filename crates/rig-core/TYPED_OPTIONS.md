@@ -905,7 +905,10 @@ spells the same, and a section named by an `Api` string (`"openai.chat"`,
   caller never predicts it. A section named for another route is skipped
   with a `tracing::debug!`: that is how one entry serves every route.
 - `CompletionResponse::extras::<P>()` returns `None` unless
-  `origin.provider == P::PROVIDER`.
+  `origin.provider == P::PROVIDER`. `extras_lossy::<P>()` returns the
+  empty view (every field `None`) in that case and when the reply does not
+  decode, which it logs at `debug`; every built-in `Extras` type is
+  `Default`.
 - A field in `"*"` or in the taken route's section that the route or model
   cannot send is reported through `on_unsupported` (an error by default, a
   warning and the field left out under `Ignore`), named
