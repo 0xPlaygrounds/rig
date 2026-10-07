@@ -89,7 +89,8 @@ fn vector_reply_reports_preserve_machine_codes_and_status_retryability() {
             r#"{"error":{"code":"","status":"","type":"overloaded_error"}}"#,
             Some("overloaded_error"),
         ),
-        (r#"{"error":{"code":429}}"#, None),
+        // A numeric code is the code when the envelope names no other.
+        (r#"{"error":{"code":429}}"#, Some("429")),
         (r#"{"error":{"code":""}}"#, None),
         (r#"{"error":"slow down"}"#, None),
         (" plain text\n", None),
@@ -643,4 +644,48 @@ fn a_relayed_report_keeps_its_provider_response() {
     assert_eq!(relayed.kind(), ErrorKind::ProviderResponse);
     assert!(relayed.is_retryable());
     assert_eq!(ErrorReport::from(&relayed), report);
+}
+
+#[test]
+fn every_error_kind_has_its_own_stable_code() {
+    let kinds = [
+        (ErrorKind::Http, "http"),
+        (ErrorKind::Json, "json"),
+        (ErrorKind::Url, "url"),
+        (ErrorKind::Request, "request"),
+        (ErrorKind::Response, "response"),
+        (ErrorKind::Provider, "provider"),
+        (ErrorKind::ProviderResponse, "provider_response"),
+        (ErrorKind::Tool(ToolErrorKind::Timeout), "tool"),
+        (ErrorKind::MemoryBackend, "memory_backend"),
+        (ErrorKind::MemoryPolicy, "memory_policy"),
+        (ErrorKind::Internal, "internal"),
+        (ErrorKind::Cancelled, "cancelled"),
+        (ErrorKind::Timeout, "timeout"),
+        (ErrorKind::BusClosed, "bus_closed"),
+        (ErrorKind::HandlerUnavailable, "handler_unavailable"),
+        (ErrorKind::Divergence, "divergence"),
+        (ErrorKind::Denied, "denied"),
+        (ErrorKind::Other, "other"),
+    ];
+    for (kind, code) in kinds {
+        assert_eq!(kind.code(), code, "{kind:?}");
+    }
+}
+
+#[test]
+fn a_report_carries_its_refusal_and_request_id() {
+    let report = ErrorReport::new(ErrorKind::Provider, "declined")
+        .refused()
+        .with_request_id("req_123");
+    assert!(report.refusal);
+    assert_eq!(report.request_id.as_deref(), Some("req_123"));
+    assert!(!retryable_status(None));
+}
+
+#[test]
+fn a_url_parse_failure_converts_to_a_url_error() {
+    let error = ProviderError::from(url_error());
+    assert!(matches!(error, ProviderError::Url(_)));
+    assert_eq!(error.kind(), ErrorKind::Url);
 }

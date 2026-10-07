@@ -1441,11 +1441,10 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                 "the frame's message: {report:?}"
             );
             assert_eq!(report.http_status, status, "the frame's status: {report:?}");
-            assert_eq!(
-                report.retryable,
-                rig_core::error::retryable_status(status),
-                "the status table's verdict: {report:?}"
-            );
+            // Every shape's frame names a server failure (`server_error`, a
+            // 503): retryable in band as on its HTTP rejection, whether a
+            // status or the code says so. The cell spends no retries.
+            assert!(report.retryable, "the envelope's verdict: {report:?}");
             let recorded = log.records[0]
                 .outcome
                 .as_ref()

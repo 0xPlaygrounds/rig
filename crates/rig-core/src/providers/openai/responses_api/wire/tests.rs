@@ -424,4 +424,44 @@ fn each_dialect_encodes_what_its_endpoint_reads() {
     }
 }
 
+/// An `error` event projects the envelope it carries and no verdict; a
+/// `response.failed` event projects its verdict and then its envelope.
+///
+/// Not a cassette test: a server error is a transient condition that cannot
+/// be recorded on demand, and the projection is a pure function of the frame.
+#[test]
+fn an_error_event_projects_only_the_envelope_it_carries() {
+    use crate::observe::{Action, AdapterContext, AdapterEvent, ObservationLog, Subject};
+    let projected = |payload: serde_json::Value| {
+        let log = std::sync::Arc::new(ObservationLog::default());
+        let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+        let mut attempt = context
+            .attempt_for(&http::Request::new(()), "/responses")
+            .expect("an attempt starts");
+        attempt.project(|sink| project_payload(payload.to_string().as_bytes(), sink));
+        drop(attempt);
+        let trace = log.trace();
+        trace
+            .observations
+            .iter()
+            .filter_map(|o| match &o.action {
+                Action::Adapter { observation } => match &observation.event {
+                    AdapterEvent::Provider { .. } => Some("provider"),
+                    AdapterEvent::ErrorEnvelope { .. } => Some("error"),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    let error = serde_json::json!({ "code": "server_error", "message": "boom" });
+    let event = serde_json::json!({ "type": "error", "error": error });
+    assert_eq!(projected(event), ["error"]);
+    let failed = serde_json::json!({
+        "type": "response.failed",
+        "response": { "id": "resp_1", "status": "failed", "error": error }
+    });
+    assert_eq!(projected(failed), ["provider", "error"]);
+}
+
 mod provider_options;

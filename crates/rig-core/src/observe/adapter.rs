@@ -134,15 +134,32 @@ pub struct AdapterErrorEnvelope {
 
 /// Error-envelope projection with optional code, message, and `type`/`status`.
 /// Codes remain JSON values until emission validates their scalar shape.
-#[derive(Default, Deserialize)]
+#[derive(Default)]
 pub struct ObservedError {
     pub code: Option<serde_json::Value>,
-    #[serde(rename = "type", alias = "status")]
     pub kind: Option<String>,
     pub message: Option<String>,
 }
 
 impl ObservedError {
+    /// The error envelope a provider document carries, located as its
+    /// [`crate::provider_response::ProviderResponseError`] reads it: an
+    /// error event's own `type` is its tag, not a kind, and an `error`
+    /// string is the message alone.
+    pub fn of(doc: &serde_json::Value) -> Option<Self> {
+        let (error, nested) = crate::provider_response::located_error(doc)?;
+        let text = |key: &str| error.get(key).and_then(serde_json::Value::as_str);
+        let kind = nested.then(|| text("type").or_else(|| text("status")));
+        Some(Self {
+            code: error.get("code").filter(|code| !code.is_null()).cloned(),
+            kind: kind.flatten().map(str::to_owned),
+            message: error
+                .as_str()
+                .or_else(|| text("message"))
+                .map(str::to_owned),
+        })
+    }
+
     /// Emit this envelope as the attempt's error-envelope fact, scrubbed.
     pub fn emit(self, sink: &mut ObservationSink<'_>) {
         let code = self.code.map(|code| match code {

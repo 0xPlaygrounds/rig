@@ -83,6 +83,43 @@ async fn response_failed_chunk_surfaces_provider_error_with_code_prefix() {
     }));
 }
 
+/// `response.failed` with a transient code (`server_error`,
+/// `rate_limit_exceeded`) is retryable, as the same condition is on an HTTP
+/// 500 or 429.
+///
+/// Not a cassette test: a server failure or rate limit is a transient
+/// condition that cannot be recorded on demand, and the defect is the
+/// verdict the envelope gets, which a hand-written frame pins exactly.
+#[tokio::test]
+async fn response_failed_with_a_transient_code_is_retryable() -> anyhow::Result<()> {
+    for code in ["server_error", "rate_limit_exceeded"] {
+        let mut response = sample_response("failed");
+        response["error"] = json!({ "code": code, "message": "try again" });
+        let event = json!({
+            "type": "response.failed",
+            "sequence_number": 1,
+            "response": response,
+        });
+        let err = first_error_from_event(event).await;
+        anyhow::ensure!(err.retryable, "{code} must be retryable: {err:?}");
+    }
+    Ok(())
+}
+
+/// The stream's `error` event with a transient code is retryable.
+///
+/// Not a cassette test, for the reason above.
+#[tokio::test]
+async fn an_error_event_with_a_transient_code_is_retryable() -> anyhow::Result<()> {
+    let event = json!({
+        "type": "error",
+        "error": { "message": "boom", "code": "server_error", "type": "server_error" }
+    });
+    let err = first_error_from_event(event).await;
+    anyhow::ensure!(err.retryable, "server_error must be retryable: {err:?}");
+    Ok(())
+}
+
 #[tokio::test]
 async fn streaming_error_event_preserves_full_payload_in_live_loop() {
     use crate::providers::internal::openai_chat_completions_compatible::tests::sse_bytes_from_json_events;

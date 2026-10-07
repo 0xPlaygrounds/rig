@@ -277,13 +277,8 @@ impl ChatDecoder {
             None => AdapterVerdict::default(),
         };
         sink.provider(verdict, None);
-        if let Some(message) = record.str("error") {
-            ObservedError {
-                code: None,
-                kind: None,
-                message: Some(message.to_owned()),
-            }
-            .emit(sink);
+        if let Some(error) = ObservedError::of(&record) {
+            error.emit(sink);
         }
     }
 }

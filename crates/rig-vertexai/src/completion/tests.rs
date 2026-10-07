@@ -60,8 +60,9 @@ fn an_sdk_transport_failure_has_no_code_and_retries() {
 
 /// Vertex AI requires `FunctionResponse.response`. A result that is only an
 /// image names it by `$ref`, the image carrying that `displayName`.
-#[test]
-fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
+/// The encoded `contents` of a history whose one tool result holds `images`
+/// copies of one image and nothing else.
+fn image_tool_result_contents(images: usize) -> serde_json::Value {
     use rig_core::message::{
         AssistantContent, AssistantMessage, CallId, DocumentSourceKind, Image, ImageMediaType,
         Message, ToolCall, ToolFunction, ToolName, ToolResultContent, UserContent,
@@ -92,7 +93,7 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
         )])),
         Message::User {
             content: vec![UserContent::ToolResult(
-                call.result(vec![ToolResultContent::Image(image)]),
+                call.result(vec![ToolResultContent::Image(image); images]),
             )],
         },
     ];
@@ -102,7 +103,12 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
     let request = wire
         .encode(request, Mode::Unary)
         .expect("the history encodes");
-    let contents = serde_json::to_value(&request.contents).expect("JSON");
+    serde_json::to_value(&request.contents).expect("JSON")
+}
+
+#[test]
+fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
+    let contents = image_tool_result_contents(1);
     let response = &contents[2]["parts"][0]["functionResponse"];
     assert_eq!(
         response["response"],
@@ -111,6 +117,24 @@ fn an_image_only_tool_result_keeps_a_response_naming_the_image() {
     );
     assert_eq!(
         response["parts"][0]["inlineData"]["displayName"], "rig_tool_result_image_0",
+        "{contents:#}"
+    );
+}
+
+#[test]
+fn a_tool_result_of_several_images_names_each_in_order() {
+    let contents = image_tool_result_contents(2);
+    let response = &contents[2]["parts"][0]["functionResponse"];
+    assert_eq!(
+        response["response"],
+        serde_json::json!({"output": [
+            {"$ref": "rig_tool_result_image_0"},
+            {"$ref": "rig_tool_result_image_1"},
+        ]}),
+        "{contents:#}"
+    );
+    assert_eq!(
+        response["parts"][1]["inlineData"]["displayName"], "rig_tool_result_image_1",
         "{contents:#}"
     );
 }

@@ -114,19 +114,9 @@ impl<'id> Decoder<'id, Completion> for GenerateContentDecoder {
             self.usage = Some(usage.clone());
         }
         if let Some(error) = data.at("/error") {
-            // An in-band failure is a provider error, not a truncation. Its
-            // code is an HTTP status; only error statuses join the retry policy.
-            let status = error
-                .get("code")
-                .and_then(Value::as_u64)
-                .and_then(|code| u16::try_from(code).ok())
-                .and_then(|code| http::StatusCode::from_u16(code).ok())
-                .filter(|status| status.is_client_error() || status.is_server_error());
+            // An in-band failure is a provider error, not a truncation.
             let body = serde_json::json!({ "error": error }).to_string();
-            return Err(match status {
-                Some(status) => ProviderError::from_http_response(status, body),
-                None => ProviderError::from_provider_body(body),
-            });
+            return Err(ProviderError::from_provider_body(body));
         }
         if let Some(blocked) = data.get("promptFeedback").and_then(blocked_prompt_error) {
             return Err(blocked);
@@ -382,13 +372,7 @@ impl GenerateContentDecoder {
         };
         let response_id = scrub(reply.str("responseId"));
         sink.provider(verdict, response_id);
-        if let Some(error) = reply.get("error").filter(|error| error.is_object()) {
-            let text = |key: &str| error.str(key).map(str::to_owned);
-            let error = crate::observe::ObservedError {
-                code: error.get("code").cloned(),
-                kind: text("status").or_else(|| text("type")),
-                message: text("message"),
-            };
+        if let Some(error) = crate::observe::ObservedError::of(&reply) {
             error.emit(sink);
         }
     }

@@ -320,31 +320,22 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
         return;
     };
-    let envelope = |error: &Value| ObservedError {
-        code: error.get("code").filter(|code| !code.is_null()).cloned(),
-        kind: error
-            .str("type")
-            .or_else(|| error.str("status"))
-            .map(str::to_owned),
-        message: error.str("message").map(str::to_owned),
-    };
-    if payload.str("type") == Some("error") {
-        // The event carries its envelope either nested under `error` or as
-        // its own top-level fields; the nested form names the error type.
-        match payload.get("error").filter(|error| error.is_object()) {
-            Some(error) => envelope(error),
-            None => ObservedError {
-                kind: None,
-                ..envelope(&payload)
-            },
-        }
-        .emit(sink);
-        return;
+    // An error event carries its envelope and nothing else.
+    if payload.str("type") != Some("error") {
+        project_verdict(&payload, sink);
     }
+    if let Some(error) = ObservedError::of(&payload) {
+        error.emit(sink);
+    }
+}
+
+/// The verdict and response id a response object, or the stream event
+/// wrapping one, reports.
+fn project_verdict(payload: &Value, sink: &mut ObservationSink<'_>) {
     let object = payload
         .get("response")
         .filter(|response| response.is_object())
-        .unwrap_or(&payload);
+        .unwrap_or(payload);
     // `status` is the provider's verdict; `in_progress` on a stream's
     // opening event is not one yet, so it is left out of the projection.
     let verdict = AdapterVerdict {
@@ -361,9 +352,6 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut ObservationSink<'_>) {
     };
     let response_id = object.str("id").map(|value| sink.scrub(value));
     sink.provider(verdict, response_id);
-    if let Some(error) = object.get("error").filter(|error| error.is_object()) {
-        envelope(error).emit(sink);
-    }
 }
 
 #[cfg(test)]
