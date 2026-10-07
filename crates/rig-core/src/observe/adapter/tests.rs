@@ -845,3 +845,39 @@ fn a_host_scrubs_its_own_diagnostics_with_the_adapter_rules() {
         "plain failure"
     );
 }
+
+#[test]
+fn terminal_observes_nothing_without_an_open_attempt() {
+    let usage = crate::completion::Usage {
+        input_tokens: Some(3),
+        output_tokens: Some(2),
+        ..Default::default()
+    };
+    // No attempt installed: there is nothing to close.
+    let empty = AdapterSlot::default();
+    empty.terminal(Some(&usage));
+
+    // An attempt that already failed is closed: the reply's end adds no
+    // usage and no second `Finished`.
+    let log = Arc::new(ObservationLog::default());
+    let context = AdapterContext::new(log.clone(), Subject::default(), "call");
+    let request = http::Request::new(());
+    let slot = AdapterSlot::default();
+    slot.install(context.attempt_for(&request, "/completion"));
+    slot.fail(&crate::error::ProviderError::Http(
+        crate::http_client::Error::StreamEnded.into(),
+    ));
+    let before = log.trace().observations.len();
+    slot.terminal(Some(&usage));
+    drop(slot);
+    let trace = log.trace();
+    assert_eq!(trace.observations.len(), before);
+    assert!(!trace.observations.iter().any(|o| matches!(
+        &o.action,
+        Action::Adapter { observation } if matches!(
+            observation.event,
+            AdapterEvent::Usage { .. }
+                | AdapterEvent::Finished { ending: AdapterEnding::Terminal }
+        )
+    )));
+}

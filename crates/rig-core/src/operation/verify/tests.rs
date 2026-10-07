@@ -54,3 +54,10 @@ fn a_rejected_verification_keeps_its_reply() {
         }
     }
 }
+
+/// A verification's reply carries no usage, so its attempt closes on the
+/// default: nothing observed.
+#[test]
+fn a_verification_observes_no_usage() {
+    assert_eq!(<Verify as Operation>::observed_usage(&()), None);
+}
