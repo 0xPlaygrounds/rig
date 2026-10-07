@@ -167,3 +167,24 @@ fn a_run_with_two_spellings_of_one_image_round_trips_with_one_payload() {
     assert_eq!(read_message(&restored, utterance).unwrap(), expected);
     assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
 }
+
+/// A document's text is saved as the `String` source checkpoints have
+/// always spelled it, and loads as the document's text.
+#[test]
+fn a_saved_string_document_source_loads_as_its_text() {
+    let mut world = bare_world();
+    let utterance = world.spawn(Utterance).id();
+    let parts = MessageParts::User {
+        content: vec![UserContent::document_text("the notes", None)],
+    };
+    write_message(&mut world, utterance, parts.clone()).unwrap();
+    let saved = save_world(&mut world).unwrap().to_json().unwrap();
+    assert!(saved.contains(r#"{"String":"the notes"}"#), "{saved}");
+    let checkpoint = Checkpoint::from_json(&saved).unwrap();
+    let mut destination = bare_world();
+    load_world(&checkpoint, &mut destination, RestoreMode::Strict, []).unwrap();
+    let mut utterances = destination.query_filtered::<Entity, With<Utterance>>();
+    let loaded: Vec<Entity> = utterances.iter(&destination).collect();
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(read_message(&destination, loaded[0]).unwrap(), parts);
+}

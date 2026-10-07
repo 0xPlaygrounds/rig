@@ -49,8 +49,8 @@ use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, Replay
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::message::{
-    AssistantContent, DocumentMediaType, DocumentSourceKind as Source, Message, MimeType,
-    ToolChoice, ToolResultContent, UserContent,
+    AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind as Source, Message,
+    MimeType, ToolChoice, ToolResultContent, UserContent,
 };
 use crate::operation::Completion;
 use crate::providers::internal::wire_ids::WireIds;
@@ -336,17 +336,16 @@ pub fn accepts(model: &str) -> Accepts {
 }
 
 /// Whether a GenerateContent wire takes `media`: data or a URL of a media
-/// type Gemini reads. A YouTube video needs no media type, a file id is
-/// never taken, and a text document's data is left to the adapter, which
-/// sends its text. A function response takes image data, and a URL only when
-/// `response_files`: Vertex AI declares `fileData` there and the Gemini API
-/// does not.
+/// type Gemini reads, or a text document, which goes as text. A YouTube video
+/// needs no media type and a file id is never taken. A function response
+/// takes image data, and a URL only when `response_files`: Vertex AI declares
+/// `fileData` there and the Gemini API does not.
 pub fn encodes(media: Media<'_>, response_files: bool) -> bool {
     match media {
         Media::Image(image, place) => {
             reads_image(image.media_type.as_ref(), place)
                 && match image.data {
-                    Source::Base64(_) | Source::String(_) => true,
+                    Source::Base64(_) => true,
                     Source::Url(_) => place != Place::ToolResult || response_files,
                     _ => false,
                 }
@@ -361,10 +360,12 @@ pub fn encodes(media: Media<'_>, response_files: bool) -> bool {
             }
         },
         Media::Document(document) => match (&document.media_type, &document.data) {
-            (None, _) => false,
-            (Some(_), Source::Url(_) | Source::String(_)) => true,
-            (Some(media_type), Source::Base64(_)) => *media_type == DocumentMediaType::PDF,
-            (Some(_), _) => false,
+            (_, DocumentData::Text(_)) => true,
+            (Some(_), DocumentData::File(Source::Url(_))) => true,
+            (Some(media_type), DocumentData::File(Source::Base64(_))) => {
+                *media_type == DocumentMediaType::PDF
+            }
+            _ => false,
         },
     }
 }
@@ -634,17 +635,12 @@ fn mime<M: MimeType>(media_type: Option<M>) -> Option<String> {
 }
 
 /// Where `source` puts media on every Gemini wire, REST and Interactions
-/// alike: a URL by reference (`true`) and base64 data inline. A string is
-/// inline as it stands when `verbatim`, else as the base64 of its bytes.
-/// Each wire's `encodes` refuses every other form, so the adapter passes
-/// none.
-pub(super) fn carried(source: Source, verbatim: bool) -> Result<(bool, String), EncodeError> {
-    use base64::Engine as _;
+/// alike: a URL by reference (`true`) and base64 data inline. Each wire's
+/// `encodes` refuses every other form, so the adapter passes none.
+pub(super) fn carried(source: Source) -> Result<(bool, String), EncodeError> {
     match source {
         Source::Url(uri) => Ok((true, uri)),
         Source::Base64(data) => Ok((false, data)),
-        Source::String(data) if verbatim => Ok((false, data)),
-        Source::String(data) => Ok((false, base64::prelude::BASE64_STANDARD.encode(data))),
         _ => Err(EncodeError::request(
             "Gemini cannot receive this media in its form",
         )),
@@ -654,13 +650,8 @@ pub(super) fn carried(source: Source, verbatim: bool) -> Result<(bool, String), 
 /// `source` of `mime_type` as GenerateContent part data, file data by URI
 /// or inline data, which needs a media type; a whole `part` is marked as no
 /// thought.
-fn media(
-    mime_type: Option<String>,
-    source: Source,
-    string_is_data: bool,
-    part: bool,
-) -> Result<Value, EncodeError> {
-    let (uri, data) = carried(source, string_is_data)?;
+fn media(mime_type: Option<String>, source: Source, part: bool) -> Result<Value, EncodeError> {
+    let (uri, data) = carried(source)?;
     let data = match (uri, mime_type) {
         (true, mime) => ("fileData", json!({ "mimeType": mime, "fileUri": data })),
         (false, Some(mime)) => ("inlineData", json!({ "mimeType": mime, "data": data })),
@@ -691,7 +682,7 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
                     ToolResultContent::Text(text) => values.push(Value::String(text.text)),
                     ToolResultContent::Json { value } => values.push(value),
                     ToolResultContent::Image(image) => {
-                        parts.push(media(mime(image.media_type), image.data, true, false)?);
+                        parts.push(media(mime(image.media_type), image.data, false)?);
                     }
                 }
             }
@@ -709,17 +700,15 @@ fn user_part(part: UserContent, id: Option<&str>) -> Result<Value, EncodeError> 
             ]);
             json!({ "functionResponse": response, "thought": false })
         }
-        UserContent::Image(image) => media(mime(image.media_type), image.data, true, true)?,
+        UserContent::Image(image) => media(mime(image.media_type), image.data, true)?,
         // A text document goes as text, so that RAG context reads as prose.
-        UserContent::Document(document) => match (document.media_type, document.data) {
-            (Some(media_type), Source::String(text)) if media_type != DocumentMediaType::PDF => {
-                text_part(text)
-            }
-            (media_type, data) => media(mime(media_type), data, true, true)?,
+        UserContent::Document(document) => match document.data {
+            DocumentData::Text(text) => text_part(text),
+            DocumentData::File(data) => media(mime(document.media_type), data, true)?,
         },
-        UserContent::Audio(audio) => media(mime(audio.media_type), audio.data, false, true)?,
+        UserContent::Audio(audio) => media(mime(audio.media_type), audio.data, true)?,
         UserContent::Video(video) => {
-            let mut part = media(mime(video.media_type), video.data, false, true)?;
+            let mut part = media(mime(video.media_type), video.data, true)?;
             if let (Some(Value::Object(extra)), Some(part)) =
                 (video.additional_params, part.as_object_mut())
             {
@@ -783,12 +772,9 @@ fn assistant_part(
                 ("thoughtSignature", signature),
             ]))
         }
-        AssistantContent::Image(image) => media(
-            mime(image.media_type.clone()),
-            image.data.clone(),
-            true,
-            true,
-        )?,
+        AssistantContent::Image(image) => {
+            media(mime(image.media_type.clone()), image.data.clone(), true)?
+        }
         AssistantContent::Opaque(opaque) => opaque.item.clone(),
     }))
 }

@@ -7,7 +7,8 @@
 //! ```
 use crate::completion::{AssistantContent, Message, Usage};
 use crate::message::{
-    DocumentSourceKind, Image, MimeType, Opaque, ToolResult, ToolResultContent, UserContent,
+    DocumentData, DocumentSourceKind, Image, MimeType, Opaque, ToolResult, ToolResultContent,
+    UserContent,
 };
 use base64::Engine;
 use serde::Serialize;
@@ -565,9 +566,6 @@ where
             modality,
             content: base64::engine::general_purpose::STANDARD.encode(content),
         }),
-        DocumentSourceKind::String(content) => Some(TelemetryPart::Text {
-            content: content.clone(),
-        }),
         DocumentSourceKind::Unknown => None,
     }
 }
@@ -622,9 +620,14 @@ fn user_parts(content: &[UserContent]) -> Vec<TelemetryPart> {
             UserContent::Video(video) => {
                 media_part(&video.data, video.media_type.as_ref(), "video")
             }
-            UserContent::Document(document) => {
-                media_part(&document.data, document.media_type.as_ref(), "document")
-            }
+            UserContent::Document(document) => match &document.data {
+                DocumentData::Text(content) => Some(TelemetryPart::Text {
+                    content: content.clone(),
+                }),
+                DocumentData::File(data) => {
+                    media_part(data, document.media_type.as_ref(), "document")
+                }
+            },
         })
         .collect()
 }

@@ -112,7 +112,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
             },
             "media_type": "txt"
@@ -120,7 +120,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: extra>\nextra context\n</file>\n"
             },
             "media_type": "txt"
@@ -194,7 +194,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
             },
             "media_type": "txt"
@@ -202,7 +202,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: extra>\nextra context\n</file>\n"
             },
             "media_type": "txt"
@@ -318,7 +318,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: static_doc_0>\nstatic context\n</file>\n"
             },
             "media_type": "txt"
@@ -326,7 +326,7 @@ const GOLDEN: &str = r#"
           {
             "type": "document",
             "data": {
-              "type": "string",
+              "type": "text",
               "value": "<file id: extra>\nextra context\n</file>\n"
             },
             "media_type": "txt"

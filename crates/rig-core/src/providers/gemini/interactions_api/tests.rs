@@ -528,3 +528,81 @@ async fn an_interaction_observes_its_usage_once() {
     assert!(usage.input_tokens.is_some(), "{usage:?}");
     assert_eq!(observed, [crate::wire::AdapterUsage::from(&usage)]);
 }
+
+/// Every `data` string in `value`, in document order.
+fn inline_data(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(fields) => {
+            for (key, field) in fields {
+                match (key.as_str(), field) {
+                    ("data", Value::String(data)) => out.push(data.clone()),
+                    _ => inline_data(field, out),
+                }
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|item| inline_data(item, out)),
+        _ => {}
+    }
+}
+
+/// The inline data strings `wire` sends for `request`, prepared as the
+/// driver prepares it.
+fn sent_data<W>(wire: &W, request: CompletionRequest) -> anyhow::Result<Vec<String>>
+where
+    W: crate::wire::Wire<Op = crate::operation::Completion, Payload = crate::wire::Encoded>,
+{
+    use crate::wire::Operation;
+    let request = crate::operation::Completion::prepare(request, &wire.describe())?;
+    let encoded = wire.encode(request, crate::wire::Mode::Unary)?;
+    let crate::wire::Body::Bytes(bytes) = encoded.request.body() else {
+        anyhow::bail!("the request body is not JSON");
+    };
+    let mut data = Vec::new();
+    inline_data(&serde_json::from_slice(bytes)?, &mut data);
+    Ok(data)
+}
+
+/// One canonical string-sourced image and PDF reach both Gemini wires as
+/// the same inline bytes: GenerateContent sends the string as the data, so
+/// Interactions must not base64-encode it a second time. The image is the
+/// persisted `"string"` spelling, which loads as base64 data.
+///
+/// Not a cassette test: the defect is in the request body two wires build
+/// from one message, which no recorded reply exercises.
+#[test]
+fn a_string_source_is_the_same_inline_data_on_both_gemini_wires() -> anyhow::Result<()> {
+    let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
+    let image: message::DocumentSourceKind =
+        serde_json::from_value(json!({"type": "string", "value": png}))?;
+    let request = || {
+        CompletionRequest::new(Message::User {
+            content: vec![
+                message::UserContent::text("Describe both."),
+                message::UserContent::Image(message::Image {
+                    data: image.clone(),
+                    media_type: Some(message::ImageMediaType::PNG),
+                    ..message::Image::default()
+                }),
+                message::UserContent::Document(message::Document {
+                    data: message::DocumentSourceKind::base64(pdf).into(),
+                    media_type: Some(message::DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+            ],
+        })
+    };
+    let config = crate::providers::gemini::GeminiConfig::new("test-key");
+    let generate = sent_data(&config.completion("gemini-2.5-flash"), request())?;
+    let interactions = sent_data(&config.interactions("gemini-2.5-flash"), request())?;
+
+    anyhow::ensure!(
+        generate == vec![png.to_owned(), pdf.to_owned()],
+        "GenerateContent sends the string as the data: {generate:?}"
+    );
+    anyhow::ensure!(
+        interactions == generate,
+        "Interactions sends {interactions:?} where GenerateContent sends {generate:?}"
+    );
+    Ok(())
+}

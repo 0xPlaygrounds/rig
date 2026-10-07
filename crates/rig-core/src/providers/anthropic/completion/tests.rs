@@ -1008,7 +1008,7 @@ fn blocks_without_a_current_item_rebuild_as_pi_does() {
 #[test]
 fn document_serializes_citations_and_metadata() {
     let value = user_wire(message::UserContent::Document(message::Document {
-        data: DocumentSourceKind::String("hello".into()),
+        data: message::DocumentData::Text("hello".into()),
         media_type: Some(DocumentMediaType::TXT),
         additional_params: Some(json!({"title": "My Doc", "citations": {"enabled": true}})),
     }))
@@ -1087,7 +1087,12 @@ fn encodes_states_exactly_the_media_the_encoder_carries() {
         ..Image::default()
     };
     let document = |data: Source, media_type: Option<Doc>| Document {
-        data,
+        data: data.into(),
+        media_type,
+        additional_params: None,
+    };
+    let text = |text: &str, media_type: Option<Doc>| Document {
+        data: message::DocumentData::Text(text.into()),
         media_type,
         additional_params: None,
     };
@@ -1103,7 +1108,6 @@ fn encodes_states_exactly_the_media_the_encoder_carries() {
         ),
         (image(Source::url("https://example.com/a.png"), None), true),
         (image(Source::file_id("file_image"), None), true),
-        (image(Source::string("not an image"), None), false),
     ];
     for (image, carried) in images {
         let in_result = message::UserContent::ToolResult(message::ToolResult {
@@ -1140,14 +1144,14 @@ fn encodes_states_exactly_the_media_the_encoder_carries() {
             false,
         ),
         (document(Source::file_id("file_doc"), None), true),
-        (document(Source::string("plain"), Some(Doc::TXT)), true),
-        (document(Source::string("plain"), None), true),
+        (text("plain", Some(Doc::TXT)), true),
+        (text("plain", None), true),
         (document(Source::base64("cGxhaW4="), Some(Doc::TXT)), true),
         (
             document(Source::base64("cmlnLG1hdHJpeAo="), Some(Doc::CSV)),
             true,
         ),
-        (document(Source::string("<p>hi</p>"), Some(Doc::HTML)), true),
+        (text("<p>hi</p>", Some(Doc::HTML)), true),
         (document(Source::base64("//79"), Some(Doc::CSV)), false),
         (document(Source::base64("cGxhaW4="), None), false),
     ];
@@ -1187,17 +1191,25 @@ fn a_text_family_document_is_sent_as_its_text() {
 
     for (data, media_type, text) in [
         (
-            Source::base64("cmlnLG1hdHJpeAoxLDIK"),
+            Source::base64("cmlnLG1hdHJpeAoxLDIK").into(),
             Some(Doc::CSV),
             "rig,matrix\n1,2\n",
         ),
         (
-            Source::base64("cGxhaW4gdGV4dA=="),
+            Source::base64("cGxhaW4gdGV4dA==").into(),
             Some(Doc::TXT),
             "plain text",
         ),
-        (Source::string("# notes"), Some(Doc::MARKDOWN), "# notes"),
-        (Source::string("untyped"), None, "untyped"),
+        (
+            message::DocumentData::Text("# notes".into()),
+            Some(Doc::MARKDOWN),
+            "# notes",
+        ),
+        (
+            message::DocumentData::Text("untyped".into()),
+            None,
+            "untyped",
+        ),
     ] {
         let converted = user_wire(message::UserContent::Document(message::Document {
             data,

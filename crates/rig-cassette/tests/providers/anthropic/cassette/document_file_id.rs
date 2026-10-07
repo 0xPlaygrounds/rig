@@ -13,7 +13,7 @@ const PAGE_VERIFIERS: [&str; 3] = [PAGE_ONE_VERIFIER, PAGE_TWO_VERIFIER, PAGE_TH
 
 fn file_id_document(file_id: &str) -> Document {
     Document {
-        data: DocumentSourceKind::file_id(file_id),
+        data: DocumentSourceKind::file_id(file_id).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
@@ -23,7 +23,7 @@ fn file_id_document(file_id: &str) -> Document {
 /// the shape a file reference ingested from Anthropic's own wire has.
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
     RigUserContent::Document(Document {
-        data: DocumentSourceKind::file_id(file_id),
+        data: DocumentSourceKind::file_id(file_id).into(),
         media_type: None,
         additional_params: None,
     })
@@ -56,7 +56,7 @@ fn message_contains_file_id(message: &Message, expected_file_id: &str) -> bool {
         matches!(
             content,
             RigUserContent::Document(Document {
-                data: DocumentSourceKind::FileId(file_id),
+                data: rig::message::DocumentData::File(DocumentSourceKind::FileId(file_id)),
                 ..
             }) if file_id == expected_file_id
         )

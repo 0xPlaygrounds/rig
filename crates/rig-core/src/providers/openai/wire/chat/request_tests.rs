@@ -118,7 +118,7 @@ fn a_result_is_a_string_or_its_parts() {
 fn user_parts_take_their_wire_shapes() {
     let document = |data: DocumentSourceKind, media_type| {
         UserContent::Document(crate::message::Document {
-            data,
+            data: data.into(),
             media_type,
             additional_params: None,
         })
@@ -326,4 +326,58 @@ fn ollama_compatible_bodies_send_reasoning_and_refuse_native_options() {
         let refused = sent(raw(params.clone())).expect_err("the request is refused");
         assert!(refused.to_string().contains(named), "{params}: {refused}");
     }
+}
+
+/// Whether `value` holds a part or message whose text is exactly `text`.
+fn carries_text(value: &Value, text: &str) -> bool {
+    match value {
+        Value::Object(fields) => {
+            ["text", "content"]
+                .iter()
+                .any(|key| fields.get(*key).and_then(Value::as_str) == Some(text))
+                || fields.values().any(|field| carries_text(field, text))
+        }
+        Value::Array(items) => items.iter().any(|item| carries_text(item, text)),
+        _ => false,
+    }
+}
+
+/// A base64 PDF is PDF data, as Anthropic sends it: the adapter's text
+/// fallback never hands its base64 to the model as user text. A document's
+/// text, including a persisted `"string"` PDF, goes as its text, as on
+/// every wire.
+///
+/// Not a cassette test: the defect is the request body built before any
+/// HTTP, which no recorded reply exercises.
+#[test]
+fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
+    let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
+    let wire = wire();
+    let sent = |data: crate::message::DocumentData| {
+        let request = CompletionRequest::new(Message::User {
+            content: vec![
+                UserContent::text("Summarize the file."),
+                UserContent::Document(crate::message::Document {
+                    data,
+                    media_type: Some(DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+            ],
+        });
+        crate::operation::Completion::prepare(request, &wire.describe())
+            .map_err(anyhow::Error::from)
+            .and_then(|request| Ok(json_body(&wire.encode(request, Mode::Unary)?.request)))
+    };
+    let body = sent(DocumentSourceKind::base64(pdf).into())?;
+    anyhow::ensure!(
+        !carries_text(&body, pdf),
+        "the PDF's base64 goes to the model as text: {body:#}"
+    );
+    let legacy = serde_json::from_value(json!({"type": "string", "value": pdf}))?;
+    let body = sent(legacy)?;
+    anyhow::ensure!(
+        carries_text(&body, pdf),
+        "a text document goes as its text: {body:#}"
+    );
+    Ok(())
 }

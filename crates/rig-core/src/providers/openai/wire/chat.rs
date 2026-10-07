@@ -14,8 +14,9 @@ use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, R
 use crate::error::{EncodeError, ProviderError};
 use crate::json_utils::Lenient;
 use crate::message::{
-    AssistantContent, AssistantMessage, DocumentMediaType, DocumentSourceKind as Source, Message,
-    MimeType, ToolCall, ToolResult, ToolResultContent, UserContent,
+    AssistantContent, AssistantMessage, DocumentData, DocumentMediaType,
+    DocumentSourceKind as Source, Message, MimeType, ToolCall, ToolResult, ToolResultContent,
+    UserContent,
 };
 use crate::observe::ObservedError;
 use crate::operation::{Block, CallFragment, Completion, Finish};
@@ -90,17 +91,17 @@ fn user_part(part: &UserContent) -> Result<Value, EncodeError> {
         UserContent::Document(document) => {
             let pdf = document.media_type == Some(DocumentMediaType::PDF);
             match &document.data {
-                Source::FileId(id) => file(json!({ "file_id": id })),
-                Source::Base64(data) if pdf => file(json!({
+                DocumentData::Text(text) => json!({"type": "text", "text": text}),
+                DocumentData::File(Source::FileId(id)) => file(json!({ "file_id": id })),
+                DocumentData::File(Source::Base64(data)) if pdf => file(json!({
                     "file_data": format!("data:application/pdf;base64,{data}"),
                     "filename": "document.pdf",
                 })),
                 // OpenRouter and Mistral fetch a PDF a URL names.
-                Source::Url(url) if pdf => {
+                DocumentData::File(Source::Url(url)) if pdf => {
                     file(json!({"file_data": url, "filename": "document.pdf"}))
                 }
-                Source::String(text) if !pdf => json!({"type": "text", "text": text}),
-                _ => return Err(unsendable("a document")),
+                DocumentData::File(_) => return Err(unsendable("a document")),
             }
         }
         UserContent::Audio(audio) => match &audio.data {
@@ -842,7 +843,7 @@ impl crate::completion::ReplayTarget for Chat {
     /// What the Chat encoder carries, by dialect: an image as a URL or
     /// typed data; audio as data; video as a URL or typed data, except to
     /// OpenAI, Azure and Mistral; a PDF as data, or as a URL OpenRouter or
-    /// Mistral fetches; a file id where the dialect takes one; and a string
+    /// Mistral fetches; a file id where the dialect takes one; and a text
     /// document as text. DeepSeek and Mira take text only; Perplexity and
     /// Cohere take no media but images, and Ollama only images as data.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
@@ -858,7 +859,7 @@ impl crate::completion::ReplayTarget for Chat {
         let linked = |source: &Source, typed: bool| match source {
             Source::Url(_) => true,
             Source::Base64(_) => typed,
-            Source::Raw(_) | Source::FileId(_) | Source::String(_) | Source::Unknown => false,
+            Source::Raw(_) | Source::FileId(_) | Source::Unknown => false,
         };
         match media {
             Media::Image(image, place) => {
@@ -880,13 +881,15 @@ impl crate::completion::ReplayTarget for Chat {
             Media::Document(document) => {
                 let pdf = document.media_type == Some(DocumentMediaType::PDF);
                 match &document.data {
-                    Source::String(_) => !pdf,
-                    Source::FileId(_) => files && dialect.quirks.accepts_file_ids,
-                    Source::Base64(_) => files && pdf,
-                    Source::Url(_) => {
+                    DocumentData::Text(_) => true,
+                    DocumentData::File(Source::FileId(_)) => {
+                        files && dialect.quirks.accepts_file_ids
+                    }
+                    DocumentData::File(Source::Base64(_)) => files && pdf,
+                    DocumentData::File(Source::Url(_)) => {
                         pdf && matches!(rewrite, BodyRewrite::OpenRouter | BodyRewrite::Mistral)
                     }
-                    Source::Raw(_) | Source::Unknown => false,
+                    DocumentData::File(Source::Raw(_) | Source::Unknown) => false,
                 }
             }
         }

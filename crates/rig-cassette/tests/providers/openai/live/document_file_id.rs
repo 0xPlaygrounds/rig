@@ -107,7 +107,7 @@ where
 
 fn file_id_document(file_id: &str) -> Document {
     Document {
-        data: DocumentSourceKind::file_id(file_id),
+        data: DocumentSourceKind::file_id(file_id).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     }
@@ -115,7 +115,7 @@ fn file_id_document(file_id: &str) -> Document {
 
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
     let content = RigUserContent::Document(Document {
-        data: DocumentSourceKind::file_id(file_id),
+        data: DocumentSourceKind::file_id(file_id).into(),
         media_type: None,
         additional_params: None,
     });
@@ -147,7 +147,7 @@ fn assert_file_id_user_content(content: &RigUserContent, expected_file_id: &str)
     };
 
     assert!(
-        matches!(data, DocumentSourceKind::FileId(file_id) if file_id == expected_file_id),
+        matches!(data, rig::message::DocumentData::File(DocumentSourceKind::FileId(file_id)) if file_id == expected_file_id),
         "expected file ID document source {expected_file_id}, got {data:?}"
     );
 }
@@ -162,7 +162,7 @@ fn assert_history_contains_file_id(history: &[Message], expected_file_id: &str) 
             matches!(
                 content,
                 RigUserContent::Document(Document {
-                    data: DocumentSourceKind::FileId(file_id),
+                    data: rig::message::DocumentData::File(DocumentSourceKind::FileId(file_id)),
                     ..
                 }) if file_id == expected_file_id
             )

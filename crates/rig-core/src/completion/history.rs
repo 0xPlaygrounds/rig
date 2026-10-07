@@ -63,8 +63,9 @@ use base64::Engine as _;
 use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
 
 use crate::message::{
-    Api, AssistantContent, AssistantMessage, CallId, DocumentMediaType, DocumentSourceKind,
-    ImageMediaType, Message, Origin, Text, ToolCall, ToolResult, ToolResultContent, UserContent,
+    Api, AssistantContent, AssistantMessage, CallId, DocumentData, DocumentMediaType,
+    DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolCall, ToolResult,
+    ToolResultContent, UserContent,
 };
 use crate::wasm_compat::WasmCompatSync;
 
@@ -1183,14 +1184,30 @@ fn user(content: &[UserContent], ids: &mut Renamed, form: &Form<'_>) -> Vec<Mess
             }
             UserContent::Document(document) => {
                 let mut document = document.clone();
-                document.data = sendable(document.data);
-                if !matches!(document.data, DocumentSourceKind::Unknown)
+                if let DocumentData::File(source) = document.data {
+                    document.data = DocumentData::File(sendable(source));
+                }
+                if document.data != DocumentData::File(DocumentSourceKind::Unknown)
                     && form.target.encodes(form.model, Media::Document(&document))
                 {
                     shaped.push(UserContent::Document(document));
                     continue;
                 }
-                if let Some(text) = document_text(&document) {
+                // Base64 of a media type other than PDF that decodes as
+                // UTF-8 is text the wire can still read.
+                let text = match document.data {
+                    DocumentData::Text(text) => Some(text),
+                    DocumentData::File(DocumentSourceKind::Base64(data))
+                        if !matches!(document.media_type, None | Some(DocumentMediaType::PDF)) =>
+                    {
+                        BASE64_STANDARD
+                            .decode(data.as_bytes())
+                            .ok()
+                            .and_then(|bytes| String::from_utf8(bytes).ok())
+                    }
+                    DocumentData::File(_) => None,
+                };
+                if let Some(text) = text {
                     shaped.push(UserContent::text(text));
                     continue;
                 }
@@ -1374,24 +1391,6 @@ fn sniffed(data: &str) -> Option<ImageMediaType> {
             b'P',
             ..,
         ] => Some(ImageMediaType::WEBP),
-        _ => None,
-    }
-}
-
-/// The text of a document that holds text: a string, or base64 data of a
-/// media type other than PDF that decodes as UTF-8.
-fn document_text(document: &crate::message::Document) -> Option<String> {
-    match &document.data {
-        DocumentSourceKind::String(text) => Some(text.clone()),
-        DocumentSourceKind::Base64(data)
-            if document
-                .media_type
-                .as_ref()
-                .is_some_and(|media_type| *media_type != DocumentMediaType::PDF) =>
-        {
-            let bytes = BASE64_STANDARD.decode(data.as_bytes()).ok()?;
-            String::from_utf8(bytes).ok()
-        }
         _ => None,
     }
 }

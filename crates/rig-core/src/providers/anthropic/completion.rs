@@ -21,8 +21,8 @@ use crate::completion::{self, CompletionRequest, Replay};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
 use crate::message::{
-    self, AssistantContent, DocumentMediaType, DocumentSourceKind, ImageMediaType, Message,
-    ToolResultContent, UserContent,
+    self, AssistantContent, DocumentData, DocumentMediaType, DocumentSourceKind, ImageMediaType,
+    Message, ToolResultContent, UserContent,
 };
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::Mode;
@@ -445,11 +445,7 @@ pub(super) fn image_source(image: &message::Image) -> Option<Value> {
         }
         DocumentSourceKind::Url(url) => json!({ "type": "url", "url": url }),
         DocumentSourceKind::FileId(file_id) => json!({ "type": "file", "file_id": file_id }),
-        DocumentSourceKind::Raw(_)
-        | DocumentSourceKind::String(_)
-        | DocumentSourceKind::Unknown => {
-            return None;
-        }
+        DocumentSourceKind::Raw(_) | DocumentSourceKind::Unknown => return None,
     })
 }
 
@@ -458,18 +454,20 @@ pub(super) fn image_source(image: &message::Image) -> Option<Value> {
 /// form.
 pub(super) fn document_source(document: &message::Document) -> Option<Value> {
     let text = |data: &str| json!({ "type": "text", "media_type": "text/plain", "data": data });
-    Some(match (&document.data, &document.media_type) {
+    let source = match &document.data {
+        DocumentData::Text(data) => return Some(text(data)),
+        DocumentData::File(source) => source,
+    };
+    Some(match (source, &document.media_type) {
         (DocumentSourceKind::FileId(file_id), _) => json!({ "type": "file", "file_id": file_id }),
         // Anthropic's URL source is defined for PDFs and has no media-type
         // field, so an untyped URL is one.
         (DocumentSourceKind::Url(url), None | Some(DocumentMediaType::PDF)) => {
             json!({ "type": "url", "url": url })
         }
-        (
-            DocumentSourceKind::Base64(data) | DocumentSourceKind::String(data),
-            Some(DocumentMediaType::PDF),
-        ) => json!({ "type": "base64", "media_type": "application/pdf", "data": data }),
-        (DocumentSourceKind::String(data), _) => text(data),
+        (DocumentSourceKind::Base64(data), Some(DocumentMediaType::PDF)) => {
+            json!({ "type": "base64", "media_type": "application/pdf", "data": data })
+        }
         (DocumentSourceKind::Base64(data), Some(_)) => {
             let bytes = BASE64_STANDARD.decode(data).ok()?;
             text(&String::from_utf8(bytes).ok()?)

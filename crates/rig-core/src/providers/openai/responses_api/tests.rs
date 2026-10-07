@@ -457,7 +457,7 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
 fn file_id_document_serializes_as_input_item_content() {
     let message = completion::Message::User {
         content: vec![message::UserContent::Document(message::Document {
-            data: DocumentSourceKind::FileId("file_abc".to_string()),
+            data: DocumentSourceKind::FileId("file_abc".to_string()).into(),
             media_type: None,
             additional_params: None,
         })],
@@ -594,7 +594,7 @@ fn url_pdf_via_input_item_path_omits_filename() {
 fn base64_pdf_via_input_item_path_keeps_filename() {
     let input = message::Message::User {
         content: vec![message::UserContent::Document(message::Document {
-            data: DocumentSourceKind::base64("dGVzdA=="),
+            data: DocumentSourceKind::base64("dGVzdA==").into(),
             media_type: Some(message::DocumentMediaType::PDF),
             additional_params: None,
         })],
@@ -761,4 +761,94 @@ fn a_stored_continuation_keeps_the_results_of_the_stored_calls() {
     let error = crate::operation::Completion::prepare(request, &wire.describe())
         .and_then(|prepared| json_of(&wire, prepared).map_err(Into::into));
     assert!(error.is_err(), "{error:?}");
+}
+
+/// Whether `value` holds a part whose `text` is exactly `text`.
+fn carries_text(value: &Value, text: &str) -> bool {
+    match value {
+        Value::Object(fields) => {
+            fields.get("text").and_then(Value::as_str) == Some(text)
+                || fields.values().any(|field| carries_text(field, text))
+        }
+        Value::Array(items) => items.iter().any(|item| carries_text(item, text)),
+        _ => false,
+    }
+}
+
+/// A base64 PDF is PDF data, as Anthropic sends it: it never reaches the
+/// model as a text part holding its base64. A document's text, including a
+/// persisted `"string"` PDF, goes as its text, as on every wire.
+///
+/// Not a cassette test: the defect is the request body built before any
+/// HTTP, which no recorded reply exercises.
+#[test]
+fn base64_pdf_is_data_and_document_text_is_text() -> anyhow::Result<()> {
+    use crate::wire::{Operation, Wire};
+    let pdf = "JVBERi0xLjQKJcfsj6IKMSAwIG9iago8PD4+CmVuZG9iagp0cmFpbGVyCjw8Pj4KJSVFT0YK";
+    let wire = openai_wire("gpt-5");
+    let sent = |data: message::DocumentData| {
+        let request = completion::CompletionRequest::new(message::Message::User {
+            content: vec![
+                message::UserContent::text("Summarize the file."),
+                message::UserContent::Document(message::Document {
+                    data,
+                    media_type: Some(message::DocumentMediaType::PDF),
+                    additional_params: None,
+                }),
+            ],
+        });
+        crate::operation::Completion::prepare(request, &wire.describe())
+            .map_err(anyhow::Error::from)
+            .and_then(|request| Ok(json_of(&wire, request)?))
+    };
+    let body = sent(DocumentSourceKind::base64(pdf).into())?;
+    anyhow::ensure!(
+        !carries_text(&body, pdf),
+        "the PDF's base64 goes to the model as text: {body:#}"
+    );
+    let legacy = serde_json::from_value(json!({"type": "string", "value": pdf}))?;
+    let body = sent(legacy)?;
+    anyhow::ensure!(
+        carries_text(&body, pdf),
+        "a text document goes as its text: {body:#}"
+    );
+    Ok(())
+}
+
+/// A document file Responses has no part for (base64 that is not a PDF) and
+/// an image with no source are refused when they reach the encoder
+/// unprepared, rather than sent as text or dropped.
+#[test]
+fn an_unprepared_part_with_no_responses_form_is_refused() {
+    let refused = |content: message::UserContent| {
+        json_of(
+            &openai_wire("gpt-5"),
+            completion::CompletionRequest::new(message::Message::User {
+                content: vec![content],
+            }),
+        )
+        .map(|body| body.to_string())
+        .map_err(|error| error.to_string())
+    };
+    let document = refused(message::UserContent::Document(message::Document {
+        data: DocumentSourceKind::base64("aGVsbG8=").into(),
+        media_type: Some(message::DocumentMediaType::TXT),
+        additional_params: None,
+    }));
+    assert!(
+        document
+            .as_ref()
+            .is_err_and(|error| error.contains("cannot carry this document")),
+        "{document:?}"
+    );
+    let image = refused(message::UserContent::Image(message::Image {
+        data: DocumentSourceKind::Unknown,
+        ..Default::default()
+    }));
+    assert!(
+        image
+            .as_ref()
+            .is_err_and(|error| error.contains("cannot carry this image")),
+        "{image:?}"
+    );
 }

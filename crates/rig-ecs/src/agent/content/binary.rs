@@ -91,15 +91,16 @@ pub enum BinaryEncoding {
     },
 }
 
-/// A part's source. URLs, file IDs, string data and unknown sources remain data;
-/// only raw and base64 binary payloads refer to the store.
+/// A part's source. URLs, file IDs, a document's text and unknown sources
+/// remain data; only raw and base64 binary payloads refer to the store.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub enum PartSource {
     /// External URL or URI; never fetched by scene loading.
     Url(String),
     /// Provider file identifier.
     FileId(String),
-    /// Literal string source, not interpreted as binary.
+    /// A document's own text. On a legacy media part it is base64, as the
+    /// legacy `"string"` JSON spelling is.
     String(String),
     /// Explicit unknown source.
     Unknown,
@@ -188,7 +189,6 @@ impl BinaryAssets {
         Ok(match source {
             DocumentSourceKind::Url(value) => PartSource::Url(value),
             DocumentSourceKind::FileId(value) => PartSource::FileId(value),
-            DocumentSourceKind::String(value) => PartSource::String(value),
             DocumentSourceKind::Unknown => PartSource::Unknown,
             DocumentSourceKind::Raw(bytes) => PartSource::Binary {
                 id: self.insert(bytes)?,
@@ -296,7 +296,7 @@ impl BinaryAssets {
         Ok(match source {
             PartSource::Url(value) => DocumentSourceKind::Url(value.clone()),
             PartSource::FileId(value) => DocumentSourceKind::FileId(value.clone()),
-            PartSource::String(value) => DocumentSourceKind::String(value.clone()),
+            PartSource::String(value) => DocumentSourceKind::Base64(value.clone()),
             PartSource::Unknown => DocumentSourceKind::Unknown,
             PartSource::Binary { id, encoding } => {
                 let bytes = self.get(*id)?;

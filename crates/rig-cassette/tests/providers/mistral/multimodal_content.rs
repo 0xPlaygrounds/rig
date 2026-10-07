@@ -62,7 +62,7 @@ fn red_png() -> UserContent {
 
 fn pdf_document() -> UserContent {
     UserContent::Document(Document {
-        data: DocumentSourceKind::Base64(PDF_BASE64.to_string()),
+        data: DocumentSourceKind::Base64(PDF_BASE64.to_string()).into(),
         media_type: Some(DocumentMediaType::PDF),
         additional_params: None,
     })

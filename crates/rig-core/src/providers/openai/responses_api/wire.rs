@@ -246,19 +246,19 @@ impl crate::completion::ReplayTarget for Responses {
     /// xAI's `input_image` takes none.
     fn encodes(&self, _model: &str, media: crate::completion::Media<'_>) -> bool {
         use crate::completion::{Media, Place};
-        use crate::message::DocumentSourceKind;
+        use crate::message::{DocumentData, DocumentSourceKind as Source};
         let quirks = &self.provider.dialect.quirks;
         let file_ids = quirks.accepts_file_ids;
         match media {
             Media::Image(_, Place::Assistant) | Media::Audio(_) | Media::Video(_) => false,
             Media::Image(image, _) => {
                 super::image_part(image).is_some()
-                    && (!matches!(image.data, DocumentSourceKind::FileId(_))
+                    && (!matches!(image.data, Source::FileId(_))
                         || file_ids && quirks.responses.contract != ResponsesContract::Xai)
             }
             Media::Document(document) => {
                 super::document_part(document).is_some()
-                    && (file_ids || !matches!(document.data, DocumentSourceKind::FileId(_)))
+                    && (file_ids || !matches!(document.data, DocumentData::File(Source::FileId(_))))
             }
         }
     }

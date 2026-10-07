@@ -455,7 +455,7 @@ async fn file_uri_chain() {
             let body = async {
                 let document = Message::User {
                     content: vec![UserContent::Document(Document {
-                            data: DocumentSourceKind::Url(uri.clone()),
+                            data: DocumentSourceKind::Url(uri.clone()).into(),
                             media_type: Some(DocumentMediaType::TXT),
                             additional_params: None,
                         }),UserContent::text(

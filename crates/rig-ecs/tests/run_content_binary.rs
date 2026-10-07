@@ -8,7 +8,6 @@ fn nonbinary_sources_stay_data_without_asset_or_io() {
     for source in [
         DocumentSourceKind::Url("https://invalid.invalid/image".into()),
         DocumentSourceKind::FileId("file-123".into()),
-        DocumentSourceKind::String("not base64".into()),
         DocumentSourceKind::Unknown,
     ] {
         let handle = store.intern(source.clone()).unwrap();
@@ -93,4 +92,16 @@ fn scene_spelling_metadata_cannot_change_decoded_bytes() {
             Err(BinaryError::Spelling)
         );
     }
+}
+
+/// A legacy checkpoint's `String` media source loads as base64, the same
+/// reading as the legacy `"string"` JSON spelling.
+#[test]
+fn a_legacy_string_media_source_resolves_as_base64() {
+    let store = BinaryAssets::default();
+    let legacy = PartSource::String("iVBORw0KGgo=".into());
+    assert_eq!(
+        store.resolve(&legacy),
+        Ok(DocumentSourceKind::Base64("iVBORw0KGgo=".into()))
+    );
 }

@@ -54,7 +54,7 @@ fn all_user_kinds_nested_results_and_metadata_round_trip() {
                 additional_params: Some(serde_json::json!({"video_metadata": {"fps": 1}})),
             }),
             UserContent::Document(Document {
-                data: DocumentSourceKind::FileId("file-1".into()),
+                data: DocumentSourceKind::FileId("file-1".into()).into(),
                 media_type: Some(DocumentMediaType::PDF),
                 additional_params: Some(serde_json::json!({"document_metadata": true})),
             }),

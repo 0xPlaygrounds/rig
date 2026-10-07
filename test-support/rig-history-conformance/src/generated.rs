@@ -119,8 +119,8 @@ pub(crate) fn tools(rng: &mut Rng) -> Tools {
 
 fn user(rng: &mut Rng) -> Message {
     use rig_core::message::{
-        Audio, AudioMediaType, Document, DocumentMediaType, DocumentSourceKind, ImageMediaType,
-        Video, VideoMediaType,
+        Audio, AudioMediaType, DocumentMediaType, DocumentSourceKind, ImageMediaType, Video,
+        VideoMediaType,
     };
     let mut content = vec![UserContent::text(format!("question {}", rng.below(100)))];
     if rng.chance(20) {
@@ -131,18 +131,16 @@ fn user(rng: &mut Rng) -> Message {
         }));
     }
     if rng.chance(10) {
-        content.push(UserContent::Document(Document {
-            data: DocumentSourceKind::string("the hours are 9 to 5"),
-            media_type: Some(DocumentMediaType::TXT),
-            additional_params: None,
-        }));
+        content.push(UserContent::document_text(
+            "the hours are 9 to 5",
+            Some(DocumentMediaType::TXT),
+        ));
     }
     if rng.chance(8) {
-        content.push(UserContent::Document(Document {
-            data: DocumentSourceKind::base64(PDF),
-            media_type: Some(DocumentMediaType::PDF),
-            additional_params: None,
-        }));
+        content.push(UserContent::document_base64(
+            PDF,
+            Some(DocumentMediaType::PDF),
+        ));
     }
     if rng.chance(5) {
         content.push(UserContent::Audio(Audio {

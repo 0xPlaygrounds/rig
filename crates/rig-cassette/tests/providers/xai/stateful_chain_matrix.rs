@@ -69,7 +69,7 @@ async fn file_id_chain() {
             let document = Message::User {
                 content: vec![
                     UserContent::Document(Document {
-                        data: DocumentSourceKind::file_id(&file_id),
+                        data: DocumentSourceKind::file_id(&file_id).into(),
                         media_type: Some(DocumentMediaType::PDF),
                         additional_params: None,
                     }),
