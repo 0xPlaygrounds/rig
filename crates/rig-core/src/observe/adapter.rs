@@ -158,14 +158,9 @@ impl ObservedError {
     }
 }
 
-/// The attempt's normalized [`Usage`](crate::completion::Usage) counters,
-/// emitted once when the reply ends, under the same one-meaning rules as
-/// [`completion::Usage`](crate::completion::Usage): a counter the provider
-/// did not report is `None`, and a reported zero is `Some(0)`.
-///
-/// The driver builds it from the usage the decoder normalized into the
-/// reply's end, so it never differs from the response's usage. An attempt
-/// that fails before its reply ends has no usage observation.
+/// The counters of the [`Usage`](crate::completion::Usage) the decoder
+/// normalized into the reply's end, observed once when the reply ends; an
+/// attempt that fails before its end observes none. Unreported is `None`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterUsage {
     /// Every input token: uncached, cached, cache writes and hosted-tool prompt.
@@ -185,13 +180,24 @@ pub struct AdapterUsage {
 
 impl From<&crate::completion::Usage> for AdapterUsage {
     fn from(usage: &crate::completion::Usage) -> Self {
+        // Exhaustive: a new `Usage` counter must be mapped or ignored here.
+        let crate::completion::Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: _,
+            cached_input_tokens,
+            cache_creation_input_tokens: _,
+            tool_use_prompt_tokens,
+            reasoning_tokens,
+            cost: _,
+        } = *usage;
         Self {
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
+            input_tokens,
+            output_tokens,
             total_tokens: None,
-            cached_input_tokens: usage.cached_input_tokens,
-            reasoning_tokens: usage.reasoning_tokens,
-            tool_input_tokens: usage.tool_use_prompt_tokens,
+            cached_input_tokens,
+            reasoning_tokens,
+            tool_input_tokens: tool_use_prompt_tokens,
         }
     }
 }
@@ -569,15 +575,19 @@ impl AdapterSlot {
         }
     }
 
-    /// Observe the attempt's usage, from the reply's normalized end.
-    pub(crate) fn usage(&self, usage: AdapterUsage) {
-        if let Some(attempt) = self
+    /// Close the attempt as its reply ended: the one place usage is
+    /// observed, once, from the decoder's end, just before `Terminal`.
+    pub(crate) fn terminal(&self, usage: Option<&crate::completion::Usage>) {
+        let mut attempt = self
             .0
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_ref()
-        {
-            attempt.emit(AdapterEvent::Usage { usage });
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(attempt) = attempt.as_mut().filter(|attempt| !attempt.closed) {
+            let usage = usage.map(AdapterUsage::from);
+            if let Some(usage) = usage.filter(|usage| *usage != AdapterUsage::default()) {
+                attempt.emit(AdapterEvent::Usage { usage });
+            }
+            attempt.finish(AdapterEnding::Terminal);
         }
     }
 
@@ -608,7 +618,7 @@ impl AdapterSlot {
         }
     }
 
-    pub(crate) fn finish(&self, ending: AdapterEnding) {
+    fn finish(&self, ending: AdapterEnding) {
         if let Some(attempt) = self
             .0
             .lock()

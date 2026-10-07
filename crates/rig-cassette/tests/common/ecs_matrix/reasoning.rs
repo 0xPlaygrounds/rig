@@ -394,7 +394,28 @@ pub(crate) fn assert_history(cell: &Cell, log: &EffectLog, history: &[Message]) 
     );
 }
 
-pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLog) {
+/// The reasoning counter the provider recorded in the reply's raw
+/// document, read independently of the decoder. Anthropic reports no
+/// separate counter; Doubleword's counter is not part of its completion
+/// count, so rig leaves it unreported.
+fn raw_reasoning_tokens(wire: ThinkingWire, raw: &serde_json::Value) -> Option<u64> {
+    let pointer = match wire {
+        ThinkingWire::Anthropic | ThinkingWire::Doubleword => return None,
+        ThinkingWire::OpenAiChat | ThinkingWire::DeepSeek | ThinkingWire::Venice => {
+            "/usage/completion_tokens_details/reasoning_tokens"
+        }
+        ThinkingWire::OpenAiResponses => "/usage/output_tokens_details/reasoning_tokens",
+        ThinkingWire::Gemini => "/usageMetadata/thoughtsTokenCount",
+    };
+    raw.pointer(pointer).and_then(serde_json::Value::as_u64)
+}
+
+pub(crate) fn assert_witness(
+    cell: &Cell,
+    wire: ThinkingWire,
+    log: &EffectLog,
+    trace: &ObservationLog,
+) {
     if cell.reasoning.is_none() {
         return;
     }
@@ -434,7 +455,32 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
             _ => {}
         }
     }
+    // A wire whose replies record the counter while reasoning is not
+    // checked against nothing: some reply of the cell reports it.
+    // Anthropic, Doubleword and Venice record none rig reports.
+    if cell.reasoning != Some(ReasoningCase::Off)
+        && !matches!(
+            wire,
+            ThinkingWire::Anthropic | ThinkingWire::Doubleword | ThinkingWire::Venice
+        )
+    {
+        assert!(
+            completions(log)
+                .iter()
+                .any(|response| response.usage.reasoning_tokens.is_some()),
+            "{}: the provider's reasoning counter is reported",
+            cell.name
+        );
+    }
     for (response, reported) in completions(log).iter().zip(reported) {
+        // The decoder's counter is the provider's raw one, read separately.
+        assert_eq!(
+            response.usage.reasoning_tokens,
+            raw_reasoning_tokens(wire, &response.raw),
+            "{}: record usage equals the provider's recorded counter; raw: {}",
+            cell.name,
+            response.raw
+        );
         // The observation is the response's usage, total aside.
         let observed = rig_core::observe::AdapterUsage::from(&response.usage);
         let expected = (observed != rig_core::observe::AdapterUsage::default()).then_some(observed);

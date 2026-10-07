@@ -165,6 +165,8 @@ enum Frame {
         arguments: String,
         usage: Option<Usage>,
     },
+    /// The provider's in-band failure, ending the stream without an end.
+    Error { message: String },
 }
 
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -182,7 +184,7 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         crate::providers::internal::wire::classify_tagged_frame(&frame.as_str(), "type", |kind| {
-            matches!(kind, "message" | "delta" | "stop" | "tool")
+            matches!(kind, "message" | "delta" | "stop" | "tool" | "error")
         })
     }
 
@@ -201,6 +203,7 @@ impl<'id> Decoder<'id, Completion> for EchoDecoder<'id> {
                 out.run(Block::Text, &text)?;
             }
             Frame::Stop { usage } => return self.end(out, usage),
+            Frame::Error { message } => return Err(ProviderError::Provider(message)),
             Frame::Tool {
                 name,
                 arguments,
@@ -644,6 +647,66 @@ async fn a_reply_observes_its_finish_usage_once() {
         };
         assert_eq!(observed, std::slice::from_ref(&expected));
         assert_eq!(expected, crate::observe::AdapterUsage::from(&usage));
+    }
+}
+
+/// A stream that carries usage and then fails has no end, so it observes
+/// no usage, and its attempt closes on the failure, not as `Terminal`.
+/// Before usage was observed from the end, the raw-bytes projector reported
+/// the failing stream's usage frame.
+#[tokio::test]
+async fn a_failed_stream_observes_no_usage() {
+    use crate::observe::{Action, AdapterEnding, AdapterEvent};
+    // Each frame carries usage the old projector would have reported.
+    let usage_frame =
+        "data: {\"type\":\"delta\",\"text\":\"hi\",\"usage\":{\"output_tokens\":3}}\n\n";
+    let in_band =
+        format!("{usage_frame}data: {{\"type\":\"error\",\"message\":\"overloaded\"}}\n\n");
+    for (sse, ended) in [
+        (
+            in_band,
+            (|ending: &AdapterEnding| matches!(ending, AdapterEnding::Error { .. }))
+                as fn(&AdapterEnding) -> bool,
+        ),
+        (usage_frame.to_owned(), |ending| {
+            matches!(ending, AdapterEnding::Eof { after: 1 })
+        }),
+    ] {
+        let (log, context) = observed();
+        let http = MockStreamingClient {
+            sse_bytes: Bytes::from(sse),
+        };
+        let result = match Model::new(Echo::streaming(), http).stream_observed(prompt(), context) {
+            Ok(stream) => stream.finish().await,
+            Err(error) => Err(error),
+        };
+        assert!(result.is_err(), "the stream fails");
+        let adapter: Vec<AdapterEvent> = log
+            .trace()
+            .observations
+            .iter()
+            .filter_map(|observation| match &observation.action {
+                Action::Adapter { observation } => Some(observation.event.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            !adapter
+                .iter()
+                .any(|event| matches!(event, AdapterEvent::Usage { .. })),
+            "a failed stream observes no usage: {adapter:?}"
+        );
+        let endings: Vec<&AdapterEnding> = adapter
+            .iter()
+            .filter_map(|event| match event {
+                AdapterEvent::Finished { ending } => Some(ending),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            matches!(endings.as_slice(), [ending] if ended(ending)),
+            "the attempt closes once, on the failure: {endings:?}"
+        );
     }
 }
 
