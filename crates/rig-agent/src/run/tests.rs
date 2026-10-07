@@ -791,6 +791,47 @@ fn tool_mode_reprompts_when_output_args_are_not_a_json_object() {
     assert!(!run.is_done());
 }
 
+/// A run pinned to an output tool whose turn policy names none (a resumed
+/// runner without a schema prepares Native turns) does not ask the model to
+/// call that tool: the turn did not advertise it.
+#[test]
+fn a_text_answer_is_not_reprompted_for_an_output_tool_the_turn_did_not_advertise() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result")
+        .with_output_validation(None, 1);
+    expect_call_model(&mut run);
+    expect_continue(
+        run.model_response(text_turn("plain prose"))
+            .expect("model_response should succeed"),
+    );
+    let response = expect_done(&mut run);
+    assert_eq!(response.output(), "plain prose");
+}
+
+/// A skipped call to the pinned output tool on a turn whose policy does not
+/// name it is an ordinary skipped call, not the run's answer.
+#[test]
+fn a_skipped_call_to_an_unadvertised_output_tool_does_not_finalize_the_run() {
+    let mut run = AgentRun::new("summarize")
+        .max_turns(2)
+        .with_output_tool_name("final_result");
+    expect_call_model(&mut run);
+    let context = expect_needs_resolution(
+        run.model_response(tool_call_turn("c1", "final_result"))
+            .expect("model_response should succeed"),
+    );
+    assert_eq!(context.reason, InvalidToolCallReason::UnknownTool);
+    expect_continue(
+        run.resolve_invalid_tool_call(InvalidToolCallAction::skip("not this turn"))
+            .expect("the skip is accepted"),
+    );
+    let calls = expect_call_tools(&mut run);
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].preresolved_result.is_some());
+    assert!(!run.is_done());
+}
+
 impl ModelTurn {
     fn with_usage_for_test(mut self, usage: Usage) -> Self {
         self.usage = usage;

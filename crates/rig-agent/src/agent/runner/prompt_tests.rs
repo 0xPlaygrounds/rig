@@ -1124,20 +1124,20 @@ async fn calls_with_an_unknown_finish_reason_run_only_when_accepted() {
 /// Patches every turn's tool choice and answers invalid calls with a Skip,
 /// recording the tool choice each invalid-call context reports.
 #[derive(Clone)]
-struct PatchChoiceThenSkip {
+pub(crate) struct PatchChoiceThenSkip {
     choice: ToolChoice,
     seen: std::sync::Arc<std::sync::Mutex<Vec<Option<ToolChoice>>>>,
 }
 
 impl PatchChoiceThenSkip {
-    fn new(choice: ToolChoice) -> Self {
+    pub(crate) fn new(choice: ToolChoice) -> Self {
         Self {
             choice,
             seen: std::sync::Arc::default(),
         }
     }
 
-    fn seen(&self) -> Vec<Option<ToolChoice>> {
+    pub(crate) fn seen(&self) -> Vec<Option<ToolChoice>> {
         self.seen
             .lock()
             .map(|seen| seen.clone())

@@ -127,7 +127,12 @@ impl ModelTurn {
         Self::from_policy(resp, prepared.policy.clone())
     }
 
-    pub(crate) fn from_policy(resp: &CompletionResponse, policy: TurnPolicy) -> Self {
+    /// [`from_response`](Self::from_response) for a driver that carries the
+    /// turn's [`TurnPolicy`] by value instead of the whole prepared request.
+    /// `policy` must be the [`PreparedRequest::policy`](prepare::PreparedRequest::policy)
+    /// of this attempt: it alone carries the turn's tool choice to the Skip
+    /// gate and the invalid-call context.
+    pub fn from_policy(resp: &CompletionResponse, policy: TurnPolicy) -> Self {
         Self::new(
             resp.head(),
             resp.choice.clone(),
@@ -829,7 +834,7 @@ impl AgentRun {
                 // The first output-tool call is the answer, not executable work;
                 // sibling calls must not run after finalization.
                 if has_tool_calls
-                    && let Some(output_tool_name) = self.output_tool_name.clone()
+                    && let Some(output_tool_name) = policy.output_tool().map(str::to_owned)
                     && let Some(tool_call) = items.iter().find_map(|item| match item {
                         AssistantContent::ToolCall(tc) if tc.function.name == output_tool_name => {
                             Some(tc)
@@ -933,7 +938,7 @@ impl AgentRun {
                 } else {
                     // Accept schema-compatible JSON text without requiring a tool call;
                     // other nonempty answers may consume an output retry.
-                    if let Some(output_tool_name) = self.output_tool_name.clone()
+                    if let Some(output_tool_name) = policy.output_tool()
                         && !is_empty_assistant_turn(&items)
                         && self.can_reprompt_for_output()
                         && !structured_output::text_satisfies_schema(
@@ -942,7 +947,7 @@ impl AgentRun {
                         )
                     {
                         self.new_messages.push(Message::user(
-                            structured_output::reprompt_text_answer(&output_tool_name),
+                            structured_output::reprompt_text_answer(output_tool_name),
                         ));
                         return self.reprompt_for_output();
                     }
@@ -1657,8 +1662,11 @@ impl AgentRun {
     /// Build a run from a [`RunSpec`], a prompt and an optional prior history.
     ///
     /// Applies the spec's budget, invalid-call retries and output validation;
-    /// everything else in the spec, tool choice included, is request-shaping
-    /// the driver reads when it prepares each model call.
+    /// everything else in the spec is request-shaping the driver reads when it
+    /// prepares each model call. `spec.tool_choice` reaches invalid-call
+    /// validation only through the turn's [`TurnPolicy`]: pass
+    /// `prepared.policy` from [`prepare_request`] to
+    /// [`ModelTurn::from_policy`] or [`ModelTurn::new`].
     pub fn from_spec(
         spec: &RunSpec,
         prompt: impl Into<Message>,

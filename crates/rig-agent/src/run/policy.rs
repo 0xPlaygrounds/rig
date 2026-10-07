@@ -88,14 +88,7 @@ pub struct InvalidToolCallContext {
     pub is_streaming: bool,
     /// Why the call cannot be dispatched as written.
     pub reason: InvalidToolCallReason,
-    /// Built only by [`TurnPolicy::invalid_call_context`], so the reported
-    /// tools and choice are always the judged turn's.
-    #[serde(skip)]
-    _sealed: Sealed,
 }
-
-#[derive(Debug, Clone, Copy, Default)]
-struct Sealed;
 
 /// The tool policy of one model turn, built once by
 /// [`prepare_request`](super::prepare::prepare_request) and read by every
@@ -289,7 +282,6 @@ impl TurnPolicy {
             chat_history,
             is_streaming,
             reason,
-            _sealed: Sealed,
         }
     }
 }

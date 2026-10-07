@@ -813,7 +813,7 @@ mod settled_tests;
 mod tests;
 
 #[cfg(test)]
-mod prompt_tests;
+pub(crate) mod prompt_tests;
 
 /// A memory report back into the memory error the run surface names.
 pub(crate) fn memory_error_from_report(

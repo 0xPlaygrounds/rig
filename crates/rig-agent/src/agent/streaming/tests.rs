@@ -9,6 +9,7 @@ use crate::agent::AgentBuilder;
 use crate::agent::engine::drive_tool_calls;
 use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
+use crate::agent::runner::prompt_tests::PatchChoiceThenSkip;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
 use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::streaming::{Item, StreamEvent};
@@ -3751,4 +3752,71 @@ async fn a_streamed_answer_with_an_unknown_finish_reason_needs_acceptance() {
             }
         }
     }
+}
+
+/// The streamed mirror of `a_turn_patched_to_tool_choice_none_rejects_a_skip`:
+/// a turn patched to `ToolChoice::None` forbids every streamed call, so a Skip
+/// of a call to the registered `add` is rejected.
+#[tokio::test]
+async fn a_streamed_turn_patched_to_tool_choice_none_rejects_a_skip() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tool_1", "add", serde_json::json!({"x": 1, "y": 2})),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("the skip was accepted"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let recorded = model.clone();
+    let agent = AgentBuilder::new(model).tool(MockAddTool).build();
+
+    let (_, error) = forwarded_arguments(
+        agent
+            .prompt("do not use tools")
+            .add_hook(PatchChoiceThenSkip::new(ToolChoice::None))
+            .max_turns(3)
+            .stream(),
+    )
+    .await;
+
+    assert!(
+        matches!(&error, Some(PromptError::UnknownToolCall { tool_name, .. }) if tool_name == "add"),
+        "a streamed Skip under a turn patched to ToolChoice::None must fail, got {error:?}"
+    );
+    assert_eq!(recorded.request_count(), 1);
+}
+
+/// The streamed invalid-call context reports the tool choice the turn was
+/// sent with: an agent-level `ToolChoice::None` patched to `Required`.
+#[tokio::test]
+async fn the_streamed_invalid_call_context_reports_the_patched_tool_choice() {
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("tool_1", "default_api", serde_json::json!({"x": 1})),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("done"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ]);
+    let agent = AgentBuilder::new(model)
+        .tool(MockAddTool)
+        .tool_choice(ToolChoice::None)
+        .build();
+    let hook = PatchChoiceThenSkip::new(ToolChoice::Required);
+
+    let (_, error) = forwarded_arguments(
+        agent
+            .prompt("use tools")
+            .add_hook(hook.clone())
+            .max_turns(3)
+            .stream(),
+    )
+    .await;
+
+    assert!(error.is_none(), "the skip is accepted, got {error:?}");
+    assert_eq!(hook.seen(), vec![Some(ToolChoice::Required)]);
 }
