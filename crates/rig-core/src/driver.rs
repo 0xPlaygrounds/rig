@@ -396,6 +396,12 @@ fn read<W: Wire>(
         }
         record(reply, reassembler.map(|document| document.finish()));
         if let Some(slot) = &slot {
+            // The one place usage is observed: once, from the end the
+            // decoder normalized, however the reply ended.
+            let usage = lock(reply).end.as_ref().and_then(W::Op::observed_usage);
+            if let Some(usage) = usage {
+                slot.usage(usage);
+            }
             slot.finish(AdapterEnding::Terminal);
         }
         {

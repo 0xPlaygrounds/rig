@@ -25,8 +25,8 @@ use crate::providers::internal::openai_chat_completions_compatible::{
 use crate::providers::internal::wire::classify_chat_completions_frame;
 use crate::providers::internal::wire_ids::WireIds;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow,
-    Framing, Mode, ObservationSink, Out, Wire, WireEvent, WireFrame,
+    AdapterVerdict, Capabilities, Decoder, Descriptor, Encoded, Flow, Framing, Mode,
+    ObservationSink, Out, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::merge_fields;
@@ -1862,26 +1862,13 @@ fn normalized_usage(usage: &Value, quirks: &Quirks) -> crate::completion::Usage 
 }
 
 impl ChatDecoder {
-    /// Verdict, model, response id, usage and error envelope, read off a raw
+    /// Verdict, model, response id and error envelope, read off a raw
     /// payload before normalization discards them. The driver calls it for
     /// the unary reply and for every stream frame.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
-        if let Some(usage) = payload.at("/usage") {
-            let count = |pointer: &str| usage.at(pointer).and_then(Value::as_u64);
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    input_tokens: count("/prompt_tokens"),
-                    output_tokens: count("/completion_tokens"),
-                    total_tokens: count("/total_tokens"),
-                    cached_input_tokens: count("/prompt_tokens_details/cached_tokens"),
-                    reasoning_tokens: count("/completion_tokens_details/reasoning_tokens"),
-                    tool_input_tokens: None,
-                },
-            });
-        }
         // Only the chunk that carries the finish reason is a verdict, so the
         // model rides with it rather than on each delta.
         let verdict = match payload

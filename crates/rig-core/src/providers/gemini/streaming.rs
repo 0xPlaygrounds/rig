@@ -20,8 +20,7 @@ use crate::message::{CallId, DocumentSourceKind, Image, MediaType, MimeType, Too
 use crate::operation::{Block, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation,
-    WireEvent, WireFrame,
+    AdapterVerdict, Decoder, Flow, ObservationSink, Out, WireCitation, WireEvent, WireFrame,
 };
 
 /// The recognizability markers of a `streamGenerateContent` chunk: every
@@ -363,25 +362,13 @@ impl GenerateContentDecoder {
         )
     }
 
-    /// Project provider verdicts, usage, response identity, and errors
+    /// Project provider verdicts, response identity, and errors
     /// before normalization. A field of another type is left out, and a
     /// payload that is not JSON projects nothing.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(reply) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
-        if let Some(usage) = reply.get("usageMetadata").filter(|usage| usage.is_object()) {
-            let count = |key: &str| usage.u64(key);
-            let usage = AdapterUsage {
-                input_tokens: count("promptTokenCount"),
-                output_tokens: count("candidatesTokenCount"),
-                total_tokens: count("totalTokenCount"),
-                cached_input_tokens: count("cachedContentTokenCount"),
-                reasoning_tokens: count("thoughtsTokenCount"),
-                tool_input_tokens: count("toolUsePromptTokenCount"),
-            };
-            sink.emit(AdapterEvent::Usage { usage });
-        }
         let candidate = reply.arr("candidates").first().unwrap_or(&Value::Null);
         let scrub = |value: Option<&str>| value.map(|value| sink.scrub(value));
         let block = reply

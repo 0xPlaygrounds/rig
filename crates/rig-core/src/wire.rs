@@ -206,6 +206,15 @@ pub trait Operation: Sized + 'static {
         let _ = wire;
         Ok(request)
     }
+
+    /// The usage observation one reply's `end` carries. The driver emits
+    /// it once per attempt, when the reply ends, so the observation is the
+    /// usage the decoder already normalized and never a second parse of
+    /// the payload. Observes nothing by default.
+    fn observed_usage(end: &Self::End) -> Option<AdapterUsage> {
+        let _ = end;
+        None
+    }
 }
 
 /// Events a decoder builds and writes with [`Out::event`].

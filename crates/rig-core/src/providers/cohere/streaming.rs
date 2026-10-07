@@ -23,8 +23,8 @@ use crate::message::{CallId, Source, SourceLocation, ToolName};
 use crate::operation::{Block, CallFragment, Completion, Finish};
 use crate::providers::internal::wire;
 use crate::wire::{
-    AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Flow, ObservationSink, Out, SpanUnit,
-    WireCitation, WireEvent, WireFrame, WireSpan,
+    AdapterVerdict, Decoder, Flow, ObservationSink, Out, SpanUnit, WireCitation, WireEvent,
+    WireFrame, WireSpan,
 };
 
 /// The stream's event tags; any other tag classifies as unknown.
@@ -570,26 +570,13 @@ impl<'id> Decoder<'id, Completion> for ChatDecoder {
 
 impl ChatDecoder {
     /// Native chat metadata projected before normalization can discard it:
-    /// the finish reason, the reply id and the usage, on the unary reply
+    /// the finish reason and the reply id, on the unary reply
     /// and on the stream's `message-start` and `message-end` events.
     pub(crate) fn project(payload: &[u8], sink: &mut ObservationSink<'_>) {
         let Ok(payload) = serde_json::from_slice::<Value>(payload) else {
             return;
         };
         let end = payload.get("delta").unwrap_or(&payload);
-        if let Some(usage) = end.get("usage") {
-            let usage = usage_of(Some(usage));
-            sink.emit(AdapterEvent::Usage {
-                usage: AdapterUsage {
-                    input_tokens: usage.input_tokens,
-                    output_tokens: usage.output_tokens,
-                    total_tokens: usage.total_tokens,
-                    cached_input_tokens: usage.cached_input_tokens,
-                    reasoning_tokens: usage.reasoning_tokens,
-                    tool_input_tokens: None,
-                },
-            });
-        }
         let verdict = AdapterVerdict {
             finish_reason: end.str("finish_reason").map(|reason| sink.scrub(reason)),
             block_reason: None,

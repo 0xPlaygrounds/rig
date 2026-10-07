@@ -90,6 +90,13 @@ impl Operation for Completion {
         }
     }
 
+    /// The reply's normalized usage, when the provider reported a counter
+    /// it carries.
+    fn observed_usage(finish: &Finish) -> Option<crate::wire::AdapterUsage> {
+        let usage = crate::wire::AdapterUsage::from(&finish.usage);
+        (usage != crate::wire::AdapterUsage::default()).then_some(usage)
+    }
+
     /// Resolve the model the request addresses once, as the request's
     /// `model`: the one it names, else the wire's. The history is checked
     /// with [`CompletionRequest::validate_message_content`], then

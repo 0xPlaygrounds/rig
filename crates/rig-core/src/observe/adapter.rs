@@ -59,9 +59,9 @@ pub enum AdapterEvent {
         /// Scrubbed original envelope fields, not an inferred HTTP status.
         error: AdapterErrorEnvelope,
     },
-    /// Provider-reported usage for this attempt, including rejected responses.
+    /// The attempt's normalized usage, observed once when its reply ends.
     Usage {
-        /// A cumulative snapshot: replace earlier snapshots, never sum them.
+        /// The counters of the response's usage.
         usage: AdapterUsage,
     },
     /// A request is about to be sent.
@@ -150,36 +150,50 @@ impl ObservedError {
             serde_json::Value::Number(code) => code.to_string(),
             _ => "[invalid]".to_owned(),
         });
-        sink.emit(AdapterEvent::ErrorEnvelope {
-            error: AdapterErrorEnvelope {
-                code,
-                status: self.kind.map(|value| sink.scrub(&value)),
-                message: self.message.map(|value| sink.scrub(&value)),
-            },
+        sink.error(AdapterErrorEnvelope {
+            code,
+            status: self.kind.map(|value| sink.scrub(&value)),
+            message: self.message.map(|value| sink.scrub(&value)),
         });
     }
 }
 
-/// A provider's cumulative usage snapshot for one HTTP attempt.
+/// The attempt's normalized [`Usage`](crate::completion::Usage) counters,
+/// emitted once when the reply ends, under the same one-meaning rules as
+/// [`completion::Usage`](crate::completion::Usage): a counter the provider
+/// did not report is `None`, and a reported zero is `Some(0)`.
 ///
-/// Missing, invalid or negative counts remain unknown. A present zero is a
-/// reported zero. These fields may overlap (for example cached tokens are
-/// included in input tokens); never sum fields to invent a total. A later
-/// snapshot replaces the earlier snapshot, including its unknown fields.
+/// The driver builds it from the usage the decoder normalized into the
+/// reply's end, so it never differs from the response's usage. An attempt
+/// that fails before its reply ends has no usage observation.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdapterUsage {
-    /// Input tokens, including cached input where the provider includes it.
+    /// Every input token: uncached, cached, cache writes and hosted-tool prompt.
     pub input_tokens: Option<u64>,
-    /// Output candidate tokens, as reported by the provider.
+    /// Every output token, reasoning included.
     pub output_tokens: Option<u64>,
-    /// Provider-reported total, not a sum of the other fields.
+    /// Always `None`; kept for serde compatibility. Read the response's
+    /// [`Usage::total_tokens`](crate::completion::Usage::total_tokens).
     pub total_tokens: Option<u64>,
-    /// Cached input tokens, when reported.
+    /// The part of the input read from a provider-managed cache.
     pub cached_input_tokens: Option<u64>,
-    /// Reasoning tokens, when reported separately.
+    /// The part of the output spent on internal reasoning.
     pub reasoning_tokens: Option<u64>,
-    /// Provider tool-use input tokens, when reported separately.
+    /// The part of the input a provider's hosted tools added to the prompt.
     pub tool_input_tokens: Option<u64>,
+}
+
+impl From<&crate::completion::Usage> for AdapterUsage {
+    fn from(usage: &crate::completion::Usage) -> Self {
+        Self {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: None,
+            cached_input_tokens: usage.cached_input_tokens,
+            reasoning_tokens: usage.reasoning_tokens,
+            tool_input_tokens: usage.tool_use_prompt_tokens,
+        }
+    }
 }
 
 /// Boundary identified by the adapter's original typed error, not its message.
@@ -410,13 +424,13 @@ impl AdapterAttempt {
         scrub::text(text, &self.secrets)
     }
 
-    pub(crate) fn emit_with_analysis(&self, event: AdapterEvent, analysis: AdapterAnalysis) {
+    fn emit_with_analysis(&self, event: AdapterEvent, analysis: AdapterAnalysis) {
         let analysis = (analysis != AdapterAnalysis::default()).then_some(analysis);
         self.context
             .emit_with_analysis(Some(self.number), event, analysis);
     }
 
-    pub(crate) fn emit(&self, event: AdapterEvent) {
+    fn emit(&self, event: AdapterEvent) {
         self.context.emit(Some(self.number), event);
     }
 
@@ -485,17 +499,31 @@ impl Drop for AdapterAttempt {
 
 /// Where a payload projector writes its observation facts.
 ///
-/// A projector reads verdicts, usage, ids and error envelopes off a raw
-/// payload before normalization discards them. Text it forwards must go
-/// through [`Self::scrub`]: a payload can echo credentials.
+/// A projector reads verdicts, ids and error envelopes off a raw payload
+/// before normalization discards them. Text it forwards must go through
+/// [`Self::scrub`]: a payload can echo credentials.
+///
+/// Usage is not a projector's to report: the driver observes it once, from
+/// the usage the decoder normalized into the reply's end.
+///
+/// ```compile_fail
+/// use rig_core::wire::{AdapterEvent, AdapterUsage, ObservationSink};
+///
+/// // A projector cannot parse usage a second time off the raw payload.
+/// fn project(sink: &mut ObservationSink<'_>) {
+///     sink.emit(AdapterEvent::Usage {
+///         usage: AdapterUsage::default(),
+///     });
+/// }
+/// ```
 pub struct ObservationSink<'a> {
     attempt: &'a mut AdapterAttempt,
 }
 
 impl ObservationSink<'_> {
-    /// Record one boundary fact.
-    pub fn emit(&mut self, event: AdapterEvent) {
-        self.attempt.emit(event);
+    /// Record the provider's error envelope.
+    pub fn error(&mut self, error: AdapterErrorEnvelope) {
+        self.attempt.emit(AdapterEvent::ErrorEnvelope { error });
     }
 
     /// Record the provider's verdict, and the response id it named.
@@ -538,6 +566,18 @@ impl AdapterSlot {
             .as_mut()
         {
             attempt.project(project);
+        }
+    }
+
+    /// Observe the attempt's usage, from the reply's normalized end.
+    pub(crate) fn usage(&self, usage: AdapterUsage) {
+        if let Some(attempt) = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+        {
+            attempt.emit(AdapterEvent::Usage { usage });
         }
     }
 
