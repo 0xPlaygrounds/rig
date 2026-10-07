@@ -12,7 +12,7 @@ git_tag_enable = false
 # fix the cause, then flip this to `true` for one push (or rerun the failed
 # `Release-plz` job at the release-PR merge commit if nothing has landed
 # since).
-release_always = false
+release_always = true
 
 [[package]]
 name = "rig"
