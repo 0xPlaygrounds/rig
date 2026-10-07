@@ -1084,11 +1084,11 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
         .expect_err("an answerless truncated turn fails the run");
     assert!(format!("{error:?}").contains("Length"), "{error:?}");
     assert!(
-        run.new_messages
+        run.messages()
             .iter()
             .all(|message| !matches!(message, Message::Assistant(_))),
         "the reasoning-only turn is not history: {:?}",
-        run.new_messages
+        run.messages()
     );
 }
 

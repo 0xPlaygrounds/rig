@@ -17,9 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{FinishReason, Message};
 use rig_core::error::ProviderError;
-use rig_core::message::{
-    AssistantContent, AssistantMessage, CallId, ToolCall, ToolName, ToolResult,
-};
+use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolCall, ToolName};
 use rig_core::streaming::{Item, PartKind, StreamEvent};
 
 use super::policy::TurnPolicy;
@@ -154,14 +152,11 @@ pub enum StreamedResolution {
         tool_name: String,
     },
     /// The turn was rolled back (retry) or the call skipped; corrective
-    /// messages are already in the history. Finish the provider stream for
-    /// usage, record the completion call, then call
+    /// messages, the skip's tool results among them, are already in the
+    /// history, where [`project`](crate::run::project) reads them. Finish the
+    /// provider stream for usage, record the completion call, then call
     /// `AgentRun::next_step`.
-    TurnAbandoned {
-        /// For a skipped call, the synthetic tool result to surface to the
-        /// consumer stream.
-        skipped_tool_result: Option<ToolResult>,
-    },
+    TurnAbandoned,
     /// The invalid call is dropped and the turn goes on without it: the
     /// run's `UnhandledInvalidToolCall::Ignore` on the streaming
     /// surface. Apply it via
@@ -427,7 +422,7 @@ impl StreamedTurnAssembler {
                 self.pending_tool_calls.push(tool_call.clone());
                 vec![StreamedTurnEvent::EmitToolCall { call: tool_call }]
             }
-            StreamedResolution::TurnAbandoned { .. } => Vec::new(),
+            StreamedResolution::TurnAbandoned => Vec::new(),
             StreamedResolution::Ignored => {
                 self.ignored_calls.push(tool_call.id);
                 Vec::new()

@@ -19,7 +19,7 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName, UserContent},
     telemetry::SpanCombinator,
-    wasm_compat::{WasmBoxedStream, WasmCompatSend, WasmCompatSync},
+    wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
 
 use super::{
@@ -37,7 +37,8 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::{MemoryAppend, PromptResponse, finalize_output_tool_choice},
+        committed::committed_stream_items,
+        response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
         transcript::{
             assistant_text_from_choice, is_empty_assistant_turn, tool_result_message,
             tool_result_output,
@@ -57,10 +58,25 @@ use dispatch::{CompletionScope, DispatchScope, model_step};
 
 mod dispatch;
 
-/// A boxed, medium-specific item stream for one engine step (model turn or tool
-/// batch). Boxed so a generic [`drive_agent`] can forward it without the
-/// per-step future leaking into the engine's own (`Send`) inference.
-pub(crate) type DriveStream<'a> = WasmBoxedStream<'a, Result<MultiTurnStreamItem, PromptError>>;
+/// A boxed, medium-specific item stream for one model turn. Boxed so a generic
+/// [`drive_agent`] can forward it without the per-step future leaking into the
+/// engine's own (`Send`) inference.
+pub(crate) type DriveStream<'a> = WasmBoxedStream<'a, Result<Surfaced, PromptError>>;
+
+/// What a model turn surfaces directly: every stream item that is not a tool
+/// item. Tool calls and results reach the stream only as a projection of
+/// committed history ([`committed_stream_items`]), so a turn source cannot
+/// announce one.
+pub(crate) enum Surfaced {
+    /// See [`MultiTurnStreamItem::StreamAssistantItem`].
+    Provider(Item<StreamEvent>),
+    /// See [`MultiTurnStreamItem::CompletionCall`].
+    CompletionCall(CompletionCall),
+    /// See [`MultiTurnStreamItem::ModelTurnRetried`].
+    ModelTurnRetried { turn: usize },
+    /// See [`MultiTurnStreamItem::FinalResponse`].
+    Final(PromptResponse),
+}
 
 /// Engine output: stream items for forwarding or a canonical terminal response.
 pub(crate) enum DriveItem {
@@ -121,7 +137,7 @@ pub(crate) trait TurnSource: Sized + WasmCompatSend + WasmCompatSync {
 
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
-    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
+    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced>;
 }
 
 pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
@@ -189,6 +205,32 @@ where
         let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
         // Restore routing history so resumed hooks see the last issued model.
         let mut previous_model: Option<ModelRef> = run.previous_model().cloned();
+        // Tool items stream only as the projection of what the run committed
+        // past `cursor`; a resumed run starts past its history, so nothing
+        // replays. `executed` is the settled batch's effective calls.
+        let mut cursor = run.messages().len();
+        let mut executed: Vec<Option<ToolCall>> = Vec::new();
+        macro_rules! project {
+            ($label:lifetime) => {{
+                let batch = std::mem::take(&mut executed);
+                if S::FORWARDS_ITEMS {
+                    let committed = run.messages().get(cursor..).unwrap_or_default();
+                    match committed_stream_items(committed, &batch) {
+                        Ok(items) => {
+                            for item in items {
+                                yield Ok(DriveItem::Item(item));
+                            }
+                        }
+                        Err(results) => fail!(run.cancel_error(format!(
+                            "agent run driver protocol violation: {results} tool result(s) \
+                             committed for a batch of {} call(s)",
+                            batch.len()
+                        )), break $label),
+                    }
+                }
+                cursor = run.messages().len();
+            }};
+        }
 
         if runner.config.hooks.observes(StepEventKind::RunStart) {
             let action = match run.initial_prompt() {
@@ -223,34 +265,15 @@ where
             }
         }
 
-        // A macro keeps yield and loop termination in the caller's scope;
-        // macro hygiene requires passing the loop label explicitly.
-        macro_rules! drive_step {
-            ($label:lifetime, $step_stream:expr) => {{
-                let mut step_stream = $step_stream;
-                let mut step_error = None;
-                while let Some(item) = step_stream.next().await {
-                    match item {
-                        Ok(item) => yield Ok(DriveItem::Item(item)),
-                        Err(err) => {
-                            step_error = Some(err);
-                            break;
-                        }
-                    }
-                }
-                drop(step_stream);
-                if let Some(err) = step_error {
-                    fail!(err, break $label);
-                }
-            }};
-        }
-
         'outer: loop {
             flush_entries!();
+            // A failed step is not projected: a failed turn may have committed
+            // calls it never answers, and the error carries that history.
             let step = match run.next_step() {
                 Ok(step) => step,
                 Err(err) => fail!(err, break 'outer),
             };
+            project!('outer);
 
             match step {
                 AgentRunStep::CallModel { prompt, history, turn } => {
@@ -347,7 +370,7 @@ where
                     run.set_previous_model(selected_label.clone());
                     previous_model = Some(selected_label);
 
-                    drive_step!('outer, model_step(
+                    let mut turn_stream = model_step(
                         &mut source,
                         &runner,
                         &hook_ctx,
@@ -356,7 +379,20 @@ where
                         prepared,
                         chat_span,
                         &agent_span,
-                    ));
+                    );
+                    let turn_error = loop {
+                        match turn_stream.next().await {
+                            Some(Ok(item)) => yield Ok(DriveItem::Item(item.into())),
+                            Some(Err(err)) => break Some(err),
+                            None => break None,
+                        }
+                    };
+                    drop(turn_stream);
+                    if let Some(err) = turn_error {
+                        fail!(err, break 'outer);
+                    }
+                    // An abandoned turn commits its call and the answers.
+                    project!('outer);
                     pending_tool_snapshot = Some(turn_tool_snapshot);
                 }
                 AgentRunStep::CallTools { calls } => {
@@ -380,15 +416,21 @@ where
                                 .to_string(),
                         )), break 'outer);
                     };
-                    drive_step!('outer, drive_tool_calls(
+                    let settled = drive_tool_calls(
                         &runner,
                         &hook_ctx,
                         &mut run,
                         calls,
                         tool_snapshot,
                         |span| source.chain_span(span),
-                        S::FORWARDS_ITEMS,
-                    ));
+                        S::STREAMS,
+                    )
+                    .await;
+                    match settled {
+                        Ok(ran) => executed = ran,
+                        Err(err) => fail!(err, break 'outer),
+                    }
+                    project!('outer);
                 }
                 AgentRunStep::Done(response) => {
                     flush_entries!();
@@ -425,7 +467,7 @@ where
                     // (streaming). The blocking fold discards it, so its source
                     // returns `None` and the extra full-response clone is skipped.
                     if let Some(final_item) = source.final_item(&response) {
-                        yield Ok(DriveItem::Item(final_item));
+                        yield Ok(DriveItem::Item(final_item.into()));
                     }
                     yield Ok(DriveItem::Done(response));
                     break 'outer;
@@ -436,29 +478,29 @@ where
     }
 }
 
-/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces.
+/// Execute a turn's tool calls **atomically per batch**, shared by both surfaces,
+/// and return each call's effective call when its body ran, by call position.
 ///
-/// The batch commits and surfaces all-or-nothing:
+/// The batch commits all-or-nothing, and streams nothing itself: the engine
+/// projects what it commits. On the stream, a
+/// [`ToolCall`](MultiTurnStreamItem::ToolCall) means the call is committed to
+/// history, and
+/// [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted)
+/// (the returned `Some`) means its body ran.
 ///
-/// - The model tool-call events ([`MultiTurnStreamItem::ToolCall`]) are
-///   emitted up front, reporting what the model emitted at turn commit.
-/// - Every tool then runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes **collected, not surfaced**.
+/// - Every tool runs (sequentially at `tool_concurrency <= 1`, else
+///   concurrently bounded by it), with outcomes collected.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
-///   error is surfaced with **no** successful [`ToolExecutionCommitted`] /
-///   [`ToolResult`](MultiTurnStreamItem::ToolResult) items and **no**
-///   history commit.
-/// - Only if the whole batch settles successfully are the per-tool
-///   [`ToolExecutionCommitted`](MultiTurnStreamItem::ToolExecutionCommitted) + result
-///   items surfaced (in call order, only for tools whose body actually ran) and
-///   the results committed to run history.
+///   error is returned with **no** history commit.
+/// - Only if the whole batch settles are the results committed to run
+///   history, in call order. A preresolved (invalid-recovery) result is
+///   committed as is, and a hook-skipped call's result is committed with no
+///   execution.
 ///
-/// When `forward_items` is `false` (the blocking fold) no stream items are built,
-/// but the collect/commit and fail-fast behavior is identical, so `run()` and
-/// `stream()` return the same terminal reason. `chain_tool_span` lets the
-/// blocking surface chain spans into its linear `follows_from` sequence.
+/// `chain_tool_span` lets the blocking surface chain spans into its linear
+/// `follows_from` sequence; `is_streaming` is reported to the invalid-call hook.
 pub(crate) fn drive_tool_calls<'a, F>(
     runner: &'a AgentRunner,
     hook_ctx: &'a HookContext,
@@ -466,81 +508,20 @@ pub(crate) fn drive_tool_calls<'a, F>(
     calls: Vec<PendingToolCall>,
     tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
-    forward_items: bool,
-) -> DriveStream<'a>
+    is_streaming: bool,
+) -> WasmBoxedFuture<'a, Result<Vec<Option<ToolCall>>, PromptError>>
 where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
-    // Per-call working state: the execute span, paired with the model's
-    // tool call. `span` is `Span::none()` for a
-    // preresolved (invalid-recovery) call, which never executes.
-    struct PreparedToolCall {
-        tool_call: rig_core::message::ToolCall,
-        preresolved_result: Option<UserContent>,
-        /// The invalid-call context of a call whose arguments are not a JSON
-        /// object, offered to the invalid-call hook before the call is answered.
-        malformed: Option<InvalidToolCallContext>,
-        span: tracing::Span,
-    }
-    // How a settled tool call is surfaced on the stream once the batch succeeds:
-    //   - `Executed`: `ToolExecutionCommitted` (with the effective, hook-rewritten
-    //     call) + the `ToolResult`.
-    //   - `Skipped`: the `ToolResult` only (a `ToolCall` hook returned `Skip`, so
-    //     nothing ran and no execution commit is surfaced, but the model still
-    //     sees the result).
-    //   - `Preresolved`: neither (an invalid-recovery result, already surfaced
-    //     during the model turn); committed to history only.
-    enum ToolSurface {
-        Executed(rig_core::message::ToolCall),
-        Skipped,
-        Preresolved,
-    }
-    // A collected tool outcome, held (not surfaced or committed) until the whole
-    // batch settles.
-    struct CollectedToolResult {
-        content: UserContent,
-        surface: ToolSurface,
-    }
-
-    Box::pin(async_stream::stream! {
+    Box::pin(async move {
         let full_history_for_errors = run.full_history();
         let call_count = calls.len();
 
-        // Assign each call that will actually execute an execute span. Emit the MODEL tool-call events now,
-        // right after the turn committed: these report what the model emitted and
-        // are *not* execution-lifecycle events. A preresolved call emits no model
-        // tool-call event (its synthetic result was already surfaced during the
-        // model turn) and gets no execute span.
-        let mut prepared: Vec<PreparedToolCall> = Vec::with_capacity(call_count);
-        for pending in calls {
-            let (span, preresolved_result) = match pending.preresolved_result {
-                Some(result) => (tracing::Span::none(), Some(result)),
-                None => {
-                    if forward_items {
-                        yield Ok(MultiTurnStreamItem::ToolCall {
-                            tool_call: pending.tool_call.clone(),
-                        });
-                    }
-                    (chain_tool_span(new_execute_tool_span()), None)
-                }
-            };
-            let malformed = match preresolved_result {
-                Some(_) => None,
-                None => run.malformed_tool_call_context(&pending.tool_call, forward_items),
-            };
-            prepared.push(PreparedToolCall {
-                tool_call: pending.tool_call,
-                preresolved_result,
-                malformed,
-                span,
-            });
-        }
-
-        // Outcomes are collected in call order and nothing is surfaced or
-        // committed until the whole batch settles. After the first termination or
-        // fail-closed error no new tool starts, started ones are drained, and the
-        // lowest call-index error wins.
-        let mut collected: Vec<Option<CollectedToolResult>> =
+        // Outcomes are collected in call order and nothing is committed until
+        // the whole batch settles. After the first termination or fail-closed
+        // error no new tool starts, started ones are drained, and the lowest
+        // call-index error wins.
+        let mut collected: Vec<Option<(UserContent, Option<ToolCall>)>> =
             (0..call_count).map(|_| None).collect();
         let mut first_error: Option<(usize, PromptError)> = None;
 
@@ -550,23 +531,29 @@ where
             // flag makes a not-yet-started sibling skip (its side effect never
             // runs) once any sibling terminates, while in-flight siblings are
             // drained so the lowest call-index terminator wins and no task is left
-            // detached.
+            // detached. A preresolved call never executes and has no span.
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let prepared: Vec<_> = calls
+                .into_iter()
+                .map(|call| {
+                    let (span, malformed) = match call.preresolved_result {
+                        Some(_) => (tracing::Span::none(), None),
+                        None => (
+                            chain_tool_span(new_execute_tool_span()),
+                            run.malformed_tool_call_context(&call.tool_call, is_streaming),
+                        ),
+                    };
+                    (call, malformed, span)
+                })
+                .collect();
             let unordered = stream::iter(prepared.into_iter().enumerate())
-                .map(|(index, call)| {
-                    let PreparedToolCall { tool_call, preresolved_result, malformed, span } = call;
+                .map(|(index, (call, malformed, span))| {
                     let tool_snapshot = &tool_snapshot;
                     let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
-                        if let Some(result) = preresolved_result {
-                            return (
-                                index,
-                                Some(Ok(CollectedToolResult {
-                                    content: result,
-                                    surface: ToolSurface::Preresolved,
-                                })),
-                            );
+                        if let Some(result) = call.preresolved_result {
+                            return (index, Some(Ok((result, None))));
                         }
                         // `None` marks a dropped (never-started) sibling.
                         if terminating.load(std::sync::atomic::Ordering::SeqCst) {
@@ -576,24 +563,12 @@ where
                             runner,
                             hook_ctx,
                             tool_snapshot,
-                            &tool_call,
+                            &call.tool_call,
                             malformed.as_ref(),
                             full_history_for_errors,
                         )
                         .await;
-                        let mapped = outcome.map(|o| {
-                            let surface = match o.execution {
-                                ToolExecution::Executed(effective) => {
-                                    ToolSurface::Executed(effective)
-                                }
-                                ToolExecution::Skipped => ToolSurface::Skipped,
-                            };
-                            CollectedToolResult {
-                                content: o.content,
-                                surface,
-                            }
-                        });
-                        (index, Some(mapped))
+                        (index, Some(outcome.map(|o| (o.content, o.executed))))
                     }
                     .instrument(span)
                 })
@@ -621,64 +596,22 @@ where
             }
         }
 
-        // On termination surface only the deterministic error: no execution
-        // commit, no result, and no history commit.
+        // On termination return only the deterministic error, with no
+        // history commit.
         if let Some((_, err)) = first_error {
-            yield Err(err);
-            return;
+            return Err(err);
         }
 
-        // Success: prepare each call's stream items and results in call order,
-        // commit the results, then surface the buffered items. An executed call
-        // surfaces `ToolExecutionCommitted`
-        // (with the effective, hook-rewritten call) then its `ToolResult`; a
-        // hook-skipped call surfaces its `ToolResult` only (nothing ran); a
-        // preresolved call surfaces nothing (already surfaced during the model
-        // turn) but is still committed. Every non-dropped slot is filled; a
-        // dropped slot only occurs after a termination, handled above.
-        let mut committed: Vec<UserContent> = Vec::with_capacity(call_count);
-        let mut surface_items: Vec<MultiTurnStreamItem> =
-            Vec::with_capacity(call_count.saturating_mul(2));
-        for slot in collected {
-            let Some(CollectedToolResult { content, surface }) = slot else {
-                yield Err(PromptError::Provider(ProviderError::Response(
-                    "tool execution finished without producing every result".to_string(),
-                )));
-                return;
-            };
-            if forward_items {
-                // An executed call also surfaces its execution commit; a skipped
-                // call surfaces only its result; a preresolved call surfaces
-                // nothing here.
-                let surface_result = match surface {
-                    ToolSurface::Executed(tool_call) => {
-                        surface_items.push(MultiTurnStreamItem::ToolExecutionCommitted {
-                            tool_call,
-                        });
-                        true
-                    }
-                    ToolSurface::Skipped => true,
-                    ToolSurface::Preresolved => false,
-                };
-                if surface_result
-                    && let UserContent::ToolResult(tool_result) = &content
-                {
-                    surface_items.push(MultiTurnStreamItem::ToolResult {
-                        tool_result: tool_result.clone(),
-                    });
-                }
-            }
-            committed.push(content);
-        }
-
-        if let Err(err) = run.tool_results(committed) {
-            yield Err(err);
-            return;
-        }
-
-        for item in surface_items {
-            yield Ok(item);
-        }
+        // Every non-dropped slot is filled; a dropped slot only occurs after a
+        // termination, handled above.
+        let Some(settled) = collected.into_iter().collect::<Option<Vec<_>>>() else {
+            return Err(PromptError::Provider(ProviderError::Response(
+                "tool execution finished without producing every result".to_string(),
+            )));
+        };
+        let (committed, executed): (Vec<_>, Vec<_>) = settled.into_iter().unzip();
+        run.tool_results(committed)?;
+        Ok(executed)
     })
 }
 
@@ -864,7 +797,7 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if let Some(item) = item_slot.take() {
-                                yield Ok(MultiTurnStreamItem::stream_item(item));
+                                yield Ok(Surfaced::Provider(item));
                             }
                         }
                         StreamedTurnEvent::EmitToolCallDelta => {
@@ -899,7 +832,7 @@ impl TurnSource for StreamingTurnSource {
                                 return;
                             }
                             if let Some(item) = item_slot.take() {
-                                yield Ok(MultiTurnStreamItem::stream_item(item));
+                                yield Ok(Surfaced::Provider(item));
                             }
                         }
                         StreamedTurnEvent::HoldToolCall => {
@@ -951,10 +884,10 @@ impl TurnSource for StreamingTurnSource {
                                     yield Err(run.cancel_error(reason));
                                     return;
                                 }
-                                yield Ok(MultiTurnStreamItem::stream_item(Item::Event(event)));
+                                yield Ok(Surfaced::Provider(Item::Event(event)));
                             }
                             if let Some(part) = end {
-                                yield Ok(MultiTurnStreamItem::stream_item(Item::Event(
+                                yield Ok(Surfaced::Provider(Item::Event(
                                     StreamEvent::End {
                                         part,
                                         content: AssistantContent::ToolCall(call),
@@ -1024,11 +957,11 @@ impl TurnSource for StreamingTurnSource {
                                     turn_recovered = true;
                                     events.extend(assembler.resolve_pending_invalid(&resolution));
                                 }
-                                StreamedResolution::TurnAbandoned {
-                                    ref skipped_tool_result,
-                                } => {
-                                    let skipped_tool_result = skipped_tool_result.clone();
+                                StreamedResolution::TurnAbandoned => {
                                     assembler.resolve_pending_invalid(&resolution);
+                                    // Only provider fragments are held; the turn's
+                                    // committed calls and answers stream as the
+                                    // engine's projection of history.
                                     held.clear();
                                     // The abandoned reply still reports its usage
                                     // when it ends; one that already ended with the
@@ -1036,16 +969,13 @@ impl TurnSource for StreamingTurnSource {
                                     if !ended {
                                         match scope.finish_stream(stream, run, &chat_span).await {
                                             Ok((_, call)) => {
-                                                yield Ok(MultiTurnStreamItem::CompletionCall(call));
+                                                yield Ok(Surfaced::CompletionCall(call));
                                             }
                                             Err(err) => {
                                                 yield Err(err);
                                                 return;
                                             }
                                         }
-                                    }
-                                    if let Some(tool_result) = skipped_tool_result {
-                                        yield Ok(MultiTurnStreamItem::ToolResult { tool_result });
                                     }
                                     return;
                                 }
@@ -1063,7 +993,7 @@ impl TurnSource for StreamingTurnSource {
             // successful zero-usage completion.
             let response = match scope.finish_stream(stream, run, &chat_span).await {
                 Ok((response, call)) => {
-                    yield Ok(MultiTurnStreamItem::CompletionCall(call));
+                    yield Ok(Surfaced::CompletionCall(call));
                     response
                 }
                 Err(err) => {
@@ -1102,7 +1032,7 @@ impl TurnSource for StreamingTurnSource {
                     }
                 }
                 Ok(ModelTurnDecision::Retried) => {
-                    yield Ok(MultiTurnStreamItem::ModelTurnRetried {
+                    yield Ok(Surfaced::ModelTurnRetried {
                         turn: hook_ctx.turn(),
                     });
                     return;
@@ -1153,7 +1083,7 @@ impl TurnSource for StreamingTurnSource {
         }
     }
 
-    fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem> {
+    fn final_item(&self, response: &PromptResponse) -> Option<Surfaced> {
         // In tool output mode, when the finishing turn made the output-tool call,
         // surface the run's structured output as the final content.
         let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
@@ -1167,15 +1097,12 @@ impl TurnSource for StreamingTurnSource {
                 }
                 self.last_final_choice.clone()
             });
-        Some(
-            MultiTurnStreamItem::final_response_with_completion_calls(
-                final_choice,
-                response.usage,
-                response.completion_calls.clone(),
-                response.messages.clone(),
-            )
-            .with_memory_append(response.memory_append.clone()),
-        )
+        Some(Surfaced::Final(
+            PromptResponse::from_content(final_choice, response.usage)
+                .with_completion_calls(response.completion_calls.clone())
+                .with_messages(response.messages.clone())
+                .with_memory_append(response.memory_append.clone()),
+        ))
     }
 }
 
@@ -1383,28 +1310,17 @@ pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
     )
 }
 
-/// Whether (and how) a tool call executed, for [`run_single_tool`].
-pub(crate) enum ToolExecution {
-    /// The tool's body ran. Carries the effective tool call, meaning the model's
-    /// call with any [`DispatchAction::Patch`] hook rewrite applied, so the
-    /// driver can surface it in the
-    /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted)
-    /// event (what actually ran, not the model's original arguments).
-    Executed(ToolCall),
-    /// A dispatch hook denied the call ([`DispatchAction::skip`]): the
-    /// body did not run, so no execution-commit is surfaced, but the skip result
-    /// still reaches the model and is surfaced as a `ToolResult`.
-    Skipped,
-}
-
 /// Outcome of [`run_single_tool`]: the tool-result content plus whether the
 /// tool's body ran (and the effective call) or a hook skipped it.
 pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
     /// replacement, or a hook skip reason).
     pub content: UserContent,
-    /// How the call resolved: executed (with the effective tool call) or skipped.
-    pub execution: ToolExecution,
+    /// The effective call when the tool's body ran: the model's call with any
+    /// [`DispatchAction::Patch`] hook rewrite applied, reported as
+    /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted).
+    /// `None` when a hook skipped the call ([`DispatchAction::skip`]).
+    pub executed: Option<ToolCall>,
 }
 
 /// Execute a single tool call through the dispatch boundary and shape the
@@ -1416,7 +1332,7 @@ pub(crate) struct ToolCallOutcome {
 /// [`tool_result_output`] without reparsing text. Records `gen_ai.tool.*` on
 /// the current span; `error_history` builds a cancellation error if a hook
 /// terminates the run. Returns whether the tool body executed via
-/// [`ToolCallOutcome::execution`].
+/// [`ToolCallOutcome::executed`].
 ///
 /// A call whose arguments are not a JSON object never reaches the tool. Its
 /// `malformed` context goes to the invalid-call hook first; see
@@ -1476,14 +1392,12 @@ pub(crate) async fn run_single_tool(
     // A skip runs nothing and surfaces no execution commit; a real execution
     // carries the effective tool call (the model's call with any patch
     // applied) so a redaction rewrite does not leak.
-    let execution = if !executed {
-        ToolExecution::Skipped
-    } else {
+    let executed = executed.then(|| {
         let mut effective_tool_call = tool_call.clone();
         effective_tool_call.function =
             ToolFunction::parse(tool_call.function.name.clone(), &effective_args);
-        ToolExecution::Executed(effective_tool_call)
-    };
+        effective_tool_call
+    });
     // Outcome metadata describes the execution itself, while result content
     // follows the same presentation policy as the model: what the outcome
     // hook let through is what telemetry records.
@@ -1492,7 +1406,7 @@ pub(crate) async fn run_single_tool(
         tool_span.record("gen_ai.tool.call.result", exec.output().render());
     }
     let content = tool_result_output(tool_call.id.clone(), tool_call.function.name.clone(), &exec);
-    Ok(ToolCallOutcome { content, execution })
+    Ok(ToolCallOutcome { content, executed })
 }
 
 /// Answer a call whose arguments `raw` are not a JSON object, after offering
@@ -1541,7 +1455,7 @@ async fn answer_malformed_tool_call(
     };
     Ok(ToolCallOutcome {
         content,
-        execution: ToolExecution::Skipped,
+        executed: None,
     })
 }
 
@@ -1729,7 +1643,7 @@ impl TurnSource for UnaryTurnSource {
         }
     }
 
-    fn final_item(&self, _response: &PromptResponse) -> Option<MultiTurnStreamItem> {
+    fn final_item(&self, _response: &PromptResponse) -> Option<Surfaced> {
         // The blocking surface folds the engine and discards the final item, so
         // building it (an extra full-response clone) is skipped entirely.
         None

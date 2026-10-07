@@ -425,7 +425,8 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
 
     let hook_context = HookContext::new(true, None, None);
     hook_context.set_turn(1);
-    let mut stream = drive_tool_calls(
+    let committed_before = run.messages().len();
+    let settled = drive_tool_calls(
         &runner,
         &hook_context,
         &mut run,
@@ -433,26 +434,18 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         tool_snapshot,
         |span| span,
         true,
-    );
-
-    let mut saw_commit = false;
-    let mut saw_result = false;
-    let mut saw_error = false;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
-            Ok(MultiTurnStreamItem::ToolResult { .. }) => saw_result = true,
-            Err(_) => saw_error = true,
-            _ => {}
-        }
-    }
+    )
+    .await;
 
     assert!(
-        saw_error,
+        settled.is_err(),
         "the mismatched result must fail run-state commit"
     );
-    assert!(!saw_commit, "a failed run-state commit cannot be announced");
-    assert!(!saw_result, "an uncommitted result cannot be surfaced");
+    assert_eq!(
+        run.messages().len(),
+        committed_before,
+        "a failed run-state commit leaves nothing for the stream to project"
+    );
 }
 
 async fn assert_stream_usage_recorded_on_chat_spans(
@@ -913,14 +906,12 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
-    let item: MultiTurnStreamItem = MultiTurnStreamItem::final_response_with_completion_calls(
-        vec![AssistantContent::text("done")],
-        usage(3, 4),
-        vec![
-            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
-        ],
-        Vec::new(),
+    let item = MultiTurnStreamItem::FinalResponse(
+        PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
+            .with_completion_calls(vec![
+                CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+            ]),
     );
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {

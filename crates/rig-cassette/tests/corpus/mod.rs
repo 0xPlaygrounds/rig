@@ -3829,7 +3829,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                             "a repair names an allowed tool"
                                         );
                                     }
-                                    Ok(resolution @ StreamedResolution::TurnAbandoned { .. }) => {
+                                    Ok(resolution @ StreamedResolution::TurnAbandoned) => {
                                         assembler.resolve_pending_invalid(&resolution);
                                         turn_abandoned = true;
                                     }

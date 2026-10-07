@@ -11,6 +11,7 @@
 //! # Ok::<(), rig_agent::run::PromptError>(())
 //! ```
 
+pub mod committed;
 pub mod output;
 pub mod patch;
 pub mod prepare;
@@ -18,6 +19,7 @@ pub mod spec;
 pub use spec::UnhandledInvalidToolCall;
 pub mod transcript;
 
+pub use committed::{CommittedItem, project};
 pub use output::OutputMode;
 pub use patch::RequestPatch;
 pub use prepare::{PrepareError, PreparedRequest, prepare_request};
@@ -30,10 +32,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
-use rig_core::message::{
-    AssistantContent, AssistantMessage, ToolCall, ToolName, ToolResult, ToolResultContent,
-    UserContent,
-};
+use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 
 use rig_core::completion::{Message, ResponseIdentity, Usage};
 pub mod policy;
@@ -315,7 +314,9 @@ pub struct AgentRun {
     max_output_retries: usize,
     output_retries: usize,
     chat_history: Option<Vec<Message>>,
-    new_messages: Vec<Message>,
+    /// Append-only: see [`committed::project`].
+    #[serde(rename = "new_messages")]
+    history: committed::CommittedLog,
     current_turn: usize,
     usage: Usage,
     completion_calls: Vec<CompletionCall>,
@@ -413,7 +414,7 @@ impl AgentRun {
             max_output_retries: 0,
             output_retries: 0,
             chat_history: None,
-            new_messages: vec![prompt.into()],
+            history: committed::CommittedLog::new(prompt.into()),
             current_turn: 0,
             usage: Usage::default(),
             completion_calls: Vec::new(),
@@ -435,7 +436,7 @@ impl AgentRun {
     /// history, no longer pending input).
     pub fn initial_prompt(&self) -> Option<&Message> {
         (self.current_turn == 0 && matches!(self.state, RunState::PreparingRequest))
-            .then(|| self.new_messages.last())
+            .then(|| self.history.last())
             .flatten()
     }
 
@@ -451,16 +452,13 @@ impl AgentRun {
         prompt: impl Into<Message>,
     ) -> Result<(), PromptError> {
         let started = self.current_turn != 0 || !matches!(self.state, RunState::PreparingRequest);
-        match self.new_messages.last_mut() {
-            Some(slot) if !started => {
-                *slot = prompt.into();
-                Ok(())
-            }
-            _ => Err(PromptError::cancelled(
-                self.full_history(),
-                "the initial prompt can only be rewritten before the run starts",
-            )),
+        if !started && self.history.replace_unstarted_prompt(prompt.into()) {
+            return Ok(());
         }
+        Err(PromptError::cancelled(
+            self.full_history(),
+            "the initial prompt can only be rewritten before the run starts",
+        ))
     }
 
     /// Append one host record without interpreting or validating its contents.
@@ -642,7 +640,7 @@ impl AgentRun {
     /// Messages accumulated by this run (the prompt plus all assistant turns
     /// and tool results), excluding the input history.
     pub fn messages(&self) -> &[Message] {
-        &self.new_messages
+        &self.history
     }
 
     /// Canonical content for the accepted model turn awaiting advancement.
@@ -722,9 +720,9 @@ impl AgentRun {
             RetryRequest::Feedback(feedback) => {
                 // Feedback may retry an empty answer, but empty assistant messages
                 // must not enter provider history.
-                self.new_messages
-                    .extend(assistant_turn(turn.head, turn.items));
-                self.new_messages.push(Message::user(feedback));
+                self.history
+                    .commit_all(assistant_turn(turn.head, turn.items));
+                self.history.commit(Message::user(feedback));
             }
         }
 
@@ -734,7 +732,7 @@ impl AgentRun {
 
     /// The full conversation: input history followed by [`Self::messages`].
     pub fn full_history(&self) -> Vec<Message> {
-        build_full_history(self.chat_history.as_deref(), self.new_messages.clone())
+        build_full_history(self.chat_history.as_deref(), self.history.to_vec())
     }
 
     /// Whether the run reached [`AgentRunStep::Done`].
@@ -787,7 +785,7 @@ impl AgentRun {
     pub fn next_step(&mut self) -> Result<AgentRunStep, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::PreparingRequest => {
-                let Some((prompt_ref, history_for_turn)) = self.new_messages.split_last() else {
+                let Some((prompt_ref, history_for_turn)) = self.history.split_last() else {
                     return Err(PromptError::cancelled(
                         self.full_history(),
                         "prompt loop lost its pending prompt",
@@ -833,7 +831,7 @@ impl AgentRun {
                     .and_then(|call| call.finish_reason.as_ref());
                 if let Some(message) = turn_failure(&items, head.stop.as_ref(), finish) {
                     if has_tool_calls {
-                        self.new_messages.extend(assistant_turn(head, items));
+                        self.history.commit_all(assistant_turn(head, items));
                     }
                     return Err(ProviderError::Response(message).into());
                 }
@@ -867,8 +865,8 @@ impl AgentRun {
                     // the model is told why while the budget lasts.
                     if let Some(raw) = &tool_call.function.invalid_arguments {
                         if self.can_reprompt_for_output() {
-                            self.new_messages
-                                .extend(assistant_message(head, items.clone()));
+                            self.history
+                                .commit_all(assistant_message(head, items.clone()));
                             let feedback = rig_core::transcript::invalid_arguments_feedback(
                                 &output_tool_name,
                                 raw,
@@ -876,7 +874,7 @@ impl AgentRun {
                             if let Some(user_message) =
                                 invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                             {
-                                self.new_messages.push(user_message);
+                                self.history.commit(user_message);
                             }
                             return self.reprompt_for_output();
                         }
@@ -893,14 +891,14 @@ impl AgentRun {
                         .map(|schema| structured_output::missing_required_fields(schema, &args))
                         .unwrap_or_default();
                     if !missing.is_empty() && self.can_reprompt_for_output() {
-                        self.new_messages
-                            .extend(assistant_message(head, items.clone()));
+                        self.history
+                            .commit_all(assistant_message(head, items.clone()));
                         let feedback =
                             structured_output::reprompt_missing_fields(&output_tool_name, &missing);
                         if let Some(user_message) =
                             invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                         {
-                            self.new_messages.push(user_message);
+                            self.history.commit(user_message);
                         }
                         return self.reprompt_for_output();
                     }
@@ -913,8 +911,8 @@ impl AgentRun {
                         .cloned()
                         .collect();
                     final_items.push(AssistantContent::text(output.clone()));
-                    self.new_messages
-                        .extend(assistant_message(head, final_items.clone()));
+                    self.history
+                        .commit_all(assistant_message(head, final_items.clone()));
 
                     let content = response::finalize_output_tool_choice(&items, &output)
                         .unwrap_or_else(|| vec![AssistantContent::text(output)]);
@@ -922,8 +920,7 @@ impl AgentRun {
                 }
 
                 // Empty turns may succeed but cannot form provider history entries.
-                self.new_messages
-                    .extend(assistant_turn(head, items.clone()));
+                self.history.commit_all(assistant_turn(head, items.clone()));
 
                 if has_tool_calls {
                     // Output retries are budgeted per finalization attempt, not per run.
@@ -953,7 +950,7 @@ impl AgentRun {
                             &assistant_text_from_choice(&items),
                         )
                     {
-                        self.new_messages.push(Message::user(
+                        self.history.commit(Message::user(
                             structured_output::reprompt_text_answer(output_tool_name),
                         ));
                         return self.reprompt_for_output();
@@ -1063,7 +1060,7 @@ impl AgentRun {
     /// output-tool and plain-text finalization paths in `next_step`.
     fn finish(&mut self, content: Vec<AssistantContent>, output_tool_calls: usize) -> AgentRunStep {
         let response = PromptResponse::from_content(content, self.usage)
-            .with_messages(self.new_messages.clone())
+            .with_messages(self.history.to_vec())
             .with_completion_calls(self.completion_calls.clone())
             .with_output_tool_calls(output_tool_calls);
         self.state = RunState::Done(response.clone());
@@ -1236,7 +1233,7 @@ impl AgentRun {
 
         match action {
             ValidatedInvalidToolCallAction::Retry { feedback } => {
-                self.new_messages.extend(assistant_message(
+                self.history.commit_all(assistant_message(
                     resolving.head.clone(),
                     resolving.original_choice.clone(),
                 ));
@@ -1250,7 +1247,7 @@ impl AgentRun {
                         "invalid tool call retry produced no retry messages",
                     ));
                 };
-                self.new_messages.push(user_message);
+                self.history.commit(user_message);
                 self.state = RunState::PreparingRequest;
                 Ok(ModelTurnOutcome::TurnRetried)
             }
@@ -1362,7 +1359,7 @@ impl AgentRun {
         }
 
         // Not empty: an empty batch failed the run above.
-        self.new_messages.push(Message::User { content: results });
+        self.history.commit(Message::User { content: results });
         self.state = RunState::PreparingRequest;
         Ok(())
     }
@@ -1518,27 +1515,17 @@ impl AgentRun {
                 feedback,
                 diagnostic_history,
                 "invalid tool call retry produced no retry messages",
-                None,
             ),
             ValidatedInvalidToolCallAction::Repair { tool_name } => {
                 Ok(StreamedResolution::Repaired { tool_name })
             }
-            ValidatedInvalidToolCallAction::Skip { reason } => {
-                // Synthetic skip reason: emit verbatim text, matching the
-                // non-streamed `resolve_invalid_tool_call` skip path (parity) and
-                // avoiding re-parsing a rejection message as structured output.
-                let skipped_tool_result = invalid
-                    .tool_call
-                    .result(vec![ToolResultContent::text(reason.as_str())]);
-                self.abandon_streamed_turn(
-                    partial,
-                    invalid,
-                    reason,
-                    diagnostic_history,
-                    "invalid tool call skip produced no recovery messages",
-                    Some(skipped_tool_result),
-                )
-            }
+            ValidatedInvalidToolCallAction::Skip { reason } => self.abandon_streamed_turn(
+                partial,
+                invalid,
+                reason,
+                diagnostic_history,
+                "invalid tool call skip produced no recovery messages",
+            ),
         }
     }
 
@@ -1564,7 +1551,6 @@ impl AgentRun {
         feedback: String,
         diagnostic_history: Vec<Message>,
         no_messages_reason: &str,
-        skipped_tool_result: Option<ToolResult>,
     ) -> Result<StreamedResolution, PromptError> {
         let Some((assistant_message, user_message)) =
             partial.rollback_messages(invalid.tool_call.clone(), feedback)
@@ -1575,13 +1561,10 @@ impl AgentRun {
                 no_messages_reason,
             ));
         };
-        self.new_messages.push(assistant_message);
-        self.new_messages.push(user_message);
+        self.history.commit_all([assistant_message, user_message]);
         self.rollback_pending = true;
         self.state = RunState::PreparingRequest;
-        Ok(StreamedResolution::TurnAbandoned {
-            skipped_tool_result,
-        })
+        Ok(StreamedResolution::TurnAbandoned)
     }
 
     /// Feed the assembled streamed turn for the pending
@@ -1610,7 +1593,7 @@ impl AgentRun {
                 continue;
             };
             if !turn.policy.allows(tool_call.function.name.as_str()) {
-                let mut diagnostic_messages = self.new_messages.clone();
+                let mut diagnostic_messages = self.history.to_vec();
                 diagnostic_messages.extend(assistant_turn(turn.head.clone(), turn.choice.clone()));
                 let diagnostic_history =
                     build_full_history(self.chat_history.as_deref(), diagnostic_messages);
@@ -1639,7 +1622,7 @@ impl AgentRun {
         partial: &PartialStreamedTurn,
         current_tool_call: Option<ToolCall>,
     ) -> Vec<Message> {
-        let mut messages = self.new_messages.clone();
+        let mut messages = self.history.to_vec();
         if let Some(assistant) = partial.assistant_message(current_tool_call) {
             messages.push(assistant);
         }
@@ -1649,7 +1632,7 @@ impl AgentRun {
     /// History used for invalid tool-call diagnostics: the run's messages plus
     /// the unmodified assistant turn under inspection.
     fn diagnostic_history(&self, resolving: &ResolvingState) -> Vec<Message> {
-        let mut diagnostic_messages = self.new_messages.clone();
+        let mut diagnostic_messages = self.history.to_vec();
         diagnostic_messages.extend(assistant_message(
             resolving.head.clone(),
             resolving.original_choice.clone(),
