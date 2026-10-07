@@ -405,7 +405,12 @@ impl FinalBody {
 
 /// The writes `request_params` makes after the merge, each one a write a
 /// wire makes after its `body.extend(params)` today. Each reads the merged
-/// body, raw keys included, as it does today.
+/// body, raw keys included, as it does today. Only `Stream`, `NoStream` and
+/// `StreamUsage` are documented; the provider-specific variants (and
+/// `RawAt::Ignored`, `catalog::Compat`, `gemini::completion::{Route,
+/// generate_content_options}` and `GenerateContentResponse::{chunk,
+/// document}`) are `#[doc(hidden)]`: for rig's own crates, not covered by
+/// semver.
 #[non_exhaustive]
 pub enum Rewrite {
     OutputCapRename,
@@ -761,7 +766,8 @@ impl ModelSpec {
   reference in either grammar) and an API key, on the shared reqwest client;
   `connect_with` takes the HTTP client too. `ModelSpec` gains, behind
   `#[non_exhaustive]`, `sampling: Option<Sampling>` (`Any`, `ReasoningOff`,
-  `Never`) and `compat: Compat`, the encoder facts section 8 proposed (the
+  `Never`) and `compat: Compat` (`#[doc(hidden)]`, for rig's own crates and
+  not covered by semver), the encoder facts section 8 proposed (the
   Chat replay field, Anthropic's adaptive thinking, off type, mid-conversation
   system, forced tool choice and context binding, OpenAI's
   `prompt_cache_options` and Chat tool rule); `ReasoningSupport` gains

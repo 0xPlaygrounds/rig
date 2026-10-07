@@ -11,6 +11,9 @@ use crate::completion::{CacheRetention, Effort, Reasoning, ServiceTier};
 
 /// The GenerateContent route a request takes, which decides the service
 /// tiers it can name and whether an unverified field reaches it.
+///
+/// For rig's own crates; not covered by semver.
+#[doc(hidden)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Route {
@@ -133,6 +136,9 @@ fn config(value: serde_json::Value) -> Mapping {
 /// How a GenerateContent wire on `route` answers `fields` for `model`
 /// (section 6.4 of `TYPED_OPTIONS.md`). Every GenerateContent wire calls it,
 /// so the REST, Vertex AI and gRPC wires agree.
+///
+/// For rig's own crates; not covered by semver.
+#[doc(hidden)]
 pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,

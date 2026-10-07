@@ -43,6 +43,9 @@ pub struct ModelSpec {
     /// `top_logprobs`, `logprobs`), or `None` when unknown.
     pub sampling: Option<Sampling>,
     /// Facts the encoders read that no portable field holds.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     pub compat: Compat,
 }
 
@@ -148,6 +151,9 @@ pub enum Sampling {
 /// Model facts the encoders read that no portable field holds. Each defaults
 /// to `false` or `None`, which is what a model the field does not concern
 /// has.
+///
+/// For rig's own crates; not covered by semver.
+#[doc(hidden)]
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Compat {

@@ -47,6 +47,9 @@ pub struct GenerateContentResponse {
 
 impl GenerateContentResponse {
     /// Absorb one chunk, in REST JSON.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     pub fn chunk(&mut self, chunk: Map<String, Value>) {
         for (key, value) in chunk {
             match (key.as_str(), value) {
@@ -69,6 +72,9 @@ impl GenerateContentResponse {
     }
 
     /// The document the chunks add up to; `Null` when there were none.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     pub fn document(self) -> Value {
         if self.document.is_empty() {
             Value::Null

@@ -42,6 +42,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use serde_json::{Map, Value, json};
 
 pub use super::cached_content::with_cached_content;
+#[doc(hidden)]
 pub use super::options::{Route, generate_content_options};
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{Accepts, CompletionRequest, Media, Place, Replay, ReplayTarget};

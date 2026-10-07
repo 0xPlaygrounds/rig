@@ -84,23 +84,36 @@ pub enum RawAt {
     },
     /// Not merged: the provider rejects pass-through parameters, so a
     /// non-empty raw layer is skipped with this warning.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     Ignored(&'static str),
 }
 
 /// The writes [`request_params`] makes after the merge, each one a write a
 /// wire made after merging `additional_params` before. Each reads the merged
-/// body, raw keys included.
+/// body, raw keys included. A third-party wire uses the stream ones; the
+/// provider-specific ones are rig's own and hidden.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum Rewrite {
     /// Chat Completions: `max_tokens` as `max_completion_tokens` for an
     /// OpenAI reasoning model.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     OutputCapRename,
     /// Anthropic: ask to drop thinking bound to another context, when the
     /// body's thinking is adaptive or unset.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     DropUnboundThinking,
     /// Anthropic streams: a default `tool_choice` beside tools, none without
     /// them.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     ToolChoiceNeedsTools,
     /// `stream` set to this value.
     Stream(bool),
@@ -108,21 +121,36 @@ pub enum Rewrite {
     NoStream,
     /// OpenAI Responses over a WebSocket session: `background` removed,
     /// which the session ignores.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     NoBackground,
     /// Chat Completions streams: `stream_options.include_usage: true`
     /// unless the body states it.
     StreamUsage,
     /// OpenAI Responses: ask for the reasoning ciphertext when the body
     /// reasons or stores nothing, or always when `true`.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     ReasoningCiphertext(bool),
     /// OpenAI Responses on ChatGPT: `store: false`.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     CodexStore,
     /// The Chat Completions dialect's own rewrite.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     ChatDialect(BodyRewrite),
     /// Gemini `cachedContent`: each raw `cachedContent`/`cached_content`
     /// handle, then the wire's own, checked against the body. The
     /// GenerateContent wires that name it also read a raw
     /// `generationConfig: null` as absent, as they always have.
+    ///
+    /// For rig's own crates; not covered by semver.
+    #[doc(hidden)]
     GeminiCachedContent(Option<String>),
 }
 
