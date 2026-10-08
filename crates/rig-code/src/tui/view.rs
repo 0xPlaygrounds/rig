@@ -5,9 +5,10 @@ use bevy_ecs::prelude::*;
 use rig_core::completion::Reasoning;
 
 use crate::core::agent::{
-    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest,
+    Agent, AgentId, Connection, Conversation, Notice, NoticeLevel, PickKind, PickRequest,
 };
 use crate::core::models;
+use crate::host::reload::ReloadFailed;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
@@ -25,6 +26,8 @@ pub struct TuiView {
     pub picker: Option<Picker>,
     /// Recent notices, oldest first.
     pub notices: Vec<ShownNotice>,
+    /// A failed rebuild's output, shown over the transcript until Esc.
+    pub reload_failure: Option<String>,
 }
 
 /// A notice placed in a transcript.
@@ -34,6 +37,8 @@ pub struct ShownNotice {
     /// The length of that agent's conversation (the focused one's, for an
     /// app notice) when it arrived; it is drawn after that many messages.
     pub after: usize,
+    /// Whether it reports a failure.
+    pub level: NoticeLevel,
     /// The text.
     pub text: String,
 }
@@ -103,7 +108,7 @@ pub fn focus_agent(mut view: ResMut<TuiView>, agents: Query<(Entity, &AgentId), 
 /// Opens the picker a command asked for.
 pub fn open_pickers(
     mut requests: MessageReader<PickRequest>,
-    agents: Query<&ModelChoice>,
+    agents: Query<&Connection>,
     conversations: Query<&Conversation>,
     mut view: ResMut<TuiView>,
 ) {
@@ -111,15 +116,20 @@ pub fn open_pickers(
         let current = agents
             .get(request.agent)
             .ok()
-            .map(|choice| choice.0.as_str());
+            .map(|connection| connection.spec);
         let (title, items) = match request.kind {
             PickKind::Model => {
                 let items: Vec<(String, PickValue)> = models::available_models()
                     .into_iter()
                     .map(|spec| {
                         let reference = models::reference(spec);
+                        let keyless = if spec.provider.requires_credential() {
+                            ""
+                        } else {
+                            "  (no key needed)"
+                        };
                         (
-                            format!("{reference}  {}", spec.display_name),
+                            format!("{reference}  {}{keyless}", spec.display_name),
                             PickValue::Model(reference),
                         )
                     })
@@ -131,10 +141,9 @@ pub fn open_pickers(
                     view.notices.push(ShownNotice {
                         agent: Some(request.agent),
                         after,
-                        text: "No provider with tool-calling models has a credential in the \
-                               environment, such as OPENAI_API_KEY. Providers that need none, \
-                               such as a local Ollama, are not listed: type /model \
-                               vendor/model to use one."
+                        level: NoticeLevel::Error,
+                        text: "No provider with tool-calling models can be reached: set a key \
+                               such as OPENAI_API_KEY."
                             .to_owned(),
                     });
                     continue;
@@ -142,7 +151,7 @@ pub fn open_pickers(
                 ("Model".to_owned(), items)
             }
             PickKind::Effort => {
-                let Some(spec) = current.and_then(models::resolve) else {
+                let Some(spec) = current else {
                     continue;
                 };
                 let items = models::effort_options(spec)
@@ -159,6 +168,13 @@ pub fn open_pickers(
             filter: String::new(),
             selected: 0,
         });
+    }
+}
+
+/// Shows the output of a failed `/reload` until it is dismissed.
+pub fn show_reload_failures(mut failures: MessageReader<ReloadFailed>, mut view: ResMut<TuiView>) {
+    if let Some(failure) = failures.read().last() {
+        view.reload_failure = Some(failure.output.clone());
     }
 }
 
@@ -181,6 +197,7 @@ pub fn collect_notices(
         view.notices.push(ShownNotice {
             agent: notice.agent,
             after,
+            level: notice.level,
             text: notice.text.clone(),
         });
     }

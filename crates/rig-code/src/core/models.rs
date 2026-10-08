@@ -10,8 +10,6 @@ use rig_core::providers::registry::{ModelSelector, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
-use super::agent::Connection;
-
 /// Token budgets for the named levels on models that take a budget instead
 /// of levels, clamped into the model's range.
 const BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
@@ -26,33 +24,41 @@ pub fn reference(spec: &ModelSpec) -> String {
     format!("{}/{}", spec.provider.vendor(), spec.id)
 }
 
-/// Connects to `spec`: builds its provider's client from the environment
-/// and wraps the model as an effect handler.
-pub fn connect(spec: &'static ModelSpec) -> Result<Connection, Box<dyn Error + Send + Sync>> {
+/// Builds `spec`'s provider client from the environment and wraps the
+/// model as an effect handler.
+/// [`Effects::model_handler`](super::effects::Effects::model_handler) keeps
+/// one per model.
+pub fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, Box<dyn Error + Send + Sync>> {
     let model = ModelSelector::Spec(spec)
         .provider_ref()?
         .completion_model()?;
-    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(reference(spec), model));
-    Ok(Connection { spec, handler })
+    Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
+        reference(spec),
+        model,
+    )))
 }
 
-/// Catalog models that call tools and whose provider has a credential in
-/// the environment. The check builds the provider's client from the
-/// environment exactly as a request would, once per provider.
+/// Catalog models that call tools and whose provider can be reached from
+/// the environment: first those of providers with a key set, then those
+/// of providers that need none (local servers such as Ollama), which a
+/// view marks "no key needed". The check builds the provider's client
+/// exactly as a request would, once per provider.
 pub fn available_models() -> Vec<&'static ModelSpec> {
     let mut usable: HashMap<ProviderId, bool> = HashMap::new();
-    Catalog::builtin()
+    let mut models: Vec<&'static ModelSpec> = Catalog::builtin()
         .iter()
         .filter(|spec| spec.tools)
         .filter(|spec| {
             *usable.entry(spec.provider).or_insert_with(|| {
-                spec.provider.requires_credential()
-                    && ModelSelector::Spec(spec)
-                        .provider_ref()
-                        .is_ok_and(|reference| reference.completion_model().is_ok())
+                ModelSelector::Spec(spec)
+                    .provider_ref()
+                    .is_ok_and(|reference| reference.completion_model().is_ok())
             })
         })
-        .collect()
+        .collect();
+    // Stable: catalog order within each group.
+    models.sort_by_key(|spec| !spec.provider.requires_credential());
+    models
 }
 
 /// The reasoning settings `spec` takes, labelled for a picker: the provider

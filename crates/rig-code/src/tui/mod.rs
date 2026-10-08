@@ -26,7 +26,12 @@ impl Plugin for TuiPlugin {
             .add_systems(PreUpdate, input::read_input.run_if(resource_exists::<Tui>))
             .add_systems(
                 Update,
-                (view::focus_agent, view::open_pickers, view::collect_notices),
+                (
+                    view::focus_agent,
+                    view::open_pickers,
+                    view::collect_notices,
+                    view::show_reload_failures,
+                ),
             )
             .add_systems(
                 PostUpdate,

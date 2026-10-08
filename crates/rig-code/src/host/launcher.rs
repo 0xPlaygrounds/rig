@@ -34,7 +34,7 @@ fn launcher_notice(mut notices: MessageWriter<Notice>) {
     if let Ok(notice) = std::env::var("RIG_NOTICE")
         && !notice.is_empty()
     {
-        notices.write(Notice::new(notice));
+        notices.write(Notice::info(None, notice));
     }
 }
 

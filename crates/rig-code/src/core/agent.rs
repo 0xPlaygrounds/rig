@@ -212,6 +212,16 @@ pub struct SetEffort {
     pub effort: Option<Reasoning>,
 }
 
+/// How a [`Notice`] is shown and logged.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum NoticeLevel {
+    /// Information.
+    #[default]
+    Info,
+    /// Something failed or was refused.
+    Error,
+}
+
 /// A line for the user, shown by views and logged.
 #[derive(Message, Clone, Debug)]
 pub struct Notice {
@@ -219,22 +229,27 @@ pub struct Notice {
     pub agent: Option<Entity>,
     /// The text.
     pub text: String,
+    /// Whether it reports a failure.
+    pub level: NoticeLevel,
 }
 
 impl Notice {
-    /// A notice about the whole app, such as a rebuild.
-    pub fn new(text: impl Into<String>) -> Self {
+    /// Information about `agent`, or about the whole app with `None`.
+    pub fn info(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
         Self {
-            agent: None,
+            agent: agent.into(),
             text: text.into(),
+            level: NoticeLevel::Info,
         }
     }
 
-    /// A notice about `agent`.
-    pub fn to(agent: Entity, text: impl Into<String>) -> Self {
+    /// A failure or refusal concerning `agent`, or the whole app with
+    /// `None`.
+    pub fn error(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
         Self {
-            agent: Some(agent),
+            agent: agent.into(),
             text: text.into(),
+            level: NoticeLevel::Error,
         }
     }
 }

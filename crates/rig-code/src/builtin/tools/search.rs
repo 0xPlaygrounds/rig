@@ -9,7 +9,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::clip;
+use super::{MAX_FILE_BYTES, clip};
 use crate::core::blocking::blocking;
 
 const MAX_MATCHES: usize = 200;
@@ -73,7 +73,13 @@ fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
     }
     let mut found = Vec::new();
     for entry in walk.build().flatten() {
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+        // Only regular files: reading a FIFO or a device could block
+        // forever. Symbolic links are not followed.
+        let regular = entry.file_type().is_some_and(|kind| kind.is_file())
+            && entry
+                .metadata()
+                .is_ok_and(|meta| meta.len() <= MAX_FILE_BYTES);
+        if !regular {
             continue;
         }
         let Ok(text) = std::fs::read_to_string(entry.path()) else {

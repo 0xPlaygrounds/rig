@@ -22,6 +22,8 @@ pub use write::Write;
 const MAX_LINES: usize = 2000;
 /// Most bytes a tool returns.
 const MAX_BYTES: usize = 50 * 1024;
+/// The largest file `read` and `edit` load whole, and `search` scans.
+const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Registers the built-in tools with [`AppToolsExt::add_tool`].
 #[derive(Default)]
@@ -43,6 +45,26 @@ fn clip(line: &str, limit: usize) -> &str {
         Some((end, _)) => line.get(..end).unwrap_or(line),
         None => line,
     }
+}
+
+/// Reads `path` as text after checking, without opening it, that it is a
+/// regular file of at most [`MAX_FILE_BYTES`]: opening a FIFO or a device
+/// can block forever.
+fn read_text(path: &str) -> Result<String, ToolExecutionError> {
+    let meta = std::fs::metadata(path).map_err(|error| io_error(path, error))?;
+    if !meta.is_file() {
+        return Err(ToolExecutionError::invalid_args(format!(
+            "{path} is not a regular file"
+        )));
+    }
+    if meta.len() > MAX_FILE_BYTES {
+        return Err(ToolExecutionError::invalid_args(format!(
+            "{path} is {} MB; the tools open files up to {} MB",
+            meta.len() / (1024 * 1024),
+            MAX_FILE_BYTES / (1024 * 1024)
+        )));
+    }
+    std::fs::read_to_string(path).map_err(|error| io_error(path, error))
 }
 
 /// A model-visible error for an I/O failure on `path`.

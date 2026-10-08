@@ -32,7 +32,12 @@ pub fn read_input(
     while event::poll(Duration::ZERO)? {
         match event::read()? {
             Event::Key(key) if key.kind != KeyEventKind::Release => {
-                if view.picker.is_some() {
+                if view.reload_failure.is_some() {
+                    // The report is modal: Esc or Enter closes it.
+                    if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+                        view.reload_failure = None;
+                    }
+                } else if view.picker.is_some() {
                     picker_key(key, &mut view, &mut commands);
                 } else {
                     input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);

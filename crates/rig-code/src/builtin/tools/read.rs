@@ -4,7 +4,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{MAX_BYTES, MAX_LINES, clip, io_error};
+use super::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, clip, read_text};
 use crate::core::blocking::blocking;
 
 /// Characters of one line shown; the rest of a longer line is cut.
@@ -29,8 +29,9 @@ impl PortableTool for Read {
 
     fn description(&self) -> String {
         format!(
-            "Read a text file. Returns numbered lines, at most {MAX_LINES} lines or {} KB; \
-             use offset and limit for longer files.",
+            "Read a regular text file of at most {} MB. Returns numbered lines, at most \
+             {MAX_LINES} lines or {} KB; use offset and limit for longer files.",
+            MAX_FILE_BYTES / (1024 * 1024),
             MAX_BYTES / 1024
         )
     }
@@ -53,7 +54,7 @@ impl PortableTool for Read {
 }
 
 fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
-    let text = std::fs::read_to_string(&args.path).map_err(|error| io_error(&args.path, error))?;
+    let text = read_text(&args.path)?;
     let first = args.offset.unwrap_or(1).max(1);
     let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
     let total = text.lines().count();

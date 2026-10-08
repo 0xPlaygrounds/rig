@@ -177,10 +177,12 @@ export OPENAI_API_KEY=...   # or any other provider key in the model catalog
 rig                         # builds the agent on first run, then opens it
 ```
 
-In the agent, `/model` picks a model, `/effort` its reasoning setting, `/help`
+In the agent, `/model` picks a model (providers that need no key, such as a
+local Ollama, are listed last), `/effort` its reasoning setting, `/help`
 lists the commands, and Esc stops a running turn. `/reload` rebuilds the agent
 and restarts it on the same session; it shows cargo's progress, keeps the
-current build running if the new one does not compile, and rolls back to it if
+current build running if the new one does not compile (Esc closes the
+compiler output it shows), and rolls back to it if
 the new one crashes during startup. The session is saved after every turn;
 if the agent crashes or the terminal closes, the next `rig` in the same
 directory resumes it. `/quit` ends it.
@@ -219,7 +221,7 @@ impl Plugin for HelloPlugin {
 }
 
 fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
-    notices.write(Notice::to(args.agent, "Hello!"));
+    notices.write(Notice::info(args.agent, "Hello!"));
 }
 ```
 

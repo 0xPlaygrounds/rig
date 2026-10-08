@@ -1,28 +1,42 @@
 //! The one dispatch path. Every model call and tool call goes through
 //! [`Effects::dispatch`], which records it with rig-core's effect types
-//! under the agent's stable id.
+//! under the agent's stable id. The session's `effects.jsonl` holds one
+//! resolved record per line, with a `{"header": …}` line before them
+//! whenever the set of described handlers (the tools and the models used)
+//! grew.
 
 use std::any::Any;
+use std::collections::HashMap;
+use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bevy_ecs::prelude::*;
 use futures::FutureExt;
 use rig_cassette::effect_log::EffectLogRecorder;
-use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_core::catalog::ModelSpec;
+use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply};
 use rig_core::streaming::{Item, StreamEvent};
+use serde::Serialize;
 
-/// The session's effect recorder and effect id counter.
+use super::models;
+
+/// The session's effect recorder, effect id counter and model handlers.
 #[derive(Resource)]
 pub struct Effects {
     recorder: EffectLogRecorder,
     next: AtomicU64,
+    /// One handler per catalog model, built on first use and shared by
+    /// every agent that picks the model.
+    models: HashMap<String, ErasedHandler>,
+    /// How many handlers the last header written to the log described.
+    described: AtomicUsize,
 }
 
 impl Effects {
@@ -40,7 +54,31 @@ impl Effects {
         Self {
             recorder: EffectLogRecorder::new(),
             next: AtomicU64::new(last + 1),
+            models: HashMap::new(),
+            // No header written yet by this process.
+            described: AtomicUsize::new(usize::MAX),
         }
+    }
+
+    /// The handler serving `spec`, built from the environment's credentials
+    /// the first time any agent picks it, and described in the log header.
+    pub fn model_handler(
+        &mut self,
+        spec: &'static ModelSpec,
+    ) -> Result<ErasedHandler, Box<dyn Error + Send + Sync>> {
+        let reference = models::reference(spec);
+        if let Some(handler) = self.models.get(&reference) {
+            return Ok(handler.clone());
+        }
+        let handler = models::handler(spec)?;
+        self.describe(vec![handler.descriptor()]);
+        self.models.insert(reference, handler.clone());
+        Ok(handler)
+    }
+
+    /// Adds `handlers` to the ones the log header describes.
+    pub fn describe(&self, handlers: Vec<HandlerDescriptor>) {
+        self.recorder.handlers(handlers);
     }
 
     /// Dispatch `kind` to `handler`, recorded under `scope` (the agent's
@@ -98,15 +136,27 @@ impl Effects {
         }
     }
 
-    /// Append every resolved effect to the JSON-lines log at `path`. Effects
-    /// still in flight stay for a later flush.
+    /// Append every resolved effect to the JSON-lines log at `path`, after
+    /// a header line when the described handlers grew since the last one.
+    /// Effects still in flight stay for a later flush.
     pub fn flush(&self, path: &Path) -> io::Result<()> {
-        let records = self.recorder.take().records;
-        if records.is_empty() {
+        let log = self.recorder.take();
+        let handlers = log.header.handlers.len();
+        let header_due = self.described.load(Ordering::Relaxed) != handlers;
+        if log.records.is_empty() && !header_due {
             return Ok(());
         }
         let mut lines = Vec::new();
-        for record in &records {
+        if header_due {
+            serde_json::to_writer(
+                &mut lines,
+                &HeaderLine {
+                    header: &log.header,
+                },
+            )?;
+            lines.push(b'\n');
+        }
+        for record in &log.records {
             serde_json::to_writer(&mut lines, record)?;
             lines.push(b'\n');
         }
@@ -114,8 +164,16 @@ impl Effects {
             .create(true)
             .append(true)
             .open(path)?
-            .write_all(&lines)
+            .write_all(&lines)?;
+        self.described.store(handlers, Ordering::Relaxed);
+        Ok(())
     }
+}
+
+/// The log's header line, `{"header": …}`; record lines are bare records.
+#[derive(Serialize)]
+struct HeaderLine<'a> {
+    header: &'a rig_cassette::effect_log::LogHeader,
 }
 
 /// The message a panic was raised with.

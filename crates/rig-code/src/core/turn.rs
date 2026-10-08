@@ -5,8 +5,10 @@
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
+use bevy_log::info_span;
+use bevy_log::tracing::Instrument;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, Task, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
@@ -53,7 +55,14 @@ enum Delta {
     Reasoning(String),
 }
 
-fn pool() -> &'static AsyncComputeTaskPool {
+/// Model calls wait on the network: they run on the IO pool.
+fn model_pool() -> &'static IoTaskPool {
+    IoTaskPool::get_or_init(TaskPool::default)
+}
+
+/// Tool calls run on the async compute pool; their blocking work runs on
+/// threads of its own (see [`blocking`](super::blocking::blocking)).
+fn tool_pool() -> &'static AsyncComputeTaskPool {
     AsyncComputeTaskPool::get_or_init(TaskPool::default)
 }
 
@@ -82,7 +91,7 @@ pub fn on_submit(
                 },
             ),
             None => {
-                notices.write(Notice::to(
+                notices.write(Notice::error(
                     agent,
                     format!("Unknown command /{name}. /help lists the commands."),
                 ));
@@ -94,7 +103,7 @@ pub fn on_submit(
         return;
     };
     if *status != AgentStatus::Idle {
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             agent,
             "The agent is busy. Press Esc to stop the turn.".to_owned(),
         ));
@@ -145,7 +154,7 @@ pub fn on_interrupt(
         .remove::<NeedsCompletion>()
         .despawn_related::<Calls>();
     *status = AgentStatus::Idle;
-    notices.write(Notice::to(agent, "Interrupted.".to_owned()));
+    notices.write(Notice::info(agent, "Interrupted.".to_owned()));
     finished.write(TurnFinished { agent });
 }
 
@@ -181,7 +190,7 @@ pub fn on_set_model(
                 .insert(ModelChoice(models::reference(spec)));
         }
         None => {
-            notices.write(Notice::to(
+            notices.write(Notice::error(
                 set.entity,
                 format!("No catalog model `{}`. Use vendor/model.", set.model),
             ));
@@ -195,6 +204,7 @@ pub fn on_set_model(
 pub fn on_model_chosen(
     chosen: On<Insert<ModelChoice>>,
     mut agents: Query<(&ModelChoice, &mut Effort)>,
+    mut effects: ResMut<Effects>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -204,12 +214,17 @@ pub fn on_model_chosen(
     };
     let connection = models::resolve(&choice.0)
         .ok_or_else(|| format!("the catalog has no model `{}`", choice.0))
-        .and_then(|spec| models::connect(spec).map_err(|error| error.to_string()));
+        .and_then(|spec| {
+            effects
+                .model_handler(spec)
+                .map(|handler| Connection { spec, handler })
+                .map_err(|error| error.to_string())
+        });
     let connection = match connection {
         Ok(connection) => connection,
         Err(why) => {
             commands.entity(agent).remove::<Connection>();
-            notices.write(Notice::to(
+            notices.write(Notice::error(
                 agent,
                 format!("Cannot use {}: {why}.", choice.0),
             ));
@@ -217,13 +232,13 @@ pub fn on_model_chosen(
         }
     };
     let spec = connection.spec;
-    notices.write(Notice::to(
+    notices.write(Notice::info(
         agent,
         format!("Model: {} ({}).", spec.display_name, choice.0),
     ));
     if let Err(refusal) = models::check_effort(spec, effort.0) {
         effort.0 = None;
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             agent,
             format!("Reasoning reset to default: {refusal}."),
         ));
@@ -241,7 +256,7 @@ pub fn on_set_effort(
         return;
     };
     let Some(connection) = connection else {
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             set.entity,
             "Pick a model with /model first.".to_owned(),
         ));
@@ -250,13 +265,13 @@ pub fn on_set_effort(
     match models::check_effort(connection.spec, set.effort) {
         Ok(()) => {
             effort.0 = set.effort;
-            notices.write(Notice::to(
+            notices.write(Notice::info(
                 set.entity,
                 format!("Reasoning: {}.", models::effort_label(set.effort)),
             ));
         }
         Err(refusal) => {
-            notices.write(Notice::to(set.entity, format!("{refusal}.")));
+            notices.write(Notice::error(set.entity, format!("{refusal}.")));
         }
     }
 }
@@ -294,10 +309,10 @@ pub fn start_completions(
                     .map(|tool| tool.0.clone())
                     .collect();
                 prepare(&conversation, connection, effort, prompt, definitions)
-                    .map(|request| (connection.handler.clone(), request))
+                    .map(|request| (connection.handler.clone(), connection.spec, request))
             });
         match request {
-            Ok((handler, request)) => {
+            Ok((handler, spec, request)) => {
                 let (effect, reply) = effects.dispatch(
                     &id.0,
                     None,
@@ -308,7 +323,17 @@ pub fn start_completions(
                     },
                 );
                 let (sender, feed) = crossbeam_channel::unbounded();
-                let task = pool().spawn(effects.caught(effect, stream_reply(reply, sender)));
+                let span = info_span!(
+                    "model_call",
+                    agent = %id.0,
+                    effect = %effect,
+                    model = %models::reference(spec)
+                );
+                let task = model_pool().spawn(
+                    effects
+                        .caught(effect, stream_reply(reply, sender))
+                        .instrument(span),
+                );
                 commands.spawn((
                     Name::new("model call"),
                     ModelCall { effect, task, feed },
@@ -317,7 +342,7 @@ pub fn start_completions(
                 ));
             }
             Err(why) => {
-                notices.write(Notice::to(agent, why));
+                notices.write(Notice::error(agent, why));
                 drop_unanswered(agent, &mut conversation, &mut notices);
                 *status = AgentStatus::Idle;
                 finished.write(TurnFinished { agent });
@@ -340,7 +365,7 @@ fn drop_unanswered(
     });
     if unanswered {
         conversation.0.pop();
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",
         ));
@@ -424,7 +449,7 @@ pub fn poll_model_calls(
         let response = match result {
             Ok(response) => response,
             Err(report) => {
-                notices.write(Notice::to(
+                notices.write(Notice::error(
                     agent,
                     format!("The model call failed: {report}"),
                 ));
@@ -451,7 +476,7 @@ pub fn poll_model_calls(
                         .collect(),
                 ));
             }
-            notices.write(Notice::to(agent, format!("The turn failed: {failure}.")));
+            notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
             drop_unanswered(agent, &mut conversation, &mut notices);
             *status = AgentStatus::Idle;
             finished.write(TurnFinished { agent });
@@ -539,7 +564,9 @@ pub fn settle_tools(
                         .map(|(_, handler)| handler.0.clone());
                     let work =
                         run_tool_call(&effects, &id.0, run.parent, handler, run.call.clone());
-                    run.state = ToolState::Running(pool().spawn(work));
+                    let span =
+                        info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);
+                    run.state = ToolState::Running(tool_pool().spawn(work.instrument(span)));
                     waiting = true;
                 }
             }

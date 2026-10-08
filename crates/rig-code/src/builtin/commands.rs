@@ -43,7 +43,7 @@ fn refused_mid_turn(
         .get(args.agent)
         .is_ok_and(|status| *status != AgentStatus::Idle);
     if running {
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             args.agent,
             format!("A turn is running. Press Esc to stop it, then /{command}."),
         ));
@@ -86,7 +86,7 @@ fn effort(
         return;
     }
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
-        notices.write(Notice::to(
+        notices.write(Notice::info(
             args.agent,
             "Pick a model with /model first.".to_owned(),
         ));
@@ -115,7 +115,7 @@ fn effort(
                 .iter()
                 .filter_map(|(label, _)| label.split_whitespace().next())
                 .collect();
-            notices.write(Notice::to(
+            notices.write(Notice::error(
                 args.agent,
                 format!("{} takes: {}.", spec.display_name, labels.join(", ")),
             ));
@@ -134,7 +134,7 @@ fn help(
         .collect();
     lines.sort();
     lines.push("Esc stops a running turn. Ctrl+C clears the input or quits.".to_owned());
-    notices.write(Notice::to(args.agent, lines.join("\n")));
+    notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
 fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {

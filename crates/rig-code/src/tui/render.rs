@@ -10,8 +10,10 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{ToolResult, UserContent};
 
 use super::terminal::Tui;
-use super::view::TuiView;
-use crate::core::agent::{AgentStatus, CallOf, Conversation, Effort, ModelChoice, Partial};
+use super::view::{ShownNotice, TuiView};
+use crate::core::agent::{
+    AgentStatus, CallOf, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
+};
 use crate::core::models;
 use crate::host::reload::ReloadBuild;
 
@@ -88,12 +90,12 @@ pub fn render(
         let mut lines = Vec::new();
         for (index, message) in messages.iter().enumerate() {
             while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
-                notice_lines(&notice.text, &mut lines);
+                notice_lines(notice, &mut lines);
             }
             message_lines(message, &mut lines);
         }
         for notice in notices {
-            notice_lines(&notice.text, &mut lines);
+            notice_lines(notice, &mut lines);
         }
         if let Some(partial) = partial {
             text_lines(&partial.reasoning, Style::new().dim().italic(), &mut lines);
@@ -113,6 +115,9 @@ pub fn render(
         );
         if let Some(picker) = &view.picker {
             draw_picker(frame, picker);
+        }
+        if let Some(output) = &view.reload_failure {
+            draw_reload_failure(frame, output);
         }
     })?;
     Ok(())
@@ -172,10 +177,12 @@ fn reload_span(build: &ReloadBuild) -> Span<'static> {
     }
 }
 
-fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
+/// A centred box over the transcript, `width` and `height` in fifths and
+/// quarters of the screen, cleared for drawing on.
+fn popup(frame: &mut Frame, fifths: u16, quarters: u16) -> Rect {
     let area = frame.area();
-    let width = area.width.saturating_mul(4) / 5;
-    let height = area.height.saturating_mul(3) / 4;
+    let width = area.width.saturating_mul(fifths) / 5;
+    let height = area.height.saturating_mul(quarters) / 4;
     let popup = Rect::new(
         area.x + (area.width - width) / 2,
         area.y + (area.height - height) / 2,
@@ -183,6 +190,27 @@ fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
         height,
     );
     frame.render_widget(Clear, popup);
+    popup
+}
+
+/// A failed rebuild's output, from its first error on, over the transcript.
+fn draw_reload_failure(frame: &mut Frame, output: &str) {
+    let popup = popup(frame, 5, 4);
+    let block = Block::bordered()
+        .border_style(Style::new().red())
+        .title(" The rebuild failed; this build keeps running · Esc closes ");
+    let mut lines = Vec::new();
+    text_lines(output, Style::new(), &mut lines);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .block(block),
+        popup,
+    );
+}
+
+fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
+    let popup = popup(frame, 4, 3);
     let block = Block::bordered().title(format!(
         " {} · type to filter, Enter picks, Esc closes ",
         picker.title
@@ -279,8 +307,12 @@ fn result_lines(result: &ToolResult, lines: &mut Vec<Line<'static>>) {
     }
 }
 
-fn notice_lines(text: &str, lines: &mut Vec<Line<'static>>) {
-    text_lines(text, Style::new().fg(Color::Magenta), lines);
+fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
+    let style = match notice.level {
+        NoticeLevel::Info => Style::new().fg(Color::Magenta),
+        NoticeLevel::Error => Style::new().fg(Color::Red),
+    };
+    text_lines(&notice.text, style, lines);
 }
 
 fn text_lines(text: &str, style: Style, lines: &mut Vec<Line<'static>>) {

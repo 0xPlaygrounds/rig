@@ -116,7 +116,10 @@ pub fn save_session(world: &mut World) {
         });
     if let Err(failure) = written {
         error!("saving the session failed: {failure}");
-        world.write_message(Notice::new(format!("Saving the session failed: {failure}")));
+        world.write_message(Notice::error(
+            None,
+            format!("Saving the session failed: {failure}"),
+        ));
     }
 }
 
@@ -168,18 +171,20 @@ pub fn restore_session(world: &mut World) {
         Ok(text) => text,
         Err(failure) if failure.kind() == std::io::ErrorKind::NotFound => return,
         Err(failure) => {
-            world.write_message(Notice::new(format!(
-                "Could not read the saved session: {failure}"
-            )));
+            world.write_message(Notice::error(
+                None,
+                format!("Could not read the saved session: {failure}"),
+            ));
             return;
         }
     };
     let state: SavedState = match serde_json::from_str(&text) {
         Ok(state) => state,
         Err(failure) => {
-            world.write_message(Notice::new(format!(
-                "The saved session does not load ({failure}); starting fresh."
-            )));
+            world.write_message(Notice::error(
+                None,
+                format!("The saved session does not load ({failure}); starting fresh."),
+            ));
             return;
         }
     };
@@ -188,7 +193,7 @@ pub fn restore_session(world: &mut World) {
         let entity = world.spawn((Agent, AgentId(saved.id))).id();
         for (path, value) in saved.components {
             if let Err(failure) = restore_component(world, entity, &registry, &path, value) {
-                world.write_message(Notice::to(
+                world.write_message(Notice::error(
                     entity,
                     format!("Skipped saved component `{path}`: {failure}."),
                 ));

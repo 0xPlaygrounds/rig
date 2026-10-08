@@ -11,6 +11,7 @@ use std::process::{Child, ChildStderr, Command, Stdio};
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_log::error;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use super::launcher::{self, RELOAD_EXIT_CODE};
@@ -34,6 +35,7 @@ impl Plugin for ReloadPlugin {
             "Rebuild with the plugins in plugins.toml and restart",
             reload,
         )
+        .add_message::<ReloadFailed>()
         .add_observer(on_cancel_reload)
         .add_systems(
             Update,
@@ -151,6 +153,14 @@ impl Drop for ReloadBuild {
     }
 }
 
+/// A `/reload` build failed. Views show its output until the user
+/// dismisses it; it is logged too.
+#[derive(Message, Clone, Debug)]
+pub struct ReloadFailed {
+    /// The build's output from its first error on.
+    pub output: String,
+}
+
 /// Stops the running rebuild, if any.
 #[derive(Event, Clone, Copy, Debug)]
 pub struct CancelReload;
@@ -217,7 +227,7 @@ fn reload(
     } else {
         "/reload needs the rig launcher: start the agent with `rig`.".to_owned()
     };
-    notices.write(Notice::new(notice));
+    notices.write(Notice::info(None, notice));
 }
 
 /// Reads the build's output; on its exit, reports a failure or marks the
@@ -226,6 +236,7 @@ fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
+    mut failures: MessageWriter<ReloadFailed>,
 ) {
     let Some(mut build) = build else {
         return;
@@ -244,7 +255,10 @@ fn drain_reload(
         Ok(Some(status)) => status,
         Ok(None) => return,
         Err(failure) => {
-            notices.write(Notice::new(format!("The rebuild failed: {failure}")));
+            notices.write(Notice::error(
+                None,
+                format!("The rebuild failed: {failure}"),
+            ));
             commands.remove_resource::<ReloadBuild>();
             return;
         }
@@ -252,12 +266,15 @@ fn drain_reload(
     build.exited = true;
     if status.success() {
         build.ready = true;
-        notices.write(Notice::new("Build ready; restarting.".to_owned()));
+        notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
     } else {
-        notices.write(Notice::new(format!(
-            "The rebuild failed ({status}); this build keeps running.\n{}",
-            build.errors()
-        )));
+        let output = build.errors();
+        error!("the rebuild failed ({status}):\n{output}");
+        notices.write(Notice::error(
+            None,
+            format!("The rebuild failed ({status}); this build keeps running."),
+        ));
+        failures.write(ReloadFailed { output });
         commands.remove_resource::<ReloadBuild>();
     }
 }
@@ -290,6 +307,6 @@ fn on_cancel_reload(
 ) {
     if build.is_some_and(|build| !build.ready) {
         commands.remove_resource::<ReloadBuild>();
-        notices.write(Notice::new("Rebuild cancelled.".to_owned()));
+        notices.write(Notice::info(None, "Rebuild cancelled.".to_owned()));
     }
 }

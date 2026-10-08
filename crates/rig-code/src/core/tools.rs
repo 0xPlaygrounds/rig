@@ -30,9 +30,20 @@ pub trait AppToolsExt {
     /// [`ToolAccess`](crate::core::agent::ToolAccess) allows its name. A
     /// name already registered is refused with a warning.
     ///
-    /// Tool futures run on Bevy's async compute pool, which model calls
-    /// share, so a tool that blocks (file or process work, long
-    /// computation) wraps that work in [`blocking`](crate::core::blocking::blocking).
+    /// Tool futures run on Bevy's async compute pool, a few threads that
+    /// every agent's tool calls share. A tool that blocks, such as one
+    /// using `std::fs`, `std::process::Command` or a long computation,
+    /// wraps that work in [`blocking`](crate::core::blocking::blocking),
+    /// which is in the prelude, so it runs on a thread of its own:
+    ///
+    /// ```ignore
+    /// async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
+    ///     blocking(move || {
+    ///         std::fs::read_to_string(&args.path).map_err(ToolExecutionError::from_error)
+    ///     })
+    ///     .await
+    /// }
+    /// ```
     fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self;
 }
 

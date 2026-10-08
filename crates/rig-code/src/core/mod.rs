@@ -15,9 +15,9 @@ pub mod turn;
 use bevy_app::prelude::*;
 use bevy_ecs::error::warn;
 use bevy_ecs::prelude::*;
-use bevy_log::info;
+use bevy_log::{info, warn};
 
-use agent::{Agent, AgentId, Notice, PickRequest, TurnFinished};
+use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest, TurnFinished};
 use effects::Effects;
 use save::SessionPaths;
 use turn::AgentSystems;
@@ -51,7 +51,7 @@ impl Plugin for AgentPlugin {
                 )
                     .chain(),
             )
-            .add_systems(Startup, spawn_first_agent)
+            .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
                 Update,
                 (
@@ -63,7 +63,7 @@ impl Plugin for AgentPlugin {
             .add_systems(
                 Last,
                 (
-                    log_notices,
+                    log_agents,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)
                         .before(save::save_session)
@@ -84,12 +84,31 @@ fn spawn_first_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
     }
 }
 
-/// Logs each notice with the stable id of the agent it is about.
-fn log_notices(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
+/// Logs each notice, at its level, and each finished turn, with the stable
+/// id of the agent they are about.
+fn log_agents(
+    mut notices: MessageReader<Notice>,
+    mut finished: MessageReader<TurnFinished>,
+    agents: Query<&AgentId>,
+) {
     for notice in notices.read() {
-        match notice.agent.and_then(|agent| agents.get(agent).ok()) {
-            Some(id) => info!(agent = %id.0, "notice: {}", notice.text),
-            None => info!("notice: {}", notice.text),
+        let agent = notice
+            .agent
+            .and_then(|agent| agents.get(agent).ok())
+            .map_or("-", |id| id.0.as_str());
+        match notice.level {
+            NoticeLevel::Info => info!(agent, "notice: {}", notice.text),
+            NoticeLevel::Error => warn!(agent, "notice: {}", notice.text),
         }
     }
+    for turn in finished.read() {
+        if let Ok(id) = agents.get(turn.agent) {
+            info!(agent = %id.0, "turn finished");
+        }
+    }
+}
+
+/// Describes every registered tool in the effect log's header.
+fn describe_tools(effects: Res<Effects>, tools: Query<&tools::ToolHandler>) {
+    effects.describe(tools.iter().map(|tool| tool.0.descriptor()).collect());
 }

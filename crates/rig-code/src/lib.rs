@@ -33,7 +33,10 @@ pub mod tui;
 
 use std::time::Duration;
 
-use bevy_app::{PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolPlugin};
+use bevy_app::{
+    PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
+    TaskPoolThreadAssignmentPolicy,
+};
 use bevy_log::LogPlugin;
 
 pub use bevy_app::{App, AppExit};
@@ -48,7 +51,7 @@ pub mod prelude {
     pub use crate::RigCodePlugins;
     pub use crate::core::agent::{
         Agent, AgentId, AgentStatus, Connection, Conversation, Effort, Interrupt, ModelChoice,
-        Notice, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
+        Notice, NoticeLevel, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
@@ -72,11 +75,33 @@ impl PluginGroup for RigCodePlugins {
                 fmt_layer: host::session::log_layer,
                 ..LogPlugin::default()
             })
-            .add(TaskPoolPlugin::default())
+            .add(TaskPoolPlugin {
+                task_pool_options: task_pools(),
+            })
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
+    }
+}
+
+/// Bevy's pools sized for an agent rather than a game. Model calls stream
+/// on the IO pool and tool calls run on the async compute pool, each with
+/// 2 to 4 threads, so a few agents' calls run side by side; blocking tool
+/// work runs on threads of its own through [`prelude::blocking`]. Bevy's
+/// own systems keep the rest of the cores.
+fn task_pools() -> TaskPoolOptions {
+    let calls = || TaskPoolThreadAssignmentPolicy {
+        min_threads: 2,
+        max_threads: 4,
+        percent: 0.25,
+        on_thread_spawn: None,
+        on_thread_destroy: None,
+    };
+    TaskPoolOptions {
+        io: calls(),
+        async_compute: calls(),
+        ..TaskPoolOptions::default()
     }
 }
 

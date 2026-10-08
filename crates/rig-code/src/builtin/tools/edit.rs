@@ -4,7 +4,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::io_error;
+use super::{io_error, read_text};
 use crate::core::blocking::blocking;
 
 /// Replaces exact text in a file.
@@ -54,7 +54,7 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
     if args.old_text.is_empty() {
         return Err(ToolExecutionError::invalid_args("old_text is empty"));
     }
-    let text = std::fs::read_to_string(&args.path).map_err(|error| io_error(&args.path, error))?;
+    let text = read_text(&args.path)?;
     let matches = text.matches(&args.old_text).count();
     if matches == 0 {
         return Err(ToolExecutionError::invalid_args(format!(
