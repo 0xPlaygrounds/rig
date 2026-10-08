@@ -50,8 +50,8 @@ use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
 use super::tools::{
-    Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, Touch, failed,
-    outcome_of, recorded_args, refusal, run_tool_call,
+    Footprint, OpenCall, Refused, Resumable, ToolCalled, ToolDef, ToolHandler, ToolOutput, Touch,
+    failed, outcome_of, recorded_args, refusal, run_tool_call,
 };
 use super::usage::{self, Spending, TurnSpending};
 
@@ -1057,7 +1057,7 @@ pub(crate) fn on_tool_done(
     }
     commands
         .entity(done.entity)
-        .remove::<(OpenCall, Running<ToolResult>)>();
+        .try_remove::<(OpenCall, Running<ToolResult>)>();
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
         return;
     };
@@ -1104,6 +1104,7 @@ pub(crate) struct ToolStarter<'w, 's> {
             Entity,
             &'static ToolDef,
             Option<&'static ToolHandler>,
+            Has<Resumable>,
             &'static Footprint,
         ),
     >,
@@ -1124,14 +1125,19 @@ impl ToolStarter<'_, '_> {
     }
 
     /// Whether a call of the tool `name` left without a result by a restart
-    /// runs again: an ordinary tool that only reads. Any other such call is
-    /// answered as interrupted.
+    /// starts again: an ordinary tool that only reads, or a
+    /// [`Resumable`] open tool. Any other such call is answered as
+    /// interrupted.
     pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tools.iter().any(|(_, def, handler, footprint)| {
-            def.0.name.as_str() == name
-                && handler.is_some()
-                && matches!(footprint, Footprint::Reads { .. })
-        })
+        self.tools
+            .iter()
+            .any(|(_, def, handler, resumable, footprint)| {
+                def.0.name.as_str() == name
+                    && match handler {
+                        Some(_) => matches!(footprint, Footprint::Reads { .. }),
+                        None => resumable,
+                    }
+            })
     }
 
     /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
@@ -1175,7 +1181,7 @@ impl ToolStarter<'_, '_> {
                 format!("no tool named `{name}` is available"),
             ),
             (Some(_), Some(why)) => refused(ToolErrorKind::InvalidArgs, why),
-            (Some((tool, _, None, _)), None) => {
+            (Some((tool, _, None, ..)), None) => {
                 let args = recorded_args(&run.call);
                 let effect = self.effects.open(&id.0, run.parent, name, args);
                 commands.entity(call).insert(OpenCall(effect));
@@ -1186,7 +1192,7 @@ impl ToolStarter<'_, '_> {
                 });
                 return;
             }
-            (Some((_, _, Some(handler), _)), None) => handler.0.clone(),
+            (Some((_, _, Some(handler), ..)), None) => handler.0.clone(),
         };
         let (_, work) = run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);

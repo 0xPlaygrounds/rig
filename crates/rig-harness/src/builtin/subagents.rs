@@ -18,7 +18,9 @@
 //! ([`EffectParent`]), so the effect log nests a subagent's work under the
 //! request. Each child has its own log, whose header names its parent.
 //! Despawning an agent despawns its children; a finished child stays, so
-//! `/agents` can show it and the user can talk to it.
+//! `/agents` can show it and the user can talk to it. The open requests
+//! are saved with the child; after a restart each one is answered as
+//! interrupted, and the child is not carried on.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -36,6 +38,7 @@ use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
 use crate::core::journal::ReflectSaved;
 use crate::core::models;
+use crate::core::restore::Restored;
 use crate::core::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput,
 };
@@ -111,6 +114,7 @@ impl Plugin for SubagentsPlugin {
             ToolOptions {
                 rules: RULES,
                 footprint: Footprint::Independent,
+                ..ToolOptions::default()
             },
             on_task,
         )
@@ -121,6 +125,7 @@ impl Plugin for SubagentsPlugin {
             ToolOptions {
                 rules: &[],
                 footprint: Footprint::Independent,
+                ..ToolOptions::default()
             },
             on_message,
         )
@@ -130,7 +135,8 @@ impl Plugin for SubagentsPlugin {
             agents,
         )
         .add_observer(name_subagent)
-        .add_observer(report_on_turn_end);
+        .add_observer(report_on_turn_end)
+        .add_observer(report_restored);
         #[cfg(feature = "tui")]
         {
             use crate::tui::AppToolRenderersExt;
@@ -643,6 +649,38 @@ fn report_on_turn_end(
             mode: DeliveryMode::Queue,
         });
     }
+}
+
+/// After a restart, answers every request a restored subagent had not
+/// answered with an interrupted report, and keeps the subagent idle:
+/// nothing it was doing runs again by itself. A `message` carries it on.
+fn report_restored(
+    mut restored: On<Restored>,
+    agents: Query<(&AgentId, &Requests, &SpawnedBy, Option<&Subtask>)>,
+    mut commands: Commands,
+) {
+    let agent = restored.entity;
+    let Ok((id, requests, parent, subtask)) = agents.get(agent) else {
+        return;
+    };
+    if requests.0.is_empty() {
+        return;
+    }
+    restored.event_mut().resume = false;
+    let title = subtask.map_or("the task", |subtask| subtask.title.as_str());
+    for request in &requests.0 {
+        commands.trigger(Deliver {
+            entity: parent.0,
+            text: format!(
+                "Interrupted: \"{title}\". The session restarted before the subagent \
+                 answered, and it was not carried on. No answer will come for this request; \
+                 send a `message` to carry it on."
+            ),
+            origin: Origin::agent(id.clone(), Some(request.clone())),
+            mode: DeliveryMode::Queue,
+        });
+    }
+    commands.entity(agent).insert(Requests::default());
 }
 
 /// The text of the model's final message, cut to [`MAX_ANSWER_BYTES`];

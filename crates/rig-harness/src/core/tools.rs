@@ -200,7 +200,18 @@ pub struct ToolOptions<'a> {
     pub rules: &'a [&'a str],
     /// What its calls touch; the default runs each call on its own.
     pub footprint: Footprint,
+    /// For an open tool: a call left without an output by a restart is
+    /// started again, so the tool's observer gets [`ToolCalled`] for it once
+    /// more and can carry it on, instead of the core answering it as
+    /// interrupted. The observer sees the same call id and decides from its
+    /// own saved state what is left to do.
+    pub resumable: bool,
 }
+
+/// On an open tool's entity: its calls are started again after a restart
+/// (see [`ToolOptions::resumable`]).
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Resumable;
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
@@ -233,6 +244,7 @@ pub trait AppToolsExt {
     /// app.add_tool_with(Outline, ToolOptions {
     ///     rules: &["Use `outline` before reading a large file."],
     ///     footprint: Footprint::Reads { arg: "path" },
+    ///     ..ToolOptions::default()
     /// });
     /// ```
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
@@ -335,8 +347,14 @@ pub(crate) fn register_tool(
         ),
         options.footprint,
     ));
-    if let Some(handler) = handler {
-        entity.insert(ToolHandler(handler));
+    match handler {
+        Some(handler) => {
+            entity.insert(ToolHandler(handler));
+        }
+        None if options.resumable => {
+            entity.insert(Resumable);
+        }
+        None => {}
     }
     Some(entity.id())
 }

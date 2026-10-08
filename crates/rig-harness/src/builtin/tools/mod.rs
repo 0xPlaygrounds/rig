@@ -49,6 +49,7 @@ impl Plugin for BuiltinToolsPlugin {
                     "Read several files at once by calling `read` several times in one reply.",
                 ],
                 footprint: reads,
+                ..ToolOptions::default()
             },
         )
         .add_tool_with(
@@ -62,6 +63,7 @@ impl Plugin for BuiltinToolsPlugin {
                      the call.",
                 ],
                 footprint: writes,
+                ..ToolOptions::default()
             },
         )
         .add_tool_with(
@@ -69,6 +71,7 @@ impl Plugin for BuiltinToolsPlugin {
             ToolOptions {
                 rules: &["Use `write` for new files and complete rewrites only."],
                 footprint: writes,
+                ..ToolOptions::default()
             },
         )
         .add_tool_with(
@@ -82,6 +85,7 @@ impl Plugin for BuiltinToolsPlugin {
                      pagers or servers in the foreground.",
                 ],
                 footprint: Footprint::Exclusive,
+                ..ToolOptions::default()
             },
         )
         .add_tool_with(
@@ -89,6 +93,7 @@ impl Plugin for BuiltinToolsPlugin {
             ToolOptions {
                 rules: &["Use `search` to find code, not `grep` or `rg` in `shell`."],
                 footprint: reads,
+                ..ToolOptions::default()
             },
         );
     }

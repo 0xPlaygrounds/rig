@@ -5,6 +5,18 @@
 //! ordinary record, so the next restore finds nothing left to fix; the
 //! request-build repair that answers any call still without a result stays
 //! as the backstop.
+//!
+//! Plugins re-arm their own obligations from their saved components when
+//! [`Restored`] is triggered on each agent, and may keep an agent from
+//! carrying its work on:
+//!
+//! ```ignore
+//! fn rearm(mut restored: On<Restored>, waits: Query<&MyWait>) {
+//!     if waits.contains(restored.entity) {
+//!         restored.event_mut().resume = false;
+//!     }
+//! }
+//! ```
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
@@ -12,6 +24,7 @@ use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::prelude::*;
+use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{ReflectFromReflect, TypeRegistry};
 use rig_core::completion::{AssistantContent, Message};
@@ -63,12 +76,30 @@ struct Folded {
 struct RestoredAgent {
     entity: Entity,
     parent: Option<String>,
+    depth: usize,
     halted: bool,
 }
 
 /// The agents [`restore_session`] spawned, until [`reconcile`] took them.
 #[derive(Resource)]
-pub(crate) struct Restored(Vec<RestoredAgent>);
+pub(crate) struct RestoredAgents(Vec<RestoredAgent>);
+
+/// An agent was restored: its conversation with its origins, its settings,
+/// its saved components and the agent that spawned it are back, and the
+/// agents above it were reconciled. Triggered once per agent at startup,
+/// before the core carries it on. Plugins re-arm what they owe from their
+/// own saved components here.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct Restored {
+    /// The agent.
+    pub entity: Entity,
+    /// Whether the core carries the agent on: runs again its calls that
+    /// can run again, and sends a conversation that ends in a message the
+    /// model has not answered to the model. An observer sets it to `false`
+    /// to keep the agent idle; every call left without a result is then
+    /// answered as interrupted, and nothing runs again by itself.
+    pub resume: bool,
+}
 
 /// Spawns the agents of the session's logs, with their conversations,
 /// settings, usage, compactions and saved plugin components, links each
@@ -149,6 +180,7 @@ pub(crate) fn restore_session(world: &mut World) {
         restored.push(RestoredAgent {
             entity,
             parent: header.parent.clone(),
+            depth,
             halted,
         });
         logs.push((
@@ -186,7 +218,7 @@ pub(crate) fn restore_session(world: &mut World) {
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     log.resume(logs);
-    world.insert_resource(Restored(restored));
+    world.insert_resource(RestoredAgents(restored));
     for notice in notices {
         world.write_message(Notice::error(None, notice));
     }
@@ -375,70 +407,84 @@ fn restore_component(
     Ok(())
 }
 
-/// Settles what the restored agents left half done, by appending records:
-/// a tool call without a result runs again when its tool is an ordinary
-/// one that only reads, and is answered as interrupted otherwise, an open
-/// tool's call included; and an agent whose conversation ends in the
-/// user's message, or in a full set of tool results, calls its model
-/// again.
-pub(crate) fn reconcile(
-    restored: Option<Res<Restored>>,
+/// Settles what the restored agents left half done, parents before the
+/// agents they spawned. Each agent first gets [`Restored`]; then, by
+/// appending records, a tool call without a result starts again when its
+/// tool is an ordinary one that only reads or a resumable open one, and is
+/// answered as interrupted otherwise; and an agent whose conversation ends
+/// in the user's message, or in a full set of tool results, calls its
+/// model again. An agent an observer kept idle only gets the interrupted
+/// results.
+pub(crate) fn reconcile(world: &mut World) {
+    let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
+        return;
+    };
+    agents.sort_by_key(|agent| agent.depth);
+    for agent in agents {
+        let mut restored = Restored {
+            entity: agent.entity,
+            resume: true,
+        };
+        world.trigger_ref(&mut restored);
+        let carry = (agent.entity, restored.resume, !agent.halted);
+        if let Err(error) = world.run_system_cached_with(settle, carry) {
+            warn!("could not reconcile a restored agent: {error}");
+        }
+    }
+}
+
+/// Settles one restored agent, as [`reconcile`] says: `resume` is what its
+/// [`Restored`] observers left, and `answer` whether a conversation ending
+/// in a message the model has not answered goes to the model.
+fn settle(
+    In((agent, resume, answer)): In<(Entity, bool, bool)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     starter: ToolStarter,
     log: Res<SessionLog>,
     mut commands: Commands,
 ) {
-    let Some(restored) = restored else {
+    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
         return;
     };
-    commands.remove_resource::<Restored>();
-    for agent in &restored.0 {
-        let Ok((id, mut conversation)) = agents.get_mut(agent.entity) else {
-            continue;
-        };
-        let mut results: Vec<ToolResult> = Vec::new();
-        let mut reruns: Vec<ToolCall> = Vec::new();
-        for call in dangling(conversation.messages()) {
-            if starter.reruns(call.function.name.as_str()) {
-                reruns.push(call);
-            } else {
-                results.push(failed(&call, INTERRUPTED.to_owned()));
-            }
+    let mut results: Vec<ToolResult> = Vec::new();
+    let mut reruns: Vec<ToolCall> = Vec::new();
+    for call in dangling(conversation.messages()) {
+        if resume && starter.reruns(call.function.name.as_str()) {
+            reruns.push(call);
+        } else {
+            results.push(failed(&call, INTERRUPTED.to_owned()));
         }
-        if !results.is_empty() {
-            log.commit(id, &mut conversation, Message::tool_results(results), None);
+    }
+    if !results.is_empty() {
+        log.commit(id, &mut conversation, Message::tool_results(results), None);
+    }
+    if !resume {
+        return;
+    }
+    if !reruns.is_empty() {
+        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        let runs: Vec<(Entity, ToolCallRun)> = reruns
+            .into_iter()
+            .map(|call| {
+                let run = ToolCallRun {
+                    touch: starter
+                        .footprint(call.function.name.as_str())
+                        .of(&call.function.arguments),
+                    call,
+                    parent: None,
+                };
+                let entity = commands
+                    .spawn((tool_name(&run), CallOf(turn), run.clone()))
+                    .id();
+                (entity, run)
+            })
+            .collect();
+        for (entity, run) in runs {
+            starter.start(&mut commands, entity, agent, &run);
         }
-        if !reruns.is_empty() {
-            let turn = commands
-                .spawn((Name::new("turn"), TurnOf(agent.entity)))
-                .id();
-            let runs: Vec<(Entity, ToolCallRun)> = reruns
-                .into_iter()
-                .map(|call| {
-                    let run = ToolCallRun {
-                        touch: starter
-                            .footprint(call.function.name.as_str())
-                            .of(&call.function.arguments),
-                        call,
-                        parent: None,
-                    };
-                    let entity = commands
-                        .spawn((tool_name(&run), CallOf(turn), run.clone()))
-                        .id();
-                    (entity, run)
-                })
-                .collect();
-            for (entity, run) in runs {
-                starter.start(&mut commands, entity, agent.entity, &run);
-            }
-        } else if !agent.halted
-            && matches!(conversation.messages().last(), Some(Message::User { .. }))
-        {
-            let turn = commands
-                .spawn((Name::new("turn"), TurnOf(agent.entity)))
-                .id();
-            commands.trigger(CallModel { entity: turn });
-        }
+    } else if answer && matches!(conversation.messages().last(), Some(Message::User { .. })) {
+        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        commands.trigger(CallModel { entity: turn });
     }
 }
 

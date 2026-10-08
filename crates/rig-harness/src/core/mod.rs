@@ -1,6 +1,7 @@
 //! The agent core: agents as entities and the agents they spawn, the turn loop, the one
 //! effect dispatch path, the tool and command
-//! registries, models and `/login` sign-ins, and the session logs. It
+//! registries, the async [`harness::Harness`] handle, models and `/login`
+//! sign-ins, and the session logs. It
 //! depends on neither the host nor any view: the host fills in what the core
 //! needs, such as [`journal::SessionPaths`].
 
@@ -11,6 +12,7 @@ pub mod calls;
 pub mod commands;
 pub mod compaction;
 pub mod effects;
+pub mod harness;
 pub mod inbox;
 pub mod journal;
 pub mod login;
@@ -49,9 +51,12 @@ impl Plugin for AgentPlugin {
         app.insert_resource(effects)
             .insert_resource(SessionLog::new(paths.map(|paths| paths.0)))
             .init_resource::<Wake>()
+            .init_resource::<harness::Jobs>()
+            .init_resource::<harness::Replies>()
             .add_message::<Notice>()
             .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
+            .add_systems(PreStartup, harness::insert_harness)
             .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
                 Update,
@@ -66,6 +71,7 @@ impl Plugin for AgentPlugin {
                 )
                     .in_set(PollCalls),
             )
+            .add_systems(Update, harness::run_jobs.before(PollCalls))
             .add_systems(
                 Last,
                 (
@@ -95,7 +101,9 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort)
-            .add_observer(usage::log_turn_spending);
+            .add_observer(usage::log_turn_spending)
+            .add_observer(harness::end_replies)
+            .add_observer(harness::answer_call);
     }
 }
 
