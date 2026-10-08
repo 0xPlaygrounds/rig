@@ -170,8 +170,10 @@ fn tail(output: &str) -> String {
     text
 }
 
+/// Kills the process group `child` leads, created with `process_group(0)`;
+/// elsewhere, the child alone.
 #[cfg(unix)]
-fn kill_group(child: &mut Child) {
+pub(crate) fn kill_group(child: &mut Child) {
     if let Ok(group) = i32::try_from(child.id()) {
         // SAFETY: `kill` takes plain integers; a negative pid names the
         // process group the child leads, created by `process_group(0)`.
@@ -182,6 +184,6 @@ fn kill_group(child: &mut Child) {
 }
 
 #[cfg(not(unix))]
-fn kill_group(child: &mut Child) {
+pub(crate) fn kill_group(child: &mut Child) {
     child.kill().ok();
 }

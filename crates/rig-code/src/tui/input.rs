@@ -8,7 +8,8 @@ use bevy_ecs::prelude::*;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::view::{PickValue, TuiView};
-use crate::core::agent::{Interrupt, SetEffort, SetModel, Submit};
+use crate::core::agent::{AgentStatus, Interrupt, SetEffort, SetModel, Submit};
+use crate::reload::{CancelReload, ReloadBuild};
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -16,9 +17,18 @@ const PAGE: usize = 10;
 /// Reads every pending terminal event.
 pub fn read_input(
     mut view: ResMut<TuiView>,
+    agents: Query<&AgentStatus>,
+    build: Option<Res<ReloadBuild>>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) -> Result {
+    // Esc stops a running turn first, and a running rebuild only when the
+    // agent is idle.
+    let esc_cancels_reload = build.is_some_and(|build| !build.is_ready())
+        && view
+            .agent
+            .and_then(|agent| agents.get(agent).ok())
+            .is_some_and(|status| *status == AgentStatus::Idle);
     while event::poll(Duration::ZERO)? {
         if let Event::Key(key) = event::read()?
             && key.kind != KeyEventKind::Release
@@ -26,7 +36,7 @@ pub fn read_input(
             if view.picker.is_some() {
                 picker_key(key, &mut view, &mut commands);
             } else {
-                input_key(key, &mut view, &mut commands, &mut exit);
+                input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);
             }
         }
     }
@@ -38,6 +48,7 @@ fn input_key(
     view: &mut TuiView,
     commands: &mut Commands,
     exit: &mut MessageWriter<AppExit>,
+    esc_cancels_reload: bool,
 ) {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
@@ -62,6 +73,7 @@ fn input_key(
                 commands.trigger(Submit { entity, text });
             }
         }
+        KeyCode::Esc if esc_cancels_reload => commands.trigger(CancelReload),
         KeyCode::Esc => {
             if let Some(entity) = view.agent {
                 commands.trigger(Interrupt { entity });

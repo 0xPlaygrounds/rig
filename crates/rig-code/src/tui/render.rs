@@ -13,11 +13,14 @@ use super::terminal::Tui;
 use super::view::TuiView;
 use crate::core::agent::{AgentStatus, CallOf, Conversation, Effort, ModelChoice, Partial};
 use crate::core::models;
+use crate::reload::ReloadBuild;
 
 /// Lines of a tool result shown in the transcript.
 const RESULT_LINES: usize = 4;
 /// Characters of tool call arguments shown in the transcript.
 const ARGUMENT_CHARS: usize = 160;
+/// Width of the rebuild progress bar.
+const GAUGE_WIDTH: u32 = 20;
 
 /// Draws one frame.
 pub fn render(
@@ -25,6 +28,7 @@ pub fn render(
     mut view: ResMut<TuiView>,
     agents: Query<(&Conversation, &ModelChoice, &Effort, &AgentStatus)>,
     partials: Query<(&CallOf, &Partial)>,
+    build: Option<Res<ReloadBuild>>,
 ) -> Result {
     let view = &mut *view;
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
@@ -55,10 +59,11 @@ pub fn render(
             text_lines(notice, Style::new().fg(Color::Magenta), &mut lines);
         }
         draw_transcript(frame, transcript, lines, &mut view.scroll);
-        frame.render_widget(
-            status_line(shown.map(|(_, model, effort, status)| (model, effort, status))),
-            status,
-        );
+        let mut line = status_line(shown.map(|(_, model, effort, status)| (model, effort, status)));
+        if let Some(build) = &build {
+            line.push_span(reload_span(build));
+        }
+        frame.render_widget(line, status);
         frame.render_widget(
             Paragraph::new(format!("> {}▏", view.input))
                 .wrap(Wrap { trim: false })
@@ -99,6 +104,25 @@ fn status_line(shown: Option<(&ModelChoice, &Effort, &AgentStatus)>) -> Line<'st
         Span::from(format!("  reasoning {}  ", models::effort_label(effort.0))).dim(),
         status,
     ])
+}
+
+fn reload_span(build: &ReloadBuild) -> Span<'static> {
+    if build.is_ready() {
+        return Span::from("  Reloading: restarting…").cyan();
+    }
+    match build.progress() {
+        Some((done, total)) => {
+            let filled = (done.saturating_mul(GAUGE_WIDTH) / total.max(1)).min(GAUGE_WIDTH);
+            let bar: String = (0..GAUGE_WIDTH)
+                .map(|cell| if cell < filled { '█' } else { '░' })
+                .collect();
+            Span::from(format!(
+                "  Reloading: Compiling {done}/{total} {bar} (Esc cancels)"
+            ))
+            .cyan()
+        }
+        None => Span::from("  Reloading: resolving… (Esc cancels)").cyan(),
+    }
 }
 
 fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {

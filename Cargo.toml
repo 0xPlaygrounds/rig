@@ -105,6 +105,13 @@ features = [
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
+# The launcher of the rig-code agent (`cargo install rig`). It uses only std,
+# so it adds no dependency. `doc = false`: it shares the library's name.
+[[bin]]
+name = "rig"
+path = "src/main.rs"
+doc = false
+
 [workspace]
 resolver = "3"
 members = [

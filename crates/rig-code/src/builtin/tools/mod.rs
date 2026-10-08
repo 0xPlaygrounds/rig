@@ -17,6 +17,7 @@ pub use edit::Edit;
 pub use read::Read;
 pub use search::Search;
 pub use shell::Shell;
+pub(crate) use shell::kill_group;
 pub use write::Write;
 
 /// Most lines a tool returns.

@@ -26,6 +26,7 @@ impl Plugin for TuiPlugin {
                 Update,
                 (view::focus_agent, view::open_pickers, view::collect_notices),
             )
-            .add_systems(PostUpdate, render::render.run_if(resource_exists::<Tui>));
+            .add_systems(PostUpdate, render::render.run_if(resource_exists::<Tui>))
+            .add_systems(Last, terminal::keep_screen_on_reload);
     }
 }
