@@ -12,7 +12,7 @@ use bevy_log::error;
 use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use super::view::{PickValue, TuiView};
+use super::view::{Overlay, PickValue, Picker, TuiView};
 use crate::core::agent::{ActiveTurn, Effort, Interrupt, SetEffort, SetModel, Submit};
 use crate::core::calls::Wake;
 use crate::host::reload::{CancelReload, ReloadBuild};
@@ -26,14 +26,14 @@ const POLL: Duration = Duration::from_millis(100);
 
 /// Terminal events read by the input thread. Dropping it stops the thread.
 #[derive(Resource)]
-pub struct TerminalInput {
+pub(crate) struct TerminalInput {
     events: Receiver<Event>,
     stop: Arc<AtomicBool>,
 }
 
 impl TerminalInput {
     /// Starts the input thread.
-    pub fn start(wake: Wake) -> std::io::Result<Self> {
+    pub(crate) fn start(wake: Wake) -> std::io::Result<Self> {
         let (sender, events) = crossbeam_channel::unbounded();
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
@@ -71,7 +71,7 @@ impl Drop for TerminalInput {
 }
 
 /// Handles every terminal event read since the last frame.
-pub fn read_input(
+pub(crate) fn read_input(
     input: Res<TerminalInput>,
     mut view: ResMut<TuiView>,
     agents: Query<Has<ActiveTurn>>,
@@ -88,29 +88,32 @@ pub fn read_input(
             .is_some_and(|busy| !busy);
     for event in input.events.try_iter() {
         match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => {
-                if view.reload_failure.is_some() {
-                    // The report is modal: Esc or Enter closes it.
+            Event::Key(key) if key.kind != KeyEventKind::Release => match &mut view.overlay {
+                // The report is modal: Esc or Enter closes it.
+                Some(Overlay::ReloadFailure(_)) => {
                     if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
-                        view.reload_failure = None;
+                        view.overlay = None;
                     }
-                } else if view.picker.is_some() {
-                    picker_key(key, &mut view, &mut commands);
-                } else {
-                    input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);
                 }
-            }
+                Some(Overlay::Picker(picker)) => {
+                    if picker_key(key, picker, &mut commands) {
+                        view.overlay = None;
+                    }
+                }
+                None => input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload),
+            },
             // A paste arrives whole, newlines included, so it is not sent
             // line by line.
             Event::Paste(text) => {
                 let text = text.replace("\r\n", "\n").replace('\r', "\n");
-                match view.picker.as_mut() {
-                    Some(picker) => {
+                match &mut view.overlay {
+                    Some(Overlay::Picker(picker)) => {
                         picker
                             .filter
                             .push_str(text.lines().next().unwrap_or_default());
                         picker.selected = 0;
                     }
+                    Some(Overlay::ReloadFailure(_)) => {}
                     None => view.input.push_str(&text),
                 }
             }
@@ -164,14 +167,12 @@ fn input_key(
     }
 }
 
-fn picker_key(key: KeyEvent, view: &mut TuiView, commands: &mut Commands) {
-    let Some(picker) = view.picker.as_mut() else {
-        return;
-    };
+/// Handles a key in the open picker; returns whether the picker closes.
+fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bool {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     match key.code {
-        KeyCode::Esc => view.picker = None,
-        KeyCode::Char('c') if control => view.picker = None,
+        KeyCode::Esc => return true,
+        KeyCode::Char('c') if control => return true,
         KeyCode::Char(_) if control || key.modifiers.contains(KeyModifiers::ALT) => {}
         KeyCode::Char(character) => {
             picker.filter.push(character);
@@ -199,10 +200,11 @@ fn picker_key(key: KeyEvent, view: &mut TuiView, commands: &mut Commands) {
                     entity,
                     effort: Effort(effort),
                 }),
-                None => return,
+                None => return false,
             }
-            view.picker = None;
+            return true;
         }
         _ => {}
     }
+    false
 }

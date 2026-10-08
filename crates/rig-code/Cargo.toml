@@ -28,6 +28,8 @@ ctrlc = { workspace = true, features = ["termination"] }
 futures = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
+# The launcher protocol (`rig::code_protocol`), shared with the `rig` binary.
+rig = { path = "../..", version = "0.44.0", default-features = false }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["reqwest"] }
 serde = { workspace = true, features = ["derive"] }

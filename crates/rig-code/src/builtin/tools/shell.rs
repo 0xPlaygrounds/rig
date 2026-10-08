@@ -28,14 +28,6 @@ const POLL: Duration = Duration::from_millis(20);
 /// Output past which the command is killed. Only the last `MAX_BYTES` are
 /// kept in memory while it runs.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
-/// What the `rig` launcher tells its agent. A command, such as a nested
-/// agent run while working on rig-code itself, must not act as this agent.
-const LAUNCHER_VARS: [&str; 4] = [
-    "RIG_SESSION",
-    "RIG_READY_FILE",
-    "RIG_NOTICE",
-    "RIG_LAUNCHER",
-];
 
 /// Runs a command with `sh -c` in its own session and process group.
 pub struct Shell;
@@ -76,13 +68,9 @@ impl PortableTool for Shell {
     }
 
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
-        let stop = StopOnDrop {
-            stopped: Arc::new(AtomicBool::new(false)),
-            leader: Arc::new(AtomicU32::new(0)),
-        };
-        let stopped = Arc::clone(&stop.stopped);
-        let leader = Arc::clone(&stop.leader);
-        blocking(move || run(args, &stopped, &leader)).await
+        let stop = StopOnDrop(Arc::default());
+        let running = Arc::clone(&stop.0);
+        blocking(move || run(args, &running.stopped, &running.leader)).await
     }
 }
 
@@ -90,16 +78,21 @@ impl PortableTool for Shell {
 /// interrupted turn, or quitting, cancels it. On unix the process group is
 /// killed right away, because the app may exit before the command's thread
 /// sees the flag.
-struct StopOnDrop {
-    stopped: Arc<AtomicBool>,
+struct StopOnDrop(Arc<Stop>);
+
+/// What the call and the command's thread share.
+#[derive(Default)]
+struct Stop {
+    /// Set when the call is dropped.
+    stopped: AtomicBool,
     /// The running command's pid while it is not reaped, else 0.
-    leader: Arc<AtomicU32>,
+    leader: AtomicU32,
 }
 
 impl Drop for StopOnDrop {
     fn drop(&mut self) {
-        self.stopped.store(true, Ordering::Relaxed);
-        let leader = self.leader.swap(0, Ordering::SeqCst);
+        self.0.stopped.store(true, Ordering::Relaxed);
+        let leader = self.0.leader.swap(0, Ordering::SeqCst);
         #[cfg(unix)]
         if leader != 0 {
             crate::host::process::kill_group_of(leader);
@@ -132,7 +125,9 @@ fn run(
         .stdin(Stdio::null())
         .stdout(writer)
         .stderr(error_writer);
-    for name in LAUNCHER_VARS {
+    // A command, such as a nested agent run while working on rig-code
+    // itself, must not act as this agent.
+    for name in rig::code_protocol::env::AGENT_ONLY {
         command.env_remove(name);
     }
     detach(&mut command);

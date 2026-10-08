@@ -1,5 +1,5 @@
 //! View state, kept apart from the agent core: the focused agent, the input
-//! line, scrolling, the open picker and recent notices.
+//! line, scrolling, the open overlay and recent notices.
 
 use bevy_ecs::prelude::*;
 use rig_core::completion::Reasoning;
@@ -15,44 +15,50 @@ const KEPT_NOTICES: usize = 50;
 
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]
-pub struct TuiView {
+pub(crate) struct TuiView {
     /// The agent shown and typed to.
-    pub agent: Option<Entity>,
+    pub(crate) agent: Option<Entity>,
     /// The input line.
-    pub input: String,
+    pub(crate) input: String,
     /// Lines scrolled up from the bottom of the transcript.
-    pub scroll: usize,
-    /// The open picker.
-    pub picker: Option<Picker>,
+    pub(crate) scroll: usize,
+    /// What is shown over the transcript and takes the keys.
+    pub(crate) overlay: Option<Overlay>,
     /// Recent notices, oldest first.
-    pub notices: Vec<ShownNotice>,
-    /// A failed rebuild's output, shown over the transcript until Esc.
-    pub reload_failure: Option<String>,
+    pub(crate) notices: Vec<ShownNotice>,
+}
+
+/// What is shown over the transcript, one at a time.
+pub(crate) enum Overlay {
+    /// A list to pick from.
+    Picker(Picker),
+    /// A failed rebuild's output, until Esc or Enter.
+    ReloadFailure(String),
 }
 
 /// A notice placed in a transcript.
-pub struct ShownNotice {
+pub(crate) struct ShownNotice {
     /// The agent it is about, or `None` for every agent.
-    pub agent: Option<Entity>,
+    agent: Option<Entity>,
     /// The length of that agent's conversation (the focused one's, for an
     /// app notice) when it arrived; it is drawn after that many messages.
-    pub after: usize,
+    pub(crate) after: usize,
     /// Whether it reports a failure.
-    pub level: NoticeLevel,
+    pub(crate) level: NoticeLevel,
     /// The text.
-    pub text: String,
+    pub(crate) text: String,
 }
 
 impl ShownNotice {
     /// Whether it belongs in `agent`'s transcript.
-    pub fn is_for(&self, agent: Option<Entity>) -> bool {
+    pub(crate) fn is_for(&self, agent: Option<Entity>) -> bool {
         self.agent.is_none() || self.agent == agent
     }
 }
 
 /// What choosing a picker item sets.
 #[derive(Clone, Debug)]
-pub enum PickValue {
+pub(crate) enum PickValue {
     /// A model reference.
     Model(String),
     /// A reasoning setting.
@@ -60,22 +66,22 @@ pub enum PickValue {
 }
 
 /// A filterable list to choose one item from.
-pub struct Picker {
+pub(crate) struct Picker {
     /// The agent the choice is for.
-    pub agent: Entity,
+    pub(crate) agent: Entity,
     /// The title.
-    pub title: String,
+    pub(crate) title: String,
     /// Every item: its label and value.
-    pub items: Vec<(String, PickValue)>,
+    items: Vec<(String, PickValue)>,
     /// The filter typed so far.
-    pub filter: String,
+    pub(crate) filter: String,
     /// The selected position among the visible items.
-    pub selected: usize,
+    pub(crate) selected: usize,
 }
 
 impl Picker {
     /// The items whose label holds every word of the filter, ignoring case.
-    pub fn visible(&self) -> Vec<&(String, PickValue)> {
+    pub(crate) fn visible(&self) -> Vec<&(String, PickValue)> {
         let filter = self.filter.to_lowercase();
         self.items
             .iter()
@@ -87,7 +93,7 @@ impl Picker {
     }
 
     /// The selected item's value.
-    pub fn chosen(&self) -> Option<PickValue> {
+    pub(crate) fn chosen(&self) -> Option<PickValue> {
         self.visible()
             .get(self.selected)
             .map(|(_, value)| value.clone())
@@ -95,7 +101,10 @@ impl Picker {
 }
 
 /// Focuses the first agent by id when the focused one is gone.
-pub fn focus_agent(mut view: ResMut<TuiView>, agents: Query<(Entity, &AgentId), With<Agent>>) {
+pub(crate) fn focus_agent(
+    mut view: ResMut<TuiView>,
+    agents: Query<(Entity, &AgentId), With<Agent>>,
+) {
     if view.agent.is_some_and(|agent| agents.contains(agent)) {
         return;
     }
@@ -106,11 +115,11 @@ pub fn focus_agent(mut view: ResMut<TuiView>, agents: Query<(Entity, &AgentId), 
 }
 
 /// Opens the picker a command asked for.
-pub fn open_pickers(
+pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
-    conversations: Query<&Conversation>,
     mut view: ResMut<TuiView>,
+    mut notices: MessageWriter<Notice>,
 ) {
     for request in requests.read() {
         let current = agents
@@ -135,17 +144,11 @@ pub fn open_pickers(
                     })
                     .collect();
                 if items.is_empty() {
-                    let after = conversations
-                        .get(request.agent)
-                        .map_or(0, |conversation| conversation.0.len());
-                    view.notices.push(ShownNotice {
-                        agent: Some(request.agent),
-                        after,
-                        level: NoticeLevel::Error,
-                        text: "No provider with tool-calling models can be reached: set a key \
-                               such as OPENAI_API_KEY."
-                            .to_owned(),
-                    });
+                    notices.write(Notice::error(
+                        request.agent,
+                        "No provider with tool-calling models can be reached: set a key such \
+                         as OPENAI_API_KEY.",
+                    ));
                     continue;
                 }
                 ("Model".to_owned(), items)
@@ -156,31 +159,34 @@ pub fn open_pickers(
                 };
                 let items = models::effort_options(spec)
                     .into_iter()
-                    .map(|(label, effort)| (label, PickValue::Effort(effort)))
+                    .map(|option| (option.label(), PickValue::Effort(option.1)))
                     .collect();
                 (format!("Reasoning for {}", spec.display_name), items)
             }
         };
-        view.picker = Some(Picker {
+        view.overlay = Some(Overlay::Picker(Picker {
             agent: request.agent,
             title,
             items,
             filter: String::new(),
             selected: 0,
-        });
+        }));
     }
 }
 
 /// Shows the output of a failed `/reload` until it is dismissed.
-pub fn show_reload_failures(mut failures: MessageReader<ReloadFailed>, mut view: ResMut<TuiView>) {
+pub(crate) fn show_reload_failures(
+    mut failures: MessageReader<ReloadFailed>,
+    mut view: ResMut<TuiView>,
+) {
     if let Some(failure) = failures.read().last() {
-        view.reload_failure = Some(failure.output.clone());
+        view.overlay = Some(Overlay::ReloadFailure(failure.output.clone()));
     }
 }
 
 /// Keeps the latest notices for display, each placed after the messages
 /// its agent had when it arrived.
-pub fn collect_notices(
+pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     conversations: Query<&Conversation>,
     mut view: ResMut<TuiView>,

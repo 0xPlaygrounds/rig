@@ -18,15 +18,15 @@ use ratatui::backend::CrosstermBackend;
 
 use super::input::TerminalInput;
 use crate::core::calls::Wake;
+use rig::code_protocol::RELOAD_EXIT_CODE;
+
 use crate::core::save::SessionPaths;
-use crate::host::launcher::RELOAD_EXIT_CODE;
-use crate::host::session::log_path;
 
 /// The terminal, drawn to through a private copy of stdout. Dropping it
 /// restores the terminal, keeping the alternate screen for a reload so the
 /// next build draws over the same screen.
 #[derive(Resource)]
-pub struct Tui {
+pub(crate) struct Tui {
     pub(super) terminal: Terminal<CrosstermBackend<File>>,
     keep_screen: bool,
 }
@@ -72,13 +72,13 @@ impl Drop for Tui {
 
 /// Opens the terminal and starts reading it at startup, or exits with code
 /// 1 when there is none.
-pub fn open_terminal(
+pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
-    let opened = Tui::open(paths.map(|paths| log_path(&paths)).as_deref())
+    let opened = Tui::open(paths.map(|paths| paths.log()).as_deref())
         .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
     match opened {
         Ok((tui, input)) => {
@@ -93,7 +93,7 @@ pub fn open_terminal(
 }
 
 /// Keeps the alternate screen when the app exits to reload.
-pub fn keep_screen_on_reload(mut exits: MessageReader<AppExit>, tui: Option<ResMut<Tui>>) {
+pub(crate) fn keep_screen_on_reload(mut exits: MessageReader<AppExit>, tui: Option<ResMut<Tui>>) {
     if let Some(mut tui) = tui
         && exits
             .read()

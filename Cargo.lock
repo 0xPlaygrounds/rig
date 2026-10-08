@@ -10849,6 +10849,7 @@ dependencies = [
  "libc",
  "ratatui",
  "regex",
+ "rig",
  "rig-cassette",
  "rig-core",
  "serde",

@@ -45,7 +45,7 @@ impl Plugin for BuiltinToolsPlugin {
 }
 
 /// `line` cut to its first `limit` characters.
-fn clip(line: &str, limit: usize) -> &str {
+pub(crate) fn clip(line: &str, limit: usize) -> &str {
     match line.char_indices().nth(limit) {
         Some((end, _)) => line.get(..end).unwrap_or(line),
         None => line,

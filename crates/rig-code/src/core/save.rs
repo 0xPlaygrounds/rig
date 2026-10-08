@@ -7,7 +7,7 @@ use std::any::TypeId;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
-use std::path::PathBuf;
+use std::ops::Deref;
 
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
@@ -19,6 +19,7 @@ use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use rig::code_protocol::SessionDir;
 use rig_core::message::ToolResult;
 
 use super::agent::{
@@ -40,27 +41,23 @@ impl<T> CreateTypeData<T> for ReflectSaved {
     }
 }
 
-/// The session's directory, the only place the core writes. The host
-/// inserts it before the agent plugins are built.
+/// The session's directory, the only place the core writes: the saved
+/// agents in [`SessionDir::state`] and the effect log in
+/// [`SessionDir::effects`]. Inserted before the agent plugins are built.
 #[derive(Resource, Clone, Debug)]
-pub struct SessionPaths {
-    /// The session id.
-    pub id: String,
-    /// The session directory.
-    pub dir: PathBuf,
-}
+pub struct SessionPaths(pub SessionDir);
 
-impl SessionPaths {
-    /// The saved agents.
-    pub fn state(&self) -> PathBuf {
-        self.dir.join("state.json")
-    }
+impl Deref for SessionPaths {
+    type Target = SessionDir;
 
-    /// The effect log, one effect record per line.
-    pub fn effects(&self) -> PathBuf {
-        self.dir.join("effects.jsonl")
+    fn deref(&self) -> &SessionDir {
+        &self.0
     }
 }
+
+/// The version of `state.json`'s layout. A file of another version is not
+/// restored.
+const FORMAT: u32 = 1;
 
 /// Restores the session at startup, and saves it after each turn, after a
 /// model or reasoning change, and on exit.
@@ -101,7 +98,6 @@ fn settings_changed(
 #[derive(Serialize, Deserialize)]
 struct SavedState {
     format: u32,
-    session: String,
     agents: Vec<SavedAgent>,
 }
 
@@ -115,7 +111,7 @@ struct SavedAgent {
 /// resolved effects to `effects.jsonl`. An agent in a turn is saved as an
 /// interrupt would leave it, so a crash before its turn ends restores a
 /// conversation whose tool calls all have results.
-pub fn save_session(world: &mut World) {
+pub(crate) fn save_session(world: &mut World) {
     let (Some(paths), Some(registry)) = (
         world.get_resource::<SessionPaths>().cloned(),
         world.get_resource::<AppTypeRegistry>().cloned(),
@@ -131,8 +127,7 @@ pub fn save_session(world: &mut World) {
     agents.sort_by(|a, b| a.1.cmp(&b.1));
     let mut runs = world.query::<(&ToolCallRun, Option<&Done<ToolResult>>)>();
     let state = SavedState {
-        format: 1,
-        session: paths.id.clone(),
+        format: FORMAT,
         agents: agents
             .into_iter()
             .map(|(entity, id)| {
@@ -213,7 +208,7 @@ fn saved_components(
 }
 
 fn write_state(paths: &SessionPaths, state: &SavedState) -> Result<(), Box<dyn Error>> {
-    let temporary = paths.dir.join("state.json.tmp");
+    let temporary = paths.state().with_extension("json.tmp");
     fs::write(&temporary, serde_json::to_vec_pretty(state)?)?;
     fs::rename(&temporary, paths.state())?;
     Ok(())
@@ -222,7 +217,7 @@ fn write_state(paths: &SessionPaths, state: &SavedState) -> Result<(), Box<dyn E
 /// Spawns the agents of `state.json`, if there is one, with every saved
 /// component whose type is still registered. Anything that does not load
 /// is skipped with a notice.
-pub fn restore_session(world: &mut World) {
+pub(crate) fn restore_session(world: &mut World) {
     let (Some(paths), Some(registry)) = (
         world.get_resource::<SessionPaths>().cloned(),
         world.get_resource::<AppTypeRegistry>().cloned(),
@@ -250,6 +245,16 @@ pub fn restore_session(world: &mut World) {
             return;
         }
     };
+    if state.format != FORMAT {
+        world.write_message(Notice::error(
+            None,
+            format!(
+                "The saved session has format {}, this build reads {FORMAT}; starting fresh.",
+                state.format
+            ),
+        ));
+        return;
+    }
     let registry = registry.read();
     for saved in state.agents {
         let entity = world.spawn((Agent, AgentId(saved.id))).id();

@@ -1,12 +1,11 @@
 //! Catalog models the agent can use, and the reasoning settings each takes.
 
 use std::collections::HashMap;
-use std::error::Error;
 
 use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
 use rig_core::completion::{GenerationOptions, Reasoning, UnsupportedOption};
 use rig_core::operation::Completion;
-use rig_core::providers::registry::{self, ProviderId};
+use rig_core::providers::registry::{self, ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
@@ -31,7 +30,7 @@ pub fn reference(spec: &ModelSpec) -> String {
 /// model as an effect handler.
 /// [`Effects::model_handler`](super::effects::Effects::model_handler) keeps
 /// one per model.
-pub fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, Box<dyn Error + Send + Sync>> {
+pub(crate) fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
     let model = registry::connect(spec)?;
     Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
         reference(spec),
@@ -60,12 +59,28 @@ pub fn available_models() -> Vec<&'static ModelSpec> {
     models
 }
 
-/// The reasoning settings `spec` takes, labelled for a picker: the provider
-/// default first, then `off` when reasoning can be disabled, then each
-/// effort level, or named budgets on a model that takes a budget. A model
-/// whose controls the catalog does not list offers only the default.
-pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Option<Reasoning>)> {
-    let mut options = vec![("default".to_owned(), None)];
+/// A reasoning setting a model takes: what `/effort` calls it (`default`,
+/// `off`, a level or a budget's name) and the setting, `None` for the
+/// provider default.
+#[derive(Clone, Copy, Debug)]
+pub struct EffortOption(pub &'static str, pub Option<Reasoning>);
+
+impl EffortOption {
+    /// The name, with a budget's tokens, for a picker.
+    pub fn label(&self) -> String {
+        match self.1 {
+            Some(Reasoning::Budget { tokens }) => format!("{} ({tokens} tokens)", self.0),
+            _ => self.0.to_owned(),
+        }
+    }
+}
+
+/// The reasoning settings `spec` takes: the provider default first, then
+/// `off` when reasoning can be disabled, then each effort level, or named
+/// budgets on a model that takes a budget. A model whose controls the
+/// catalog does not list offers only the default.
+pub fn effort_options(spec: &ModelSpec) -> Vec<EffortOption> {
+    let mut options = vec![EffortOption("default", None)];
     let ReasoningSupport::Listed {
         levels,
         budget,
@@ -76,12 +91,12 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Option<Reasoning>)> {
         return options;
     };
     if *can_disable {
-        options.push(("off".to_owned(), Some(Reasoning::Off)));
+        options.push(EffortOption("off", Some(Reasoning::Off)));
     }
     options.extend(
         levels
             .iter()
-            .map(|level| (level.as_str().to_owned(), Some(Reasoning::Effort(*level)))),
+            .map(|level| EffortOption(level.as_str(), Some(Reasoning::Effort(*level)))),
     );
     if levels.is_empty()
         && let Some(range) = budget
@@ -89,10 +104,7 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Option<Reasoning>)> {
         options.extend(BUDGETS.iter().map(|(name, tokens)| {
             // Not `clamp`, which panics on an inverted range.
             let tokens = (*tokens).max(*range.start()).min(*range.end());
-            (
-                format!("{name} ({tokens} tokens)"),
-                Some(Reasoning::Budget { tokens }),
-            )
+            EffortOption(name, Some(Reasoning::Budget { tokens }))
         }));
     }
     options
@@ -110,7 +122,7 @@ pub fn effort_label(effort: Option<Reasoning>) -> String {
 }
 
 /// The generation options a request carries for `effort`.
-pub fn generation_options(effort: Option<Reasoning>) -> GenerationOptions {
+pub(crate) fn generation_options(effort: Option<Reasoning>) -> GenerationOptions {
     match effort {
         Some(reasoning) => GenerationOptions::new().reasoning(reasoning),
         None => GenerationOptions::new(),
@@ -118,6 +130,9 @@ pub fn generation_options(effort: Option<Reasoning>) -> GenerationOptions {
 }
 
 /// Whether `spec` takes `effort`, or why not.
-pub fn check_effort(spec: &ModelSpec, effort: Option<Reasoning>) -> Result<(), UnsupportedOption> {
+pub(crate) fn check_effort(
+    spec: &ModelSpec,
+    effort: Option<Reasoning>,
+) -> Result<(), UnsupportedOption> {
     spec.validate(&generation_options(effort))
 }

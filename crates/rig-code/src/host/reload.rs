@@ -15,7 +15,9 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use super::launcher::{self, RELOAD_EXIT_CODE};
+use rig::code_protocol::RELOAD_EXIT_CODE;
+
+use super::launcher;
 use super::process::{detach, kill_group};
 use crate::core::agent::{Notice, TurnOf};
 use crate::core::calls::Wake;

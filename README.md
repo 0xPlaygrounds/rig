@@ -230,8 +230,6 @@ the built-in commands and the terminal view are entries in the same list, so
 any of them can be removed or replaced:
 
 ```toml
-jobs = 8                          # optional: cargo -j for the agent
-
 [[plugin]]
 plugin = "rig_code::builtin::BuiltinToolsPlugin"
 
@@ -251,6 +249,7 @@ bevy_features = []                # optional extra Bevy features
 The agent, like the rest of the workspace, needs Rust 1.96 or newer.
 
 `rig build` regenerates and builds the agent without starting it.
+`CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
 
 The agent runs on Linux and macOS; Windows is not supported yet.
 

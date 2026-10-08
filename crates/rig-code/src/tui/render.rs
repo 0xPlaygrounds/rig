@@ -10,7 +10,7 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{ToolResult, UserContent};
 
 use super::terminal::Tui;
-use super::view::{ShownNotice, TuiView};
+use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use crate::core::agent::{
     ActiveTurn, Calls, Conversation, Effort, ModelChoice, NoticeLevel, Partial, ToolCallRun,
 };
@@ -39,7 +39,7 @@ enum Activity {
 /// key, a notice, a resize), an agent's drawn components, a turn's calls,
 /// or a streaming reply. A turn's end changes its conversation or comes
 /// with a notice. The rebuild's progress is checked separately.
-pub fn needs_redraw(
+pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
         (),
@@ -57,7 +57,7 @@ pub fn needs_redraw(
 }
 
 /// Draws one frame.
-pub fn render(
+pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
     agents: Query<(
@@ -143,11 +143,10 @@ pub fn render(
                 .block(Block::bordered()),
             input,
         );
-        if let Some(picker) = &view.picker {
-            draw_picker(frame, picker);
-        }
-        if let Some(output) = &view.reload_failure {
-            draw_reload_failure(frame, output);
+        match &view.overlay {
+            Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
+            Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
+            None => {}
         }
     })?;
     Ok(())
@@ -213,16 +212,10 @@ fn reload_span(build: &ReloadBuild) -> Span<'static> {
 
 /// A centred box over the transcript, `width` and `height` in fifths and
 /// quarters of the screen, cleared for drawing on.
-fn popup(frame: &mut Frame, fifths: u16, quarters: u16) -> Rect {
-    let area = frame.area();
-    let width = area.width.saturating_mul(fifths) / 5;
-    let height = area.height.saturating_mul(quarters) / 4;
-    let popup = Rect::new(
-        area.x + (area.width - width) / 2,
-        area.y + (area.height - height) / 2,
-        width,
-        height,
-    );
+fn popup(frame: &mut Frame, fifths: u32, quarters: u32) -> Rect {
+    let popup = frame
+        .area()
+        .centered(Constraint::Ratio(fifths, 5), Constraint::Ratio(quarters, 4));
     frame.render_widget(Clear, popup);
     popup
 }
@@ -243,7 +236,7 @@ fn draw_reload_failure(frame: &mut Frame, output: &str) {
     );
 }
 
-fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
+fn draw_picker(frame: &mut Frame, picker: &Picker) {
     let popup = popup(frame, 4, 3);
     let block = Block::bordered().title(format!(
         " {} · type to filter, Enter picks, Esc closes ",
@@ -394,9 +387,12 @@ fn text_lines(text: &str, style: Style, lines: &mut Vec<Line<'static>>) {
     );
 }
 
+/// `text` cut to `limit` characters, with `…` when cut.
 fn clip(text: &str, limit: usize) -> String {
-    match text.char_indices().nth(limit) {
-        Some((end, _)) => format!("{}…", text.get(..end).unwrap_or(text)),
-        None => text.to_owned(),
+    let clipped = crate::builtin::tools::clip(text, limit);
+    if clipped.len() < text.len() {
+        format!("{clipped}…")
+    } else {
+        text.to_owned()
     }
 }

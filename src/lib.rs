@@ -36,6 +36,9 @@ pub use rig_reqwest;
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
+#[cfg(not(target_family = "wasm"))]
+pub mod code_protocol;
+
 /// Provider clients, their configurations, and the models they build.
 pub mod providers {
     pub use rig_core::providers::*;

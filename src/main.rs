@@ -8,7 +8,7 @@ mod launcher;
 
 use std::process::ExitCode;
 
-use launcher::home::Home;
+use rig::code_protocol::Home;
 
 const USAGE: &str = "\
 Usage: rig [build | help]

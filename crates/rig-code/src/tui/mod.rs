@@ -1,5 +1,5 @@
 //! The terminal view. It reads agent components, keeps its own view state
-//! in [`TuiView`], and sends the same requests any other view would. It
+//! in a resource, and sends the same requests any other view would. It
 //! never owns the app's loop: a thread reads the terminal and wakes the
 //! loop, `PreUpdate` handles what it read, and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
@@ -12,16 +12,13 @@ mod view;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-pub use terminal::Tui;
-pub use view::{PickValue, Picker, TuiView};
-
 /// Owns the terminal and draws the focused agent.
 #[derive(Default)]
 pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TuiView>()
+        app.init_resource::<view::TuiView>()
             .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 PreUpdate,
@@ -31,15 +28,15 @@ impl Plugin for TuiPlugin {
                 Update,
                 (
                     view::focus_agent,
-                    view::open_pickers,
-                    view::collect_notices,
                     view::show_reload_failures,
+                    // A picker that cannot open writes a notice instead.
+                    (view::open_pickers, view::collect_notices).chain(),
                 ),
             )
             .add_systems(
                 PostUpdate,
                 render::render.run_if(
-                    resource_exists::<Tui>.and_then(
+                    resource_exists::<terminal::Tui>.and_then(
                         render::needs_redraw.or_eager(
                             resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
                         ),

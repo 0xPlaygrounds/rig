@@ -64,24 +64,18 @@ fn effort(
         return;
     }
     let options = models::effort_options(spec);
-    match options
-        .iter()
-        .find(|(label, _)| label.split_whitespace().next() == Some(args.args.as_str()))
-    {
-        Some((_, effort)) => {
+    match options.iter().find(|option| option.0 == args.args) {
+        Some(option) => {
             commands.trigger(SetEffort {
                 entity: args.agent,
-                effort: Effort(*effort),
+                effort: Effort(option.1),
             });
         }
         None => {
-            let labels: Vec<&str> = options
-                .iter()
-                .filter_map(|(label, _)| label.split_whitespace().next())
-                .collect();
+            let names: Vec<&str> = options.iter().map(|option| option.0).collect();
             notices.write(Notice::error(
                 args.agent,
-                format!("{} takes: {}.", spec.display_name, labels.join(", ")),
+                format!("{} takes: {}.", spec.display_name, names.join(", ")),
             ));
         }
     }

@@ -1,18 +1,16 @@
-//! The agent's side of the `rig` launcher protocol: the reload exit code,
-//! the launcher's path for rebuilds, its startup notice, and the ready file
-//! that tells it this build started.
+//! The agent's side of the `rig` launcher protocol
+//! ([`rig::code_protocol`]): the launcher's path for rebuilds, its startup
+//! notice, and the ready file that tells it this build started.
 
 use std::ffi::OsString;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
+use rig::code_protocol::env;
 
 use crate::core::agent::Notice;
-
-/// The exit code that asks the launcher to restart on the staged build. The
-/// launcher (`src/launcher/mod.rs` in the `rig` crate) repeats it.
-pub const RELOAD_EXIT_CODE: u8 = 75;
+use crate::core::save::SessionPaths;
 
 /// Shows the launcher's startup notice and writes the ready file.
 pub struct LauncherPlugin;
@@ -24,29 +22,34 @@ impl Plugin for LauncherPlugin {
     }
 }
 
-/// The launcher that started this agent, from `RIG_LAUNCHER`.
-pub fn executable() -> Option<OsString> {
-    std::env::var_os("RIG_LAUNCHER")
+/// The launcher that started this agent, if one did.
+pub(crate) fn executable() -> Option<OsString> {
+    std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }
 
 /// Shows the launcher's notice, such as a rollback, at startup.
 fn launcher_notice(mut notices: MessageWriter<Notice>) {
-    if let Ok(notice) = std::env::var("RIG_NOTICE")
+    if let Ok(notice) = std::env::var(env::NOTICE)
         && !notice.is_empty()
     {
         notices.write(Notice::info(None, notice));
     }
 }
 
-/// Tells the launcher this build started: every plugin built, the session
-/// restored and the first frame drawn without an exit request.
-fn signal_ready(mut signalled: Local<bool>, exits: MessageReader<AppExit>) {
+/// Tells the launcher, if one started this agent, that this build started:
+/// every plugin built, the session restored and the first frame drawn
+/// without an exit request.
+fn signal_ready(
+    mut signalled: Local<bool>,
+    exits: MessageReader<AppExit>,
+    paths: Option<Res<SessionPaths>>,
+) {
     if *signalled || !exits.is_empty() {
         return;
     }
     *signalled = true;
-    if let Some(path) = std::env::var_os("RIG_READY_FILE")
-        && let Err(failure) = std::fs::write(&path, b"")
+    if let Some(paths) = paths.filter(|_| executable().is_some())
+        && let Err(failure) = std::fs::write(paths.ready(), b"")
     {
         error!("could not write the ready file: {failure}");
     }

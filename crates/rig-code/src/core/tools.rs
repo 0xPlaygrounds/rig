@@ -108,7 +108,7 @@ impl Serve for Unavailable {
 /// handler, the call is answered as unavailable on that same path. A
 /// missing tool, bad arguments, a failure or a panic all become an error
 /// result for the model.
-pub fn run_tool_call(
+pub(crate) fn run_tool_call(
     effects: &Effects,
     scope: &str,
     parent: EffectId,
@@ -149,6 +149,6 @@ pub fn run_tool_call(
 }
 
 /// An error result for `call` saying `why`.
-pub fn failed(call: &ToolCall, why: String) -> ToolResult {
+pub(crate) fn failed(call: &ToolCall, why: String) -> ToolResult {
     call.error_result(vec![ToolResultContent::text(why)])
 }

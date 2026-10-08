@@ -1,6 +1,6 @@
-//! `plugins.toml`: the plugin list and build settings. The file is a small
-//! TOML subset: comments, a top-level `jobs = <integer>`, and `[[plugin]]`
-//! tables whose keys hold a string, an integer or a list of strings.
+//! `plugins.toml`: the plugin list. The file is a small TOML subset:
+//! comments and `[[plugin]]` tables whose keys hold a string or a list of
+//! strings.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -12,9 +12,7 @@ use super::project::PACKAGE;
 
 /// Written when `plugins.toml` does not exist yet.
 const TEMPLATE: &str = r#"# The rig agent's plugins, added in this order. `rig build`, or /reload in
-# the agent, applies changes.
-
-# jobs = 8                          # cargo -j for building the agent
+# the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
 
 # Each [[plugin]] names a type implementing Bevy's Plugin + Default. An entry
 # without `crate` comes from rig-code itself.
@@ -41,10 +39,8 @@ plugin = "rig_code::tui::TuiPlugin"
 # bevy_features = []                # extra Bevy features the plugin needs
 "#;
 
-/// The parsed settings.
+/// The parsed plugin list.
 pub struct Config {
-    /// cargo's `-j` for the agent project.
-    pub jobs: Option<u64>,
     /// The plugins, in file order.
     pub plugins: Vec<Plugin>,
 }
@@ -88,7 +84,6 @@ pub enum Source {
 
 enum Value {
     String(String),
-    Integer(u64),
     List(Vec<String>),
 }
 
@@ -114,7 +109,6 @@ impl Config {
 
 /// Parses `text`; relative plugin paths are relative to `base`.
 fn parse(text: &str, base: &Path) -> Result<Config> {
-    let mut jobs = None;
     let mut tables: Vec<(usize, BTreeMap<String, Value>)> = Vec::new();
     for (number, line) in (1..).zip(text.lines()) {
         let line = without_comment(line).trim();
@@ -131,26 +125,15 @@ fn parse(text: &str, base: &Path) -> Result<Config> {
         let key = key.trim();
         let value = parse_value(value.trim()).ok_or_else(|| {
             format!(
-                "line {number}: `{}` is not a string, an integer or a list of strings",
+                "line {number}: `{}` is not a string or a list of strings",
                 value.trim()
             )
         })?;
-        match tables.last_mut() {
-            Some((_, table)) => {
-                if table.insert(key.to_owned(), value).is_some() {
-                    return Err(format!("line {number}: `{key}` is set twice").into());
-                }
-            }
-            None => match (key, value) {
-                ("jobs", Value::Integer(count)) => jobs = Some(count),
-                _ => {
-                    return Err(format!(
-                        "line {number}: only `jobs = <integer>` may come before the first \
-                         [[plugin]]"
-                    )
-                    .into());
-                }
-            },
+        let Some((_, table)) = tables.last_mut() else {
+            return Err(format!("line {number}: `{key}` comes before the first [[plugin]]").into());
+        };
+        if table.insert(key.to_owned(), value).is_some() {
+            return Err(format!("line {number}: `{key}` is set twice").into());
         }
     }
     let mut plugins: Vec<Plugin> = Vec::new();
@@ -178,7 +161,7 @@ fn parse(text: &str, base: &Path) -> Result<Config> {
             .map_err(|failure| format!("[[plugin]] at line {number}: {failure}"))?;
         plugins.push(plugin);
     }
-    Ok(Config { jobs, plugins })
+    Ok(Config { plugins })
 }
 
 fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
@@ -294,7 +277,7 @@ fn parse_value(text: &str) -> Option<Value> {
             };
         }
     }
-    text.parse().ok().map(Value::Integer)
+    None
 }
 
 /// A basic TOML string at the start of `text`, and the text after it.

@@ -77,7 +77,7 @@ fn tool_pool() -> &'static AsyncComputeTaskPool {
 }
 
 /// Runs a slash command or starts a turn.
-pub fn on_submit(
+pub(crate) fn on_submit(
     submit: On<Submit>,
     mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
     slash: Query<(Entity, &SlashCommand)>,
@@ -131,13 +131,13 @@ pub fn on_submit(
 }
 
 /// Reports a finished turn, however its entity went away.
-pub fn on_turn_end(end: On<Remove<ActiveTurn>>, mut finished: MessageWriter<TurnFinished>) {
+pub(crate) fn on_turn_end(end: On<Remove<ActiveTurn>>, mut finished: MessageWriter<TurnFinished>) {
     finished.write(TurnFinished { agent: end.entity });
 }
 
 /// Stops a running turn. Every tool call of the last reply gets a result,
 /// real or "interrupted", and despawning the turn cancels its calls.
-pub fn on_interrupt(
+pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&mut Conversation, &ActiveTurn)>,
     turns: Query<&Calls>,
@@ -192,7 +192,7 @@ type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 /// saved conversation never ends in unanswered tool calls. Running calls
 /// are cancelled and waited for, within a second for all of them;
 /// every unfinished tool call is answered as stopped.
-pub fn stop_turns_on_exit(world: &mut World) {
+pub(crate) fn stop_turns_on_exit(world: &mut World) {
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
     take_running::<ToolResult>(world, &mut cancelling);
@@ -240,7 +240,7 @@ fn take_running<T: Send + Sync + 'static>(world: &mut World, cancelling: &mut Ca
 
 /// Chooses the agent's model: a known catalog model replaces the agent's
 /// [`ModelChoice`], and [`on_model_chosen`] connects it.
-pub fn on_set_model(
+pub(crate) fn on_set_model(
     set: On<SetModel>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     mut commands: Commands,
@@ -270,7 +270,7 @@ pub fn on_set_model(
 /// Connects an agent whose [`ModelChoice`] was inserted, by `/model` or by
 /// restoring a session, so requests never re-resolve the provider. A
 /// reasoning setting the new model does not take is reset.
-pub fn on_model_chosen(
+pub(crate) fn on_model_chosen(
     chosen: On<Insert<ModelChoice>>,
     mut agents: Query<(&ModelChoice, &mut Effort)>,
     mut effects: ResMut<Effects>,
@@ -316,7 +316,7 @@ pub fn on_model_chosen(
 }
 
 /// Sets the agent's reasoning setting after checking it against the model.
-pub fn on_set_effort(
+pub(crate) fn on_set_effort(
     set: On<SetEffort>,
     mut agents: Query<(Option<&Connection>, &mut Effort, Has<ActiveTurn>), With<Agent>>,
     mut notices: MessageWriter<Notice>,
@@ -366,7 +366,7 @@ fn refused_mid_turn(
 
 /// Sends the conversation of the turn's agent to its model. When that
 /// cannot be done the turn ends.
-pub fn on_call_model(
+pub(crate) fn on_call_model(
     call: On<CallModel>,
     turns: Query<&TurnOf>,
     mut agents: Query<(
@@ -511,7 +511,7 @@ async fn stream_reply(
 }
 
 /// Moves streamed text and reasoning into each model call's [`Partial`].
-pub fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
+pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
     for (call, mut partial) in &mut calls {
         for delta in call.feed.try_iter() {
             match delta {
@@ -526,7 +526,7 @@ pub fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 /// rule decide. A failed reply runs none of its tool calls and ends the
 /// turn; a reply without tool calls ends it too; otherwise its first tool
 /// call starts and the rest are [`Queued`] in order.
-pub fn on_model_done(
+pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     turns: Query<&TurnOf>,
@@ -600,7 +600,7 @@ pub fn on_model_done(
 /// Takes a finished tool call: starts the next queued call of the reply,
 /// or, once every call finished, appends their results in call order and
 /// calls the model again.
-pub fn on_tool_done(
+pub(crate) fn on_tool_done(
     done: On<Add<Done<ToolResult>>>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,

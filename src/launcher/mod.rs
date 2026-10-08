@@ -1,5 +1,6 @@
-//! The launcher's parts: the `RIG_HOME` layout, the `plugins.toml` plugin list,
-//! the generated agent project, its build, and the run loop.
+//! The launcher's parts: the locks on `RIG_HOME` (whose layout, shared with
+//! the agent, is [`rig::code_protocol`]), the `plugins.toml` plugin list, the
+//! generated agent project, its build, and the run loop.
 
 pub mod build;
 pub mod config;
@@ -16,8 +17,3 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The one Bevy version of the agent and of every plugin.
 pub const BEVY_VERSION: &str = "0.20.0-rc.2";
-
-/// The exit code with which the agent asks to be restarted on the staged
-/// build: `rig_code::host::launcher::RELOAD_EXIT_CODE`, which this std-only
-/// launcher cannot import.
-pub const RELOAD_EXIT_CODE: i32 = 75;

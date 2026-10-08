@@ -7,7 +7,6 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::panic::AssertUnwindSafe;
@@ -21,9 +20,10 @@ use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::catalog::ModelSpec;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome};
 use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply};
 use rig_core::streaming::{Item, StreamEvent};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::models;
 
@@ -42,13 +42,18 @@ pub struct Effects {
 impl Effects {
     /// A recorder whose ids continue after the highest id already in the
     /// effect log at `log`, if any, so ids keep increasing across restarts.
-    pub fn continuing(log: Option<&Path>) -> Self {
+    pub(crate) fn continuing(log: Option<&Path>) -> Self {
+        /// A record line's id; header lines have none.
+        #[derive(Deserialize)]
+        struct IdOnly {
+            id: u64,
+        }
         let last = log
             .and_then(|log| std::fs::read_to_string(log).ok())
             .unwrap_or_default()
             .lines()
-            .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-            .filter_map(|record| record.get("id").and_then(serde_json::Value::as_u64))
+            .filter_map(|line| serde_json::from_str::<IdOnly>(line).ok())
+            .map(|record| record.id)
             .max()
             .unwrap_or(0);
         Self {
@@ -62,10 +67,10 @@ impl Effects {
 
     /// The handler serving `spec`, built from the environment's credentials
     /// the first time any agent picks it, and described in the log header.
-    pub fn model_handler(
+    pub(crate) fn model_handler(
         &mut self,
         spec: &'static ModelSpec,
-    ) -> Result<ErasedHandler, Box<dyn Error + Send + Sync>> {
+    ) -> Result<ErasedHandler, ConnectError> {
         let reference = models::reference(spec);
         if let Some(handler) = self.models.get(&reference) {
             return Ok(handler.clone());
@@ -113,7 +118,7 @@ impl Effects {
     /// Run `work`, the task that drives the effect `id`. A panic in it, in
     /// the handler or in the reply's stream, becomes an internal error that
     /// is also recorded as the effect's outcome.
-    pub fn caught<T>(
+    pub(crate) fn caught<T>(
         &self,
         id: EffectId,
         work: impl Future<Output = Result<T, ErrorReport>> + Send + 'static,
@@ -139,7 +144,7 @@ impl Effects {
     /// Append every resolved effect to the JSON-lines log at `path`, after
     /// a header line when the described handlers grew since the last one.
     /// Effects still in flight stay for a later flush.
-    pub fn flush(&self, path: &Path) -> io::Result<()> {
+    pub(crate) fn flush(&self, path: &Path) -> io::Result<()> {
         let log = self.recorder.take();
         let handlers = log.header.handlers.len();
         let header_due = self.described.load(Ordering::Relaxed) != handlers;

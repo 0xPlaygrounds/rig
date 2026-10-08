@@ -1,6 +1,6 @@
 //! Work that runs off the main thread: a [`Running`] task on a call entity
 //! becomes a [`Done`] component when it finishes, through one generic
-//! [`poll_calls`] system, so observers of `Add<Done<T>>` carry the turn
+//! `poll_calls` system, so observers of `Add<Done<T>>` carry the turn
 //! on. Each finished task also calls [`Wake`], so a loop that sleeps while
 //! nothing happens runs a frame for it.
 
@@ -61,7 +61,7 @@ impl<T: Send + Sync + 'static> Running<T> {
 pub struct Done<T: Send + Sync + 'static>(pub T);
 
 /// Replaces each finished [`Running`] task with its [`Done`] output.
-pub fn poll_calls<T: Send + Sync + 'static>(
+pub(crate) fn poll_calls<T: Send + Sync + 'static>(
     mut calls: Query<(Entity, &mut Running<T>)>,
     mut commands: Commands,
 ) {

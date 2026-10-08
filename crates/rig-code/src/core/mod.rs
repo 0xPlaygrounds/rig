@@ -34,7 +34,7 @@ impl Plugin for AgentPlugin {
         let log = app
             .world()
             .get_resource::<SessionPaths>()
-            .map(SessionPaths::effects);
+            .map(|paths| paths.effects());
         let effects = Effects::continuing(log.as_deref());
         app.insert_resource(effects)
             .init_resource::<Wake>()
