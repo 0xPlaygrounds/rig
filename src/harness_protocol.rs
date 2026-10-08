@@ -139,6 +139,12 @@ impl Home {
         self.root.join("plugins.toml")
     }
 
+    /// `defaults.json`, the model and reasoning setting a new session
+    /// starts with: the last ones chosen.
+    pub fn defaults(&self) -> PathBuf {
+        self.root.join("defaults.json")
+    }
+
     /// `auth/<provider>.json`, the subscription credential `/login` keeps
     /// for `provider`, such as `chatgpt`.
     pub fn auth(&self, provider: &str) -> PathBuf {

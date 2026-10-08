@@ -4,6 +4,7 @@
 //! The host depends on the core; the core never depends on the host.
 
 pub mod context;
+pub mod defaults;
 pub mod headless;
 pub mod launcher;
 pub(crate) mod process;

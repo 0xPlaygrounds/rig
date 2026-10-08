@@ -106,6 +106,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(core::AgentPlugin)
             .add(core::journal::JournalPlugin)
             .add(host::context::ProjectContextPlugin)
+            .add(host::defaults::DefaultsPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
             .add(host::sessions::SessionsPlugin)
