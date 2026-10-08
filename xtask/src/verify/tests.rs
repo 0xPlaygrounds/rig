@@ -370,12 +370,21 @@ fn cache_warming_compiles_the_test_graphs_without_claiming_test_execution() {
         )
         .unwrap();
         let executed = all.iter().find(|c| c.id == source).unwrap();
-        let mut expected = executed.steps[0].clone();
-        let index = expected.args.iter().position(|a| a == "--retries").unwrap();
-        expected.args.drain(index..index + 2);
-        expected.args.push("--no-run".into());
+        let expected: Vec<_> = executed
+            .steps
+            .iter()
+            .map(|step| {
+                let mut step = step.clone();
+                if let Some(index) = step.args.iter().position(|a| a == "--retries") {
+                    step.args.drain(index..index + 2);
+                }
+                step.args.push("--no-run".into());
+                step
+            })
+            .collect();
+        assert!(executed.steps[0].args.contains(&"--retries".into()));
         assert_eq!(plan.len(), 1);
-        assert_eq!(plan[0].steps, vec![expected], "{alias}");
+        assert_eq!(plan[0].steps, expected, "{alias}");
         assert_eq!(plan[0].id, alias);
         assert!(!all.iter().any(|c| c.id == alias));
         assert!(!executed.steps[0].args.contains(&"--no-run".into()));
