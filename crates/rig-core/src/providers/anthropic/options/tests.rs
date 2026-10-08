@@ -57,30 +57,46 @@ fn refused(result: Result<Value, ProviderError>) -> &'static str {
 fn the_catalog_holds_each_models_thinking_facts() {
     let spec = |model: &str| super::super::completion::spec(model);
     let haiku = spec("claude-haiku-4-5-20251001").expect("listed");
-    assert!(haiku.reasoning.levels.is_empty() && haiku.reasoning.budget.is_some());
-    assert!(haiku.reasoning.can_disable && !haiku.compat.adaptive_thinking);
+    assert!(haiku.reasoning.levels() == Some(&[]) && haiku.reasoning.budget().is_some());
+    assert!(haiku.reasoning.can_disable() == Some(true) && !haiku.compat.adaptive_thinking);
     let opus_4_5 = spec("claude-opus-4-5").expect("listed");
-    assert_eq!(opus_4_5.reasoning.levels.len(), 3);
+    assert_eq!(opus_4_5.reasoning.levels().map(<[_]>::len), Some(3));
     assert!(!opus_4_5.compat.adaptive_thinking);
     let sonnet_4_6 = spec("claude-sonnet-4-6").expect("listed");
-    assert!(sonnet_4_6.compat.adaptive_thinking && sonnet_4_6.reasoning.budget.is_some());
-    assert!(!sonnet_4_6.reasoning.levels.contains(&Effort::XHigh));
+    assert!(sonnet_4_6.compat.adaptive_thinking && sonnet_4_6.reasoning.budget().is_some());
+    assert!(
+        !sonnet_4_6
+            .reasoning
+            .levels()
+            .unwrap_or_default()
+            .contains(&Effort::XHigh)
+    );
     let opus_4_8 = spec(CLAUDE_OPUS_4_8).expect("listed");
-    assert!(opus_4_8.reasoning.budget.is_none());
+    assert!(opus_4_8.reasoning.budget().is_none());
     assert_eq!(opus_4_8.sampling, Some(crate::catalog::Sampling::Never));
     let sonnet_5_5 = spec(CLAUDE_SONNET_5_5).expect("listed");
     assert_eq!(
         sonnet_5_5.compat.thinking_off.as_deref(),
         Some("between_tools")
     );
-    assert!(
-        !spec("claude-opus-5-5-20260101")
+    assert_eq!(
+        spec("claude-opus-5-5-20260101")
             .expect("a snapshot")
             .reasoning
-            .can_disable
+            .can_disable(),
+        Some(false)
     );
-    assert!(!spec(CLAUDE_FABLE_5).expect("listed").reasoning.can_disable);
-    assert!(spec(CLAUDE_OPUS_5).expect("listed").reasoning.can_disable);
+    assert_eq!(
+        spec(CLAUDE_FABLE_5)
+            .expect("listed")
+            .reasoning
+            .can_disable(),
+        Some(false)
+    );
+    assert_eq!(
+        spec(CLAUDE_OPUS_5).expect("listed").reasoning.can_disable(),
+        Some(true)
+    );
     assert!(spec("claude-opus-5-50").is_none());
     assert!(spec("custom-model").is_none());
 }

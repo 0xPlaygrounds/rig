@@ -27,7 +27,7 @@ fn claude_reasoning(
     let support = spec.map(|spec| &spec.reasoning);
     match reasoning {
         Reasoning::Off => match spec {
-            Some(spec) if !spec.reasoning.can_disable => {
+            Some(spec) if spec.reasoning.can_disable() == Some(false) => {
                 Mapping::unsupported("thinking cannot be disabled on this model")
             }
             _ => {
@@ -41,13 +41,20 @@ fn claude_reasoning(
             Mapping::unsupported("Claude has no `minimal` effort level")
         }
         Reasoning::Effort(effort) => match spec {
-            Some(spec) if spec.reasoning.levels.is_empty() => {
+            Some(spec) if spec.reasoning.levels().is_some_and(<[Effort]>::is_empty) => {
                 Mapping::unsupported("this model takes a thinking budget, not an effort level")
             }
-            Some(spec) if !spec.reasoning.levels.contains(effort) => Mapping::unsupported(format!(
-                "this model has no `{}` effort level",
-                effort.as_str()
-            )),
+            Some(spec)
+                if spec
+                    .reasoning
+                    .levels()
+                    .is_some_and(|levels| !levels.contains(effort)) =>
+            {
+                Mapping::unsupported(format!(
+                    "this model has no `{}` effort level",
+                    effort.as_str()
+                ))
+            }
             Some(spec) if !spec.compat.adaptive_thinking => {
                 Mapping::Send(json!({"output_config": {"effort": effort.as_str()}}))
             }
@@ -57,7 +64,8 @@ fn claude_reasoning(
             })),
         },
         Reasoning::Budget { tokens } => match support {
-            Some(support) if support.budget.is_none() => {
+            // Known levels with no budget: the catalog says it takes none.
+            Some(support) if support.levels().is_some() && support.budget().is_none() => {
                 Mapping::unsupported("this model takes an effort level, not a thinking budget")
             }
             _ if *tokens < 1024 => {

@@ -69,18 +69,18 @@ fn a_models_dev_row_becomes_a_spec() {
     assert!(claude.input.text && claude.input.image && claude.input.pdf);
     assert!(!claude.input.audio && !claude.input.video);
     assert!(claude.tools && !claude.structured_output && !claude.deprecated);
-    assert!(claude.reasoning.supported);
+    assert!(claude.reasoning.supported());
     assert_eq!(
-        claude.reasoning.levels,
-        [Effort::Low, Effort::Medium, Effort::High, Effort::Max]
+        claude.reasoning.levels(),
+        Some(&[Effort::Low, Effort::Medium, Effort::High, Effort::Max][..])
     );
     assert_eq!(
-        claude.reasoning.budget,
+        claude.reasoning.budget().cloned(),
         Some(1024..=64_000),
         "max: the output limit"
     );
-    assert!(!claude.reasoning.can_disable);
-    assert_eq!(claude.reasoning.default, Some(Effort::High));
+    assert_eq!(claude.reasoning.can_disable(), Some(false));
+    assert_eq!(claude.reasoning.default_effort(), Some(Effort::High));
     assert_eq!(
         claude.caching.retention,
         [
@@ -95,18 +95,26 @@ fn a_models_dev_row_becomes_a_spec() {
     assert_eq!((pricing.cache_read, pricing.cache_write), (Some(0.3), None));
 
     let gemini = spec(&catalog, "gcp.gemini", "gemini-x");
-    assert!(gemini.reasoning.can_disable, "a toggle turns it off");
-    assert_eq!(gemini.reasoning.budget, Some(0..=24_576));
+    assert_eq!(
+        gemini.reasoning.can_disable(),
+        Some(true),
+        "a toggle turns it off"
+    );
+    assert_eq!(gemini.reasoning.budget().cloned(), Some(0..=24_576));
     assert!(gemini.deprecated);
     assert_eq!(gemini.pricing, None);
 
     let qwen = spec(&catalog, "groq", "qwen-x");
     assert_eq!(
-        qwen.reasoning.levels,
-        [Effort::Low, Effort::High],
+        qwen.reasoning.levels(),
+        Some(&[Effort::Low, Effort::High][..]),
         "`default` dropped"
     );
-    assert!(qwen.reasoning.can_disable, "`none` turns it off");
+    assert_eq!(
+        qwen.reasoning.can_disable(),
+        Some(true),
+        "`none` turns it off"
+    );
 
     assert_eq!(
         catalog.iter().count(),
@@ -136,11 +144,15 @@ fn an_override_wins_field_by_field() {
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.max_output_tokens, Some(128_000));
     assert_eq!(claude.context_window, Some(200_000), "kept");
-    assert_eq!(claude.reasoning.budget, Some(1024..=128_000));
+    assert_eq!(claude.reasoning.budget().cloned(), Some(1024..=128_000));
     let pricing = claude.pricing.expect("priced");
     assert_eq!((pricing.input, pricing.output), (5.0, 15.0));
     assert!(claude.compat.binds_context && claude.compat.adaptive_thinking);
-    assert_eq!(claude.reasoning.default, Some(Effort::High), "kept");
+    assert_eq!(
+        claude.reasoning.default_effort(),
+        Some(Effort::High),
+        "kept"
+    );
     assert_eq!(
         spec(&catalog, "anthropic", "claude-y").display_name,
         "Claude Y"
@@ -369,6 +381,110 @@ fn validate_refuses_what_the_model_does_not_take() {
     assert_eq!(refused.reason, "the model does not reason");
 }
 
+/// A reasoning row that lists no options is unknown and refuses nothing;
+/// only the hand-entered `"reasoning_control": "none"` makes it refuse.
+#[test]
+fn a_reasoning_row_without_options_is_unknown_unless_it_says_none() {
+    let catalog = Catalog::from_json(
+        r#"{"openrouter": {"models": {
+            "listed-nothing": {"reasoning": true, "reasoning_options": []},
+            "absent": {"reasoning": true, "rig": {"reasoning_default": "medium"}},
+            "unread-kind": {"reasoning": true, "reasoning_options": [{"type": "levels"}]},
+            "rejects": {"reasoning": true, "reasoning_options": [], "rig": {"reasoning_control": "none"}}
+        }}}"#,
+    )
+    .expect("parses");
+    for model in ["listed-nothing", "absent", "unread-kind"] {
+        let unknown = spec(&catalog, "openrouter", model);
+        assert!(
+            matches!(unknown.reasoning, ReasoningSupport::Unknown { .. }),
+            "{model}: {:?}",
+            unknown.reasoning
+        );
+        assert!(unknown.reasoning.supported() && unknown.reasoning.levels().is_none());
+        assert_eq!(unknown.reasoning.can_disable(), None);
+        for reasoning in [
+            Reasoning::Off,
+            Reasoning::Effort(Effort::XHigh),
+            Reasoning::Budget { tokens: 1 },
+        ] {
+            assert!(unknown.validate(&options(reasoning)).is_ok(), "{model}");
+        }
+    }
+    assert_eq!(
+        spec(&catalog, "openrouter", "absent")
+            .reasoning
+            .default_effort(),
+        Some(Effort::Medium)
+    );
+
+    let rejects = spec(&catalog, "openrouter", "rejects");
+    assert_eq!(rejects.reasoning.levels(), Some(&[][..]));
+    assert_eq!(rejects.reasoning.can_disable(), Some(false));
+    for reasoning in [
+        Reasoning::Off,
+        Reasoning::Effort(Effort::High),
+        Reasoning::Budget { tokens: 2048 },
+    ] {
+        assert!(rejects.validate(&options(reasoning)).is_err());
+    }
+}
+
+/// The shipped rows keep the distinction: OpenAI's o1-mini rejects every
+/// reasoning control, a gateway row with no options refuses none.
+#[test]
+fn the_builtin_catalog_tells_unknown_from_none() {
+    let builtin = Catalog::builtin();
+    let o1_mini = spec(builtin, "openai", "o1-mini");
+    assert_eq!(o1_mini.reasoning.levels(), Some(&[][..]));
+    assert!(o1_mini.validate(&options(Effort::Low)).is_err());
+    let unknown = builtin
+        .iter()
+        .filter(|spec| matches!(spec.reasoning, ReasoningSupport::Unknown { .. }))
+        .collect::<Vec<_>>();
+    assert!(unknown.len() > 100, "{} unknown rows", unknown.len());
+    assert!(
+        unknown
+            .iter()
+            .all(|spec| spec.validate(&options(Effort::High)).is_ok())
+    );
+}
+
+/// A spec's row keeps its reasoning state when laid over a row that says
+/// otherwise.
+#[test]
+fn a_spec_row_carries_its_reasoning_state() {
+    let openai = ProviderId::catalog("openai").expect("a known vendor");
+    let states = [
+        ReasoningSupport::Unknown {
+            default: Some(Effort::Low),
+        },
+        ReasoningSupport::Listed {
+            levels: Vec::new(),
+            budget: None,
+            can_disable: false,
+            default: None,
+        },
+        ReasoningSupport::None,
+    ];
+    for state in states {
+        let row = ModelSpec::new(openai, "o1-mini")
+            .with_reasoning(state.clone())
+            .to_row_json();
+        let overrides = Catalog::from_json(
+            &serde_json::json!({"openai": {"models": {"o1-mini": row}}}).to_string(),
+        )
+        .expect("parses");
+        for base in [
+            Catalog::builtin().clone(),
+            Catalog::from_json(SAMPLE).expect("parses"),
+        ] {
+            let catalog = base.with_overrides(&overrides);
+            assert_eq!(spec(&catalog, "openai", "o1-mini").reasoning, state);
+        }
+    }
+}
+
 #[test]
 fn a_cache_retention_the_model_does_not_honour_is_refused() {
     let catalog =
@@ -396,7 +512,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
     assert_eq!(bare.display_name, "qwen3:4b");
     assert_eq!((bare.context_window, bare.max_output_tokens), (None, None));
     assert!(bare.input.text && !bare.input.image);
-    assert!(!bare.reasoning.supported && !bare.tools && !bare.deprecated);
+    assert!(!bare.reasoning.supported() && !bare.tools && !bare.deprecated);
     assert_eq!((bare.pricing, bare.sampling), (None, None));
     assert_eq!(bare.compat, Compat::default());
 
@@ -484,7 +600,7 @@ fn a_spec_row_overrides_what_the_spec_knows() {
         .with_overrides(&overrides);
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.display_name, "Claude X2");
-    assert!(!claude.reasoning.supported && !claude.tools && !claude.input.image);
+    assert!(!claude.reasoning.supported() && !claude.tools && !claude.input.image);
     assert!(!claude.compat.adaptive_thinking);
     assert_eq!(
         claude.context_window,

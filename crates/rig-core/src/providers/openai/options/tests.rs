@@ -104,8 +104,10 @@ fn a_vendor_prefixed_id_keeps_max_tokens() {
 }
 
 /// On xAI's Chat route the encoder refuses a reasoning option exactly when
-/// `ModelSpec::validate` does, for every xAI row: Grok 4.3 turns reasoning
-/// off with `reasoning_effort: "none"`.
+/// `ModelSpec::validate` does, for every xAI row whose reasoning the catalog
+/// knows: Grok 4.3 turns reasoning off with `reasoning_effort: "none"`. A
+/// row whose controls it does not know refuses nothing in `validate`, and
+/// the encoder sends every xAI effort level.
 #[test]
 fn xai_chat_reasoning_agrees_with_validate() {
     let reasonings = [
@@ -129,6 +131,13 @@ fn xai_chat_reasoning_agrees_with_validate() {
                 &chat(&crate::providers::xai::DIALECT, &spec.id),
                 options.clone(),
             );
+            if let ReasoningSupport::Unknown { .. } = spec.reasoning {
+                assert!(spec.validate(&options).is_ok(), "{}", spec.id);
+                if let Reasoning::Effort(Effort::Low | Effort::High | Effort::XHigh) = reasoning {
+                    assert!(encoded.is_ok(), "{}: {reasoning:?}", spec.id);
+                }
+                continue;
+            }
             assert_eq!(
                 refused(encoded).is_some(),
                 spec.validate(&options).is_err(),
@@ -148,10 +157,9 @@ fn xai_chat_reasoning_agrees_with_validate() {
 }
 
 /// On Mistral, Groq and Venice the encoder refuses a reasoning option
-/// exactly when `ModelSpec::validate` does, for every row of each that
-/// lists its reasoning options or does not reason. A row that marks a
-/// reasoning model but lists no option, and an id the catalog does not
-/// list, take every value.
+/// exactly when `ModelSpec::validate` does, for every row of each. A row
+/// whose reasoning controls the catalog does not know, and an id the
+/// catalog does not list, take every value.
 #[test]
 fn mistral_groq_and_venice_reasoning_agrees_with_validate() {
     let reasonings = [
@@ -169,16 +177,11 @@ fn mistral_groq_and_venice_reasoning_agrees_with_validate() {
             .iter()
             .filter(|spec| spec.provider.vendor() == dialect.name)
         {
-            let support = &spec.reasoning;
-            let unlisted_options = support.supported
-                && support.levels.is_empty()
-                && support.budget.is_none()
-                && !support.can_disable;
             for reasoning in &reasonings {
                 let options = GenerationOptions::default().reasoning(*reasoning);
                 assert_eq!(
                     refused(sent(&chat(dialect, &spec.id), options.clone())).is_some(),
-                    !unlisted_options && spec.validate(&options).is_err(),
+                    spec.validate(&options).is_err(),
                     "{}: {}: {reasoning:?}",
                     dialect.name,
                     spec.id

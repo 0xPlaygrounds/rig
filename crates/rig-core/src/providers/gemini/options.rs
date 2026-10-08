@@ -6,6 +6,7 @@
 
 use serde_json::json;
 
+use crate::catalog::ReasoningSupport;
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, Effort, Reasoning, ServiceTier};
 
@@ -47,7 +48,8 @@ enum Thinking {
 
 /// The thinking `model` takes, by its id past a `models/` prefix. An id
 /// the catalog does not list is looked up as the model it versions: without
-/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, its family
+/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, or when
+/// its entry does not say which thinking controls it takes, its family
 /// decides ([`named_thinking`]).
 fn thinking(model: &str) -> Thinking {
     let model = model.to_ascii_lowercase();
@@ -56,17 +58,28 @@ fn thinking(model: &str) -> Thinking {
     let Some(spec) = lookup(model).or_else(|| lookup(versioned_model(model)?)) else {
         return named_thinking(model);
     };
-    let support = &spec.reasoning;
-    match &support.budget {
-        _ if !support.supported => Thinking::None,
-        Some(range) if support.levels.is_empty() => Thinking::Budget {
+    match &spec.reasoning {
+        ReasoningSupport::Listed {
+            levels,
+            budget: Some(range),
+            can_disable,
+            ..
+        } if levels.is_empty() => Thinking::Budget {
             range: range.clone(),
-            can_disable: support.can_disable,
+            can_disable: *can_disable,
         },
-        _ => Thinking::Levels {
-            levels: &support.levels,
-            can_disable: support.can_disable,
+        ReasoningSupport::Listed {
+            levels,
+            can_disable,
+            ..
+        } => Thinking::Levels {
+            levels,
+            can_disable: *can_disable,
         },
+        // A thinking row that lists no controls: its family decides, as for
+        // a model the catalog does not list.
+        ReasoningSupport::Unknown { .. } => named_thinking(model),
+        _ => Thinking::None,
     }
 }
 

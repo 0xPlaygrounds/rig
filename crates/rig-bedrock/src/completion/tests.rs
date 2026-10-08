@@ -131,7 +131,7 @@ fn hosted_items_pair_and_calls_have_an_id_slot() {
 #[test]
 fn bedrock_models_take_their_facts_from_the_catalog() {
     let opus = super::spec("us.anthropic.claude-opus-5-5").expect("listed");
-    assert!(opus.compat.binds_context && !opus.reasoning.can_disable);
+    assert!(opus.compat.binds_context && opus.reasoning.can_disable() == Some(false));
     let arn =
         "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5";
     assert_eq!(
@@ -143,7 +143,7 @@ fn bedrock_models_take_their_facts_from_the_catalog() {
         "another model's Bedrock row"
     );
     let haiku = super::spec(ANTHROPIC_CLAUDE_HAIKU_4_5).expect("listed");
-    assert!(!haiku.compat.adaptive_thinking && haiku.reasoning.budget.is_some());
+    assert!(!haiku.compat.adaptive_thinking && haiku.reasoning.budget().is_some());
     assert!(
         super::spec("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3")
             .is_none()
@@ -162,7 +162,7 @@ fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
     ] {
         let spec = super::spec(model).unwrap_or_else(|| panic!("{model}: a Claude entry"));
         assert!(
-            spec.compat.binds_context && !spec.reasoning.can_disable,
+            spec.compat.binds_context && spec.reasoning.can_disable() == Some(false),
             "{model}"
         );
     }

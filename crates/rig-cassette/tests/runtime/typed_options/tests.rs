@@ -1380,7 +1380,11 @@ mod catalog_validation {
             .resolve("anthropic/claude-haiku-4-5")
             .expect("the reference resolves");
         assert_eq!(haiku.id, CLAUDE_HAIKU_4_5);
-        assert!(haiku.reasoning.levels.is_empty(), "{:?}", haiku.reasoning);
+        assert!(
+            haiku.reasoning.levels() == Some(&[]),
+            "{:?}",
+            haiku.reasoning
+        );
         let refused = haiku
             .validate(&reasoning(Effort::High))
             .expect_err("Claude Haiku 4.5 takes a budget, not an effort");

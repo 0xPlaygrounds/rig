@@ -85,6 +85,8 @@ struct Facts {
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_default: Option<Effort>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    reasoning_control: Option<ReasoningControl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cache: Option<Vec<CacheRetention>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sampling: Option<Sampling>,
@@ -106,18 +108,29 @@ struct Facts {
     chat_tools_need_reasoning_off: Option<bool>,
 }
 
+/// What a reasoning row that lists no `reasoning_options` means, entered by
+/// hand under `rig`. Without it such a row is unknown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum ReasoningControl {
+    /// The catalog does not know which controls the model takes.
+    Unknown,
+    /// The model's API rejects every reasoning control.
+    None,
+}
+
 impl Row {
     /// The row that builds `spec` again: every fact the spec knows, set
     /// explicitly, so laid over another row it replaces that row's value.
     pub(super) fn from_spec(spec: &ModelSpec) -> Row {
         let reasoning = &spec.reasoning;
-        let reasoning_options = reasoning.supported.then(|| {
+        let reasoning_options = reasoning.supported().then(|| {
             let mut options = Vec::new();
-            if !reasoning.levels.is_empty() {
+            let levels = reasoning.levels().unwrap_or_default();
+            if !levels.is_empty() {
                 options.push(ReasoningOption {
                     kind: "effort".to_owned(),
-                    values: reasoning
-                        .levels
+                    values: levels
                         .iter()
                         .map(|level| level.as_str().to_owned())
                         .collect(),
@@ -125,7 +138,7 @@ impl Row {
                     max: None,
                 });
             }
-            if reasoning.can_disable {
+            if reasoning.can_disable() == Some(true) {
                 options.push(ReasoningOption {
                     kind: "toggle".to_owned(),
                     values: Vec::new(),
@@ -133,7 +146,7 @@ impl Row {
                     max: None,
                 });
             }
-            if let Some(budget) = &reasoning.budget {
+            if let Some(budget) = reasoning.budget() {
                 options.push(ReasoningOption {
                     kind: "budget_tokens".to_owned(),
                     values: Vec::new(),
@@ -143,6 +156,15 @@ impl Row {
             }
             options
         });
+        // An empty option list reads back as unknown unless the row says
+        // the model takes no control.
+        let reasoning_control = match reasoning {
+            ReasoningSupport::Unknown { .. } => Some(ReasoningControl::Unknown),
+            _ if reasoning_options.as_ref().is_some_and(Vec::is_empty) => {
+                Some(ReasoningControl::None)
+            }
+            _ => None,
+        };
         let input = &spec.input;
         let modalities = [
             (input.text, "text"),
@@ -158,7 +180,7 @@ impl Row {
         let compat = &spec.compat;
         Row {
             name: Some(spec.display_name.clone()),
-            reasoning: Some(reasoning.supported),
+            reasoning: Some(reasoning.supported()),
             reasoning_options,
             tool_call: Some(spec.tools),
             structured_output: Some(spec.structured_output),
@@ -183,7 +205,8 @@ impl Row {
                 .to_owned(),
             ),
             rig: Facts {
-                reasoning_default: reasoning.default.filter(|_| reasoning.supported),
+                reasoning_default: reasoning.default_effort(),
+                reasoning_control,
                 cache: (!spec.caching.retention.is_empty()).then(|| spec.caching.retention.clone()),
                 sampling: spec.sampling,
                 reasoning_field: compat.reasoning_field.clone(),
@@ -276,9 +299,14 @@ impl Row {
     /// The reasoning `reasoning_options` describes: effort `values` but
     /// `none` (and any word that is no [`Effort`], such as Groq's
     /// `default`), a `none` value or a `toggle` entry for turning it off,
-    /// and `budget_tokens`, whose absent `max` is the output limit.
+    /// and `budget_tokens`, whose absent `max` is the output limit. A
+    /// reasoning row whose options list no control rig reads is unknown,
+    /// unless its `rig` facts say `"reasoning_control": "none"`.
     fn reasoning(&self, max_output_tokens: Option<u32>) -> ReasoningSupport {
-        let supported = self.reasoning.unwrap_or(false);
+        if !self.reasoning.unwrap_or(false) {
+            return ReasoningSupport::None;
+        }
+        let default = self.rig.reasoning_default;
         let options = self.reasoning_options.as_deref().unwrap_or_default();
         let mut levels = Vec::new();
         let mut can_disable = false;
@@ -303,12 +331,15 @@ impl Row {
                 _ => {}
             }
         }
-        ReasoningSupport {
-            supported,
-            levels: if supported { levels } else { Vec::new() },
-            budget: budget.filter(|_| supported),
-            can_disable: supported && can_disable,
-            default: self.rig.reasoning_default.filter(|_| supported),
+        let lists_nothing = levels.is_empty() && budget.is_none() && !can_disable;
+        if lists_nothing && self.rig.reasoning_control != Some(ReasoningControl::None) {
+            return ReasoningSupport::Unknown { default };
+        }
+        ReasoningSupport::Listed {
+            levels,
+            budget,
+            can_disable,
+            default,
         }
     }
 
@@ -326,6 +357,7 @@ impl Facts {
     fn overlay(self, over: Facts) -> Facts {
         Facts {
             reasoning_default: over.reasoning_default.or(self.reasoning_default),
+            reasoning_control: over.reasoning_control.or(self.reasoning_control),
             cache: over.cache.or(self.cache),
             sampling: over.sampling.or(self.sampling),
             reasoning_field: over.reasoning_field.or(self.reasoning_field),

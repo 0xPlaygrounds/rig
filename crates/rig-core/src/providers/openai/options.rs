@@ -30,7 +30,7 @@ pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
 /// name, a fine-tune).
 pub(crate) fn reasons(model: &str) -> Option<bool> {
     match openai_spec(model) {
-        Some(spec) => Some(spec.reasoning.supported),
+        Some(spec) => Some(spec.reasoning.supported()),
         None => named_reasons(model),
     }
 }
@@ -153,12 +153,12 @@ fn openai_top_p(model: &str, top_p: f64, reasoning: Option<&Reasoning>) -> Mappi
     let spec = openai_spec(model);
     let reasoning_off = match reasoning {
         Some(reasoning) => matches!(reasoning, Reasoning::Off),
-        None => {
-            spec.is_some_and(|spec| spec.reasoning.can_disable && spec.reasoning.default.is_none())
-        }
+        None => spec.is_some_and(|spec| {
+            spec.reasoning.can_disable() == Some(true) && spec.reasoning.default_effort().is_none()
+        }),
     };
     match spec {
-        Some(spec) if spec.reasoning.supported => match spec.sampling {
+        Some(spec) if spec.reasoning.supported() => match spec.sampling {
             Some(Sampling::Any) => send("top_p", top_p),
             Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
             Some(Sampling::ReasoningOff) => {
@@ -199,10 +199,14 @@ fn openai_verbosity(
 }
 
 /// Why OpenAI's `model` cannot turn reasoning off, or `None` when it can (or
-/// does not reason): its catalog entry's `can_disable`, else its id.
+/// does not reason): its catalog entry's `can_disable`, else (no entry, or
+/// one that does not say) its id.
 fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
     let can_disable = match spec {
-        Some(spec) => spec.reasoning.can_disable,
+        Some(spec) => spec
+            .reasoning
+            .can_disable()
+            .unwrap_or_else(|| named_can_disable(model)),
         None => reasons(model) != Some(true) || named_can_disable(model),
     };
     (!can_disable).then(|| Mapping::unsupported("this model cannot turn reasoning off"))
@@ -315,7 +319,7 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
     };
     let reasons = match effort.and_then(serde_json::Value::as_str) {
         Some(effort) => effort != "none",
-        None => spec.reasoning.default.is_some(),
+        None => spec.reasoning.default_effort().is_some(),
     };
     let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
     if reasons && spec.sampling == Some(Sampling::ReasoningOff) {
@@ -324,7 +328,7 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
             Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
         };
         for field in sampling.iter().copied().filter(|field| present(field)) {
-            let fix = match spec.reasoning.can_disable {
+            let fix = match spec.reasoning.can_disable() == Some(true) {
                 true => format!("remove `{field}` or set `{effort_field}` to `none`"),
                 false => format!("remove `{field}`"),
             };
@@ -344,7 +348,7 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
     if endpoint == Endpoint::ChatCompletions
         && carries_tools
         && spec.compat.chat_tools_need_reasoning_off
-        && !spec.reasoning.can_disable
+        && spec.reasoning.can_disable() == Some(false)
     {
         refusals.push(CatalogRefusal {
             field: "tools",
@@ -356,9 +360,10 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
 }
 
 /// Why the model `spec` describes cannot take effort `effort`, from its
-/// catalog levels, or `None` when it can or the catalog does not list it.
+/// catalog levels, or `None` when it can or the catalog does not list it or
+/// its levels.
 fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> {
-    let levels = &spec?.reasoning.levels;
+    let levels = spec?.reasoning.levels()?;
     (!levels.contains(effort)).then(|| {
         Mapping::unsupported(format!(
             "this model has no `{}` effort level",
@@ -368,21 +373,16 @@ fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> 
 }
 
 /// The reasoning a gateway dialect's catalog row gives for `model`, or
-/// `None` when the catalog does not list it or the row marks a reasoning
-/// model but lists none of its options, which says nothing a gateway's
-/// request can be checked against.
-fn listed_reasoning(dialect: &str, model: &str) -> Option<&'static ReasoningSupport> {
-    let reasoning = &crate::catalog::lookup(dialect, model)?.reasoning;
-    let lists_options =
-        !reasoning.levels.is_empty() || reasoning.budget.is_some() || reasoning.can_disable;
-    (!reasoning.supported || lists_options).then_some(reasoning)
+/// `None` when the catalog does not list it.
+fn catalog_reasoning(dialect: &str, model: &str) -> Option<&'static ReasoningSupport> {
+    Some(&crate::catalog::lookup(dialect, model)?.reasoning)
 }
 
 /// Why `dialect`'s `model` cannot take `reasoning`, as its catalog row says
-/// (the check [`ModelSpec::validate`] makes), or `None` when it can or
-/// [`listed_reasoning`] gives no row.
+/// (the check [`ModelSpec::validate`] makes), or `None` when it can, the
+/// catalog does not list it or does not know its reasoning controls.
 fn catalog_refusal(dialect: &str, model: &str, reasoning: &Reasoning) -> Option<Mapping> {
-    listed_reasoning(dialect, model)?
+    catalog_reasoning(dialect, model)?
         .refusal(reasoning)
         .map(Mapping::unsupported)
 }
@@ -635,11 +635,12 @@ pub(crate) fn openrouter_cache(model: &str, cache: &CacheRetention) -> Mapping {
 
 /// OpenRouter's `reasoning` object for `model`, shared by its two routes.
 /// `Off` is refused where the upstream's catalog row lists its reasoning
-/// options and none turns reasoning off ([`listed_reasoning`]).
+/// options and none turns reasoning off.
 pub(crate) fn openrouter_reasoning(model: &str, reasoning: &Reasoning) -> Mapping {
     let cannot_disable = || {
-        listed_reasoning(super::wire::OPENROUTER.name, model)
-            .is_some_and(|reasoning| reasoning.supported && !reasoning.can_disable)
+        catalog_reasoning(super::wire::OPENROUTER.name, model).is_some_and(|reasoning| {
+            reasoning.supported() && reasoning.can_disable() == Some(false)
+        })
     };
     match reasoning {
         Reasoning::Off if cannot_disable() => {
@@ -832,20 +833,23 @@ fn xai_spec(model: &str) -> Option<&'static ModelSpec> {
 /// the catalog does not list reasons unless its id says `non-reasoning`.
 fn grok_reasons(model: &str) -> bool {
     xai_spec(model).map_or(!model.contains("non-reasoning"), |spec| {
-        spec.reasoning.supported
+        spec.reasoning.supported()
     })
 }
 
 /// xAI's `reasoning` on either route: `effort` spells a level (`none` for
 /// `Off` on a model whose catalog entry can turn reasoning off) as the route
-/// takes it. The levels a model takes are its catalog entry's.
+/// takes it. The levels a model takes are its catalog entry's; one whose
+/// entry does not list them takes every xAI level.
 pub(crate) fn xai_reasoning(
     model: &str,
     reasoning: &Reasoning,
     effort: impl FnOnce(&str) -> Mapping,
 ) -> Mapping {
     match reasoning {
-        Reasoning::Off if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable) => {
+        Reasoning::Off
+            if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable() == Some(true)) =>
+        {
             effort("none")
         }
         Reasoning::Off if grok_reasons(model) => {

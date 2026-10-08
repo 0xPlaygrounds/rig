@@ -85,25 +85,58 @@ pub struct Modalities {
     pub pdf: bool,
 }
 
-/// The reasoning a model takes. A row that marks a model as reasoning but
-/// lists no reasoning options (193 rows of the built-in catalog, most of
-/// them gateway rows on HuggingFace, OpenRouter, Venice and Bedrock) has no
-/// levels, no budget and cannot disable, so [`ModelSpec::validate`] refuses
-/// every effort, every budget and `Off` on it; unlike [`CacheSupport`],
-/// empty here does not mean unknown.
+/// The reasoning a model takes, in one of three states: it does not reason,
+/// it reasons but the catalog does not say which controls it takes, or it
+/// reasons and takes exactly the listed controls.
+///
+/// A catalog row that marks a model as reasoning but lists no reasoning
+/// options (most of them gateway rows on HuggingFace, OpenRouter, Venice and
+/// Bedrock) is [`Self::Unknown`], which refuses nothing, as an empty
+/// [`CacheSupport`] does. Only a row whose hand-reviewed `rig` facts say
+/// `"reasoning_control": "none"` (a model whose API rejects every reasoning
+/// control) is [`Self::Listed`] with nothing listed.
+///
+/// ```
+/// use rig_core::catalog::ReasoningSupport;
+/// use rig_core::completion::{Effort, Reasoning};
+///
+/// let unknown = ReasoningSupport::Unknown { default: None };
+/// assert!(unknown.supported() && unknown.levels().is_none());
+/// assert_eq!(unknown.refusal(&Reasoning::Effort(Effort::High)), None);
+///
+/// let listed = ReasoningSupport::Listed {
+///     levels: vec![Effort::Low, Effort::High],
+///     budget: None,
+///     can_disable: false,
+///     default: Some(Effort::High),
+/// };
+/// assert!(listed.refusal(&Reasoning::Off).is_some());
+/// assert_eq!(listed.refusal(&Reasoning::Effort(Effort::Low)), None);
+/// ```
 #[non_exhaustive]
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReasoningSupport {
-    /// Whether the model reasons at all.
-    pub supported: bool,
-    /// The effort levels it takes, empty when it takes none.
-    pub levels: Vec<Effort>,
-    /// The reasoning-token budgets it takes, if it takes one.
-    pub budget: Option<RangeInclusive<u32>>,
-    /// Whether a request can turn its reasoning off.
-    pub can_disable: bool,
-    /// The effort it uses when a request names none, if documented.
-    pub default: Option<Effort>,
+#[serde(rename_all = "snake_case")]
+pub enum ReasoningSupport {
+    /// The model does not reason.
+    #[default]
+    None,
+    /// The model reasons; the catalog does not say which controls it takes.
+    /// Nothing is refused.
+    Unknown {
+        /// The effort it uses when a request names none, if documented.
+        default: Option<Effort>,
+    },
+    /// The model reasons and takes exactly these controls.
+    Listed {
+        /// The effort levels it takes, empty when it takes none.
+        levels: Vec<Effort>,
+        /// The reasoning-token budgets it takes, if it takes one.
+        budget: Option<RangeInclusive<u32>>,
+        /// Whether a request can turn its reasoning off.
+        can_disable: bool,
+        /// The effort it uses when a request names none, if documented.
+        default: Option<Effort>,
+    },
 }
 
 /// The cache retentions a model honours.
@@ -393,9 +426,9 @@ impl ModelSpec {
 
     /// Checks `options` against what the model takes: `reasoning` against
     /// [`Self::reasoning`] and `cache` against [`Self::caching`]. The error
-    /// names the option, the provider's vendor and this model. A reasoning
-    /// row with no reasoning options refuses every `reasoning` value (see
-    /// [`ReasoningSupport`]).
+    /// names the option, the provider's vendor and this model. A model whose
+    /// reasoning controls the catalog does not know
+    /// ([`ReasoningSupport::Unknown`]) refuses no `reasoning` value.
     pub fn validate(&self, options: &GenerationOptions) -> Result<(), UnsupportedOption> {
         let refuse = |option: &'static str, reason: String| {
             UnsupportedOption::new(option, self.provider.vendor(), &self.id, reason)
@@ -419,33 +452,89 @@ impl ModelSpec {
 }
 
 impl ReasoningSupport {
-    /// Why the model cannot take `reasoning`, or `None` when it can.
+    /// Whether the model reasons at all.
+    pub fn supported(&self) -> bool {
+        !matches!(self, Self::None)
+    }
+
+    /// The effort levels the model takes: empty when it takes none (or does
+    /// not reason), `None` when the catalog does not know, in which case a
+    /// picker shows every level.
+    pub fn levels(&self) -> Option<&[Effort]> {
+        match self {
+            Self::None => Some(&[]),
+            Self::Unknown { .. } => None,
+            Self::Listed { levels, .. } => Some(levels),
+        }
+    }
+
+    /// The reasoning-token budgets the model takes, if the catalog lists
+    /// one. `None` both when it takes no budget and when the catalog does
+    /// not know; [`Self::levels`] tells the two apart.
+    pub fn budget(&self) -> Option<&RangeInclusive<u32>> {
+        match self {
+            Self::Listed { budget, .. } => budget.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Whether a request can turn the model's reasoning off: `Some(false)`
+    /// for a model that does not reason, `None` when the catalog does not
+    /// know.
+    pub fn can_disable(&self) -> Option<bool> {
+        match self {
+            Self::None => Some(false),
+            Self::Unknown { .. } => None,
+            Self::Listed { can_disable, .. } => Some(*can_disable),
+        }
+    }
+
+    /// The effort the model uses when a request names none, if documented.
+    pub fn default_effort(&self) -> Option<Effort> {
+        match self {
+            Self::None => None,
+            Self::Unknown { default } | Self::Listed { default, .. } => *default,
+        }
+    }
+
+    /// Why the model cannot take `reasoning`, or `None` when it can or the
+    /// catalog does not know ([`Self::Unknown`]).
     pub fn refusal(&self, reasoning: &Reasoning) -> Option<String> {
+        let (levels, budget, can_disable) = match self {
+            Self::None => {
+                return (!matches!(reasoning, Reasoning::Off))
+                    .then(|| "the model does not reason".to_owned());
+            }
+            Self::Unknown { .. } => return None,
+            Self::Listed {
+                levels,
+                budget,
+                can_disable,
+                ..
+            } => (levels, budget, *can_disable),
+        };
         match reasoning {
-            Reasoning::Off if !self.supported || self.can_disable => None,
+            Reasoning::Off if can_disable => None,
             Reasoning::Off => Some("reasoning cannot be turned off on this model".to_owned()),
-            _ if !self.supported => Some("the model does not reason".to_owned()),
-            Reasoning::Effort(effort) if self.levels.contains(effort) => None,
-            Reasoning::Effort(_) if self.levels.is_empty() && self.budget.is_some() => {
+            Reasoning::Effort(effort) if levels.contains(effort) => None,
+            Reasoning::Effort(_) if levels.is_empty() && budget.is_some() => {
                 Some("the model takes a reasoning budget, not an effort level".to_owned())
             }
-            Reasoning::Effort(_) if self.levels.is_empty() => {
+            Reasoning::Effort(_) if levels.is_empty() => {
                 Some("the model takes no effort level".to_owned())
             }
             Reasoning::Effort(effort) => Some(format!(
                 "the model has no `{}` effort level",
                 effort.as_str()
             )),
-            Reasoning::Budget { tokens } => match &self.budget {
+            Reasoning::Budget { tokens } => match budget {
                 Some(range) if range.contains(tokens) => None,
                 Some(range) => Some(format!(
                     "the model takes a reasoning budget from {} to {} tokens",
                     range.start(),
                     range.end()
                 )),
-                None if self.levels.is_empty() => {
-                    Some("the model takes no reasoning budget".to_owned())
-                }
+                None if levels.is_empty() => Some("the model takes no reasoning budget".to_owned()),
                 None => Some("the model takes an effort level, not a reasoning budget".to_owned()),
             },
         }
