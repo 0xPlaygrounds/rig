@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::{generate, read_rows, render};
+use super::{generate, is_rfc3339_utc, read_rows, render, rfc3339};
 
 fn models_dev() -> serde_json::Value {
     json!({
@@ -254,4 +254,29 @@ fn rows_whose_canonical_id_is_an_openai_model_take_its_sampling_rule() {
         json!({"cache": ["short"], "sampling": "reasoning_off", "reasoning_default": "medium"}),
         "the row's own facts stay, and only the sampling rule joins them"
     );
+}
+
+/// Sync writes when its data was read in the one form rig-core reads, and
+/// `catalog check` accepts that form only.
+#[test]
+fn the_generation_time_is_written_as_an_rfc_3339_utc_time() {
+    use std::time::{Duration, UNIX_EPOCH};
+    for (seconds, written) in [
+        (0, "1970-01-01T00:00:00Z"),
+        (951_868_800, "2000-03-01T00:00:00Z"),
+        (1_709_208_000, "2024-02-29T12:00:00Z"),
+        (1_791_355_811, "2026-10-07T06:50:11Z"),
+    ] {
+        let time = UNIX_EPOCH + Duration::from_secs(seconds);
+        assert_eq!(rfc3339(time).as_deref(), Ok(written));
+        assert!(is_rfc3339_utc(written), "{written}");
+    }
+    for not_a_time in [
+        "",
+        "2026-10-07",
+        "2026-10-07T06:50:11+00:00",
+        "2026-1O-07T06:50:11Z",
+    ] {
+        assert!(!is_rfc3339_utc(not_a_time), "{not_a_time}");
+    }
 }

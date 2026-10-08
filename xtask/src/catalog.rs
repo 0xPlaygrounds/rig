@@ -19,7 +19,9 @@
 //!    the reviewed rows over them again.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
-//! command fetches <https://models.dev/api.json> with `curl`. `--check`
+//! command fetches <https://models.dev/api.json> with `curl`. Sync also
+//! writes when that data was read (the file's modification time, or now)
+//! to `crates/rig-core/src/catalog/generated_at`. `--check`
 //! writes nothing and fails when the checked-in file differs from what sync
 //! would write. `catalog check` runs offline: it fails when the checked-in
 //! file is not in the form sync writes, or a reviewed fact is missing from
@@ -27,6 +29,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value};
 
@@ -42,6 +45,10 @@ pub(crate) const USAGE: &str = "\
 
 /// The generated catalog, relative to the workspace root.
 const OUTPUT: &str = "crates/rig-core/src/catalog/models.json";
+/// When the models.dev data behind [`OUTPUT`] was read, relative to the
+/// workspace root: one RFC 3339 UTC time, which rig-core reads at compile
+/// time as `Catalog::generated_at`.
+const GENERATED_AT: &str = "crates/rig-core/src/catalog/generated_at";
 /// The reviewed facts, relative to the workspace root.
 const REVIEW: &str = "xtask/src/catalog/review.json";
 /// Where models.dev publishes its catalog.
@@ -171,9 +178,18 @@ pub(crate) fn run(root: &Path, args: Vec<String>) -> Result<(), String> {
 
 /// Regenerate the catalog, or with `check` compare it.
 fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
-    let source = match from {
-        Some(file) => std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?,
-        None => crate::support::output(root, "curl", &["-sSfL", MODELS_DEV])?,
+    // The data is as new as the file it was saved to, or as now when fetched.
+    let (source, read_at) = match from {
+        Some(file) => (
+            std::fs::read_to_string(file).map_err(|error| format!("{file}: {error}"))?,
+            std::fs::metadata(file)
+                .and_then(|metadata| metadata.modified())
+                .map_err(|error| format!("{file}: {error}"))?,
+        ),
+        None => (
+            crate::support::output(root, "curl", &["-sSfL", MODELS_DEV])?,
+            SystemTime::now(),
+        ),
     };
     let models_dev: Value =
         serde_json::from_str(&source).map_err(|error| format!("models.dev: {error}"))?;
@@ -190,7 +206,10 @@ fn sync(root: &Path, from: Option<&str>, check: bool) -> Result<(), String> {
             )),
         };
     }
-    std::fs::write(&path, written).map_err(|error| format!("{}: {error}", path.display()))
+    std::fs::write(&path, written).map_err(|error| format!("{}: {error}", path.display()))?;
+    let stamp = root.join(GENERATED_AT);
+    std::fs::write(&stamp, format!("{}\n", rfc3339(read_at)?))
+        .map_err(|error| format!("{}: {error}", stamp.display()))
 }
 
 /// Check the checked-in catalog offline.
@@ -205,6 +224,14 @@ fn check(root: &Path) -> Result<(), String> {
             "{OUTPUT} is not in the form `cargo xtask catalog sync` writes"
         ));
     }
+    let stamp = root.join(GENERATED_AT);
+    let stamp =
+        std::fs::read_to_string(&stamp).map_err(|error| format!("{}: {error}", stamp.display()))?;
+    if !is_rfc3339_utc(stamp.trim_end()) {
+        return Err(format!(
+            "{GENERATED_AT} is not a `YYYY-MM-DDTHH:MM:SSZ` time; run `cargo xtask catalog sync`"
+        ));
+    }
     let review = read_json(&root.join(REVIEW))?;
     let missing = missing_facts(&catalog, &review)?;
     match missing.is_empty() {
@@ -214,6 +241,48 @@ fn check(root: &Path) -> Result<(), String> {
             missing.join("\n")
         )),
     }
+}
+
+/// `time` as `YYYY-MM-DDTHH:MM:SSZ`.
+pub(crate) fn rfc3339(time: SystemTime) -> Result<String, String> {
+    let seconds = time
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "the models.dev data predates 1970".to_owned())?
+        .as_secs();
+    let (days, of_day) = (seconds / 86_400, seconds % 86_400);
+    // The civil date of a day count, by Howard Hinnant's algorithm, with
+    // the year starting in March so the leap day falls last.
+    let days = days + 719_468;
+    let era = days / 146_097;
+    let of_era = days - era * 146_097;
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted_month = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * shifted_month + 2) / 5 + 1;
+    let month = if shifted_month < 10 {
+        shifted_month + 3
+    } else {
+        shifted_month - 9
+    };
+    let year = year_of_era + era * 400 + u64::from(month <= 2);
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        of_day / 3600,
+        of_day % 3600 / 60,
+        of_day % 60
+    ))
+}
+
+/// Whether `text` is written `YYYY-MM-DDTHH:MM:SSZ`.
+pub(crate) fn is_rfc3339_utc(text: &str) -> bool {
+    text.len() == 20
+        && text.char_indices().all(|(at, char)| match at {
+            4 | 7 => char == '-',
+            10 => char == 'T',
+            13 | 16 => char == ':',
+            19 => char == 'Z',
+            _ => char.is_ascii_digit(),
+        })
 }
 
 fn read_json(path: &Path) -> Result<Value, String> {

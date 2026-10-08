@@ -1047,3 +1047,34 @@ fn check_refuses_what_the_catalog_refuses_and_the_rest_is_the_wires() {
         disagreements.join("\n")
     );
 }
+
+/// The sync's time reads as seconds since the epoch, across leap days and
+/// centuries, and nothing else reads.
+#[test]
+fn the_generation_time_is_an_rfc_3339_utc_time() {
+    for (time, seconds) in [
+        ("1970-01-01T00:00:00Z", 0),
+        ("2000-03-01T00:00:00Z", 951_868_800),
+        ("2024-02-29T12:00:00Z", 1_709_208_000),
+        ("2026-10-07T06:50:11Z", 1_791_355_811),
+    ] {
+        assert_eq!(unix_seconds(time), Some(seconds), "{time}");
+    }
+    for not_a_time in [
+        "",
+        "2026-10-07",
+        "2026-10-07T06:50:11",
+        "2026-10-07T06:50:11+00:00",
+        "2026-13-07T06:50:11Z",
+        "2026-10-07T24:00:00Z",
+        "2026-1O-07T06:50:11Z",
+    ] {
+        assert_eq!(unix_seconds(not_a_time), None, "{not_a_time}");
+    }
+    let generated = Catalog::generated_at();
+    assert!(
+        generated > UNIX_EPOCH + Duration::from_secs(1_767_225_600),
+        "after 2026"
+    );
+    assert!(generated <= SystemTime::now(), "not in the future");
+}
