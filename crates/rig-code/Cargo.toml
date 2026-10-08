@@ -1,0 +1,36 @@
+[package]
+name = "rig-code"
+version.workspace = true
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "A minimal coding agent built on Rig and Bevy, extended by Bevy plugins."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rig-code"
+path = "src/main.rs"
+required-features = ["tui"]
+
+[dependencies]
+rig-core = { workspace = true, features = ["reqwest"] }
+rig-cassette = { workspace = true }
+bevy_app = { workspace = true, features = ["std", "bevy_reflect", "reflect_auto_register"] }
+bevy_ecs = { workspace = true, features = ["std", "multi_threaded", "async_executor", "bevy_reflect"] }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true, features = ["std", "auto_register_inventory"] }
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+ratatui = { workspace = true, optional = true, features = ["crossterm"] }
+
+[features]
+default = ["tui"]
+# The terminal view. Everything outside `src/tui` compiles without it.
+tui = ["dep:ratatui"]
