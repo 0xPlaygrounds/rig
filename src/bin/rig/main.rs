@@ -9,6 +9,8 @@
 //! ```text
 //! RIG_HOME=/path/to/home rig -j 12
 //! ```
+//!
+//! Unix only: the agent draws on `/dev/tty`.
 
 mod build;
 mod dirs;
@@ -141,7 +143,7 @@ fn run() -> Result<u8, Failure> {
         Ok(build::Staged::Ready) => None,
         Ok(build::Staged::Rejected) => {
             eprintln!("rig: {REJECTED}; starting the last working build");
-            None
+            Some(format!("{REJECTED}; this is the last working build"))
         }
         Err(failure) if dirs.current_bin().exists() => {
             eprintln!("rig: {}", failure.message);

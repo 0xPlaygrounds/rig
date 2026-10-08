@@ -5,11 +5,13 @@
 //! entries one by one, so a component whose plugin is gone, or whose shape
 //! changed, is skipped with a notice instead of failing the load.
 //!
-//! The launcher handshake lives here too: `data/resume` names the running
-//! session from its start until a clean exit, so the next binary restores
-//! it after a reload or a crash, and the first finished frame writes
-//! `RIG_READY_FILE` so the launcher keeps this binary.
+//! `data/resume/<key of the working directory>` names the session running
+//! in that directory from its start until a clean exit, so the next binary
+//! started there restores it after a reload or a crash. A running session
+//! holds a lock on `sessions/<id>/lock`; a second agent in the same
+//! directory finds it held and starts a session of its own.
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use bevy::ecs::reflect::{AppTypeRegistry, ReflectComponent};
@@ -27,9 +29,6 @@ use super::registry::Notice;
 
 /// Version of the `state.json` layout.
 const FORMAT: u64 = 1;
-
-/// The exit code that asks the `rig` launcher to start the newest build.
-pub const RELOAD_EXIT_CODE: u8 = 75;
 
 /// The running session: its id and directory.
 #[derive(Resource, Clone)]
@@ -67,46 +66,122 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&temporary, path)
 }
 
-/// Starts the session: restores the one named by `data/resume` when that
-/// file exists, or starts a new one with one agent. Either way the session
-/// is named in `data/resume` until the app exits cleanly.
+/// Held while the session runs; released when the process ends.
+#[derive(Resource)]
+struct SessionLock(#[expect(dead_code, reason = "held for its lock")] File);
+
+/// Locks `session`, or `None` when another process holds it.
+fn lock(session: &Session) -> Option<File> {
+    let file = std::fs::create_dir_all(&session.dir).and_then(|()| {
+        File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(session.dir.join("lock"))
+    });
+    match file {
+        Ok(file) => match file.try_lock() {
+            Ok(()) => Some(file),
+            Err(std::fs::TryLockError::WouldBlock) => None,
+            Err(std::fs::TryLockError::Error(error)) => {
+                warn!("cannot lock session {}: {error}", session.id);
+                Some(file)
+            }
+        },
+        Err(error) => {
+            warn!("cannot lock session {}: {error}", session.id);
+            None
+        }
+    }
+}
+
+/// `data/resume/<key>`, where the key is a hash of the working directory,
+/// so a session comes back only in the directory it ran in.
+fn resume_marker(data: &Path) -> PathBuf {
+    let directory = std::env::current_dir().unwrap_or_default();
+    // FNV-1a: stable across builds and toolchains, unlike std's hasher.
+    let key = directory
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+    data.join("resume").join(format!("{key:016x}"))
+}
+
+/// Starts the session: restores the one the working directory's resume
+/// marker names when it has saved state and no other process runs it, or
+/// starts a new one with one agent. The marker names the session until the
+/// app exits cleanly, unless it names a session another process runs.
 pub(crate) fn start_session(world: &mut World) {
     let Some(data) = world.get_resource::<DataDir>().map(|data| data.0.clone()) else {
         return;
     };
-    let session = resume(world, &data).unwrap_or_else(|| {
+    let marker = resume_marker(&data);
+    let previous = std::fs::read_to_string(&marker)
+        .ok()
+        .map(|id| Session::open(&data, id.trim().to_owned()))
+        .filter(|session| !session.id.is_empty());
+    let mut taken = false;
+    let resumed = previous.and_then(|session| {
+        let Some(lock) = lock(&session) else {
+            taken = true;
+            return None;
+        };
+        resume(world, &session).then_some((session, Some(lock)))
+    });
+    let (session, lock) = resumed.unwrap_or_else(|| {
         let defaults = world.resource::<AgentDefaults>().clone();
         world.spawn((
             Agent,
             ModelChoice(defaults.model),
             EffortChoice(defaults.effort),
         ));
-        Session::mint(&data)
+        let session = Session::mint(&data);
+        let lock = lock(&session);
+        (session, lock)
     });
-    if let Err(error) = write_atomic(&data.join("resume"), session.id.as_bytes()) {
+    if !taken && let Err(error) = write_atomic(&marker, session.id.as_bytes()) {
         error!("cannot write the resume marker: {error}");
+    }
+    if let Some(lock) = lock {
+        world.insert_resource(SessionLock(lock));
     }
     world.insert_resource(session);
 }
 
-/// Restores the session `data/resume` names, if it has saved state.
-fn resume(world: &mut World, data: &Path) -> Option<Session> {
-    let id = std::fs::read_to_string(data.join("resume")).ok()?;
-    let session = Session::open(data, id.trim().to_owned());
+/// Restores `session` if it has saved state.
+fn resume(world: &mut World, session: &Session) -> bool {
     // A session that ended before its first save has nothing to restore.
-    if session.id.is_empty() || !session.dir.join("state.json").exists() {
-        return None;
+    if !session.dir.join("state.json").exists() {
+        return false;
     }
-    match restore(world, &session) {
-        Ok(()) => Some(session),
+    match restore(world, session) {
+        Ok(()) => true,
         Err(error) => {
             world.write_message(Notice::error(
                 None,
                 format!("cannot restore session {}: {error}", session.id),
             ));
-            None
+            false
         }
     }
+}
+
+/// One past the highest effect id in the session's `effects.jsonl`: a
+/// crash can leave effects there that `state.json` never counted.
+fn next_logged_effect(session: &Session) -> u64 {
+    #[derive(serde::Deserialize)]
+    struct Logged {
+        id: u64,
+    }
+    let text = std::fs::read_to_string(session.dir.join("effects.jsonl")).unwrap_or_default();
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<Logged>(line).ok())
+        .map(|logged| logged.id.saturating_add(1))
+        .max()
+        .unwrap_or(0)
 }
 
 fn restore(world: &mut World, session: &Session) -> Result<(), Box<dyn std::error::Error>> {
@@ -115,9 +190,13 @@ fn restore(world: &mut World, session: &Session) -> Result<(), Box<dyn std::erro
     if state.get("format").and_then(Value::as_u64) != Some(FORMAT) {
         return Err("unknown state format".into());
     }
-    if let Some(next) = state.get("next_effect_id").and_then(Value::as_u64) {
-        world.resource::<Effects>().resume_at(next);
-    }
+    let saved = state
+        .get("next_effect_id")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    world
+        .resource::<Effects>()
+        .resume_at(saved.max(next_logged_effect(session)));
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
     let agents = state
@@ -221,32 +300,21 @@ pub(crate) fn save_session(world: &mut World) {
     }
 }
 
-/// On a clean exit, forgets the resume marker, so the next start begins a
-/// new session. Any other exit (a reload, an error) keeps it.
-pub(crate) fn clear_resume(mut exits: MessageReader<AppExit>, data: Res<DataDir>) {
-    if exits.read().any(AppExit::is_success)
-        && let Err(error) = std::fs::remove_file(data.0.join("resume"))
-        && error.kind() != std::io::ErrorKind::NotFound
+/// On a clean exit, forgets the resume marker when it names this session,
+/// so the next start begins a new one. Any other exit (a reload, an error)
+/// keeps it.
+pub(crate) fn clear_resume(
+    mut exits: MessageReader<AppExit>,
+    data: Res<DataDir>,
+    session: Res<Session>,
+) {
+    if !exits.read().any(AppExit::is_success) {
+        return;
+    }
+    let marker = resume_marker(&data.0);
+    if std::fs::read_to_string(&marker).is_ok_and(|id| id.trim() == session.id)
+        && let Err(error) = std::fs::remove_file(&marker)
     {
         error!("cannot remove the resume marker: {error}");
-    }
-}
-
-/// After the first full frame, tells the launcher this binary works by
-/// creating `RIG_READY_FILE`.
-pub(crate) fn mark_ready() {
-    if let Some(ready) = std::env::var_os("RIG_READY_FILE").filter(|value| !value.is_empty())
-        && let Err(error) = write_atomic(Path::new(&ready), b"ready")
-    {
-        error!("cannot write the ready file: {error}");
-    }
-}
-
-/// Shows the launcher's `RIG_NOTICE`, such as a rollback, to the user.
-pub(crate) fn launcher_notice(mut notices: MessageWriter<Notice>) {
-    if let Ok(text) = std::env::var("RIG_NOTICE")
-        && !text.is_empty()
-    {
-        notices.write(Notice::error(None, text));
     }
 }

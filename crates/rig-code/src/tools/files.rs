@@ -98,7 +98,7 @@ impl PortableTool for Read {
         if out.is_empty() {
             out = format!("[the file has {total} lines]");
         }
-        Ok(ToolOutput::text(truncate(&out, false)))
+        Ok(ToolOutput::text(truncate(&out)))
     }
 }
 

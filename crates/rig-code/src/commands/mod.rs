@@ -5,13 +5,14 @@
 
 mod reload;
 
+use bevy::app::OnAppExitSystems;
 use bevy::prelude::*;
 use rig_core::catalog::Catalog;
 
 use crate::core::{
-    AgentAppExt, AgentDefaults, Choice, EffortChoice, ModelChoice, ModelEndpoint, Notice,
-    OfferChoices, RunCommand, SlashCommand, available_models, effort_label, effort_options,
-    model_reference,
+    AgentAppExt, AgentDefaults, AgentSet, AgentStatus, Choice, EffortChoice, ModelChoice,
+    ModelEndpoint, Notice, OfferChoices, RunCommand, SlashCommand, available_models, effort_label,
+    effort_options, model_reference,
 };
 
 pub(crate) use reload::BuildProgress;
@@ -36,7 +37,15 @@ impl Plugin for BuiltinCommands {
         )
         .add_command(SlashCommand::new("help", "list the commands"), help)
         .add_command(SlashCommand::new("quit", "exit"), quit)
-        .add_systems(Update, reload::poll_build);
+        // After input is routed, so a prompt sent in the frame the build
+        // finishes holds the restart back instead of being cut off by it.
+        .add_systems(Update, reload::poll_build.after(AgentSet::Route))
+        .add_systems(
+            Last,
+            reload::cancel_build_on_exit
+                .in_set(OnAppExitSystems)
+                .run_if(on_message::<AppExit>),
+        );
     }
 }
 
@@ -45,11 +54,16 @@ impl Plugin for BuiltinCommands {
 fn model(
     run: On<RunCommand>,
     mut commands: Commands,
+    statuses: Query<&AgentStatus>,
     mut defaults: ResMut<AgentDefaults>,
     mut offers: MessageWriter<OfferChoices>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = run.agent;
+    if statuses.get(agent).is_ok_and(AgentStatus::is_busy) {
+        notices.write(Notice::error(agent, mid_turn("/model")));
+        return;
+    }
     if run.args.is_empty() {
         let choices: Vec<Choice> = available_models()
             .map(|spec| {
@@ -99,16 +113,20 @@ fn model(
 fn effort(
     run: On<RunCommand>,
     mut commands: Commands,
-    agents: Query<Option<&ModelEndpoint>>,
+    agents: Query<(Option<&ModelEndpoint>, &AgentStatus)>,
     mut defaults: ResMut<AgentDefaults>,
     mut offers: MessageWriter<OfferChoices>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = run.agent;
-    let Ok(Some(endpoint)) = agents.get(agent) else {
+    let Ok((Some(endpoint), status)) = agents.get(agent) else {
         notices.write(Notice::error(agent, "pick a model with /model first"));
         return;
     };
+    if status.is_busy() {
+        notices.write(Notice::error(agent, mid_turn("/effort")));
+        return;
+    }
     let options = effort_options(endpoint.spec);
     if options.is_empty() {
         notices.write(Notice::info(
@@ -152,6 +170,12 @@ fn effort(
         agent,
         format!("effort: {}", effort_label(endpoint.spec, reasoning)),
     ));
+}
+
+/// Why `command` is refused while the agent's turn runs: the rest of the
+/// turn would go to a model its history was not written for.
+fn mid_turn(command: &str) -> String {
+    format!("{command} applies between turns; press Esc to stop the turn first")
 }
 
 /// Lists every registered command.

@@ -28,6 +28,19 @@ pub(crate) fn build(dirs: &Dirs, jobs: Option<u32>) -> Result<Staged, Failure> {
     let plugins = crate::plugins::load(&dirs.config)?;
     project::generate(dirs, &plugins, jobs)?;
     let project = dirs.project();
+    // Resolving and downloading is the slow part of a first build; cargo
+    // shows it here instead of during the silent checks below.
+    eprintln!("rig: resolving dependencies");
+    let fetched = cargo(&project)
+        .arg("fetch")
+        .stdin(Stdio::null())
+        .status()
+        .map_err(|error| Failure::io("cannot run cargo", error))?;
+    if !fetched.success() {
+        return Err(Failure::config(
+            "cannot resolve the agent project's dependencies; see cargo's message above",
+        ));
+    }
     check_bevy(&project)?;
     check_rig_code(&project)?;
     let built = dirs

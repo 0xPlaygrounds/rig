@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use bevy::tasks::futures_lite::future::yield_now;
 use rig_core::tool::{PortableTool, ToolExecutionError, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
@@ -17,6 +18,8 @@ const MAX_FILE: u64 = 2 * 1024 * 1024;
 const MAX_VISITED: usize = 100_000;
 /// Directories never searched: build output and dependencies.
 const SKIPPED: [&str; 2] = ["target", "node_modules"];
+/// Entries looked at between yields to the task pool.
+const YIELD_EVERY: usize = 64;
 
 /// Finds lines containing a text, or files by name.
 pub(super) struct Search;
@@ -76,6 +79,11 @@ impl PortableTool for Search {
                 break;
             }
             visited += 1;
+            if visited % YIELD_EVERY == 0 {
+                // Lets Esc or an exit cancel the walk, and other calls on
+                // the pool run, between entries.
+                yield_now().await;
+            }
             if path.is_dir() {
                 pending.extend(children(&path));
                 continue;
@@ -104,7 +112,7 @@ impl PortableTool for Search {
                 "\n[stopped after {MAX_VISITED} entries; search a smaller directory]"
             ));
         }
-        Ok(ToolOutput::text(truncate(&text, false)))
+        Ok(ToolOutput::text(truncate(&text)))
     }
 }
 

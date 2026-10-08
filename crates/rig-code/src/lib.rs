@@ -24,11 +24,13 @@ pub use bevy;
 
 mod commands;
 mod core;
+mod launcher;
 mod tools;
 mod tui;
 
 pub use crate::commands::BuiltinCommands;
 pub use crate::core::*;
+pub use crate::launcher::RELOAD_EXIT_CODE;
 pub use crate::tools::BuiltinTools;
 pub use crate::tui::TuiPlugin;
 
@@ -45,7 +47,7 @@ pub fn run(add_plugins: impl FnOnce(&mut App)) -> AppExit {
         return AppExit::error();
     };
     let mut app = crate::core::app::base_app(data);
-    app.add_plugins(crate::core::CorePlugin);
+    app.add_plugins((crate::core::CorePlugin, crate::launcher::LauncherPlugin));
     add_plugins(&mut app);
     app.run()
 }

@@ -126,6 +126,7 @@ fn run(
             }
         }
         if let Some(status) = exited {
+            remove(ready)?;
             return Ok((status, was_ready));
         }
         std::thread::sleep(POLL);

@@ -65,7 +65,9 @@ pub struct ModelChoice(pub Option<String>);
 #[type_path = "rig_code"]
 pub struct EffortChoice(pub Option<Reasoning>);
 
-/// The system prompt sent ahead of the conversation.
+/// The system prompt sent ahead of the conversation. The working directory
+/// is added when each request is built, so a saved prompt never names a
+/// directory the agent no longer runs in.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque)]
 #[reflect(Component, Default, Serialize, Deserialize)]
@@ -74,14 +76,11 @@ pub struct SystemPrompt(pub String);
 
 impl Default for SystemPrompt {
     fn default() -> Self {
-        let directory = std::env::current_dir()
-            .map(|path| path.display().to_string())
-            .unwrap_or_default();
-        Self(format!(
-            "You are a coding agent working in the directory {directory}. Use the tools to read, \
-             search, edit and write files and to run shell commands. Read a file before you edit \
-             it. Keep answers short."
-        ))
+        Self(
+            "You are a coding agent. Use the tools to read, search, edit and write files and to \
+             run shell commands. Read a file before you edit it. Keep answers short."
+                .to_owned(),
+        )
     }
 }
 

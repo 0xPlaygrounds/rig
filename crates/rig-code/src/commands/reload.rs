@@ -6,10 +6,11 @@ use std::process::{Command, ExitStatus};
 use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy::tasks::IoTaskPool;
 use bevy::tasks::futures::check_ready;
+use bevy::tasks::{IoTaskPool, block_on};
 
-use crate::core::{AgentStatus, CallTask, DataDir, Notice, RELOAD_EXIT_CODE, RunCommand, Work};
+use crate::core::{AgentStatus, CallTask, DataDir, Notice, RunCommand, Work};
+use crate::launcher::RELOAD_EXIT_CODE;
 use crate::tools::child::LoggedChild;
 
 /// How often the build log is read.
@@ -29,7 +30,8 @@ pub struct BuildProgress {
     pub done: usize,
     /// Units in the build.
     pub total: usize,
-    /// The crates being compiled, as cargo names them.
+    /// The crates being compiled, as cargo names them, or before cargo
+    /// counts units, the last line of output.
     pub current: String,
 }
 
@@ -158,6 +160,26 @@ pub(super) fn poll_build(
     }
 }
 
+/// On exit, cancels a build in flight and waits until its task has dropped
+/// the `rig build` process group, so nothing keeps compiling after the app
+/// is gone. Dropping the task alone would leave that to a pool thread that
+/// may never run again.
+pub(super) fn cancel_build_on_exit(world: &mut World) {
+    let builds: Vec<Entity> = world
+        .query_filtered::<Entity, With<Build>>()
+        .iter(world)
+        .collect();
+    for build in builds {
+        let Ok(mut build) = world.get_entity_mut(build) else {
+            continue;
+        };
+        if let Some(task) = build.take::<BuildTask>() {
+            block_on(task.0.cancel());
+        }
+        build.despawn();
+    }
+}
+
 /// Moves the finished segments of `output.partial` into lines, and cargo's
 /// `Building [...] N/M: names` segments into `progress`.
 fn read_segments(output: &mut BuildOutput, progress: &mut BuildProgress) {
@@ -183,6 +205,11 @@ fn read_segments(output: &mut BuildOutput, progress: &mut BuildProgress) {
                 };
             }
         } else if !text.trim_start().is_empty() {
+            if progress.total == 0 {
+                // Before cargo's counter appears (resolving, downloading),
+                // the latest line is the progress.
+                progress.current = text.trim().to_owned();
+            }
             output.lines.push(text.to_owned());
         }
     }

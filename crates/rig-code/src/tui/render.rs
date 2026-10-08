@@ -103,15 +103,12 @@ fn status_line(agent: &AgentViewItem, build: Option<&BuildProgress>) -> Line<'st
         Span::styled(state, Style::new().fg(color)),
     ];
     if let Some(build) = build {
-        let counter = if build.total == 0 {
-            "starting".to_owned()
-        } else {
-            format!("{}/{}: {}", build.done, build.total, build.current)
+        let progress = match (build.total, build.current.as_str()) {
+            (0, "") => " · build starting".to_owned(),
+            (0, line) => format!(" · build: {line}"),
+            (total, names) => format!(" · compiling {}/{total}: {names}", build.done),
         };
-        spans.push(Span::styled(
-            format!(" · compiling {counter}"),
-            Style::new().fg(Color::Magenta),
-        ));
+        spans.push(Span::styled(progress, Style::new().fg(Color::Magenta)));
     }
     Line::from(spans)
 }

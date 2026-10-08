@@ -80,6 +80,20 @@ pub(crate) fn load(config: &Path) -> Result<Vec<Plugin>, Failure> {
         }
         plugins.push(plugin);
     }
+    // Cargo reads the generated project from the cache, so a relative
+    // `path` is made absolute against the directory of plugins.toml.
+    for package in plugins
+        .iter_mut()
+        .filter_map(|plugin| plugin.package.as_mut())
+    {
+        for (key, value) in &mut package.source {
+            if key == "path" && Path::new(value.as_str()).is_relative() {
+                *value = crate::dirs::absolute(&config.join(&*value))?
+                    .display()
+                    .to_string();
+            }
+        }
+    }
     Ok(plugins)
 }
 

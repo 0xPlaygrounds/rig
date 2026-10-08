@@ -33,24 +33,16 @@ impl Plugin for BuiltinTools {
 /// Model-visible output is cut to this many bytes.
 const OUTPUT_LIMIT: usize = 50 * 1024;
 
-/// `text`, cut at a character boundary to its last `OUTPUT_LIMIT` bytes
-/// when `keep_end`, or its first ones otherwise, with a note saying so.
-fn truncate(text: &str, keep_end: bool) -> String {
+/// `text`, cut at a character boundary to its first `OUTPUT_LIMIT` bytes,
+/// with a note saying so.
+fn truncate(text: &str) -> String {
     if text.len() <= OUTPUT_LIMIT {
         return text.to_owned();
     }
-    let mut cut = if keep_end {
-        text.len() - OUTPUT_LIMIT
-    } else {
-        OUTPUT_LIMIT
-    };
+    let mut cut = OUTPUT_LIMIT;
     while !text.is_char_boundary(cut) {
-        cut += 1;
+        cut -= 1;
     }
-    let (head, tail) = text.split_at(cut);
-    if keep_end {
-        format!("[output cut to its last {OUTPUT_LIMIT} bytes]\n{tail}")
-    } else {
-        format!("{head}\n[output cut at {OUTPUT_LIMIT} bytes]")
-    }
+    let (head, _) = text.split_at(cut);
+    format!("{head}\n[output cut at {OUTPUT_LIMIT} bytes]")
 }

@@ -17,7 +17,7 @@ pub(crate) struct Dirs {
 
 impl Dirs {
     /// `$RIG_HOME/{config,cache,data}` when `RIG_HOME` is set; otherwise
-    /// the XDG directories (`%APPDATA%\rig\...` on Windows). Always
+    /// the XDG directories. Always
     /// absolute: cargo and the agent run in other directories.
     pub(crate) fn resolve() -> Result<Self, Failure> {
         let dirs = Self::relative()?;
@@ -31,11 +31,6 @@ impl Dirs {
     fn relative() -> Result<Self, Failure> {
         if let Some(home) = variable("RIG_HOME") {
             return Ok(Self::under(&home));
-        }
-        if cfg!(windows) {
-            let app_data =
-                variable("APPDATA").ok_or_else(|| Failure::config("set RIG_HOME or APPDATA"))?;
-            return Ok(Self::under(&app_data.join("rig")));
         }
         let home = variable("HOME");
         let base = |xdg: &str, fallback: &str| {
@@ -85,9 +80,12 @@ impl Dirs {
         self.data.join("bin").join(executable("candidate"))
     }
 
-    /// Created by the agent once it is up.
+    /// Created by the agent once it is up. One per launcher process, so
+    /// two launchers sharing a home do not read each other's.
     pub(crate) fn ready_file(&self) -> PathBuf {
-        self.data.join("run").join("ready")
+        self.data
+            .join("run")
+            .join(format!("ready-{}", std::process::id()))
     }
 
     /// Where the agent's stdout and stderr go.

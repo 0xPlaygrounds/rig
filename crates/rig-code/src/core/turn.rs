@@ -181,7 +181,7 @@ fn build_request(
     spec.validate(&options).map_err(|error| error.to_string())?;
     let mut request = CompletionRequest::new(last)
         .messages(history)
-        .preamble(prompt.0.clone())
+        .preamble(with_directory(&prompt.0))
         .tools(tools)
         .options(options);
     if let Some(rig_core::completion::Reasoning::Budget { tokens }) = effort.0 {
@@ -192,6 +192,18 @@ fn build_request(
         request = request.max_tokens(limit);
     }
     Ok(request)
+}
+
+/// The system prompt with the working directory the tools resolve paths
+/// against.
+fn with_directory(prompt: &str) -> String {
+    match std::env::current_dir() {
+        Ok(directory) => format!(
+            "{prompt}\n\nThe working directory is {}.",
+            directory.display()
+        ),
+        Err(_) => prompt.to_owned(),
+    }
 }
 
 /// Drains streamed text and finishes model calls: appends the reply and

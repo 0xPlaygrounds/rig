@@ -127,8 +127,18 @@ pub(crate) fn generate(dirs: &Dirs, plugins: &[Plugin], jobs: Option<u32>) -> Re
                     Failure::io(format!("cannot write {}", lock.display()), error)
                 })?;
             }
-            if let Ok(text) = std::fs::read_to_string(repository.join("rust-toolchain.toml")) {
-                write(&toolchain, &text, force)?;
+            // Only the channel: the checkout's extra targets and components
+            // are not needed to build the agent.
+            if let Some(channel) = std::fs::read_to_string(repository.join("rust-toolchain.toml"))
+                .ok()
+                .as_deref()
+                .and_then(toolchain_channel)
+            {
+                write(
+                    &toolchain,
+                    &format!("[toolchain]\nchannel = {}\n", quote(&channel)),
+                    force,
+                )?;
             }
         }
         None => {
@@ -259,6 +269,14 @@ fn remembered_jobs(config: &str) -> Option<u32> {
     config.lines().find_map(|line| {
         line.strip_prefix("jobs = ")
             .and_then(|jobs| jobs.trim().parse().ok())
+    })
+}
+
+/// The `channel = "..."` of a `rust-toolchain.toml`.
+fn toolchain_channel(text: &str) -> Option<String> {
+    text.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "channel").then(|| value.trim().trim_matches('"').to_owned())
     })
 }
 

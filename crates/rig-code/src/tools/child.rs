@@ -17,13 +17,19 @@ const POLL: Duration = Duration::from_millis(50);
 pub(crate) struct LoggedChild(Child);
 
 impl LoggedChild {
-    /// Starts `command` with no stdin and its output written to `log`.
+    /// Starts `command` with no stdin and its output written to `log`. The
+    /// launcher's variables for this agent are not passed on, so an agent
+    /// the command starts is not mistaken for this one.
     pub(crate) fn spawn(mut command: Command, log: &Path) -> std::io::Result<Self> {
         if let Some(parent) = log.parent() {
             std::fs::create_dir_all(parent)?;
         }
         let file = File::create(log)?;
         command
+            .env_remove("RIG_DATA_DIR")
+            .env_remove("RIG_READY_FILE")
+            .env_remove("RIG_NOTICE")
+            .env_remove("RIG_LAUNCHER")
             .stdin(Stdio::null())
             .stdout(file.try_clone()?)
             .stderr(file);

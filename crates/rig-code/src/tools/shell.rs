@@ -1,19 +1,25 @@
 //! Running shell commands.
 
-use std::path::PathBuf;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rig_core::tool::{PortableTool, ToolExecutionError, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
 
+use super::OUTPUT_LIMIT;
 use super::child::LoggedChild;
-use super::truncate;
 
 /// Seconds a command may run when the call sets no timeout.
 const DEFAULT_TIMEOUT: u64 = 120;
+/// A command that writes more output than this is killed, so a runaway
+/// command cannot fill the disk.
+const OUTPUT_CAP: u64 = 10 * 1024 * 1024;
+/// How often the output size is checked.
+const CHECK_EVERY: Duration = Duration::from_millis(200);
 
 /// Runs a command with the platform shell in the working directory.
 pub(super) struct Shell {
@@ -38,7 +44,9 @@ impl PortableTool for Shell {
             "Run a shell command in the working directory and return its combined stdout and \
              stderr (the last 50 KB). Stdin is empty and there is no terminal. Processes the \
              command leaves in the background are stopped when it ends. Times out after \
-             {DEFAULT_TIMEOUT} seconds unless `timeout_secs` says otherwise."
+             {DEFAULT_TIMEOUT} seconds unless `timeout_secs` says otherwise, and is killed once \
+             it writes over {} MB.",
+            OUTPUT_CAP / 1024 / 1024
         )
     }
 
@@ -73,15 +81,21 @@ impl PortableTool for Shell {
         let failed = |error: std::io::Error| ToolExecutionError::other(error.to_string());
         let timeout = args.timeout_secs.unwrap_or(DEFAULT_TIMEOUT);
         let mut child = LoggedChild::spawn(command, &log).map_err(failed)?;
-        let status = child
-            .wait(Duration::from_secs(timeout))
-            .await
-            .map_err(failed)?;
+        let started = Instant::now();
+        let mut flooded = false;
+        let status = loop {
+            if let Some(status) = child.wait(CHECK_EVERY).await.map_err(failed)? {
+                break Some(status);
+            }
+            flooded = log.metadata().is_ok_and(|meta| meta.len() > OUTPUT_CAP);
+            if flooded || started.elapsed() >= Duration::from_secs(timeout) {
+                break None;
+            }
+        };
         drop(child);
-        let output = std::fs::read(&log).unwrap_or_default();
+        let mut text = read_tail(&log).unwrap_or_default();
         // The log is only a buffer; a leftover file is harmless.
         let _ = std::fs::remove_file(&log);
-        let mut text = truncate(&String::from_utf8_lossy(&output), true);
         if text.is_empty() {
             text.push_str("[no output]");
         }
@@ -91,10 +105,39 @@ impl PortableTool for Shell {
                 text.push_str(&format!("\n[{status}]"));
                 Err(ToolExecutionError::other(text))
             }
+            None if flooded => {
+                text.push_str(&format!(
+                    "\n[killed after writing over {} MB of output]",
+                    OUTPUT_CAP / 1024 / 1024
+                ));
+                Err(ToolExecutionError::other(text))
+            }
             None => {
                 text.push_str(&format!("\n[killed after {timeout} seconds]"));
                 Err(ToolExecutionError::timeout(text))
             }
         }
     }
+}
+
+/// The last [`OUTPUT_LIMIT`] bytes of `log` as text, with a note when the
+/// output was longer. Only those bytes are read.
+fn read_tail(log: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(log)?;
+    let length = file.metadata()?.len();
+    let limit = OUTPUT_LIMIT as u64;
+    let cut = length > limit;
+    if cut {
+        file.seek(SeekFrom::Start(length - limit))?;
+    }
+    let mut bytes = Vec::new();
+    file.take(limit).read_to_end(&mut bytes)?;
+    let text = String::from_utf8_lossy(&bytes);
+    Ok(if cut {
+        // The cut may split a character; drop its remains.
+        let text = text.trim_start_matches(char::REPLACEMENT_CHARACTER);
+        format!("[output cut to its last {OUTPUT_LIMIT} bytes]\n{text}")
+    } else {
+        text.into_owned()
+    })
 }
