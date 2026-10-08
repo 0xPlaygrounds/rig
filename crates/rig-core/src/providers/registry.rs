@@ -489,16 +489,6 @@ impl ProviderId {
         }
     }
 
-    /// The first of [`Self::api_key_envs`], or `None` for a catalog-only
-    /// provider.
-    #[deprecated(
-        since = "0.45.0",
-        note = "use `api_key_envs`, which lists every variable tried"
-    )]
-    pub fn api_key_env(&self) -> Option<&'static str> {
-        self.api_key_envs().first().copied()
-    }
-
     /// Whether this selection needs a credential at all.
     ///
     /// A local `llama-server` authenticates optionally, so naming its

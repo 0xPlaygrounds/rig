@@ -795,8 +795,9 @@ impl ModelSpec {
   `from_overrides(json, base)` and the lenient `from_models_dev(json)`;
   `merge(self, ..)` became `with_overrides(&self, ..)`, and a fetched
   models.dev copy is laid on with `with_models_dev`, which keeps the keys a
-  built-in row pins under `rig.pinned` (`from_json`, `merge` and
-  `ProviderId::api_key_env` stay one release as deprecated aliases); `insert` and
+  built-in row pins under `rig.pinned` (`from_json`, `merge`,
+  `ProviderId::api_key_env` and `AutoCache::for_model` are removed, with no
+  aliases: use `api_key_envs` and `AutoCache::for_spec`); `insert` and
   `ModelSpec::new(..).with_*` build entries in code; `generated_at` says
   when the built-in data was read. `ReasoningSupport` is an enum (`None`,
   `Unknown`, `Listed`), so a reasoning row with no listed options refuses
@@ -2422,7 +2423,7 @@ reassembler as the HTTP stream and settles with what it finishes with.
 | knob | where | replaced by |
 |---|---|---|
 | reading citations from `Text.native` JSON | `crates/rig-cassette/tests/providers/cohere/cassette/native.rs:36-46` and every caller indexing `native` | `Text::citations()` (`native` keeps working) |
-| `AutoCache` hard-coded Gemini 3.8 Flash price ratios | `crates/rig-core/src/providers/gemini/caching.rs:126-160` | catalog `Pricing` through `AutoCache::for_model` for the cached-read ratio; the storage ratio stays a caller rate, since `Pricing` holds no storage price (section 11), and `AutoCache::default()` keeps both defaults |
+| `AutoCache` hard-coded Gemini 3.8 Flash price ratios | `crates/rig-core/src/providers/gemini/caching.rs:126-160` | catalog `Pricing` through `AutoCache::for_spec` (the connected model's spec, so overrides apply) for the cached-read ratio; the storage ratio stays a caller rate, since `Pricing` holds no storage price (section 11), and `AutoCache::default()` keeps both defaults |
 
 ## 13. Acceptance tests
 

@@ -312,19 +312,6 @@ impl Catalog {
         }
         Ok((catalog, skipped))
     }
-
-    /// [`Self::from_models_dev`] without the list of skipped entries.
-    ///
-    /// # Errors
-    ///
-    /// [`CatalogError::Json`] when the text is not a JSON object.
-    #[deprecated(
-        since = "0.45.0",
-        note = "use `from_models_dev` for models.dev data, or `from_overrides` for an override file"
-    )]
-    pub fn from_json(json: &str) -> Result<Catalog, CatalogError> {
-        Catalog::from_models_dev(json).map(|(catalog, _)| catalog)
-    }
 }
 
 fn invalid(message: &str) -> OverrideErrorKind {

@@ -48,20 +48,3 @@ fn a_policy_keeps_the_default_ratio_for_prices_it_cannot_divide() {
     let priced = AutoCache::priced(Some(&pricing(2.0, Some(0.5))));
     assert!((priced.cached_ratio - 0.25).abs() < 1e-9, "{priced:?}");
 }
-
-/// The deprecated `for_model` prices from the built-in catalog as
-/// `for_spec` does with the built-in spec.
-#[test]
-#[allow(deprecated)]
-fn the_deprecated_policy_for_a_model_reads_the_builtin_spec() {
-    let gemini = crate::providers::registry::ProviderId::catalog(super::super::PROVIDER_NAME)
-        .expect("a catalog vendor");
-    let spec = crate::catalog::Catalog::builtin()
-        .get_exact(gemini, "gemini-2.5-flash-image")
-        .expect("listed");
-    assert_eq!(
-        AutoCache::for_model("gemini-2.5-flash-image"),
-        AutoCache::for_spec(spec)
-    );
-    assert_eq!(AutoCache::for_model("x-rig-unlisted"), AutoCache::default());
-}

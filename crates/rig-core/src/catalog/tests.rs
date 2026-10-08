@@ -1248,23 +1248,3 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
         "not pinned, so updated"
     );
 }
-
-/// The aliases 0.44 shipped do what their replacements do.
-#[test]
-#[allow(deprecated)]
-fn the_deprecated_aliases_do_what_their_replacements_do() {
-    let read = Catalog::from_json(SAMPLE).expect("reads");
-    let (models_dev, _) = Catalog::from_models_dev(SAMPLE).expect("reads");
-    assert_eq!(
-        read.iter().collect::<Vec<_>>(),
-        models_dev.iter().collect::<Vec<_>>()
-    );
-
-    let base = Catalog::builtin().clone();
-    let merged = base.clone().merge(read.clone());
-    let laid = base.with_overrides(&read);
-    assert_eq!(
-        merged.iter().collect::<Vec<_>>(),
-        laid.iter().collect::<Vec<_>>()
-    );
-}
