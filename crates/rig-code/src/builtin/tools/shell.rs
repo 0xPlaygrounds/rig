@@ -174,9 +174,12 @@ fn run(
     leader.store(0, Ordering::SeqCst);
     // After a normal exit, something the command left running in the
     // background may still hold the output pipe open; then the rest of its
-    // group is killed. A process that left the group, such as one started
-    // with `setsid`, survives that and may hold the pipe for good, so
-    // reading stops a moment later with what came.
+    // group is killed. The leader was reaped by `try_wait`, so the group id
+    // stays its own only while a member lives; the kill follows the reap by
+    // at most `PIPE_GRACE`, and an empty group just makes it a no-op. A
+    // process that left the group, such as one started with `setsid`,
+    // survives the kill and may hold the pipe for good, so reading stops a
+    // moment later with what came.
     if !matches!(end, End::Exited(_)) || !tail.read_rest(&chunks) {
         kill_group(&mut child);
         tail.read_rest(&chunks);
@@ -215,6 +218,12 @@ enum End {
 
 /// Reads the command's output on a thread of its own, until every writer
 /// closed it or the receiver is gone, and sends it on in chunks.
+///
+/// When the call stops reading while a process that left the group still
+/// holds the pipe, this thread stays blocked in `read` until that process
+/// writes again or exits: one parked thread per such call. Its next write
+/// then finds the receiver gone, the thread drops the read end, and the
+/// process gets `EPIPE` or `SIGPIPE`, as after any closed pipe.
 fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
     let (sender, chunks) = sync_channel(16);
     thread::spawn(move || {

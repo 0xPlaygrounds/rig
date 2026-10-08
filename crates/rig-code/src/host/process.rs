@@ -34,8 +34,11 @@ pub fn kill_group(child: &mut Child) {
     kill_group_of(child.id());
 }
 
-/// Kills the process group led by the process `leader`, which must not have
-/// been reaped yet, so its id still names that group.
+/// Kills the process group led by the process `leader`. Its id names that
+/// group while the leader is not reaped or any member lives: the kernel
+/// does not reuse the id of a process group that exists. Once the leader
+/// was reaped and the group emptied, the id is free again, so callers kill
+/// within moments of the reap.
 #[cfg(unix)]
 pub fn kill_group_of(leader: u32) {
     if let Ok(group) = i32::try_from(leader) {

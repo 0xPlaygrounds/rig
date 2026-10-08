@@ -9,6 +9,7 @@ mod write;
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, Write as _};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_app::prelude::*;
@@ -74,9 +75,15 @@ fn read_text(path: &str) -> Result<String, ToolExecutionError> {
 /// Replaces the file at `path` with `contents` in one step: a temporary
 /// file beside it is written, synced and renamed over it, so a crash or a
 /// full disk never leaves it half written. A symlink's target is replaced
-/// and the link kept; an existing file keeps its permissions. Anything but
-/// a regular file is refused, because opening a FIFO or a device for
-/// writing can block forever.
+/// and the link kept, and a dangling link's target is created; an existing
+/// file keeps its permissions. A read-only file is refused, as is anything
+/// but a regular file, because opening a FIFO or a device for writing can
+/// block forever.
+///
+/// Unlike writing in place, the rename needs write access to the directory,
+/// gives the file a new inode (a hard link to the old one keeps the old
+/// text) and makes this process the file's owner. A crash between create
+/// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 fn write_atomic(path: &str, contents: &[u8]) -> Result<(), ToolExecutionError> {
     /// Tells apart the temporary files of calls running at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -86,11 +93,16 @@ fn write_atomic(path: &str, contents: &[u8]) -> Result<(), ToolExecutionError> {
                 "{path} is not a regular file"
             )));
         }
+        Ok(meta) if meta.permissions().readonly() => {
+            return Err(ToolExecutionError::invalid_args(format!(
+                "{path} is read-only; leave it unchanged or ask the user"
+            )));
+        }
         Ok(meta) => (
             fs::canonicalize(path).map_err(|error| io_error(path, error))?,
             Some(meta.permissions()),
         ),
-        Err(error) if error.kind() == ErrorKind::NotFound => (path.into(), None),
+        Err(error) if error.kind() == ErrorKind::NotFound => (link_target(path), None),
         Err(error) => return Err(io_error(path, error)),
     };
     let name = target
@@ -114,6 +126,21 @@ fn write_atomic(path: &str, contents: &[u8]) -> Result<(), ToolExecutionError> {
         fs::remove_file(&temporary).ok();
         io_error(path, error)
     })
+}
+
+/// Where a missing `path` is created: the end of its chain of dangling
+/// symlinks, or `path` itself when it is no link.
+fn link_target(path: &str) -> PathBuf {
+    /// Linux's own limit on links followed in one lookup.
+    const MAX_HOPS: usize = 40;
+    let mut target = PathBuf::from(path);
+    for _ in 0..MAX_HOPS {
+        let Ok(link) = fs::read_link(&target) else {
+            break;
+        };
+        target = target.parent().unwrap_or(Path::new("")).join(link);
+    }
+    target
 }
 
 /// A model-visible error for an I/O failure on `path`.
