@@ -215,7 +215,7 @@ opt-level = "s"
 version = "0.44.0"
 edition = "2024"
 # The toolchain in rust-toolchain.toml, the only one CI builds with.
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 
 [workspace.dependencies]
 # Every requirement below is a FLOOR, not a pin: `tokio = "1"` means `^1`,
@@ -261,6 +261,8 @@ candle-nn = "0.11"
 candle-transformers = "0.11"
 chrono = "0.4"
 convert_case = "0.11"
+crossbeam-channel = "0.5"
+crossterm = "0.29"
 dotenvy = "0.15"
 epub = "2"
 ethers = "2"
@@ -268,10 +270,13 @@ ethers = "2"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example. Bevy
-# 0.19.1: crates.io, never git; the tooling check verifies Bevy sources and
-# declared release floors. Default features off.
-bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
+# Bevy is pinned exactly: the workspace builds against one Bevy release, and
+# the coding agent's generated project and plugins must match it. Crates.io,
+# never git; the tooling check verifies Bevy sources and requirements. Default
+# features off. `bevy_tasks` is the runtime-agnostic executor of the
+# `agent_no_tokio` example; `bevy` is the rig-code agent's engine.
+bevy = { version = "=0.20.0-rc.2", default-features = false }
+bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -292,6 +297,7 @@ hyper-util = "0.1.2"
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
+libc = "0.2"
 lancedb = { version = "0.30", default-features = false }
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
@@ -314,7 +320,9 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
+ratatui = "0.30"
 redis = "1"
+regex = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"

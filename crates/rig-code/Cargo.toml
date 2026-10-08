@@ -1,0 +1,26 @@
+[package]
+name = "rig-code"
+version.workspace = true
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = "MIT"
+description = "A minimal coding agent on Rig and Bevy: agents are entities, tools and slash commands come from Bevy plugins."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true, features = ["reqwest"] }
+rig-cassette = { workspace = true }
+bevy = { workspace = true, features = ["std", "multi_threaded", "async_executor", "bevy_log"] }
+crossbeam-channel = { workspace = true }
+crossterm = { workspace = true }
+futures-timer = { workspace = true }
+ratatui = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
