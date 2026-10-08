@@ -229,9 +229,28 @@ fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         lines.extend(diff);
         return lines;
     }
-    match (view.argument("old_text"), view.argument("new_text")) {
-        (Some(old), Some(new)) => lines.extend(diff::diff_lines(old, new, DIFF_LINES)),
-        _ => lines.extend(view.result_lines(RESULT_LINES)),
+    // Before the result: each replacement asked for, on its own.
+    let edits = view
+        .call
+        .function
+        .arguments
+        .get("edits")
+        .and_then(|edits| edits.as_array());
+    let mut asked = Vec::new();
+    for edit in edits.into_iter().flatten() {
+        let text = |key: &str| edit.get(key).and_then(|text| text.as_str());
+        if let (Some(old), Some(new)) = (text("old_text"), text("new_text")) {
+            if !asked.is_empty() {
+                asked.push(Line::from("    ⋯").dark_gray());
+            }
+            asked.extend(diff::diff_lines(old, new, DIFF_LINES));
+        }
+    }
+    if asked.is_empty() {
+        lines.extend(view.result_lines(RESULT_LINES));
+    } else {
+        asked.truncate(DIFF_LINES);
+        lines.extend(asked);
     }
     lines
 }
