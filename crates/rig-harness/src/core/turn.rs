@@ -9,7 +9,6 @@
 //! the model's window is [`compaction`]-ed before the next call. Despawning
 //! the turn ends it, and announces its [`TurnEnded`] on the agent.
 
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
@@ -19,7 +18,7 @@ use bevy_log::tracing::Instrument;
 use bevy_log::{info, info_span};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use futures::{FutureExt, StreamExt};
 use rig_core::catalog::ModelSpec;
@@ -48,7 +47,7 @@ use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
-    self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
+    self, Backoff, KEEP_RECENT_OUTPUTS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
 use super::tools::{
     Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, failed, outcome_of,
@@ -228,18 +227,12 @@ fn stopped_results<'a>(
 /// `poll` must not stall the exit, so whatever misses this is dropped.
 const EXIT_GRACE: Duration = Duration::from_secs(1);
 
-/// How long exit waits for running tool calls that may change something to
-/// finish: one cut short can leave a change half made.
-const UNSAFE_GRACE: Duration = Duration::from_secs(5);
-
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
-/// idle agents) leaves the running turns for the restart to carry on, as after a crash: model
-/// calls are cancelled, read-only tool calls are cancelled and run again
-/// after the restart, and the other tool calls get [`UNSAFE_GRACE`] to
-/// finish. The results that came in are logged; the restart answers the
-/// rest.
+/// idle agents) leaves the running turns for the restart to carry on, as
+/// after a crash: every running call is cancelled, the tool results that
+/// came in are logged, and the restart answers the rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
     let log = world.get_resource::<SessionLog>().cloned();
     if let Some(log) = &log {
@@ -248,45 +241,7 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
     take_running::<Summary>(world, &mut cancelling);
-    let tool_calls: Vec<(Entity, bool)> = world
-        .query_filtered::<(Entity, &ToolCallRun), With<Running<ToolResult>>>()
-        .iter(world)
-        .map(|(call, run)| (call, run.footprint == Footprint::ReadOnly))
-        .collect();
-    let mut finishing: Vec<(Entity, Task<ToolResult>)> = Vec::new();
-    for (call, reads) in tool_calls {
-        let Some(Running(task)) = world
-            .get_entity_mut(call)
-            .ok()
-            .and_then(|mut call| call.take::<Running<ToolResult>>())
-        else {
-            continue;
-        };
-        if reads {
-            cancelling.push(Box::pin(async move {
-                task.cancel().await;
-            }));
-        } else {
-            finishing.push((call, task));
-        }
-    }
-    let mut finished: HashMap<Entity, ToolResult> = HashMap::new();
-    let deadline = Instant::now() + UNSAFE_GRACE;
-    while !finishing.is_empty() && Instant::now() < deadline {
-        finishing.retain_mut(|(call, task)| match check_ready(task) {
-            Some(result) => {
-                finished.insert(*call, result);
-                false
-            }
-            None => true,
-        });
-        std::thread::sleep(Duration::from_millis(2));
-    }
-    for (_, task) in finishing {
-        cancelling.push(Box::pin(async move {
-            task.cancel().await;
-        }));
-    }
+    take_running::<ToolResult>(world, &mut cancelling);
     let deadline = Instant::now() + EXIT_GRACE;
     while !cancelling.is_empty() && Instant::now() < deadline {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
@@ -297,19 +252,16 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         .iter(world)
         .map(|(turn, of)| (turn, of.0))
         .collect();
-    let mut runs = world.query::<(Entity, Option<&ToolOutput>)>();
+    let mut outputs = world.query::<&ToolOutput>();
     for (turn, agent) in turns {
         let calls: Vec<Entity> = world
             .get::<Calls>(turn)
             .map(|calls| calls.iter().collect())
             .unwrap_or_default();
-        let results: Vec<ToolResult> = runs
+        let results: Vec<ToolResult> = outputs
             .iter_many(world, calls)
             .flatten()
-            .filter_map(|(call, done)| match done {
-                Some(ToolOutput(result)) => Some(result.clone()),
-                None => finished.get(&call).cloned(),
-            })
+            .map(|ToolOutput(result)| result.clone())
             .collect();
         if !results.is_empty()
             && let (Some(log), Some(id)) = (&log, world.get::<AgentId>(agent).cloned())
@@ -880,8 +832,8 @@ struct Failed<'a> {
 
 impl Failed<'_> {
     /// Carries the turn on after the failure, as [`recovery::verdict`]
-    /// decides: waits and calls again; clears old tool outputs and calls
-    /// again; or ends the turn, keeping the user's message when nothing is
+    /// decides: waits and calls again; clears old tool outputs, or else
+    /// compacts, and calls again; or ends the turn, keeping the user's message when nothing is
     /// wrong with it.
     fn recover(
         &self,
@@ -917,12 +869,14 @@ impl Failed<'_> {
                 ));
             }
             Verdict::Overflow => {
-                // Clear first, which costs no call; then summarize; then
-                // clear every old output.
-                if recovery.clearings == 0 && self.clear(recovery, conversation, compacted, notices)
-                {
-                    commands.trigger(CallModel { entity: self.turn });
-                    return;
+                // Clear old outputs first, which costs no call; then
+                // summarize; then fail.
+                if !recovery.cleared {
+                    recovery.cleared = true;
+                    if self.clear(conversation, compacted, notices) {
+                        commands.trigger(CallModel { entity: self.turn });
+                        return;
+                    }
                 }
                 if recovery.compactions < MAX_COMPACTIONS
                     && self.spec.is_some_and(|spec| {
@@ -940,12 +894,6 @@ impl Failed<'_> {
                         reason: CompactReason::Overflow,
                     });
                     return;
-                }
-                while recovery.clearings < MAX_CLEARINGS {
-                    if self.clear(recovery, conversation, compacted, notices) {
-                        commands.trigger(CallModel { entity: self.turn });
-                        return;
-                    }
                 }
                 let why = format!(
                     "The conversation does not fit the model's context window, even \
@@ -972,19 +920,18 @@ impl Failed<'_> {
         }
     }
 
-    /// Clears the tool outputs of the live conversation once, keeping fewer
-    /// with each clearing of the turn. Whether it cleared any.
+    /// Clears the older tool outputs of the live conversation. Whether it
+    /// cleared any.
     fn clear(
         &self,
-        recovery: &mut Recovery,
         conversation: &mut Conversation,
         compacted: &Compacted,
         notices: &mut MessageWriter<Notice>,
     ) -> bool {
-        let keep = recovery::keep_for(recovery.clearings);
-        recovery.clearings += 1;
-        let cleared =
-            recovery::clear_tool_outputs(compacted.live_mut(conversation.messages_mut()), keep);
+        let cleared = recovery::clear_tool_outputs(
+            compacted.live_mut(conversation.messages_mut()),
+            KEEP_RECENT_OUTPUTS,
+        );
         if cleared.results > 0 {
             notices.write(Notice::info(
                 self.agent,

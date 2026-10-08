@@ -27,9 +27,7 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30);
 /// waiting longer in front of the user is worse than saying so (pi's
 /// `DEFAULT_MAX_RETRY_DELAY_MS`).
 const MAX_ASKED_WAIT: Duration = Duration::from_secs(60);
-/// Times one turn clears tool outputs to fit the context window.
-pub const MAX_CLEARINGS: u32 = 2;
-/// Tokens of the newest tool outputs a first clearing keeps (opencode's
+/// Tokens of the newest tool outputs a clearing keeps (opencode's
 /// `PRUNE_PROTECT`).
 pub const KEEP_RECENT_OUTPUTS: u64 = 40_000;
 /// What a cleared tool output says instead.
@@ -37,14 +35,14 @@ pub const CLEARED: &str =
     "[output cleared to fit the context window; run the tool again if needed]";
 
 /// A turn's recovery so far: the failed calls retried since its last
-/// reply, how often it cleared tool outputs and how often it compacted
-/// the conversation.
+/// reply, whether it cleared tool outputs after an overflow, and how often
+/// it compacted the conversation.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Recovery {
     /// Retries since the last reply.
     pub retries: u32,
-    /// Clearings in this turn.
-    pub clearings: u32,
+    /// Whether an overflow cleared tool outputs in this turn.
+    pub cleared: bool,
     /// Compactions in this turn.
     pub compactions: u32,
 }
@@ -267,16 +265,6 @@ pub fn clear_tool_outputs(messages: &mut [Message], keep: u64) -> Cleared {
         }
     }
     cleared
-}
-
-/// How much a recovering turn keeps on its `clearing`th clearing: the
-/// newest outputs at first, nothing after.
-pub fn keep_for(clearing: u32) -> u64 {
-    if clearing == 0 {
-        KEEP_RECENT_OUTPUTS
-    } else {
-        0
-    }
 }
 
 fn is_cleared(content: &[ToolResultContent]) -> bool {
