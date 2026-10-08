@@ -61,7 +61,8 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Option<Reasoning>)> {
         && let Some(range) = &support.budget
     {
         options.extend(BUDGETS.iter().map(|(name, tokens)| {
-            let tokens = (*tokens).clamp(*range.start(), *range.end());
+            // Not `clamp`, which panics on an inverted range.
+            let tokens = (*tokens).max(*range.start()).min(*range.end());
             (
                 format!("{name} ({tokens} tokens)"),
                 Some(Reasoning::Budget { tokens }),

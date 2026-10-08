@@ -1,7 +1,8 @@
 //! The terminal view. It reads agent components, keeps its own view state
 //! in [`TuiView`], and sends the same requests any other view would. It
 //! never owns the app's loop: input is a zero-timeout poll in `PreUpdate`
-//! and drawing is a system in `PostUpdate`.
+//! and drawing is a system in `PostUpdate` that runs when something drawn
+//! changed.
 
 mod input;
 mod render;
@@ -26,7 +27,15 @@ impl Plugin for TuiPlugin {
                 Update,
                 (view::focus_agent, view::open_pickers, view::collect_notices),
             )
-            .add_systems(PostUpdate, render::render.run_if(resource_exists::<Tui>))
+            .add_systems(
+                PostUpdate,
+                render::render.run_if(
+                    resource_exists::<Tui>.and_then(
+                        render::needs_redraw
+                            .or_eager(resource_changed_or_removed::<crate::reload::ReloadBuild>),
+                    ),
+                ),
+            )
             .add_systems(Last, terminal::keep_screen_on_reload);
     }
 }

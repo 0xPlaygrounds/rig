@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::blocking::blocking;
+use super::clip;
 
 const MAX_MATCHES: usize = 200;
 const MAX_LINE: usize = 300;
@@ -84,7 +85,7 @@ fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
                     "{}:{}: {}",
                     show(entry.path()),
                     number + 1,
-                    clip(line)
+                    clip(line, MAX_LINE)
                 ));
                 if found.len() == MAX_MATCHES {
                     found.push(format!("[stopped at {MAX_MATCHES} matches]"));
@@ -104,11 +105,4 @@ fn show(path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
-}
-
-fn clip(line: &str) -> &str {
-    match line.char_indices().nth(MAX_LINE) {
-        Some((end, _)) => line.get(..end).unwrap_or(line),
-        None => line,
-    }
 }

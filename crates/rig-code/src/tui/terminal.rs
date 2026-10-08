@@ -8,6 +8,7 @@ use std::path::Path;
 use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
+use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 use crossterm::execute;
 use crossterm::terminal::{
     Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -40,7 +41,12 @@ impl Tui {
         let mut backend = CrosstermBackend::new(screen);
         // After a reload the alternate screen still shows the previous
         // build's frame.
-        execute!(backend, EnterAlternateScreen, Clear(ClearType::All))?;
+        execute!(
+            backend,
+            EnterAlternateScreen,
+            EnableBracketedPaste,
+            Clear(ClearType::All)
+        )?;
         let mut terminal = Terminal::new(backend)?;
         terminal.hide_cursor()?;
         Ok(Self {
@@ -52,6 +58,7 @@ impl Tui {
 
 impl Drop for Tui {
     fn drop(&mut self) {
+        execute!(self.terminal.backend_mut(), DisableBracketedPaste).ok();
         if !self.keep_screen {
             execute!(self.terminal.backend_mut(), LeaveAlternateScreen).ok();
         }

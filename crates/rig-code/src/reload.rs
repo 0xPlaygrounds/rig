@@ -4,6 +4,7 @@
 //! progress. Also the launcher's side of startup: its notice and the ready
 //! file that tells it this build started.
 
+use std::collections::VecDeque;
 use std::io::{BufReader, Read};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
@@ -12,12 +13,13 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use crate::builtin::tools::kill_group;
 use crate::core::agent::{Agent, AgentStatus, Notice};
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::turn::AgentSystems;
+use crate::process::kill_group;
 
-/// The exit code that asks the launcher to restart on the staged build.
+/// The exit code that asks the launcher to restart on the staged build. The
+/// launcher (`src/launcher/mod.rs` in the `rig` crate) repeats it.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
 /// Lines of a failed build shown, from its first error.
@@ -54,7 +56,7 @@ impl Plugin for ReloadPlugin {
 pub struct ReloadBuild {
     child: Child,
     lines: Receiver<String>,
-    output: Vec<String>,
+    output: VecDeque<String>,
     progress: Option<(u32, u32)>,
     exited: bool,
     ready: bool,
@@ -93,7 +95,7 @@ impl ReloadBuild {
         Ok(Self {
             child,
             lines,
-            output: Vec::new(),
+            output: VecDeque::new(),
             progress: None,
             exited: false,
             ready: false,
@@ -105,9 +107,9 @@ impl ReloadBuild {
             self.progress = Some(progress);
         } else if !line.trim().is_empty() {
             if self.output.len() == KEPT_LINES {
-                self.output.remove(0);
+                self.output.pop_front();
             }
-            self.output.push(line);
+            self.output.push_back(line);
         }
     }
 

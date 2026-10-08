@@ -30,14 +30,30 @@ pub fn read_input(
             .and_then(|agent| agents.get(agent).ok())
             .is_some_and(|status| *status == AgentStatus::Idle);
     while event::poll(Duration::ZERO)? {
-        if let Event::Key(key) = event::read()?
-            && key.kind != KeyEventKind::Release
-        {
-            if view.picker.is_some() {
-                picker_key(key, &mut view, &mut commands);
-            } else {
-                input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);
+        match event::read()? {
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                if view.picker.is_some() {
+                    picker_key(key, &mut view, &mut commands);
+                } else {
+                    input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);
+                }
             }
+            // A paste arrives whole, newlines included, so it is not sent
+            // line by line.
+            Event::Paste(text) => {
+                let text = text.replace("\r\n", "\n").replace('\r', "\n");
+                match view.picker.as_mut() {
+                    Some(picker) => {
+                        picker
+                            .filter
+                            .push_str(text.lines().next().unwrap_or_default());
+                        picker.selected = 0;
+                    }
+                    None => view.input.push_str(&text),
+                }
+            }
+            Event::Resize(..) => view.set_changed(),
+            _ => {}
         }
     }
     Ok(())

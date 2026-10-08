@@ -17,6 +17,7 @@
 
 pub mod builtin;
 pub mod core;
+mod process;
 pub mod reload;
 #[cfg(feature = "tui")]
 pub mod tui;

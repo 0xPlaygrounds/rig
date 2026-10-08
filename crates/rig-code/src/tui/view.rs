@@ -136,6 +136,9 @@ pub fn open_pickers(
 
 /// Keeps the latest notices for display.
 pub fn collect_notices(mut notices: MessageReader<Notice>, mut view: ResMut<TuiView>) {
+    if notices.is_empty() {
+        return;
+    }
     for notice in notices.read() {
         view.notices.push(notice.0.clone());
     }

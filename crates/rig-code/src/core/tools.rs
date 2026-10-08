@@ -8,11 +8,14 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use futures::FutureExt;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_core::effect::{
+    EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
+};
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName, ToolResult, ToolResultContent};
-use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::Tool;
+use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_core::tool::{Tool, ToolErrorKind};
 
 use super::effects::Effects;
 
@@ -50,7 +53,36 @@ impl AppToolsExt for App {
     }
 }
 
-/// Run `call` through `handler` on the one dispatch path. A missing tool,
+/// Answers a call to a tool that is not registered, or that the agent may
+/// not use, with an error, so that call is recorded like any other.
+struct Unavailable(String);
+
+impl Serve for Unavailable {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: tool_key(&self.0),
+            family: FamilyDescriptor::Tool {
+                name: self.0.clone(),
+                description: "A tool the model called that is not available.".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Err(ErrorReport::new(
+            ErrorKind::Tool(ToolErrorKind::NotFound),
+            format!("no tool named `{}` is available", self.0),
+        )))
+    }
+}
+
+/// Run `call` through `handler` on the one dispatch path; with no handler,
+/// the call is answered as unavailable on that same path. A missing tool,
 /// bad arguments, a failure or a panic all become an error result for the
 /// model.
 pub fn run_tool_call(
@@ -61,26 +93,21 @@ pub fn run_tool_call(
     call: ToolCall,
 ) -> impl Future<Output = ToolResult> + Send + 'static {
     let name = call.function.name.as_str().to_owned();
-    let dispatched = handler.map(|handler| {
-        let args = call.function.invalid_arguments.clone().unwrap_or_else(|| {
+    let handler = handler.unwrap_or_else(|| ErasedHandler::new(Unavailable(name.clone())));
+    let args =
+        call.function.invalid_arguments.clone().unwrap_or_else(|| {
             serde_json::Value::Object(call.function.arguments.clone()).to_string()
         });
-        effects
-            .dispatch(
-                scope,
-                Some(parent),
-                handler,
-                EffectKind::ToolCall {
-                    name: name.clone(),
-                    args,
-                },
-            )
-            .1
-    });
+    let (_, reply) = effects.dispatch(
+        scope,
+        Some(parent),
+        handler,
+        EffectKind::ToolCall {
+            name: name.clone(),
+            args,
+        },
+    );
     async move {
-        let Some(reply) = dispatched else {
-            return failed(&call, format!("no tool named `{name}` is available"));
-        };
         let outcome = AssertUnwindSafe(async { reply.await.into_outcome().await })
             .catch_unwind()
             .await;

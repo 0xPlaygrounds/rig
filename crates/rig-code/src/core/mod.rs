@@ -58,7 +58,16 @@ impl Plugin for AgentPlugin {
                     turn::settle_tools.in_set(AgentSystems::Settle),
                 ),
             )
-            .add_systems(Last, log_notices)
+            .add_systems(
+                Last,
+                (
+                    log_notices,
+                    turn::stop_turns_on_exit
+                        .in_set(bevy_app::OnAppExitSystems)
+                        .before(session::save_session)
+                        .run_if(on_message::<AppExit>),
+                ),
+            )
             .add_observer(turn::on_submit)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_set_model)

@@ -148,6 +148,20 @@ pub fn on_interrupt(
     finished.write(TurnFinished { agent });
 }
 
+/// On exit, stops every running turn before the session is saved, so the
+/// saved conversation never ends in unanswered tool calls and the stopped
+/// calls are recorded as cancelled before the last effect flush.
+pub fn stop_turns_on_exit(
+    agents: Query<(Entity, &AgentStatus), With<Agent>>,
+    mut commands: Commands,
+) {
+    for (entity, status) in &agents {
+        if *status != AgentStatus::Idle {
+            commands.trigger(Interrupt { entity });
+        }
+    }
+}
+
 /// Sets the agent's model, resetting a reasoning setting the new model does
 /// not take.
 pub fn on_set_model(

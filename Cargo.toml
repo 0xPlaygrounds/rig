@@ -284,11 +284,11 @@ bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["st
 bevy_log = "=0.20.0-rc.2"
 bevy_reflect = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "auto_register_inventory"] }
 bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
-crossbeam-channel = "0.5"
+crossbeam-channel = "0.5.15"
 crossterm = "0.29"
 futures-timer = "3"
 glob = "0.3"
-ignore = "0.4"
+ignore = "0.4.25"
 google-cloud-auth = "1"
 google-cloud-gax = "1"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
@@ -307,7 +307,7 @@ hyper-util = "0.1.2"
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
-libc = "0.2"
+libc = "0.2.186"
 lancedb = { version = "0.30", default-features = false }
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
@@ -330,9 +330,9 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
-ratatui = "0.30"
+ratatui = "0.30.2"
 redis = "1"
-regex = "1"
+regex = "1.12.3"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
