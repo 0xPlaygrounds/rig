@@ -85,7 +85,7 @@ every *decision* the agent loop makes — turn budget, tool-call validation and
 recovery, history threading, structured-output policy, usage accounting, final
 response — and performs no IO. A *driver* calls `next_step()` and acts on the
 returned `AgentRunStep` (`CallModel`, `CallTools`, `Done`), feeding results
-back with `model_response` / `tool_results`. This crate's futures loop is the
+back with `model_response` / `answer`. This crate's futures loop is the
 driver; the machine itself never awaits (a source-level guard keeps it so) and
 is `Serialize + Deserialize`, so a run can be suspended between steps and
 resumed in another process. Resume with the same Rig version; the envelope format

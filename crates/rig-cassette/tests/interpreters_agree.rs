@@ -19,7 +19,7 @@ use proptest::prelude::*;
 use rig_agent::bus::{ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
-    run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
+    run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::EffectLogRecorder;
@@ -28,7 +28,6 @@ use rig_core::{
     completion::CompletionRequest,
     effect::{EffectKind, EffectRecord},
     test_utils::{MockCompletionModel, MockTurn},
-    transcript,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -254,27 +253,25 @@ async fn hand_interpreter(case: &Case) -> (String, Trace) {
                 .expect("a model turn");
             }
             AgentRunStep::CallTools { calls } => {
-                let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
-                    let name = call.tool_call.function.name.clone();
+                    let PendingToolCall::Execute(call) = call else {
+                        panic!("an executable call: {call:?}");
+                    };
+                    let name = call.name().clone();
                     let answer = tokio::time::timeout(
                         Duration::from_secs(5),
                         tool_handle(&name).call(
                             name.clone(),
-                            call.tool_call.function.arguments_value().to_string(),
+                            call.arguments().to_string(),
                             ToolContext::new(),
                         ),
                     )
                     .await
                     .expect("never hangs")
                     .expect("the tool");
-                    results.push(transcript::tool_result_output(
-                        call.tool_call.id.clone(),
-                        name,
-                        &answer.result,
-                    ));
+                    run.answer(call.answer(answer.result))
+                        .expect("tool results");
                 }
-                run.tool_results(results).expect("tool results");
             }
             AgentRunStep::Done(response) => break response.output(),
         }

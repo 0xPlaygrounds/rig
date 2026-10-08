@@ -4,7 +4,7 @@
 //! (fail, repair, skip, retry-budget exhaustion, bad repair).
 
 use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
+use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome, PendingToolCall};
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::providers::gemini;
@@ -96,13 +96,12 @@ async fn repair_renames_tool_call_and_executes_it() {
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
-                            assert_eq!(
-                                call.tool_call.function.name, "sum",
+                            assert!(
+                                matches!(call, PendingToolCall::Execute(call) if call.name() == "sum"),
                                 "the repaired name must reach the driver"
                             );
-                            assert!(call.preresolved_result.is_none());
                         }
-                        run.tool_results(execute_pending_calls(&calls))
+                        run.answer_all(execute_pending_calls(calls))
                             .expect("tool results should be accepted");
                     }
                     AgentRunStep::Done(response) => break response,

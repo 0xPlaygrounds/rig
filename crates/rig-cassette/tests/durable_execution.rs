@@ -21,7 +21,7 @@ use std::{
 use rig_agent::bus::{Bus, ModelHandle, ToolHandle};
 use rig_agent::{
     AgentBuilder,
-    run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
+    run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
 use rig_cassette::effect_log::{
@@ -31,7 +31,6 @@ use rig_core::{
     completion::CompletionRequest,
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
-    transcript,
 };
 use serde::Deserialize;
 use serde_json::json;
@@ -240,24 +239,22 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
                     // persists between steps.
                     break;
                 }
-                let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
-                    let name = call.tool_call.function.name.clone();
+                    let PendingToolCall::Execute(call) = call else {
+                        panic!("an executable call: {call:?}");
+                    };
+                    let name = call.name().clone();
                     let answer = within(tool.call(
                         name.clone(),
-                        call.tool_call.function.arguments_value().to_string(),
+                        call.arguments().to_string(),
                         ToolContext::new(),
                     ))
                     .await
                     .expect("the tool");
                     tools_done += 1;
-                    results.push(transcript::tool_result_output(
-                        call.tool_call.id.clone(),
-                        name,
-                        &answer.result,
-                    ));
+                    run.answer(call.answer(answer.result))
+                        .expect("tool results");
                 }
-                run.tool_results(results).expect("tool results");
             }
             AgentRunStep::Done(_) => panic!("the run finished before the interruption"),
         }

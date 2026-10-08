@@ -22,7 +22,7 @@ use crate::{
         AgentBuilder, AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction,
         DispatchEvent, HookContext, InvalidToolCallAction, MultiTurnStreamItem, NoToolConfig,
         OutcomeAction, OutcomeEvent, OutputMode, RequestPatch,
-        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy},
+        run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy},
     },
     completion::{AssistantContent, Message, PromptError, ToolDefinition},
     tool::{Tool, ToolContext},
@@ -1549,7 +1549,7 @@ where
     let repaired_call = calls.first();
     if calls.len() != 1
         || !repaired_call.is_some_and(|call| {
-            call.tool_call.function.name == CountingSum::NAME && call.preresolved_result.is_none()
+            matches!(call, PendingToolCall::Execute(call) if call.name() == CountingSum::NAME)
         })
     {
         return Err(ScenarioError::contract(
@@ -1565,20 +1565,16 @@ where
     ) {
         return Err(ScenarioError::contract(SCENARIO, "skip did not continue"));
     }
-    let AgentRunStep::CallTools { calls } = skipped.next_step()? else {
+    // A whole-turn skip answers every call, so the run asks the model again.
+    let step = skipped.next_step()?;
+    let skipped_answered = matches!(
+        skipped.messages().last(),
+        Some(Message::User { content }) if content.len() == 1
+    );
+    if !matches!(step, AgentRunStep::CallModel { .. }) || !skipped_answered {
         return Err(ScenarioError::contract(
             SCENARIO,
-            "skip did not produce a pre-resolved pending call",
-        ));
-    };
-    let skipped_is_preresolved = match calls.first() {
-        Some(call) => call.preresolved_result.is_some(),
-        None => false,
-    };
-    if calls.len() != 1 || !skipped_is_preresolved {
-        return Err(ScenarioError::contract(
-            SCENARIO,
-            format!("skipped pending calls were incorrect: {calls:?}"),
+            format!("skip did not answer the turn and continue: {step:?}"),
         ));
     }
     if add_calls.load(Ordering::SeqCst) != 0 || sum_calls.load(Ordering::SeqCst) != 0 {

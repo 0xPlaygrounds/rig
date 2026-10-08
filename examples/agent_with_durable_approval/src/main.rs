@@ -29,11 +29,12 @@
 
 use anyhow::Result;
 use rig::agent::InvalidToolCallAction;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy};
+use rig::agent::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy,
+};
 use rig::completion::CompletionRequest;
-use rig::message::{ToolResultContent, UserContent};
 use rig::providers::openai::{self, OpenAI};
-use rig::tool::{Tool, ToolSet};
+use rig::tool::{Tool, ToolResult, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -212,32 +213,29 @@ async fn main() -> Result<()> {
                     anyhow::bail!("resumed run must re-emit the pending tool calls");
                 };
 
-                let mut results = Vec::new();
-                let mut aborted = false;
                 for call in calls {
-                    // Calls suppressed by invalid-tool-call recovery come pre-resolved.
-                    if let Some(result) = call.preresolved_result {
-                        results.push(result);
-                        continue;
-                    }
-                    let id = call.tool_call.id.clone();
-                    let name = call.tool_call.function.name.clone();
-                    let args = call.tool_call.function.arguments_value().to_string();
+                    let call = match call {
+                        PendingToolCall::Execute(call) => call,
+                        // Arguments that are not a JSON object never run: the
+                        // run tells the model to call again.
+                        PendingToolCall::Malformed(call) => {
+                            resumed.answer(call.answer(None))?;
+                            continue;
+                        }
+                        other => anyhow::bail!("unsupported pending call {other:?}"),
+                    };
+                    let name = call.name().clone();
+                    let args = call.arguments().to_string();
 
                     println!("\n⏸  approval required: {name}({args})");
-                    match ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort? ")
+                    let result = match ask("     [a]pprove / [d]eny / [e]dit args / a[b]ort? ")
                         .await
                         .as_deref()
                     {
                         Some("a") | Some("approve") => {
-                            let execution = tools
+                            tools
                                 .execute(&name, args, &mut rig::tool::ToolContext::new())
-                                .await;
-                            results.push(UserContent::tool_result(
-                                id,
-                                name,
-                                execution.output().clone().into_content(),
-                            ));
+                                .await
                         }
                         Some("e") | Some("edit") => {
                             let edited = ask("     replacement JSON args (single line): ").await;
@@ -246,31 +244,27 @@ async fn main() -> Result<()> {
                                 .map(serde_json::from_str::<serde_json::Value>)
                             {
                                 Some(Ok(value)) => {
-                                    let execution = tools
+                                    tools
                                         .execute(
                                             &name,
                                             value.to_string(),
                                             &mut rig::tool::ToolContext::new(),
                                         )
-                                        .await;
-                                    results.push(UserContent::tool_result(
-                                        id,
-                                        name,
-                                        execution.output().clone().into_content(),
-                                    ));
+                                        .await
                                 }
                                 _ => {
                                     println!("     ! no valid JSON; denying instead");
-                                    results.push(UserContent::tool_result(id, name, vec![ToolResultContent::text(
-                                            "denied: the reviewer supplied no valid JSON to edit with",
-                                        )]));
+                                    ToolResult::skipped(
+                                        "denied: the reviewer supplied no valid JSON to edit with",
+                                    )
                                 }
                             }
                         }
                         // Abort on explicit request or closed stdin (None): fail-closed.
                         Some("b") | Some("abort") | None => {
-                            aborted = true;
-                            break;
+                            let _ = std::fs::remove_file(&state_path);
+                            println!("\nrun aborted by the reviewer");
+                            return Ok(());
                         }
                         // Deny / empty / unknown: fail-closed; the reason reaches the model.
                         other => {
@@ -282,22 +276,12 @@ async fn main() -> Result<()> {
                             } else {
                                 "denied: no clear approval given".to_string()
                             };
-                            results.push(UserContent::tool_result(
-                                id,
-                                name,
-                                vec![ToolResultContent::text(reason)],
-                            ));
+                            ToolResult::skipped(reason)
                         }
-                    }
+                    };
+                    resumed.answer(call.answer(result))?;
                 }
 
-                if aborted {
-                    let _ = std::fs::remove_file(&state_path);
-                    println!("\nrun aborted by the reviewer");
-                    return Ok(());
-                }
-
-                resumed.tool_results(results)?;
                 let _ = std::fs::remove_file(&state_path);
                 run = resumed;
             }

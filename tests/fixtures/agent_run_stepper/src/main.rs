@@ -21,7 +21,7 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request};
+use rig_agent::run::{AgentRun, AgentRunStep, ModelTurn, PendingToolCall, RunSpec, prepare_request};
 use rig_agent::tool::{ToolCatalog, ToolSet};
 use rig_agent::bus::{Bus, BusDriver, ModelHandle};
 use rig_core::completion::{
@@ -33,7 +33,6 @@ use rig_core::message::{Message, ToolCall, ToolFunction, ToolName};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockFrame, MockScript};
 use rig_core::tool::{DynamicTool, ToolContext, ToolOutput};
-use rig_core::transcript;
 use rig_core::error::ProviderError;
 use rig_core::wire::Mode;
 
@@ -191,21 +190,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))?;
             }
             AgentRunStep::CallTools { calls } => {
-                let mut results = Vec::with_capacity(calls.len());
                 for call in calls {
-                    let name = call.tool_call.function.name.clone();
-                    let arguments = call.tool_call.function.arguments_value().to_string();
-                    let result =
-                        block_on(catalog.execute(&name, &arguments, &mut ToolContext::new()));
-                    assert!(result.is_success(), "dispatch by name through the catalog");
-                    tool_calls += 1;
-                    results.push(transcript::tool_result_output(
-                        call.tool_call.id.clone(),
-                        name,
-                        &result,
-                    ));
+                    match call {
+                        PendingToolCall::Execute(call) => {
+                            let arguments = call.arguments().to_string();
+                            let result = block_on(catalog.execute(
+                                call.name(),
+                                &arguments,
+                                &mut ToolContext::new(),
+                            ));
+                            assert!(result.is_success(), "dispatch by name through the catalog");
+                            tool_calls += 1;
+                            run.answer(call.answer(result))?;
+                        }
+                        PendingToolCall::Malformed(call) => run.answer(call.answer(None))?,
+                        other => panic!("unsupported pending call {other:?}"),
+                    }
                 }
-                run.tool_results(results)?;
             }
             AgentRunStep::Done(response) => break response.output(),
         }

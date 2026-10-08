@@ -16,7 +16,8 @@ use crate::agent::{
     AgentBuilder, AgentRunner, InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason,
 };
 use crate::run::{
-    AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, TurnPolicy, UnhandledInvalidToolCall,
+    AgentRunStep, ModelTurn, ModelTurnOutcome, OutputMode, PendingToolCall, TurnPolicy,
+    UnhandledInvalidToolCall,
 };
 use crate::test_utils::{MockAddTool, MockCompletionModel, MockStreamEvent, MockTurn};
 use futures::StreamExt;
@@ -509,14 +510,16 @@ async fn the_count_survives_a_serialize_and_resume() {
             json!({}),
         ));
         assert!(matches!(outcome, Ok(ModelTurnOutcome::Continue { .. })));
-        assert!(matches!(
-            run.next_step(),
-            Ok(AgentRunStep::CallTools { .. })
-        ));
-        run.tool_results(vec![UserContent::ToolResult(
-            call.error_result(vec![ToolResultContent::text("not a JSON object")]),
-        )])
-        .unwrap_or_else(|error| panic!("{error}"));
+        let Ok(AgentRunStep::CallTools { calls }) = run.next_step() else {
+            panic!("a malformed call is answered in a tool step");
+        };
+        for call in calls {
+            let PendingToolCall::Malformed(call) = call else {
+                panic!("the call is malformed: {call:?}");
+            };
+            run.answer(call.answer(None))
+                .unwrap_or_else(|error| panic!("{error}"));
+        }
     }
     let saved = serde_json::to_string(&run).unwrap_or_else(|error| panic!("{error}"));
 
@@ -617,5 +620,299 @@ async fn the_malformed_call_context_reports_the_patched_tool_choice() {
         assert_eq!(outcome.as_deref(), Ok("recovered"), "{surface:?}");
         let choices: Vec<_> = hook.seen().into_iter().map(|c| c.tool_choice).collect();
         assert_eq!(choices, [Some(ToolChoice::Required)], "{surface:?}");
+    }
+}
+
+/// One call of a mixed batch.
+#[derive(Clone, Copy)]
+enum Call {
+    /// A call to `add` whose arguments are [`RAW`].
+    Malformed,
+    /// A call to `add` with valid arguments.
+    Valid,
+}
+
+/// One model turn calling `calls` in order, then a final answer.
+fn mixed_model(surface: Surface, calls: [Call; 2]) -> MockCompletionModel {
+    let id = |index: usize| format!("mixed_{index}");
+    match surface {
+        Surface::Blocking => MockCompletionModel::from_turns([
+            MockTurn::from_contents(calls.iter().enumerate().map(|(index, call)| {
+                let function = match call {
+                    Call::Malformed => ToolFunction::parse(add(), RAW),
+                    Call::Valid => ToolFunction::new(add(), json!({"x": 1, "y": 2})),
+                };
+                AssistantContent::ToolCall(ToolCall::from_wire(id(index), function))
+            })),
+            MockTurn::text("unreachable"),
+        ]),
+        Surface::Streamed => {
+            let mut events: Vec<MockStreamEvent> = calls
+                .iter()
+                .enumerate()
+                .flat_map(|(index, call)| match call {
+                    Call::Malformed => vec![
+                        MockStreamEvent::tool_call_name_delta(id(index), "add"),
+                        MockStreamEvent::tool_call_arguments_delta(id(index), RAW),
+                        MockStreamEvent::tool_call_end(id(index)),
+                    ],
+                    Call::Valid => vec![MockStreamEvent::tool_call(
+                        id(index),
+                        "add",
+                        json!({"x": 1, "y": 2}),
+                    )],
+                })
+                .collect();
+            events.push(MockStreamEvent::final_response_with_total_tokens(4));
+            MockCompletionModel::from_stream_turns([
+                events,
+                vec![
+                    MockStreamEvent::text("unreachable"),
+                    MockStreamEvent::final_response_with_total_tokens(4),
+                ],
+            ])
+        }
+    }
+}
+
+/// Answers every malformed call `Stop("invalid halted")` and stops every
+/// tool dispatch with `"dispatch halted"`, counting dispatches. With
+/// `settles_first`, that call's hook decides first and the other's waits for
+/// it, so both calls of a concurrent batch settle, the later index first.
+#[derive(Clone, Default)]
+struct StopBoth {
+    settles_first: Option<Call>,
+    /// Let every dispatch proceed instead, so the valid call executes.
+    proceeds: bool,
+    gate: Arc<tokio::sync::Notify>,
+    dispatched: Arc<Mutex<usize>>,
+}
+
+impl StopBoth {
+    fn settling_first(call: Call) -> Self {
+        Self {
+            settles_first: Some(call),
+            ..Self::default()
+        }
+    }
+
+    /// Signal the waiting hook when `call` settles first, or wait for the
+    /// other call when it settles second.
+    async fn order(&self, call: Call) {
+        match (self.settles_first, call) {
+            (None, _) => {}
+            (Some(Call::Malformed), Call::Malformed) | (Some(Call::Valid), Call::Valid) => {
+                self.gate.notify_one();
+            }
+            (Some(_), _) => self.gate.notified().await,
+        }
+    }
+
+    fn dispatched(&self) -> usize {
+        *self
+            .dispatched
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+impl AgentHook for StopBoth {
+    async fn on_dispatch(
+        &self,
+        _ctx: &HookContext,
+        event: crate::agent::DispatchEvent<'_>,
+    ) -> crate::agent::DispatchAction {
+        if event.tool_name().is_none() {
+            return crate::agent::DispatchAction::proceed();
+        }
+        *self
+            .dispatched
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) += 1;
+        self.order(Call::Valid).await;
+        if self.proceeds {
+            return crate::agent::DispatchAction::proceed();
+        }
+        crate::agent::DispatchAction::stop("dispatch halted")
+    }
+
+    async fn on_invalid_tool_call(
+        &self,
+        _ctx: &HookContext,
+        _context: &InvalidToolCallContext,
+    ) -> Option<InvalidToolCallAction> {
+        self.order(Call::Malformed).await;
+        Some(InvalidToolCallAction::stop("invalid halted"))
+    }
+}
+
+/// The error of a mixed-batch run, the number of tool-result or
+/// execution-commit stream items (blocking: result messages in its history),
+/// and the number of results its cancellation's history carries.
+async fn drive_mixed(
+    surface: Surface,
+    calls: [Call; 2],
+    concurrency: usize,
+    hook: StopBoth,
+) -> (String, usize, usize) {
+    let agent = AgentBuilder::new(mixed_model(surface, calls))
+        .tool(MockAddTool)
+        .build();
+    let runner = agent
+        .prompt("add")
+        .max_turns(3)
+        .tool_concurrency(concurrency)
+        .add_hook(hook);
+    // The cancellation closes the batch; a closing result is not committed.
+    let committed = |history: &[Message]| {
+        history
+            .iter()
+            .flat_map(|message| match message {
+                Message::User { content } => content.as_slice(),
+                _ => &[],
+            })
+            .filter(|item| {
+                matches!(item, UserContent::ToolResult(result)
+                    if !result.content.iter().any(|part| matches!(part,
+                        rig_core::message::ToolResultContent::Text(text)
+                            if text.text == rig_core::transcript::NO_RESULT_PROVIDED)))
+            })
+            .count()
+    };
+    let run = async {
+        match surface {
+            Surface::Blocking => match runner.run().await {
+                Ok(response) => panic!("the batch ends the run, got {}", response.output()),
+                Err(error) => {
+                    let results = match &error {
+                        crate::completion::PromptError::Cancelled { chat_history, .. } => {
+                            committed(chat_history)
+                        }
+                        other => panic!("a cancellation, got {other:?}"),
+                    };
+                    (error.to_string(), results, results)
+                }
+            },
+            Surface::Streamed => {
+                let mut stream = runner.stream();
+                let mut surfaced = 0;
+                let mut error = None;
+                let mut kept = 0;
+                while let Some(item) = stream.next().await {
+                    match item {
+                        Ok(
+                            MultiTurnStreamItem::ToolResult { .. }
+                            | MultiTurnStreamItem::ToolExecutionCommitted { .. },
+                        ) => surfaced += 1,
+                        Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                            panic!("the batch ends the run, got {}", response.output())
+                        }
+                        Ok(_) => {}
+                        Err(err) => {
+                            if let crate::completion::PromptError::Cancelled {
+                                chat_history, ..
+                            } = &err
+                            {
+                                kept = committed(chat_history);
+                            }
+                            error = Some(err.to_string());
+                        }
+                    }
+                }
+                (
+                    error.unwrap_or_else(|| "no error".to_owned()),
+                    surfaced,
+                    kept,
+                )
+            }
+        }
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(5), run)
+        .await
+        .unwrap_or_else(|_| panic!("{surface:?}: the batch must settle"))
+}
+
+/// A malformed call answered `Stop` below a sibling whose dispatch hook
+/// stops: the `Stop` wins, and nothing is committed or surfaced.
+#[tokio::test]
+async fn a_malformed_stop_wins_over_a_later_siblings_dispatch_stop() {
+    for surface in SURFACES {
+        let hook = StopBoth::settling_first(Call::Valid);
+        let (error, results, _) =
+            drive_mixed(surface, [Call::Malformed, Call::Valid], 2, hook.clone()).await;
+        assert!(error.contains("invalid halted"), "{surface:?}: {error}");
+        assert_eq!(
+            results, 0,
+            "{surface:?}: no result is committed or surfaced"
+        );
+        assert_eq!(
+            hook.dispatched(),
+            1,
+            "{surface:?}: the sibling ran its hook"
+        );
+    }
+}
+
+/// The reverse order: the dispatch stop at index 0 wins over the malformed
+/// call's `Stop` at index 1.
+#[tokio::test]
+async fn an_earlier_siblings_dispatch_stop_wins_over_a_malformed_stop() {
+    for surface in SURFACES {
+        let hook = StopBoth::settling_first(Call::Malformed);
+        let (error, results, _) =
+            drive_mixed(surface, [Call::Valid, Call::Malformed], 2, hook.clone()).await;
+        assert!(error.contains("dispatch halted"), "{surface:?}: {error}");
+        assert!(!error.contains("invalid halted"), "{surface:?}: {error}");
+        assert_eq!(
+            results, 0,
+            "{surface:?}: no result is committed or surfaced"
+        );
+        assert_eq!(
+            hook.dispatched(),
+            1,
+            "{surface:?}: the dispatch ran its hook"
+        );
+    }
+}
+
+/// Run one call at a time: after a malformed call's `Stop`, the next sibling
+/// never starts.
+#[tokio::test]
+async fn sequentially_the_sibling_after_a_malformed_stop_never_starts() {
+    for surface in SURFACES {
+        let hook = StopBoth::default();
+        let (error, results, _) =
+            drive_mixed(surface, [Call::Malformed, Call::Valid], 1, hook.clone()).await;
+        assert!(error.contains("invalid halted"), "{surface:?}: {error}");
+        assert_eq!(
+            results, 0,
+            "{surface:?}: no result is committed or surfaced"
+        );
+        assert_eq!(
+            hook.dispatched(),
+            0,
+            "{surface:?}: the sibling never started"
+        );
+    }
+}
+
+/// A malformed call's `Stop` below a sibling that executes: the run still
+/// cancels with the `Stop`, and its history keeps the executed result, so a
+/// host resuming from it does not run the tool again.
+#[tokio::test]
+async fn a_malformed_stop_keeps_an_executed_siblings_result() {
+    for surface in SURFACES {
+        let hook = StopBoth {
+            proceeds: true,
+            ..StopBoth::settling_first(Call::Valid)
+        };
+        let (error, surfaced, kept) =
+            drive_mixed(surface, [Call::Malformed, Call::Valid], 2, hook.clone()).await;
+        assert!(error.contains("invalid halted"), "{surface:?}: {error}");
+        assert!(hook.dispatched() >= 1, "{surface:?}: the sibling ran");
+        assert_eq!(kept, 1, "{surface:?}: the executed result is kept");
+        if let Surface::Streamed = surface {
+            assert_eq!(surfaced, 0, "{surface:?}: nothing is surfaced");
+        }
     }
 }

@@ -838,3 +838,23 @@ fn adversarial_histories_encode_to_requests_converse_takes() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+#[test]
+fn reasoning_without_text_is_never_sent() {
+    let wire = Converse::new(NOVA);
+    let redacted = AssistantContent::Reasoning(rig_core::message::Reasoning {
+        redacted: true,
+        ..rig_core::message::Reasoning::new("withheld")
+    });
+    assert!(!sends(&redacted, &wire));
+    assert!(!sends(&AssistantContent::reasoning("  "), &wire));
+    assert!(sends(&AssistantContent::reasoning("thought"), &wire));
+}
+
+#[test]
+fn only_whole_floats_become_integers() {
+    assert_eq!(
+        whole_numbers(json!([2.0, 2.5, 1e16, 3, "x"])),
+        json!([2, 2.5, 1e16, 3, "x"])
+    );
+}

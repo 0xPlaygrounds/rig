@@ -1772,6 +1772,119 @@ async fn run_preserves_tool_call_order_under_out_of_order_completion() {
     assert_eq!(result_ids, vec!["tc1".to_string(), "tc2".to_string()]);
 }
 
+/// An `add` tool whose `x == 1` call cannot finish until another call has
+/// run, so under concurrency the first call settles last.
+#[derive(Clone)]
+struct FirstCallSettlesLastTool {
+    gate: Arc<Notify>,
+}
+
+#[derive(Deserialize)]
+struct AddArgs {
+    x: i64,
+    y: i64,
+}
+
+impl Tool for FirstCallSettlesLastTool {
+    const NAME: &'static str = "add";
+    type Error = MockToolError;
+    type Args = AddArgs;
+    type Output = i64;
+
+    fn description(&self) -> String {
+        MockAddTool.description()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        MockAddTool.parameters()
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        if args.x == 1 {
+            self.gate.notified().await;
+        } else {
+            self.gate.notify_one();
+        }
+        Ok(args.x + args.y)
+    }
+}
+
+/// A host-driven run may hold a turn whose calls share a provider ID (the
+/// run keeps such calls answerable, one result per occurrence). Resumed into
+/// the engine at `tool_concurrency(2)`, the second call settles first, yet
+/// each call must keep its own result: `add(1,1)` answers 2 and `add(2,2)`
+/// answers 4, in call order.
+#[tokio::test]
+async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() {
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, TurnPolicy};
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        .tool(FirstCallSettlesLastTool {
+            gate: Arc::new(Notify::new()),
+        })
+        .build();
+    let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
+    let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {
+        panic!("a fresh run calls the model");
+    };
+    run.advertise_tools(
+        turn,
+        vec![rig_core::completion::ToolDefinition {
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
+            description: MockAddTool.description(),
+            parameters: MockAddTool.parameters(),
+        }],
+    );
+    let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
+    run.model_response(ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![
+            tool_call_content("dup", json!({"x": 1, "y": 1})),
+            tool_call_content("dup", json!({"x": 2, "y": 2})),
+        ],
+        Usage::default(),
+        policy,
+        json!({}),
+    ))
+    .expect("the tool turn is accepted");
+    assert!(matches!(run.next_step(), Ok(AgentRunStep::CallTools { calls }) if calls.len() == 2));
+
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        agent.resume(run).tool_concurrency(2).run(),
+    )
+    .await
+    .expect("the tools run concurrently")
+    .expect("the resumed run completes");
+
+    let answers: Vec<String> = response
+        .messages()
+        .iter()
+        .flat_map(|message| match message {
+            Message::User { content } => content.clone(),
+            _ => Vec::new(),
+        })
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(
+                result
+                    .content
+                    .iter()
+                    .map(|content| match content {
+                        rig_core::message::ToolResultContent::Json { value } => value.to_string(),
+                        other => format!("{other:?}"),
+                    })
+                    .collect::<String>(),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(answers, ["2", "4"], "results stay with their calls");
+}
+
 /// Drive a stream to completion, panicking on any stream error, and return
 /// its final response.
 async fn drive_to_final_response(
@@ -2105,6 +2218,77 @@ async fn default_concurrency_terminate_skips_remaining_tools_on_both_drivers() {
         streaming_calls.load(SeqCst),
         0,
         "fail-fast: stream() must not start the second tool after the first terminates"
+    );
+}
+
+/// Fail-fast keeps what settled: a stop on the second call cancels with the
+/// first call's real result committed and the stopped call closed by `close_pending`,
+/// so the cancelled history is canonical.
+#[tokio::test]
+async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() {
+    struct StopSecondToolHook;
+    impl AgentHook for StopSecondToolHook {
+        async fn on_dispatch(
+            &self,
+            _ctx: &HookContext,
+            event: DispatchEvent<'_>,
+        ) -> DispatchAction {
+            if event
+                .tool_args()
+                .and_then(|args| serde_json::from_str::<serde_json::Value>(args).ok())
+                .and_then(|v| v.get("x").and_then(serde_json::Value::as_i64))
+                == Some(2)
+            {
+                return DispatchAction::stop("stop".to_string());
+            }
+            DispatchAction::proceed()
+        }
+    }
+
+    let calls = Arc::new(AtomicU32::new(0));
+    let err = AgentBuilder::new(two_terminating_tools_blocking_model())
+        .tool(CountingAddTool {
+            calls: calls.clone(),
+        })
+        .build()
+        .prompt("go")
+        .max_turns(3)
+        .add_hook(StopSecondToolHook)
+        .run()
+        .await
+        .expect_err("the run terminates");
+    assert_eq!(calls.load(SeqCst), 1, "the first call ran before the stop");
+
+    let PromptError::Cancelled { chat_history, .. } = err else {
+        panic!("a hook stop cancels the run, got {err:?}");
+    };
+    assert_eq!(
+        rig_core::transcript::validate_canonical(&chat_history),
+        Ok(())
+    );
+    let Some(Message::User { content }) = chat_history.last() else {
+        panic!("the batch must be closed: {chat_history:?}");
+    };
+    let [
+        UserContent::ToolResult(settled),
+        UserContent::ToolResult(aborted),
+    ] = content.as_slice()
+    else {
+        panic!("one result per call, in call order: {content:?}");
+    };
+    assert_eq!(settled.call.to_string(), "tc1");
+    assert!(!settled.is_error, "tc1 ran: {settled:?}");
+    assert_eq!(aborted.call.to_string(), "tc2");
+    assert!(aborted.is_error);
+    let AssistantContent::ToolCall(tc2) = tool_call_content("tc2", json!({"x": 2, "y": 2})) else {
+        panic!("tool_call_content builds a tool call");
+    };
+    assert_eq!(
+        Message::User {
+            content: content[1..].to_vec()
+        },
+        rig_core::transcript::close_pending([&tc2]),
+        "the stopped call is closed as transcript closes it"
     );
 }
 
@@ -4644,7 +4828,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
-    assert_eq!(chat_history, vec![Message::user("add")]);
+    assert_eq!(chat_history.into_vec(), vec![Message::user("add")]);
     assert_eq!(recorder.count(StepEventKind::ToolDispatch), 0);
     assert_eq!(executions.load(SeqCst), 0);
 }
@@ -4699,7 +4883,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
-    assert_eq!(chat_history, &[Message::user("add")]);
+    assert_eq!(*chat_history, [Message::user("add")]);
     assert_eq!(execution_commits, 0);
     assert_eq!(tool_results, 0);
     // The attempt's call is recorded when its reply ends, before the hook
@@ -5749,4 +5933,87 @@ fn no_dispatch_events_are_built_outside_the_scope() -> anyhow::Result<()> {
         "the scan found the source tree ({scanned} files)"
     );
     Ok(())
+}
+
+/// A host that drives the step protocol, answers one call of a batch and
+/// persists the run hands off to the engine: `resume` runs only the
+/// unanswered call and commits both results in call order.
+#[tokio::test]
+async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
+    use crate::run::{AgentRun, AgentRunStep, ModelTurn, TurnPolicy};
+
+    let calls = Arc::new(AtomicU32::new(0));
+    let agent = AgentBuilder::new(MockCompletionModel::from_turns([MockTurn::text("done")]))
+        .tool(CountingAddTool {
+            calls: calls.clone(),
+        })
+        .build();
+    let mut run = AgentRun::from_spec(&agent.run_spec(), Message::user("go"), None).max_turns(2);
+    let Ok(AgentRunStep::CallModel { turn, .. }) = run.next_step() else {
+        panic!("a fresh run calls the model");
+    };
+    // The host records what it offered, as the engine does, so the resumed
+    // batch binds to this process's tools.
+    run.advertise_tools(
+        turn,
+        vec![rig_core::completion::ToolDefinition {
+            name: rig_core::message::ToolName::new("add").expect("tool name"),
+            description: MockAddTool.description(),
+            parameters: MockAddTool.parameters(),
+        }],
+    );
+    let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
+    run.model_response(ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![
+            tool_call_content("tc1", json!({"x": 1, "y": 1})),
+            tool_call_content("tc2", json!({"x": 2, "y": 2})),
+        ],
+        Usage::default(),
+        policy,
+        json!({}),
+    ))
+    .expect("the tool turn is accepted");
+    let Ok(AgentRunStep::CallTools { calls: mut pending }) = run.next_step() else {
+        panic!("the tool turn asks for its calls");
+    };
+    let Some(crate::run::PendingToolCall::Execute(first)) = pending.drain(..).next() else {
+        panic!("tc1 is executable");
+    };
+    let host =
+        rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("from the host"));
+    let host_result =
+        rig_core::transcript::tool_result_output(first.id().clone(), first.name().clone(), &host);
+    run.answer(first.answer(host))
+        .expect("the host answers tc1");
+
+    let json = serde_json::to_string(&run).expect("the run serializes");
+    let restored: AgentRun = serde_json::from_str(&json).expect("the run deserializes");
+    let response = agent
+        .resume(restored)
+        .await
+        .expect("the resumed run completes");
+
+    assert_eq!(response.output(), "done");
+    assert_eq!(calls.load(SeqCst), 1, "only tc2 runs after the handoff");
+    let results = response
+        .messages()
+        .iter()
+        .find_map(|message| match message {
+            Message::User { content }
+                if content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_))) =>
+            {
+                Some(content.clone())
+            }
+            _ => None,
+        })
+        .expect("the batch is committed");
+    let [first, UserContent::ToolResult(second)] = results.as_slice() else {
+        panic!("one result per call: {results:?}");
+    };
+    assert_eq!(*first, host_result, "tc1 keeps the host's answer, first");
+    assert_eq!(second.call.to_string(), "tc2");
+    assert!(!second.is_error, "tc2 ran: {second:?}");
 }

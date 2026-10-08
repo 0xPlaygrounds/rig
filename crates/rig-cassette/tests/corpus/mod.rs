@@ -69,7 +69,7 @@ use rig_agent::{
     run::{
         AgentRun, AgentRunStep, InvalidToolCallAction, InvalidToolCallContext, ModelTurn,
         ModelTurnOutcome, PendingToolCall, PromptResponse, RunSpec, StreamedResolution,
-        StreamedTurnAssembler, StreamedTurnEvent, prepare_request,
+        StreamedTurnAssembler, StreamedTurnEvent, ToolAnswer, prepare_request,
     },
     tool::{RegisteredTool, server::ToolServer},
 };
@@ -82,10 +82,10 @@ use rig_core::{
     error::{ErrorKind, ErrorReport},
     id::ConversationId,
     message::ToolChoice,
-    message::{AssistantContent, Message, UserContent},
+    message::{AssistantContent, Message},
     streaming::{Item, StreamEvent},
     tool::{ToolContext, ToolOutput},
-    transcript::{assistant_text_from_choice, tool_result_output},
+    transcript::assistant_text_from_choice,
 };
 
 /// A hook the producer added, by type: the header names hooks by their
@@ -2891,23 +2891,21 @@ pub async fn call_tools(
     concurrency: usize,
     hooks: &[Hook],
     notes: Option<&rig_agent::bus::Handle<rig_core::effect::family::Custom<Note>>>,
-) -> Result<Vec<UserContent>, &'static str> {
+) -> Result<Vec<ToolAnswer>, &'static str> {
     let dispatch = |call: PendingToolCall| async move {
-        if let Some(preresolved) = call.preresolved_result {
-            return Ok(preresolved);
-        }
-        let name = call.tool_call.function.name.clone();
+        let call = match call {
+            PendingToolCall::Execute(call) => call,
+            PendingToolCall::Malformed(call) => return Ok(call.answer(None)),
+            other => panic!("unsupported pending call {other:?}"),
+        };
+        let name = call.name().clone();
         let is_add = name == "add";
         if is_add && hooks.contains(&Hook::CancelAddDispatch) {
             // `Deny(Cancelled)`: the call never reaches the bus; the run stops.
             return Err(CANCEL_ADD_DISPATCH);
         }
         if is_add && hooks.contains(&Hook::DenyAdd) {
-            return Ok(tool_result_output(
-                call.tool_call.id.clone(),
-                name,
-                &rig_core::tool::ToolResult::skipped(DENY_REASON),
-            ));
+            return Ok(call.answer(rig_core::tool::ToolResult::skipped(DENY_REASON)));
         }
         let (_, handle) = tools
             .iter()
@@ -2916,7 +2914,7 @@ pub async fn call_tools(
         let args = if is_add && hooks.contains(&Hook::PatchAddArgs) {
             PATCHED_ARGS.to_owned()
         } else {
-            call.tool_call.function.arguments_value().to_string()
+            call.arguments().to_string()
         };
         // The bus's answer, mapped as the engine maps it: a layer's denial
         // is the skipped result the model sees, a cancel stops the run, any
@@ -2927,21 +2925,13 @@ pub async fn call_tools(
                 return Err(CANCEL_ADD_DISPATCH);
             }
             Err(report) if report.kind == ErrorKind::Denied => {
-                return Ok(tool_result_output(
-                    call.tool_call.id.clone(),
-                    name,
-                    &rig_core::tool::ToolResult::skipped(report.message),
-                ));
+                return Ok(call.answer(rig_core::tool::ToolResult::skipped(report.message)));
             }
             Err(report) => {
-                return Ok(tool_result_output(
-                    call.tool_call.id.clone(),
-                    name,
-                    &rig_core::tool::ToolResult::failed(
-                        rig_core::tool::ToolExecutionError::other(report.message.clone())
-                            .with_model_feedback(report.message),
-                    ),
-                ));
+                return Ok(call.answer(rig_core::tool::ToolResult::failed(
+                    rig_core::tool::ToolExecutionError::other(report.message.clone())
+                        .with_model_feedback(report.message),
+                )));
             }
         };
         // The outcome hook's dispatch, inside the tool's dispatch as the
@@ -2965,8 +2955,7 @@ pub async fn call_tools(
         if is_add && hooks.contains(&Hook::ReplaceAddResult) {
             result = result.with_output(ToolOutput::text(REPLACED_RESULT));
         }
-        // The engine's own shaping of a result (`rig_core::transcript`).
-        Ok(tool_result_output(call.tool_call.id.clone(), name, &result))
+        Ok(call.answer(result))
     };
     futures::stream::iter(calls)
         .map(dispatch)
@@ -4038,7 +4027,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             break None;
                         }
                     };
-                    run.tool_results(results).expect("results for every call");
+                    run.answer_all(results).expect("results for every call");
                     tool_turns_done += 1;
                     if resume_after == Some(tool_turns_done) && resumed.is_none() {
                         // The suspension: the state a driver persists between
