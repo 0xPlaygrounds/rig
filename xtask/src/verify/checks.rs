@@ -147,17 +147,22 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "default-tests",
-            vec![cargo(&[
-                "nextest",
-                "run",
-                "--locked",
-                "--features",
-                "bedrock",
-                "--retries",
-                "2",
-                "-E",
-                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
-            ])],
+            vec![
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "--features",
+                    "bedrock",
+                    "--retries",
+                    "2",
+                    "-E",
+                    "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
+                ]),
+                // rig-code is not a default member, so the run above never
+                // reaches its tests.
+                cargo(&["nextest", "run", "--locked", "-p", "rig-code"]),
+            ],
         ),
         // The effect-corpus cells have one lane owner; default-tests excludes
         // them. Each cell replays its cassette and compares the agent's log
