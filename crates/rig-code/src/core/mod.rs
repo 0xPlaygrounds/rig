@@ -88,14 +88,18 @@ impl Plugin for CorePlugin {
             .add_systems(
                 Last,
                 (
+                    registry::stop_turns_on_exit
+                        .before(dispatch::flush_effects)
+                        .before(session::save_session)
+                        .in_set(OnAppExitSystems)
+                        .run_if(on_message::<AppExit>),
                     dispatch::flush_effects,
                     models::save_defaults.run_if(resource_changed::<AgentDefaults>),
                     // Autosave after every turn, and save on every exit.
                     session::save_session
                         .in_set(OnAppExitSystems)
                         .run_if(on_message::<TurnFinished>.or_eager(on_message::<AppExit>)),
-                    session::write_resume
-                        .after(session::save_session)
+                    session::clear_resume
                         .in_set(OnAppExitSystems)
                         .run_if(on_message::<AppExit>),
                     session::mark_ready.run_if(run_once),

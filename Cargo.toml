@@ -297,6 +297,7 @@ image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
 lancedb = { version = "0.30", default-features = false }
+libc = "0.2"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 mime = "0.3"

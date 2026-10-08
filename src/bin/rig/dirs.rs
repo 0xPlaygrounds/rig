@@ -17,8 +17,18 @@ pub(crate) struct Dirs {
 
 impl Dirs {
     /// `$RIG_HOME/{config,cache,data}` when `RIG_HOME` is set; otherwise
-    /// the XDG directories (`%APPDATA%\rig\...` on Windows).
+    /// the XDG directories (`%APPDATA%\rig\...` on Windows). Always
+    /// absolute: cargo and the agent run in other directories.
     pub(crate) fn resolve() -> Result<Self, Failure> {
+        let dirs = Self::relative()?;
+        Ok(Self {
+            config: absolute(&dirs.config)?,
+            cache: absolute(&dirs.cache)?,
+            data: absolute(&dirs.data)?,
+        })
+    }
+
+    fn relative() -> Result<Self, Failure> {
         if let Some(home) = variable("RIG_HOME") {
             return Ok(Self::under(&home));
         }
@@ -59,6 +69,17 @@ impl Dirs {
         self.data.join("bin").join(executable("current"))
     }
 
+    /// The modification time of the build staged as the candidate.
+    pub(crate) fn staged_stamp(&self) -> PathBuf {
+        self.data.join("bin").join("staged")
+    }
+
+    /// The modification time of the build that crashed during startup, so
+    /// it is not staged again.
+    pub(crate) fn rejected_stamp(&self) -> PathBuf {
+        self.data.join("bin").join("rejected")
+    }
+
     /// A newer binary that has not started yet.
     pub(crate) fn candidate_bin(&self) -> PathBuf {
         self.data.join("bin").join(executable("candidate"))
@@ -75,6 +96,12 @@ impl Dirs {
     }
 }
 
+/// `path` made absolute against the working directory.
+pub(crate) fn absolute(path: &Path) -> Result<PathBuf, Failure> {
+    std::path::absolute(path)
+        .map_err(|error| Failure::io(format!("cannot resolve {}", path.display()), error))
+}
+
 /// `name` with the platform's executable suffix.
 pub(crate) fn executable(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
@@ -85,4 +112,15 @@ pub(crate) fn variable(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
+}
+
+/// A log over this size is moved to `<name>.old` before it is reopened.
+const LOG_LIMIT: u64 = 8 * 1024 * 1024;
+
+/// Moves `log` to `<log>.old` when it is over [`LOG_LIMIT`], so logs that
+/// are appended to on every start stay bounded.
+pub(crate) fn rotate(log: &Path) {
+    if log.metadata().is_ok_and(|meta| meta.len() > LOG_LIMIT) {
+        let _ = std::fs::rename(log, log.with_extension("log.old"));
+    }
 }

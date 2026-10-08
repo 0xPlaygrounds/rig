@@ -105,9 +105,12 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Reasoning)> {
         options.push((effort.as_str().to_owned(), Reasoning::Effort(*effort)));
     }
     if let (true, Some(range)) = (reasoning.levels.is_empty(), &reasoning.budget) {
+        // A range that starts too close to the output limit to leave room
+        // still offers its smallest budget.
         let ceiling = spec
             .max_output_tokens
-            .map_or(*range.end(), |max| max.saturating_sub(1024));
+            .map_or(*range.end(), |max| max.saturating_sub(1024))
+            .max(*range.start());
         for (label, tokens) in BUDGETS {
             let tokens = tokens.clamp(*range.start(), *range.end()).min(ceiling);
             if range.contains(&tokens)

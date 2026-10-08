@@ -242,27 +242,7 @@ pub(crate) fn route_input(
         if !status.is_busy() {
             continue;
         }
-        // Every call of the last reply needs a result, or the next request
-        // is malformed.
-        let mut results: Vec<_> = work
-            .into_iter()
-            .flat_map(|work| work.iter())
-            .filter_map(|entity| calls.get(entity).ok())
-            .map(|(run, done)| match done {
-                Some(done) => (run.index, done.0.clone()),
-                None => (
-                    run.index,
-                    run.call
-                        .error_result(vec![ToolResultContent::text("interrupted by the user")]),
-                ),
-            })
-            .collect();
-        if !results.is_empty() {
-            results.sort_by_key(|(index, _)| *index);
-            conversation.0.push(ChatMessage::tool_results(
-                results.into_iter().map(|(_, result)| result).collect(),
-            ));
-        }
+        close_open_calls(&mut conversation, work, &calls);
         commands
             .entity(interrupt.agent)
             .despawn_related::<Work>()
@@ -272,5 +252,56 @@ pub(crate) fn route_input(
         finished.write(TurnFinished {
             agent: interrupt.agent,
         });
+    }
+}
+
+/// Answers every call of the agent's last reply that has no result yet as
+/// interrupted, so the conversation stays a valid request: providers reject
+/// a tool call without a result.
+fn close_open_calls(
+    conversation: &mut Conversation,
+    work: Option<&Work>,
+    calls: &Query<(&ToolCallRun, Option<&ToolCallDone>)>,
+) {
+    let mut results: Vec<_> = work
+        .into_iter()
+        .flat_map(|work| work.iter())
+        .filter_map(|entity| calls.get(entity).ok())
+        .map(|(run, done)| match done {
+            Some(done) => (run.index, done.0.clone()),
+            None => (
+                run.index,
+                run.call
+                    .error_result(vec![ToolResultContent::text("interrupted by the user")]),
+            ),
+        })
+        .collect();
+    if results.is_empty() {
+        return;
+    }
+    results.sort_by_key(|(index, _)| *index);
+    conversation.0.push(ChatMessage::tool_results(
+        results.into_iter().map(|(_, result)| result).collect(),
+    ));
+}
+
+/// On exit, stops every running turn the way Esc does, before the exit
+/// save, so the saved conversation is one the next binary can send and the
+/// cancelled calls reach the effect log.
+pub(crate) fn stop_turns_on_exit(
+    mut commands: Commands,
+    mut agents: Query<(Entity, &mut Conversation, &mut AgentStatus, Option<&Work>)>,
+    calls: Query<(&ToolCallRun, Option<&ToolCallDone>)>,
+) {
+    for (agent, mut conversation, mut status, work) in &mut agents {
+        if !status.is_busy() {
+            continue;
+        }
+        close_open_calls(&mut conversation, work, &calls);
+        commands
+            .entity(agent)
+            .despawn_related::<Work>()
+            .remove::<NeedsModelCall>();
+        *status = AgentStatus::Idle;
     }
 }

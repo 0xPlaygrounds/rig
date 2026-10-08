@@ -12,6 +12,9 @@ use super::truncate;
 const MAX_MATCHES: usize = 200;
 /// Files larger than this are not searched.
 const MAX_FILE: u64 = 2 * 1024 * 1024;
+/// Most directory entries looked at, so a huge tree cannot keep the tool
+/// busy for long.
+const MAX_VISITED: usize = 100_000;
 /// Directories never searched: build output and dependencies.
 const SKIPPED: [&str; 2] = ["target", "node_modules"];
 
@@ -38,7 +41,8 @@ impl PortableTool for Search {
             "Search text files under a directory for lines containing `pattern` (plain text, not \
              a regex) and return `path:line: text`. With an empty pattern, list the files. \
              `name` filters file names with `*` wildcards, such as `*.rs`. Hidden entries, \
-             `target` and `node_modules` are skipped. At most {MAX_MATCHES} results."
+             `target` and `node_modules` are skipped, and symbolic links to directories are not \
+             followed. At most {MAX_MATCHES} results."
         )
     }
 
@@ -66,10 +70,12 @@ impl PortableTool for Search {
         let needle = fold(&args.pattern, args.ignore_case);
         let mut results = Vec::new();
         let mut pending = vec![root];
+        let mut visited = 0;
         while let Some(path) = pending.pop() {
-            if results.len() >= MAX_MATCHES {
+            if results.len() >= MAX_MATCHES || visited >= MAX_VISITED {
                 break;
             }
+            visited += 1;
             if path.is_dir() {
                 pending.extend(children(&path));
                 continue;
@@ -93,23 +99,32 @@ impl PortableTool for Search {
         } else if results.len() == MAX_MATCHES {
             text.push_str(&format!("\n[stopped at {MAX_MATCHES} results]"));
         }
+        if visited >= MAX_VISITED {
+            text.push_str(&format!(
+                "\n[stopped after {MAX_VISITED} entries; search a smaller directory]"
+            ));
+        }
         Ok(ToolOutput::text(truncate(&text, false)))
     }
 }
 
 /// The entries of `directory` worth searching, sorted so results are
-/// stable, reversed for the stack.
+/// stable, reversed for the stack. Symbolic links to directories are left
+/// out, so a link loop cannot make the walk endless.
 fn children(directory: &Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return Vec::new();
     };
     let mut children: Vec<PathBuf> = entries
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| {
-            path.file_name()
-                .map(|name| name.to_string_lossy())
-                .is_some_and(|name| !name.starts_with('.') && !SKIPPED.contains(&name.as_ref()))
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            let linked_directory =
+                entry.file_type().is_ok_and(|kind| kind.is_symlink()) && entry.path().is_dir();
+            !name.starts_with('.') && !SKIPPED.contains(&name.as_ref()) && !linked_directory
         })
+        .map(|entry| entry.path())
         .collect();
     children.sort();
     children.reverse();
@@ -117,7 +132,9 @@ fn children(directory: &Path) -> Vec<PathBuf> {
 }
 
 fn search_file(path: &Path, needle: &str, ignore_case: bool, results: &mut Vec<String>) {
-    let small = std::fs::metadata(path).is_ok_and(|metadata| metadata.len() <= MAX_FILE);
+    // Only regular files: a device or a pipe could be read forever.
+    let small = std::fs::metadata(path)
+        .is_ok_and(|metadata| metadata.is_file() && metadata.len() <= MAX_FILE);
     let Some(text) = small.then(|| std::fs::read_to_string(path).ok()).flatten() else {
         return;
     };

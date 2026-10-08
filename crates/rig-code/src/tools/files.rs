@@ -10,6 +10,8 @@ use super::truncate;
 
 /// Lines `read` returns when the call sets no limit.
 const DEFAULT_LINES: usize = 2000;
+/// Files larger than this are not read or edited.
+const MAX_FILE: u64 = 16 * 1024 * 1024;
 
 fn io_error(path: &Path, error: std::io::Error) -> ToolExecutionError {
     match error.kind() {
@@ -18,6 +20,26 @@ fn io_error(path: &Path, error: std::io::Error) -> ToolExecutionError {
         }
         _ => ToolExecutionError::other(format!("{}: {error}", path.display())),
     }
+}
+
+/// The bytes of the regular file `path`, refusing anything else (a device
+/// or a pipe could be read forever) and files over [`MAX_FILE`].
+fn read_file(path: &Path) -> Result<Vec<u8>, ToolExecutionError> {
+    let metadata = std::fs::metadata(path).map_err(|error| io_error(path, error))?;
+    if !metadata.is_file() {
+        return Err(ToolExecutionError::invalid_args(format!(
+            "{} is not a regular file",
+            path.display()
+        )));
+    }
+    if metadata.len() > MAX_FILE {
+        return Err(ToolExecutionError::invalid_args(format!(
+            "{} is {} bytes, over the {MAX_FILE}-byte limit; use the shell tool",
+            path.display(),
+            metadata.len()
+        )));
+    }
+    std::fs::read(path).map_err(|error| io_error(path, error))
 }
 
 /// Reads a text file with line numbers.
@@ -56,7 +78,7 @@ impl PortableTool for Read {
     }
 
     async fn call(&self, args: ReadArgs) -> Result<ToolOutput, ToolExecutionError> {
-        let bytes = std::fs::read(&args.path).map_err(|error| io_error(&args.path, error))?;
+        let bytes = read_file(&args.path)?;
         let text = String::from_utf8_lossy(&bytes);
         let first = args.offset.unwrap_or(1).max(1);
         let limit = args.limit.unwrap_or(DEFAULT_LINES);
@@ -170,8 +192,9 @@ impl PortableTool for Edit {
                 "old_text must be non-empty and differ from new_text",
             ));
         }
-        let text =
-            std::fs::read_to_string(&args.path).map_err(|error| io_error(&args.path, error))?;
+        let text = String::from_utf8(read_file(&args.path)?).map_err(|_| {
+            ToolExecutionError::invalid_args(format!("{} is not UTF-8 text", args.path.display()))
+        })?;
         let count = text.matches(&args.old_text).count();
         if count == 0 {
             return Err(ToolExecutionError::invalid_args(format!(

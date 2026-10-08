@@ -14,7 +14,7 @@ use rig_core::completion::{
     ToolDefinition,
 };
 use rig_core::effect::{
-    EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
+    EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome, family,
 };
 use rig_core::message::{StopReason, ToolCall, ToolResult, ToolResultContent};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
@@ -396,7 +396,9 @@ impl Serve for Refusal {
 
     fn descriptor(&self) -> HandlerDescriptor {
         HandlerDescriptor {
-            key: tool_key(&self.name),
+            // Its own key, so the effect-log header keeps the real tool's
+            // descriptor under `tool:<name>`.
+            key: HandlerKey::from(format!("refused:{}", self.name)),
             family: FamilyDescriptor::Tool {
                 name: self.name.clone(),
                 description: "a call rig-code refused to run".to_owned(),

@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use crate::Failure;
-use crate::dirs::{Dirs, variable};
+use crate::dirs::{Dirs, absolute, variable};
 use crate::plugins::{Package, Plugin};
 
 /// The launcher's version, which is also the rig-code version it builds.
@@ -61,17 +61,23 @@ impl CodeSource {
         }
     }
 
+    /// The repository holding a local checkout, when it has a lockfile.
+    fn repository(&self) -> Option<&Path> {
+        match self {
+            Self::Path(path) => path
+                .parent()
+                .and_then(Path::parent)
+                .filter(|root| root.join("Cargo.lock").is_file()),
+            Self::Release => None,
+        }
+    }
+
     fn describe(&self) -> String {
         match self {
             Self::Path(path) => format!("path {}", path.display()),
             Self::Release => format!("crates.io {VERSION}"),
         }
     }
-}
-
-fn absolute(path: &Path) -> Result<PathBuf, Failure> {
-    std::path::absolute(path)
-        .map_err(|error| Failure::io(format!("cannot resolve {}", path.display()), error))
 }
 
 /// Writes the agent project for `plugins`. `jobs` replaces the remembered
@@ -110,6 +116,29 @@ pub(crate) fn generate(dirs: &Dirs, plugins: &[Plugin], jobs: Option<u32>) -> Re
         force,
     )?;
     write(&config_file, &cargo_config(dirs, jobs), force)?;
+    // A local checkout is built with its own tested dependency versions and
+    // toolchain rather than the newest ones and the user's default.
+    let toolchain = project.join("rust-toolchain.toml");
+    match source.repository() {
+        Some(repository) => {
+            let lock = project.join("Cargo.lock");
+            if force || !lock.exists() {
+                std::fs::copy(repository.join("Cargo.lock"), &lock).map_err(|error| {
+                    Failure::io(format!("cannot write {}", lock.display()), error)
+                })?;
+            }
+            if let Ok(text) = std::fs::read_to_string(repository.join("rust-toolchain.toml")) {
+                write(&toolchain, &text, force)?;
+            }
+        }
+        None => {
+            if toolchain.exists() {
+                std::fs::remove_file(&toolchain).map_err(|error| {
+                    Failure::io(format!("cannot remove {}", toolchain.display()), error)
+                })?;
+            }
+        }
+    }
     write(&stamp_file, &stamp, force)
 }
 
@@ -182,6 +211,15 @@ fn manifest(source: &CodeSource, plugins: &[Plugin]) -> Result<String, Failure> 
         );
     }
     text.push_str("\n[profile.dev]\ndebug = false\n");
+    if let CodeSource::Path(path) = source {
+        // A plugin that asks for rig-code by version gets this checkout too,
+        // so the app holds one rig-code and sees the plugin's tools.
+        let _ = write!(
+            text,
+            "\n[patch.crates-io]\nrig-code = {{ path = {} }}\n",
+            quote(&path.display().to_string())
+        );
+    }
     Ok(text)
 }
 

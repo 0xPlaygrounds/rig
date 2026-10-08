@@ -11,14 +11,25 @@ use crate::Failure;
 use crate::dirs::{Dirs, executable};
 use crate::project::{self, BEVY_VERSION, PACKAGE};
 
+/// What a build did with its binary.
+#[derive(PartialEq)]
+pub(crate) enum Staged {
+    /// It is the new candidate, or the current binary is already as new.
+    Ready,
+    /// It is the build that crashed during startup before, so it was not
+    /// staged again.
+    Rejected,
+}
+
 /// Builds the agent and stages it when it is newer than the current
 /// binary. Cargo's output, with its progress bar, goes to this process's
 /// stderr.
-pub(crate) fn build(dirs: &Dirs, jobs: Option<u32>) -> Result<(), Failure> {
+pub(crate) fn build(dirs: &Dirs, jobs: Option<u32>) -> Result<Staged, Failure> {
     let plugins = crate::plugins::load(&dirs.config)?;
     project::generate(dirs, &plugins, jobs)?;
     let project = dirs.project();
     check_bevy(&project)?;
+    check_rig_code(&project)?;
     let built = dirs
         .cache
         .join("target")
@@ -46,13 +57,24 @@ pub(crate) fn build(dirs: &Dirs, jobs: Option<u32>) -> Result<(), Failure> {
 }
 
 /// Copies `built` to the candidate slot when it is newer than the current
-/// binary.
-fn stage(dirs: &Dirs, built: &Path) -> Result<(), Failure> {
+/// binary and is not the build that was rolled back.
+fn stage(dirs: &Dirs, built: &Path) -> Result<Staged, Failure> {
     let modified = |path: &Path| path.metadata().and_then(|meta| meta.modified()).ok();
     let built_at = modified(built)
         .ok_or_else(|| Failure::build(format!("cargo built no binary at {}", built.display())))?;
     if modified(&dirs.current_bin()).is_some_and(|current: SystemTime| current >= built_at) {
-        return Ok(());
+        return Ok(Staged::Ready);
+    }
+    let stamp = built_at
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos().to_string())
+        .unwrap_or_default();
+    if std::fs::read_to_string(dirs.rejected_stamp()).is_ok_and(|rejected| rejected == stamp) {
+        eprintln!(
+            "rig: this build crashed during startup before, so it is not staged; change the \
+             source to rebuild it"
+        );
+        return Ok(Staged::Rejected);
     }
     let candidate = dirs.candidate_bin();
     let partial = candidate.with_extension("partial");
@@ -61,9 +83,10 @@ fn stage(dirs: &Dirs, built: &Path) -> Result<(), Failure> {
         std::fs::create_dir_all(parent).map_err(failed)?;
     }
     std::fs::copy(built, &partial).map_err(failed)?;
+    std::fs::write(dirs.staged_stamp(), &stamp).map_err(failed)?;
     std::fs::rename(&partial, &candidate).map_err(failed)?;
     eprintln!("rig: staged the new build");
-    Ok(())
+    Ok(Staged::Ready)
 }
 
 /// `cargo` run in the project directory, so its `.cargo/config.toml`
@@ -135,6 +158,37 @@ fn check_bevy(project: &Path) -> Result<(), Failure> {
         return Ok(());
     }
     Err(Failure::config(problems.join("\n")))
+}
+
+/// Fails, in plain words, when a plugin brings a second copy of rig-code:
+/// its tools and commands would register into types the agent never reads.
+fn check_rig_code(project: &Path) -> Result<(), Failure> {
+    let output = cargo(project)
+        .args([
+            "tree", "-q", "-e", "normal", "-i", "rig-code", "--depth", "0",
+        ])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|error| Failure::io("cannot run cargo tree", error))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if output.status.success() || !stderr.contains("ambiguous") {
+        return Ok(());
+    }
+    let copies: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.contains("rig-code@"))
+        .collect();
+    Err(Failure::config(format!(
+        "The agent project holds {} copies of rig-code:\n  {}\nA plugin depends on rig-code \
+         from another source than the agent, so its tools and commands would register into a \
+         copy the agent never reads. Make the plugin depend on rig-code by version \
+         (`rig-code = \"{}\"`; with a local checkout rig points that at the checkout), or remove \
+         it from plugins.toml.",
+        copies.len(),
+        copies.join("\n  "),
+        crate::project::VERSION
+    )))
 }
 
 /// The direct dependencies of the agent project that pull in

@@ -23,6 +23,7 @@ pub(crate) fn supervise(dirs: &Dirs, mut notice: Option<String>) -> Result<u8, F
     let launcher = std::env::current_exe()
         .map_err(|error| Failure::io("cannot find the rig executable", error))?;
     let log = dirs.stdio_log();
+    crate::dirs::rotate(&log);
     // The agent logs to agent.log; only what bypasses its logger, such as
     // an early panic, lands in agent-stdio.log.
     let logs = dirs.data.join("logs");
@@ -58,7 +59,10 @@ pub(crate) fn supervise(dirs: &Dirs, mut notice: Option<String>) -> Result<u8, F
             None => status.to_string(),
         };
         if was_ready {
-            eprintln!("rig: the agent stopped ({what}); logs: {details}");
+            eprintln!(
+                "rig: the agent stopped ({what}); run rig again to resume the session. Logs: \
+                 {details}"
+            );
             return Ok(status
                 .code()
                 .and_then(|code| u8::try_from(code).ok())
@@ -66,6 +70,10 @@ pub(crate) fn supervise(dirs: &Dirs, mut notice: Option<String>) -> Result<u8, F
         }
         if on_candidate && dirs.current_bin().exists() {
             remove(&dirs.candidate_bin())?;
+            // The same build is not staged again until the source changes.
+            if let Err(error) = std::fs::rename(dirs.staged_stamp(), dirs.rejected_stamp()) {
+                eprintln!("rig: cannot record the rejected build: {error}");
+            }
             let message = format!(
                 "the new build crashed during startup ({what}); rolled back to the previous \
                  build. Logs: {details}"

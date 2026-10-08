@@ -5,9 +5,10 @@
 //! entries one by one, so a component whose plugin is gone, or whose shape
 //! changed, is skipped with a notice instead of failing the load.
 //!
-//! The launcher handshake lives here too: a reload exit names the session
-//! in `data/resume` for the next binary, and the first finished frame
-//! writes `RIG_READY_FILE` so the launcher keeps this binary.
+//! The launcher handshake lives here too: `data/resume` names the running
+//! session from its start until a clean exit, so the next binary restores
+//! it after a reload or a crash, and the first finished frame writes
+//! `RIG_READY_FILE` so the launcher keeps this binary.
 
 use std::path::{Path, PathBuf};
 
@@ -67,37 +68,45 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// Starts the session: restores the one named by `data/resume` when that
-/// file exists, or starts a new one with one agent.
+/// file exists, or starts a new one with one agent. Either way the session
+/// is named in `data/resume` until the app exits cleanly.
 pub(crate) fn start_session(world: &mut World) {
     let Some(data) = world.get_resource::<DataDir>().map(|data| data.0.clone()) else {
         return;
     };
-    let resumed = std::fs::read_to_string(data.join("resume"))
-        .ok()
-        .map(|id| id.trim().to_owned())
-        .filter(|id| !id.is_empty());
-    if let Some(id) = resumed {
-        let session = Session::open(&data, id);
-        match restore(world, &session) {
-            Ok(()) => {
-                world.insert_resource(session);
-                return;
-            }
-            Err(error) => {
-                world.write_message(Notice::error(
-                    None,
-                    format!("cannot restore session {}: {error}", session.id),
-                ));
-            }
+    let session = resume(world, &data).unwrap_or_else(|| {
+        let defaults = world.resource::<AgentDefaults>().clone();
+        world.spawn((
+            Agent,
+            ModelChoice(defaults.model),
+            EffortChoice(defaults.effort),
+        ));
+        Session::mint(&data)
+    });
+    if let Err(error) = write_atomic(&data.join("resume"), session.id.as_bytes()) {
+        error!("cannot write the resume marker: {error}");
+    }
+    world.insert_resource(session);
+}
+
+/// Restores the session `data/resume` names, if it has saved state.
+fn resume(world: &mut World, data: &Path) -> Option<Session> {
+    let id = std::fs::read_to_string(data.join("resume")).ok()?;
+    let session = Session::open(data, id.trim().to_owned());
+    // A session that ended before its first save has nothing to restore.
+    if session.id.is_empty() || !session.dir.join("state.json").exists() {
+        return None;
+    }
+    match restore(world, &session) {
+        Ok(()) => Some(session),
+        Err(error) => {
+            world.write_message(Notice::error(
+                None,
+                format!("cannot restore session {}: {error}", session.id),
+            ));
+            None
         }
     }
-    let defaults = world.resource::<AgentDefaults>().clone();
-    world.spawn((
-        Agent,
-        ModelChoice(defaults.model),
-        EffortChoice(defaults.effort),
-    ));
-    world.insert_resource(Session::mint(&data));
 }
 
 fn restore(world: &mut World, session: &Session) -> Result<(), Box<dyn std::error::Error>> {
@@ -212,35 +221,24 @@ pub(crate) fn save_session(world: &mut World) {
     }
 }
 
-/// On a reload exit, names the session in `data/resume`, so the next binary
-/// restores it. Runs after the exit save.
-pub(crate) fn write_resume(
-    mut exits: MessageReader<AppExit>,
-    data: Res<DataDir>,
-    session: Option<Res<Session>>,
-) {
-    let reload = AppExit::from_code(RELOAD_EXIT_CODE);
-    if let (true, Some(session)) = (exits.read().any(|exit| *exit == reload), session)
-        && let Err(error) = write_atomic(&data.0.join("resume"), session.id.as_bytes())
+/// On a clean exit, forgets the resume marker, so the next start begins a
+/// new session. Any other exit (a reload, an error) keeps it.
+pub(crate) fn clear_resume(mut exits: MessageReader<AppExit>, data: Res<DataDir>) {
+    if exits.read().any(AppExit::is_success)
+        && let Err(error) = std::fs::remove_file(data.0.join("resume"))
+        && error.kind() != std::io::ErrorKind::NotFound
     {
-        error!("cannot write the resume marker: {error}");
+        error!("cannot remove the resume marker: {error}");
     }
 }
 
 /// After the first full frame, tells the launcher this binary works by
-/// creating `RIG_READY_FILE`, and only then forgets the resume marker, so a
-/// binary that crashes earlier leaves it for the one rolled back to.
-pub(crate) fn mark_ready(data: Res<DataDir>) {
+/// creating `RIG_READY_FILE`.
+pub(crate) fn mark_ready() {
     if let Some(ready) = std::env::var_os("RIG_READY_FILE").filter(|value| !value.is_empty())
         && let Err(error) = write_atomic(Path::new(&ready), b"ready")
     {
         error!("cannot write the ready file: {error}");
-    }
-    let resume = data.0.join("resume");
-    if resume.exists()
-        && let Err(error) = std::fs::remove_file(&resume)
-    {
-        error!("cannot remove the resume marker: {error}");
     }
 }
 

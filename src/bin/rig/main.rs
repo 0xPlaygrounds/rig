@@ -128,11 +128,15 @@ fn run() -> Result<u8, Failure> {
     }
     let dirs = Dirs::resolve()?;
     if arguments.mode == Mode::Build {
-        build::build(&dirs, arguments.jobs)?;
+        if build::build(&dirs, arguments.jobs)? == build::Staged::Rejected {
+            return Err(Failure::build(
+                "this build crashed during startup before; change the source and build again",
+            ));
+        }
         return Ok(0);
     }
     let notice = match build::build(&dirs, arguments.jobs) {
-        Ok(()) => None,
+        Ok(_) => None,
         Err(failure) if dirs.current_bin().exists() => {
             eprintln!("rig: {}", failure.message);
             eprintln!("rig: the build failed; starting the last working build");

@@ -48,16 +48,24 @@ pub(crate) fn base_app(data: PathBuf) -> App {
     app
 }
 
+/// A log over this size is moved aside when the agent starts.
+const LOG_LIMIT: u64 = 8 * 1024 * 1024;
+
 /// Sends formatted logs to `logs/agent.log` in the data directory, or
 /// nowhere when the file cannot be opened: never to stderr.
 fn log_to_file(app: &mut App) -> Option<BoxedFmtLayer> {
     let file = app.world().get_resource::<DataDir>().and_then(|data| {
         let logs = data.0.join("logs");
         std::fs::create_dir_all(&logs).ok()?;
+        let log = logs.join("agent.log");
+        // Keep the log bounded: start over, keeping one older log.
+        if log.metadata().is_ok_and(|meta| meta.len() > LOG_LIMIT) {
+            let _ = std::fs::rename(&log, logs.join("agent.log.old"));
+        }
         std::fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(logs.join("agent.log"))
+            .open(log)
             .ok()
     });
     let layer = fmt::Layer::default().with_ansi(false);

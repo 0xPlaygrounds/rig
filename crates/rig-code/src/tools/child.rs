@@ -1,5 +1,7 @@
 //! Child processes whose output goes to a file, never to the terminal, and
-//! that are waited for by polling so no pool thread blocks on them.
+//! that are waited for by polling so no pool thread blocks on them. On Unix
+//! each child leads its own session, so it has no controlling terminal to
+//! draw on or read from, and stopping it stops everything it started.
 
 use std::fs::File;
 use std::path::Path;
@@ -10,8 +12,8 @@ use std::time::{Duration, Instant};
 const POLL: Duration = Duration::from_millis(50);
 
 /// A running child process with stdout and stderr redirected to one file.
-/// Dropping it kills the process, so cancelling the task that owns it
-/// stops the process too.
+/// Dropping it kills the process and, on Unix, every process it started,
+/// so cancelling the task that owns it stops them too.
 pub(crate) struct LoggedChild(Child);
 
 impl LoggedChild {
@@ -25,6 +27,20 @@ impl LoggedChild {
             .stdin(Stdio::null())
             .stdout(file.try_clone()?)
             .stderr(file);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            // SAFETY: `setsid` is async-signal-safe and touches no memory of
+            // the parent.
+            unsafe {
+                command.pre_exec(|| {
+                    if libc::setsid() == -1 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                });
+            }
+        }
         command.spawn().map(Self)
     }
 
@@ -45,6 +61,16 @@ impl LoggedChild {
 
 impl Drop for LoggedChild {
     fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Ok(group) = libc::pid_t::try_from(self.0.id()) {
+            // The child's session is its process group; this also stops
+            // what it left running in the background. Nothing to do when
+            // the group is already gone.
+            // SAFETY: `kill` takes plain integers.
+            unsafe {
+                libc::kill(-group, libc::SIGKILL);
+            }
+        }
         if let Ok(None) = self.0.try_wait() {
             // The process may exit between the check and the kill.
             let _ = self.0.kill();

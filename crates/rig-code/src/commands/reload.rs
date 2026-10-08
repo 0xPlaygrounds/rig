@@ -104,7 +104,8 @@ pub(super) fn reload(
 
 /// Reads the build's output into its progress and lines, and finishes it:
 /// on success the app exits with the reload code, on failure the errors
-/// are shown and this binary keeps running.
+/// are shown and this binary keeps running. A turn started during the build
+/// holds its result back, so a reload only ever restarts idle agents.
 pub(super) fn poll_build(
     mut commands: Commands,
     mut builds: Query<(
@@ -114,13 +115,18 @@ pub(super) fn poll_build(
         &BuildRx,
         &mut BuildTask,
     )>,
+    agents: Query<&AgentStatus>,
     mut notices: MessageWriter<Notice>,
     mut exit: MessageWriter<AppExit>,
 ) {
+    let busy = agents.iter().any(AgentStatus::is_busy);
     for (build, mut progress, mut output, chunks, mut task) in &mut builds {
         while let Ok(chunk) = chunks.0.try_recv() {
             output.partial.extend(chunk);
             read_segments(&mut output, &mut progress);
+        }
+        if busy {
+            continue;
         }
         let Some(result) = check_ready(&mut task.0) else {
             continue;

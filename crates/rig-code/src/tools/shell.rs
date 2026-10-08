@@ -36,8 +36,9 @@ impl PortableTool for Shell {
     fn description(&self) -> String {
         format!(
             "Run a shell command in the working directory and return its combined stdout and \
-             stderr (the last 50 KB). Stdin is empty. Times out after {DEFAULT_TIMEOUT} seconds \
-             unless `timeout_secs` says otherwise."
+             stderr (the last 50 KB). Stdin is empty and there is no terminal. Processes the \
+             command leaves in the background are stopped when it ends. Times out after \
+             {DEFAULT_TIMEOUT} seconds unless `timeout_secs` says otherwise."
         )
     }
 
