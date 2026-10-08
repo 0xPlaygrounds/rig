@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::error::Error;
 
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
 use rig_core::completion::{GenerationOptions, Reasoning, UnsupportedOption};
 use rig_core::operation::Completion;
-use rig_core::providers::registry::{ModelSelector, ProviderId};
+use rig_core::providers::registry::{self, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
@@ -16,7 +16,10 @@ const BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 163
 
 /// The catalog spec a `vendor/model` reference names.
 pub fn resolve(reference: &str) -> Option<&'static ModelSpec> {
-    Catalog::builtin().resolve(reference)
+    Catalog::builtin()
+        .resolve(reference)
+        .ok()
+        .map(|resolved| resolved.spec)
 }
 
 /// The `vendor/model` reference of `spec`.
@@ -29,9 +32,7 @@ pub fn reference(spec: &ModelSpec) -> String {
 /// [`Effects::model_handler`](super::effects::Effects::model_handler) keeps
 /// one per model.
 pub fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, Box<dyn Error + Send + Sync>> {
-    let model = ModelSelector::Spec(spec)
-        .provider_ref()?
-        .completion_model()?;
+    let model = registry::connect(spec)?;
     Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
         reference(spec),
         model,
@@ -49,11 +50,9 @@ pub fn available_models() -> Vec<&'static ModelSpec> {
         .iter()
         .filter(|spec| spec.tools)
         .filter(|spec| {
-            *usable.entry(spec.provider).or_insert_with(|| {
-                ModelSelector::Spec(spec)
-                    .provider_ref()
-                    .is_ok_and(|reference| reference.completion_model().is_ok())
-            })
+            *usable
+                .entry(spec.provider)
+                .or_insert_with(|| registry::connect(*spec).is_ok())
         })
         .collect();
     // Stable: catalog order within each group.
@@ -63,24 +62,29 @@ pub fn available_models() -> Vec<&'static ModelSpec> {
 
 /// The reasoning settings `spec` takes, labelled for a picker: the provider
 /// default first, then `off` when reasoning can be disabled, then each
-/// effort level, or named budgets on a model that takes a budget.
+/// effort level, or named budgets on a model that takes a budget. A model
+/// whose controls the catalog does not list offers only the default.
 pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Option<Reasoning>)> {
-    let support = &spec.reasoning;
     let mut options = vec![("default".to_owned(), None)];
-    if !support.supported {
+    let ReasoningSupport::Listed {
+        levels,
+        budget,
+        can_disable,
+        ..
+    } = &spec.reasoning
+    else {
         return options;
-    }
-    if support.can_disable {
+    };
+    if *can_disable {
         options.push(("off".to_owned(), Some(Reasoning::Off)));
     }
     options.extend(
-        support
-            .levels
+        levels
             .iter()
             .map(|level| (level.as_str().to_owned(), Some(Reasoning::Effort(*level)))),
     );
-    if support.levels.is_empty()
-        && let Some(range) = &support.budget
+    if levels.is_empty()
+        && let Some(range) = budget
     {
         options.extend(BUDGETS.iter().map(|(name, tokens)| {
             // Not `clamp`, which panics on an inverted range.
