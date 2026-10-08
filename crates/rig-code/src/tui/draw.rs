@@ -4,7 +4,7 @@
 use bevy::prelude::*;
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Position, Rect},
+    layout::{Constraint, Layout, Position, Rect, Size},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, Clear, Paragraph},
@@ -49,7 +49,14 @@ fn error_style() -> Style {
     Style::new().fg(Color::Red)
 }
 
-/// Draw the focused agent.
+/// What the screen showed when it was last drawn, beyond change detection.
+#[derive(Default, PartialEq)]
+pub(super) struct Drawn {
+    size: Option<Size>,
+    building: bool,
+}
+
+/// Draw the focused agent, when anything shown changed since the last draw.
 pub(super) fn draw(
     mut tui: ResMut<Tui>,
     focus: Res<Focus>,
@@ -60,15 +67,44 @@ pub(super) fn draw(
         &AgentStatus,
         Option<&Draft>,
     )>,
+    changed: Query<
+        (),
+        Or<(
+            Changed<Conversation>,
+            Changed<ModelChoice>,
+            Changed<EffortChoice>,
+            Changed<AgentStatus>,
+            Changed<Draft>,
+        )>,
+    >,
     composer: Res<Composer>,
     mut scroll: ResMut<Scroll>,
     picker: Res<Picker>,
     notices: Res<NoticeLog>,
     build: Option<Res<BuildProgress>>,
+    mut drawn: Local<Drawn>,
 ) {
     let Some(agent) = focus.0.and_then(|agent| agents.get(agent).ok()) else {
         return;
     };
+    let now = Drawn {
+        size: tui.terminal.size().ok(),
+        building: build.is_some(),
+    };
+    let changed = !changed.is_empty()
+        || focus.is_changed()
+        || composer.is_changed()
+        || scroll.is_changed()
+        || picker.is_changed()
+        || notices.is_changed()
+        || build.as_ref().is_some_and(Res::is_changed)
+        || now != *drawn;
+    if !changed {
+        return;
+    }
+    *drawn = now;
+    // Clamping the scroll while drawing is not a change to redraw for.
+    let scroll = scroll.bypass_change_detection();
     let result = tui.terminal.draw(|frame| {
         let (conversation, model, effort, status, draft) = agent;
         let width = frame.area().width.saturating_sub(2).max(1) as usize;
@@ -306,9 +342,9 @@ fn draw_composer(frame: &mut Frame, area: Rect, composer: &Composer, show_cursor
         .map(Line::from)
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(visible).block(block), area);
-    if show_cursor {
+    if show_cursor && inner.height > 0 {
         let x = inner.x + (composer.cursor % width) as u16;
-        let y = inner.y + (row - first) as u16;
+        let y = inner.y + row.saturating_sub(first) as u16;
         frame.set_cursor_position(Position { x, y });
     }
 }

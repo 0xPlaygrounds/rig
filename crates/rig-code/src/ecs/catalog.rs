@@ -107,7 +107,8 @@ pub fn request_options(spec: &ModelSpec, effort: EffortChoice) -> (GenerationOpt
                     Effort::High | Effort::XHigh | Effort::Max => 24576,
                     _ => *range.start(),
                 }
-                .clamp(*range.start(), *range.end());
+                .max(*range.start())
+                .min(*range.end());
                 let limit = spec.max_output_tokens.unwrap_or(u32::MAX);
                 let answer = tokens.saturating_add(ANSWER_TOKENS).min(limit);
                 max_tokens = Some(u64::from(answer.max(tokens.saturating_add(1))));

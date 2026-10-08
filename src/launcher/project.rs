@@ -105,6 +105,15 @@ fn manifest(paths: &Paths, config: &Config, source: &Source) -> String {
             features.join(", ")
         ));
     }
+    // A plugin written against the published crates then builds against
+    // the checkout too, instead of pulling a second copy of them.
+    if let Source::Local(checkout) = source {
+        text.push_str("\n[patch.crates-io]\n");
+        for name in ["rig-code", "rig-core"] {
+            let path = quoted(&checkout.join("crates").join(name));
+            text.push_str(&format!("{name} = {{ path = {path} }}\n"));
+        }
+    }
     text.push_str(
         "\n[profile.dev]\n\
          debug = \"line-tables-only\"\n\n\

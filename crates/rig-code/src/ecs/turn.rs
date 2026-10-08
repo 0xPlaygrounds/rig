@@ -2,12 +2,14 @@
 //! the reply, run its tool calls, append the results, and repeat until the
 //! model stops calling tools. Every system works on all agents at once.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, panic::AssertUnwindSafe, sync::Arc};
 
 use bevy::{
     prelude::*,
     tasks::{
-        AsyncComputeTaskPool, IoTaskPool, Task, futures::check_ready, futures_lite::StreamExt,
+        AsyncComputeTaskPool, IoTaskPool, Task,
+        futures::check_ready,
+        futures_lite::{FutureExt, StreamExt},
     },
 };
 use crossbeam_channel::{Receiver, Sender};
@@ -15,11 +17,15 @@ use rig_core::{
     completion::{CompletionRequest, CompletionResponse},
     effect::{EffectKind, Outcome},
     error::ProviderError,
-    message::{Message, StopReason, ToolCall, ToolResult, ToolResultContent},
+    message::{Message, StopReason, ToolCall, ToolResult, ToolResultContent, turn_failure},
     operation::Completion,
     providers::registry::ModelSelector,
-    serve::{ErasedHandler, Reply, adapters::ModelAdapter},
+    serve::{
+        ErasedHandler, Reply,
+        adapters::{ModelAdapter, ToolFn},
+    },
     streaming::{Item, StreamEvent, Streamed},
+    tool::{ToolContext, ToolExecutionError, ToolOutput},
 };
 
 use super::{
@@ -42,12 +48,12 @@ pub(super) struct ModelCall {
     events: Receiver<StreamEvent>,
 }
 
-/// One tool call of a reply: its position, its task until it is done, and
-/// then its result.
+/// One tool call of a reply: its position, its task, and its result once
+/// the task is done.
 #[derive(Component)]
 pub(super) struct ToolCallRun {
     index: usize,
-    task: Option<Task<ToolResult>>,
+    task: Task<ToolResult>,
     done: Option<ToolResult>,
 }
 
@@ -107,24 +113,32 @@ pub(super) fn read_submits(
 }
 
 /// Stop a running turn: despawning the agent's calls drops their tasks,
-/// which cancels them. Calls that will never be answered get error results,
-/// so the conversation stays valid.
+/// which cancels them. Finished tool calls keep their results; calls that
+/// will never finish get error results, so the conversation stays valid.
 pub(super) fn read_interrupts(
     mut interrupts: MessageReader<Interrupt>,
-    mut agents: Query<(&mut Conversation, &mut AgentStatus)>,
+    mut agents: Query<(&mut Conversation, &mut AgentStatus, Option<&Calls>)>,
+    runs: Query<&ToolCallRun>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     for interrupt in interrupts.read() {
         let agent = interrupt.agent;
-        let Ok((mut conversation, mut status)) = agents.get_mut(agent) else {
+        let Ok((mut conversation, mut status, calls)) = agents.get_mut(agent) else {
             continue;
         };
         if *status == AgentStatus::Idle {
             continue;
         }
         if *status == AgentStatus::Tools {
-            answer_all(&mut conversation, "interrupted by the user");
+            let finished = runs
+                .iter_many(calls.into_iter().flat_map(|calls| calls.iter()))
+                .filter_map(|run| {
+                    let run = run.ok()?;
+                    Some((run.index, run.done.clone()?))
+                })
+                .collect();
+            answer_interrupted(&mut conversation, finished);
         }
         *status = AgentStatus::Idle;
         commands
@@ -136,19 +150,19 @@ pub(super) fn read_interrupts(
     }
 }
 
-/// Answer every tool call of the last assistant message with an error.
-fn answer_all(conversation: &mut Conversation, reason: &str) {
+/// Answer every tool call of the last assistant message: with its result
+/// when `finished` holds one by call position, else as interrupted.
+fn answer_interrupted(conversation: &mut Conversation, mut finished: HashMap<usize, ToolResult>) {
     let Some(Message::Assistant(message)) = conversation.0.last() else {
         return;
     };
     let results = message
-        .content
-        .iter()
-        .filter_map(|content| match content {
-            rig_core::message::AssistantContent::ToolCall(call) => {
-                Some(call.error_result(vec![ToolResultContent::text(reason)]))
-            }
-            _ => None,
+        .tool_calls()
+        .enumerate()
+        .map(|(index, call)| {
+            finished.remove(&index).unwrap_or_else(|| {
+                call.error_result(vec![ToolResultContent::text("interrupted by the user")])
+            })
         })
         .collect::<Vec<_>>();
     if !results.is_empty() {
@@ -209,7 +223,13 @@ pub(super) fn start_model_calls(
             Vec::new(),
         );
         let (sender, events) = crossbeam_channel::unbounded();
-        let task = AsyncComputeTaskPool::get().spawn(stream_reply(label, reply, sender));
+        // A panicking provider must end the call, not poison its task.
+        let task = AsyncComputeTaskPool::get().spawn(async move {
+            AssertUnwindSafe(stream_reply(label, reply, sender))
+                .catch_unwind()
+                .await
+                .unwrap_or_else(|_| Err(ProviderError::Response("the model call panicked".into())))
+        });
         commands.entity(agent).insert(Draft::default());
         commands.spawn((CallOf(agent), ModelCall { task, events }));
     }
@@ -321,39 +341,36 @@ pub(super) fn finish_model_calls(
                 continue;
             }
         };
+        let stop = response.stop();
+        let failure = turn_failure(
+            &response.choice,
+            Some(&stop),
+            response.finish_reason().as_ref(),
+        );
         conversation.0.extend(response.message());
         let tool_calls = response.tool_calls().cloned().collect::<Vec<_>>();
-        match response.stop() {
-            StopReason::ToolUse if !tool_calls.is_empty() => {
-                *status = AgentStatus::Tools;
-                for (index, call) in tool_calls.into_iter().enumerate() {
-                    let run =
-                        start_tool_call(index, call, id, workdir, access, &tools, &mut effects);
-                    commands.spawn((CallOf(agent), run));
-                }
+        if failure.is_none() && !stop.is_failure() && !tool_calls.is_empty() {
+            *status = AgentStatus::Tools;
+            for (index, call) in tool_calls.into_iter().enumerate() {
+                let run = start_tool_call(index, call, id, workdir, access, &tools, &mut effects);
+                commands.spawn((CallOf(agent), run));
             }
-            StopReason::Length if !tool_calls.is_empty() => {
-                // A reply cut off by the length limit may hold truncated
-                // arguments, so its calls are answered instead of run.
-                answer_all(
-                    &mut conversation,
-                    "not run: the reply hit the output limit; retry with a shorter call",
-                );
-                commands.entity(agent).insert(NeedsReply);
-            }
-            stop => {
-                if let StopReason::Error(reason) | StopReason::Aborted(reason) = stop {
-                    notices.write(Notice::error(agent, reason));
-                }
-                *status = AgentStatus::Idle;
-                commands.trigger(TurnEnded { entity: agent });
-            }
+            continue;
         }
+        if let Some(reason) = failure.or(match stop {
+            StopReason::Aborted(reason) => Some(reason),
+            _ => None,
+        }) {
+            notices.write(Notice::error(agent, reason));
+        }
+        *status = AgentStatus::Idle;
+        commands.trigger(TurnEnded { entity: agent });
     }
 }
 
-/// Dispatch one tool call on the IO pool, or answer it at once when the
-/// agent has no such tool.
+/// Dispatch one tool call on the IO pool. A call to a tool the agent does
+/// not have is dispatched to a handler that refuses it, so the effect log
+/// shows it too.
 fn start_tool_call(
     index: usize,
     call: ToolCall,
@@ -364,26 +381,17 @@ fn start_tool_call(
     effects: &mut Effects,
 ) -> ToolCallRun {
     let name = call.function.name.as_str();
-    let tool = tools
+    let handler = tools
         .iter()
-        .find(|tool| tool.definition.name.as_str() == name && access.allows(name));
-    let Some(tool) = tool else {
-        let result = call.error_result(vec![ToolResultContent::text(format!(
-            "there is no tool named `{name}`"
-        ))]);
-        return ToolCallRun {
-            index,
-            task: None,
-            done: Some(result),
-        };
-    };
+        .find(|tool| tool.definition.name.as_str() == name && access.allows(name))
+        .map_or_else(|| missing_tool(name), |tool| tool.handler.clone());
     let args =
         call.function.invalid_arguments.clone().unwrap_or_else(|| {
             serde_json::Value::Object(call.function.arguments.clone()).to_string()
         });
     let reply = effects.dispatch(
         agent,
-        tool.handler.clone(),
+        handler,
         EffectKind::ToolCall {
             name: name.to_owned(),
             args,
@@ -409,9 +417,29 @@ fn start_tool_call(
     });
     ToolCallRun {
         index,
-        task: Some(task),
+        task,
         done: None,
     }
+}
+
+/// A handler for a call to `name`, which the agent has no tool for.
+fn missing_tool(name: &str) -> ErasedHandler {
+    fn refuse<'a>(
+        _context: &'a mut ToolContext,
+        _args: serde_json::Value,
+    ) -> rig_core::wasm_compat::WasmBoxedFuture<'a, Result<ToolOutput, ToolExecutionError>> {
+        Box::pin(async {
+            Err(ToolExecutionError::not_found(
+                "there is no tool by this name",
+            ))
+        })
+    }
+    ErasedHandler::new(ToolFn::new(
+        name,
+        "A tool the agent does not have.",
+        serde_json::json!({"type": "object"}),
+        refuse,
+    ))
 }
 
 /// Collect finished tool calls. Once every call of an agent is done, the
@@ -425,8 +453,7 @@ pub(super) fn finish_tool_calls(
     let mut by_agent: HashMap<Entity, Vec<(usize, Entity, Option<ToolResult>)>> = HashMap::new();
     for (entity, call_of, mut run) in &mut runs {
         if run.done.is_none()
-            && let Some(task) = &mut run.task
-            && let Some(result) = check_ready(task)
+            && let Some(result) = check_ready(&mut run.task)
         {
             run.done = Some(result);
         }

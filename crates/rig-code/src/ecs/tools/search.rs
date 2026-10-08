@@ -15,6 +15,10 @@ use super::{io_error, resolve};
 const MAX_MATCHES: usize = 200;
 /// Longest line text returned per match, in characters.
 const MAX_LINE: usize = 300;
+/// Largest file searched, in bytes.
+const MAX_FILE_BYTES: u64 = 1024 * 1024;
+/// Directories never searched, besides hidden ones.
+const SKIPPED_DIRS: [&str; 2] = ["target", "node_modules"];
 
 /// Searches files for a pattern.
 pub struct Search;
@@ -34,7 +38,7 @@ impl Tool for Search {
     fn description(&self) -> String {
         format!(
             "Search text files for a regular expression (Rust regex syntax). Skips hidden \
-             directories, `target` and binary files. Returns up to {MAX_MATCHES} matches as \
+             files, `target`, `node_modules`, binary files and files over 1 MB. Returns up to {MAX_MATCHES} matches as \
              `file:line: text`."
         )
     }
@@ -75,6 +79,8 @@ impl Tool for Search {
 }
 
 /// Collect matches under `path` into `matches`, named relative to `root`.
+/// Symbolic links to directories are not followed, so link loops cannot
+/// recurse.
 fn walk(
     root: &Path,
     path: &Path,
@@ -84,26 +90,37 @@ fn walk(
     if path.is_dir() {
         let mut entries = std::fs::read_dir(path)?
             .filter_map(Result::ok)
-            .map(|entry| entry.path())
+            .filter_map(|entry| Some((entry.path(), entry.file_type().ok()?)))
             .collect::<Vec<_>>();
-        entries.sort();
-        for entry in entries {
+        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+        for (entry, kind) in entries {
             if matches.len() >= MAX_MATCHES {
                 break;
             }
-            let skipped = entry
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with('.') || (name == "target" && entry.is_dir()));
-            if !skipped {
-                walk(root, &entry, pattern, matches)?;
+            let name = entry.file_name().and_then(|name| name.to_str());
+            if name.is_some_and(|name| name.starts_with('.')) {
+                continue;
+            }
+            if kind.is_dir() {
+                if !name.is_some_and(|name| SKIPPED_DIRS.contains(&name)) {
+                    walk(root, &entry, pattern, matches)?;
+                }
+            } else if kind.is_file() || (kind.is_symlink() && entry.is_file()) {
+                search_file(root, &entry, pattern, matches);
             }
         }
         return Ok(());
     }
-    // Unreadable and non-UTF-8 (binary) files are skipped.
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return Ok(());
+    search_file(root, path, pattern, matches);
+    Ok(())
+}
+
+/// Collect matches in the file `path`. Unreadable, large and non-UTF-8
+/// (binary) files are skipped.
+fn search_file(root: &Path, path: &Path, pattern: &Regex, matches: &mut Vec<String>) {
+    let small = std::fs::metadata(path).is_ok_and(|metadata| metadata.len() <= MAX_FILE_BYTES);
+    let Some(text) = small.then(|| std::fs::read_to_string(path).ok()).flatten() else {
+        return;
     };
     let name = path.strip_prefix(root).unwrap_or(path);
     let name = if name.as_os_str().is_empty() {
@@ -120,5 +137,4 @@ fn walk(
             matches.push(format!("{}:{}: {line}", name.display(), number + 1));
         }
     }
-    Ok(())
 }

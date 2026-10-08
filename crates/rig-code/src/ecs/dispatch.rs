@@ -4,8 +4,13 @@
 //! error.
 
 use std::{
-    any::Any, collections::HashSet, fs::OpenOptions, io::Write, panic::AssertUnwindSafe,
-    path::PathBuf, sync::Arc,
+    any::Any,
+    collections::HashSet,
+    fs::OpenOptions,
+    io::Write,
+    panic::AssertUnwindSafe,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use bevy::{prelude::*, tasks::futures_lite::FutureExt};
@@ -28,11 +33,11 @@ pub struct Effects {
     next_id: u64,
     described: HashSet<HandlerKey>,
     file: PathBuf,
-    header_written: bool,
 }
 
-/// One line of `effects.jsonl`: the log header once per process, then one
-/// record per resolved dispatch.
+/// One line of `effects.jsonl`. Each flush writes the log header as it
+/// stands, then one record per dispatch resolved since the last flush, so
+/// the last header lists every handler and the whole signature.
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 enum Line<'a> {
@@ -41,14 +46,15 @@ enum Line<'a> {
 }
 
 impl Effects {
-    /// Record into `file`, keeping streamed events verbatim.
+    /// Record into `file`, keeping streamed events verbatim. Effect ids
+    /// continue after the last record already in `file`, so a session that
+    /// spans reloads keeps them unique.
     pub fn new(file: PathBuf) -> Self {
         Self {
             recorder: EffectLogRecorder::keeping_stream_events(),
-            next_id: 0,
+            next_id: last_id(&file),
             described: HashSet::new(),
             file,
-            header_written: false,
         }
     }
 
@@ -98,18 +104,15 @@ impl Effects {
         }
     }
 
-    /// Append the dispatches resolved since the last flush to the effect
-    /// log, after the header on the first flush of this process.
+    /// Append the header and the dispatches resolved since the last flush
+    /// to the effect log.
     pub fn flush(&mut self) -> std::io::Result<()> {
         let log = self.recorder.take();
-        if log.records.is_empty() && self.header_written {
+        if log.records.is_empty() {
             return Ok(());
         }
-        let mut text = String::new();
-        if !self.header_written {
-            text.push_str(&serde_json::to_string(&Line::Header(&log.header))?);
-            text.push('\n');
-        }
+        let mut text = serde_json::to_string(&Line::Header(&log.header))?;
+        text.push('\n');
         for record in &log.records {
             text.push_str(&serde_json::to_string(&Line::Record(record))?);
             text.push('\n');
@@ -118,10 +121,21 @@ impl Effects {
             .create(true)
             .append(true)
             .open(&self.file)?
-            .write_all(text.as_bytes())?;
-        self.header_written = true;
-        Ok(())
+            .write_all(text.as_bytes())
     }
+}
+
+/// The highest effect id recorded in `file`, or 0.
+fn last_id(file: &Path) -> u64 {
+    std::fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let line: serde_json::Value = serde_json::from_str(line).ok()?;
+            line.get("record")?.get("id")?.as_u64()
+        })
+        .max()
+        .unwrap_or_default()
 }
 
 /// The recorder's view of one dispatch.

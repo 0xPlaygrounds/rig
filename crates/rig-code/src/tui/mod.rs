@@ -10,6 +10,7 @@ use std::io::Write;
 
 use bevy::prelude::*;
 use crossterm::{
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -38,6 +39,7 @@ pub struct Tui {
 impl Drop for Tui {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
+        let _ = execute!(self.terminal.backend_mut(), DisableBracketedPaste);
         if !self.keep_screen {
             let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         }
@@ -94,7 +96,12 @@ fn open() -> std::io::Result<Tui> {
     enable_raw_mode()?;
     // `Terminal::clear` would query the cursor through stdout, which now
     // goes to the log, so the screen is cleared directly.
-    execute!(output, EnterAlternateScreen, Clear(ClearType::All))?;
+    execute!(
+        output,
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        Clear(ClearType::All)
+    )?;
     Ok(Tui {
         terminal: Terminal::new(CrosstermBackend::new(output))?,
         keep_screen: false,
@@ -105,20 +112,15 @@ fn open() -> std::io::Result<Tui> {
 /// so stray prints from plugins, panics and child processes land there.
 #[cfg(unix)]
 fn take_terminal() -> std::io::Result<Output> {
-    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::fd::{AsFd, AsRawFd};
 
     let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(crate::ecs::paths::log_file())?;
-    // SAFETY: `dup` returns a fresh descriptor, owned from here on by the
-    // `File`; `dup2` only takes descriptor numbers.
-    let terminal = unsafe { libc::dup(libc::STDOUT_FILENO) };
-    if terminal < 0 {
-        return Err(std::io::Error::last_os_error());
-    }
-    let terminal = unsafe { std::fs::File::from_raw_fd(terminal) };
+    let terminal = std::fs::File::from(std::io::stdout().as_fd().try_clone_to_owned()?);
     for stdio in [libc::STDOUT_FILENO, libc::STDERR_FILENO] {
+        // SAFETY: `dup2` only takes descriptor numbers; both are open.
         if unsafe { libc::dup2(log.as_raw_fd(), stdio) } < 0 {
             return Err(std::io::Error::last_os_error());
         }

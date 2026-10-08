@@ -118,11 +118,13 @@ pub enum AgentSystems {
 
 /// Registers tools and slash commands from plugins.
 pub trait RigAppExt {
-    /// Make `tool` callable by agents.
+    /// Make `tool` callable by agents. A tool whose name is taken is ignored,
+    /// with a warning in the log.
     fn add_tool<T: rig_core::tool::Tool + 'static>(&mut self, tool: T) -> &mut Self;
 
     /// Make `system` run when `/name` is submitted. `help` is its line in
-    /// `/help`.
+    /// `/help`. A command whose name is taken is ignored, with a warning in
+    /// the log.
     fn add_command<M>(
         &mut self,
         name: &str,

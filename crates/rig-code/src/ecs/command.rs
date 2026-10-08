@@ -10,7 +10,7 @@ use bevy::{
 
 use super::{
     ChoiceKind, ChoiceRequested, Notice, RigAppExt,
-    agent::{EffortChoice, ModelChoice},
+    agent::{AgentStatus, EffortChoice, ModelChoice},
     catalog::{self, Providers},
 };
 
@@ -36,13 +36,22 @@ pub struct CommandInput {
 /// The id a command system runs under.
 pub type CommandId = SystemId<In<CommandInput>>;
 
-/// Register `system` as the command `/name`.
+/// Register `system` as the command `/name`, unless that name is taken.
 pub(super) fn register<M>(
     app: &mut App,
     name: &str,
     help: &str,
     system: impl IntoSystem<In<CommandInput>, (), M> + 'static,
 ) {
+    let world = app.world_mut();
+    if world
+        .query::<&SlashCommand>()
+        .iter(world)
+        .any(|command| command.name == name)
+    {
+        warn!("a command named `/{name}` is already registered; the second one is ignored");
+        return;
+    }
     let id = app.register_system(system);
     app.world_mut().entity_mut(id.entity()).insert((
         Name::new(format!("/{name}")),
@@ -76,11 +85,23 @@ impl Plugin for CommandsPlugin {
 fn model(
     In(input): In<CommandInput>,
     providers: Res<Providers>,
-    mut agents: Query<(&mut ModelChoice, &mut EffortChoice)>,
+    mut agents: Query<(&mut ModelChoice, &mut EffortChoice, &AgentStatus)>,
     mut notices: MessageWriter<Notice>,
     mut choices: MessageWriter<ChoiceRequested>,
 ) {
     let agent = input.agent;
+    // The loop reads the model before each step, so a switch mid-turn would
+    // change provider halfway through the turn.
+    if agents
+        .get(agent)
+        .is_ok_and(|(_, _, status)| *status != AgentStatus::Idle)
+    {
+        notices.write(Notice::error(
+            agent,
+            "A turn is running. Stop it first, then switch models.",
+        ));
+        return;
+    }
     if input.args.is_empty() {
         choices.write(ChoiceRequested {
             agent,
@@ -114,7 +135,7 @@ fn model(
         ));
         return;
     }
-    let Ok((mut model, mut effort)) = agents.get_mut(agent) else {
+    let Ok((mut model, mut effort, _)) = agents.get_mut(agent) else {
         return;
     };
     let reference = catalog::reference(spec);

@@ -42,10 +42,10 @@ pub fn state_file() -> PathBuf {
 
 /// `$RIG_HOME`, else `$XDG_DATA_HOME/rig`, else `~/.local/share/rig`.
 fn data_root() -> PathBuf {
-    if let Some(home) = std::env::var_os("RIG_HOME") {
+    if let Some(home) = std::env::var_os("RIG_HOME").filter(|home| !home.is_empty()) {
         return PathBuf::from(home);
     }
-    if let Some(data) = std::env::var_os("XDG_DATA_HOME") {
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME").filter(|data| !data.is_empty()) {
         return PathBuf::from(data).join("rig");
     }
     std::env::home_dir()

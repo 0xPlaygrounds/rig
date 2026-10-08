@@ -53,7 +53,18 @@ fn cargo() -> OsString {
     env::var_os("CARGO").unwrap_or_else(|| "cargo".into())
 }
 
-/// Resolve the project, then find any `bevy_ecs` that is not
+/// Bevy's own crates that a plugin's types and traits come from. Other
+/// `bevy_*` packages are third-party crates with their own versions.
+const BEVY_CORE: [&str; 6] = [
+    "bevy",
+    "bevy_app",
+    "bevy_ecs",
+    "bevy_platform",
+    "bevy_reflect",
+    "bevy_tasks",
+];
+
+/// Resolve the project, then find any of Bevy's core crates that is not
 /// [`BEVY_VERSION`] and name the plugin that pulls it in.
 fn check_bevy(paths: &Paths, config: &Config) -> Result<()> {
     let status = Command::new(cargo())
@@ -70,7 +81,9 @@ fn check_bevy(paths: &Paths, config: &Config) -> Result<()> {
     }
     let lock = fs::read_to_string(paths.project.join("Cargo.lock"))?;
     let packages = packages(&lock);
-    let foreign = |package: &Package| package.name == "bevy_ecs" && package.version != BEVY_VERSION;
+    let foreign = |package: &Package| {
+        BEVY_CORE.contains(&package.name.as_str()) && package.version != BEVY_VERSION
+    };
     if !packages.iter().any(foreign) {
         return Ok(());
     }

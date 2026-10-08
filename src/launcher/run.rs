@@ -1,9 +1,10 @@
 //! `rig`: build the agent, then run it until it exits for good.
 //!
 //! The agent writes `<session>/ready` after its first frame. A binary that
-//! got that far is promoted to `bin/good`. Exit code 75 asks for the binary
-//! `/reload` just built; a binary that crashes before the marker is
-//! replaced by `bin/good`, with a notice saying so.
+//! got that far and then exited cleanly or for a reload is promoted to
+//! `bin/good`. Exit code 75 asks for the binary `/reload` just built; a
+//! binary that crashes before the marker is replaced by `bin/good`, with a
+//! notice saying so.
 
 use std::{
     env, fs,
@@ -44,6 +45,18 @@ pub fn run(paths: &Paths, jobs: Option<u32>, resume: bool) -> Result<ExitCode> {
         }
         Err(error) => return Err(error),
     }
+    supervise(paths, jobs, &session, running, notice).inspect_err(|_| leave_alternate_screen())
+}
+
+/// Run the agent, starting the next binary after each reload, until it exits
+/// for good.
+fn supervise(
+    paths: &Paths,
+    jobs: Option<u32>,
+    session: &Path,
+    mut running: Binary,
+    mut notice: Option<String>,
+) -> Result<ExitCode> {
     let ready = session.join("ready");
     let launcher = env::current_exe()?;
     loop {
@@ -54,7 +67,7 @@ pub fn run(paths: &Paths, jobs: Option<u32>, resume: bool) -> Result<ExitCode> {
         let _ = fs::remove_file(&ready);
         let mut agent = Command::new(&binary);
         agent
-            .env("RIG_CODE_SESSION_DIR", &session)
+            .env("RIG_CODE_SESSION_DIR", session)
             .env("RIG_CODE_LAUNCHER", &launcher);
         match notice.take() {
             Some(text) => agent.env("RIG_CODE_NOTICE", text),
@@ -67,7 +80,8 @@ pub fn run(paths: &Paths, jobs: Option<u32>, resume: bool) -> Result<ExitCode> {
             .status()
             .map_err(|error| Error(format!("cannot start {}: {error}", binary.display())))?;
         let started = ready.is_file();
-        if started && running == Binary::Current {
+        let clean = matches!(status.code(), Some(0 | RELOAD_EXIT_CODE));
+        if started && clean && running == Binary::Current {
             promote(paths)?;
         }
         match status.code() {

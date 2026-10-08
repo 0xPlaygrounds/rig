@@ -24,7 +24,7 @@ use crossbeam_channel::{Receiver, Sender};
 use crate::{
     RELOAD_EXIT_CODE,
     ecs::{
-        Notice, RigAppExt,
+        AgentSystems, Notice, RigAppExt,
         agent::{Agent, AgentStatus},
         command::CommandInput,
         paths,
@@ -81,7 +81,11 @@ impl Plugin for LauncherPlugin {
             Update,
             (
                 start_notice.run_if(run_once),
-                watch_build.run_if(resource_exists::<BuildProgress>),
+                // After the agent loop, so a turn started this frame is seen
+                // before the reload exit.
+                watch_build
+                    .run_if(resource_exists::<BuildProgress>)
+                    .after(AgentSystems::Collect),
             ),
         )
         .add_systems(Last, mark_ready.run_if(run_once));

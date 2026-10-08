@@ -34,8 +34,9 @@ pub struct BashArgs {
 }
 
 /// Kills the child when dropped, so a cancelled call or a timeout leaves no
-/// process behind. On unix the shell leads its own process group, and the
-/// whole group is killed, so the commands it started go too.
+/// process behind. On unix the shell leads its own session, so it has no
+/// controlling terminal to draw on or read from, and its whole process group
+/// is killed, so the commands it started go too.
 struct KillOnDrop(Child);
 
 impl Drop for KillOnDrop {
@@ -101,7 +102,15 @@ impl Tool for Bash {
             .stdout(output)
             .stderr(errors);
         #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        // SAFETY: `setsid` is async-signal-safe and touches no memory.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut command, || {
+                if libc::setsid() < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
         if let Some(workdir) = context.scope::<Workdir>() {
             command.current_dir(&workdir.0);
         }
@@ -110,11 +119,14 @@ impl Tool for Bash {
                 ToolExecutionError::other(format!("cannot start `sh`: {error}"))
             })?);
         let timeout = Duration::from_secs(args.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS));
-        let deadline = Instant::now() + timeout;
+        // A timeout too large to represent never expires.
+        let deadline = Instant::now().checked_add(timeout);
         let status = loop {
             match child.0.try_wait() {
                 Ok(Some(status)) => break Some(status),
-                Ok(None) if Instant::now() >= deadline => break None,
+                Ok(None) if deadline.is_some_and(|deadline| Instant::now() >= deadline) => {
+                    break None;
+                }
                 Ok(None) => Delay::new(POLL).await,
                 Err(error) => return Err(ToolExecutionError::other(error.to_string())),
             }
@@ -122,7 +134,9 @@ impl Tool for Bash {
         drop(child);
         let text = std::fs::read(&output_path)
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-            .map_err(|error| io_error(&output_path, error))?;
+            .map_err(|error| io_error(&output_path, error));
+        let _ = std::fs::remove_file(&output_path);
+        let text = text?;
         let text = tail(&text, OUTPUT_BYTES);
         match status {
             Some(status) => Ok(match status.code() {

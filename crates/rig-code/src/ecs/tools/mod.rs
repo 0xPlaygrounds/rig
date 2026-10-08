@@ -29,12 +29,23 @@ pub struct RegisteredTool {
     pub handler: ErasedHandler,
 }
 
-/// Spawn the entity of `tool`.
+/// Spawn the entity of `tool`, unless a tool of that name exists: providers
+/// reject a request that defines a name twice.
 pub(super) fn register<T: rig_core::tool::Tool + 'static>(app: &mut App, tool: T) {
     let definition = tool_definition(&tool);
+    let name = definition.name.as_str();
+    let world = app.world_mut();
+    if world
+        .query::<&RegisteredTool>()
+        .iter(world)
+        .any(|tool| tool.definition.name.as_str() == name)
+    {
+        warn!("a tool named `{name}` is already registered; the second one is ignored");
+        return;
+    }
     let handler = ErasedHandler::new(ToolAdapter::new(tool));
-    app.world_mut().spawn((
-        Name::new(format!("tool {}", definition.name.as_str())),
+    world.spawn((
+        Name::new(format!("tool {name}")),
         RegisteredTool {
             definition,
             handler,
