@@ -10,18 +10,21 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
 use crate::core::session::SessionPaths;
+use crate::reload::RELOAD_EXIT_CODE;
 
 /// The terminal, drawn to through a private copy of stdout. Dropping it
-/// restores the terminal.
+/// restores the terminal, keeping the alternate screen for a reload so the
+/// next build draws over the same screen.
 #[derive(Resource)]
 pub struct Tui {
     pub(super) terminal: Terminal<CrosstermBackend<File>>,
+    keep_screen: bool,
 }
 
 impl Tui {
@@ -35,16 +38,23 @@ impl Tui {
         }
         enable_raw_mode()?;
         let mut backend = CrosstermBackend::new(screen);
-        execute!(backend, EnterAlternateScreen)?;
+        // After a reload the alternate screen still shows the previous
+        // build's frame.
+        execute!(backend, EnterAlternateScreen, Clear(ClearType::All))?;
         let mut terminal = Terminal::new(backend)?;
         terminal.hide_cursor()?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            keep_screen: false,
+        })
     }
 }
 
 impl Drop for Tui {
     fn drop(&mut self) {
-        execute!(self.terminal.backend_mut(), LeaveAlternateScreen).ok();
+        if !self.keep_screen {
+            execute!(self.terminal.backend_mut(), LeaveAlternateScreen).ok();
+        }
         self.terminal.show_cursor().ok();
         disable_raw_mode().ok();
     }
@@ -62,6 +72,17 @@ pub fn open_terminal(
             error!("could not open the terminal: {failure}");
             exit.write(AppExit::from_code(1));
         }
+    }
+}
+
+/// Keeps the alternate screen when the app exits to reload.
+pub fn keep_screen_on_reload(mut exits: MessageReader<AppExit>, tui: Option<ResMut<Tui>>) {
+    if let Some(mut tui) = tui
+        && exits
+            .read()
+            .any(|exit| *exit == AppExit::from_code(RELOAD_EXIT_CODE))
+    {
+        tui.keep_screen = true;
     }
 }
 

@@ -54,6 +54,7 @@
 - [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
+- [The rig coding agent](#the-rig-coding-agent)
 - [Integrations](#supported-integrations)
 
 ## What is Rig?
@@ -163,6 +164,73 @@ features disabled. Its optional `agent` adapter is independent of the native
 `http` engine. The agent runtime does not depend on the concrete logging
 crate. See the [cassette README](crates/rig-cassette/README.md) for
 dependency guarantees and migration paths.
+
+## The rig coding agent
+
+`cargo install rig` also installs `rig`, a terminal coding agent. The agent is
+the [`rig-code`](crates/rig-code) crate, a Bevy app, and `rig` is its launcher:
+it generates a small Cargo project for the agent, builds it, and runs it.
+
+```bash
+cargo install rig
+export OPENAI_API_KEY=...   # or any other provider key in the model catalog
+rig                         # builds the agent on first run, then opens it
+```
+
+In the agent, `/model` picks a model, `/effort` its reasoning setting, `/help`
+lists the commands, and Esc stops a running turn. `/reload` rebuilds the agent
+and restarts it on the same session; it shows cargo's progress, keeps the
+current build running if the new one does not compile, and rolls back to it if
+the new one crashes during startup.
+
+Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
+`rig.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
+the log `agent.log`.
+
+To run the agent from a rig checkout instead of crates.io, install the
+launcher from it or point `RIG_SOURCE` at it:
+
+```bash
+cd rig && cargo install --path . --root /some/dir
+RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
+```
+
+Plugins are Bevy plugins. A plugin crate depends on `rig-code` and on Bevy
+crates at exactly `=0.20.0-rc.2`, and registers tools and slash commands the
+same way the built-in ones are registered:
+
+```rust,ignore
+use rig_code::prelude::*;
+
+#[derive(Default)]
+pub struct HelloPlugin;
+
+impl Plugin for HelloPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_command("hello", "Say hello", hello);
+        // app.add_tool(MyTool) adds any rig_core::tool::Tool.
+    }
+}
+
+fn hello(In(_): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
+    notices.write(Notice("Hello!".to_owned()));
+}
+```
+
+List it in `$RIG_HOME/rig.toml` and run `/reload`:
+
+```toml
+jobs = 8                          # optional: cargo -j for the agent
+
+[[plugin]]
+crate = "rig-hello"               # the package name
+path = "/path/to/rig-hello"       # or git = "..." (branch, rev), or version = "..."
+plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
+bevy_features = []                # optional extra Bevy features
+```
+
+`rig build` regenerates and builds the agent without starting it.
 
 ## Supported Integrations
 

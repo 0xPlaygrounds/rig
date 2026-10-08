@@ -17,6 +17,7 @@
 
 pub mod builtin;
 pub mod core;
+pub mod reload;
 #[cfg(feature = "tui")]
 pub mod tui;
 
@@ -46,8 +47,8 @@ pub mod prelude {
 }
 
 /// The rig-code app: the session and its log, Bevy's task pools and a
-/// 60 Hz loop, the agent core, the built-in tools and commands, and the
-/// terminal view (feature `tui`).
+/// 60 Hz loop, the agent core, the built-in tools and commands, `/reload`,
+/// and the terminal view (feature `tui`).
 pub struct RigCodePlugins;
 
 impl PluginGroup for RigCodePlugins {
@@ -62,7 +63,8 @@ impl PluginGroup for RigCodePlugins {
             .add(ScheduleRunnerPlugin::run_loop(Duration::from_millis(16)))
             .add(core::AgentPlugin)
             .add(builtin::BuiltinToolsPlugin)
-            .add(builtin::BuiltinCommandsPlugin);
+            .add(builtin::BuiltinCommandsPlugin)
+            .add(reload::ReloadPlugin);
         #[cfg(feature = "tui")]
         let group = group.add(tui::TuiPlugin);
         group
