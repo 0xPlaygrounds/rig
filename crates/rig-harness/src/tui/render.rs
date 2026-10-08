@@ -536,9 +536,15 @@ fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
     }
     lines.push(Line::default());
     let waiting = inbox
-        .steering
+        .notes
         .iter()
-        .map(|pending| ("steering", &pending.text))
+        .map(|pending| ("note", &pending.text))
+        .chain(
+            inbox
+                .steering
+                .iter()
+                .map(|pending| ("steering", &pending.text)),
+        )
         .chain(
             inbox
                 .queued

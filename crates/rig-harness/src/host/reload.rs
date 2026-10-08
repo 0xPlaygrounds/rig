@@ -6,6 +6,10 @@
 //!
 //! `/reload` is refused while a turn runs: stop it first (Esc). A turn
 //! started while the build runs delays the restart until it ends.
+//!
+//! A failed build's first errors go into the conversation of the agent that
+//! asked, as a note for its model ([`super::launcher::build_failure_note`]);
+//! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
@@ -18,17 +22,20 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use rig::harness_protocol::RELOAD_EXIT_CODE;
+use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
 
 use super::launcher;
 use super::process::{detach, kill_group};
 use crate::core::agent::{Notice, TurnOf};
 use crate::core::calls::Wake;
 use crate::core::commands::{AppCommandsExt, CommandArgs};
+use crate::core::inbox::{Deliver, DeliveryMode};
 use crate::core::turn::PollCalls;
 
 /// Lines of a failed build shown, from its first error.
 const ERROR_LINES: usize = 60;
+/// Lines of a failed build in the note to the model, from its first error.
+const NOTE_LINES: usize = 40;
 /// Lines of build output kept while it runs.
 const KEPT_LINES: usize = 2000;
 
@@ -62,6 +69,8 @@ impl Plugin for ReloadPlugin {
 #[derive(Resource)]
 pub struct ReloadBuild {
     child: Child,
+    /// The agent that asked, whose model is told when the build fails.
+    agent: Entity,
     lines: Receiver<String>,
     output: VecDeque<String>,
     latest: Option<String>,
@@ -90,7 +99,7 @@ impl ReloadBuild {
         self.ready
     }
 
-    fn start(launcher: &std::ffi::OsStr, wake: Wake) -> std::io::Result<Self> {
+    fn start(launcher: &std::ffi::OsStr, agent: Entity, wake: Wake) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
         command
             .arg("build")
@@ -110,6 +119,7 @@ impl ReloadBuild {
         }
         Ok(Self {
             child,
+            agent,
             lines,
             output: VecDeque::new(),
             latest: None,
@@ -131,18 +141,18 @@ impl ReloadBuild {
         }
     }
 
-    /// The output from the first error on, or its end when no line starts
-    /// with `error`.
-    fn errors(&self) -> String {
+    /// At most `count` lines of the output from the first error on, or its
+    /// end when no line starts with `error`.
+    fn errors(&self, count: usize) -> String {
         let start = self
             .output
             .iter()
             .position(|line| line.starts_with("error"))
-            .unwrap_or_else(|| self.output.len().saturating_sub(ERROR_LINES));
+            .unwrap_or_else(|| self.output.len().saturating_sub(count));
         self.output
             .iter()
             .skip(start)
-            .take(ERROR_LINES)
+            .take(count)
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join("\n")
@@ -216,7 +226,7 @@ fn cargo_progress(line: &str) -> Option<(u32, u32)> {
 }
 
 fn reload(
-    In(_): In<CommandArgs>,
+    In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
     build: Option<Res<ReloadBuild>>,
     wake: Res<Wake>,
@@ -228,7 +238,7 @@ fn reload(
     } else if build.is_some() {
         "A rebuild is already running; Esc cancels it.".to_owned()
     } else if let Some(launcher) = launcher::executable() {
-        match ReloadBuild::start(&launcher, wake.clone()) {
+        match ReloadBuild::start(&launcher, args.agent, wake.clone()) {
             Ok(build) => {
                 commands.insert_resource(build);
                 "Rebuilding the agent…".to_owned()
@@ -279,12 +289,34 @@ fn drain_reload(
         build.ready = true;
         notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
     } else {
-        let output = build.errors();
+        let output = build.errors(ERROR_LINES);
         error!("the rebuild failed ({status}):\n{output}");
+        let first = build
+            .output
+            .iter()
+            .find(|line| line.starts_with("error"))
+            .map(|line| format!(": {}", line.trim()))
+            .unwrap_or_default();
         notices.write(Notice::error(
             None,
-            format!("The rebuild failed ({status}); this build keeps running."),
+            format!(
+                "The rebuild failed ({status}){first}; this build keeps running. Whole output: \
+                 {}",
+                Home::from_env().build_log().display()
+            ),
         ));
+        commands.trigger(Deliver {
+            entity: build.agent,
+            text: launcher::build_failure_note(
+                "/reload",
+                &format!(
+                    "`rig build` exited with {status}. Its output from the first error:\n{}",
+                    build.errors(NOTE_LINES)
+                ),
+            ),
+            origin: launcher::build_origin(),
+            mode: DeliveryMode::Note,
+        });
         failures.write(ReloadFailed { output });
         commands.remove_resource::<ReloadBuild>();
     }

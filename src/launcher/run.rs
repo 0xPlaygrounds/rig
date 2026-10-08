@@ -26,7 +26,7 @@ use std::time::Duration;
 
 use rig::harness_protocol::{Home, Invocation, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
 
-use super::build::{self, Staging};
+use super::build::{self, BuildFailure, Staging};
 use super::{Result, home};
 
 /// How often the launcher looks for the ready file while the agent runs.
@@ -51,15 +51,22 @@ pub enum Start {
 pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let headless = invocation.mode.is_headless();
-    let (mut claimed, mut notice) = {
+    let (mut claimed, mut notice, mut build_failure) = {
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         home::sweep(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref(), !headless)?;
-        let built = rebuild(home, &claimed.id)?;
+        let failure = rebuild(home, &claimed.id)?;
+        let built = failure.as_ref().map(|failure| {
+            format!("Building the agent failed, so the previous build is running: {failure}")
+        });
         let notice: Vec<String> = claim_notice.into_iter().chain(built).collect();
-        (claimed, (!notice.is_empty()).then(|| notice.join("\n")))
+        (
+            claimed,
+            (!notice.is_empty()).then(|| notice.join("\n")),
+            failure.map(|failure| failure.details()),
+        )
     };
     let launcher = std::env::current_exe()?;
     loop {
@@ -76,12 +83,17 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
-            .env_remove(env::NOTICE);
+            .env_remove(env::NOTICE)
+            .env_remove(env::BUILD_FAILURE);
         if let Some(working) = &claimed.directory {
             command.current_dir(working);
         }
         if let Some(notice) = notice.take() {
             command.env(env::NOTICE, notice);
+        }
+        // Only the first start follows the failed build.
+        if let Some(failure) = build_failure.take() {
+            command.env(env::BUILD_FAILURE, failure);
         }
         let mut child = command.spawn()?;
         // A trial becomes the good build as soon as it is ready, so a
@@ -368,8 +380,8 @@ fn remove_if_present(path: &Path) -> Result<()> {
 /// Builds before every start, staging for this launcher; cargo does no
 /// work when nothing changed. With no good build yet, the build is staged
 /// even if it was rejected before, so each start retries it. A failed build
-/// with an older binary at hand becomes the notice that binary starts with.
-fn rebuild(home: &Home, session: &SessionId) -> Result<Option<String>> {
+/// with an older binary at hand is returned, for that binary to start with.
+fn rebuild(home: &Home, session: &SessionId) -> Result<Option<BuildFailure>> {
     let first_run = !home.staged().exists() && !home.good().exists();
     eprintln!(
         "Building the rig agent{}…",
@@ -382,12 +394,10 @@ fn rebuild(home: &Home, session: &SessionId) -> Result<Option<String>> {
     };
     match build::compile(home, &home.staged_for(session), staging) {
         Ok(()) => Ok(None),
-        Err(failure) if first_run => Err(failure),
+        Err(failure) if first_run => Err(failure.into()),
         Err(failure) => {
             eprintln!("error: {failure}; starting the previous build");
-            Ok(Some(format!(
-                "Building the agent failed, so the previous build is running: {failure}"
-            )))
+            Ok(Some(failure))
         }
     }
 }

@@ -205,6 +205,15 @@ current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
 the new one crashes during startup.
 
+Every build, the one before each start and `/reload`'s, writes its whole
+output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
+message names its reason and first compiler error. The agent sees build
+failures too: the reason, the first errors and the paths of `build.log`,
+`plugins.toml` and the generated project go into its conversation as a note
+from the `build` plugin, which starts no turn and is saved with the session.
+Ask it why the build failed and it can read the log, fix the cause, and
+tell you to `/reload`.
+
 The session is written as it happens. Each agent, subagents included, has an
 append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
 usage and compactions; images are stored once in `blobs/`, and `meta.json`
@@ -291,7 +300,7 @@ tool's call in its own way; a plugin can draw its own tools' calls with
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
-`plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+`plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
 the prompt history `history.jsonl`, and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

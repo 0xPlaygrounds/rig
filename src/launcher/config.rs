@@ -189,7 +189,27 @@ fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
         {
             return Err("a plugin from another crate needs `crate`, its package name".into());
         }
-        None => None,
+        None => {
+            // The generated project depends on rig-harness, and on bevy
+            // when a plugin asks for Bevy features; any other crate needs
+            // its own entry.
+            let root = type_path.split("::").next().unwrap_or_default();
+            if !["rig_harness", "bevy"].contains(&root) {
+                let renamed = if root == "rig_code" {
+                    " rig-code is now rig-harness: write `rig_harness::…`."
+                } else {
+                    ""
+                };
+                return Err(format!(
+                    "`{type_path}` names the crate `{root}`, which is no dependency of the agent: \
+                     an entry without `crate` is one of rig-harness's own plugins, under \
+                     `rig_harness::`; a plugin from another crate needs `crate` and a source.\
+                     {renamed}"
+                )
+                .into());
+            }
+            None
+        }
         Some(name) => {
             if name.is_empty()
                 || !name

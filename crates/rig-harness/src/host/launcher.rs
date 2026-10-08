@@ -1,25 +1,80 @@
 //! The agent's side of the `rig` launcher protocol
 //! ([`rig::harness_protocol`]): the launcher's path for rebuilds, its startup
-//! notice, and the ready file that tells it this build started.
+//! notice, the failed build it started after, and the ready file that tells
+//! it this build started.
+//!
+//! A failed build, the launcher's before this start or `/reload`'s, goes
+//! into the primary agent's conversation as a [`DeliveryMode::Note`] from
+//! [`BUILD_ORIGIN`]: the model reads why, and where the whole output and
+//! the files the build is made from are, without a turn starting.
 
 use std::ffi::OsString;
+use std::fmt::Write as _;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
-use rig::harness_protocol::env;
+use rig::harness_protocol::{Home, env};
 
 use crate::core::agent::Notice;
-use crate::core::journal::SessionPaths;
+use crate::core::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
+use crate::core::journal::{SessionLog, SessionPaths};
+use crate::host::headless::{PrimaryQuery, primary};
 
-/// Shows the launcher's startup notice and writes the ready file.
+/// The plugin name in the [`Origin`] of a failed build's note.
+pub const BUILD_ORIGIN: &str = "build";
+
+/// Shows the launcher's startup notice, hands a failed build to the
+/// primary agent, and writes the ready file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, launcher_notice)
+            .add_systems(Update, deliver_build_failure)
             .add_systems(Last, signal_ready);
     }
+}
+
+/// The failed build the launcher started after, until the primary agent
+/// has it.
+#[derive(Resource)]
+struct StartBuildFailure(String);
+
+/// The [`Origin`] of a failed build's note.
+pub fn build_origin() -> Origin {
+    Origin {
+        kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
+        from: None,
+        request: None,
+    }
+}
+
+/// The note on a failed build of `what`, for the model: `summary` (the
+/// reason and the first errors), where the whole output is, and the files
+/// the agent is built from.
+pub fn build_failure_note(what: &str, summary: &str) -> String {
+    let home = Home::from_env();
+    let project = home.project();
+    let mut note = format!(
+        "Building the agent ({what}) failed; the previous build keeps running.\n\n{}\n\n\
+         Whole build output: {}\n\
+         Plugin list: {}\n\
+         Generated project: {} and {}",
+        summary.trim(),
+        home.build_log().display(),
+        home.config().display(),
+        project.join("Cargo.toml").display(),
+        project.join("src/main.rs").display(),
+    );
+    if let Some(source) = std::env::var_os("RIG_SOURCE").filter(|source| !source.is_empty()) {
+        let _ = write!(
+            note,
+            "\nrig-harness source (RIG_SOURCE): {}",
+            std::path::Path::new(&source).display()
+        );
+    }
+    note
 }
 
 /// The launcher that started this agent, if one did.
@@ -28,12 +83,40 @@ pub(crate) fn executable() -> Option<OsString> {
 }
 
 /// Shows the launcher's notice, such as a rollback, at startup.
-fn launcher_notice(mut notices: MessageWriter<Notice>) {
+fn launcher_notice(mut notices: MessageWriter<Notice>, mut commands: Commands) {
     if let Ok(notice) = std::env::var(env::NOTICE)
         && !notice.is_empty()
     {
         notices.write(Notice::info(None, notice));
     }
+    if let Ok(failure) = std::env::var(env::BUILD_FAILURE)
+        && !failure.trim().is_empty()
+    {
+        commands.insert_resource(StartBuildFailure(failure));
+    }
+}
+
+/// Puts the launcher's failed build in the primary agent's conversation,
+/// once the session is restored and logged.
+fn deliver_build_failure(
+    failure: Option<Res<StartBuildFailure>>,
+    agents: PrimaryQuery,
+    log: Option<Res<SessionLog>>,
+    mut commands: Commands,
+) {
+    let Some(failure) = failure else {
+        return;
+    };
+    let Some(agent) = primary(&agents).filter(|_| log.is_some_and(|log| log.is_live())) else {
+        return;
+    };
+    commands.trigger(Deliver {
+        entity: agent,
+        text: build_failure_note("before this start", &failure.0),
+        origin: build_origin(),
+        mode: DeliveryMode::Note,
+    });
+    commands.remove_resource::<StartBuildFailure>();
 }
 
 /// Tells the launcher, if one started this agent, that this build started:

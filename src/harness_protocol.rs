@@ -27,10 +27,15 @@ pub mod env {
     pub const LAUNCHER: &str = "RIG_LAUNCHER";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
+    /// Why the build before this start failed, so an older build runs:
+    /// the reason and the first compiler errors. The whole output is in
+    /// [`Home::build_log`](super::Home::build_log). The agent puts it in
+    /// its conversation, for the model to read.
+    pub const BUILD_FAILURE: &str = "RIG_BUILD_FAILURE";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent.
-    pub const AGENT_ONLY: [&str; 3] = [SESSION, LAUNCHER, NOTICE];
+    pub const AGENT_ONLY: [&str; 4] = [SESSION, LAUNCHER, NOTICE, BUILD_FAILURE];
 }
 
 /// The extension of an agent log, and of the effect log.
@@ -143,6 +148,13 @@ impl Home {
     /// The generated agent project.
     pub fn project(&self) -> PathBuf {
         self.root.join("project")
+    }
+
+    /// The whole output of the last build, the launcher's and cargo's,
+    /// rewritten by every build: the one before each start and `rig build`,
+    /// which `/reload` runs. Its last line says how the build ended.
+    pub fn build_log(&self) -> PathBuf {
+        self.root.join("build.log")
     }
 
     /// Cargo's target directory for the agent project.

@@ -20,7 +20,8 @@ use super::markdown;
 use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
 use crate::core::agent::Conversation;
-use crate::core::inbox::Origin;
+use crate::core::inbox::{Origin, OriginKind};
+use crate::host::launcher::BUILD_ORIGIN;
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
@@ -297,6 +298,16 @@ fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) 
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
+    // A failed build's note, which the model reads: told apart by its
+    // origin.
+    if matches!(&origin.kind, OriginKind::Plugin(name) if name == BUILD_ORIGIN) {
+        lines.push(Line::styled(
+            "✗ build failed (noted for the agent)",
+            Style::new().red().bold(),
+        ));
+        lines.extend(excerpt(body, RESULT_LINES, Style::new().red().dim()));
+        return;
+    }
     lines.push(Line::styled(
         format!("⤶ {}", origin.label()),
         Style::new().magenta().bold(),

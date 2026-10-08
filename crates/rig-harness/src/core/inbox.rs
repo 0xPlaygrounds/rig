@@ -4,7 +4,10 @@
 //! one keeps it in its [`Inbox`]: a [`DeliveryMode::Steer`] message goes to
 //! the model with the turn's next call, after the tool results it waits
 //! for; a [`DeliveryMode::Queue`] one carries the turn on once it would
-//! end. A turn that ends some other way (stopped, failed) hands what the
+//! end. A [`DeliveryMode::Note`] never starts or carries on a turn: it
+//! joins an idle agent's conversation at once, and a busy one's with the
+//! turn's next call or when the turn ends, for the model to read with the
+//! next message. A turn that ends some other way (stopped, failed) hands what the
 //! user typed and was not sent back to the views as [`Recalled`], so
 //! nothing typed is lost or sent unasked, and puts what agents and plugins
 //! sent in the conversation for the next turn.
@@ -117,6 +120,10 @@ pub enum DeliveryMode {
     Steer,
     /// Once the running turn would end, as its next step.
     Queue,
+    /// Context, such as a failed build: added to the conversation without
+    /// starting a turn, or carrying a running one on. A busy agent's model
+    /// reads it with the turn's next call, if any.
+    Note,
 }
 
 /// Put `text` in the agent's conversation, from `origin`, as `mode` says.
@@ -163,12 +170,15 @@ pub struct Inbox {
     pub steering: Vec<Pending>,
     /// Messages for after the turn, sent one at a time when it would end.
     pub queued: VecDeque<Pending>,
+    /// Notes ([`DeliveryMode::Note`]), sent with the turn's next call, else
+    /// added to the conversation when the turn ends.
+    pub notes: Vec<Pending>,
 }
 
 impl Inbox {
     /// Whether nothing waits.
     pub fn is_empty(&self) -> bool {
-        self.steering.is_empty() && self.queued.is_empty()
+        self.steering.is_empty() && self.queued.is_empty() && self.notes.is_empty()
     }
 }
 
@@ -228,6 +238,7 @@ pub(crate) fn on_deliver(
         match deliver.mode {
             DeliveryMode::Steer => inbox.steering.push(pending),
             DeliveryMode::Queue => inbox.queued.push_back(pending),
+            DeliveryMode::Note => inbox.notes.push(pending),
         }
         return;
     }
@@ -238,6 +249,13 @@ pub(crate) fn on_deliver(
         log: &log,
     };
     let mut request = None;
+    if deliver.mode == DeliveryMode::Note {
+        // No turn answers it: logged as halted, so a restore does not
+        // either, and the user's next message joins it.
+        commit(&to, pending, &mut conversation, &mut request, &mut notices);
+        log.halt(id, &conversation);
+        return;
+    }
     // After a failure that kept the user's message, the new text joins it.
     commit(&to, pending, &mut conversation, &mut request, &mut notices);
     let turn = commands
@@ -270,8 +288,9 @@ pub(crate) fn recall_on_turn_end(
     let mut typed = Vec::new();
     let inbox = &mut *inbox;
     let waiting: Vec<Pending> = inbox
-        .steering
+        .notes
         .drain(..)
+        .chain(inbox.steering.drain(..))
         .chain(inbox.queued.drain(..))
         .collect();
     for pending in waiting {
@@ -308,6 +327,19 @@ pub(crate) fn deliver_steering(
         commit(to, pending, conversation, request, notices);
     }
     true
+}
+
+/// Moves the notes into the conversation, like steering messages, ahead
+/// of a model call. Unlike them, notes never carry a turn on.
+pub(crate) fn deliver_notes(
+    to: &Delivery<'_>,
+    inbox: &mut Inbox,
+    conversation: &mut Conversation,
+    notices: &mut MessageWriter<Notice>,
+) {
+    for pending in inbox.notes.drain(..) {
+        commit(to, pending, conversation, &mut None, notices);
+    }
 }
 
 /// Moves the oldest queued message into the conversation. Whether there

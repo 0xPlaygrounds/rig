@@ -181,12 +181,42 @@ impl Context {
             Some(git) => format!("Git repository: {}, {}", git.root.display(), git.head),
             None => "Git repository: none".to_owned(),
         });
+        if super::launcher::executable().is_some() {
+            lines.push(build_paragraph());
+        }
         PromptSection::new(
             PromptSection::ORDER_ENVIRONMENT,
             "environment",
             lines.join("\n"),
         )
     }
+}
+
+/// How this agent is built, and what to do when a build fails: for an
+/// agent the `rig` launcher runs.
+fn build_paragraph() -> String {
+    let home = Home::from_env();
+    let source = std::env::var_os("RIG_SOURCE")
+        .filter(|source| !source.is_empty())
+        .map_or_else(
+            || "the rig-harness release from crates.io".to_owned(),
+            |source| {
+                format!(
+                    "the rig-harness source at {} (RIG_SOURCE)",
+                    Path::new(&source).display()
+                )
+            },
+        );
+    format!(
+        "\nThis agent runs from a project the `rig` launcher generates from the plugin list \
+         {plugins} and builds against {source}: {project}/Cargo.toml and {project}/src/main.rs. \
+         Every build writes its whole output to {log}. When a build fails (a note from plugin \
+         build in the conversation), read {log}, fix the cause (the plugins.toml entries, or the \
+         source), and tell the user to run /reload, or that the fix applies at the next start.",
+        plugins = home.config().display(),
+        project = home.project().display(),
+        log = home.build_log().display(),
+    )
 }
 
 /// The instruction file of `dir`, if it has one.
