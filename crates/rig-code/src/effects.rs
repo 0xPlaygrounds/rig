@@ -40,7 +40,7 @@ use crate::{
 #[derive(Resource, Default)]
 pub struct EffectHub {
     recorder: EffectLogRecorder,
-    next_id: u64,
+    pub(crate) next_id: u64,
     models: HashMap<String, ErasedHandler>,
     header_handlers: Option<usize>,
 }

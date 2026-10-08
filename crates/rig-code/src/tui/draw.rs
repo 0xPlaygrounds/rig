@@ -17,6 +17,7 @@ use crate::{
         Agent, AgentCalls, AgentStatus, Conversation, Effort, ModelCall, ModelChoice, ToolCallSlot,
     },
     model,
+    reload::ReloadBuild,
 };
 
 /// Lines of a tool result shown in the transcript.
@@ -54,19 +55,24 @@ pub(super) fn draw(
     >,
     model_calls: Query<Ref<ModelCall>>,
     slots: Query<Ref<ToolCallSlot>>,
+    builds: Query<Ref<ReloadBuild>>,
+    mut removed_builds: RemovedComponents<ReloadBuild>,
 ) {
     let calls_changed = model_calls.iter().any(|call| call.is_changed())
-        || slots.iter().any(|slot| slot.is_changed());
+        || slots.iter().any(|slot| slot.is_changed())
+        || builds.iter().any(|build| build.is_changed())
+        || removed_builds.read().count() > 0;
     if !view.dirty && changed.is_empty() && !calls_changed {
         return;
     }
+    let build = builds.iter().next().map(|build| build.progress());
     view.dirty = false;
     let Some(shown) = view.agent.and_then(|agent| agents.get(agent).ok()) else {
         return;
     };
     let view = &mut *view;
     let drawn = screen.0.draw(|frame| {
-        render(frame, view, shown, &model_calls, &slots);
+        render(frame, view, shown, build, &model_calls, &slots);
     });
     if let Err(error) = drawn {
         bevy_log::warn!("cannot draw: {error}");
@@ -77,6 +83,7 @@ fn render(
     frame: &mut Frame,
     view: &mut TuiView,
     (conversation, choice, effort, status, calls): Shown,
+    build: Option<String>,
     model_calls: &Query<Ref<ModelCall>>,
     slots: &Query<Ref<ToolCallSlot>>,
 ) {
@@ -109,10 +116,13 @@ fn render(
         AgentStatus::Thinking => "thinking (Esc stops)".to_owned(),
         AgentStatus::Tools(count) => format!("running {count} tool(s) (Esc stops)"),
     };
-    let title = format!(
+    let mut title = format!(
         " rig-code · {model} · effort {} · {state}",
         model::describe(effort.0)
     );
+    if let Some(build) = build {
+        title.push_str(&format!(" · {build}"));
+    }
     frame.render_widget(
         Paragraph::new(title).style(Style::default().add_modifier(Modifier::REVERSED)),
         header,
@@ -195,6 +205,39 @@ fn render(
         frame.render_widget(Clear, popup);
         frame.render_widget(
             Paragraph::new(lines).block(Block::default().borders(Borders::ALL).title(title)),
+            popup,
+        );
+    }
+
+    if let Some(errors) = &view.errors {
+        let width = (area.width * 9 / 10).max(10).min(area.width);
+        let rows: Vec<Row> = errors
+            .iter()
+            .map(|line| row(line, Style::default().fg(Color::Red)))
+            .collect();
+        let rows = wrap(rows, usize::from(width.saturating_sub(2)).max(1));
+        let height = (u16::try_from(rows.len())
+            .unwrap_or(u16::MAX)
+            .saturating_add(2))
+        .min(area.height.saturating_sub(2).max(3));
+        let popup = Rect::new(
+            area.x + (area.width - width) / 2,
+            area.y + (area.height - height) / 2,
+            width,
+            height,
+        );
+        let lines: Vec<Line> = rows
+            .into_iter()
+            .take(usize::from(height.saturating_sub(2)))
+            .map(|row| Line::styled(row.text, row.style))
+            .collect();
+        frame.render_widget(Clear, popup);
+        frame.render_widget(
+            Paragraph::new(lines).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" The build failed; this build keeps running · Esc closes "),
+            ),
             popup,
         );
     }

@@ -22,16 +22,17 @@ use crate::{
     agent::{
         Agent, AgentCalls, AgentId, AgentStatus, CallOf, Choose, Conversation, EffectTask, Effort,
         Interrupt, ModelCall, ModelChoice, NeedsReply, Notice, Quit, RigSet, Submit, SystemPrompt,
-        ToolAccess, ToolCallSlot,
+        ToolAccess, ToolCallSlot, TurnEnded,
     },
     commands::route_submit,
     effects::{EffectHub, describe_tools, flush_effects},
     model::{self, Credentials},
+    session,
     tools::ToolDef,
 };
 
 /// The agent loop: messages, the [`RigSet`] stages, the effect hub and
-/// model credentials, and one agent at startup.
+/// model credentials, and the agents restored (or one new agent) at startup.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
@@ -47,7 +48,7 @@ impl Plugin for AgentPlugin {
                 Update,
                 (RigSet::Input, RigSet::Start, RigSet::Poll, RigSet::Finish).chain(),
             )
-            .add_systems(Startup, (spawn_agent, describe_tools))
+            .add_systems(Startup, (session::restore, describe_tools))
             .add_systems(
                 Update,
                 (
@@ -61,17 +62,18 @@ impl Plugin for AgentPlugin {
     }
 }
 
-/// Spawn one agent when none exists.
-fn spawn_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
-    if agents.is_empty() {
-        commands.spawn(Agent);
+/// Save the session and leave.
+fn quit(mut quits: MessageReader<Quit>, mut commands: Commands, mut exit: MessageWriter<AppExit>) {
+    if quits.read().last().is_some() {
+        commands.queue(session::save);
+        exit.write(AppExit::Success);
     }
 }
 
-fn quit(mut quits: MessageReader<Quit>, mut exit: MessageWriter<AppExit>) {
-    if quits.read().last().is_some() {
-        exit.write(AppExit::Success);
-    }
+/// Set the agent idle and announce the end of its turn.
+fn end_turn(commands: &mut Commands, agent: Entity, status: &mut AgentStatus) {
+    *status = AgentStatus::Idle;
+    commands.trigger(TurnEnded { entity: agent });
 }
 
 /// Stop each interrupted agent's turn. What a cancelled model call
@@ -122,7 +124,7 @@ fn interrupt(
             .entity(*agent)
             .remove::<NeedsReply>()
             .despawn_related::<AgentCalls>();
-        *status = AgentStatus::Idle;
+        end_turn(&mut commands, *agent, &mut status);
     }
 }
 
@@ -234,13 +236,13 @@ fn poll_calls(
             Ok(other) => {
                 let text = format!("The model answered with a {} outcome.", other.family());
                 notices.write(Notice { agent, text });
-                *status = AgentStatus::Idle;
+                end_turn(&mut commands, agent, &mut status);
                 continue;
             }
             Err(error) => {
                 let text = format!("The model call failed: {}", error.message);
                 notices.write(Notice { agent, text });
-                *status = AgentStatus::Idle;
+                end_turn(&mut commands, agent, &mut status);
                 continue;
             }
         };
@@ -254,12 +256,12 @@ fn poll_calls(
             response.finish_reason().as_ref(),
         ) {
             notices.write(Notice { agent, text });
-            *status = AgentStatus::Idle;
+            end_turn(&mut commands, agent, &mut status);
             continue;
         }
         let tool_calls: Vec<message::ToolCall> = response.tool_calls().cloned().collect();
         if tool_calls.is_empty() {
-            *status = AgentStatus::Idle;
+            end_turn(&mut commands, agent, &mut status);
             continue;
         }
         *status = AgentStatus::Tools(tool_calls.len());

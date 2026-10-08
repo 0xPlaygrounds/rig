@@ -1,6 +1,9 @@
 use bevy_ecs::prelude::*;
 
-use crate::agent::{Agent, Choice, Choose, Notice};
+use crate::{
+    agent::{Agent, Choice, Choose, Notice},
+    reload::BuildFailed,
+};
 
 /// How many notices the view keeps.
 const KEPT_NOTICES: usize = 4;
@@ -18,6 +21,8 @@ pub struct TuiView {
     pub scroll: usize,
     /// The open picker, if any.
     pub picker: Option<Picker>,
+    /// A failed build's report, shown until dismissed.
+    pub errors: Option<Vec<String>>,
     /// Recent notices, oldest first. Cleared on the next submit.
     pub notices: Vec<String>,
     /// Whether the screen needs drawing.
@@ -32,6 +37,7 @@ impl Default for TuiView {
             cursor: 0,
             scroll: 0,
             picker: None,
+            errors: None,
             notices: Vec::new(),
             dirty: true,
         }
@@ -67,14 +73,19 @@ impl Picker {
     }
 }
 
-/// Take the shown agent's notices and choices into the view, and pick the
-/// first agent when none is shown.
+/// Take the shown agent's notices and choices and any build failure into
+/// the view, and pick the first agent when none is shown.
 pub(super) fn collect_messages(
     mut view: ResMut<TuiView>,
     agents: Query<Entity, With<Agent>>,
     mut notices: MessageReader<Notice>,
     mut choices: MessageReader<Choose>,
+    mut failures: MessageReader<BuildFailed>,
 ) {
+    if let Some(failure) = failures.read().last() {
+        view.errors = Some(failure.lines.clone());
+        view.dirty = true;
+    }
     if view.agent.is_none_or(|agent| !agents.contains(agent)) {
         view.agent = agents.iter().next();
     }

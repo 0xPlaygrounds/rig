@@ -91,6 +91,12 @@ fn key_pressed(view: &mut TuiView, key: KeyEvent) -> Option<Request> {
     if control && key.code == KeyCode::Char('d') && view.input.is_empty() {
         return Some(Request::Quit);
     }
+    if view.errors.is_some() {
+        if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
+            view.errors = None;
+        }
+        return None;
+    }
     if view.picker.is_some() {
         return picker_key(view, key);
     }

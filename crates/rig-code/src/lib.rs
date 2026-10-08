@@ -15,6 +15,7 @@ pub mod agent;
 pub mod commands;
 pub mod effects;
 pub mod model;
+pub mod reload;
 pub mod session;
 pub mod tools;
 #[cfg(feature = "tui")]
@@ -40,6 +41,7 @@ pub use rig_core;
 
 use crate::{
     commands::{CommandArgs, CommandsPlugin, SlashCommand},
+    reload::ReloadPlugin,
     session::SessionPlugin,
     tools::{ToolDef, ToolsPlugin},
     turn::AgentPlugin,
@@ -51,6 +53,7 @@ pub mod prelude {
         RigCodeAppExt, RigCodePlugins,
         agent::{
             Agent, AgentId, AgentStatus, Choice, Choose, Conversation, Notice, RigSet, Submit,
+            TurnEnded,
         },
         commands::CommandArgs,
     };
@@ -72,7 +75,7 @@ pub fn app() -> App {
 }
 
 /// The built-in plugins, in order: session, log, task pools and the frame
-/// loop, the agent loop, tools, commands, and the terminal view.
+/// loop, the agent loop, tools, commands, `/reload`, and the terminal view.
 pub struct RigCodePlugins;
 
 impl PluginGroup for RigCodePlugins {
@@ -87,7 +90,8 @@ impl PluginGroup for RigCodePlugins {
             .add(ScheduleRunnerPlugin::run_loop(FRAME))
             .add(AgentPlugin)
             .add(ToolsPlugin)
-            .add(CommandsPlugin);
+            .add(CommandsPlugin)
+            .add(ReloadPlugin);
         #[cfg(feature = "tui")]
         let group = group.add(tui::TuiPlugin);
         group

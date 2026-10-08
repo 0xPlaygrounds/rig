@@ -378,6 +378,13 @@ exclude-members = ["crates/rig-core", "crates/rig-derive"]
 [lints]
 workspace = true
 
+# The launcher of the rig-code agent. Std only; `doc = false` because the
+# library is also called `rig`.
+[[bin]]
+name = "rig"
+path = "src/bin/rig/main.rs"
+doc = false
+
 [dependencies]
 rig-typesafeai = { path = "crates/rig-typesafeai", version = "0.44.0", optional = true, default-features = false }
 rig-core = { path = "crates/rig-core", version = "0.44.0", default-features = false }

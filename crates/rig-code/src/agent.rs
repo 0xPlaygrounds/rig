@@ -4,10 +4,13 @@
 //! and the conversation are components on it. A model call or a tool call is
 //! its own entity, tied to the agent by [`CallOf`]. Despawning the agent
 //! despawns its calls, and dropping a call's [`EffectTask`] cancels the work.
+//! Components that derive `Reflect` with `#[reflect(Component)]` are saved
+//! with the session; runtime state such as [`AgentStatus`] is not.
 
 use std::sync::mpsc::Receiver;
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 use bevy_tasks::Task;
 use rig_core::{
     ErrorReport,
@@ -15,9 +18,11 @@ use rig_core::{
     effect::Outcome,
     message::{self, Message},
 };
+use serde::{Deserialize, Serialize};
 
 /// Marks an agent entity and brings every per-agent component with it.
-#[derive(Component, Debug, Default)]
+#[derive(Component, Reflect, Debug, Default)]
+#[reflect(Component, Default)]
 #[require(
     AgentId,
     Conversation,
@@ -31,7 +36,8 @@ pub struct Agent;
 
 /// The agent's stable id, used in logs, effects and saved state. An
 /// `Entity` is not stable across a restart; this is.
-#[derive(Component, Debug, Clone, PartialEq, Eq)]
+#[derive(Component, Reflect, Debug, Clone, PartialEq, Eq)]
+#[reflect(Component, Default)]
 pub struct AgentId(pub String);
 
 impl Default for AgentId {
@@ -41,19 +47,27 @@ impl Default for AgentId {
 }
 
 /// The agent's conversation, oldest message first.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Reflect, Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+#[reflect(opaque)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 pub struct Conversation(pub Vec<Message>);
 
 /// The catalog reference (`vendor/model`) the agent talks to, if chosen.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Reflect, Debug, Clone, Default)]
+#[reflect(Component, Default)]
 pub struct ModelChoice(pub Option<String>);
 
 /// The reasoning the agent asks for. `None` uses the model's default.
-#[derive(Component, Debug, Clone, Copy, Default)]
+#[derive(Component, Reflect, Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+#[reflect(opaque)]
+#[reflect(Component, Default, Serialize, Deserialize)]
 pub struct Effort(pub Option<Reasoning>);
 
 /// The system prompt sent ahead of the conversation.
-#[derive(Component, Debug, Clone)]
+#[derive(Component, Reflect, Debug, Clone)]
+#[reflect(Component, Default)]
 pub struct SystemPrompt(pub String);
 
 impl Default for SystemPrompt {
@@ -71,7 +85,8 @@ impl Default for SystemPrompt {
 }
 
 /// The tools the agent may call by name. `None` allows every tool.
-#[derive(Component, Debug, Clone, Default)]
+#[derive(Component, Reflect, Debug, Clone, Default)]
+#[reflect(Component, Default)]
 pub struct ToolAccess(pub Option<Vec<String>>);
 
 /// What the agent is doing now.
@@ -169,6 +184,14 @@ pub struct ToolCallSlot {
     pub call: message::ToolCall,
     /// The result the model will read.
     pub result: Option<message::ToolResult>,
+}
+
+/// The agent finished a turn: the model answered without calling tools,
+/// the turn failed, or it was stopped. Autosave observes it.
+#[derive(EntityEvent, Debug, Clone, Copy)]
+pub struct TurnEnded {
+    /// The agent.
+    pub entity: Entity,
 }
 
 /// Text typed into a view for an agent: a prompt, or a `/command`.
