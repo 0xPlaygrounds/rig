@@ -12,7 +12,7 @@ use rig_core::message::{ToolResult, UserContent};
 use super::terminal::Tui;
 use super::view::{ShownNotice, TuiView};
 use crate::core::agent::{
-    AgentStatus, CallOf, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
+    ActiveTurn, Calls, Conversation, Effort, ModelChoice, NoticeLevel, Partial, ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
 use crate::core::models;
@@ -27,9 +27,18 @@ const INPUT_LINES: usize = 8;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
 
+/// What the shown agent is doing.
+#[derive(Clone, Copy)]
+enum Activity {
+    Idle,
+    Thinking,
+    RunningTools,
+}
+
 /// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize), an agent's drawn components, or a streaming
-/// reply. The rebuild's progress is checked separately.
+/// key, a notice, a resize), an agent's drawn components, a turn's calls,
+/// or a streaming reply. A turn's end changes its conversation or comes
+/// with a notice. The rebuild's progress is checked separately.
 pub fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -38,20 +47,28 @@ pub fn needs_redraw(
             Changed<Conversation>,
             Changed<ModelChoice>,
             Changed<Effort>,
-            Changed<AgentStatus>,
+            Changed<ActiveTurn>,
         )>,
     >,
+    turns: Query<(), Changed<Calls>>,
     partials: Query<(), Changed<Partial>>,
 ) -> bool {
-    view.is_changed() || !agents.is_empty() || !partials.is_empty()
+    view.is_changed() || !agents.is_empty() || !turns.is_empty() || !partials.is_empty()
 }
 
 /// Draws one frame.
 pub fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
-    agents: Query<(&Conversation, Option<&ModelChoice>, &Effort, &AgentStatus)>,
-    partials: Query<(&CallOf, &Partial)>,
+    agents: Query<(
+        &Conversation,
+        Option<&ModelChoice>,
+        &Effort,
+        Option<&ActiveTurn>,
+    )>,
+    turns: Query<&Calls>,
+    partials: Query<&Partial>,
+    tool_calls: Query<(), With<ToolCallRun>>,
     slash: Query<&SlashCommand>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
@@ -59,12 +76,17 @@ pub fn render(
     // redraw for.
     let view = view.bypass_change_detection();
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
-    let partial = view.agent.and_then(|agent| {
-        partials
-            .iter()
-            .find(|(call_of, _)| call_of.0 == agent)
-            .map(|(_, partial)| partial)
-    });
+    let calls = shown
+        .and_then(|(.., turn)| turn)
+        .and_then(|turn| turns.get(turn.turn()).ok());
+    let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let activity = if shown.and_then(|(.., turn)| turn).is_none() {
+        Activity::Idle
+    } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
+        Activity::RunningTools
+    } else {
+        Activity::Thinking
+    };
     tui.terminal.draw(|frame| {
         // The input box grows with a pasted or long input, up to a limit;
         // the rest of it stays scrolled to its end.
@@ -108,7 +130,7 @@ pub fn render(
         // /model comes from a plugin, so point at it only when loaded.
         let model_hint = slash.iter().any(|command| command.name == "model");
         let mut line = status_line(
-            shown.map(|(_, model, effort, status)| (model, effort, status)),
+            shown.map(|(_, model, effort, _)| (model, effort, activity)),
             model_hint,
         );
         if let Some(build) = &build {
@@ -141,7 +163,7 @@ fn draw_transcript(frame: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scr
 }
 
 fn status_line(
-    shown: Option<(Option<&ModelChoice>, &Effort, &AgentStatus)>,
+    shown: Option<(Option<&ModelChoice>, &Effort, Activity)>,
     model_hint: bool,
 ) -> Line<'static> {
     let Some((model, effort, status)) = shown else {
@@ -153,9 +175,9 @@ fn status_line(
         None => "no model".to_owned(),
     };
     let status = match status {
-        AgentStatus::Idle => Span::from("idle").green(),
-        AgentStatus::Thinking => Span::from("thinking… (Esc stops)").yellow(),
-        AgentStatus::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+        Activity::Idle => Span::from("idle").green(),
+        Activity::Thinking => Span::from("thinking… (Esc stops)").yellow(),
+        Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
     };
     Line::from(vec![
         Span::from(model).bold(),

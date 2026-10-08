@@ -7,7 +7,7 @@
 //! Closing a terminal sends two SIGHUPs within a millisecond, one from the
 //! tty hangup and one from the shell, so that handler skipped the save and
 //! orphaned every child. Here a repeat signal forces the exit only once the
-//! clean exit had [`FORCE_AFTER`] to finish. Installing this handler first
+//! clean exit had two seconds to finish. Installing this handler first
 //! also makes Bevy's plugin, if `DefaultPlugins` adds it, skip its own
 //! (`:93-96`).
 
@@ -18,6 +18,8 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 
+use crate::core::calls::Wake;
+
 /// The exit code of a signalled exit, as a shell reports Ctrl+C.
 const SIGNAL_EXIT_CODE: u8 = 130;
 
@@ -27,6 +29,10 @@ const FORCE_AFTER: Duration = Duration::from_secs(2);
 /// When the first signal arrived.
 static SIGNALLED: OnceLock<Instant> = OnceLock::new();
 
+/// Wakes the loop for a signal; set at startup, once the loop's own wake
+/// is in place.
+static WAKE: OnceLock<Wake> = OnceLock::new();
+
 /// Exits the app cleanly on SIGINT, SIGTERM and SIGHUP.
 pub struct ExitOnSignalPlugin;
 
@@ -35,7 +41,12 @@ impl Plugin for ExitOnSignalPlugin {
         if let Err(failure) = ctrlc::try_set_handler(on_signal) {
             warn!("signals will not exit cleanly: {failure}");
         }
-        app.add_systems(First, exit_on_signal);
+        app.add_systems(PostStartup, |wake: Option<Res<Wake>>| {
+            if let Some(wake) = wake {
+                WAKE.get_or_init(|| wake.clone());
+            }
+        })
+        .add_systems(First, exit_on_signal);
     }
 }
 
@@ -44,6 +55,9 @@ fn on_signal() {
     let first = *SIGNALLED.get_or_init(Instant::now);
     if first.elapsed() >= FORCE_AFTER {
         std::process::exit(SIGNAL_EXIT_CODE.into());
+    }
+    if let Some(wake) = WAKE.get() {
+        wake.wake();
     }
 }
 

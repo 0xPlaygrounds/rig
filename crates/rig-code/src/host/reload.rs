@@ -12,13 +12,15 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
+use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use super::launcher::{self, RELOAD_EXIT_CODE};
 use super::process::{detach, kill_group};
-use crate::core::agent::{Agent, AgentStatus, Notice};
+use crate::core::agent::{Notice, TurnOf};
+use crate::core::calls::Wake;
 use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::turn::AgentSystems;
+use crate::core::turn::PollCalls;
 
 /// Lines of a failed build shown, from its first error.
 const ERROR_LINES: usize = 60;
@@ -39,9 +41,7 @@ impl Plugin for ReloadPlugin {
         .add_observer(on_cancel_reload)
         .add_systems(
             Update,
-            (drain_reload, finish_reload)
-                .chain()
-                .after(AgentSystems::Settle),
+            (drain_reload, finish_reload).chain().after(PollCalls),
         )
         .add_systems(
             Last,
@@ -85,7 +85,7 @@ impl ReloadBuild {
         self.ready
     }
 
-    fn start(launcher: &std::ffi::OsStr) -> std::io::Result<Self> {
+    fn start(launcher: &std::ffi::OsStr, wake: Wake) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
         command
             .arg("build")
@@ -101,7 +101,7 @@ impl ReloadBuild {
         let mut child = command.spawn()?;
         let (sender, lines) = crossbeam_channel::unbounded();
         if let Some(stderr) = child.stderr.take() {
-            std::thread::spawn(move || forward(stderr, sender));
+            std::thread::spawn(move || forward(stderr, sender, wake));
         }
         Ok(Self {
             child,
@@ -162,12 +162,14 @@ pub struct ReloadFailed {
 }
 
 /// Stops the running rebuild, if any.
-#[derive(Event, Clone, Copy, Debug)]
+#[derive(Event, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Event, Clone, Debug, Default)]
 pub struct CancelReload;
 
-/// Sends each `\r`- or `\n`-separated segment of the build's stderr; cargo
-/// redraws its progress bar after `\r`.
-fn forward(stderr: ChildStderr, lines: Sender<String>) {
+/// Sends each `\r`- or `\n`-separated segment of the build's stderr, and
+/// wakes the loop for each and at the end; cargo redraws its progress bar
+/// after `\r`.
+fn forward(stderr: ChildStderr, lines: Sender<String>, wake: Wake) {
     let mut segment = Vec::new();
     for byte in BufReader::new(stderr).bytes() {
         let Ok(byte) = byte else {
@@ -177,12 +179,14 @@ fn forward(stderr: ChildStderr, lines: Sender<String>) {
             segment.push(byte);
             continue;
         }
-        if !segment.is_empty()
-            && lines
+        if !segment.is_empty() {
+            if lines
                 .send(String::from_utf8_lossy(&segment).into_owned())
                 .is_err()
-        {
-            return;
+            {
+                return;
+            }
+            wake.wake();
         }
         segment.clear();
     }
@@ -191,6 +195,7 @@ fn forward(stderr: ChildStderr, lines: Sender<String>) {
             .send(String::from_utf8_lossy(&segment).into_owned())
             .ok();
     }
+    wake.wake();
 }
 
 /// `done/total` of cargo's progress bar:
@@ -207,17 +212,18 @@ fn cargo_progress(line: &str) -> Option<(u32, u32)> {
 
 fn reload(
     In(_): In<CommandArgs>,
-    agents: Query<&AgentStatus, With<Agent>>,
+    turns: Query<(), With<TurnOf>>,
     build: Option<Res<ReloadBuild>>,
+    wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let notice = if agents.iter().any(|status| *status != AgentStatus::Idle) {
+    let notice = if !turns.is_empty() {
         "A turn is running. Press Esc to stop it, then /reload.".to_owned()
     } else if build.is_some() {
         "A rebuild is already running; Esc cancels it.".to_owned()
     } else if let Some(launcher) = launcher::executable() {
-        match ReloadBuild::start(&launcher) {
+        match ReloadBuild::start(&launcher, wake.clone()) {
             Ok(build) => {
                 commands.insert_resource(build);
                 "Rebuilding the agent…".to_owned()
@@ -279,16 +285,14 @@ fn drain_reload(
     }
 }
 
-/// Exits with [`RELOAD_EXIT_CODE`] once the build is ready and every agent
-/// is idle. The session is saved on exit.
+/// Exits with [`RELOAD_EXIT_CODE`] once the build is ready and no turn
+/// runs. The session is saved on exit.
 fn finish_reload(
     build: Option<Res<ReloadBuild>>,
-    agents: Query<&AgentStatus, With<Agent>>,
+    turns: Query<(), With<TurnOf>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if build.is_some_and(|build| build.ready)
-        && agents.iter().all(|status| *status == AgentStatus::Idle)
-    {
+    if build.is_some_and(|build| build.ready) && turns.is_empty() {
         exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
     }
 }

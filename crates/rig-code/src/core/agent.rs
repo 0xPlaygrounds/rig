@@ -3,11 +3,10 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use bevy_tasks::Task;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{Message, Reasoning};
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, ToolResult};
+use rig_core::message::ToolCall;
 use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +17,7 @@ use super::save::ReflectSaved;
 /// until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(AgentId, Conversation, Effort, SystemPrompt, ToolAccess, AgentStatus)]
+#[require(AgentId, Conversation, Effort, SystemPrompt, ToolAccess)]
 pub struct Agent;
 
 /// The agent's stable id, used in saved state, effect scopes and logs.
@@ -62,8 +61,17 @@ pub struct Connection {
 
 /// The reasoning setting sent with each request, or `None` for the
 /// provider's default.
-#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Default,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize,
+    Saved
+)]
 pub struct Effort(pub Option<Reasoning>);
 
 /// The system prompt sent first in every request.
@@ -103,33 +111,38 @@ impl ToolAccess {
     }
 }
 
-/// What the agent is doing. Not saved: a restored agent is idle.
-#[derive(Component, Reflect, Clone, Copy, Default, Debug, PartialEq, Eq)]
+/// A running turn of the agent it names: from a user message to the reply
+/// that ends it. At most one per agent. Despawning the turn stops it and
+/// cancels its calls; its end removes the agent's [`ActiveTurn`].
+#[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
-pub enum AgentStatus {
-    /// Waiting for input.
-    #[default]
-    Idle,
-    /// A model call is starting or streaming.
-    Thinking,
-    /// Tool calls are running.
-    RunningTools,
+#[relationship(relationship_target = ActiveTurn)]
+pub struct TurnOf(pub Entity);
+
+/// The agent's running turn. An agent with it is busy.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship_target(relationship = TurnOf, linked_spawn)]
+pub struct ActiveTurn(Entity);
+
+impl ActiveTurn {
+    /// The turn entity.
+    pub fn turn(&self) -> Entity {
+        self.0
+    }
 }
 
-/// The agent needs a model call: `AgentSystems::Start` sends the
-/// conversation.
-#[derive(Component, Default)]
-#[component(storage = "SparseSet")]
-pub struct NeedsCompletion;
-
-/// Work in flight that belongs to an agent. Despawning the agent despawns
-/// its calls, and dropping a call's task cancels it.
-#[derive(Component, Debug)]
+/// A model or tool call of the turn it names. Despawning the turn despawns
+/// its calls, which cancels their tasks.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
 #[relationship(relationship_target = Calls)]
 pub struct CallOf(pub Entity);
 
-/// The calls an agent owns.
-#[derive(Component, Debug)]
+/// The calls of a turn, in the order they were spawned: the tool calls of
+/// a reply in the reply's order.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
 #[relationship_target(relationship = CallOf, linked_spawn)]
 pub struct Calls(Vec<Entity>);
 
@@ -142,44 +155,29 @@ pub struct Partial {
     pub reasoning: String,
 }
 
-/// Where a tool call of the last reply is. The calls of one reply run one
-/// at a time, in order: two edits of one file in a reply would otherwise
-/// both read the original text, and one would be lost.
-pub enum ToolState {
-    /// Waiting for the reply's earlier calls.
-    Queued,
-    /// Running; dropping the task cancels it.
-    Running(Task<ToolResult>),
-    /// Finished.
-    Done(ToolResult),
-}
-
-/// A tool call of the model's last reply.
+/// A tool call of the model's last reply. It is [`Queued`] until the
+/// reply's earlier calls finished, then runs as a
+/// [`Running<ToolResult>`](super::calls::Running) and ends with a
+/// [`Done<ToolResult>`](super::calls::Done). The calls of one reply run one
+/// at a time: two edits of one file would otherwise both read the original
+/// text, and one would be lost.
 #[derive(Component)]
 pub struct ToolCallRun {
-    /// The call's position in the reply.
-    pub index: usize,
     /// The call.
     pub call: ToolCall,
     /// The effect id of the model call that asked for it.
     pub parent: EffectId,
-    /// Where it is.
-    pub state: ToolState,
 }
 
-impl ToolCallRun {
-    /// The result, once the tool finished.
-    pub fn result(&self) -> Option<&ToolResult> {
-        match &self.state {
-            ToolState::Done(result) => Some(result),
-            ToolState::Queued | ToolState::Running(_) => None,
-        }
-    }
-}
+/// A tool call waiting for the earlier calls of its reply.
+#[derive(Component, Default)]
+#[component(storage = "SparseSet")]
+pub struct Queued;
 
 /// Send `text` to the agent: a slash command when it starts with `/`,
 /// otherwise a user message that starts a turn.
-#[derive(EntityEvent, Clone, Debug)]
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
 pub struct Submit {
     /// The agent.
     pub entity: Entity,
@@ -188,14 +186,16 @@ pub struct Submit {
 }
 
 /// Stop the agent's running turn.
-#[derive(EntityEvent, Clone, Debug)]
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
 pub struct Interrupt {
     /// The agent.
     pub entity: Entity,
 }
 
 /// Choose the agent's model by catalog reference (`vendor/model`).
-#[derive(EntityEvent, Clone, Debug)]
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
 pub struct SetModel {
     /// The agent.
     pub entity: Entity,
@@ -204,12 +204,13 @@ pub struct SetModel {
 }
 
 /// Choose the agent's reasoning setting; `None` is the provider default.
-#[derive(EntityEvent, Clone, Debug)]
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
 pub struct SetEffort {
     /// The agent.
     pub entity: Entity,
     /// The setting.
-    pub effort: Option<Reasoning>,
+    pub effort: Effort,
 }
 
 /// How a [`Notice`] is shown and logged.
@@ -254,7 +255,8 @@ impl Notice {
     }
 }
 
-/// An agent's turn ended: answered, failed or interrupted.
+/// An agent's turn ended: answered, failed or interrupted. Written when its
+/// [`ActiveTurn`] goes away, however the turn entity was despawned.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct TurnFinished {
     /// The agent.

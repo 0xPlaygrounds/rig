@@ -16,6 +16,8 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
+use super::input::TerminalInput;
+use crate::core::calls::Wake;
 use crate::core::save::SessionPaths;
 use crate::host::launcher::RELOAD_EXIT_CODE;
 use crate::host::session::log_path;
@@ -68,14 +70,21 @@ impl Drop for Tui {
     }
 }
 
-/// Opens the terminal at startup, or exits with code 1 when there is none.
+/// Opens the terminal and starts reading it at startup, or exits with code
+/// 1 when there is none.
 pub fn open_terminal(
     paths: Option<Res<SessionPaths>>,
+    wake: Res<Wake>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
-    match Tui::open(paths.map(|paths| log_path(&paths)).as_deref()) {
-        Ok(tui) => commands.insert_resource(tui),
+    let opened = Tui::open(paths.map(|paths| log_path(&paths)).as_deref())
+        .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
+    match opened {
+        Ok((tui, input)) => {
+            commands.insert_resource(tui);
+            commands.insert_resource(input);
+        }
         Err(failure) => {
             error!("could not open the terminal: {failure}");
             exit.write(AppExit::from_code(1));

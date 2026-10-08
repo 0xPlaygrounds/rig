@@ -19,10 +19,13 @@ use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use rig_core::message::ToolResult;
+
 use super::agent::{
-    Agent, AgentId, AgentStatus, Calls, Conversation, Effort, ModelChoice, Notice, ToolCallRun,
+    ActiveTurn, Agent, AgentId, Calls, Conversation, Effort, ModelChoice, Notice, ToolCallRun,
     TurnFinished,
 };
+use super::calls::Done;
 use super::effects::Effects;
 use super::turn::{STOPPED, stopped_results};
 
@@ -80,10 +83,17 @@ impl Plugin for SavePlugin {
 /// before the next turn ends does not lose it. Both are refused while a
 /// turn runs. The first frame's restored or new agents are not a change.
 fn settings_changed(
-    agents: Query<&AgentStatus, (With<Agent>, Or<(Changed<ModelChoice>, Changed<Effort>)>)>,
+    agents: Query<
+        (),
+        (
+            With<Agent>,
+            Without<ActiveTurn>,
+            Or<(Changed<ModelChoice>, Changed<Effort>)>,
+        ),
+    >,
     mut started: Local<bool>,
 ) -> bool {
-    let changed = *started && agents.iter().any(|status| *status == AgentStatus::Idle);
+    let changed = *started && !agents.is_empty();
     *started = true;
     changed
 }
@@ -102,9 +112,9 @@ struct SavedAgent {
 }
 
 /// Writes every agent's saved components to `state.json` and appends the
-/// resolved effects to `effects.jsonl`. An agent running tools is saved as
-/// an interrupt would leave it, so a crash before its turn ends restores
-/// a conversation whose tool calls all have results.
+/// resolved effects to `effects.jsonl`. An agent in a turn is saved as an
+/// interrupt would leave it, so a crash before its turn ends restores a
+/// conversation whose tool calls all have results.
 pub fn save_session(world: &mut World) {
     let (Some(paths), Some(registry)) = (
         world.get_resource::<SessionPaths>().cloned(),
@@ -119,7 +129,7 @@ pub fn save_session(world: &mut World) {
         .map(|(entity, id)| (entity, id.0.clone()))
         .collect();
     agents.sort_by(|a, b| a.1.cmp(&b.1));
-    let mut runs = world.query::<&ToolCallRun>();
+    let mut runs = world.query::<(&ToolCallRun, Option<&Done<ToolResult>>)>();
     let state = SavedState {
         format: 1,
         session: paths.id.clone(),
@@ -148,19 +158,17 @@ pub fn save_session(world: &mut World) {
     }
 }
 
-/// The conversation of `agent` with results for its running tool calls,
-/// when it runs tools.
+/// The conversation of `agent` with results for its running turn's tool
+/// calls, when it has any.
 fn settled_conversation(
     world: &World,
     agent: Entity,
-    runs: &mut QueryState<&ToolCallRun>,
+    runs: &mut QueryState<(&ToolCallRun, Option<&Done<ToolResult>>)>,
 ) -> Option<Conversation> {
     let entity = world.get_entity(agent).ok()?;
-    if entity.get::<AgentStatus>() != Some(&AgentStatus::RunningTools) {
-        return None;
-    }
+    let turn = entity.get::<ActiveTurn>()?.turn();
+    let calls: Vec<Entity> = world.get::<Calls>(turn)?.iter().collect();
     let mut conversation = entity.get::<Conversation>()?.clone();
-    let calls: Vec<Entity> = entity.get::<Calls>()?.iter().collect();
     conversation.0.extend(stopped_results(
         runs.iter_many(world, calls).flatten(),
         STOPPED,
@@ -182,8 +190,7 @@ fn saved_components(
     registry
         .iter_with_data::<ReflectSaved>()
         .filter_map(|(registration, _)| {
-            // The settled conversation stands in for the agent's own; the
-            // running turn as an entity of its own will make this go away.
+            // The settled conversation stands in for the agent's own.
             let value: &dyn PartialReflect = match conversation {
                 Some(conversation) if registration.type_id() == TypeId::of::<Conversation>() => {
                     conversation

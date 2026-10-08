@@ -1,8 +1,8 @@
 //! The terminal view. It reads agent components, keeps its own view state
 //! in [`TuiView`], and sends the same requests any other view would. It
-//! never owns the app's loop: input is a zero-timeout poll in `PreUpdate`
-//! and drawing is a system in `PostUpdate` that runs when something drawn
-//! changed.
+//! never owns the app's loop: a thread reads the terminal and wakes the
+//! loop, `PreUpdate` handles what it read, and drawing is a system in
+//! `PostUpdate` that runs when something drawn changed.
 
 mod input;
 mod render;
@@ -23,7 +23,10 @@ impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TuiView>()
             .add_systems(Startup, terminal::open_terminal)
-            .add_systems(PreUpdate, input::read_input.run_if(resource_exists::<Tui>))
+            .add_systems(
+                PreUpdate,
+                input::read_input.run_if(resource_exists::<input::TerminalInput>),
+            )
             .add_systems(
                 Update,
                 (

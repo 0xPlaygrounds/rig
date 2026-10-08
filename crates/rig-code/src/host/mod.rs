@@ -5,5 +5,6 @@
 pub mod launcher;
 pub(crate) mod process;
 pub mod reload;
+pub mod runner;
 pub mod session;
 pub mod signals;

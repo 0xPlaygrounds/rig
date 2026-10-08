@@ -3,7 +3,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use crate::core::agent::{Connection, Notice, PickKind, PickRequest, SetEffort, SetModel};
+use crate::core::agent::{Connection, Effort, Notice, PickKind, PickRequest, SetEffort, SetModel};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
 
@@ -71,7 +71,7 @@ fn effort(
         Some((_, effort)) => {
             commands.trigger(SetEffort {
                 entity: args.agent,
-                effort: *effort,
+                effort: Effort(*effort),
             });
         }
         None => {
