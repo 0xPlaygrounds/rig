@@ -258,6 +258,52 @@ fn generated_id_document(text: &str) -> (&str, Vec<Embedding>) {
     )
 }
 
+#[test]
+fn empty_lsh_store_initializes_on_first_nonempty_embedding() {
+    let mut store = InMemoryVectorStore::builder()
+        .index_strategy(IndexStrategy::LSH {
+            num_tables: 5,
+            num_hyperplanes: 10,
+        })
+        .build();
+    assert!(store.lsh_index.is_none());
+
+    store.add_documents_with_ids([
+        ("without_embedding", "empty", vec![]),
+        (
+            "zero_dimension",
+            "zero",
+            vec![Embedding {
+                document: "zero".into(),
+                vec: vec![],
+            }],
+        ),
+    ]);
+    assert!(store.lsh_index.is_none());
+
+    store.add_documents([generated_id_document("first")]);
+    let index = store
+        .lsh_index
+        .as_ref()
+        .expect("first vector initializes LSH");
+    assert!(index.query(&[1.0, 0.0]).contains(&"doc2".to_owned()));
+
+    let query = Embedding {
+        document: "query".into(),
+        vec: vec![1.0, 0.0],
+    };
+    let found = store
+        .vector_search(&query, 1, None, None)
+        .expect("search succeeds");
+    assert_eq!(found.len(), 1);
+    assert_eq!(
+        found
+            .first()
+            .map(|Reverse(RankingItem(_, id, _, _))| id.as_str()),
+        Some("doc2")
+    );
+}
+
 fn check_generated_id_documents(
     store: &InMemoryVectorStore<&str>,
     expected: &[(&str, &str)],
