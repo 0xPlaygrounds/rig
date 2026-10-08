@@ -25,7 +25,8 @@ pub enum RigSource {
 impl RigSource {
     /// `RIG_SOURCE` when set; else the checkout this launcher was installed
     /// from (`cargo install --path`), when it is still there; else
-    /// crates.io.
+    /// crates.io. A checkout in cargo's own cache (`cargo install --git`)
+    /// does not count: cargo may delete it at any time.
     pub fn detect() -> Result<Self> {
         if let Some(checkout) = std::env::var_os("RIG_SOURCE").filter(|path| !path.is_empty()) {
             let checkout = std::path::absolute(PathBuf::from(checkout))?;
@@ -39,7 +40,12 @@ impl RigSource {
             return Ok(Self::Local(checkout));
         }
         let installed_from = Path::new(env!("CARGO_MANIFEST_DIR"));
-        Ok(if is_checkout(installed_from) {
+        let cargo_home = std::env::var_os("CARGO_HOME")
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| std::env::home_dir().map(|home| home.join(".cargo")));
+        let in_cargo_cache = cargo_home.is_some_and(|cargo| installed_from.starts_with(cargo));
+        Ok(if is_checkout(installed_from) && !in_cargo_cache {
             Self::Local(installed_from.to_path_buf())
         } else {
             Self::Registry
@@ -71,6 +77,16 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool
     Ok(changed)
 }
 
+/// Whether a plugin asks for Bevy features. Only then does the project
+/// depend on the `bevy` crate, which carries them and needs a newer Rust
+/// than the `bevy_*` crates rig-code uses.
+pub fn needs_bevy_umbrella(config: &Config) -> bool {
+    config
+        .plugins
+        .iter()
+        .any(|plugin| !plugin.bevy_features.is_empty())
+}
+
 fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
     let features: BTreeSet<&str> = config
         .plugins
@@ -99,10 +115,12 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
         )),
         RigSource::Registry => text.push_str(&format!("rig-code = \"={VERSION}\"\n")),
     }
-    text.push_str(&format!(
-        "bevy = {{ version = \"={BEVY_VERSION}\", default-features = false, features = [{}] }}\n",
-        features.join(", ")
-    ));
+    if needs_bevy_umbrella(config) {
+        text.push_str(&format!(
+            "bevy = {{ version = \"={BEVY_VERSION}\", default-features = false, features = [{}] }}\n",
+            features.join(", ")
+        ));
+    }
     for plugin in &config.plugins {
         let source = match &plugin.source {
             Source::Path(path) => format!("path = {}", quoted_path(&home.root().join(path))),

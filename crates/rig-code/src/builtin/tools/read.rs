@@ -5,7 +5,10 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::blocking::blocking;
-use super::{MAX_BYTES, MAX_LINES, io_error};
+use super::{MAX_BYTES, MAX_LINES, clip, io_error};
+
+/// Characters of one line shown; the rest of a longer line is cut.
+const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines.
 pub struct Read;
@@ -57,10 +60,17 @@ fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
     let mut out = String::new();
     let mut last = first.saturating_sub(1);
     for (number, line) in text.lines().enumerate().skip(first - 1).take(limit) {
-        if out.len() + line.len() > MAX_BYTES {
+        // A clipped line always fits, so a file of very long lines (minified
+        // code, lockfiles) still makes progress.
+        let shown = clip(line, MAX_LINE_CHARS);
+        if out.len() + shown.len() > MAX_BYTES {
             break;
         }
-        out.push_str(&format!("{:>6}\t{line}\n", number + 1));
+        out.push_str(&format!("{:>6}\t{shown}", number + 1));
+        if shown.len() < line.len() {
+            out.push_str(&format!(" [line cut at {MAX_LINE_CHARS} characters]"));
+        }
+        out.push('\n');
         last = number + 1;
     }
     if last < total {

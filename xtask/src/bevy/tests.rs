@@ -10,10 +10,8 @@ fn metadata(version: &str) -> Value {
 }
 
 #[test]
-fn compatible_lockfile_bumps_and_non_bevy_paths_are_allowed() {
-    for version in ["0.20.0-rc.2", "0.20.0"] {
-        check(&metadata(version)).unwrap();
-    }
+fn the_exact_pin_and_non_bevy_paths_are_allowed() {
+    check(&metadata("0.20.0-rc.2")).unwrap();
 }
 
 #[test]
@@ -39,7 +37,7 @@ fn missing_inventory_is_not_a_pass() {
 }
 
 #[test]
-fn workspace_requirements_preserve_the_bevy_release_floor() {
+fn workspace_requirements_must_be_the_exact_bevy_pin() {
     for requirement in ["*", "^0.19.1", "^0.20.0-rc.2", "=0.20.0-rc.1", "^0.20"] {
         let mut declared = metadata("0.20.0-rc.2");
         declared["packages"][0]["dependencies"][0]["req"] = json!(requirement);
@@ -48,7 +46,7 @@ fn workspace_requirements_preserve_the_bevy_release_floor() {
 }
 
 #[test]
-fn transitive_requirements_need_not_match_the_workspace_floor() {
+fn transitive_requirements_need_not_match_the_workspace_pin() {
     let mut declared = metadata("0.20.0-rc.2");
     declared["packages"][1]["dependencies"] = json!([
         {"name":"bevy_platform", "source":CRATES_IO, "req":"^0.20.0-rc.1"}

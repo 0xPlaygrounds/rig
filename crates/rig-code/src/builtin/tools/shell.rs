@@ -1,6 +1,6 @@
 //! The `shell` tool.
 
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -12,9 +12,13 @@ use serde_json::json;
 
 use super::blocking::blocking;
 use super::{MAX_BYTES, MAX_LINES};
+use crate::process::kill_group;
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
+/// How long output pipes may stay open after the command exits before the
+/// rest of its process group is killed.
+const PIPE_GRACE: Duration = Duration::from_millis(100);
 
 /// Runs a command with `sh -c` in its own process group.
 pub struct Shell;
@@ -106,9 +110,13 @@ fn run(args: ShellArgs, stopped: &AtomicBool) -> Result<String, ToolExecutionErr
             }
         }
     };
-    // Also ends anything the command left running in the background, which
-    // would otherwise hold the output pipes open.
-    kill_group(&mut child);
+    // After a normal exit, something the command left running in the
+    // background may still hold the output pipes open. Only then is the
+    // group killed: a member is alive, so the group id is still its own and
+    // cannot have been reused.
+    if status.is_none() || !pipes_closed(&stdout, &stderr) {
+        kill_group(&mut child);
+    }
     child.wait().ok();
     let mut output = joined(stdout);
     output.push_str(&joined(stderr));
@@ -125,6 +133,25 @@ fn run(args: ShellArgs, stopped: &AtomicBool) -> Result<String, ToolExecutionErr
         )),
     }
     Ok(output)
+}
+
+/// Whether both output pipes reached their end within a moment: every
+/// process holding them exited or closed them.
+fn pipes_closed(
+    stdout: &Option<JoinHandle<Vec<u8>>>,
+    stderr: &Option<JoinHandle<Vec<u8>>>,
+) -> bool {
+    let deadline = Instant::now() + PIPE_GRACE;
+    loop {
+        let closed = [stdout, stderr]
+            .into_iter()
+            .flatten()
+            .all(JoinHandle::is_finished);
+        if closed || Instant::now() >= deadline {
+            return closed;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn drain(pipe: Option<impl std::io::Read + Send + 'static>) -> Option<JoinHandle<Vec<u8>>> {
@@ -168,22 +195,4 @@ fn tail(output: &str) -> String {
         text.push('\n');
     }
     text
-}
-
-/// Kills the process group `child` leads, created with `process_group(0)`;
-/// elsewhere, the child alone.
-#[cfg(unix)]
-pub(crate) fn kill_group(child: &mut Child) {
-    if let Ok(group) = i32::try_from(child.id()) {
-        // SAFETY: `kill` takes plain integers; a negative pid names the
-        // process group the child leads, created by `process_group(0)`.
-        unsafe {
-            libc::kill(-group, libc::SIGKILL);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-pub(crate) fn kill_group(child: &mut Child) {
-    child.kill().ok();
 }

@@ -19,8 +19,29 @@ use crate::reload::ReloadBuild;
 const RESULT_LINES: usize = 4;
 /// Characters of tool call arguments shown in the transcript.
 const ARGUMENT_CHARS: usize = 160;
+/// Most lines the input box shows.
+const INPUT_LINES: usize = 8;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
+
+/// Whether anything drawn changed since the last frame: the view state (a
+/// key, a notice, a resize), an agent's drawn components, or a streaming
+/// reply. The rebuild's progress is checked separately.
+pub fn needs_redraw(
+    view: Res<TuiView>,
+    agents: Query<
+        (),
+        Or<(
+            Changed<Conversation>,
+            Changed<ModelChoice>,
+            Changed<Effort>,
+            Changed<AgentStatus>,
+        )>,
+    >,
+    partials: Query<(), Changed<Partial>>,
+) -> bool {
+    view.is_changed() || !agents.is_empty() || !partials.is_empty()
+}
 
 /// Draws one frame.
 pub fn render(
@@ -30,7 +51,9 @@ pub fn render(
     partials: Query<(&CallOf, &Partial)>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
-    let view = &mut *view;
+    // Clamping the scroll is drawing's own bookkeeping, not a change to
+    // redraw for.
+    let view = view.bypass_change_detection();
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
     let partial = view.agent.and_then(|agent| {
         partials
@@ -39,10 +62,17 @@ pub fn render(
             .map(|(_, partial)| partial)
     });
     tui.terminal.draw(|frame| {
+        // The input box grows with a pasted or long input, up to a limit;
+        // the rest of it stays scrolled to its end.
+        let input_text = Paragraph::new(format!("> {}▏", view.input)).wrap(Wrap { trim: false });
+        let input_lines = input_text.line_count(frame.area().width.saturating_sub(2));
+        let input_height = input_lines.clamp(1, INPUT_LINES);
+        let input_scroll =
+            u16::try_from(input_lines.saturating_sub(input_height)).unwrap_or(u16::MAX);
         let [transcript, status, input] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
         ])
         .areas(frame.area());
         let mut lines = Vec::new();
@@ -65,8 +95,8 @@ pub fn render(
         }
         frame.render_widget(line, status);
         frame.render_widget(
-            Paragraph::new(format!("> {}▏", view.input))
-                .wrap(Wrap { trim: false })
+            input_text
+                .scroll((input_scroll, 0))
                 .block(Block::bordered()),
             input,
         );

@@ -52,6 +52,8 @@ impl SessionPaths {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rig")))
             .unwrap_or_else(|| PathBuf::from(".rig"));
+        // The launcher's own default and id format (`src/launcher` in the
+        // `rig` crate); these apply when the agent runs without it.
         let id = std::env::var("RIG_SESSION").unwrap_or_else(|_| {
             let seconds = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -91,8 +93,6 @@ impl Plugin for SessionPlugin {
             error!("{info}\n{}", std::backtrace::Backtrace::capture());
         }));
         app.insert_resource(SessionPaths::from_env())
-            .add_message::<Notice>()
-            .add_message::<TurnFinished>()
             .add_systems(PreStartup, restore_session)
             .add_systems(
                 Last,

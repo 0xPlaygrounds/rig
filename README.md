@@ -186,7 +186,9 @@ the new one crashes during startup.
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `rig.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
-the log `agent.log`.
+the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
+gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
+cache directory. Several `rig` processes can share one `RIG_HOME`.
 
 To run the agent from a rig checkout instead of crates.io, install the
 launcher from it or point `RIG_SOURCE` at it:
@@ -229,6 +231,9 @@ path = "/path/to/rig-hello"       # or git = "..." (branch, rev), or version = "
 plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```
+
+Bevy features turn on the `bevy` crate itself, which needs Rust 1.96 or
+newer; `rig` says so before building when the toolchain is older.
 
 `rig build` regenerates and builds the agent without starting it.
 

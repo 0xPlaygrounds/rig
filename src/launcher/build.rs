@@ -5,6 +5,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::process::{Command, Stdio};
+use std::time::UNIX_EPOCH;
 
 use super::config::Config;
 use super::home::Home;
@@ -14,6 +15,9 @@ use super::{BEVY_VERSION, Result};
 /// The agent project, generated.
 pub struct Project {
     config: Config,
+    /// Whether the project depends on the `bevy` crate, to turn on the
+    /// Bevy features plugins ask for.
+    bevy_umbrella: bool,
     /// Whether generation changed a file.
     pub changed: bool,
     /// Whether `rig-code` comes from a local checkout.
@@ -26,15 +30,19 @@ pub fn prepare(home: &Home) -> Result<Project> {
     let source = RigSource::detect()?;
     let changed = project::generate(home, &config, &source)?;
     Ok(Project {
+        bevy_umbrella: project::needs_bevy_umbrella(&config),
         config,
         changed,
         local: matches!(source, RigSource::Local(_)),
     })
 }
 
-/// Checks the Bevy version, builds, and stages the binary when it is newer
-/// than every kept one.
+/// Checks the Rust and Bevy versions, builds, and stages the binary when
+/// it is a new one.
 pub fn compile(home: &Home, project: &Project) -> Result<()> {
+    if project.bevy_umbrella {
+        check_rustc(home)?;
+    }
     check_bevy(home, &project.config)?;
     let status = cargo(home).args(["build", "--package", PACKAGE]).status()?;
     if !status.success() {
@@ -43,8 +51,9 @@ pub fn compile(home: &Home, project: &Project) -> Result<()> {
     stage(home)
 }
 
-/// `rig build`.
+/// `rig build`, holding the root's build lock.
 pub fn build(home: &Home) -> Result<()> {
+    let _lock = home.lock()?;
     compile(home, &prepare(home)?)
 }
 
@@ -62,28 +71,69 @@ fn cargo(home: &Home) -> Command {
     command
 }
 
+/// Copies a newly built binary to `staged`. `built` records the build
+/// last staged, so a build that is unchanged, or that was rolled back after
+/// crashing at startup, is not staged again.
 fn stage(home: &Home) -> Result<()> {
     let artifact = home
         .target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
-    let built = fs::metadata(&artifact)?.modified()?;
-    let newest_kept = ["staged", "trial", "good"]
-        .into_iter()
-        .filter_map(|name| {
-            fs::metadata(home.bin(name))
-                .and_then(|file| file.modified())
-                .ok()
-        })
-        .max();
-    if newest_kept.is_some_and(|kept| kept >= built) {
+    let metadata = fs::metadata(&artifact)?;
+    let modified = metadata
+        .modified()?
+        .duration_since(UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    let stamp = format!("{modified} {}\n", metadata.len());
+    let record = home.bin("built");
+    if fs::read_to_string(&record).is_ok_and(|built| built == stamp) {
         return Ok(());
     }
     let staging = home.bin("staged.tmp");
     fs::create_dir_all(home.root().join("bin"))?;
     fs::copy(&artifact, &staging)?;
     fs::rename(&staging, home.bin("staged"))?;
+    fs::write(record, stamp)?;
     Ok(())
+}
+
+/// The oldest Rust the `bevy` crate builds with.
+const BEVY_RUST: (u32, u32) = (1, 96);
+
+/// Fails, in plain words, when the Rust toolchain that builds the project
+/// is older than [`BEVY_RUST`]. rustup picks it from the project directory,
+/// as it does for cargo.
+fn check_rustc(home: &Home) -> Result<()> {
+    let output = Command::new("rustc")
+        .arg("--version")
+        .current_dir(home.project())
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    // `rustc 1.95.0 (59807616e 2026-04-14)`
+    let mut numbers = text
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or_default()
+        .split('.')
+        .map(|number| number.parse::<u32>().ok());
+    let (Some(Some(major)), Some(Some(minor))) = (numbers.next(), numbers.next()) else {
+        return Ok(());
+    };
+    if (major, minor) >= BEVY_RUST {
+        return Ok(());
+    }
+    let (want_major, want_minor) = BEVY_RUST;
+    Err(format!(
+        "a plugin in rig.toml asks for Bevy features, which turns on the `bevy` crate, and \
+         Bevy {BEVY_VERSION} needs Rust {want_major}.{want_minor} or newer, but the toolchain \
+         for {} is Rust {major}.{minor}. Update it (`rustup update`), or remove the plugin's \
+         bevy_features.",
+        home.project().display()
+    )
+    .into())
 }
 
 /// One `[[package]]` of `Cargo.lock`.
@@ -137,17 +187,22 @@ fn check_bevy(home: &Home, config: &Config) -> Result<()> {
 fn locked(lock: &str) -> Vec<Locked> {
     let mut packages: Vec<Locked> = Vec::new();
     let mut in_dependencies = false;
+    // Whether the lines belong to the last `[[package]]`, rather than to
+    // another table such as `[[patch.unused]]` or `[metadata]`.
+    let mut in_package = false;
     for line in lock.lines().map(str::trim) {
-        if line == "[[package]]" {
-            packages.push(Locked {
-                name: String::new(),
-                version: String::new(),
-                dependencies: Vec::new(),
-            });
-            in_dependencies = false;
+        if line.starts_with('[') && !in_dependencies {
+            in_package = line == "[[package]]";
+            if in_package {
+                packages.push(Locked {
+                    name: String::new(),
+                    version: String::new(),
+                    dependencies: Vec::new(),
+                });
+            }
             continue;
         }
-        let Some(package) = packages.last_mut() else {
+        let Some(package) = packages.last_mut().filter(|_| in_package) else {
             continue;
         };
         if in_dependencies {

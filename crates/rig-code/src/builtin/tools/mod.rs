@@ -17,7 +17,6 @@ pub use edit::Edit;
 pub use read::Read;
 pub use search::Search;
 pub use shell::Shell;
-pub(crate) use shell::kill_group;
 pub use write::Write;
 
 /// Most lines a tool returns.
@@ -35,6 +34,14 @@ impl Plugin for BuiltinToolsPlugin {
             .add_tool(Write)
             .add_tool(Shell)
             .add_tool(Search);
+    }
+}
+
+/// `line` cut to its first `limit` characters.
+fn clip(line: &str, limit: usize) -> &str {
+    match line.char_indices().nth(limit) {
+        Some((end, _)) => line.get(..end).unwrap_or(line),
+        None => line,
     }
 }
 
