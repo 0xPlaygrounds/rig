@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/v0.44.0...v0.45.0) - 2026-10-08
+
+### Added
+
+- *(agent)* [**breaking**] stream tool items as a projection of committed history ([#2763](https://github.com/0xPlaygrounds/rig/pull/2763)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(catalog)* [**breaking**] overrides reach every wire, one lookup and reference rule, connect from the environment ([#2769](https://github.com/0xPlaygrounds/rig/pull/2769)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-agent)* [**breaking**] runs survive a restart at any point: one answer owner, resumable in-flight steps, executable-only CallTools ([#2762](https://github.com/0xPlaygrounds/rig/pull/2762)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] one TurnPolicy per model turn owns its tool choice; Skip, hooks and the ECS checks read it ([#2757](https://github.com/0xPlaygrounds/rig/pull/2757)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2757
+- *(rig-core)* [**breaking**] one meaning for a document's text on every wire (DocumentSourceKind::String becomes DocumentData::Text) ([#2754](https://github.com/0xPlaygrounds/rig/pull/2754)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* classify an in-band provider error envelope in one place ([#2758](https://github.com/0xPlaygrounds/rig/pull/2758)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* every dispatched completion gets exactly one on_outcome ([#2756](https://github.com/0xPlaygrounds/rig/pull/2756)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(observe)* [**breaking**] observe usage once, from the usage the decoder normalized ([#2755](https://github.com/0xPlaygrounds/rig/pull/2755)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(examples)* add LiteLLM proxy agent example ([#2772](https://github.com/0xPlaygrounds/rig/pull/2772)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] remove the rig-ecs crate and its tests, goldens and fixtures ([#2761](https://github.com/0xPlaygrounds/rig/pull/2761)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2761
+- 0.44.0 changelog and the 0.43 → 0.44 migration guide ([#2760](https://github.com/0xPlaygrounds/rig/pull/2760)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2760
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/v0.43.0...v0.44.0) - 2026-10-07
 
