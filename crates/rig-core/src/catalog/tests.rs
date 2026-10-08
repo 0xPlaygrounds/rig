@@ -386,3 +386,110 @@ fn a_cache_retention_the_model_does_not_honour_is_refused() {
             .is_ok()
     );
 }
+
+/// A spec built in code starts with nothing known, is added whole by
+/// `insert`, and takes an override field by field like any other row.
+#[test]
+fn a_spec_built_in_code_joins_the_catalog() {
+    let ollama = ProviderId::catalog("ollama").expect("a known vendor");
+    let bare = ModelSpec::new(ollama, "qwen3:4b");
+    assert_eq!(bare.display_name, "qwen3:4b");
+    assert_eq!((bare.context_window, bare.max_output_tokens), (None, None));
+    assert!(bare.input.text && !bare.input.image);
+    assert!(!bare.reasoning.supported && !bare.tools && !bare.deprecated);
+    assert_eq!((bare.pricing, bare.sampling), (None, None));
+    assert_eq!(bare.compat, Compat::default());
+
+    let mut catalog = Catalog::builtin().clone();
+    catalog.insert(
+        bare.with_context_window(32_768)
+            .with_tools(true)
+            .with_pricing(Pricing::new(0.1, 0.4).with_cache_read(0.01))
+            .with_compat(Compat::default().with_reasoning_field("reasoning_content")),
+    );
+    let qwen = spec(&catalog, "ollama", "qwen3:4b");
+    assert_eq!(qwen.context_window, Some(32_768));
+    assert!(qwen.tools);
+    assert_eq!(
+        qwen.compat.reasoning_field.as_deref(),
+        Some("reasoning_content")
+    );
+    assert!(
+        Catalog::builtin()
+            .get(ollama, "qwen3:4b")
+            .is_none_or(|listed| listed != qwen),
+        "the built-in catalog is unchanged"
+    );
+
+    let overrides =
+        Catalog::from_json(r#"{"ollama": {"models": {"qwen3:4b": {"limit": {"output": 8192}}}}}"#)
+            .expect("parses");
+    let overridden = catalog.with_overrides(&overrides);
+    let qwen = spec(&overridden, "ollama", "qwen3:4b");
+    assert_eq!(qwen.max_output_tokens, Some(8192));
+    assert_eq!(qwen.context_window, Some(32_768), "kept");
+    assert_eq!(
+        qwen.pricing,
+        Some(Pricing::new(0.1, 0.4).with_cache_read(0.01))
+    );
+
+    let mut sample = Catalog::from_json(SAMPLE).expect("parses");
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    sample.insert(ModelSpec::new(anthropic, "claude-x"));
+    let replaced = spec(&sample, "anthropic", "claude-x");
+    assert_eq!(
+        replaced,
+        &ModelSpec::new(anthropic, "claude-x"),
+        "replaced whole"
+    );
+    assert_eq!(sample.iter().count(), 4);
+}
+
+/// Every built-in spec reads back from its serde form and from its override
+/// row, so a spec a program changed can be saved either way.
+#[test]
+fn every_spec_round_trips_through_serde_and_its_row() {
+    for spec in Catalog::builtin().iter() {
+        let json = serde_json::to_string(spec).expect("serializes");
+        let read: ModelSpec = serde_json::from_str(&json).expect("reads back");
+        assert_eq!(&read, spec, "{json}");
+
+        let vendor = spec.provider.vendor();
+        let file =
+            serde_json::json!({ vendor: { "models": { spec.id.as_str(): spec.to_row_json() } } });
+        let catalog = Catalog::from_json(&file.to_string()).expect("the row reads");
+        assert_eq!(
+            catalog.iter().collect::<Vec<_>>(),
+            [spec],
+            "{vendor}/{}",
+            spec.id
+        );
+    }
+}
+
+/// A row from a spec replaces every fact the spec knows when laid over
+/// another row, and keeps the facts it does not know.
+#[test]
+fn a_spec_row_overrides_what_the_spec_knows() {
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    let row = ModelSpec::new(anthropic, "claude-x")
+        .with_display_name("Claude X2")
+        .to_row_json();
+    let overrides = Catalog::from_json(
+        &serde_json::json!({"anthropic": {"models": {"claude-x": row}}}).to_string(),
+    )
+    .expect("parses");
+    let catalog = Catalog::from_json(SAMPLE)
+        .expect("parses")
+        .with_overrides(&overrides);
+    let claude = spec(&catalog, "anthropic", "claude-x");
+    assert_eq!(claude.display_name, "Claude X2");
+    assert!(!claude.reasoning.supported && !claude.tools && !claude.input.image);
+    assert!(!claude.compat.adaptive_thinking);
+    assert_eq!(
+        claude.context_window,
+        Some(200_000),
+        "an unknown limit is kept"
+    );
+    assert!(claude.pricing.is_some(), "unknown prices are kept");
+}

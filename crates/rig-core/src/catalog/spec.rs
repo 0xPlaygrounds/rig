@@ -11,9 +11,32 @@ use crate::completion::{
 use crate::providers::registry::ProviderId;
 
 /// One model's facts: limits, input modalities, the reasoning and caching it
-/// takes, and its prices. Built by [`Catalog`](super::Catalog) from its data.
+/// takes, and its prices. [`Catalog`](super::Catalog) builds one per row of
+/// its data; [`ModelSpec::new`] and the `with_*` setters build one in code,
+/// for a model the catalog does not list, and
+/// [`Catalog::insert`](super::Catalog::insert) adds it.
+///
+/// It serializes field by field and reads back the same. For the override
+/// file's row shape, use [`Self::to_row_json`].
+///
+/// ```
+/// use rig_core::catalog::{Catalog, ModelSpec, Pricing};
+/// use rig_core::providers::registry::ProviderId;
+///
+/// let ollama = ProviderId::catalog("ollama").ok_or("a known vendor")?;
+/// let mut catalog = Catalog::builtin().clone();
+/// catalog.insert(
+///     ModelSpec::new(ollama, "qwen3:4b")
+///         .with_context_window(32_768)
+///         .with_tools(true)
+///         .with_pricing(Pricing::new(0.0, 0.0)),
+/// );
+/// let qwen = catalog.get(ollama, "qwen3:4b").ok_or("inserted")?;
+/// assert_eq!(qwen.context_window, Some(32_768));
+/// # Ok::<(), &str>(())
+/// ```
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModelSpec {
     /// The provider's own model id.
     pub id: String,
@@ -42,16 +65,13 @@ pub struct ModelSpec {
     /// When the model takes sampling parameters (`temperature`, `top_p`,
     /// `top_logprobs`, `logprobs`), or `None` when unknown.
     pub sampling: Option<Sampling>,
-    /// Facts the encoders read that no portable field holds.
-    ///
-    /// For rig's own crates; not covered by semver.
-    #[doc(hidden)]
+    /// Wire facts the encoders read that no portable field holds.
     pub compat: Compat,
 }
 
 /// What a model reads.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Modalities {
     /// Text.
     pub text: bool,
@@ -72,7 +92,7 @@ pub struct Modalities {
 /// every effort, every budget and `Off` on it; unlike [`CacheSupport`],
 /// empty here does not mean unknown.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReasoningSupport {
     /// Whether the model reasons at all.
     pub supported: bool,
@@ -88,7 +108,7 @@ pub struct ReasoningSupport {
 
 /// The cache retentions a model honours.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CacheSupport {
     /// The [`CacheRetention`] values the model honours. Empty when the
     /// catalog does not know, in which case nothing is refused.
@@ -97,7 +117,7 @@ pub struct CacheSupport {
 
 /// Prices in USD per million tokens.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Pricing {
     /// Uncached input.
     pub input: f64,
@@ -110,6 +130,28 @@ pub struct Pricing {
 }
 
 impl Pricing {
+    /// Prices for uncached input and for output, with no cache prices.
+    pub fn new(input: f64, output: f64) -> Self {
+        Self {
+            input,
+            output,
+            cache_read: None,
+            cache_write: None,
+        }
+    }
+
+    /// These prices with `price` for input read from the cache.
+    pub fn with_cache_read(mut self, price: f64) -> Self {
+        self.cache_read = Some(price);
+        self
+    }
+
+    /// These prices with `price` for input written to the cache.
+    pub fn with_cache_write(mut self, price: f64) -> Self {
+        self.cache_write = Some(price);
+        self
+    }
+
     /// What `usage` costs at these prices, or `None` unless it reports both
     /// its input and output tokens. Uncached input is the input tokens less
     /// those read from and written to the cache; cache reads and writes
@@ -148,14 +190,13 @@ pub enum Sampling {
     Never,
 }
 
-/// Model facts the encoders read that no portable field holds. Each defaults
+/// Wire facts the encoders read that no portable field holds. Each defaults
 /// to `false` or `None`, which is what a model the field does not concern
-/// has.
-///
-/// For rig's own crates; not covered by semver.
-#[doc(hidden)]
+/// has. An override file sets each one by its field name under a row's
+/// `rig` object, and a spec built in code sets it with the `with_*` setter
+/// of the same name.
 #[non_exhaustive]
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Compat {
     /// The field an OpenAI Chat Completions assistant message must carry
     /// its reasoning under, such as `reasoning_content`.
@@ -180,7 +221,176 @@ pub struct Compat {
     pub chat_tools_need_reasoning_off: bool,
 }
 
+impl Compat {
+    /// These facts with `field` as the Chat Completions assistant message's
+    /// reasoning field.
+    pub fn with_reasoning_field(mut self, field: impl Into<String>) -> Self {
+        self.reasoning_field = Some(field.into());
+        self
+    }
+
+    /// These facts with adaptive thinking set to `on`.
+    pub fn with_adaptive_thinking(mut self, on: bool) -> Self {
+        self.adaptive_thinking = on;
+        self
+    }
+
+    /// These facts with `kind` as the `thinking.type` that turns reasoning off.
+    pub fn with_thinking_off(mut self, kind: impl Into<String>) -> Self {
+        self.thinking_off = Some(kind.into());
+        self
+    }
+
+    /// These facts with mid-conversation system messages set to `on`.
+    pub fn with_mid_conversation_system(mut self, on: bool) -> Self {
+        self.mid_conversation_system = on;
+        self
+    }
+
+    /// These facts with forced `tool_choice` refusal set to `on`.
+    pub fn with_rejects_forced_tool_choice(mut self, on: bool) -> Self {
+        self.rejects_forced_tool_choice = on;
+        self
+    }
+
+    /// These facts with context-bound thinking set to `on`.
+    pub fn with_binds_context(mut self, on: bool) -> Self {
+        self.binds_context = on;
+        self
+    }
+
+    /// These facts with `prompt_cache_options` set to `on`.
+    pub fn with_prompt_cache_options(mut self, on: bool) -> Self {
+        self.prompt_cache_options = on;
+        self
+    }
+
+    /// These facts with Chat tools needing reasoning off set to `on`.
+    pub fn with_chat_tools_need_reasoning_off(mut self, on: bool) -> Self {
+        self.chat_tools_need_reasoning_off = on;
+        self
+    }
+}
+
+impl CacheSupport {
+    /// Support for exactly the retentions in `retention`. An empty list means
+    /// the catalog does not know, and refuses nothing.
+    pub fn new(retention: impl IntoIterator<Item = CacheRetention>) -> Self {
+        Self {
+            retention: retention.into_iter().collect(),
+        }
+    }
+}
+
 impl ModelSpec {
+    /// A spec for `provider`'s model `id` with nothing else known: its id as
+    /// its name, no limits, text input only, no reasoning, unknown caching,
+    /// no tools or structured output, no prices (`None`, never zero), not
+    /// deprecated, unknown sampling and default [`Compat`].
+    pub fn new(provider: ProviderId, id: impl Into<String>) -> Self {
+        let id = id.into();
+        Self {
+            display_name: id.clone(),
+            id,
+            provider,
+            context_window: None,
+            max_output_tokens: None,
+            input: Modalities {
+                text: true,
+                ..Modalities::default()
+            },
+            reasoning: ReasoningSupport::default(),
+            caching: CacheSupport::default(),
+            tools: false,
+            structured_output: false,
+            pricing: None,
+            deprecated: false,
+            sampling: None,
+            compat: Compat::default(),
+        }
+    }
+
+    /// This spec named `name`.
+    pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
+        self.display_name = name.into();
+        self
+    }
+
+    /// This spec with a context window of `tokens`.
+    pub fn with_context_window(mut self, tokens: u32) -> Self {
+        self.context_window = Some(tokens);
+        self
+    }
+
+    /// This spec writing at most `tokens` in one reply.
+    pub fn with_max_output_tokens(mut self, tokens: u32) -> Self {
+        self.max_output_tokens = Some(tokens);
+        self
+    }
+
+    /// This spec reading `input`.
+    pub fn with_input(mut self, input: Modalities) -> Self {
+        self.input = input;
+        self
+    }
+
+    /// This spec taking `reasoning`.
+    pub fn with_reasoning(mut self, reasoning: ReasoningSupport) -> Self {
+        self.reasoning = reasoning;
+        self
+    }
+
+    /// This spec honouring `caching`.
+    pub fn with_caching(mut self, caching: CacheSupport) -> Self {
+        self.caching = caching;
+        self
+    }
+
+    /// This spec with tool calling set to `tools`.
+    pub fn with_tools(mut self, tools: bool) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    /// This spec with structured output set to `structured_output`.
+    pub fn with_structured_output(mut self, structured_output: bool) -> Self {
+        self.structured_output = structured_output;
+        self
+    }
+
+    /// This spec priced at `pricing`.
+    pub fn with_pricing(mut self, pricing: Pricing) -> Self {
+        self.pricing = Some(pricing);
+        self
+    }
+
+    /// This spec marked deprecated or not.
+    pub fn with_deprecated(mut self, deprecated: bool) -> Self {
+        self.deprecated = deprecated;
+        self
+    }
+
+    /// This spec taking sampling parameters as `sampling` says.
+    pub fn with_sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = Some(sampling);
+        self
+    }
+
+    /// This spec with the wire facts `compat`.
+    pub fn with_compat(mut self, compat: Compat) -> Self {
+        self.compat = compat;
+        self
+    }
+
+    /// This spec as one models.dev-shaped row of an override file, with
+    /// rig's facts under `rig`. Read back under its vendor key, the row
+    /// builds this spec again. A fact the spec does not know (a `None`
+    /// limit, price, sampling rule or reasoning default, or empty caching)
+    /// is left out, so laid over another row it keeps that row's value.
+    pub fn to_row_json(&self) -> serde_json::Value {
+        super::row::Row::from_spec(self).to_json()
+    }
+
     /// Checks `options` against what the model takes: `reasoning` against
     /// [`Self::reasoning`] and `cache` against [`Self::caching`]. The error
     /// names the option, the provider's vendor and this model. A reasoning

@@ -1,7 +1,7 @@
 //! One model's row as models.dev spells it, plus the facts rig adds under
 //! `rig`, and how a row becomes a [`ModelSpec`].
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::spec::{
     CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
@@ -11,75 +11,200 @@ use crate::providers::registry::ProviderId;
 
 /// A models.dev model row. Every field is optional, so an override row
 /// names only what it changes; fields rig does not read are ignored.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(super) struct Row {
+    #[serde(skip_serializing_if = "Option::is_none")]
     name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     reasoning: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_options: Option<Vec<ReasoningOption>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tool_call: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     structured_output: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     modalities: Option<RowModalities>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     limit: Limit,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     cost: Cost,
+    #[serde(skip_serializing_if = "Option::is_none")]
     status: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     rig: Facts,
 }
 
 /// One entry of `reasoning_options`: `effort` with its `values`,
 /// `budget_tokens` with its `min` and `max`, or `toggle`.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ReasoningOption {
     #[serde(rename = "type")]
     kind: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     values: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     min: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     max: Option<u32>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 struct RowModalities {
     #[serde(default)]
     input: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 struct Limit {
+    #[serde(skip_serializing_if = "Option::is_none")]
     context: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 struct Cost {
+    #[serde(skip_serializing_if = "Option::is_none")]
     input: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     output: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cache_read: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cache_write: Option<f64>,
 }
 
 /// The facts models.dev does not carry, entered by hand under `rig`. An
 /// unknown key is an error, so a misspelt fact is never silently dropped.
-#[derive(Clone, Debug, Default, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Facts {
+    #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_default: Option<Effort>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     cache: Option<Vec<CacheRetention>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     sampling: Option<Sampling>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_field: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     adaptive_thinking: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     thinking_off: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     mid_conversation_system: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     rejects_forced_tool_choice: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     binds_context: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_options: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     chat_tools_need_reasoning_off: Option<bool>,
 }
 
 impl Row {
+    /// The row that builds `spec` again: every fact the spec knows, set
+    /// explicitly, so laid over another row it replaces that row's value.
+    pub(super) fn from_spec(spec: &ModelSpec) -> Row {
+        let reasoning = &spec.reasoning;
+        let reasoning_options = reasoning.supported.then(|| {
+            let mut options = Vec::new();
+            if !reasoning.levels.is_empty() {
+                options.push(ReasoningOption {
+                    kind: "effort".to_owned(),
+                    values: reasoning
+                        .levels
+                        .iter()
+                        .map(|level| level.as_str().to_owned())
+                        .collect(),
+                    min: None,
+                    max: None,
+                });
+            }
+            if reasoning.can_disable {
+                options.push(ReasoningOption {
+                    kind: "toggle".to_owned(),
+                    values: Vec::new(),
+                    min: None,
+                    max: None,
+                });
+            }
+            if let Some(budget) = &reasoning.budget {
+                options.push(ReasoningOption {
+                    kind: "budget_tokens".to_owned(),
+                    values: Vec::new(),
+                    min: Some(*budget.start()),
+                    max: Some(*budget.end()),
+                });
+            }
+            options
+        });
+        let input = &spec.input;
+        let modalities = [
+            (input.text, "text"),
+            (input.image, "image"),
+            (input.audio, "audio"),
+            (input.video, "video"),
+            (input.pdf, "pdf"),
+        ]
+        .into_iter()
+        .filter(|(reads, _)| *reads)
+        .map(|(_, word)| word.to_owned())
+        .collect();
+        let compat = &spec.compat;
+        Row {
+            name: Some(spec.display_name.clone()),
+            reasoning: Some(reasoning.supported),
+            reasoning_options,
+            tool_call: Some(spec.tools),
+            structured_output: Some(spec.structured_output),
+            temperature: None,
+            modalities: Some(RowModalities { input: modalities }),
+            limit: Limit {
+                context: spec.context_window.map(u64::from),
+                output: spec.max_output_tokens.map(u64::from),
+            },
+            cost: spec.pricing.map_or_else(Cost::default, |pricing| Cost {
+                input: Some(pricing.input),
+                output: Some(pricing.output),
+                cache_read: pricing.cache_read,
+                cache_write: pricing.cache_write,
+            }),
+            status: Some(
+                if spec.deprecated {
+                    "deprecated"
+                } else {
+                    "active"
+                }
+                .to_owned(),
+            ),
+            rig: Facts {
+                reasoning_default: reasoning.default.filter(|_| reasoning.supported),
+                cache: (!spec.caching.retention.is_empty()).then(|| spec.caching.retention.clone()),
+                sampling: spec.sampling,
+                reasoning_field: compat.reasoning_field.clone(),
+                adaptive_thinking: Some(compat.adaptive_thinking),
+                thinking_off: compat.thinking_off.clone(),
+                mid_conversation_system: Some(compat.mid_conversation_system),
+                rejects_forced_tool_choice: Some(compat.rejects_forced_tool_choice),
+                binds_context: Some(compat.binds_context),
+                prompt_cache_options: Some(compat.prompt_cache_options),
+                chat_tools_need_reasoning_off: Some(compat.chat_tools_need_reasoning_off),
+            },
+        }
+    }
+
+    /// The row as JSON, as an override file spells it.
+    pub(super) fn to_json(&self) -> serde_json::Value {
+        // A row holds only strings, numbers, booleans and lists, and no map
+        // keyed by anything but a string, so it always converts.
+        serde_json::to_value(self).unwrap_or_default()
+    }
+
     /// `self` with every field `over` sets put on top. `limit`, `cost` and
     /// `rig` merge field by field; any other field `over` sets replaces.
     pub(super) fn overlay(self, over: Row) -> Row {
@@ -245,6 +370,10 @@ fn effort(word: &str) -> Option<Effort> {
         "max" => Effort::Max,
         _ => return None,
     })
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 /// A limit models.dev records, unless it is `0` (its spelling of "none") or
