@@ -268,6 +268,7 @@ pub(crate) fn recall_on_turn_end(
         log: &log,
     };
     let mut typed = Vec::new();
+    let inbox = &mut *inbox;
     let waiting: Vec<Pending> = inbox
         .steering
         .drain(..)
