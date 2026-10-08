@@ -556,8 +556,9 @@ pub struct Usage {
     pub reasoning_tokens: Option<u64>,
     /// What the turn cost in USD, when known. Never derived from the token
     /// counters here, and none of them is derived from it. A cost the
-    /// provider reports is its figure. One priced from the built-in catalog
-    /// ([`Pricing::cost`](crate::catalog::Pricing::cost)) is the
+    /// provider reports is its figure. One priced from the model's catalog
+    /// spec ([`Pricing::cost`](crate::catalog::Pricing::cost), from the
+    /// facts the wire was connected with) is the
     /// standard-tier list price of the counted tokens: it leaves out the
     /// service tier, long-context price tiers and hosted-tool fees (web
     /// search, code execution), so it can be lower than the bill.

@@ -18,7 +18,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::catalog::ModelSpec;
+use crate::catalog::{ModelFacts, ModelSpec};
 #[cfg(feature = "reqwest")]
 use crate::client::env::{self, EnvError};
 use crate::completion::ModelRef;
@@ -621,15 +621,36 @@ impl ProviderConfig {
         model: &str,
         http: DynHttpClient,
     ) -> ErasedHandler {
-        ErasedHandler::new(ModelAdapter::new(label, self.completion_model(model, http)))
+        ErasedHandler::new(ModelAdapter::new(
+            label,
+            self.completion_model(model, http, ModelFacts::default()),
+        ))
     }
 
-    /// The provider's completion model for `model` on `http`, erased.
-    fn completion_model(&self, model: &str, http: DynHttpClient) -> DynModel<Completion> {
+    /// The provider's completion model for `model` on `http`, encoding with
+    /// `facts`, erased.
+    fn completion_model(
+        &self,
+        model: &str,
+        http: DynHttpClient,
+        facts: ModelFacts,
+    ) -> DynModel<Completion> {
         match self {
-            Self::OpenAi(provider) => provider.clone().connect(http).completion(model).erase(),
-            Self::Anthropic(provider) => provider.clone().connect(http).completion(model).erase(),
-            Self::Gemini(provider) => provider.clone().connect(http).completion(model).erase(),
+            Self::OpenAi(provider) => {
+                let mut model = provider.clone().connect(http).completion(model);
+                model.wire = model.wire.with_facts(facts);
+                model.erase()
+            }
+            Self::Anthropic(provider) => {
+                let mut model = provider.clone().connect(http).completion(model);
+                model.wire = model.wire.with_facts(facts);
+                model.erase()
+            }
+            Self::Gemini(provider) => {
+                let mut model = provider.clone().connect(http).completion(model);
+                model.wire = model.wire.with_facts(facts);
+                model.erase()
+            }
         }
     }
 
@@ -815,7 +836,7 @@ impl ProviderRef {
             Recipe::Registered(registered) => registered.config_from_env()?,
             Recipe::Configured(config) => config.clone().with_credential_from_env()?,
         };
-        Ok(config.completion_model(&self.model, rig_reqwest::shared()))
+        Ok(config.completion_model(&self.model, rig_reqwest::shared(), ModelFacts::default()))
     }
 
     /// A completion model for this reference, credentialed with `api_key`,
@@ -825,8 +846,11 @@ impl ProviderRef {
         api_key: impl Into<Secret>,
         http: impl HttpClientExt + 'static,
     ) -> DynModel<Completion> {
-        self.config(api_key)
-            .completion_model(&self.model, DynHttpClient::new(http))
+        self.config(api_key).completion_model(
+            &self.model,
+            DynHttpClient::new(http),
+            ModelFacts::default(),
+        )
     }
 }
 
@@ -914,6 +938,15 @@ impl<'a> From<&'a ModelRef> for ModelSelector<'a> {
 }
 
 impl ModelSelector<'_> {
+    /// The facts a model connected through this selector encodes with: a
+    /// spec's own, or the built-in catalog's for a reference.
+    fn facts(self) -> ModelFacts {
+        match self {
+            Self::Spec(spec) => ModelFacts::new(spec.clone()),
+            Self::Reference(_) => ModelFacts::default(),
+        }
+    }
+
     /// The registered reference this selects. A catalog-only provider is
     /// [`ConnectError::CatalogOnly`].
     pub fn provider_ref(self) -> Result<ProviderRef, ConnectError> {
@@ -1002,10 +1035,13 @@ pub fn connect<'a>(
     model: impl Into<ModelSelector<'a>>,
     api_key: impl Into<Secret>,
 ) -> Result<DynModel<Completion>, ConnectError> {
-    let reference = model.into().provider_ref()?;
-    Ok(reference
-        .config(api_key)
-        .completion_model(reference.model(), rig_reqwest::shared()))
+    let model = model.into();
+    let reference = model.provider_ref()?;
+    Ok(reference.config(api_key).completion_model(
+        reference.model(),
+        rig_reqwest::shared(),
+        model.facts(),
+    ))
 }
 
 /// The completion model `model` selects, credentialed with `api_key`,
@@ -1015,10 +1051,13 @@ pub fn connect_with<'a>(
     api_key: impl Into<Secret>,
     http: impl HttpClientExt + 'static,
 ) -> Result<DynModel<Completion>, ConnectError> {
-    Ok(model
-        .into()
-        .provider_ref()?
-        .completion_model_with(api_key, http))
+    let model = model.into();
+    let reference = model.provider_ref()?;
+    Ok(reference.config(api_key).completion_model(
+        reference.model(),
+        DynHttpClient::new(http),
+        model.facts(),
+    ))
 }
 
 /// The field names of the object form, which is also what a wrong shape is

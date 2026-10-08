@@ -123,6 +123,7 @@ fn nova_reasoning(request: &CompletionRequest, reasoning: &Reasoning) -> Mapping
 
 /// How Converse answers `fields` for `request` to `model`, of `family`.
 pub(crate) fn converse(
+    wire: &crate::completion::Converse,
     family: Family,
     model: &str,
     request: &CompletionRequest,
@@ -139,7 +140,7 @@ pub(crate) fn converse(
         stop,
     } = fields;
     let spec = (family == Family::Claude)
-        .then(|| crate::completion::spec(model))
+        .then(|| wire.spec(model))
         .flatten();
     let always_reasons = model.contains("deepseek.r1");
     let caches = family == Family::Claude || family == Family::Nova;

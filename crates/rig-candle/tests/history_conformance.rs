@@ -48,6 +48,7 @@ impl HistoryFixture for CandleHistory {
         Generation {
             model: model.to_owned(),
             protocol: ConversationProtocol::Qwen3,
+            facts: Default::default(),
         }
     }
 

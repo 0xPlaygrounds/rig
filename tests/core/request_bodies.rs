@@ -382,6 +382,7 @@ fn companions(out: &mut Vec<Encoder>) {
         |model| rig::candle::Generation {
             model: model.to_owned(),
             protocol: rig::candle::ConversationProtocol::Qwen3,
+            facts: Default::default(),
         },
         |payload: &rig::candle::CandleRequest| {
             json!({ "params": serde_json::to_value(&payload.params).unwrap_or(Value::Null) })

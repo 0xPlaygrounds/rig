@@ -131,7 +131,7 @@ pub(super) fn map_options(
         if model == wire.model {
             wire.default_max_tokens
         } else {
-            wire.provider.dialect.default_max_tokens(model)
+            wire.provider.dialect.default_max_tokens(&wire.facts, model)
         }
     });
     // Not `options::param`, which calls `map_options`.
@@ -166,7 +166,7 @@ fn anthropic(
         seed,
         stop,
     } = fields;
-    let spec = super::completion::spec(model);
+    let spec = super::completion::spec(&wire.facts, model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {

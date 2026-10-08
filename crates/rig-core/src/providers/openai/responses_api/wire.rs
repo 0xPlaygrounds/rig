@@ -5,6 +5,7 @@
 //! let wire = OpenAI::new("key").responses("gpt-5.2");
 //! ```
 
+use crate::catalog::ModelFacts;
 use crate::completion::{self, ProviderCapabilities};
 use crate::error::EncodeError;
 use crate::json_utils::Lenient;
@@ -35,6 +36,9 @@ pub struct Responses {
     /// Where this wire puts Rig's system instructions. Defaults to the
     /// dialect's placement.
     pub system_instructions: SystemInstructionsPlacement,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: ModelFacts,
 }
 
 impl Responses {
@@ -100,7 +104,15 @@ impl Responses {
             provider,
             model: model.into(),
             tools: Vec::new(),
+            facts: ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// Sanitize function schemas for strict mode and send `strict: true`.
@@ -153,6 +165,7 @@ impl Wire for Responses {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default().with_native_output_tool_composition(
                     self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
@@ -182,6 +195,10 @@ impl crate::completion::ReplayTarget for Responses {
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
         crate::providers::openai::options::responses_options(self, request, fields)
+    }
+
+    fn facts(&self) -> Option<&ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> crate::message::Api {
@@ -230,7 +247,11 @@ impl crate::completion::ReplayTarget for Responses {
     /// in assistant messages, and only on a model with vision input. Every
     /// documented model calls tools except `o1-mini` and `o1-preview`.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
-        let images = reads_images(self.provider.dialect.quirks.responses.contract, model);
+        let images = reads_images(
+            &self.facts,
+            self.provider.dialect.quirks.responses.contract,
+            model,
+        );
         let model = model.to_ascii_lowercase();
         crate::completion::Accepts {
             user_images: images,
@@ -294,15 +315,15 @@ impl crate::completion::ReplayTarget for Responses {
 /// Whether `model` reads images, past a `vendor/` prefix: its catalog
 /// entry's input, or for a model the catalog does not list its vendor's
 /// documented text-only models. An unknown model reads them.
-fn reads_images(contract: ResponsesContract, model: &str) -> bool {
+fn reads_images(facts: &ModelFacts, contract: ResponsesContract, model: &str) -> bool {
     let model = model.rsplit('/').next().unwrap_or_default();
     match contract {
-        ResponsesContract::Xai => crate::catalog::reads_images_or(
+        ResponsesContract::Xai => facts.reads_images_or(
             crate::providers::xai::DIALECT.name,
             model,
             crate::providers::xai::reads_images,
         ),
-        ResponsesContract::OpenAi | ResponsesContract::Codex => crate::catalog::reads_images_or(
+        ResponsesContract::OpenAi | ResponsesContract::Codex => facts.reads_images_or(
             crate::providers::openai::wire::OPENAI.name,
             model,
             crate::providers::openai::reads_images,

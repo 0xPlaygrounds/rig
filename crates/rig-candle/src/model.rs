@@ -84,6 +84,7 @@ impl CandleModel {
         let generation = Generation {
             model: self.state.model_id.clone(),
             protocol: self.state.profile.definition.protocol,
+            facts: rig_core::catalog::ModelFacts::default(),
         };
         rig_core::Model::new(generation, self.clone())
     }
@@ -322,9 +323,19 @@ pub struct Generation {
     pub model: String,
     /// The protocol its prompts are rendered in.
     pub protocol: ConversationProtocol,
+    /// The model facts the wire describes its model by and prices its
+    /// replies by.
+    pub facts: rig_core::catalog::ModelFacts,
 }
 
 impl Generation {
+    /// The same wire, describing its model by `facts` and pricing its
+    /// replies by them.
+    pub fn with_facts(mut self, facts: rig_core::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
+    }
+
     /// The prompt this wire's protocol renders for a prepared `request`.
     #[doc(hidden)]
     pub fn prompt(&self, request: &CompletionRequest) -> Result<String, CandleError> {
@@ -361,6 +372,7 @@ impl rig_core::wire::Wire for Generation {
     fn describe(&self) -> rig_core::wire::Descriptor<'_> {
         rig_core::wire::Descriptor::new(crate::types::PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .replay(self)
     }
 
@@ -450,6 +462,10 @@ impl rig_core::completion::ReplayTarget for Generation {
     // A local runtime has no finish vocabulary: its decoder states a stop.
     fn states_finish_reason(&self) -> bool {
         false
+    }
+
+    fn facts(&self) -> Option<&rig_core::catalog::ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> rig_core::message::Api {

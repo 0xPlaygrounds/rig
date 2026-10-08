@@ -128,6 +128,14 @@ impl<Op: Operation> DynModel<Op> {
         self.inner.describe().model
     }
 
+    /// The catalog facts of the model the wire addresses: the spec it was
+    /// connected to, else the catalog's entry for its id. `None` for an
+    /// operation that addresses no model, or a model the catalog does not
+    /// list.
+    pub fn spec(&self) -> Option<&crate::catalog::ModelSpec> {
+        self.inner.describe().spec()
+    }
+
     /// What a runtime accounts for about this model.
     pub fn capabilities(&self) -> Capabilities {
         self.inner.describe().capabilities

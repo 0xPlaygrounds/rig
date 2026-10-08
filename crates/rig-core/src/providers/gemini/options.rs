@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::catalog::ReasoningSupport;
+use crate::catalog::{ModelFacts, ReasoningSupport};
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, Effort, Reasoning, ServiceTier};
 
@@ -27,11 +27,11 @@ pub enum Route {
 }
 
 /// The thinking a Gemini model takes, from its catalog entry.
-enum Thinking {
+enum Thinking<'a> {
     /// These levels, and whether thinking turns off (Gemma 4, by level
     /// `minimal`). Gemini 3 cannot turn it off.
     Levels {
-        levels: &'static [Effort],
+        levels: &'a [Effort],
         can_disable: bool,
     },
     /// A token budget in this range (Gemini 2.5), and whether `0` turns it
@@ -51,10 +51,10 @@ enum Thinking {
 /// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, or when
 /// its entry does not say which thinking controls it takes, its family
 /// decides ([`named_thinking`]).
-fn thinking(model: &str) -> Thinking {
+fn thinking<'f>(facts: &'f ModelFacts, model: &str) -> Thinking<'f> {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
-    let lookup = |model: &str| crate::catalog::lookup(super::PROVIDER_NAME, model);
+    let lookup = |model: &str| facts.for_model(super::PROVIDER_NAME, model);
     let Some(spec) = lookup(model).or_else(|| lookup(versioned_model(model)?)) else {
         return named_thinking(model);
     };
@@ -90,7 +90,7 @@ const MINIMAL_TO_HIGH: &[Effort] = &[Effort::Minimal, Effort::Low, Effort::Mediu
 /// starts with (`gemini-2.5-flash-latest`, a `-tts` variant): Gemini 3's
 /// levels, Gemini 2.5's budgets, no thinking before 2.5, and otherwise
 /// unknown.
-fn named_thinking(model: &str) -> Thinking {
+fn named_thinking(model: &str) -> Thinking<'static> {
     let levels: [(&str, &'static [Effort]); 10] = [
         ("gemini-3.8-flash", LOW_TO_HIGH),
         ("gemini-3.7-flash", LOW_TO_HIGH),
@@ -146,13 +146,19 @@ fn config(value: serde_json::Value) -> Mapping {
     Mapping::Send(json!({ "generationConfig": value }))
 }
 
-/// How a GenerateContent wire on `route` answers `fields` for `model`
-/// (section 6.4 of `TYPED_OPTIONS.md`). Every GenerateContent wire calls it,
-/// so the REST, Vertex AI and gRPC wires agree.
+/// How a GenerateContent wire on `route` answers `fields` for `model`, by
+/// the Gemini API facts `facts` give it (section 6.4 of
+/// `TYPED_OPTIONS.md`). Every GenerateContent wire calls it, so the REST,
+/// Vertex AI and gRPC wires agree.
 ///
 /// For rig's own crates; not covered by semver.
 #[doc(hidden)]
-pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<'_>) -> OptionMap {
+pub fn generate_content_options(
+    facts: &ModelFacts,
+    model: &str,
+    route: Route,
+    fields: OptionFields<'_>,
+) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -163,7 +169,7 @@ pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<
         seed,
         stop,
     } = fields;
-    let thinking = thinking(model);
+    let thinking = thinking(facts, model);
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match (reasoning, &thinking) {
             (
@@ -276,7 +282,7 @@ fn generation_config(value: serde_json::Value) -> Mapping {
 }
 
 /// How the Interactions wire answers `fields` for `model`.
-pub(super) fn interactions(model: &str, fields: OptionFields<'_>) -> OptionMap {
+pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -288,7 +294,7 @@ pub(super) fn interactions(model: &str, fields: OptionFields<'_>) -> OptionMap {
         stop,
     } = fields;
     const NO_FIELD: &str = "the Interactions API has no such field";
-    let thinking = thinking(model);
+    let thinking = thinking(facts, model);
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Off | Reasoning::Budget { .. } => Mapping::unsupported(

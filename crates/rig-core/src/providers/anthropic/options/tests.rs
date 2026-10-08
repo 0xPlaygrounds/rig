@@ -55,7 +55,8 @@ fn refused(result: Result<Value, ProviderError>) -> &'static str {
 /// one.
 #[test]
 fn the_catalog_holds_each_models_thinking_facts() {
-    let spec = |model: &str| super::super::completion::spec(model);
+    let spec =
+        |model: &str| super::super::completion::spec(crate::catalog::ModelFacts::builtin(), model);
     let haiku = spec("claude-haiku-4-5-20251001").expect("listed");
     assert!(haiku.reasoning.levels() == Some(&[]) && haiku.reasoning.budget().is_some());
     assert!(haiku.reasoning.can_disable() == Some(true) && !haiku.compat.adaptive_thinking);

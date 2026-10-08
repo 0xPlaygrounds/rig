@@ -10,6 +10,7 @@
 //! # }
 //! ```
 
+use crate::catalog::ModelFacts;
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionRequest, ProviderCapabilities};
 use crate::error::EncodeError;
@@ -175,10 +176,11 @@ pub const fn compatible(
 }
 
 impl Dialect {
-    /// The `max_tokens` this dialect defaults `model` to.
-    pub fn default_max_tokens(&self, model: &str) -> Option<u64> {
+    /// The `max_tokens` this dialect defaults `model` to, by the output
+    /// limit `facts` give it where the dialect defaults by model.
+    pub fn default_max_tokens(&self, facts: &ModelFacts, model: &str) -> Option<u64> {
         match self.quirks.max_tokens {
-            MaxTokens::ByModel => default_max_tokens_for_model(model),
+            MaxTokens::ByModel => default_max_tokens_for_model(facts, model),
             MaxTokens::Fixed(tokens) => Some(tokens),
         }
     }
@@ -298,13 +300,16 @@ impl AnthropicConfig {
     pub(crate) fn completion(&self, model: impl Into<String>) -> Messages {
         let model = model.into();
         Messages {
-            default_max_tokens: self.dialect.default_max_tokens(&model),
+            default_max_tokens: self
+                .dialect
+                .default_max_tokens(ModelFacts::builtin(), &model),
             provider: self.clone(),
             model,
             prompt_caching: false,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
+            facts: ModelFacts::default(),
         }
     }
 
@@ -374,9 +379,25 @@ pub struct Messages {
     /// dialect's by default.
     #[serde(default)]
     pub tool_input_streaming: ToolInputStreaming,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: ModelFacts,
 }
 
 impl Messages {
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them. The `max_tokens` a request without one defaults to becomes the
+    /// dialect's default for the model under `facts`; set another with
+    /// [`Self::with_default_max_tokens`] after this.
+    pub fn with_facts(mut self, facts: ModelFacts) -> Self {
+        self.default_max_tokens = self
+            .provider
+            .dialect
+            .default_max_tokens(&facts, &self.model);
+        self.facts = facts;
+        self
+    }
+
     /// Set the `max_tokens` a request without one defaults to.
     pub fn with_default_max_tokens(mut self, tokens: u64) -> Self {
         self.default_max_tokens = Some(tokens);
@@ -470,10 +491,14 @@ impl Wire for Messages {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default()
                     .with_native_output_tool_composition(true)
-                    .with_forced_tool_choice_rejected(rejects_forced_tool_choice(&self.model)),
+                    .with_forced_tool_choice_rejected(rejects_forced_tool_choice(
+                        &self.facts,
+                        &self.model,
+                    )),
             ))
             .replay(self)
     }
@@ -530,6 +555,10 @@ impl crate::completion::ReplayTarget for Messages {
         super::options::map_options(self, request, fields)
     }
 
+    fn facts(&self) -> Option<&ModelFacts> {
+        Some(&self.facts)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static(MESSAGES_API)
     }
@@ -557,7 +586,8 @@ impl crate::completion::ReplayTarget for Messages {
             _ => Some(|_| true),
         };
         let images = rule.is_none_or(|rule| {
-            crate::catalog::reads_images_or(self.provider.dialect.name, model, rule)
+            self.facts
+                .reads_images_or(self.provider.dialect.name, model, rule)
         });
         crate::completion::Accepts {
             user_images: images,
@@ -603,7 +633,7 @@ impl crate::completion::ReplayTarget for Messages {
     /// A model that takes no system message inside `messages` gets every
     /// one folded into the leading system prompt.
     fn later_system(&self, model: &str) -> crate::completion::LaterSystem {
-        if super::completion::takes_mid_conversation_system(model) {
+        if super::completion::takes_mid_conversation_system(&self.facts, model) {
             crate::completion::LaterSystem::InPlace
         } else {
             crate::completion::LaterSystem::Leading
@@ -615,7 +645,8 @@ impl crate::completion::ReplayTarget for Messages {
     /// Claude models whose thinking binds to the tools and system prompt it
     /// was made under.
     fn binds_context(&self, model: &str) -> bool {
-        self.provider.dialect.name == ANTHROPIC.name && super::completion::binds_context(model)
+        self.provider.dialect.name == ANTHROPIC.name
+            && super::completion::binds_context(&self.facts, model)
     }
 
     /// A request in adaptive thinking asks Anthropic to drop a block bound

@@ -376,16 +376,6 @@ fn edit_distance_counts_single_character_edits() {
     assert_eq!(lookup::edit_distance("5.5", "5-5"), 1);
 }
 
-/// An id the catalog lists reads images as its entry says; any other id is
-/// read by the rule the caller passes, never by a default.
-#[test]
-fn an_unlisted_model_reads_images_by_its_vendor_rule() {
-    assert!(!reads_images_or("openai", "gpt-3.5-turbo", |_| true));
-    assert!(reads_images_or("openai", "gpt-4o", |_| false));
-    assert!(!reads_images_or("minimax", "minimax-m2.5", |_| false));
-    assert!(reads_images_or("minimax", "minimax-m2.5", |_| true));
-}
-
 #[test]
 fn catalog_only_providers_have_entries_and_no_preset() {
     let catalog = Catalog::from_json(SAMPLE).expect("parses");

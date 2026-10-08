@@ -40,6 +40,9 @@ pub struct Interactions {
     pub provider: crate::providers::gemini::GeminiConfig,
     /// The model to address.
     pub model: String,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: crate::catalog::ModelFacts,
 }
 
 impl Interactions {
@@ -48,7 +51,15 @@ impl Interactions {
         Self {
             provider,
             model: model.into(),
+            facts: crate::catalog::ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 }
 
@@ -62,6 +73,7 @@ impl crate::wire::Wire for Interactions {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .telemetry(|_| GenAiOperation::Chat)
             .replay(self)
     }
@@ -117,7 +129,11 @@ impl ReplayTarget for Interactions {
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        super::options::interactions(model, fields)
+        super::options::interactions(&self.facts, model, fields)
+    }
+
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> crate::message::Api {
@@ -206,6 +222,10 @@ pub struct InteractionResume {
     /// The last event the consumer saw, so a resumed stream does not
     /// redeliver it. `None` resumes from the beginning, as the API defaults.
     pub last_event_id: Option<String>,
+    /// The model facts the reply, from the model the interaction names, is
+    /// priced by.
+    #[serde(skip)]
+    pub facts: crate::catalog::ModelFacts,
 }
 
 impl InteractionResume {
@@ -218,7 +238,14 @@ impl InteractionResume {
             provider,
             interaction_id: interaction_id.into(),
             last_event_id: None,
+            facts: crate::catalog::ModelFacts::default(),
         }
+    }
+
+    /// The same wire, pricing its replies by `facts`.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// Resume a streamed read after the event `last_event_id`.
@@ -240,6 +267,7 @@ impl crate::wire::Wire for InteractionResume {
     /// origin takes.
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
+            .facts(&self.facts)
             .telemetry(|_| GenAiOperation::Chat)
             .replay(self)
     }
@@ -344,6 +372,10 @@ impl ReplayTarget for InteractionResume {
             seed: refuse(seed.is_some()),
             stop: refuse(!stop.is_empty()),
         }
+    }
+
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> crate::message::Api {

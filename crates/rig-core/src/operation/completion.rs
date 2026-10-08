@@ -83,6 +83,7 @@ impl Operation for Completion {
         }
         Turn {
             span,
+            facts: call.wire.facts.cloned().unwrap_or_default(),
             wire: replay.is_some_and(|target| target.states_finish_reason()),
             call_id_slot: replay.and_then(|target| target.call_id_slot()),
             accept_unknown_finish: request.accept_unknown_finish_reasons,
@@ -223,6 +224,8 @@ pub struct Turn {
     span: tracing::Span,
     /// Who the reply is from; the end adds the provider's model and id.
     origin: Origin,
+    /// The facts of the wire that answers, which price the reply.
+    facts: crate::catalog::ModelFacts,
     // The writer.
     open: BTreeMap<usize, Draft>,
     /// The position of the block each wire index last closed, whose item
@@ -463,6 +466,7 @@ impl Turn {
         Self {
             span: tracing::Span::none(),
             origin,
+            facts: crate::catalog::ModelFacts::default(),
             open: BTreeMap::new(),
             ended: HashMap::new(),
             next_part: 0,
@@ -1093,7 +1097,7 @@ impl Turn {
             origin.model.clone_from(model);
         }
         origin.response_id = reported(response_id);
-        let usage = priced(usage, &origin);
+        let usage = priced(usage, &origin, &self.facts);
         let error = error.or_else(|| {
             if !self.wire {
                 return None;
@@ -1117,12 +1121,12 @@ impl Turn {
 }
 
 /// `usage` with its cost: the one the provider reported, else the counters
-/// priced at the catalog's pricing for the requested model, else none.
-fn priced(usage: Usage, origin: &Origin) -> Usage {
+/// priced at the requested model's pricing in `facts`, else none.
+fn priced(usage: Usage, origin: &Origin, facts: &crate::catalog::ModelFacts) -> Usage {
     if usage.cost.is_some() {
         return usage;
     }
-    let cost = catalog_cost(origin, &usage);
+    let cost = catalog_cost(origin, facts, &usage);
     usage.cost(cost)
 }
 
@@ -1137,14 +1141,20 @@ const UNPRICED: [&str; 3] = [
     crate::providers::ollama::PROVIDER_NAME,
 ];
 
-/// What `usage` costs at the built-in catalog's pricing for `origin`'s
-/// model, or `None` when the catalog has no price for it or the provider
-/// is one it does not price ([`UNPRICED`]).
-fn catalog_cost(origin: &Origin, usage: &Usage) -> Option<crate::completion::Cost> {
+/// What `usage` costs at the pricing `facts` give `origin`'s model (the
+/// spec the wire was connected to, else its catalog's entry), or `None`
+/// when they have no price for it or the provider is one the catalog does
+/// not price ([`UNPRICED`]).
+fn catalog_cost(
+    origin: &Origin,
+    facts: &crate::catalog::ModelFacts,
+    usage: &Usage,
+) -> Option<crate::completion::Cost> {
     if UNPRICED.contains(&origin.provider.as_str()) {
         return None;
     }
-    crate::catalog::lookup(&origin.provider, &origin.model)
+    facts
+        .for_model(&origin.provider, &origin.model)
         .and_then(|spec| spec.pricing.as_ref())
         .and_then(|pricing| pricing.cost(usage))
 }
@@ -1284,11 +1294,12 @@ impl Fold<Completion> for Turn {
 }
 
 impl<'id> Out<'id, Completion> {
-    /// What `usage` costs at the built-in catalog's pricing for the
-    /// requested model, for a decoder whose provider bills other counters
-    /// than the ones it reports as usage.
+    /// What `usage` costs at the requested model's pricing in the wire's
+    /// facts, for a decoder whose provider bills other counters than the
+    /// ones it reports as usage.
     pub(crate) fn catalog_cost(&self, usage: &Usage) -> Option<crate::completion::Cost> {
-        catalog_cost(&self.lock().fold.origin, usage)
+        let shared = self.lock();
+        catalog_cost(&shared.fold.origin, &shared.fold.facts, usage)
     }
 
     /// Open the provider item at wire `index` as `block`: it takes the next

@@ -476,6 +476,9 @@ pub struct Descriptor<'a> {
     /// has a canonical name of its own (Gemini `generate_content`). The mode
     /// itself is recorded separately, as `gen_ai.request.stream`.
     pub telemetry: Option<fn(Mode) -> crate::telemetry::GenAiOperation>,
+    /// The model facts a completion wire encodes with, which its replies are
+    /// priced by. `None` answers from the built-in catalog.
+    pub facts: Option<&'a crate::catalog::ModelFacts>,
 }
 
 impl<'a> Descriptor<'a> {
@@ -487,6 +490,21 @@ impl<'a> Descriptor<'a> {
             model: None,
             capabilities: Capabilities::default(),
             telemetry: None,
+            facts: None,
+        }
+    }
+
+    /// The spec of the model the wire addresses, from its facts under its
+    /// own name: the spec it was connected to, else the catalog's entry.
+    /// `None` for a wire that addresses no model, or a model the catalog
+    /// does not list.
+    pub fn spec(&self) -> Option<&'a crate::catalog::ModelSpec> {
+        let model = self.model?;
+        match self.facts {
+            Some(facts) => facts.for_model(self.name, model),
+            None => crate::catalog::Catalog::builtin()
+                .get_vendor(self.name, model)
+                .map(|resolved| resolved.spec),
         }
     }
 
@@ -505,6 +523,12 @@ impl<'a> Descriptor<'a> {
     /// What a runtime accounts for.
     pub fn capabilities(mut self, capabilities: Capabilities) -> Self {
         self.capabilities = capabilities;
+        self
+    }
+
+    /// The model facts the wire encodes with.
+    pub fn facts(mut self, facts: &'a crate::catalog::ModelFacts) -> Self {
+        self.facts = Some(facts);
         self
     }
 

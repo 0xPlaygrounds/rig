@@ -63,10 +63,12 @@ pub(crate) fn reads_images(model: &str) -> bool {
     model.contains("vision")
 }
 
-/// Whether `model` thinks, as its catalog entry says, or `None` for an id
-/// the catalog does not list. Both chat routes read it.
-pub(crate) fn thinks(model: &str) -> Option<bool> {
-    crate::catalog::lookup(PROVIDER_NAME, model).map(|spec| spec.reasoning.supported())
+/// Whether `model` thinks, as its facts say, or `None` for an id the
+/// catalog does not list.
+pub(crate) fn thinks(facts: &crate::catalog::ModelFacts, model: &str) -> Option<bool> {
+    facts
+        .for_model(PROVIDER_NAME, model)
+        .map(|spec| spec.reasoning.supported())
 }
 
 #[cfg(test)]

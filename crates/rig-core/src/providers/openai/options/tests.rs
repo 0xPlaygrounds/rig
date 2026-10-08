@@ -38,12 +38,31 @@ fn refused(result: Result<Value, ProviderError>) -> Option<&'static str> {
 
 #[test]
 fn openai_model_facts_come_from_the_catalog() {
-    assert_eq!(reasons("o3-mini"), Some(true));
-    assert_eq!(reasons("openai/gpt-5.6-sol"), Some(true));
-    assert_eq!(reasons("gpt-5-2025-08-07"), Some(true), "a dated snapshot");
-    assert_eq!(reasons("gpt-4.1"), Some(false));
-    assert_eq!(reasons("my-deployment"), None);
-    assert!(caches_by_options("gpt-6-sol") && !caches_by_options("gpt-5.5"));
+    assert_eq!(
+        reasons(crate::catalog::ModelFacts::builtin(), "o3-mini"),
+        Some(true)
+    );
+    assert_eq!(
+        reasons(crate::catalog::ModelFacts::builtin(), "openai/gpt-5.6-sol"),
+        Some(true)
+    );
+    assert_eq!(
+        reasons(crate::catalog::ModelFacts::builtin(), "gpt-5-2025-08-07"),
+        Some(true),
+        "a dated snapshot"
+    );
+    assert_eq!(
+        reasons(crate::catalog::ModelFacts::builtin(), "gpt-4.1"),
+        Some(false)
+    );
+    assert_eq!(
+        reasons(crate::catalog::ModelFacts::builtin(), "my-deployment"),
+        None
+    );
+    assert!(
+        caches_by_options(crate::catalog::ModelFacts::builtin(), "gpt-6-sol")
+            && !caches_by_options(crate::catalog::ModelFacts::builtin(), "gpt-5.5")
+    );
 }
 
 /// OpenAI ids the catalog does not list (from OpenAI's own model list,
@@ -65,8 +84,15 @@ fn an_unlisted_openai_reasoning_id_reasons_by_its_name() {
         "o4-mini-deep-research",
     ];
     for model in unlisted {
-        assert!(openai_spec(model).is_none(), "{model} is listed now");
-        assert_eq!(reasons(model), Some(true), "{model}");
+        assert!(
+            openai_spec(crate::catalog::ModelFacts::builtin(), model).is_none(),
+            "{model} is listed now"
+        );
+        assert_eq!(
+            reasons(crate::catalog::ModelFacts::builtin(), model),
+            Some(true),
+            "{model}"
+        );
         let body = sent(&chat(&OPENAI, model), GenerationOptions::default()).expect(model);
         assert_eq!(body["max_completion_tokens"], 16, "{model}");
         assert!(body.get("max_tokens").is_none(), "{model}");
@@ -245,7 +271,11 @@ fn openrouter_off_follows_the_upstream_row() {
         Some("reasoning")
     );
     assert!(matches!(
-        openrouter_reasoning("openai/gpt-5-nano", &Reasoning::Off),
+        openrouter_reasoning(
+            crate::catalog::ModelFacts::builtin(),
+            "openai/gpt-5-nano",
+            &Reasoning::Off
+        ),
         Mapping::Unsupported(_)
     ));
     for model in [
@@ -443,6 +473,45 @@ fn chat_stop_is_refused_on_reasoning_models() {
     assert_eq!(body["stop"], json!(["END"]));
     let body = stop("prod-deployment", GenerationOptions::default()).expect("an unknown id");
     assert_eq!(body["stop"], json!(["END"]));
+}
+
+/// The encoder reads the facts the wire was given, not the built-in
+/// catalog: a catalog that says `gpt-5-mini` does not reason lets it take
+/// `stop` and `max_tokens`, for the wire's model and for a request that names
+/// it on a wire of another model.
+#[test]
+fn chat_reads_the_facts_it_was_given() {
+    use crate::catalog::{Catalog, ReasoningSupport};
+    let openai = crate::providers::registry::ProviderId::catalog(OPENAI.name).expect("a vendor");
+    let mut catalog = Catalog::builtin().clone();
+    let spec = catalog
+        .get_exact(openai, "gpt-5-mini")
+        .expect("listed")
+        .clone()
+        .with_reasoning(ReasoningSupport::None);
+    catalog.insert(spec);
+    let stop = GenerationOptions::default().stop(["END"]);
+    assert_eq!(
+        refused(sent(&chat(&OPENAI, "gpt-5-mini"), stop.clone())),
+        Some("stop")
+    );
+    let wire = chat(&OPENAI, "gpt-5-mini").with_facts(catalog.facts(openai, "gpt-5-mini"));
+    let body = sent(&wire, stop.clone()).expect("the facts say it does not reason");
+    assert_eq!(body["stop"], json!(["END"]));
+    assert_eq!(
+        body["max_tokens"], 16,
+        "no reasoning, no `max_completion_tokens`"
+    );
+
+    let other = chat(&OPENAI, "gpt-4.1-mini").with_facts(catalog.facts(openai, "gpt-4.1-mini"));
+    let request = CompletionRequest::new("hi")
+        .model("gpt-5-mini")
+        .options(stop);
+    let request = Completion::prepare(request, &other.describe()).expect("prepares");
+    assert!(
+        other.encode(request, Mode::Unary).is_ok(),
+        "the catalog answers for another model"
+    );
 }
 
 /// A model that does not reason takes only `medium` verbosity on both

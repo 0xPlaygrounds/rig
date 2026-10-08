@@ -30,6 +30,7 @@ fn scripted() -> Generation {
     Generation {
         model: "qwen3-scripted".to_owned(),
         protocol: ConversationProtocol::Qwen3,
+        facts: Default::default(),
     }
 }
 
@@ -1451,6 +1452,7 @@ fn local(protocol: ConversationProtocol) -> Generation {
     Generation {
         model: crate::loader::model_id(protocol, b"config", b"tokenizer"),
         protocol,
+        facts: Default::default(),
     }
 }
 

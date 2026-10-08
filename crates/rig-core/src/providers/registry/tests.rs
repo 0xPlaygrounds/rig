@@ -788,6 +788,30 @@ fn a_repeated_reference_field_is_refused() {
     }
 }
 
+/// A model connected from a spec carries that spec, whatever the built-in
+/// catalog says of its id, on every registered format; one connected from a
+/// reference carries the built-in entry.
+#[test]
+fn a_model_connected_from_a_spec_carries_it() {
+    for reference in [
+        "openai/gpt-5.5",
+        "anthropic/claude-sonnet-4-6",
+        "gcp.gemini/gemini-2.5-flash",
+    ] {
+        let builtin = crate::catalog::Catalog::builtin()
+            .resolve(reference)
+            .expect("listed")
+            .spec;
+        let spec = builtin.clone().with_context_window(1_234);
+        let model =
+            connect_with(&spec, "sk-test", RecordingHttpClient::new("{}")).expect("connects");
+        assert_eq!(model.spec(), Some(&spec), "{reference}");
+        let model =
+            connect_with(reference, "sk-test", RecordingHttpClient::new("{}")).expect("connects");
+        assert_eq!(model.spec(), Some(builtin), "{reference}");
+    }
+}
+
 /// `connect` and `connect_with` take every selector spelling: a catalog
 /// entry, a `&str`, a `&String` and a `ModelRef`; a catalog-only provider is
 /// refused before any model is built.

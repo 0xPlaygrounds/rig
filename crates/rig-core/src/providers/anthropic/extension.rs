@@ -241,7 +241,10 @@ impl ExtensionOptions for AnthropicOptions {
             .as_deref()
             .filter(|model| !model.is_empty())
             .unwrap_or_else(|| target.model());
-        let Some(spec) = crate::catalog::lookup(target.provider(), model) else {
+        let facts = target
+            .facts()
+            .unwrap_or_else(|| crate::catalog::ModelFacts::builtin());
+        let Some(spec) = facts.for_model(target.provider(), model) else {
             return Vec::new();
         };
         let mut refused = Vec::new();

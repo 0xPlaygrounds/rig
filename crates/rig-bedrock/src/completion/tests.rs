@@ -126,26 +126,32 @@ fn hosted_items_pair_and_calls_have_an_id_slot() {
     assert_eq!(wire.call_id_slot(), Some("/toolUse/toolUseId"));
 }
 
+/// What a wire on the default facts reads for `model`.
+fn spec(model: &str) -> Option<&'static ModelSpec> {
+    static FACTS: std::sync::OnceLock<ModelFacts> = std::sync::OnceLock::new();
+    super::spec_in(FACTS.get_or_init(ModelFacts::default), model)
+}
+
 /// Bedrock finds a model's catalog entry by its id or the last part of its
 /// ARN, and a Claude row carries the Anthropic model's facts.
 #[test]
 fn bedrock_models_take_their_facts_from_the_catalog() {
-    let opus = super::spec("us.anthropic.claude-opus-5-5").expect("listed");
+    let opus = spec("us.anthropic.claude-opus-5-5").expect("listed");
     assert!(opus.compat.binds_context && opus.reasoning.can_disable() == Some(false));
     let arn =
         "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5";
     assert_eq!(
-        super::spec(arn).map(|spec| spec.id.as_str()),
+        spec(arn).map(|spec| spec.id.as_str()),
         Some("us.anthropic.claude-opus-5-5")
     );
     assert!(
-        super::spec(AMAZON_NOVA_LITE).is_some(),
+        spec(AMAZON_NOVA_LITE).is_some(),
         "another model's Bedrock row"
     );
-    let haiku = super::spec(ANTHROPIC_CLAUDE_HAIKU_4_5).expect("listed");
+    let haiku = spec(ANTHROPIC_CLAUDE_HAIKU_4_5).expect("listed");
     assert!(!haiku.compat.adaptive_thinking && haiku.reasoning.budget().is_some());
     assert!(
-        super::spec("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3")
+        spec("arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/a1b2c3")
             .is_none()
     );
 }
@@ -161,18 +167,18 @@ fn an_unlisted_bedrock_claude_id_takes_its_base_models_row() {
         "us.anthropic.claude-opus-5-5-20260101-v1:0",
         "anthropic.claude-opus-5-5-v1:0",
     ] {
-        let spec = super::spec(model).unwrap_or_else(|| panic!("{model}: a Claude entry"));
+        let spec = spec(model).unwrap_or_else(|| panic!("{model}: a Claude entry"));
         assert!(
             spec.compat.binds_context && spec.reasoning.can_disable() == Some(false),
             "{model}"
         );
     }
-    let sonnet = super::spec("jp.anthropic.claude-sonnet-5-5").expect("a Claude entry");
+    let sonnet = spec("jp.anthropic.claude-sonnet-5-5").expect("a Claude entry");
     assert_eq!(sonnet.id, "anthropic.claude-sonnet-5-5");
     assert_eq!(sonnet.compat.thinking_off.as_deref(), Some("between_tools"));
     assert!(sonnet.compat.binds_context);
-    assert!(super::spec("jp.amazon.nova-unlisted-v1:0").is_none());
-    assert!(super::spec("anthropic.claude-unlisted-v1:0").is_none());
+    assert!(spec("jp.amazon.nova-unlisted-v1:0").is_none());
+    assert!(spec("anthropic.claude-unlisted-v1:0").is_none());
 }
 
 /// A region profile the catalog does not list reads images as its base

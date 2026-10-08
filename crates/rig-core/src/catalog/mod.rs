@@ -8,7 +8,9 @@
 //! [`Catalog::from_json`] and lay it over the built-in one with
 //! [`Catalog::with_overrides`]. [`ModelSpec::validate`] checks a request's
 //! [`GenerationOptions`](crate::completion::GenerationOptions) against what
-//! the model takes before anything is sent.
+//! the model takes before anything is sent. A completion wire encodes and
+//! prices with the [`ModelFacts`] it was connected with, so a catalog's
+//! overrides reach its requests and reported cost.
 //!
 //! ```
 //! use rig_core::catalog::Catalog;
@@ -20,6 +22,7 @@
 //! # Ok::<(), rig_core::catalog::NotFound>(())
 //! ```
 
+mod facts;
 mod lookup;
 mod row;
 mod spec;
@@ -32,6 +35,7 @@ use serde::Deserialize;
 use crate::providers::registry::{Format, ProviderId};
 use row::Row;
 
+pub use facts::ModelFacts;
 pub use lookup::{Matched, NotFound, Resolved};
 pub use spec::{CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling};
 
@@ -217,6 +221,13 @@ impl Catalog {
         })
     }
 
+    /// The shared spec [`Self::get_vendor`] finds.
+    fn entry_for(&self, vendor: &str, model: &str) -> Option<Arc<ModelSpec>> {
+        let id = &self.get_vendor(vendor, model)?.spec.id;
+        let index = self.position(vendor, id).ok()?;
+        self.entries.get(index).map(|entry| Arc::clone(&entry.spec))
+    }
+
     fn exact(&self, vendor: &str, model: &str) -> Option<&ModelSpec> {
         self.position(vendor, model)
             .ok()
@@ -254,23 +265,6 @@ impl Catalog {
             }
         }
     }
-}
-
-/// The model of the built-in catalog `vendor` serves as `model`, by
-/// [`Catalog::get`]'s rule.
-pub(crate) fn lookup(vendor: &str, model: &str) -> Option<&'static ModelSpec> {
-    Catalog::builtin()
-        .get_vendor(vendor, model)
-        .map(|resolved| resolved.spec)
-}
-
-/// Whether `vendor`'s `model` reads images: what its catalog entry lists,
-/// or, for a model the catalog does not list, what `rule` (the vendor's
-/// naming rule) says of its id. Every wire that filters images reads this,
-/// so an id the catalog does not list (a gateway's spelling, another case,
-/// a deployment name) keeps its vendor's naming rule.
-pub(crate) fn reads_images_or(vendor: &str, model: &str, rule: impl FnOnce(&str) -> bool) -> bool {
-    lookup(vendor, model).map_or_else(|| rule(model), |spec| spec.input.image)
 }
 
 /// The rig vendor a models.dev provider key names.

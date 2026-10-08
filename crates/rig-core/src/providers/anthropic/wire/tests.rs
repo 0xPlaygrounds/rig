@@ -40,18 +40,48 @@ fn a_dialect_round_trips_by_name_and_rejects_an_unknown_one() {
 #[test]
 fn a_gateway_defaults_max_tokens_to_its_one_documented_ceiling() {
     assert_eq!(
-        ANTHROPIC.default_max_tokens("claude-haiku-4-5"),
+        ANTHROPIC.default_max_tokens(crate::catalog::ModelFacts::builtin(), "claude-haiku-4-5"),
         Some(64_000)
     );
-    assert_eq!(ANTHROPIC.default_max_tokens("some-unknown-model"), None);
+    assert_eq!(
+        ANTHROPIC.default_max_tokens(crate::catalog::ModelFacts::builtin(), "some-unknown-model"),
+        None
+    );
     // A gateway documents one ceiling rather than per-model limits, so an
     // unrecognized model still gets a usable default.
-    assert_eq!(ZAI.default_max_tokens("some-unknown-model"), Some(4096));
+    assert_eq!(
+        ZAI.default_max_tokens(crate::catalog::ModelFacts::builtin(), "some-unknown-model"),
+        Some(4096)
+    );
     // `strict_tool_schemas` is a const quirk of a const dialect, so the
     // gateway's disagreement with Anthropic is a compile-time fact, not a
     // runtime one.
     const _: () = assert!(!ZAI.quirks.strict_tool_schemas);
     const _: () = assert!(ANTHROPIC.quirks.strict_tool_schemas);
+}
+
+/// A wire given facts defaults `max_tokens` to the output limit they list,
+/// and reads its other per-model behaviour from them.
+#[test]
+fn a_wire_takes_its_defaults_from_its_facts() {
+    let anthropic = crate::providers::registry::ProviderId::catalog("anthropic").expect("a vendor");
+    let mut catalog = crate::catalog::Catalog::builtin().clone();
+    let spec = catalog
+        .get_exact(anthropic, "claude-haiku-4-5")
+        .expect("listed")
+        .clone()
+        .with_max_output_tokens(1_000);
+    catalog.insert(spec);
+    let wire = AnthropicConfig::new("sk-test").completion("claude-haiku-4-5");
+    assert_eq!(wire.default_max_tokens, Some(64_000));
+    let wire = wire.with_facts(catalog.facts(anthropic, "claude-haiku-4-5"));
+    assert_eq!(wire.default_max_tokens, Some(1_000));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_000)
+    );
 }
 
 /// Each dialect reads images on its documented vision models only, in user

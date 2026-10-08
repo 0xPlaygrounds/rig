@@ -757,13 +757,14 @@ pub fn request_params(
     deep_merge(&mut body, provider);
     deep_merge(&mut body, raw);
     for rewrite in rewrites {
-        apply(rewrite, &mut body, &handles)?;
+        apply(target, rewrite, &mut body, &handles)?;
     }
     Ok(FinalBody(body))
 }
 
 /// Apply one post-merge write to `body`.
 fn apply(
+    target: &dyn ReplayTarget,
     rewrite: &Rewrite,
     body: &mut Map<String, Value>,
     handles: &[String],
@@ -776,8 +777,11 @@ fn apply(
                 .get("model")
                 .and_then(Value::as_str)
                 .is_some_and(|model| {
+                    let facts = target
+                        .facts()
+                        .unwrap_or_else(|| crate::catalog::ModelFacts::builtin());
                     !model.contains('/')
-                        && crate::providers::openai::options::reasons(model) == Some(true)
+                        && crate::providers::openai::options::reasons(facts, model) == Some(true)
                 });
             if reasoning && let Some(max_tokens) = body.shift_remove("max_tokens") {
                 body.entry("max_completion_tokens").or_insert(max_tokens);

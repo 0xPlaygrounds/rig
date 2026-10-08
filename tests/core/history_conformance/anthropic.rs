@@ -154,11 +154,14 @@ impl HistoryFixture for MessagesHistory {
         Messages {
             provider: AnthropicConfig::with_key(self.dialect, "sk-test"),
             model: model.to_owned(),
-            default_max_tokens: self.dialect.default_max_tokens(model),
+            default_max_tokens: self
+                .dialect
+                .default_max_tokens(&rig_core::catalog::ModelFacts::default(), model),
             prompt_caching: false,
             static_prefix_cache_ttl: None,
             strict_tools: false,
             tool_input_streaming: self.dialect.quirks.tool_input_streaming,
+            facts: Default::default(),
         }
     }
 

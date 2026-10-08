@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::catalog::ModelFacts;
 use crate::completion::CompletionRequest;
 use crate::error::{EncodeError, ProviderError};
 use crate::operation::Completion;
@@ -135,6 +136,15 @@ impl OpenAiWire {
     /// no-op on the chat route, which sends them that way already.
     pub fn with_system_instructions_as_messages(self) -> Self {
         self.on_responses(Responses::with_system_instructions_as_messages)
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them, on whichever route this is.
+    pub fn with_facts(self, facts: ModelFacts) -> Self {
+        match self {
+            Self::Chat(wire) => Self::Chat(wire.with_facts(facts)),
+            Self::Responses(wire) => Self::Responses(wire.with_facts(facts)),
+        }
     }
 
     /// Apply a chat-route option; the Responses route is left as it is.
