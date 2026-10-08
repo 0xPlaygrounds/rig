@@ -1,9 +1,9 @@
-//! Bevy dependencies use the workspace release floor and crates.io sources.
-//! Compatible lockfile updates do not change the declared requirement.
+//! Bevy dependencies (the `bevy` umbrella and every `bevy_*` crate) use the
+//! workspace pin and crates.io sources, so the workspace has one Bevy version.
 
 use serde_json::Value;
 
-const BEVY_REQUIREMENT: &str = "^0.19.1";
+const BEVY_REQUIREMENT: &str = "=0.20.0-rc.2";
 
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 
@@ -15,6 +15,10 @@ pub(crate) enum Error {
     Source(String, String),
     #[error("{0} must declare {1} with requirement {BEVY_REQUIREMENT}, got {2}")]
     Requirement(String, String, String),
+}
+
+fn is_bevy(name: &str) -> bool {
+    name == "bevy" || name.starts_with("bevy_")
 }
 
 pub(crate) fn check(metadata: &Value) -> Result<(), Error> {
@@ -29,7 +33,7 @@ pub(crate) fn check(metadata: &Value) -> Result<(), Error> {
         let name = package["name"]
             .as_str()
             .ok_or(Error::Metadata("package name"))?;
-        if name.starts_with("bevy_") {
+        if is_bevy(name) {
             found = true;
             if package["source"].as_str() != Some(CRATES_IO) {
                 return Err(Error::Source(name.into(), package["source"].to_string()));
@@ -43,7 +47,7 @@ pub(crate) fn check(metadata: &Value) -> Result<(), Error> {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or(Error::Metadata("dependency name"))?;
-            if dependency_name.starts_with("bevy_") {
+            if is_bevy(dependency_name) {
                 if dependency["source"].as_str() != Some(CRATES_IO) {
                     return Err(Error::Source(name.into(), dependency_name.into()));
                 }

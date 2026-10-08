@@ -245,6 +245,7 @@ rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-featu
 anyhow = "1"
 arrow-array = "58"
 assert_fs = "1"
+async-channel = "2"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }
@@ -268,10 +269,13 @@ ethers = "2"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example. Bevy
-# 0.19.1: crates.io, never git; the tooling check verifies Bevy sources and
-# declared release floors. Default features off.
-bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
+# Bevy is pinned exactly (a release candidate) so the workspace has one Bevy
+# version: crates.io, never git; the tooling check verifies Bevy sources and
+# requirements for `bevy` and every `bevy_*` crate. Default features off.
+# `bevy` is the engine of rig-code; `bevy_tasks` is the runtime-agnostic
+# executor of the `agent_no_tokio` example.
+bevy = { version = "=0.20.0-rc.2", default-features = false }
+bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -314,6 +318,7 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
+ratatui = { version = "0.30.2", default-features = false }
 redis = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
@@ -357,6 +362,7 @@ tracing = "0.1"
 tracing-futures = "0.2.5"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = "0.3"
+unicode-width = "0.2"
 uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"

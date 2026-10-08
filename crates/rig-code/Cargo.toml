@@ -1,0 +1,31 @@
+[package]
+name = "rig-code"
+version.workspace = true
+edition.workspace = true
+# Bevy 0.20 needs Rust 1.96.
+rust-version = "1.96"
+license = "MIT"
+readme = "README.md"
+description = "A small coding agent built on Rig and Bevy: agents are entities, plugins are Bevy plugins."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true, features = ["reqwest"] }
+rig-cassette = { workspace = true }
+bevy = { workspace = true, features = [
+    "std",
+    "async_executor",
+    "multi_threaded",
+    "bevy_log",
+    "reflect_auto_register",
+    "serialize",
+] }
+ratatui = { workspace = true, features = ["crossterm"] }
+async-channel = { workspace = true }
+futures-timer = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+unicode-width = { workspace = true }
