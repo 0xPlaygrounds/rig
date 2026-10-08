@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
@@ -100,7 +99,6 @@ pub(crate) fn read_input(
     paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
     mut commands: Commands,
-    mut exit: MessageWriter<AppExit>,
 ) {
     let busy = view
         .agent
@@ -144,7 +142,7 @@ pub(crate) fn read_input(
                         busy,
                         esc_cancels_reload,
                     };
-                    input_key(key, &mut view, &mut commands, &mut exit, keys);
+                    input_key(key, &mut view, &mut commands, keys);
                 }
             },
             // A paste arrives whole, newlines included, so it is not sent
@@ -201,7 +199,6 @@ fn input_key(
     key: KeyEvent,
     view: &mut TuiView,
     commands: &mut Commands,
-    exit: &mut MessageWriter<AppExit>,
     Keys {
         busy,
         esc_cancels_reload,
@@ -213,13 +210,6 @@ fn input_key(
     let editor = &mut view.editor;
     match key.code {
         KeyCode::Char('c') if control => editor.clear(),
-        KeyCode::Char('d') if control => {
-            if editor.is_empty() {
-                exit.write(AppExit::Success);
-            } else {
-                editor.delete();
-            }
-        }
         KeyCode::Char('j') if control => editor.insert_char('\n'),
         KeyCode::Char('a') if control => editor.home(),
         KeyCode::Char('e') if control => editor.end(),
