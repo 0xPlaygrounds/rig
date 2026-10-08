@@ -138,6 +138,12 @@ impl Home {
         self.root.join("mcp.json")
     }
 
+    /// `auth/<provider>.json`, the subscription credential `/login` keeps
+    /// for `provider`, such as `chatgpt`.
+    pub fn auth(&self, provider: &str) -> PathBuf {
+        self.root.join("auth").join(format!("{provider}.json"))
+    }
+
     /// The generated agent project.
     pub fn project(&self) -> PathBuf {
         self.root.join("project")

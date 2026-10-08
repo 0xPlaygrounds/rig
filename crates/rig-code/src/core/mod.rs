@@ -1,7 +1,8 @@
 //! The agent core: agents as entities, the turn loop, subagents, the one
 //! effect dispatch path with its approval gate, the tool and command
-//! registries, models, and session saving. It depends on neither the host nor any view: the host fills in
-//! what the core needs, such as [`save::SessionPaths`].
+//! registries, models and `/login` sign-ins, and session saving. It depends
+//! on neither the host nor any view: the host fills in what the core needs,
+//! such as [`save::SessionPaths`].
 
 pub mod agent;
 pub mod approval;
@@ -12,6 +13,7 @@ pub mod commands;
 pub mod compaction;
 pub mod effects;
 pub mod inbox;
+pub mod login;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
@@ -67,6 +69,8 @@ impl Plugin for AgentPlugin {
                     poll_calls::<RetryDue>,
                     poll_calls::<Summary>,
                     poll_calls::<rewind::FilesRestored>,
+                    poll_calls::<login::SignedInResult>,
+                    login::show_device_codes,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),
@@ -98,6 +102,10 @@ impl Plugin for AgentPlugin {
             .add_observer(rewind::on_files_restored)
             .add_observer(rewind::on_fork)
             .add_observer(turn::on_interrupt)
+            .add_observer(login::on_sign_in)
+            .add_observer(login::on_signed_in)
+            .add_observer(login::on_sign_out)
+            .add_observer(login::cancel_on_interrupt)
             .add_observer(turn::on_turn_end)
             .add_observer(inbox::on_follow_up)
             .add_observer(inbox::recall_on_turn_end)

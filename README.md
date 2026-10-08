@@ -209,6 +209,19 @@ directory, cost, age) and resumes the one picked, in its own directory;
 `rig --continue` resumes the last session run in the working directory and
 `rig --resume <id>` a given one.
 
+A ChatGPT subscription can pay for the model
+calls instead of an API key: `/login chatgpt` shows a code to enter at
+`https://auth.openai.com/codex/device`, and once you have, `/model` lists the
+plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
+`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
+`gpt-5.6-luna` and `gpt-5.5`, besides the older `gpt-5.4` and `gpt-5.3` rows.
+Esc or a second `/login` cancels a sign-in that waits. The credential is kept
+in `RIG_HOME/auth/chatgpt.json`, readable by you alone, and refreshed before
+a request when it has expired, so a long session keeps working;
+`/logout chatgpt` deletes it. It is rig's own sign-in, separate from the Codex
+CLI's. A `CHATGPT_ACCESS_TOKEN` in the environment (with `CHATGPT_ACCOUNT_ID`)
+is used instead when set. `rig -p /login` signs in without the terminal view.
+
 Typing while the agent works is fine: Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
 for) and Tab queues a follow-up that is sent when the turn would end. Both
@@ -327,7 +340,7 @@ tool's call in its own way; a plugin can draw its own tools' calls with
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
-`plugins.toml`, the approval policy `policy.json`, the MCP servers `mcp.json`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+`plugins.toml`, the approval policy `policy.json`, the MCP servers `mcp.json`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 the prompt history `history.jsonl`, and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

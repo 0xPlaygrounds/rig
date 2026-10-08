@@ -13009,6 +13009,7 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-memory",
+ "rig-reqwest",
  "rig-rmcp",
  "rmcp",
  "serde",

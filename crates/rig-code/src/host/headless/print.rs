@@ -17,6 +17,7 @@ use super::{PrimaryQuery, RunMode, emit, primary};
 use crate::core::agent::{
     ActiveTurn, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
 };
+use crate::core::login::PendingLogin;
 use crate::core::models;
 
 /// Frames to wait for a model to connect before giving up.
@@ -89,9 +90,12 @@ fn drive(
     agents: PrimaryQuery,
     models_of: Query<(Option<&ModelChoice>, Has<Connection>, Has<ActiveTurn>)>,
     conversations: Query<&Conversation>,
+    logins: Query<(), With<PendingLogin>>,
     mut commands: Commands,
     mut exits: MessageWriter<AppExit>,
 ) {
+    // A command such as `/login` runs without a model.
+    let command = run.prompt.trim_start().starts_with('/');
     match run.step {
         Step::Start => {
             let Some(agent) = primary(&agents) else {
@@ -106,6 +110,7 @@ fn drive(
                 (None, Some(chosen)) => Some(chosen.0.clone()),
                 (None, None) => match models::available_models().first() {
                     Some(spec) => Some(models::reference(spec)),
+                    None if command => None,
                     None => {
                         eprintln!(
                             "rig: no model can be reached: set a provider's API key, or name one \
@@ -129,9 +134,10 @@ fn drive(
             };
         }
         Step::Connecting { agent, frames } => {
-            let connected = models_of
-                .get(agent)
-                .is_ok_and(|(_, connected, _)| connected);
+            let connected = command
+                || models_of
+                    .get(agent)
+                    .is_ok_and(|(_, connected, _)| connected);
             if !connected {
                 if frames == 0 {
                     run.step = Step::Done;
@@ -159,8 +165,9 @@ fn drive(
             run.step = Step::Sent { agent, before };
         }
         Step::Sent { agent, before } => {
-            // The turn starts with the request; a command may start none.
-            if models_of.get(agent).is_ok_and(|(.., busy)| busy) {
+            // The turn starts with the request; a command may start none,
+            // or a sign-in.
+            if models_of.get(agent).is_ok_and(|(.., busy)| busy) || !logins.is_empty() {
                 return;
             }
             let answer = conversations

@@ -16,6 +16,8 @@ use rig_core::providers::{chatgpt, mistral, openai, venice};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
+use super::login::LoginProvider;
+
 /// Token budgets for the named levels on models that take a budget instead
 /// of levels, clamped into the model's range.
 const BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
@@ -34,22 +36,36 @@ pub fn reference(spec: &ModelSpec) -> String {
 }
 
 /// Builds `spec`'s provider client from the environment and wraps the
-/// model as an effect handler.
+/// model as an effect handler. Without a key in the environment, a model of
+/// a provider signed in with `/login` signs each request with that
+/// credential instead.
 /// [`Effects::model_handler`](super::effects::Effects::model_handler) keeps
 /// one per model.
 pub(crate) fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
-    let model = registry::connect(spec)?;
-    Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
-        reference(spec),
-        model,
-    )))
+    match registry::connect(spec) {
+        Ok(model) => Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
+            reference(spec),
+            model,
+        ))),
+        Err(error @ ConnectError::MissingKey { .. }) => match signed_in(spec) {
+            Some(login) => login.model_handler(spec).map(ErasedHandler::new),
+            None => Err(error),
+        },
+        Err(error) => Err(error),
+    }
+}
+
+/// The provider `spec` is signed in to with `/login`, if any.
+pub fn signed_in(spec: &ModelSpec) -> Option<LoginProvider> {
+    LoginProvider::of(spec).filter(|login| login.signed_in())
 }
 
 /// Catalog models that call tools and whose provider can be reached from
-/// the environment: first those of providers with a key set, then those
-/// of providers that need none (local servers such as Ollama), which a
-/// view marks "no key needed". The check builds the provider's client
-/// exactly as a request would, once per provider.
+/// the environment or a `/login` sign-in: first those of providers with a
+/// key set or signed in, then those of providers that need none (local
+/// servers such as Ollama), which a view marks "no key needed". The check
+/// builds the provider's client exactly as a request would, once per
+/// provider.
 pub fn available_models() -> Vec<&'static ModelSpec> {
     let mut usable: HashMap<ProviderId, bool> = HashMap::new();
     let mut models: Vec<&'static ModelSpec> = Catalog::builtin()
@@ -58,7 +74,7 @@ pub fn available_models() -> Vec<&'static ModelSpec> {
         .filter(|spec| {
             *usable
                 .entry(spec.provider)
-                .or_insert_with(|| registry::connect(*spec).is_ok())
+                .or_insert_with(|| registry::connect(*spec).is_ok() || signed_in(spec).is_some())
         })
         .collect();
     // Stable: catalog order within each group.

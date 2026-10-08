@@ -1,6 +1,6 @@
-//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
-//! `/compact`, `/agents`, `/rewind`, `/fork`, `/approvals`, `/help` and
-//! `/quit`.
+//! The built-in slash commands: `/model`, `/effort`, `/login`, `/logout`,
+//! `/usage`, `/retry`, `/compact`, `/agents`, `/rewind`, `/fork`,
+//! `/approvals`, `/help` and `/quit`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -11,6 +11,7 @@ use crate::core::agent::{
 };
 use crate::core::approval::{ApprovalMode, Permission, Policy, Rule};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use crate::core::login::{SignIn, SignOut};
 use crate::core::models;
 use crate::core::rewind::{self, Fork, History, Point, Rewind, UndoRewind};
 use crate::core::subagents::{self, RosterQuery};
@@ -31,6 +32,17 @@ impl Plugin for BuiltinCommandsPlugin {
             "effort",
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
+        )
+        .add_command(
+            "login",
+            "Sign in with your ChatGPT plan: /login chatgpt shows a code to enter in the browser; \
+             /login again or Esc cancels",
+            login,
+        )
+        .add_command(
+            "logout",
+            "Forget a sign-in: /logout chatgpt",
+            logout,
         )
         .add_command(
             "usage",
@@ -86,6 +98,20 @@ fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWr
             model: args.args,
         });
     }
+}
+
+fn login(In(args): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(SignIn {
+        entity: args.agent,
+        provider: args.args,
+    });
+}
+
+fn logout(In(args): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(SignOut {
+        entity: args.agent,
+        provider: args.args,
+    });
 }
 
 fn effort(

@@ -9,7 +9,8 @@
 //!   and `value`: any reflectable request event of the app, the same ones
 //!   the terminal view sends, triggered through Bevy's `ReflectEvent`:
 //!   `Submit`, `FollowUp`, `Interrupt`, `Retry`, `Compact`, `SetModel`,
-//!   `SetEffort`, `Approve`, `Rewind`, `Fork`, `Focus`, a plugin's own. An
+//!   `SetEffort`, `Approve`, `Rewind`, `Fork`, `Focus`, `SignIn`,
+//!   `SignOut`, a plugin's own. An
 //!   `entity` field may be left out (the primary agent), given as an
 //!   [`AgentId`] string, or as entity bits from an event.
 //! - `agents`: every agent, with its entity, model, state and spending.

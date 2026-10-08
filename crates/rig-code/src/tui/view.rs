@@ -13,6 +13,7 @@ use crate::core::agent::{
 };
 use crate::core::approval::AwaitingApproval;
 use crate::core::inbox::Recalled;
+use crate::core::login::LoginProvider;
 use crate::core::models;
 use crate::core::rewind::{self, History};
 use crate::core::save::SessionPaths;
@@ -202,13 +203,13 @@ pub(crate) fn open_pickers(
                     .into_iter()
                     .map(|spec| {
                         let reference = models::reference(spec);
-                        let keyless = if spec.provider.requires_credential() {
-                            ""
-                        } else {
-                            "  (no key needed)"
+                        let note = match LoginProvider::of(spec) {
+                            Some(plan) => format!("  ({} plan)", plan.title()),
+                            None if spec.provider.requires_credential() => String::new(),
+                            None => "  (no key needed)".to_owned(),
                         };
                         (
-                            format!("{reference}  {}{keyless}", spec.display_name),
+                            format!("{reference}  {}{note}", spec.display_name),
                             PickValue::Model(reference),
                         )
                     })
@@ -217,7 +218,7 @@ pub(crate) fn open_pickers(
                     notices.write(Notice::error(
                         request.agent,
                         "No provider with tool-calling models can be reached: set a key such \
-                         as OPENAI_API_KEY.",
+                         as OPENAI_API_KEY, or sign in with /login chatgpt.",
                     ));
                     continue;
                 }

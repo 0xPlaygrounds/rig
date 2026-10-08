@@ -70,6 +70,9 @@ regex = { workspace = true }
 rig = { path = "../..", version = "0.44.0", default-features = false }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["reqwest"] }
+# The shared HTTP client `/login` and signed-in model calls read the
+# credential through.
+rig-reqwest = { workspace = true }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }

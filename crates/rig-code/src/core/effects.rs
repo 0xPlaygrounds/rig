@@ -100,7 +100,9 @@ impl Effects {
     }
 
     /// The handler serving `spec`, built from the environment's credentials
-    /// the first time any agent picks it, and described in the log header.
+    /// or a `/login` sign-in the first time any agent picks it, and
+    /// described in the log header. A signed-in handler reads the
+    /// credential on each request, so a refreshed token needs no rebuild.
     pub(crate) fn model_handler(
         &mut self,
         spec: &'static ModelSpec,
@@ -113,6 +115,13 @@ impl Effects {
         self.describe(vec![handler.descriptor()]);
         self.models.insert(reference, handler.clone());
         Ok(handler)
+    }
+
+    /// Forgets the handlers of `vendor`'s models, so the next agent that
+    /// picks one connects it again, such as after its sign-in is deleted.
+    pub(crate) fn forget_vendor(&mut self, vendor: &str) {
+        self.models
+            .retain(|reference, _| reference.split_once('/').map(|(of, _)| of) != Some(vendor));
     }
 
     /// Adds `handlers` to the ones the log header describes.
