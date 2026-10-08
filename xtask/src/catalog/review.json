@@ -925,6 +925,78 @@
           "cache_read": null,
           "cache_write": null
         }
+      },
+      "gpt-5.5": {
+        "from": "openai/gpt-5.5",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-5.6-luna": {
+        "from": "openai/gpt-5.6-luna",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-5.6-sol": {
+        "from": "openai/gpt-5.6-sol",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-5.6-terra": {
+        "from": "openai/gpt-5.6-terra",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-6-astra": {
+        "from": "openai/gpt-6-astra",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-6-luna": {
+        "from": "openai/gpt-6-luna",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-6-sol": {
+        "from": "openai/gpt-6-sol",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
+      },
+      "gpt-6.1-sol": {
+        "from": "openai/gpt-6.1-sol",
+        "cost": {
+          "input": null,
+          "output": null,
+          "cache_read": null,
+          "cache_write": null
+        }
       }
     }
   },
