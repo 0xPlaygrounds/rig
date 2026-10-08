@@ -1,0 +1,5 @@
+model_list:
+  - model_name: rig-chat
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
