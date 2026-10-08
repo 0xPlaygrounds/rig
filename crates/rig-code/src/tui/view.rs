@@ -1,0 +1,206 @@
+//! View state, kept apart from the agent core: the focused agent, the input
+//! line, scrolling, the open picker and recent notices.
+
+use bevy_ecs::prelude::*;
+use rig_core::completion::Reasoning;
+
+use crate::core::agent::{
+    Agent, AgentId, Connection, Conversation, Notice, NoticeLevel, PickKind, PickRequest,
+};
+use crate::core::models;
+use crate::host::reload::ReloadFailed;
+
+/// Notices kept for display.
+const KEPT_NOTICES: usize = 50;
+
+/// The terminal view's state. Never saved and never read by the core.
+#[derive(Resource, Default)]
+pub struct TuiView {
+    /// The agent shown and typed to.
+    pub agent: Option<Entity>,
+    /// The input line.
+    pub input: String,
+    /// Lines scrolled up from the bottom of the transcript.
+    pub scroll: usize,
+    /// The open picker.
+    pub picker: Option<Picker>,
+    /// Recent notices, oldest first.
+    pub notices: Vec<ShownNotice>,
+    /// A failed rebuild's output, shown over the transcript until Esc.
+    pub reload_failure: Option<String>,
+}
+
+/// A notice placed in a transcript.
+pub struct ShownNotice {
+    /// The agent it is about, or `None` for every agent.
+    pub agent: Option<Entity>,
+    /// The length of that agent's conversation (the focused one's, for an
+    /// app notice) when it arrived; it is drawn after that many messages.
+    pub after: usize,
+    /// Whether it reports a failure.
+    pub level: NoticeLevel,
+    /// The text.
+    pub text: String,
+}
+
+impl ShownNotice {
+    /// Whether it belongs in `agent`'s transcript.
+    pub fn is_for(&self, agent: Option<Entity>) -> bool {
+        self.agent.is_none() || self.agent == agent
+    }
+}
+
+/// What choosing a picker item sets.
+#[derive(Clone, Debug)]
+pub enum PickValue {
+    /// A model reference.
+    Model(String),
+    /// A reasoning setting.
+    Effort(Option<Reasoning>),
+}
+
+/// A filterable list to choose one item from.
+pub struct Picker {
+    /// The agent the choice is for.
+    pub agent: Entity,
+    /// The title.
+    pub title: String,
+    /// Every item: its label and value.
+    pub items: Vec<(String, PickValue)>,
+    /// The filter typed so far.
+    pub filter: String,
+    /// The selected position among the visible items.
+    pub selected: usize,
+}
+
+impl Picker {
+    /// The items whose label holds every word of the filter, ignoring case.
+    pub fn visible(&self) -> Vec<&(String, PickValue)> {
+        let filter = self.filter.to_lowercase();
+        self.items
+            .iter()
+            .filter(|(label, _)| {
+                let label = label.to_lowercase();
+                filter.split_whitespace().all(|word| label.contains(word))
+            })
+            .collect()
+    }
+
+    /// The selected item's value.
+    pub fn chosen(&self) -> Option<PickValue> {
+        self.visible()
+            .get(self.selected)
+            .map(|(_, value)| value.clone())
+    }
+}
+
+/// Focuses the first agent by id when the focused one is gone.
+pub fn focus_agent(mut view: ResMut<TuiView>, agents: Query<(Entity, &AgentId), With<Agent>>) {
+    if view.agent.is_some_and(|agent| agents.contains(agent)) {
+        return;
+    }
+    view.agent = agents
+        .iter()
+        .min_by(|a, b| a.1.0.cmp(&b.1.0))
+        .map(|(entity, _)| entity);
+}
+
+/// Opens the picker a command asked for.
+pub fn open_pickers(
+    mut requests: MessageReader<PickRequest>,
+    agents: Query<&Connection>,
+    conversations: Query<&Conversation>,
+    mut view: ResMut<TuiView>,
+) {
+    for request in requests.read() {
+        let current = agents
+            .get(request.agent)
+            .ok()
+            .map(|connection| connection.spec);
+        let (title, items) = match request.kind {
+            PickKind::Model => {
+                let items: Vec<(String, PickValue)> = models::available_models()
+                    .into_iter()
+                    .map(|spec| {
+                        let reference = models::reference(spec);
+                        let keyless = if spec.provider.requires_credential() {
+                            ""
+                        } else {
+                            "  (no key needed)"
+                        };
+                        (
+                            format!("{reference}  {}{keyless}", spec.display_name),
+                            PickValue::Model(reference),
+                        )
+                    })
+                    .collect();
+                if items.is_empty() {
+                    let after = conversations
+                        .get(request.agent)
+                        .map_or(0, |conversation| conversation.0.len());
+                    view.notices.push(ShownNotice {
+                        agent: Some(request.agent),
+                        after,
+                        level: NoticeLevel::Error,
+                        text: "No provider with tool-calling models can be reached: set a key \
+                               such as OPENAI_API_KEY."
+                            .to_owned(),
+                    });
+                    continue;
+                }
+                ("Model".to_owned(), items)
+            }
+            PickKind::Effort => {
+                let Some(spec) = current else {
+                    continue;
+                };
+                let items = models::effort_options(spec)
+                    .into_iter()
+                    .map(|(label, effort)| (label, PickValue::Effort(effort)))
+                    .collect();
+                (format!("Reasoning for {}", spec.display_name), items)
+            }
+        };
+        view.picker = Some(Picker {
+            agent: request.agent,
+            title,
+            items,
+            filter: String::new(),
+            selected: 0,
+        });
+    }
+}
+
+/// Shows the output of a failed `/reload` until it is dismissed.
+pub fn show_reload_failures(mut failures: MessageReader<ReloadFailed>, mut view: ResMut<TuiView>) {
+    if let Some(failure) = failures.read().last() {
+        view.reload_failure = Some(failure.output.clone());
+    }
+}
+
+/// Keeps the latest notices for display, each placed after the messages
+/// its agent had when it arrived.
+pub fn collect_notices(
+    mut notices: MessageReader<Notice>,
+    conversations: Query<&Conversation>,
+    mut view: ResMut<TuiView>,
+) {
+    if notices.is_empty() {
+        return;
+    }
+    for notice in notices.read() {
+        let after = notice
+            .agent
+            .or(view.agent)
+            .and_then(|agent| conversations.get(agent).ok())
+            .map_or(0, |conversation| conversation.0.len());
+        view.notices.push(ShownNotice {
+            agent: notice.agent,
+            after,
+            level: notice.level,
+            text: notice.text.clone(),
+        });
+    }
+    let excess = view.notices.len().saturating_sub(KEPT_NOTICES);
+    view.notices.drain(..excess);
+}

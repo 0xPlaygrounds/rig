@@ -80,6 +80,34 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
+        "@core-imports" => {
+            // rig-code's agent core must build without its host and its
+            // views: no path under `core/` names them, or the TUI's crates.
+            const FORBIDDEN: [&str; 4] = ["host", "tui", "ratatui", "crossterm"];
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(untracked_inputs(root)?)
+                .filter(|p| p.starts_with("crates/rig-code/src/core/") && p.ends_with(".rs"))
+            {
+                let Ok(text) = fs::read_to_string(root.join(&path)) else {
+                    continue;
+                };
+                for (number, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or_default();
+                    let named = code
+                        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .find(|word| FORBIDDEN.contains(word));
+                    if let Some(word) = named {
+                        return Err(invalid(format!(
+                            "{path}:{}: the agent core names `{word}`; core/ must not \
+                             depend on host/ or tui/",
+                            number + 1
+                        )));
+                    }
+                }
+            }
+            Ok(())
+        }
         "@native-only" => {
             // A native-only crate on wasm must fail with exactly its one
             // `compile_error!` sentence; an item outside the `not(wasm)` gate

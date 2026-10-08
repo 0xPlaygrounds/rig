@@ -50,6 +50,7 @@ pub(super) fn all() -> Vec<Check> {
                     &[".github/scripts/check-migrating-guide-preamble.sh"],
                 ),
                 Step::new("@fixture-paths", &[]),
+                Step::new("@core-imports", &[]),
                 Step::new("@options-guards", &[]),
                 Step::new(
                     "node",
