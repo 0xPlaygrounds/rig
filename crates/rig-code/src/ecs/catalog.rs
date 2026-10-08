@@ -38,11 +38,15 @@ impl Providers {
     }
 
     /// The models an agent can use: they call tools and their provider has a
-    /// credential, by vendor then id.
+    /// credential, by vendor then id. Providers that need no key come last,
+    /// so the ones the user configured lead the list.
     pub fn models(&self) -> impl Iterator<Item = &'static ModelSpec> + '_ {
-        Catalog::builtin()
-            .iter()
-            .filter(|spec| spec.tools && self.available(spec))
+        let usable = |keyed: bool| {
+            Catalog::builtin().iter().filter(move |spec| {
+                spec.tools && self.available(spec) && spec.provider.requires_credential() == keyed
+            })
+        };
+        usable(true).chain(usable(false))
     }
 }
 
