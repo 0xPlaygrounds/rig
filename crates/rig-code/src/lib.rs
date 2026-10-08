@@ -7,11 +7,21 @@
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
 //! as a third-party plugin registers its own.
 //!
+//! [`RigCodePlugins`] is the part every agent app has. The loop runner, the
+//! built-in tools and commands, and the terminal view are added on their
+//! own, as the `rig` launcher's generated `main.rs` does from
+//! `plugins.toml`:
+//!
 //! ```no_run
+//! use rig_code::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin};
 //! use rig_code::prelude::*;
 //!
 //! fn main() -> AppExit {
-//!     App::new().add_plugins(RigCodePlugins).run()
+//!     App::new()
+//!         .add_plugins((RigCodePlugins, rig_code::runner()))
+//!         // With feature `tui`, `rig_code::tui::TuiPlugin` adds the terminal view.
+//!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin))
+//!         .run()
 //! }
 //! ```
 
@@ -47,29 +57,32 @@ pub mod prelude {
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
 }
 
-/// The rig-code app: the session and its log, Bevy's task pools and a
-/// 60 Hz loop, the agent core, the built-in tools and commands, `/reload`,
-/// and the terminal view (feature `tui`).
+/// What every rig-code app has: the session and its log, Bevy's task
+/// pools, the agent core and saving, the launcher protocol and `/reload`.
+/// The tools, the commands other than `/reload`, the views and the
+/// [`runner`] are plugins of their own, so `plugins.toml` lists the
+/// built-in ones like any other and can leave them out.
 pub struct RigCodePlugins;
 
 impl PluginGroup for RigCodePlugins {
     fn build(self) -> PluginGroupBuilder {
-        let group = PluginGroupBuilder::start::<Self>()
+        PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
             .add(LogPlugin {
                 fmt_layer: host::session::log_layer,
                 ..LogPlugin::default()
             })
             .add(TaskPoolPlugin::default())
-            .add(ScheduleRunnerPlugin::run_loop(Duration::from_millis(16)))
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
-            .add(builtin::BuiltinToolsPlugin)
-            .add(builtin::BuiltinCommandsPlugin)
             .add(host::launcher::LauncherPlugin)
-            .add(host::reload::ReloadPlugin);
-        #[cfg(feature = "tui")]
-        let group = group.add(tui::TuiPlugin);
-        group
+            .add(host::reload::ReloadPlugin)
     }
+}
+
+/// The app's loop without a window: one frame every 16 ms. It is added
+/// apart from [`RigCodePlugins`] and before the listed plugins, so a
+/// windowing plugin added later sets its own runner in its place.
+pub fn runner() -> ScheduleRunnerPlugin {
+    ScheduleRunnerPlugin::run_loop(Duration::from_millis(16))
 }

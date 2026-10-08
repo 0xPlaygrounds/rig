@@ -16,6 +16,7 @@ pub use terminal::Tui;
 pub use view::{PickValue, Picker, TuiView};
 
 /// Owns the terminal and draws the focused agent.
+#[derive(Default)]
 pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {

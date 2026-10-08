@@ -1,25 +1,44 @@
-//! `rig.toml`: the plugin list and build settings. The file is a small TOML
-//! subset: comments, a top-level `jobs = <integer>`, and `[[plugin]]`
+//! `plugins.toml`: the plugin list and build settings. The file is a small
+//! TOML subset: comments, a top-level `jobs = <integer>`, and `[[plugin]]`
 //! tables whose keys hold a string, an integer or a list of strings.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::Result;
+use super::project::PACKAGE;
 
-/// Written when `rig.toml` does not exist yet.
-const TEMPLATE: &str = r#"# rig agent settings. `rig build` or /reload in the agent applies changes.
+/// Written when `plugins.toml` does not exist yet.
+const TEMPLATE: &str = r#"# The rig agent's plugins, added in this order. `rig build`, or /reload in
+# the agent, applies changes.
 
-# jobs = 8                        # cargo -j for building the agent
+# jobs = 8                          # cargo -j for building the agent
 
-# One table per Bevy plugin crate added to the agent:
+# Each [[plugin]] names a type implementing Bevy's Plugin + Default. An entry
+# without `crate` comes from rig-code itself.
+
+# The read, edit, write, shell and search tools.
+[[plugin]]
+plugin = "rig_code::builtin::BuiltinToolsPlugin"
+
+# /model, /effort, /help and /quit. (/reload is always there.)
+[[plugin]]
+plugin = "rig_code::builtin::BuiltinCommandsPlugin"
+
+# The terminal view. Without it the agent runs headless; a GUI plugin can sit
+# beside it or replace it.
+[[plugin]]
+plugin = "rig_code::tui::TuiPlugin"
+
+# A plugin from another crate:
 # [[plugin]]
-# crate = "rig-hello"             # the package name
-# path = "/abs/path/to/rig-hello" # exactly one of: path, git (with optional branch or rev), version
-# plugin = "rig_hello::HelloPlugin" # a type implementing Plugin + Default
-# bevy_features = []              # extra Bevy features the plugin needs
+# crate = "rig-hello"               # the package name
+# path = "../rig-hello"             # exactly one of: path (relative to this file),
+#                                   # git (with optional branch or rev), version
+# plugin = "rig_hello::HelloPlugin"
+# bevy_features = []                # extra Bevy features the plugin needs
 "#;
 
 /// The parsed settings.
@@ -32,20 +51,28 @@ pub struct Config {
 
 /// One `[[plugin]]` table.
 pub struct Plugin {
-    /// The package name.
-    pub krate: String,
-    /// Where the package comes from.
-    pub source: Source,
     /// The plugin type's path, such as `rig_hello::HelloPlugin`.
     pub type_path: String,
+    /// The package that provides it, or `None` for rig-code's own.
+    pub package: Option<Package>,
     /// Bevy features the plugin needs.
     pub bevy_features: Vec<String>,
 }
 
+/// A plugin package.
+pub struct Package {
+    /// The package name.
+    pub name: String,
+    /// Where it comes from.
+    pub source: Source,
+}
+
 /// Where a plugin package comes from.
+#[derive(PartialEq, Eq)]
 pub enum Source {
-    /// A local directory; a relative one is relative to `RIG_HOME`.
-    Path(String),
+    /// A local directory, made absolute against the directory of
+    /// `plugins.toml`.
+    Path(PathBuf),
     /// A git repository, optionally at a branch or revision.
     Git {
         /// The repository URL.
@@ -80,11 +107,13 @@ impl Config {
             }
             Err(failure) => return Err(format!("{}: {failure}", path.display()).into()),
         };
-        parse(&text).map_err(|failure| format!("{}: {failure}", path.display()).into())
+        let base = path.parent().unwrap_or(Path::new("."));
+        parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
     }
 }
 
-fn parse(text: &str) -> Result<Config> {
+/// Parses `text`; relative plugin paths are relative to `base`.
+fn parse(text: &str, base: &Path) -> Result<Config> {
     let mut jobs = None;
     let mut tables: Vec<(usize, BTreeMap<String, Value>)> = Vec::new();
     for (number, line) in (1..).zip(text.lines()) {
@@ -124,24 +153,35 @@ fn parse(text: &str) -> Result<Config> {
             },
         }
     }
-    let plugins = tables
-        .into_iter()
-        .map(|(number, table)| {
-            plugin(table).map_err(|failure| format!("[[plugin]] at line {number}: {failure}"))
-        })
-        .collect::<std::result::Result<_, _>>()?;
+    let mut plugins: Vec<Plugin> = Vec::new();
+    let mut types = BTreeSet::new();
+    for (number, table) in tables {
+        let plugin = plugin(table, base)
+            .and_then(|plugin| {
+                if !types.insert(plugin.type_path.clone()) {
+                    return Err(format!("`{}` is listed twice", plugin.type_path).into());
+                }
+                if let Some(package) = &plugin.package
+                    && plugins
+                        .iter()
+                        .filter_map(|listed| listed.package.as_ref())
+                        .any(|listed| {
+                            listed.name == package.name && listed.source != package.source
+                        })
+                {
+                    return Err(
+                        format!("`{}` is listed before with another source", package.name).into(),
+                    );
+                }
+                Ok(plugin)
+            })
+            .map_err(|failure| format!("[[plugin]] at line {number}: {failure}"))?;
+        plugins.push(plugin);
+    }
     Ok(Config { jobs, plugins })
 }
 
-fn plugin(mut table: BTreeMap<String, Value>) -> Result<Plugin> {
-    let krate = string(&mut table, "crate")?.ok_or("`crate` is missing")?;
-    if krate.is_empty()
-        || !krate
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        return Err(format!("`{krate}` is not a crate name").into());
-    }
+fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
     let type_path = string(&mut table, "plugin")?.ok_or("`plugin` (the type path) is missing")?;
     if !type_path.split("::").all(|segment| {
         segment.chars().next().is_some_and(|c| !c.is_ascii_digit())
@@ -156,14 +196,42 @@ fn plugin(mut table: BTreeMap<String, Value>) -> Result<Plugin> {
     let version = string(&mut table, "version")?;
     let branch = string(&mut table, "branch")?;
     let rev = string(&mut table, "rev")?;
-    let source = match (path, git, version) {
-        (None, Some(url), None) => Source::Git { url, branch, rev },
-        _ if branch.is_some() || rev.is_some() => {
-            return Err("`branch` and `rev` only go with `git`".into());
+    let package = match string(&mut table, "crate")? {
+        None if [&path, &git, &version, &branch, &rev]
+            .iter()
+            .any(|key| key.is_some()) =>
+        {
+            return Err("a plugin from another crate needs `crate`, its package name".into());
         }
-        (Some(path), None, None) => Source::Path(path),
-        (None, None, Some(version)) => Source::Version(version),
-        _ => return Err("set exactly one of `path`, `git` and `version`".into()),
+        None => None,
+        Some(name) => {
+            if name.is_empty()
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                return Err(format!("`{name}` is not a crate name").into());
+            }
+            if ["rig-code", PACKAGE, "bevy"].contains(&name.as_str()) {
+                return Err(format!(
+                    "`{name}` is part of the agent itself; rig-code's own plugins need no `crate`"
+                )
+                .into());
+            }
+            let source = match (path, git, version) {
+                (None, Some(url), None) => Source::Git { url, branch, rev },
+                _ if branch.is_some() || rev.is_some() => {
+                    return Err("`branch` and `rev` only go with `git`".into());
+                }
+                (Some(path), None, None) => {
+                    let path = base.join(path);
+                    Source::Path(std::path::absolute(&path).unwrap_or(path))
+                }
+                (None, None, Some(version)) => Source::Version(version),
+                _ => return Err("set exactly one of `path`, `git` and `version`".into()),
+            };
+            Some(Package { name, source })
+        }
     };
     let bevy_features = match table.remove("bevy_features") {
         None => Vec::new(),
@@ -174,9 +242,8 @@ fn plugin(mut table: BTreeMap<String, Value>) -> Result<Plugin> {
         return Err(format!("unknown key `{key}`").into());
     }
     Ok(Plugin {
-        krate,
-        source,
         type_path,
+        package,
         bevy_features,
     })
 }

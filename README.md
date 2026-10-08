@@ -181,10 +181,12 @@ In the agent, `/model` picks a model, `/effort` its reasoning setting, `/help`
 lists the commands, and Esc stops a running turn. `/reload` rebuilds the agent
 and restarts it on the same session; it shows cargo's progress, keeps the
 current build running if the new one does not compile, and rolls back to it if
-the new one crashes during startup.
+the new one crashes during startup. The session is saved after every turn;
+if the agent crashes or the terminal closes, the next `rig` in the same
+directory resumes it. `/quit` ends it.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
-`rig.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+`plugins.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
@@ -221,14 +223,25 @@ fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
 }
 ```
 
-List it in `$RIG_HOME/rig.toml` and run `/reload`:
+List it in `$RIG_HOME/plugins.toml` and run `/reload`. The built-in tools,
+the built-in commands and the terminal view are entries in the same list, so
+any of them can be removed or replaced:
 
 ```toml
 jobs = 8                          # optional: cargo -j for the agent
 
 [[plugin]]
+plugin = "rig_code::builtin::BuiltinToolsPlugin"
+
+[[plugin]]
+plugin = "rig_code::builtin::BuiltinCommandsPlugin"
+
+[[plugin]]
+plugin = "rig_code::tui::TuiPlugin"
+
+[[plugin]]
 crate = "rig-hello"               # the package name
-path = "/path/to/rig-hello"       # or git = "..." (branch, rev), or version = "..."
+path = "../rig-hello"             # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
 plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```

@@ -24,6 +24,7 @@ const MAX_LINES: usize = 2000;
 const MAX_BYTES: usize = 50 * 1024;
 
 /// Registers the built-in tools with [`AppToolsExt::add_tool`].
+#[derive(Default)]
 pub struct BuiltinToolsPlugin;
 
 impl Plugin for BuiltinToolsPlugin {

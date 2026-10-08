@@ -162,7 +162,13 @@ fn reload_span(build: &ReloadBuild) -> Span<'static> {
             ))
             .cyan()
         }
-        None => Span::from("  Reloading: resolving… (Esc cancels)").cyan(),
+        // The launcher's phase, then cargo's own lines while it resolves
+        // and downloads dependencies.
+        None => Span::from(format!(
+            "  Reloading: {} (Esc cancels)",
+            build.latest().unwrap_or("Resolving dependencies…")
+        ))
+        .cyan(),
     }
 }
 

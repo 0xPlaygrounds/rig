@@ -22,7 +22,7 @@ pub struct Project {
     pub local: bool,
 }
 
-/// Reads `rig.toml` and writes the agent project.
+/// Reads `plugins.toml` and writes the agent project.
 pub fn prepare(home: &Home) -> Result<Project> {
     let config = Config::load(&home.config())?;
     let source = RigSource::detect()?;
@@ -39,7 +39,11 @@ pub fn prepare(home: &Home) -> Result<Project> {
 /// again: at startup, that keeps a build rolled back for crashing from
 /// being retried until something changes.
 pub fn compile(home: &Home, project: &Project, staged: &Path, again: bool) -> Result<()> {
+    // `/reload` shows these lines, and cargo's, until cargo's counter
+    // appears.
+    eprintln!("Resolving dependencies…");
     check_bevy(home, &project.config)?;
+    eprintln!("Compiling the agent…");
     let status = cargo(home).args(["build", "--package", PACKAGE]).status()?;
     if !status.success() {
         return Err("building the agent failed".into());
@@ -128,7 +132,7 @@ fn check_rustc(home: &Home) -> Result<()> {
     }
     let (want_major, want_minor) = BEVY_RUST;
     Err(format!(
-        "a plugin in rig.toml uses the `bevy` crate (directly, or through bevy_features), and \
+        "a plugin in plugins.toml uses the `bevy` crate (directly, or through bevy_features), and \
          Bevy {BEVY_VERSION} needs Rust {want_major}.{want_minor} or newer, but the toolchain \
          for {} is Rust {major}.{minor}. Update it (`rustup update`), or remove the plugin.",
         home.project().display()
@@ -171,14 +175,15 @@ fn check_bevy(home: &Home, config: &Config) -> Result<()> {
     let culprit = config
         .plugins
         .iter()
-        .find(|plugin| reaches(&lock, &plugin.krate, foreign));
+        .filter_map(|plugin| plugin.package.as_ref())
+        .find(|package| reaches(&lock, &package.name, foreign));
     Err(match culprit {
-        Some(plugin) => format!(
+        Some(package) => format!(
             "plugin `{name}` uses Bevy {version}, but this rig agent is built on Bevy \
              {BEVY_VERSION}. A Bevy plugin only works with the exact Bevy version of its app. \
              Change {name}'s bevy dependencies to `={BEVY_VERSION}` (with default-features = \
-             false), or remove it from rig.toml.",
-            name = plugin.krate
+             false), or remove it from plugins.toml.",
+            name = package.name
         ),
         None => format!(
             "the agent project pulls in Bevy {version}, but this rig agent is built on Bevy \

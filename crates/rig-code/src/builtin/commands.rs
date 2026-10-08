@@ -3,11 +3,14 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use crate::core::agent::{Connection, Notice, PickKind, PickRequest, SetEffort, SetModel};
+use crate::core::agent::{
+    AgentStatus, Connection, Notice, PickKind, PickRequest, SetEffort, SetModel,
+};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
+#[derive(Default)]
 pub struct BuiltinCommandsPlugin;
 
 impl Plugin for BuiltinCommandsPlugin {
@@ -27,7 +30,37 @@ impl Plugin for BuiltinCommandsPlugin {
     }
 }
 
-fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWriter<PickRequest>) {
+/// Refuses `/command` with a notice while the agent's turn runs: the rest
+/// of the turn would go to a model, or use a setting, it did not start
+/// with.
+fn refused_mid_turn(
+    args: &CommandArgs,
+    command: &str,
+    statuses: &Query<&AgentStatus>,
+    notices: &mut MessageWriter<Notice>,
+) -> bool {
+    let running = statuses
+        .get(args.agent)
+        .is_ok_and(|status| *status != AgentStatus::Idle);
+    if running {
+        notices.write(Notice::to(
+            args.agent,
+            format!("A turn is running. Press Esc to stop it, then /{command}."),
+        ));
+    }
+    running
+}
+
+fn model(
+    In(args): In<CommandArgs>,
+    statuses: Query<&AgentStatus>,
+    mut commands: Commands,
+    mut picks: MessageWriter<PickRequest>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if refused_mid_turn(&args, "model", &statuses, &mut notices) {
+        return;
+    }
     if args.args.is_empty() {
         picks.write(PickRequest {
             agent: args.agent,
@@ -44,10 +77,14 @@ fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWr
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
+    statuses: Query<&AgentStatus>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
+    if refused_mid_turn(&args, "effort", &statuses, &mut notices) {
+        return;
+    }
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
         notices.write(Notice::to(
             args.agent,

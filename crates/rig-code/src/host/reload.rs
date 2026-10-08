@@ -1,12 +1,14 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
 //! the new build. The build runs as a child process whose stderr a std
-//! thread forwards line by line; cargo's own `done/total` counter is the
-//! progress.
+//! thread forwards line by line. Until cargo's own `done/total` counter
+//! appears, the build is resolving dependencies and its latest line is the
+//! progress. Quitting during the build kills it with cargo and rustc.
 
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
@@ -29,7 +31,7 @@ impl Plugin for ReloadPlugin {
     fn build(&self, app: &mut App) {
         app.add_command(
             "reload",
-            "Rebuild with the plugins in rig.toml and restart",
+            "Rebuild with the plugins in plugins.toml and restart",
             reload,
         )
         .add_observer(on_cancel_reload)
@@ -38,6 +40,12 @@ impl Plugin for ReloadPlugin {
             (drain_reload, finish_reload)
                 .chain()
                 .after(AgentSystems::Settle),
+        )
+        .add_systems(
+            Last,
+            stop_reload_on_exit
+                .in_set(OnAppExitSystems)
+                .run_if(on_message::<AppExit>),
         );
     }
 }
@@ -49,6 +57,7 @@ pub struct ReloadBuild {
     child: Child,
     lines: Receiver<String>,
     output: VecDeque<String>,
+    latest: Option<String>,
     progress: Option<(u32, u32)>,
     exited: bool,
     ready: bool,
@@ -56,8 +65,16 @@ pub struct ReloadBuild {
 
 impl ReloadBuild {
     /// cargo's compilation units done and in total, once it reported them.
+    /// Before that the build is resolving dependencies.
     pub fn progress(&self) -> Option<(u32, u32)> {
         self.progress
+    }
+
+    /// The build's latest line other than cargo's counter: the launcher's
+    /// `Resolving dependencies…`, or cargo's own, such as
+    /// `Downloaded serde v1.0.228`.
+    pub fn latest(&self) -> Option<&str> {
+        self.latest.as_deref()
     }
 
     /// Whether the build succeeded and the restart waits for every agent
@@ -88,6 +105,7 @@ impl ReloadBuild {
             child,
             lines,
             output: VecDeque::new(),
+            latest: None,
             progress: None,
             exited: false,
             ready: false,
@@ -101,6 +119,7 @@ impl ReloadBuild {
             if self.output.len() == KEPT_LINES {
                 self.output.pop_front();
             }
+            self.latest = Some(line.trim().to_owned());
             self.output.push_back(line);
         }
     }
@@ -255,6 +274,12 @@ fn finish_reload(
     {
         exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
     }
+}
+
+/// Drops a running rebuild when the app exits, which kills it with cargo
+/// and rustc, instead of leaving that to the end of the process.
+fn stop_reload_on_exit(world: &mut World) {
+    world.remove_resource::<ReloadBuild>();
 }
 
 fn on_cancel_reload(

@@ -1,5 +1,5 @@
 //! The `rig` launcher. It generates a Cargo project for the rig-code agent
-//! with the plugins listed in `$RIG_HOME/rig.toml`, builds it, and runs it.
+//! with the plugins listed in `$RIG_HOME/plugins.toml`, builds it, and runs it.
 //! When the agent exits with the reload code it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
 //! worked. It uses only std.
@@ -13,9 +13,10 @@ use launcher::home::Home;
 const USAGE: &str = "\
 Usage: rig [build | help]
 
-  rig        Build the agent if needed and run it.
-  rig build  Regenerate the agent project from rig.toml, build it, and stage
-             the new binary for the next start.
+  rig        Build the agent if needed and run it. In a directory whose last
+             session did not quit cleanly, that session resumes.
+  rig build  Regenerate the agent project from plugins.toml, build it, and
+             stage the new binary for the next start.
 
 Environment:
   RIG_HOME    Root of every rig directory (default: ~/.rig).

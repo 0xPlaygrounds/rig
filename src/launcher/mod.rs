@@ -1,4 +1,4 @@
-//! The launcher's parts: the `RIG_HOME` layout, the `rig.toml` plugin list,
+//! The launcher's parts: the `RIG_HOME` layout, the `plugins.toml` plugin list,
 //! the generated agent project, its build, and the run loop.
 
 pub mod build;

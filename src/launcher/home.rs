@@ -32,7 +32,7 @@ impl Home {
 
     /// The plugin list and build settings.
     pub fn config(&self) -> PathBuf {
-        self.root.join("rig.toml")
+        self.root.join("plugins.toml")
     }
 
     /// The generated agent project.
@@ -67,12 +67,31 @@ impl Home {
         self.root.join("sessions").join(session)
     }
 
-    /// Holds the lock that marks the launcher of `session` as running; it is
-    /// released when the returned file is dropped or the launcher dies.
-    pub fn hold_session(&self, session: &str) -> Result<File> {
+    /// The file naming the session to resume in `directory`: the last one
+    /// run there that did not quit cleanly. The name is a hash of the path,
+    /// so a session comes back only where it ran.
+    pub fn resume_marker(&self, directory: &Path) -> PathBuf {
+        // FNV-1a: stable across builds and toolchains, unlike std's hasher.
+        let key = directory
+            .as_os_str()
+            .as_encoded_bytes()
+            .iter()
+            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+                (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+            });
+        self.root.join("resume").join(format!("{key:016x}"))
+    }
+
+    /// Takes the lock that marks the launcher of `session` as running,
+    /// unless another launcher holds it. It is released when the returned
+    /// file is dropped or the launcher dies.
+    pub fn hold_session(&self, session: &str) -> Result<Option<File>> {
         let file = session_lock(&self.session(session))?;
-        file.lock()?;
-        Ok(file)
+        match file.try_lock() {
+            Ok(()) => Ok(Some(file)),
+            Err(TryLockError::WouldBlock) => Ok(None),
+            Err(TryLockError::Error(failure)) => Err(failure.into()),
+        }
     }
 
     /// Removes the staged and trial builds of launchers that are gone,
