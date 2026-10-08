@@ -3,6 +3,7 @@
 
 use std::{
     fs::File,
+    path::PathBuf,
     process::{Child, Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
     time::{Duration, Instant},
@@ -53,6 +54,15 @@ impl Drop for KillOnDrop {
     }
 }
 
+/// Removes the output file when dropped, also when the call is cancelled.
+struct OutputFile(PathBuf);
+
+impl Drop for OutputFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 impl Tool for Bash {
     const NAME: &'static str = "bash";
     type Args = BashArgs;
@@ -85,15 +95,16 @@ impl Tool for Bash {
         args: BashArgs,
     ) -> Result<String, ToolExecutionError> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        let output_path = paths::session_dir().join(format!(
+        let output_file = OutputFile(paths::session_dir().join(format!(
             "bash-{}-{}.out",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        let output = File::create(&output_path).map_err(|error| io_error(&output_path, error))?;
+        )));
+        let output_path = &output_file.0;
+        let output = File::create(output_path).map_err(|error| io_error(output_path, error))?;
         let errors = output
             .try_clone()
-            .map_err(|error| io_error(&output_path, error))?;
+            .map_err(|error| io_error(output_path, error))?;
         let mut command = Command::new("sh");
         command
             .arg("-c")
@@ -132,11 +143,9 @@ impl Tool for Bash {
             }
         };
         drop(child);
-        let text = std::fs::read(&output_path)
+        let text = std::fs::read(output_path)
             .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
-            .map_err(|error| io_error(&output_path, error));
-        let _ = std::fs::remove_file(&output_path);
-        let text = text?;
+            .map_err(|error| io_error(output_path, error))?;
         let text = tail(&text, OUTPUT_BYTES);
         match status {
             Some(status) => Ok(match status.code() {
