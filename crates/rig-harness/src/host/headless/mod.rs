@@ -13,8 +13,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::Invocation;
 
-use crate::core::agent::{Agent, AgentId, SpawnedBy};
-
 /// How this process runs: its [`Invocation`], read from its arguments
 /// unless the app inserted one before adding [`ModePlugin`]. Views check
 /// it: the terminal view stays out of the headless mode.
@@ -50,24 +48,4 @@ impl Plugin for ModePlugin {
             app.add_plugins(print::PrintPlugin { prompt });
         }
     }
-}
-
-/// The agent a headless run talks to when none is named: the first agent
-/// the user started, not a subagent.
-pub fn primary_agent<'a>(
-    agents: impl IntoIterator<Item = (Entity, &'a AgentId, bool)>,
-) -> Option<Entity> {
-    agents
-        .into_iter()
-        .min_by(|a, b| (a.2, &a.1.0).cmp(&(b.2, &b.1.0)))
-        .map(|(entity, ..)| entity)
-}
-
-/// The agents for [`primary_agent`]: each with whether it is a subagent.
-pub type PrimaryQuery<'w, 's> =
-    Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
-
-/// [`primary_agent`] of a [`PrimaryQuery`].
-pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
-    primary_agent(agents.iter())
 }

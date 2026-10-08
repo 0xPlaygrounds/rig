@@ -82,7 +82,9 @@ pub mod prelude {
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
     pub use crate::core::restore::Restored;
-    pub use crate::core::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
+    pub use crate::core::tools::{
+        AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed,
+    };
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};

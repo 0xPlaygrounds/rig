@@ -105,20 +105,15 @@ fn effort(
         });
         return;
     }
-    let options = models::effort_options(spec);
-    match options.iter().find(|option| option.0 == args.args) {
-        Some(option) => {
+    match models::effort_named(spec, &args.args) {
+        Ok(effort) => {
             commands.trigger(SetEffort {
                 entity: args.agent,
-                effort: Effort(option.1),
+                effort: Effort(effort),
             });
         }
-        None => {
-            let names: Vec<&str> = options.iter().map(|option| option.0).collect();
-            notices.write(Notice::error(
-                args.agent,
-                format!("{} takes: {}.", spec.display_name, names.join(", ")),
-            ));
+        Err(why) => {
+            notices.write(Notice::error(args.agent, format!("{why}.")));
         }
     }
 }

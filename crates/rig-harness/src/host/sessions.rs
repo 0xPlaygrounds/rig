@@ -22,8 +22,10 @@ use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
 use super::launcher;
+use crate::builtin::tools::{shorten, write_atomic};
 use crate::core::agent::{
     Agent, AgentId, Conversation, Notice, PickKind, PickRequest, SpawnedBy, TurnEnded, TurnOf,
+    primary_order,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::journal::{SessionPaths, now_ms};
@@ -228,7 +230,7 @@ fn write_meta(
     // The agents the user started come first: the title is theirs, not a
     // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| (a.3, &a.0.0).cmp(&(b.3, &b.0.0)));
+    agents.sort_by(|a, b| primary_order(a.3, a.0).cmp(&primary_order(b.3, b.0)));
     let meta = Meta {
         title: agents
             .iter()
@@ -240,13 +242,8 @@ fn write_meta(
         updated: now_ms(),
     };
     let written = serde_json::to_vec_pretty(&meta)
-        .map_err(|failure| failure.to_string())
-        .and_then(|bytes| {
-            let temporary = paths.meta().with_extension("json.tmp");
-            fs::write(&temporary, bytes)
-                .and_then(|()| fs::rename(&temporary, paths.meta()))
-                .map_err(|failure| failure.to_string())
-        });
+        .map_err(std::io::Error::other)
+        .and_then(|bytes| write_atomic(&paths.meta(), &bytes));
     if let Err(failure) = written {
         error!("could not write the session's meta.json: {failure}");
     }
@@ -265,11 +262,10 @@ fn first_typed(conversation: &[Message]) -> Option<String> {
 
 /// `text` on one line, cut to [`TITLE_CHARS`].
 fn title(text: &str) -> String {
-    let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    match line.char_indices().nth(TITLE_CHARS) {
-        Some((cut, _)) => format!("{}…", line.get(..cut).unwrap_or(&line)),
-        None => line,
-    }
+    shorten(
+        &text.split_whitespace().collect::<Vec<_>>().join(" "),
+        TITLE_CHARS,
+    )
 }
 
 fn new(

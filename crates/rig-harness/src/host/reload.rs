@@ -22,7 +22,7 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
-use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
+use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, first_errors};
 
 use super::launcher;
 use super::process::{detach, kill_group};
@@ -143,18 +143,14 @@ impl ReloadBuild {
     /// At most `count` lines of the output from the first error on, or its
     /// end when no line starts with `error`.
     fn errors(&self, count: usize) -> String {
-        let start = self
-            .output
-            .iter()
-            .position(|line| line.starts_with("error"))
-            .unwrap_or_else(|| self.output.len().saturating_sub(count));
-        self.output
-            .iter()
-            .skip(start)
-            .take(count)
-            .map(String::as_str)
-            .collect::<Vec<_>>()
-            .join("\n")
+        let lines = self.output.iter().map(String::as_str);
+        let mut shown = first_errors(lines.clone(), count);
+        if shown.is_empty() {
+            shown = lines
+                .skip(self.output.len().saturating_sub(count))
+                .collect();
+        }
+        shown.join("\n")
     }
 }
 
@@ -290,10 +286,8 @@ fn drain_reload(
     } else {
         let output = build.errors(ERROR_LINES);
         error!("the rebuild failed ({status}):\n{output}");
-        let first = build
-            .output
-            .iter()
-            .find(|line| line.starts_with("error"))
+        let first = first_errors(build.output.iter().map(String::as_str), 1)
+            .first()
             .map(|line| format!(": {}", line.trim()))
             .unwrap_or_default();
         notices.write(Notice::error(

@@ -133,6 +133,21 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<EffortOption> {
     options
 }
 
+/// The reasoning setting of `spec` that `/effort` calls `name`, or what
+/// the model takes instead.
+pub fn effort_named(spec: &ModelSpec, name: &str) -> Result<Option<Reasoning>, String> {
+    let options = effort_options(spec);
+    if let Some(option) = options.iter().find(|option| option.0 == name) {
+        return Ok(option.1);
+    }
+    let names: Vec<&str> = options.iter().map(|option| option.0).collect();
+    Err(format!(
+        "{} takes the reasoning settings {}, not `{name}`",
+        spec.display_name,
+        names.join(", ")
+    ))
+}
+
 /// A short label for a reasoning setting.
 pub fn effort_label(effort: Option<Reasoning>) -> String {
     match effort {

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::UNIX_EPOCH;
 
-use rig::harness_protocol::{Home, SessionId};
+use rig::harness_protocol::{Home, SessionId, first_errors};
 
 use super::config::Config;
 use super::project::{self, PACKAGE, RigSource};
@@ -269,17 +269,10 @@ impl BuildLog {
 
     /// Ends the log with `reason` and makes it the [`BuildFailure`].
     fn fail(mut self, reason: String) -> BuildFailure {
-        let errors: Vec<String> = match self.lines.iter().position(|line| line.starts_with("error"))
-        {
-            Some(first) => self
-                .lines
-                .iter()
-                .skip(first)
-                .take(ERROR_LINES)
-                .cloned()
-                .collect(),
-            None => Vec::new(),
-        };
+        let errors = first_errors(self.lines.iter().map(String::as_str), ERROR_LINES)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         self.record(&format!("build failed: {reason}"));
         BuildFailure {
             reason,

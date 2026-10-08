@@ -18,10 +18,9 @@ use rig::harness_protocol::{Home, env};
 
 use rig_core::completion::Message;
 
-use crate::core::agent::{ActiveTurn, AgentId, Conversation, Notice};
+use crate::core::agent::{ActiveTurn, AgentId, Conversation, Notice, PrimaryQuery, primary};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
 use crate::core::journal::{SessionLog, SessionPaths};
-use crate::host::headless::{PrimaryQuery, primary};
 
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";

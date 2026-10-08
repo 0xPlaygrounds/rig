@@ -4,7 +4,7 @@
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{Message, Reasoning};
+use rig_core::completion::{AssistantContent, Message, Reasoning};
 use rig_core::effect::EffectId;
 use rig_core::message::ToolCall;
 use rig_core::serve::ErasedHandler;
@@ -433,6 +433,46 @@ pub enum TurnOutcome {
     Failed(String),
     /// The turn was stopped before an answer, by the user or on exit.
     Stopped,
+}
+
+/// The agents, each with whether it is a subagent, for [`primary`].
+pub type PrimaryQuery<'w, 's> =
+    Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
+
+/// Where an agent sorts among the agents of a session: the ones the user
+/// started first, each group by id. The first is the agent the user talks
+/// to when none is named.
+pub fn primary_order(spawned: bool, id: &AgentId) -> (bool, &str) {
+    (spawned, id.0.as_str())
+}
+
+/// The agent the user talks to when none is named: the first one by
+/// [`primary_order`].
+pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
+    agents
+        .iter()
+        .min_by(|a, b| primary_order(a.2, a.1).cmp(&primary_order(b.2, b.1)))
+        .map(|(entity, ..)| entity)
+}
+
+/// The text of a final answer: the text parts of the model's message,
+/// joined by blank lines and trimmed. `None` when `message` is not the
+/// model's, still asks for tool calls, or has no text.
+pub fn answer_text(message: &Message) -> Option<String> {
+    let Message::Assistant(reply) = message else {
+        return None;
+    };
+    let mut parts = Vec::new();
+    for item in reply.content.iter() {
+        match item {
+            AssistantContent::Text(text) => parts.push(text.text.as_str()),
+            AssistantContent::ToolCall(_) => return None,
+            _ => {}
+        }
+    }
+    let text = parts.join("\n\n");
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 /// An agent's turn ended, however its turn entity went away. Triggered on

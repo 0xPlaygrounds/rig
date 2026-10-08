@@ -8,8 +8,8 @@ use rig_core::completion::Reasoning;
 use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
-    Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
-    RosterQuery, SpawnedBy, roster,
+    Agent, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
+    PrimaryQuery, RosterQuery, primary, roster,
 };
 use crate::core::inbox::Recalled;
 use crate::core::journal::SessionPaths;
@@ -118,17 +118,11 @@ impl Picker {
 
 /// Focuses the first agent by id when the focused one is gone, one the
 /// user started before any subagent.
-pub(crate) fn focus_agent(
-    mut view: ResMut<TuiView>,
-    agents: Query<(Entity, &AgentId, Has<SpawnedBy>), With<Agent>>,
-) {
+pub(crate) fn focus_agent(mut view: ResMut<TuiView>, agents: PrimaryQuery) {
     if view.agent.is_some_and(|agent| agents.contains(agent)) {
         return;
     }
-    view.agent = agents
-        .iter()
-        .min_by(|a, b| (a.2, &a.1.0).cmp(&(b.2, &b.1.0)))
-        .map(|(entity, ..)| entity);
+    view.agent = primary(&agents);
 }
 
 /// Shows the agent a [`Focus`] names.

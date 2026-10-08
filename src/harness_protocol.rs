@@ -38,6 +38,17 @@ pub mod env {
     pub const AGENT_ONLY: [&str; 4] = [SESSION, LAUNCHER, NOTICE, BUILD_FAILURE];
 }
 
+/// At most `count` lines of a build's output from the first one that
+/// starts with `error`, as cargo writes a compiler error; none when no
+/// line does.
+pub fn first_errors<'a>(lines: impl IntoIterator<Item = &'a str>, count: usize) -> Vec<&'a str> {
+    lines
+        .into_iter()
+        .skip_while(|line| !line.starts_with("error"))
+        .take(count)
+        .collect()
+}
+
 /// The extension of an agent log, and of the effect log.
 const AGENT_LOG: &str = ".jsonl";
 

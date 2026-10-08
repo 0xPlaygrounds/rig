@@ -12,6 +12,7 @@ use bevy_log::warn;
 use rig::harness_protocol::Home;
 use serde::{Deserialize, Serialize};
 
+use crate::builtin::tools::write_atomic;
 use crate::core::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
 
 /// Remembers the last chosen model and reasoning setting and gives them to
@@ -45,19 +46,12 @@ impl DefaultsFile {
             .unwrap_or_default()
     }
 
-    /// Writes `defaults` through a temporary file, so a crash never leaves
+    /// Writes `defaults` with [`write_atomic`], so a crash never leaves
     /// half a file.
     fn write(&self, defaults: &Defaults) {
         let written = serde_json::to_vec_pretty(defaults)
             .map_err(std::io::Error::other)
-            .and_then(|bytes| {
-                if let Some(parent) = self.0.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                let temporary = self.0.with_extension("json.tmp");
-                fs::write(&temporary, bytes)?;
-                fs::rename(&temporary, &self.0)
-            });
+            .and_then(|bytes| write_atomic(&self.0, &bytes));
         if let Err(failure) = written {
             warn!(
                 "could not remember the model in {}: {failure}",

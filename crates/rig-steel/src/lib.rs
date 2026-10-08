@@ -55,7 +55,7 @@ use rig_harness::core::agent::{AgentId, ToolCallRun};
 use rig_harness::core::calls::{Running, Wake};
 use rig_harness::core::harness::Harness;
 use rig_harness::core::tools::{
-    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolOptions, ToolOutput,
+    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolOptions, ToolOutput, failed,
 };
 use serde_json::Value;
 use steel::steel_vm::ThreadStateController;
@@ -177,7 +177,7 @@ fn on_run_steel(
         return;
     };
     let call = run.call.clone();
-    let refuse = |why: &str| ToolOutput(call.error_result(vec![ToolResultContent::text(why)]));
+    let refuse = |why: &str| ToolOutput(failed(&call, why));
     let code = call
         .function
         .arguments
@@ -378,10 +378,6 @@ fn result(call: &ToolCall, ended: Ended, stopped: Option<Stop>) -> ToolResult {
         }
     }
     call.result(vec![ToolResultContent::text(capped(text))])
-}
-
-fn failed(call: &ToolCall, why: String) -> ToolResult {
-    call.error_result(vec![ToolResultContent::text(why)])
 }
 
 /// `text` cut to [`MAX_OUTPUT_BYTES`] on a character boundary, with a note

@@ -11,11 +11,11 @@ use std::io::{IsTerminal, Read as _};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::completion::{AssistantContent, Message};
 
-use super::{PrimaryQuery, RunMode, primary};
+use super::RunMode;
 use crate::core::agent::{
-    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel,
+    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
+    SetModel, answer_text, primary,
 };
 use crate::core::commands::send_input;
 use crate::core::inbox::DeliveryMode;
@@ -186,23 +186,6 @@ fn drive(
         }
         Step::Done => {}
     }
-}
-
-/// The text of a final answer: the model's last message, with no tool
-/// calls left to run.
-fn answer_text(message: &Message) -> Option<String> {
-    let Message::Assistant(reply) = message else {
-        return None;
-    };
-    let mut text = String::new();
-    for part in &reply.content {
-        match part {
-            AssistantContent::Text(part) => text.push_str(&part.text),
-            AssistantContent::ToolCall(_) => return None,
-            _ => {}
-        }
-    }
-    Some(text)
 }
 
 /// Notes failures and writes them to stderr, with every notice of a

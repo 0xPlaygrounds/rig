@@ -411,6 +411,6 @@ pub(crate) fn run_tool_call(
 }
 
 /// An error result for `call` saying `why`.
-pub(crate) fn failed(call: &ToolCall, why: String) -> ToolResult {
-    call.error_result(vec![ToolResultContent::text(why)])
+pub fn failed(call: &ToolCall, why: impl Into<String>) -> ToolResult {
+    call.error_result(vec![ToolResultContent::text(why.into())])
 }

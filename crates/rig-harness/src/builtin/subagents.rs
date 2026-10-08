@@ -25,14 +25,14 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_core::completion::{AssistantContent, Message};
+use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use serde::Deserialize;
 
 use crate::core::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, Focus, ModelChoice, Notice, PickKind,
     PickRequest, RosterQuery, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
-    TurnOutcome, roster,
+    TurnOutcome, answer_text, roster,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
@@ -40,7 +40,7 @@ use crate::core::journal::ReflectSaved;
 use crate::core::models;
 use crate::core::restore::Restored;
 use crate::core::tools::{
-    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput,
+    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed,
 };
 
 /// The tool that starts a subagent.
@@ -252,11 +252,6 @@ fn arguments<T: for<'de> Deserialize<'de>>(call: &ToolCall) -> Result<T, String>
         .map_err(|error| format!("The arguments do not fit: {error}"))
 }
 
-/// An error result for `call` saying `why`.
-fn refuse(call: &ToolCall, why: String) -> ToolResult {
-    call.error_result(vec![ToolResultContent::text(why)])
-}
-
 /// A result for `call`: `data` for programs, then `text` for people.
 fn answer(call: &ToolCall, data: serde_json::Value, text: String) -> ToolResult {
     call.result(vec![
@@ -292,21 +287,7 @@ fn settle(call: &ToolCall, parent: &Parent<'_>, tools: &[&str]) -> Result<Settle
     let spec = models::resolve(&model.0)
         .ok_or_else(|| format!("The catalog has no model `{}`", model.0))?;
     let effort = match args.effort.as_deref().map(str::trim) {
-        Some(name) if !name.is_empty() => {
-            let options = models::effort_options(spec);
-            let option = options
-                .iter()
-                .find(|option| option.0 == name)
-                .ok_or_else(|| {
-                    let names: Vec<&str> = options.iter().map(|option| option.0).collect();
-                    format!(
-                        "{} takes the reasoning settings {}, not `{name}`",
-                        spec.display_name,
-                        names.join(", ")
-                    )
-                })?;
-            Effort(option.1)
-        }
+        Some(name) if !name.is_empty() => Effort(models::effort_named(spec, name)?),
         _ if parent.model == Some(&model) => parent.effort,
         _ => Effort(None),
     };
@@ -368,7 +349,7 @@ fn on_task(
     };
     let call_id = &run.call;
     let output = match agents.get(caller) {
-        Err(_) => refuse(call_id, "The calling agent is gone.".to_owned()),
+        Err(_) => failed(call_id, "The calling agent is gone.".to_owned()),
         Ok((id, access, model, &effort, prompt)) => {
             let parent = Parent {
                 model,
@@ -381,7 +362,7 @@ fn on_task(
                 .filter(|name| access.allows(name))
                 .collect();
             match settle(call_id, &parent, &mine) {
-                Err(why) => refuse(
+                Err(why) => failed(
                     call_id,
                     format!("{why}. No subagent was started; fix the call and send it again."),
                 ),
@@ -455,8 +436,8 @@ fn on_message(
     };
     let call_id = &run.call;
     let output = match (callers.get(caller), arguments::<MessageArgs>(call_id)) {
-        (Err(_), _) => refuse(call_id, "The calling agent is gone.".to_owned()),
-        (_, Err(why)) => refuse(call_id, format!("{why}. Nothing was sent.")),
+        (Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
+        (_, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
         (Ok((id, spawned)), Ok(args)) => {
             let wanted = args.agent.trim();
             let text = args.text.trim();
@@ -487,7 +468,7 @@ fn on_message(
                     } else {
                         format!("Yours are: {}.", listed.join(", "))
                     };
-                    refuse(
+                    failed(
                         call_id,
                         format!(
                             "`{wanted}` is not one of your subagents, so `message` cannot reach \
@@ -495,7 +476,7 @@ fn on_message(
                         ),
                     )
                 }
-                Some(_) if text.is_empty() => refuse(
+                Some(_) if text.is_empty() => failed(
                     call_id,
                     "`text` must not be empty. Nothing was sent.".to_owned(),
                 ),
@@ -604,7 +585,7 @@ fn report_on_turn_end(
     }
     let title = subtask.map_or("the task", |subtask| subtask.title.as_str());
     let status = match &end.outcome {
-        TurnOutcome::Answered(message) => match answer_text(message) {
+        TurnOutcome::Answered(message) => match clipped_answer(message) {
             Some(text) => Status::Done(text),
             None => Status::Failed("The subagent ended without a final message.".to_owned()),
         },
@@ -681,27 +662,12 @@ fn report_restored(
     commands.entity(agent).insert(Requests::default());
 }
 
-/// The text of the model's final message, cut to [`MAX_ANSWER_BYTES`];
-/// `None` when it has none.
-fn answer_text(message: &Message) -> Option<String> {
-    let Message::Assistant(reply) = message else {
-        return None;
-    };
-    let text: Vec<&str> = reply
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect();
-    let text = text.join("\n\n");
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
+/// The text of the model's final message ([`answer_text`]), cut to
+/// [`MAX_ANSWER_BYTES`].
+fn clipped_answer(message: &Message) -> Option<String> {
+    let text = answer_text(message)?;
     if text.len() <= MAX_ANSWER_BYTES {
-        return Some(text.to_owned());
+        return Some(text);
     }
     let cut = text.floor_char_boundary(MAX_ANSWER_BYTES);
     Some(format!(

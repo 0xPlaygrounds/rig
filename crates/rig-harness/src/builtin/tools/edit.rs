@@ -2,31 +2,26 @@
 //! against the file as it was before the call and applied together or not
 //! at all. A byte-order mark and CRLF line endings are kept. Text that does
 //! not match exactly may still match line by line once trailing
-//! whitespace and typographic quotes, dashes and spaces are evened out, or,
-//! failing that, indentation too, but only where exactly one place in the
-//! file matches. The result is a unified diff of the change; a failure
+//! whitespace and typographic quotes, dashes and spaces are evened out, but
+//! only where exactly one place in the file matches. The result is a unified diff of the change; a failure
 //! says what to send instead.
 
 use std::fmt::Write as _;
 use std::ops::Range;
+use std::path::Path;
 
 use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 use similar::TextDiff;
 
-use super::{MAX_BYTES, MAX_LINES, clip, read_text, write_atomic};
+use super::{MAX_BYTES, MAX_LINES, io_error, read_text, write_atomic};
 use crate::core::blocking::blocking;
 
 /// Lines of unchanged context around each hunk of the returned diff.
 const CONTEXT: usize = 3;
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
-/// Most line comparisons spent looking for the closest text when
-/// `old_text` is not found, so a huge file does not stall the call.
-const MAX_HINT_WORK: usize = 4_000_000;
-/// Characters of a line quoted in an error.
-const MAX_QUOTE: usize = 160;
 
 /// Replaces text in a file.
 pub struct Edit;
@@ -124,15 +119,15 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
                 ),
             ));
         }
-        let found = locate(text, &old, &new, replacement.replace_all)
-            .map_err(|miss| refused(path, format!("{label}{}", miss.explain(text, &old))))?;
+        let found = locate(text, &old, replacement.replace_all)
+            .map_err(|miss| refused(path, format!("{label}{}", miss.explain(&old))))?;
         if let Some(note) = found.note {
             notes.push(format!("{label}{note}"));
         }
         splices.extend(found.spans.into_iter().map(|span| Splice {
             index,
             range: span,
-            text: found.text.clone(),
+            text: new.clone(),
         }));
     }
     splices.sort_by_key(|splice| splice.range.start);
@@ -157,7 +152,8 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
-    write_atomic(path, file.encode(&edited).as_bytes())?;
+    write_atomic(Path::new(path), file.encode(&edited).as_bytes())
+        .map_err(|error| io_error(path, error))?;
 
     let replaced = splices.len();
     let mut out = format!(
@@ -291,12 +287,9 @@ fn line_of(text: &str, at: usize) -> usize {
         + 1
 }
 
-/// Where an edit's `old_text` matched, and what replaces it.
+/// Where an edit's `old_text` matched.
 struct Found {
     spans: Vec<Range<usize>>,
-    /// The replacement: `new_text`, re-indented after a match that ignored
-    /// indentation.
-    text: String,
     /// How the match was loose, if it was.
     note: Option<String>,
 }
@@ -308,14 +301,11 @@ enum Miss {
     /// It matches at these 1-based lines, `loose` when only after evening
     /// out whitespace or punctuation.
     Ambiguous { lines: Vec<usize>, loose: bool },
-    /// It matches only once indentation is ignored, at these lines, but the
-    /// file's indentation differs from `old_text`'s unevenly.
-    Uneven { lines: Range<usize> },
 }
 
 impl Miss {
     /// What went wrong and what to send instead.
-    fn explain(&self, text: &str, old: &str) -> String {
+    fn explain(&self, old: &str) -> String {
         match self {
             Miss::Ambiguous { lines, loose } => {
                 let listed: Vec<String> = lines
@@ -342,22 +332,15 @@ impl Miss {
                     listed.join(", ")
                 )
             }
-            Miss::Uneven { lines } => format!(
-                "`old_text` matches lines {}-{} only when indentation is ignored, and its \
-                 indentation differs from the file's unevenly; copy those lines again with the \
-                 file's exact indentation",
-                lines.start, lines.end
-            ),
-            Miss::NotFound => not_found(text, old),
+            Miss::NotFound => not_found(old),
         }
     }
 }
 
-/// Finds `old` in `text`: exactly, else line by line with whitespace and
-/// punctuation evened out, else with indentation ignored too. A loose match
-/// must be the only one at its level; `replace_all` takes exact matches
-/// only.
-fn locate(text: &str, old: &str, new: &str, replace_all: bool) -> Result<Found, Miss> {
+/// Finds `old` in `text`: exactly, else line by line with trailing
+/// whitespace and typographic punctuation evened out. A loose match must be
+/// the only one; `replace_all` takes exact matches only.
+fn locate(text: &str, old: &str, replace_all: bool) -> Result<Found, Miss> {
     let exact: Vec<Range<usize>> = text
         .match_indices(old)
         .map(|(start, matched)| start..start + matched.len())
@@ -367,14 +350,12 @@ fn locate(text: &str, old: &str, new: &str, replace_all: bool) -> Result<Found, 
         1 => {
             return Ok(Found {
                 spans: exact,
-                text: new.to_owned(),
                 note: None,
             });
         }
         _ if replace_all => {
             return Ok(Found {
                 spans: exact,
-                text: new.to_owned(),
                 note: None,
             });
         }
@@ -390,73 +371,31 @@ fn locate(text: &str, old: &str, new: &str, replace_all: bool) -> Result<Found, 
     }
     let lines = Lines::new(text);
     let wanted: Vec<&str> = old.strip_suffix('\n').unwrap_or(old).split('\n').collect();
-    let whole_lines = old.ends_with('\n');
-    for level in [Looseness::Spacing, Looseness::Indentation] {
-        let starts = lines.windows(&wanted, level);
-        let start = match starts.as_slice() {
-            [] => continue,
-            [start] => *start,
-            _ => {
-                return Err(Miss::Ambiguous {
-                    lines: starts.iter().map(|start| start + 1).collect(),
-                    loose: true,
-                });
-            }
-        };
-        let span = lines.span(start, wanted.len(), whole_lines);
-        let numbers = start + 1..start + wanted.len();
-        return match level {
-            Looseness::Spacing => Ok(Found {
-                spans: vec![span],
-                text: new.to_owned(),
-                note: Some(format!(
-                    "`old_text` matched lines {}-{} only after evening out trailing \
-                     whitespace and quote, dash or space characters; copy text exactly next time",
-                    numbers.start, numbers.end
-                )),
-            }),
-            Looseness::Indentation => {
-                let file: Vec<&str> = lines.text(start, wanted.len()).collect();
-                let shift = Shift::between(&file, &wanted).ok_or(Miss::Uneven {
-                    lines: numbers.clone(),
-                })?;
-                Ok(Found {
-                    spans: vec![span],
-                    text: shift.apply(new),
-                    note: Some(format!(
-                        "`old_text` matched lines {}-{} only with indentation ignored; \
-                         `new_text` was {}",
-                        numbers.start,
-                        numbers.end,
-                        shift.describe()
-                    )),
-                })
-            }
-        };
-    }
-    Err(Miss::NotFound)
+    let start = match lines.windows(&wanted).as_slice() {
+        [] => return Err(Miss::NotFound),
+        [start] => *start,
+        starts => {
+            return Err(Miss::Ambiguous {
+                lines: starts.iter().map(|start| start + 1).collect(),
+                loose: true,
+            });
+        }
+    };
+    Ok(Found {
+        spans: vec![lines.span(start, wanted.len(), old.ends_with('\n'))],
+        note: Some(format!(
+            "`old_text` matched lines {}-{} only after evening out trailing whitespace and \
+             quote, dash or space characters; copy text exactly next time",
+            start + 1,
+            start + wanted.len()
+        )),
+    })
 }
 
-/// How loosely lines are compared.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Looseness {
-    /// Trailing whitespace, typographic quotes, dashes and spaces evened
-    /// out.
-    Spacing,
-    /// [`Spacing`](Self::Spacing), and leading whitespace ignored.
-    Indentation,
-}
-
-impl Looseness {
-    /// `line` as compared at this level.
-    fn key(self, line: &str) -> String {
-        let line = line.trim_end();
-        let line = match self {
-            Looseness::Spacing => line,
-            Looseness::Indentation => line.trim_start(),
-        };
-        line.chars().map(plain).collect()
-    }
+/// `line` as loosely compared: without trailing whitespace, and with
+/// typographic quotes, dashes and spaces made ASCII.
+fn loose_key(line: &str) -> String {
+    line.trim_end().chars().map(plain).collect()
 }
 
 /// The ASCII form of a typographic quote, dash or space.
@@ -497,18 +436,13 @@ impl<'a> Lines<'a> {
             .unwrap_or_default()
     }
 
-    /// The `count` lines from `start`.
-    fn text(&self, start: usize, count: usize) -> impl Iterator<Item = &'a str> + '_ {
-        (start..start + count).map(|index| self.line(index))
-    }
-
-    /// The 0-based first lines of each run of lines that equals `wanted`
-    /// at `level`.
-    fn windows(&self, wanted: &[&str], level: Looseness) -> Vec<usize> {
+    /// The 0-based first lines of each run of lines that loosely equals
+    /// `wanted`.
+    fn windows(&self, wanted: &[&str]) -> Vec<usize> {
         let keys: Vec<String> = (0..self.spans.len())
-            .map(|index| level.key(self.line(index)))
+            .map(|index| loose_key(self.line(index)))
             .collect();
-        let wanted: Vec<String> = wanted.iter().map(|line| level.key(line)).collect();
+        let wanted: Vec<String> = wanted.iter().map(|line| loose_key(line)).collect();
         if wanted.iter().all(String::is_empty) {
             return Vec::new();
         }
@@ -536,119 +470,18 @@ impl<'a> Lines<'a> {
     }
 }
 
-/// The indentation the file has beyond `old_text`'s, or that `old_text` has
-/// beyond the file's, the same on every line that is not blank.
-enum Shift {
-    Add(String),
-    Remove(String),
-}
-
-impl Shift {
-    fn between(file: &[&str], old: &[&str]) -> Option<Self> {
-        let indent = |line: &str| line.len() - line.trim_start().len();
-        let mut shift: Option<Shift> = None;
-        for (file_line, old_line) in file.iter().zip(old) {
-            if file_line.trim().is_empty() || old_line.trim().is_empty() {
-                continue;
-            }
-            let file_indent = file_line.get(..indent(file_line)).unwrap_or_default();
-            let old_indent = old_line.get(..indent(old_line)).unwrap_or_default();
-            let this = if let Some(extra) = file_indent.strip_suffix(old_indent) {
-                Shift::Add(extra.to_owned())
-            } else if let Some(extra) = old_indent.strip_suffix(file_indent) {
-                Shift::Remove(extra.to_owned())
-            } else {
-                return None;
-            };
-            match &shift {
-                None => shift = Some(this),
-                Some(seen) if seen.same(&this) => {}
-                Some(_) => return None,
-            }
-        }
-        shift
-    }
-
-    fn same(&self, other: &Shift) -> bool {
-        match (self, other) {
-            (Shift::Add(a), Shift::Add(b)) | (Shift::Remove(a), Shift::Remove(b)) => a == b,
-            (Shift::Add(a), Shift::Remove(b)) | (Shift::Remove(a), Shift::Add(b)) => {
-                a.is_empty() && b.is_empty()
-            }
-        }
-    }
-
-    /// `new` with the shift applied to every line that is not blank.
-    fn apply(&self, new: &str) -> String {
-        new.split_inclusive('\n')
-            .map(|line| {
-                if line.trim().is_empty() {
-                    return line.to_owned();
-                }
-                match self {
-                    Shift::Add(extra) => format!("{extra}{line}"),
-                    Shift::Remove(extra) => {
-                        line.strip_prefix(extra.as_str()).unwrap_or(line).to_owned()
-                    }
-                }
-            })
-            .collect()
-    }
-
-    fn describe(&self) -> String {
-        let what = |extra: &str| {
-            let tabs = extra.chars().filter(|c| *c == '\t').count();
-            let spaces = extra.chars().count() - tabs;
-            match (spaces, tabs) {
-                (spaces, 0) => format!("{spaces} space{}", if spaces == 1 { "" } else { "s" }),
-                (0, tabs) => format!("{tabs} tab{}", if tabs == 1 { "" } else { "s" }),
-                (spaces, tabs) => format!("{spaces} spaces and {tabs} tabs"),
-            }
-        };
-        match self {
-            Shift::Add(extra) if extra.is_empty() => "kept as it was".to_owned(),
-            Shift::Remove(extra) if extra.is_empty() => "kept as it was".to_owned(),
-            Shift::Add(extra) => format!("indented by {} more to fit the file", what(extra)),
-            Shift::Remove(extra) => format!("indented by {} less to fit the file", what(extra)),
-        }
-    }
-}
-
-/// Why `old` matched nowhere in `text`, with the likely cause or the
-/// closest lines of the file.
-fn not_found(text: &str, old: &str) -> String {
+/// Why `old` matched nowhere: line numbers copied from `read`, or the
+/// file changed since it was read.
+fn not_found(old: &str) -> String {
     let wanted: Vec<&str> = old.strip_suffix('\n').unwrap_or(old).split('\n').collect();
     if wanted.iter().all(|line| numbered(line)) {
         return "`old_text` was not found: it starts with line numbers as `read` shows them; \
                 copy the text after the tab only"
             .to_owned();
     }
-    let lines = Lines::new(text);
-    let mut out = "`old_text` was not found, not even ignoring whitespace".to_owned();
-    match closest(&lines, &wanted) {
-        Some(close) => {
-            let file_line = lines.line(close.start + close.differs);
-            let old_line = wanted.get(close.differs).copied().unwrap_or_default();
-            let _ = write!(
-                out,
-                ". The closest text is lines {}-{} ({} of {} lines agree); the first \
-                 difference is line {}, which in the file is\n  {}\nbut in `old_text` is\n  \
-                 {}\nRead those lines again and copy them exactly",
-                close.start + 1,
-                close.start + wanted.len(),
-                close.agree,
-                wanted.len(),
-                close.start + close.differs + 1,
-                quote(file_line),
-                quote(old_line)
-            );
-        }
-        None => out.push_str(
-            "; the file may have changed since it was read, so read it again and copy \
-             `old_text` from what it holds now",
-        ),
-    }
-    out
+    "`old_text` was not found, not even ignoring trailing whitespace; the file may have \
+     changed since it was read, so read it again and copy `old_text` from what it holds now"
+        .to_owned()
 }
 
 /// Whether `line` looks like a line `read` returned: spaces, a number and
@@ -657,60 +490,6 @@ fn numbered(line: &str) -> bool {
     line.trim_start()
         .split_once('\t')
         .is_some_and(|(number, _)| !number.is_empty() && number.chars().all(|c| c.is_ascii_digit()))
-}
-
-/// The run of lines most like `wanted`.
-struct Close {
-    /// Its 0-based first line.
-    start: usize,
-    /// How many of its lines agree with `wanted`'s, indentation ignored.
-    agree: usize,
-    /// The first line, counted from `start`, that does not agree.
-    differs: usize,
-}
-
-/// The run of lines that agrees with `wanted` on the most lines,
-/// indentation ignored, if any agrees on a line that is not blank and
-/// looking is cheap enough.
-fn closest(lines: &Lines<'_>, wanted: &[&str]) -> Option<Close> {
-    let count = lines.spans.len();
-    if wanted.len() > count || count.saturating_mul(wanted.len()) > MAX_HINT_WORK {
-        return None;
-    }
-    let level = Looseness::Indentation;
-    let keys: Vec<String> = (0..count)
-        .map(|index| level.key(lines.line(index)))
-        .collect();
-    let wanted: Vec<String> = wanted.iter().map(|line| level.key(line)).collect();
-    let mut best: Option<Close> = None;
-    for (start, window) in keys.windows(wanted.len().max(1)).enumerate() {
-        let agree = window
-            .iter()
-            .zip(&wanted)
-            .filter(|(file, old)| file == old && !old.is_empty())
-            .count();
-        if agree > 0 && best.as_ref().is_none_or(|best| agree > best.agree) {
-            let differs = window
-                .iter()
-                .zip(&wanted)
-                .position(|(file, old)| file != old)
-                .unwrap_or(0);
-            best = Some(Close {
-                start,
-                agree,
-                differs,
-            });
-        }
-    }
-    best
-}
-
-/// `line` for an error message: cut short, with its whitespace visible
-/// enough to compare.
-fn quote(line: &str) -> String {
-    let shown = clip(line, MAX_QUOTE);
-    let cut = if shown.len() < line.len() { "…" } else { "" };
-    format!("`{}{cut}`", shown.replace('\t', "\\t"))
 }
 
 /// The unified diff from `old` to `new`, cut to what a tool may return.

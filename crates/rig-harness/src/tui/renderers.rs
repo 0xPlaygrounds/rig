@@ -12,6 +12,7 @@ use ratatui::text::{Line, Span};
 use rig_core::message::{ToolCall, ToolResult};
 
 use super::diff;
+use crate::builtin::tools::shorten;
 
 /// Characters of a call's arguments shown on its header line.
 const ARGUMENT_CHARS: usize = 160;
@@ -95,7 +96,8 @@ impl ToolCallView<'_> {
     /// the first lines of the result.
     pub fn default_lines(&self) -> Vec<Line<'static>> {
         let arguments = serde_json::Value::Object(self.call.function.arguments.clone()).to_string();
-        let mut lines = vec![self.header(self.name().to_owned(), clip(&arguments, ARGUMENT_CHARS))];
+        let mut lines =
+            vec![self.header(self.name().to_owned(), shorten(&arguments, ARGUMENT_CHARS))];
         lines.extend(self.result_lines(RESULT_LINES));
         lines
     }
@@ -323,14 +325,4 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
     lines.extend(view.result_lines(RESULT_LINES));
     lines
-}
-
-/// `text` cut to `limit` characters, with `…` when cut.
-pub(crate) fn clip(text: &str, limit: usize) -> String {
-    let clipped = crate::builtin::tools::clip(text, limit);
-    if clipped.len() < text.len() {
-        format!("{clipped}…")
-    } else {
-        text.to_owned()
-    }
 }
