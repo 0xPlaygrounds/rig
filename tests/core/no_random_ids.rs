@@ -7,7 +7,9 @@
 //! `fastrand`; they now derive from the block that assembled the call or
 //! the call's index in the response. This guard pins the remaining random
 //! sources to the two transport headers and the LSH index, none of which
-//! can reach a request, a message or an effect record.
+//! can reach a request, a message or an effect record, and to rig-code's
+//! agent id, which is minted once, saved, and carried by every record as
+//! its scope, so replay reads it from the record.
 
 use std::path::{Path, PathBuf};
 
@@ -61,6 +63,10 @@ const GENERATE_SITES: &[(&str, &str)] = &[
         "crates/rig-core/src/providers/chatgpt/mod.rs",
         "a `session_id` transport header",
     ),
+    (
+        "crates/rig-code/src/agent.rs",
+        "a new agent's stable id, minted once at spawn and saved; records carry it as their scope",
+    ),
 ];
 
 fn offenders(root: &Path, needle: &str, allowed: &[(&str, &str)]) -> Vec<String> {
@@ -113,7 +119,7 @@ fn randomness_is_drawn_only_where_it_cannot_reach_a_record() {
     let generate = generator_offenders(&root);
     assert!(
         generate.is_empty(),
-        "`id::generate` is called outside the two transport headers:\n{}",
+        "`id::generate` is called outside its allowed sites:\n{}",
         generate.join("\n")
     );
 }
