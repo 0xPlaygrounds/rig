@@ -3,7 +3,6 @@
 //! host buses leave driving to the host.
 
 use std::{
-    collections::HashMap,
     pin::Pin,
     sync::{
         Arc,
@@ -77,27 +76,6 @@ pub(crate) struct AgentBus {
     anonymous_models: Arc<AtomicUsize>,
     /// The policy the owned bus was created with; `None` over a host's bus.
     config: Option<ServingPolicy>,
-    /// The provider and model id of each model this agent registered from
-    /// a [`DynModel`](rig_core::DynModel), by key: what a run that switches
-    /// models looks the new model's catalog entry up by.
-    model_ids: Arc<Mutex<HashMap<String, ModelId>>>,
-}
-
-/// A registered model's provider (its wire's descriptor name) and model id.
-#[derive(Clone, Debug)]
-pub(crate) struct ModelId {
-    pub(crate) provider: String,
-    pub(crate) model: Option<String>,
-}
-
-impl ModelId {
-    /// What `model` addresses.
-    pub(crate) fn of(model: &rig_core::DynModel<rig_core::operation::Completion>) -> Self {
-        Self {
-            provider: model.name().to_owned(),
-            model: model.id().map(str::to_owned),
-        }
-    }
 }
 
 impl std::fmt::Debug for AgentBus {
@@ -125,7 +103,6 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: Some(config),
-            model_ids: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -167,7 +144,6 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: None,
-            model_ids: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -183,7 +159,6 @@ impl AgentBus {
             wakers: Arc::new(WakerSet::default()),
             anonymous_models: self.anonymous_models.clone(),
             config: self.config,
-            model_ids: self.model_ids.clone(),
         }
     }
 
@@ -255,7 +230,6 @@ impl AgentBus {
     ) -> Key<family::Completion> {
         let key = self.model_key(label.as_str());
         let model = model.into();
-        self.note_model(key.raw().as_str(), ModelId::of(&model));
         register_generated(
             self.registrar
                 .register_typed::<family::Completion>(
@@ -265,24 +239,6 @@ impl AgentBus {
                 .map(|_| ()),
         );
         key
-    }
-
-    /// Record that `key` serves the model `id` names.
-    pub(crate) fn note_model(&self, key: &str, id: ModelId) {
-        self.model_ids
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .insert(key.to_owned(), id);
-    }
-
-    /// The provider and model id registered under `key`, when this agent
-    /// registered it from a model value.
-    pub(crate) fn model_id(&self, key: &str) -> Option<ModelId> {
-        self.model_ids
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .get(key)
-            .cloned()
     }
 
     /// Register `model` under a fresh generated label, scoped to the
