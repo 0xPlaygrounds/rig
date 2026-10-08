@@ -18,6 +18,15 @@ pub use crate::providers::internal::auth::{DeviceCodeHandler, DeviceCodePrompt};
 #[cfg(not(target_family = "wasm"))]
 mod native;
 
+/// What a browser sign-in shows the user while it waits.
+#[derive(Debug, Clone)]
+pub struct BrowserSignInPrompt {
+    /// The sign-in page, for the user to open when the browser did not.
+    pub authorize_url: String,
+    /// Whether the desktop's opener started; the page may still not show.
+    pub browser_launched: bool,
+}
+
 #[derive(Clone)]
 pub enum AuthSource {
     AccessToken {

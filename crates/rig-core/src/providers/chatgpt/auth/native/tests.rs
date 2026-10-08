@@ -123,3 +123,142 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     anyhow::ensure!(persisted == fixture, "persisted cache changed");
     Ok(())
 }
+
+mod browser_sign_in {
+    use super::super::browser::{
+        CALLBACK_PATH, Callback, SCOPE, authorize_url, parse_callback, pkce_challenge,
+        random_token, redirect_uri, spawn_listener,
+    };
+    use std::collections::HashMap;
+    use std::io::{Read, Write};
+    use std::net::{Ipv4Addr, TcpListener, TcpStream};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn authorize_url_carries_pkce_state_and_the_registered_redirect() {
+        let url = authorize_url(&redirect_uri(1455), "challenge-123", "state-456", "rig");
+        let parsed = url::Url::parse(&url).expect("authorize url parses");
+        assert_eq!(
+            format!("{}{}", parsed.origin().ascii_serialization(), parsed.path()),
+            "https://auth.openai.com/oauth/authorize"
+        );
+        let query: HashMap<String, String> = parsed.query_pairs().into_owned().collect();
+        let expected = [
+            ("response_type", "code"),
+            ("client_id", super::super::CHATGPT_CLIENT_ID),
+            ("redirect_uri", "http://127.0.0.1:1455/auth/callback"),
+            ("code_challenge", "challenge-123"),
+            ("code_challenge_method", "S256"),
+            ("state", "state-456"),
+            ("scope", SCOPE),
+            ("id_token_add_organizations", "true"),
+            ("codex_cli_simplified_flow", "true"),
+            ("originator", "rig"),
+        ];
+        for (key, value) in expected {
+            assert_eq!(query.get(key).map(String::as_str), Some(value), "{key}");
+        }
+        assert_eq!(query.len(), expected.len());
+        assert!(SCOPE.split(' ').any(|scope| scope == "offline_access"));
+    }
+
+    #[test]
+    fn pkce_challenge_is_the_s256_of_the_verifier() {
+        // `printf %s <verifier> | openssl dgst -sha256 -binary | base64url`
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mJ92K9XmOkXVMtKtV0eGWWjqtdbr8vE"),
+            "2M9avNSz_FoDqpmzPAJTqw8c_f5UqtRV8Hb2lkcHnUA"
+        );
+        let verifier = random_token(4);
+        assert_eq!(verifier.len(), 86, "64 bytes in unpadded base64");
+        assert_ne!(verifier, random_token(4));
+    }
+
+    #[test]
+    fn callback_parsing_checks_the_state_first() {
+        let line = |target: &str| format!("GET {target} HTTP/1.1");
+        assert_eq!(
+            parse_callback(&line("/auth/callback?code=abc%2B1&state=s1"), "s1"),
+            Callback::Code("abc+1".into())
+        );
+        assert_eq!(
+            parse_callback(&line("/auth/callback?code=abc&state=other"), "s1"),
+            Callback::StateMismatch
+        );
+        assert_eq!(
+            parse_callback(&line("/auth/callback?code=abc"), "s1"),
+            Callback::StateMismatch
+        );
+        assert_eq!(
+            parse_callback(
+                &line("/auth/callback?error=access_denied&error_description=No+thanks&state=s1"),
+                "s1"
+            ),
+            Callback::Failed("the browser sign-in returned access_denied (No thanks)".into())
+        );
+        assert!(matches!(
+            parse_callback(&line("/auth/callback?state=s1&code="), "s1"),
+            Callback::Failed(_)
+        ));
+        assert_eq!(parse_callback(&line("/favicon.ico"), "s1"), Callback::Other);
+        assert_eq!(
+            parse_callback(&line("/auth/callback/x?code=a&state=s1"), "s1"),
+            Callback::Other
+        );
+        assert_eq!(
+            parse_callback("POST /auth/callback?code=a&state=s1 HTTP/1.1", "s1"),
+            Callback::Other
+        );
+    }
+
+    fn get(port: u16, target: &str) -> String {
+        let mut stream = TcpStream::connect((Ipv4Addr::LOCALHOST, port)).expect("connect");
+        write!(stream, "GET {target} HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n").expect("write");
+        let mut response = String::new();
+        stream.read_to_string(&mut response).expect("read");
+        response
+    }
+
+    #[tokio::test]
+    async fn listener_ignores_other_requests_and_reports_the_outcome_page() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let callback = spawn_listener(
+            listener,
+            "s1".into(),
+            Instant::now() + Duration::from_secs(30),
+        )
+        .expect("spawn");
+
+        assert!(get(port, "/favicon.ico").starts_with("HTTP/1.1 404"));
+        let stale = format!("{CALLBACK_PATH}?code=c&state=stale");
+        assert!(get(port, &stale).starts_with("HTTP/1.1 400"));
+
+        let browser = std::thread::spawn(move || get(port, "/auth/callback?code=c1&state=s1"));
+        let received = callback.await.expect("listener alive").expect("code");
+        assert_eq!(received.code, "c1");
+        received.finish(Ok(()));
+        let page = browser.join().expect("browser thread");
+        assert!(page.starts_with("HTTP/1.1 200"), "{page}");
+        assert!(page.contains("Signed in to ChatGPT"), "{page}");
+    }
+
+    #[test]
+    fn dropping_the_waiter_closes_the_listener() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let callback = spawn_listener(
+            listener,
+            "s1".into(),
+            Instant::now() + Duration::from_secs(30),
+        )
+        .expect("spawn");
+        drop(callback);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_err() {
+            assert!(Instant::now() < deadline, "listener still holds the port");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
