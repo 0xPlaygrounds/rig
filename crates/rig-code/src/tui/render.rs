@@ -1,4 +1,5 @@
-//! Draws the focused agent: transcript, status line, input line and picker.
+//! Draws the focused agent: transcript, status line, input editor with its
+//! completion list, and the overlays.
 
 use bevy_ecs::prelude::*;
 use ratatui::Frame;
@@ -6,11 +7,14 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph, Wrap};
-use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{ToolResult, UserContent};
 
+use super::complete::{Completion, Kind as CompletionKind};
+use super::markdown;
+use super::renderers::ToolRenderer;
 use super::terminal::Tui;
+use super::transcript::{Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
+use super::wrap::wrap_all;
 use crate::core::agent::{
     ActiveTurn, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
     ToolCallRun,
@@ -22,12 +26,10 @@ use crate::core::recovery::{Backoff, MAX_RETRIES};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 
-/// Lines of a tool result shown in the transcript.
-const RESULT_LINES: usize = 4;
-/// Characters of tool call arguments shown in the transcript.
-const ARGUMENT_CHARS: usize = 160;
 /// Most lines the input box shows.
-const INPUT_LINES: usize = 8;
+const INPUT_LINES: usize = 10;
+/// Most items the completion list shows at once.
+const COMPLETION_ROWS: usize = 8;
 /// Lines of a compaction's summary shown in the transcript.
 const SUMMARY_LINES: usize = 12;
 /// Width of the rebuild progress bar.
@@ -77,10 +79,12 @@ pub(crate) fn needs_redraw(
         || !waits.is_empty()
 }
 
-/// Draws one frame.
+/// Draws one frame. The transcript's rows are kept between frames in a
+/// [`Transcript`], so only changed messages are laid out again.
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
+    mut transcript: Local<Transcript>,
     agents: Query<(
         &Conversation,
         &Compacted,
@@ -90,20 +94,25 @@ pub(crate) fn render(
         &Spending,
         Option<&Connection>,
     )>,
+    changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
     tool_calls: Query<(), With<ToolCallRun>>,
     summaries: Query<(), With<Summarizing>>,
     waits: Query<&Backoff>,
     slash: Query<&SlashCommand>,
+    renderers: Query<Ref<ToolRenderer>>,
+    mut removed_renderers: RemovedComponents<ToolRenderer>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
     // Clamping the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
     let view = view.bypass_change_detection();
-    let shown = view.agent.and_then(|agent| agents.get(agent).ok());
+    let shown = view
+        .agent
+        .and_then(|agent| Some((agent, agents.get(agent).ok()?)));
     let turn = shown
-        .and_then(|(_, _, _, _, turn, ..)| turn)
+        .and_then(|(_, (_, _, _, _, turn, ..))| turn)
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
@@ -122,15 +131,26 @@ pub(crate) fn render(
     } else {
         Activity::Thinking
     };
+    let renderers_changed = removed_renderers.read().count() > 0
+        || renderers.iter().any(|renderer| renderer.is_changed());
+    if renderers_changed {
+        transcript.clear();
+    }
+    let by_tool: Renderers<'_> = renderers
+        .iter()
+        .map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.tool.as_str(), &renderer.render)
+        })
+        .collect();
     tui.terminal.draw(|frame| {
-        // The input box grows with a pasted or long input, up to a limit;
-        // the rest of it stays scrolled to its end.
-        let input_text = Paragraph::new(format!("> {}▏", view.input)).wrap(Wrap { trim: false });
-        let input_lines = input_text.line_count(frame.area().width.saturating_sub(2));
-        let input_height = input_lines.clamp(1, INPUT_LINES);
-        let input_scroll =
-            u16::try_from(input_lines.saturating_sub(input_height)).unwrap_or(u16::MAX);
-        let [transcript, status_area, input] = Layout::vertical([
+        let width = frame.area().width;
+        // The input box grows with the input, up to a limit, and scrolls
+        // to keep the cursor in sight.
+        let layout = view.editor.layout(width.saturating_sub(2), Style::new());
+        let input_height = layout.rows.len().clamp(1, INPUT_LINES);
+        let input_top = (layout.cursor_row + 1).saturating_sub(input_height);
+        let [transcript_area, status_area, input] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(1),
             Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
@@ -138,39 +158,62 @@ pub(crate) fn render(
         .areas(frame.area());
         // Notices go between the messages, where they arrived; the ones
         // after the last message go before the reply streaming in.
-        let messages = shown
-            .map(|(conversation, ..)| conversation.0.as_slice())
-            .unwrap_or_default();
-        let compacted = shown.map(|(_, compacted, ..)| compacted);
-        let mut notices = view
-            .notices
-            .iter()
-            .filter(|notice| notice.is_for(view.agent))
-            .peekable();
-        let mut lines = Vec::new();
-        for (index, message) in messages.iter().enumerate() {
-            while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
-                notice_lines(notice, &mut lines);
+        let rows_width = usize::from(transcript_area.width.max(1));
+        let mut parts = Vec::new();
+        if let Some((agent, (conversation, compacted, ..))) = shown {
+            transcript.update(
+                agent,
+                &conversation.0,
+                changed.contains(agent),
+                &by_tool,
+                transcript_area.width,
+            );
+            let mut notices = view
+                .notices
+                .iter()
+                .filter(|notice| notice.is_for(view.agent))
+                .peekable();
+            for index in 0..conversation.0.len() {
+                let mut extra = Vec::new();
+                while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
+                    notice_lines(notice, &mut extra);
+                }
+                if compacted.upto == index && !compacted.summary.is_empty() {
+                    summary_lines(compacted, &mut extra);
+                }
+                if !extra.is_empty() {
+                    parts.push(Part::Rows(wrap_all(&extra, rows_width)));
+                }
+                parts.push(Part::Message(index));
             }
-            if let Some(compacted) = compacted
-                && compacted.upto == index
-                && !compacted.summary.is_empty()
-            {
-                summary_lines(compacted, &mut lines);
+            let mut extra = Vec::new();
+            for notice in notices {
+                notice_lines(notice, &mut extra);
             }
-            let previous = index.checked_sub(1).and_then(|before| messages.get(before));
-            message_lines(message, previous, messages.get(index + 1), &mut lines);
+            if let Some(partial) = partial {
+                extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
+                if !partial.text.is_empty() {
+                    extra.push(Line::default());
+                    extra.extend(markdown::render(&partial.text));
+                }
+            }
+            parts.push(Part::Rows(wrap_all(&extra, rows_width)));
+        } else {
+            let mut extra = Vec::new();
+            for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
+                notice_lines(notice, &mut extra);
+            }
+            parts.push(Part::Rows(wrap_all(&extra, rows_width)));
         }
-        for notice in notices {
-            notice_lines(notice, &mut lines);
-        }
-        if let Some(partial) = partial {
-            text_lines(&partial.reasoning, Style::new().dim().italic(), &mut lines);
-            text_lines(&partial.text, Style::new(), &mut lines);
-        }
-        draw_transcript(frame, transcript, lines, &mut view.scroll);
+        let rows = transcript.visible(
+            &parts,
+            usize::from(transcript_area.height),
+            &mut view.scroll,
+        );
+        frame.render_widget(Paragraph::new(rows), transcript_area);
         // /model comes from a plugin, so point at it only when loaded.
         let model_hint = slash.iter().any(|command| command.name == "model");
+        let shown = shown.map(|(_, shown)| shown);
         let mut line = status_line(
             shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
             model_hint,
@@ -186,33 +229,78 @@ pub(crate) fn render(
         let usage = shown
             .map(|(.., spent, connection)| usage_line(spent, connection))
             .unwrap_or_default();
-        let width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
+        let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
         let [status, meter] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(width)]).areas(status_area);
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
+                .areas(status_area);
         frame.render_widget(line, status);
         frame.render_widget(usage, meter);
+        let hint = if view.editor.is_empty() {
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+G editor · / commands · @ files "
+        } else {
+            ""
+        };
         frame.render_widget(
-            input_text
-                .scroll((input_scroll, 0))
-                .block(Block::bordered()),
+            Paragraph::new(layout.rows)
+                .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
+                .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
             input,
         );
         match &view.overlay {
             Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
             Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
-            None => {}
+            None => {
+                if let Some(completion) = &view.completion {
+                    draw_completion(frame, completion, input);
+                }
+                let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
+                let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
+                frame.set_cursor_position((
+                    input.x.saturating_add(1).saturating_add(column),
+                    input.y.saturating_add(1).saturating_add(row),
+                ));
+            }
         }
     })?;
     Ok(())
 }
 
-fn draw_transcript(frame: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scroll: &mut usize) {
-    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
-    let total = paragraph.line_count(area.width);
-    let bottom = total.saturating_sub(usize::from(area.height));
-    *scroll = (*scroll).min(bottom);
-    let top = u16::try_from(bottom - *scroll).unwrap_or(u16::MAX);
-    frame.render_widget(paragraph.scroll((top, 0)), area);
+/// The completion list, just above the input box.
+fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
+    let rows = completion.items.len().min(COMPLETION_ROWS);
+    let height = u16::try_from(rows + 2).unwrap_or(3).min(input.y);
+    if height < 3 {
+        return;
+    }
+    let area = Rect::new(input.x, input.y - height, input.width, height);
+    frame.render_widget(Clear, area);
+    let marker = match completion.kind {
+        CompletionKind::Command => "/",
+        CompletionKind::Path => "@",
+    };
+    let items: Vec<Line<'static>> = completion
+        .items
+        .iter()
+        .map(|item| {
+            let mut spans = vec![Span::from(format!("{marker}{}", item.text))];
+            if !item.detail.is_empty() {
+                spans.push(Span::from(format!("  {}", item.detail)).dim());
+            }
+            Line::from(spans)
+        })
+        .collect();
+    let mut state = ListState::default().with_selected(Some(completion.selected));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(
+                Block::bordered()
+                    .title(" Tab or Enter completes · Esc closes ")
+                    .dim(),
+            )
+            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        area,
+        &mut state,
+    );
 }
 
 fn status_line(
@@ -322,10 +410,8 @@ fn draw_reload_failure(frame: &mut Frame, output: &str) {
     let block = Block::bordered()
         .border_style(Style::new().red())
         .title(" The rebuild failed; this build keeps running · Esc closes ");
-    let mut lines = Vec::new();
-    text_lines(output, Style::new(), &mut lines);
     frame.render_widget(
-        Paragraph::new(lines)
+        Paragraph::new(plain_lines(output, Style::new()))
             .wrap(Wrap { trim: false })
             .block(block),
         popup,
@@ -353,119 +439,6 @@ fn draw_picker(frame: &mut Frame, picker: &Picker) {
         list,
         &mut state,
     );
-}
-
-/// The tool results a message carries.
-fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> {
-    let content = match message {
-        Some(Message::User { content }) => Some(content.iter()),
-        _ => None,
-    };
-    content.into_iter().flatten().filter_map(|item| match item {
-        UserContent::ToolResult(result) => Some(result),
-        _ => None,
-    })
-}
-
-/// Draws `message`. A tool call's result, which comes in the `next`
-/// message, is drawn right under the call, so the results of a reply's
-/// calls are not drawn after all of its calls.
-fn message_lines(
-    message: &Message,
-    previous: Option<&Message>,
-    next: Option<&Message>,
-    lines: &mut Vec<Line<'static>>,
-) {
-    match message {
-        Message::System { .. } => {}
-        Message::User { content } => {
-            for item in content {
-                match item {
-                    UserContent::Text(text) => {
-                        lines.push(Line::default());
-                        text_lines(
-                            &format!("› {}", text.text),
-                            Style::new().cyan().bold(),
-                            lines,
-                        );
-                    }
-                    // Drawn under its call already.
-                    UserContent::ToolResult(result) if answers(previous, result) => {}
-                    UserContent::ToolResult(result) => result_lines(result, lines),
-                    _ => {}
-                }
-            }
-        }
-        Message::Assistant(assistant) => {
-            for item in &assistant.content {
-                match item {
-                    AssistantContent::Text(text) => {
-                        lines.push(Line::default());
-                        text_lines(&text.text, Style::new(), lines);
-                    }
-                    AssistantContent::Reasoning(reasoning) => {
-                        text_lines(&reasoning.text, Style::new().dim().italic(), lines);
-                    }
-                    AssistantContent::ToolCall(call) => {
-                        let arguments =
-                            serde_json::Value::Object(call.function.arguments.clone()).to_string();
-                        lines.push(Line::from(vec![
-                            Span::from("● ").yellow(),
-                            Span::from(call.function.name.as_str().to_owned())
-                                .yellow()
-                                .bold(),
-                            Span::from(format!(" {}", clip(&arguments, ARGUMENT_CHARS))).dim(),
-                        ]));
-                        if let Some(result) =
-                            tool_results(next).find(|result| result.call == call.id)
-                        {
-                            result_lines(result, lines);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-}
-
-/// Whether `message` is a reply holding the call `result` answers.
-fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
-    match message {
-        Some(Message::Assistant(assistant)) => assistant
-            .content
-            .iter()
-            .any(|item| matches!(item, AssistantContent::ToolCall(call) if call.id == result.call)),
-        _ => false,
-    }
-}
-
-fn result_lines(result: &ToolResult, lines: &mut Vec<Line<'static>>) {
-    let text: String = result
-        .content
-        .iter()
-        .filter_map(|content| content.as_text())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let style = if result.is_error {
-        Style::new().red()
-    } else {
-        Style::new().dim()
-    };
-    let total = text.lines().count();
-    for (index, line) in text.lines().take(RESULT_LINES).enumerate() {
-        let prefix = if index == 0 { "  ⎿ " } else { "    " };
-        lines.push(Line::styled(
-            format!("{prefix}{}", line.replace('\t', "    ")),
-            style,
-        ));
-    }
-    if total > RESULT_LINES {
-        lines.push(Line::styled(
-            format!("    … {} more lines", total - RESULT_LINES),
-            style,
-        ));
-    }
 }
 
 /// Draws where a compaction cut the conversation: the messages above are
@@ -497,22 +470,5 @@ fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
         NoticeLevel::Info => Style::new().fg(Color::Magenta),
         NoticeLevel::Error => Style::new().fg(Color::Red),
     };
-    text_lines(&notice.text, style, lines);
-}
-
-fn text_lines(text: &str, style: Style, lines: &mut Vec<Line<'static>>) {
-    lines.extend(
-        text.lines()
-            .map(|line| Line::styled(line.replace('\t', "    "), style)),
-    );
-}
-
-/// `text` cut to `limit` characters, with `…` when cut.
-fn clip(text: &str, limit: usize) -> String {
-    let clipped = crate::builtin::tools::clip(text, limit);
-    if clipped.len() < text.len() {
-        format!("{clipped}…")
-    } else {
-        text.to_owned()
-    }
+    lines.extend(plain_lines(&notice.text, style));
 }

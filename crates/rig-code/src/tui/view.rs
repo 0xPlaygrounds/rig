@@ -1,9 +1,12 @@
 //! View state, kept apart from the agent core: the focused agent, the input
-//! line, scrolling, the open overlay and recent notices.
+//! editor and its completion, scrolling, the open overlay and recent
+//! notices.
 
 use bevy_ecs::prelude::*;
 use rig_core::completion::Reasoning;
 
+use super::complete::Completion;
+use super::editor::Editor;
 use crate::core::agent::{
     Agent, AgentId, Connection, Conversation, Notice, NoticeLevel, PickKind, PickRequest,
 };
@@ -18,8 +21,12 @@ const KEPT_NOTICES: usize = 50;
 pub(crate) struct TuiView {
     /// The agent shown and typed to.
     pub(crate) agent: Option<Entity>,
-    /// The input line.
-    pub(crate) input: String,
+    /// The input being typed, and the prompt history.
+    pub(crate) editor: Editor,
+    /// The open `/` or `@` completion list.
+    pub(crate) completion: Option<Completion>,
+    /// Where the token starts whose completion was closed with Esc.
+    pub(crate) dismissed: Option<usize>,
     /// Lines scrolled up from the bottom of the transcript.
     pub(crate) scroll: usize,
     /// What is shown over the transcript and takes the keys.

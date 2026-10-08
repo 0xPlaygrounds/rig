@@ -325,6 +325,7 @@ ordered-float = "5"
 pgvector = "0.4.2"
 pin-project-lite = "0.2"
 proc-macro2 = "1"
+pulldown-cmark = { version = "0.13", default-features = false }
 # 1.10: the `Qdrant` client, `Payload`, and the query/upsert builders.
 qdrant-client = { version = "1.10", default-features = false, features = [
     "serde",
@@ -348,6 +349,7 @@ serde_yaml = "0.9"
 serde_json = "1.0.54"
 safetensors = "0.8"
 sha2 = "0.10"
+similar = "2.7"
 serde_path_to_error = "0.1"
 sqlite-vec = "0.1"
 sqlx = "0.9"
@@ -376,6 +378,7 @@ tracing = "0.1"
 tracing-futures = "0.2.5"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = "0.3"
+unicode-width = "0.2"
 uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"

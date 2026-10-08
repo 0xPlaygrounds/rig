@@ -10849,6 +10849,7 @@ dependencies = [
  "futures-timer",
  "ignore",
  "libc",
+ "pulldown-cmark",
  "ratatui",
  "regex",
  "rig",
@@ -10857,6 +10858,8 @@ dependencies = [
  "rig-memory",
  "serde",
  "serde_json",
+ "similar",
+ "unicode-width",
  "uuid",
 ]
 

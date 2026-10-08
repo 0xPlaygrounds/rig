@@ -14,7 +14,13 @@ workspace = true
 default = ["tui"]
 # The ratatui view. Without it the crate is the agent core alone: the agent
 # loop, tools, effects and saving.
-tui = ["dep:ratatui", "dep:crossterm"]
+tui = [
+    "dep:ratatui",
+    "dep:crossterm",
+    "dep:pulldown-cmark",
+    "dep:similar",
+    "dep:unicode-width",
+]
 
 [dependencies]
 bevy_app = { workspace = true }
@@ -43,6 +49,11 @@ serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }
 crossterm = { workspace = true, optional = true }
+# Markdown in replies, diffs of edits and the width of wrapped text, for
+# the terminal view.
+pulldown-cmark = { workspace = true, optional = true }
+similar = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

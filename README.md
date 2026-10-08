@@ -212,9 +212,20 @@ along with the working directory, platform, date and git branch. They are
 re-read when a turn starts, so an edited `AGENTS.md` counts from the next
 message; `/context` re-reads them now and lists what the prompt holds.
 
+The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
+Enter starts a new line, Up and Down move between lines and through the
+prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
+keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
+and `@` completes paths of the project (skipping what `.gitignore` leaves out);
+Tab or Enter takes the selected one. Ctrl+G opens the input in `$VISUAL` or
+`$EDITOR`. Answers are drawn as markdown, edits as diffs, and each built-in
+tool's call in its own way; a plugin can draw its own tools' calls with
+`rig_code::tui::AppToolRenderersExt::add_tool_renderer`. PageUp, PageDown and
+Shift+Up/Down scroll the transcript.
+
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
-and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
+the prompt history `history.jsonl`, and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
 cache directory. Several `rig` processes can share one `RIG_HOME`.

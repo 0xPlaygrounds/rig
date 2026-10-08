@@ -16,9 +16,11 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
+use super::editor::Editor;
 use super::input::TerminalInput;
+use super::view::TuiView;
 use crate::core::calls::Wake;
-use rig::code_protocol::RELOAD_EXIT_CODE;
+use rig::code_protocol::{Home, RELOAD_EXIT_CODE};
 
 use crate::core::save::SessionPaths;
 
@@ -28,6 +30,8 @@ use crate::core::save::SessionPaths;
 #[derive(Resource)]
 pub(crate) struct Tui {
     pub(super) terminal: Terminal<CrosstermBackend<File>>,
+    /// Another copy of the screen, for a program the terminal is handed to.
+    screen: File,
     keep_screen: bool,
 }
 
@@ -37,6 +41,7 @@ impl Tui {
     /// instead of on the screen.
     fn open(log: Option<&Path>) -> io::Result<Self> {
         let screen = screen()?;
+        let spare = screen.try_clone()?;
         if let Some(log) = log {
             redirect_output(log)?;
         }
@@ -54,8 +59,39 @@ impl Tui {
         terminal.hide_cursor()?;
         Ok(Self {
             terminal,
+            screen: spare,
             keep_screen: false,
         })
+    }
+}
+
+impl Tui {
+    /// Gives the terminal back for another program, such as `$EDITOR`, and
+    /// returns a copy of the screen for that program's output: stdout and
+    /// stderr point at the log.
+    pub(crate) fn suspend(&mut self) -> io::Result<File> {
+        execute!(
+            self.terminal.backend_mut(),
+            DisableBracketedPaste,
+            LeaveAlternateScreen
+        )?;
+        self.terminal.show_cursor()?;
+        disable_raw_mode()?;
+        self.screen.try_clone()
+    }
+
+    /// Takes the terminal back after [`Tui::suspend`] and draws the next
+    /// frame whole.
+    pub(crate) fn resume(&mut self) -> io::Result<()> {
+        enable_raw_mode()?;
+        execute!(
+            self.terminal.backend_mut(),
+            EnterAlternateScreen,
+            EnableBracketedPaste,
+            Clear(ClearType::All)
+        )?;
+        self.terminal.hide_cursor()?;
+        self.terminal.clear()
     }
 }
 
@@ -71,10 +107,11 @@ impl Drop for Tui {
 }
 
 /// Opens the terminal and starts reading it at startup, or exits with code
-/// 1 when there is none.
+/// 1 when there is none. The input editor gets the prompt history.
 pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
+    mut view: ResMut<TuiView>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -82,6 +119,7 @@ pub(crate) fn open_terminal(
         .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
     match opened {
         Ok((tui, input)) => {
+            view.editor = Editor::with_history(Home::from_env().history());
             commands.insert_resource(tui);
             commands.insert_resource(input);
         }

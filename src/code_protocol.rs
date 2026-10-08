@@ -182,6 +182,12 @@ impl Home {
             .ok()
     }
 
+    /// The prompts typed into the terminal view, one JSON string per line,
+    /// shared by every session on this root.
+    pub fn history(&self) -> PathBuf {
+        self.root.join("history.jsonl")
+    }
+
     /// The directory of `session`.
     pub fn session(&self, session: &SessionId) -> SessionDir {
         SessionDir(self.root.join("sessions").join(session.as_str()))
@@ -234,6 +240,11 @@ impl SessionDir {
     /// build.
     pub fn ready(&self) -> PathBuf {
         self.0.join("ready")
+    }
+
+    /// The draft the terminal view hands to `$EDITOR`.
+    pub fn draft(&self) -> PathBuf {
+        self.0.join("draft.md")
     }
 
     /// Held by the launcher running the session while it lives.
