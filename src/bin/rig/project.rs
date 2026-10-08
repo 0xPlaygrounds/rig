@@ -21,10 +21,10 @@ pub const PACKAGE: &str = "rig-code-bin";
 /// there.
 pub fn rig_code_source() -> Result<Option<PathBuf>, String> {
     if let Some(repo) = std::env::var_os("RIG_SOURCE").filter(|repo| !repo.is_empty()) {
-        // The path is written into the generated project, so it must not
-        // depend on the working directory.
-        let repo = std::path::absolute(&repo)
-            .map_err(|error| format!("cannot resolve RIG_SOURCE: {error}"))?;
+        // The path is written into the generated project and its stamp, so
+        // it must not depend on the working directory or on its spelling.
+        let repo = std::fs::canonicalize(&repo)
+            .map_err(|error| format!("RIG_SOURCE {} is not usable: {error}", repo.display()))?;
         let dir = repo.join("crates").join("rig-code");
         if !dir.join("Cargo.toml").is_file() {
             return Err(format!(
