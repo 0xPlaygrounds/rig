@@ -188,25 +188,41 @@ impl Home {
         self.root.join("history.jsonl")
     }
 
+    /// The directory holding every session's directory.
+    pub fn sessions(&self) -> PathBuf {
+        self.root.join("sessions")
+    }
+
     /// The directory of `session`.
     pub fn session(&self, session: &SessionId) -> SessionDir {
-        SessionDir(self.root.join("sessions").join(session.as_str()))
+        SessionDir(self.sessions().join(session.as_str()))
     }
 
     /// The file naming the session to resume in `directory`: the last one
     /// run there that did not quit cleanly. The name is a hash of the path,
     /// so a session comes back only where it ran.
     pub fn resume_marker(&self, directory: &Path) -> PathBuf {
-        // FNV-1a: stable across builds and toolchains, unlike std's hasher.
-        let key = directory
-            .as_os_str()
-            .as_encoded_bytes()
-            .iter()
-            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-                (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-            });
-        self.root.join("resume").join(format!("{key:016x}"))
+        self.root.join("resume").join(directory_key(directory))
     }
+
+    /// The file naming the last session run in `directory`, however it
+    /// ended: the one `rig --continue` there resumes.
+    pub fn last_marker(&self, directory: &Path) -> PathBuf {
+        self.root.join("last").join(directory_key(directory))
+    }
+}
+
+/// A file name for `directory`: a hash of its path. FNV-1a, which is
+/// stable across builds and toolchains, unlike std's hasher.
+fn directory_key(directory: &Path) -> String {
+    let key = directory
+        .as_os_str()
+        .as_encoded_bytes()
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+    format!("{key:016x}")
 }
 
 /// A session's directory: the agent's saved state, effect log and text
@@ -250,5 +266,39 @@ impl SessionDir {
     /// Held by the launcher running the session while it lives.
     pub fn launcher_lock(&self) -> PathBuf {
         self.0.join("launcher.lock")
+    }
+
+    /// The working directory the session runs in, as plain text: written
+    /// when the session starts, and where the launcher starts the agent
+    /// when it resumes the session from elsewhere.
+    pub fn directory(&self) -> PathBuf {
+        self.0.join("directory")
+    }
+
+    /// What `/resume` lists about the session, as JSON the agent writes
+    /// with each save: its name, title, cost and size.
+    pub fn summary(&self) -> PathBuf {
+        self.0.join("summary.json")
+    }
+
+    /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
+    /// run another session: the [`SessionId`] to resume, or nothing for a
+    /// new session. The launcher reads and removes it.
+    pub fn switch(&self) -> PathBuf {
+        self.0.join("switch")
+    }
+
+    /// The images pasted into the session's input, which messages attach
+    /// by path.
+    pub fn images(&self) -> PathBuf {
+        self.0.join("images")
+    }
+
+    /// The session's working directory, when [`Self::directory`] names one
+    /// that still exists.
+    pub fn working_directory(&self) -> Option<PathBuf> {
+        let text = std::fs::read_to_string(self.directory()).ok()?;
+        let directory = PathBuf::from(text.trim_end_matches('\n'));
+        directory.is_dir().then_some(directory)
     }
 }
