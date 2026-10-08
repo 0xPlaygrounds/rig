@@ -1,4 +1,4 @@
-//! The `rig` launcher. It generates a Cargo project for the rig-code agent
+//! The `rig` launcher. It generates a Cargo project for the rig-harness agent
 //! with the plugins listed in `$RIG_HOME/plugins.toml`, builds it, and runs it.
 //! When the agent exits with the reload code it starts the new build, and a
 //! build that crashes during startup is rolled back to the last one that
@@ -9,7 +9,7 @@ mod launcher;
 use std::process::ExitCode;
 
 use launcher::run::Start;
-use rig::code_protocol::{Home, INVOCATION_USAGE, Invocation, Mode};
+use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation, Mode};
 
 const USAGE: &str = "\
 Usage: rig [session] [mode] | rig build | rig help

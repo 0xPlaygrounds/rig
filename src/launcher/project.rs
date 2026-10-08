@@ -7,15 +7,15 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rig::code_protocol::Home;
+use rig::harness_protocol::Home;
 
 use super::config::{Config, Source};
 use super::{BEVY_VERSION, Result, VERSION};
 
 /// The generated package's name, and so its binary's.
-pub const PACKAGE: &str = "rig-code-agent";
+pub const PACKAGE: &str = "rig-harness-agent";
 
-/// rig-code's modules that are off by default, each with the cargo feature
+/// rig-harness's modules that are off by default, each with the cargo feature
 /// a plugin listed from it turns on.
 const OPTIONAL_VIEWS: [(&str, &str); 1] = [("gui", "gui")];
 
@@ -23,7 +23,7 @@ const OPTIONAL_VIEWS: [(&str, &str); 1] = [("gui", "gui")];
 /// the `rig` crate's own when installed from crates.io.
 const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
 
-/// Where the agent project gets the `rig-code` crate from.
+/// Where the agent project gets the `rig-harness` crate from.
 pub enum RigSource {
     /// A rig checkout, by path.
     Local(PathBuf),
@@ -41,7 +41,7 @@ impl RigSource {
             let checkout = std::path::absolute(PathBuf::from(checkout))?;
             if !is_checkout(&checkout) {
                 return Err(format!(
-                    "RIG_SOURCE={} is not a rig checkout: it has no crates/rig-code/Cargo.toml",
+                    "RIG_SOURCE={} is not a rig checkout: it has no crates/rig-harness/Cargo.toml",
                     checkout.display()
                 )
                 .into());
@@ -63,7 +63,7 @@ impl RigSource {
 }
 
 fn is_checkout(path: &Path) -> bool {
-    path.join("crates/rig-code/Cargo.toml").is_file()
+    path.join("crates/rig-harness/Cargo.toml").is_file()
 }
 
 /// Writes the agent project for `config`.
@@ -74,7 +74,7 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<()> 
     write_if_changed(&project.join(".cargo/config.toml"), &cargo_config(home))?;
     // A lock seeds the versions CI tested: the checkout's, or the one
     // packaged with this launcher. The packaged one covers the `rig` crate's
-    // own dependencies only; cargo resolves rig-code's and Bevy's fresh.
+    // own dependencies only; cargo resolves rig-harness's and Bevy's fresh.
     let lock = project.join("Cargo.lock");
     if !lock.exists() {
         match source {
@@ -108,7 +108,7 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
          [dependencies]\n",
         home.config().display()
     );
-    // rig-code's optional views are cargo features, on only when listed:
+    // rig-harness's optional views are cargo features, on only when listed:
     // the window builds Bevy's renderer.
     let own_features: Vec<String> = OPTIONAL_VIEWS
         .iter()
@@ -117,7 +117,7 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
                 plugin.package.is_none()
                     && plugin
                         .type_path
-                        .strip_prefix("rig_code::")
+                        .strip_prefix("rig_harness::")
                         .and_then(|path| path.strip_prefix(module))
                         .is_some_and(|rest| rest.starts_with("::"))
             })
@@ -131,15 +131,15 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
     };
     match source {
         RigSource::Local(checkout) => text.push_str(&format!(
-            "rig-code = {{ path = {}{own_features} }}\n",
-            quoted_path(&checkout.join("crates/rig-code"))
+            "rig-harness = {{ path = {}{own_features} }}\n",
+            quoted_path(&checkout.join("crates/rig-harness"))
         )),
         RigSource::Registry => text.push_str(&format!(
-            "rig-code = {{ version = \"={VERSION}\"{own_features} }}\n"
+            "rig-harness = {{ version = \"={VERSION}\"{own_features} }}\n"
         )),
     }
     // Only a plugin asking for Bevy features makes the project depend on the
-    // `bevy` crate, which carries them; rig-code itself uses the `bevy_*`
+    // `bevy` crate, which carries them; rig-harness itself uses the `bevy_*`
     // crates, which compile faster.
     if !features.is_empty() {
         text.push_str(&format!(
@@ -176,10 +176,10 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push_str(&format!(
-            "\n[patch.crates-io]\nrig = {{ path = {} }}\nrig-code = {{ path = {} }}\n\
+            "\n[patch.crates-io]\nrig = {{ path = {} }}\nrig-harness = {{ path = {} }}\n\
              rig-core = {{ path = {} }}\n",
             quoted_path(checkout),
-            quoted_path(&checkout.join("crates/rig-code")),
+            quoted_path(&checkout.join("crates/rig-harness")),
             quoted_path(&checkout.join("crates/rig-core")),
         ));
     }
@@ -193,13 +193,13 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
 fn main_rs(home: &Home, config: &Config) -> String {
     let mut text = format!(
         "// Generated by rig {VERSION} from {}. /reload rewrites this file.\n\
-         fn main() -> rig_code::AppExit {{\n    \
-             let mut app = rig_code::App::new();\n    \
+         fn main() -> rig_harness::AppExit {{\n    \
+             let mut app = rig_harness::App::new();\n    \
              // A failing system, observer or command from a plugin is logged.\n    \
-             app.set_error_handler(rig_code::error::warn);\n    \
+             app.set_error_handler(rig_harness::error::warn);\n    \
              // The headless loop comes before the listed plugins, so a windowing\n    \
              // plugin among them can replace it.\n    \
-             app.add_plugins((rig_code::RigCodePlugins, rig_code::HeadlessPlugins));\n",
+             app.add_plugins((rig_harness::RigHarnessPlugins, rig_harness::HeadlessPlugins));\n",
         home.config().display()
     );
     for plugin in &config.plugins {

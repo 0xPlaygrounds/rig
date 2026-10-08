@@ -1,5 +1,5 @@
 //! The launcher's parts: the locks on `RIG_HOME` (whose layout, shared with
-//! the agent, is [`rig::code_protocol`]), the `plugins.toml` plugin list, the
+//! the agent, is [`rig::harness_protocol`]), the `plugins.toml` plugin list, the
 //! generated agent project, its build, and the run loop.
 
 pub mod build;

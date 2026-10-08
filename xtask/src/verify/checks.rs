@@ -106,13 +106,13 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-code is not a default member, and its agent core must
+                // rig-harness is not a default member, and its agent core must
                 // also build without the terminal view.
                 cargo(&[
                     "clippy",
                     "--locked",
                     "-p",
-                    "rig-code",
+                    "rig-harness",
                     "--all-targets",
                     "--",
                     "-D",
@@ -122,7 +122,7 @@ pub(super) fn all() -> Vec<Check> {
                     "clippy",
                     "--locked",
                     "-p",
-                    "rig-code",
+                    "rig-harness",
                     "--no-default-features",
                     "--all-targets",
                     "--",
@@ -134,7 +134,7 @@ pub(super) fn all() -> Vec<Check> {
                     "clippy",
                     "--locked",
                     "-p",
-                    "rig-code",
+                    "rig-harness",
                     "--features",
                     "gui",
                     "--",
@@ -171,9 +171,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-code is not a default member, so the run above never
+                // rig-harness is not a default member, so the run above never
                 // reaches its tests.
-                cargo(&["nextest", "run", "--locked", "-p", "rig-code"]),
+                cargo(&["nextest", "run", "--locked", "-p", "rig-harness"]),
             ],
         ),
         // The effect-corpus cells have one lane owner; default-tests excludes

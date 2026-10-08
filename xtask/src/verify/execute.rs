@@ -81,13 +81,13 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             Ok(())
         }
         "@core-imports" => {
-            // rig-code's agent core must build without its host and its
+            // rig-harness's agent core must build without its host and its
             // views: no path under `core/` names them, or the TUI's crates.
             const FORBIDDEN: [&str; 5] = ["host", "tui", "gui", "ratatui", "crossterm"];
             for path in tracked_inputs(root)?
                 .into_iter()
                 .chain(untracked_inputs(root)?)
-                .filter(|p| p.starts_with("crates/rig-code/src/core/") && p.ends_with(".rs"))
+                .filter(|p| p.starts_with("crates/rig-harness/src/core/") && p.ends_with(".rs"))
             {
                 let Ok(text) = fs::read_to_string(root.join(&path)) else {
                     continue;

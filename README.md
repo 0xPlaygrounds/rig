@@ -168,7 +168,7 @@ dependency guarantees and migration paths.
 ## The rig coding agent
 
 `cargo install rig` also installs `rig`, a terminal coding agent. The agent is
-the [`rig-code`](crates/rig-code) crate, a Bevy app, and `rig` is its launcher:
+the [`rig-harness`](crates/rig-harness) crate, a Bevy app, and `rig` is its launcher:
 it generates a small Cargo project for the agent, builds it, and runs it.
 
 ```bash
@@ -313,7 +313,7 @@ writes `report.json`, with every trial's agent id for its effects, under the
 session's `eval/`; `--json` prints the report instead.
 
 A window can run beside the terminal, in the same process: list
-`rig_code::gui::GuiPlugin` in `plugins.toml` (the template has it commented
+`rig_harness::gui::GuiPlugin` in `plugins.toml` (the template has it commented
 out) and `/reload`. It shows the agent graph (subagents under the agent that
 started them, forks and eval trials beside it, each with its state, model,
 cost and context), a timeline per agent of every turn, model call, tool call,
@@ -322,7 +322,7 @@ summary and retry wait (queued time dim, time waiting for approval yellow;
 the cost by agent and by model call, and buttons that answer approvals; its
 prompt line sends to the shown agent (Enter, Ctrl+Enter queues, Esc stops).
 It is a Bevy UI on winit's reactive loop, woken by the same signal the
-terminal view sleeps on, and an optional cargo feature of rig-code that the
+terminal view sleeps on, and an optional cargo feature of rig-harness that the
 launcher turns on only when the plugin is listed, since it builds Bevy's
 renderer. X11 is built in; `bevy_features = ["wayland"]` on its entry adds
 native Wayland. Without a display it adds nothing; without the terminal view,
@@ -342,7 +342,7 @@ keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
-`rig_code::tui::AppToolRenderersExt::add_tool_renderer`. PageUp, PageDown and
+`rig_harness::tui::AppToolRenderersExt::add_tool_renderer`. PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
@@ -360,12 +360,12 @@ cd rig && cargo install --path . --root /some/dir
 RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
-Plugins are Bevy plugins. A plugin crate depends on `rig-code` and on Bevy
+Plugins are Bevy plugins. A plugin crate depends on `rig-harness` and on Bevy
 crates at exactly `=0.20.0-rc.2`, and registers tools and slash commands the
 same way the built-in ones are registered:
 
 ```rust,ignore
-use rig_code::prelude::*;
+use rig_harness::prelude::*;
 
 #[derive(Default)]
 pub struct HelloPlugin;
@@ -389,13 +389,13 @@ any of them can be removed or replaced:
 
 ```toml
 [[plugin]]
-plugin = "rig_code::builtin::BuiltinToolsPlugin"
+plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 
 [[plugin]]
-plugin = "rig_code::builtin::BuiltinCommandsPlugin"
+plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
 [[plugin]]
-plugin = "rig_code::tui::TuiPlugin"
+plugin = "rig_harness::tui::TuiPlugin"
 
 [[plugin]]
 crate = "rig-hello"               # the package name

@@ -25,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
 use std::time::Duration;
 
-use rig::code_protocol::{Home, Invocation, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
+use rig::harness_protocol::{Home, Invocation, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
 
 use super::build::{self, Staging};
 use super::{Result, home};

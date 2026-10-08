@@ -12983,7 +12983,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rig-code"
+name = "rig-harness"
 version = "0.44.0"
 dependencies = [
  "base64 0.22.1",

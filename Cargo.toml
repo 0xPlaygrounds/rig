@@ -105,7 +105,7 @@ features = [
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
-# The launcher of the rig-code agent (`cargo install rig`). It uses only std,
+# The launcher of the rig-harness agent (`cargo install rig`). It uses only std,
 # so it adds no dependency. `doc = false`: it shares the library's name.
 [[bin]]
 name = "rig"
@@ -263,10 +263,10 @@ aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
 base64 = "0.22"
 # Bevy is pinned exactly: a Bevy plugin only links against the one Bevy
-# version of its app, and rig-code is the app. `bevy_tasks` is also the
+# version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
 # git; the tooling check verifies Bevy sources and requirements.
-# The umbrella crate only for rig-code's optional window (feature `gui`).
+# The umbrella crate only for rig-harness's optional window (feature `gui`).
 bevy = { version = "=0.20.0-rc.2", default-features = false }
 bevy_app = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
 bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }

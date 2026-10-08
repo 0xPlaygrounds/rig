@@ -15,26 +15,26 @@ const TEMPLATE: &str = r#"# The rig agent's plugins, added in this order. `rig b
 # the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
 
 # Each [[plugin]] names a type implementing Bevy's Plugin + Default. An entry
-# without `crate` comes from rig-code itself.
+# without `crate` comes from rig-harness itself.
 
 # The read, edit, write, shell and search tools.
 [[plugin]]
-plugin = "rig_code::builtin::BuiltinToolsPlugin"
+plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 
 # /model, /effort, /help and /quit. (/reload is always there.)
 [[plugin]]
-plugin = "rig_code::builtin::BuiltinCommandsPlugin"
+plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
 # The terminal view. Without it the agent runs headless; a GUI plugin can sit
 # beside it or replace it.
 [[plugin]]
-plugin = "rig_code::tui::TuiPlugin"
+plugin = "rig_harness::tui::TuiPlugin"
 
 # A window beside the terminal: the agent graph, a timeline of every model and
 # tool call, diffs, cost and approvals. It builds Bevy's renderer, so the first
 # build takes a few minutes. X11 is built in; add "wayland" for native Wayland.
 # [[plugin]]
-# plugin = "rig_code::gui::GuiPlugin"
+# plugin = "rig_harness::gui::GuiPlugin"
 # bevy_features = ["wayland"]
 
 # A plugin from another crate:
@@ -56,7 +56,7 @@ pub struct Config {
 pub struct Plugin {
     /// The plugin type's path, such as `rig_hello::HelloPlugin`.
     pub type_path: String,
-    /// The package that provides it, or `None` for rig-code's own.
+    /// The package that provides it, or `None` for rig-harness's own.
     pub package: Option<Package>,
     /// Bevy features the plugin needs.
     pub bevy_features: Vec<String>,
@@ -202,9 +202,9 @@ fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
             {
                 return Err(format!("`{name}` is not a crate name").into());
             }
-            if ["rig-code", PACKAGE, "bevy"].contains(&name.as_str()) {
+            if ["rig-harness", PACKAGE, "bevy"].contains(&name.as_str()) {
                 return Err(format!(
-                    "`{name}` is part of the agent itself; rig-code's own plugins need no `crate`"
+                    "`{name}` is part of the agent itself; rig-harness's own plugins need no `crate`"
                 )
                 .into());
             }

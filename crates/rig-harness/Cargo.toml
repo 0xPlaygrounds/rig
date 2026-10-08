@@ -1,0 +1,105 @@
+[package]
+name = "rig-harness"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "A terminal coding agent on rig-core and Bevy: agents are entities, and tools and slash commands come from Bevy plugins."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui", "mcp"]
+# The ratatui view. Without it the crate is the agent core alone: the agent
+# loop, tools, effects and saving.
+tui = [
+    "dep:ratatui",
+    "dep:crossterm",
+    "dep:pulldown-cmark",
+    "dep:unicode-width",
+]
+# Tools of MCP servers listed in `RIG_HOME/mcp.json`, through rig-rmcp, on a
+# small tokio runtime of their own.
+mcp = ["dep:rig-rmcp", "dep:rmcp", "dep:tokio", "dep:http"]
+# A window beside the terminal (`rig_harness::gui::GuiPlugin`): the agent graph,
+# a timeline of every model and tool call, diffs, cost and approvals. Off by
+# default: it builds Bevy's renderer. The `rig` launcher turns it on when
+# `plugins.toml` lists the plugin; X11 is built in, and `bevy_features =
+# ["wayland"]` on that entry adds native Wayland.
+gui = ["dep:bevy"]
+
+[dependencies]
+base64 = { workspace = true }
+bevy = { workspace = true, optional = true, features = [
+    "std",
+    "multi_threaded",
+    "async_executor",
+    "bevy_asset",
+    "bevy_window",
+    "bevy_winit",
+    "x11",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_ui_widgets",
+    "bevy_text",
+    "default_font",
+    "bevy_picking",
+    "ui_picking",
+] }
+bevy_app = { workspace = true }
+# `serialize`: entities in requests read from JSON (the RPC mode).
+bevy_ecs = { workspace = true, features = ["serialize"] }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# The local date in the system prompt.
+chrono = { workspace = true, features = ["clock"] }
+crossbeam-channel = { workspace = true }
+# `termination` also catches SIGTERM and SIGHUP (a closed terminal).
+ctrlc = { workspace = true, features = ["termination"] }
+futures = { workspace = true }
+# The wait before a retried model call.
+futures-timer = { workspace = true }
+ignore = { workspace = true }
+regex = { workspace = true }
+# The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
+rig = { path = "../..", version = "0.44.0", default-features = false }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["reqwest"] }
+# The shared HTTP client `/login` and signed-in model calls read the
+# credential through.
+rig-reqwest = { workspace = true }
+# The token estimate compaction decides by.
+rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The unified diff `edit` returns, and the diffs the terminal view draws.
+similar = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }
+crossterm = { workspace = true, optional = true }
+# Markdown in replies and the width of wrapped text, for the terminal view.
+pulldown-cmark = { workspace = true, optional = true }
+unicode-width = { workspace = true, optional = true }
+http = { workspace = true, optional = true }
+rig-rmcp = { path = "../rig-rmcp", version = "0.44.0", optional = true }
+rmcp = { workspace = true, optional = true, features = [
+    "client",
+    "reqwest",
+    "transport-async-rw",
+    "transport-streamable-http-client-reqwest",
+] }
+tokio = { workspace = true, optional = true, features = [
+    "io-util",
+    "process",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::UNIX_EPOCH;
 
-use rig::code_protocol::{Home, SessionId};
+use rig::harness_protocol::{Home, SessionId};
 
 use super::config::Config;
 use super::project::{self, PACKAGE, RigSource};
