@@ -5,6 +5,7 @@
 //! this module, so the two sides cannot drift apart. It uses only std, and
 //! it changes with rig-code.
 
+use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -324,5 +325,158 @@ impl SessionDir {
         let text = std::fs::read_to_string(self.directory()).ok()?;
         let directory = PathBuf::from(text.trim_end_matches('\n'));
         directory.is_dir().then_some(directory)
+    }
+
+    /// An eval run's working copies, one directory per trial, and its
+    /// `report.json`.
+    pub fn eval(&self) -> PathBuf {
+        self.0.join("eval")
+    }
+}
+
+/// How the agent runs, from its arguments. The launcher takes the same
+/// arguments after its own session options and passes them on unchanged
+/// ([`Invocation::to_args`]), so `rig -p "…"` and the agent binary run
+/// alone agree on them.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// The terminal view, or no view at all without one.
+    #[default]
+    Interactive,
+    /// One prompt, then exit: the answer on stdout, or with `json` every
+    /// event as a line of JSON. Text piped in on stdin follows the prompt.
+    Print {
+        /// The prompt; may be empty when stdin is piped.
+        prompt: String,
+        /// Whether stdout gets the JSON event stream instead of the answer.
+        json: bool,
+    },
+    /// Requests as lines of JSON on stdin, events and answers as lines of
+    /// JSON on stdout, until stdin closes.
+    Rpc,
+    /// Runs the tasks of an eval spec across its models, then writes the
+    /// report.
+    Eval {
+        /// The spec file, absolute.
+        spec: PathBuf,
+        /// Whether stdout gets the report as JSON instead of a table.
+        json: bool,
+    },
+}
+
+impl Mode {
+    /// Whether nobody sits at a terminal view: every mode but
+    /// [`Mode::Interactive`].
+    pub fn is_headless(&self) -> bool {
+        !matches!(self, Self::Interactive)
+    }
+
+    /// Whether the run ends by itself: print and eval.
+    pub fn is_one_shot(&self) -> bool {
+        matches!(self, Self::Print { .. } | Self::Eval { .. })
+    }
+}
+
+/// The agent's arguments: its [`Mode`] and the model to start with.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Invocation {
+    /// How it runs.
+    pub mode: Mode,
+    /// A catalog model (`vendor/model`) for the session's first agent, or
+    /// every model of an eval.
+    pub model: Option<String>,
+}
+
+/// The arguments [`Invocation::parse`] takes, for usage texts.
+pub const INVOCATION_USAGE: &str = "\
+  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
+                         Text piped in on stdin follows the prompt.
+  --json                 With --print: every event as a line of JSON instead.
+                         With eval: the report as JSON.
+  --rpc                  Take requests as lines of JSON on stdin and write
+                         events and answers as lines of JSON on stdout.
+  eval <spec.json>       Run an eval spec's tasks across its models.
+  -m, --model <model>    The catalog model (vendor/model) to use.
+";
+
+impl Invocation {
+    /// Reads the agent's arguments, without the program name.
+    pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
+        let mut print = false;
+        let mut json = false;
+        let mut rpc = false;
+        let mut eval: Option<PathBuf> = None;
+        let mut model = None;
+        let mut words: Vec<&str> = Vec::new();
+        let mut args = args.iter().map(AsRef::as_ref);
+        while let Some(arg) = args.next() {
+            match arg {
+                "-p" | "--print" => print = true,
+                "--json" => json = true,
+                "--rpc" => rpc = true,
+                "eval" | "--eval" if eval.is_none() && words.is_empty() && !print => {
+                    let spec = args.next().ok_or("eval needs a spec file")?;
+                    let spec = PathBuf::from(spec);
+                    eval = Some(std::path::absolute(&spec).unwrap_or(spec));
+                }
+                "-m" | "--model" => {
+                    let name = args.next().ok_or("--model needs a vendor/model")?;
+                    model = Some(name.to_owned());
+                }
+                "--" => words.extend(args.by_ref()),
+                flag if flag.starts_with('-') && flag.len() > 1 => {
+                    return Err(format!("unknown option `{flag}`"));
+                }
+                word => words.push(word),
+            }
+        }
+        let mode = match (print || (json && eval.is_none()), rpc, eval) {
+            (false, false, None) if words.is_empty() => Mode::Interactive,
+            (false, false, None) => {
+                return Err("a prompt needs --print (-p)".to_owned());
+            }
+            (true, false, None) => Mode::Print {
+                prompt: words.join(" "),
+                json,
+            },
+            (false, true, None) if words.is_empty() && !json => Mode::Rpc,
+            (false, false, Some(spec)) if words.is_empty() => Mode::Eval { spec, json },
+            _ => return Err("--print, --rpc and eval do not go together".to_owned()),
+        };
+        Ok(Self { mode, model })
+    }
+
+    /// The agent's own arguments, from the process's.
+    pub fn from_env() -> Result<Self, String> {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        Self::parse(&args)
+    }
+
+    /// The arguments that [`Self::parse`] reads back as `self`.
+    pub fn to_args(&self) -> Vec<OsString> {
+        let mut args: Vec<OsString> = Vec::new();
+        if let Some(model) = &self.model {
+            args.extend(["--model".into(), model.into()]);
+        }
+        match &self.mode {
+            Mode::Interactive => {}
+            Mode::Print { prompt, json } => {
+                args.push("--print".into());
+                if *json {
+                    args.push("--json".into());
+                }
+                if !prompt.is_empty() {
+                    args.extend(["--".into(), prompt.into()]);
+                }
+            }
+            Mode::Rpc => args.push("--rpc".into()),
+            Mode::Eval { spec, json } => {
+                args.extend(["eval".into(), spec.into()]);
+                if *json {
+                    args.push("--json".into());
+                }
+            }
+        }
+        args
     }
 }

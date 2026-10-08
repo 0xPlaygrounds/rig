@@ -13,6 +13,11 @@
 //! it ended, for `rig --continue`. The agent's `/new` and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory.
+//!
+//! The agent's arguments ([`Invocation`]) pass through unchanged. A
+//! headless run (`--print`, `--rpc`, `eval`) never becomes the session its
+//! directory resumes, and a one-shot run (`--print`, `eval`) is not
+//! restarted on the reload code.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
@@ -20,7 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, ExitStatus};
 use std::time::Duration;
 
-use rig::code_protocol::{Home, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
+use rig::code_protocol::{Home, Invocation, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
 
 use super::build::{self, Staging};
 use super::{Result, home};
@@ -44,14 +49,15 @@ pub enum Start {
 
 /// Runs the agent until it exits with anything but the reload code, and
 /// returns its exit code.
-pub fn run(home: &Home, start: Start) -> Result<ExitCode> {
+pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
+    let headless = invocation.mode.is_headless();
     let (mut claimed, mut notice) = {
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         home::sweep(home)?;
-        let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
+        let (claimed, claim_notice) = claim(home, start, here.as_deref(), !headless)?;
         let built = rebuild(home, &claimed.id)?;
         let notice: Vec<String> = claim_notice.into_iter().chain(built).collect();
         (claimed, (!notice.is_empty()).then(|| notice.join("\n")))
@@ -67,6 +73,7 @@ pub fn run(home: &Home, start: Start) -> Result<ExitCode> {
         remove_if_present(&ready)?;
         let mut command = Command::new(binary.path());
         command
+            .args(invocation.to_args())
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
@@ -101,17 +108,22 @@ pub fn run(home: &Home, start: Start) -> Result<ExitCode> {
             build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
-        if status.code() == Some(i32::from(RELOAD_EXIT_CODE)) {
+        let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
+        if reload && !invocation.mode.is_one_shot() {
             if let Some(target) = take_switch(&directory)? {
-                (claimed, notice) = switch(home, claimed, target)?;
+                (claimed, notice) = switch(home, claimed, target, !headless)?;
             }
             continue;
         }
-        if !rejected && status.success() {
-            claimed.forget()?;
+        if !rejected && (status.success() || headless) {
+            if status.success() {
+                claimed.forget()?;
+            }
             return Ok(exit_code(status));
         }
-        restore_terminal();
+        if !headless {
+            restore_terminal();
+        }
         if !rejected {
             eprintln!(
                 "The agent stopped ({status}). Run `rig` here again to resume the session \
@@ -159,10 +171,15 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 /// The current session quit cleanly, so its directory no longer resumes
 /// it, and a build `/reload` staged for it goes with the switch. When the
 /// target cannot be run, the current session carries on, told why.
-fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
+fn switch(
+    home: &Home,
+    current: Claimed,
+    target: Start,
+    mark: bool,
+) -> Result<(Claimed, Option<String>)> {
     let _lock = home::lock(home)?;
     let here = current.directory.clone();
-    match claim(home, target, here.as_deref()) {
+    match claim(home, target, here.as_deref(), mark) {
         Ok((next, notice)) => {
             current.forget()?;
             match fs::rename(home.staged_for(&current.id), home.staged_for(&next.id)) {
@@ -218,8 +235,14 @@ fn named_session(home: &Home, marker: Option<&Path>) -> Option<SessionId> {
 /// The session to run for `start` from the working directory `here`, held
 /// locked, and the line the agent shows about it. Its directory's markers
 /// then name it, unless the resume marker names a session another launcher
-/// runs. Call it holding [`home::lock`].
-fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
+/// runs. A headless run passes `mark` false: its directory's resume marker
+/// is left alone. Call it holding [`home::lock`].
+fn claim(
+    home: &Home,
+    start: Start,
+    here: Option<&Path>,
+    mark: bool,
+) -> Result<(Claimed, Option<String>)> {
     let resume_marker = here.map(|here| home.resume_marker(here));
     let (id, lock, notice) = match start {
         Start::Default => match named_session(home, resume_marker.as_deref()) {
@@ -277,6 +300,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
     };
     let marker = directory
         .as_deref()
+        .filter(|_| mark)
         .map(|directory| home.resume_marker(directory));
     if let Some(directory) = &directory {
         write_atomic(&home.last_marker(directory), id.as_str())?;

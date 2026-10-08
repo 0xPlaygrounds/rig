@@ -258,6 +258,40 @@ as `mcp__<server>__<tool>` and follow the server's list as it changes. `/mcp`
 lists the servers and their tools, and `/mcp restart <server>` starts one
 again. A server's standard error goes to the session log.
 
+Without the terminal view, `rig -p "fix the failing test"` answers one prompt
+and exits: the answer goes to stdout, failures to stderr, and the exit code is
+0 when the turn ended with an answer. Text piped in follows the prompt
+(`git diff | rig -p "review this"`), `-m vendor/model` picks the model (else
+the session's, else the first one with a key), and `-c` continues this
+directory's last session instead of starting a new one. `rig -p --json`
+streams every event as a line of JSON instead: the session, agents, model
+choices, text and reasoning deltas, each message added to a conversation,
+tool calls and their results, approvals asked, notices and turn ends.
+`rig --rpc` writes the same stream and takes requests as lines of JSON on
+stdin: `{"id": 1, "type": "trigger", "event": "Submit", "value": {"text":
+"hi"}}` triggers any of the app's reflectable request events through Bevy's
+reflection (`Submit`, `FollowUp`, `Interrupt`, `Compact`, `SetModel`,
+`Approve`, `Rewind`, `Fork`, a plugin's own), with `entity` left out for the
+main agent or given as an agent id; `agents`, `messages`, `events`,
+`commands` and `quit` answer what they say. A headless run never becomes the
+session its directory resumes, and in print mode a call the approval policy
+would ask about is refused.
+
+`rig eval spec.json` runs a spec's tasks on several models in one process:
+each trial is an agent of its own working in a fresh copy of the task's
+directory, up to `parallel` at once, scored by the task's `check` command
+passing and by its cost at the catalog's prices:
+
+```json
+{"models": ["anthropic/claude-sonnet-4-5", "openai/gpt-5"], "runs": 2, "parallel": 4,
+ "tasks": [{"name": "fix-parser", "directory": "fixtures/parser", "setup": "git init -q",
+            "prompt": "The parser drops trailing commas. Fix it.", "check": "cargo test -q"}]}
+```
+
+It prints a table per model (checks passed, cost, mean time, tool calls) and
+writes `report.json`, with every trial's agent id for its effects, under the
+session's `eval/`; `--json` prints the report instead.
+
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,

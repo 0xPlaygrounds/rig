@@ -38,6 +38,7 @@ use super::compaction::Compacted;
 use super::inbox::Recalled;
 use super::save::ReflectSaved;
 use super::usage::Spending;
+use super::workdir::WorkDir;
 
 /// Characters of a message shown in a checkpoint's label.
 const LABEL_CHARS: usize = 72;
@@ -657,6 +658,7 @@ pub(crate) fn on_fork(
     fork: On<Fork>,
     agents: ForkQuery,
     policies: Query<&Policy>,
+    dirs: Query<&WorkDir>,
     mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
@@ -714,6 +716,9 @@ pub(crate) fn on_fork(
     }
     if let Ok(policy) = policies.get(agent) {
         forked.insert(policy.clone());
+    }
+    if let Ok(dir) = dirs.get(agent) {
+        forked.insert(dir.clone());
     }
     let forked = forked.id();
     commands.trigger(Focus { entity: forked });

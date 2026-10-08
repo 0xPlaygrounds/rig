@@ -17,6 +17,7 @@ use similar::TextDiff;
 
 use super::{MAX_BYTES, MAX_LINES, clip, read_text, write_atomic};
 use crate::core::blocking::blocking;
+use crate::core::workdir;
 
 /// Lines of unchanged context around each hunk of the returned diff.
 const CONTEXT: usize = 3;
@@ -91,7 +92,8 @@ impl PortableTool for Edit {
 }
 
 fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
-    let path = args.path.as_str();
+    let resolved = workdir::resolve(&args.path);
+    let path = resolved.as_str();
     if args.edits.is_empty() {
         return Err(ToolExecutionError::invalid_args(format!(
             "`edits` is empty, so {path} was not changed; give at least one \

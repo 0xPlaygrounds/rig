@@ -15,6 +15,7 @@ use serde_json::json;
 
 use super::{MAX_BYTES, MAX_LINES};
 use crate::core::blocking::blocking;
+use crate::core::workdir;
 use crate::host::process::{detach, kill_group};
 
 const DEFAULT_TIMEOUT: u64 = 120;
@@ -129,6 +130,9 @@ fn run(
     // itself, must not act as this agent.
     for name in rig::code_protocol::env::AGENT_ONLY {
         command.env_remove(name);
+    }
+    if let Some(dir) = workdir::current() {
+        command.current_dir(&*dir);
     }
     detach(&mut command);
     let spawned = command.spawn();

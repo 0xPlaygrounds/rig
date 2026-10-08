@@ -1,0 +1,227 @@
+//! `--print`: one prompt to the primary agent, then exit. Without `--json`
+//! the answer's text goes to stdout and failures to stderr; the exit code
+//! is 0 when the turn ended with an answer, 1 otherwise. Text piped in on
+//! stdin follows the prompt, so `git diff | rig -p "review this"` works.
+//!
+//! The agent uses `--model`, else the model its restored session chose,
+//! else the first model the environment has a key for.
+
+use std::io::{IsTerminal, Read as _};
+
+use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
+use rig_core::completion::{AssistantContent, Message};
+use serde_json::json;
+
+use super::{PrimaryQuery, RunMode, emit, primary};
+use crate::core::agent::{
+    ActiveTurn, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
+};
+use crate::core::models;
+
+/// Frames to wait for a model to connect before giving up.
+const CONNECT_FRAMES: u32 = 3;
+
+/// Sends the prompt and exits when the turn ends.
+pub(super) struct PrintPlugin {
+    pub(super) prompt: String,
+    pub(super) json: bool,
+}
+
+impl Plugin for PrintPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(PrintRun {
+            prompt: self.prompt.clone(),
+            json: self.json,
+            step: Step::Start,
+            failed: false,
+        })
+        .add_systems(Update, (print_notices, drive).chain());
+    }
+}
+
+/// Where the print run is.
+#[derive(Resource)]
+struct PrintRun {
+    prompt: String,
+    json: bool,
+    step: Step,
+    /// Whether an error notice about the agent came while it ran.
+    failed: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Step {
+    /// Nothing done yet.
+    Start,
+    /// A model was chosen for `agent`; waiting `frames` more for it to
+    /// connect.
+    Connecting { agent: Entity, frames: u32 },
+    /// The prompt went to `agent`, whose conversation had `before`
+    /// messages.
+    Sent { agent: Entity, before: usize },
+    /// Exited.
+    Done,
+}
+
+/// The prompt with what was piped in on stdin after it.
+fn full_prompt(prompt: &str) -> String {
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return prompt.to_owned();
+    }
+    let mut piped = String::new();
+    if stdin.lock().read_to_string(&mut piped).is_err() || piped.trim().is_empty() {
+        return prompt.to_owned();
+    }
+    if prompt.trim().is_empty() {
+        piped
+    } else {
+        format!("{prompt}\n\n{piped}")
+    }
+}
+
+/// Chooses the model, sends the prompt, and exits after the turn.
+#[allow(clippy::too_many_arguments)]
+fn drive(
+    mut run: ResMut<PrintRun>,
+    mode: Res<RunMode>,
+    agents: PrimaryQuery,
+    models_of: Query<(Option<&ModelChoice>, Has<Connection>, Has<ActiveTurn>)>,
+    conversations: Query<&Conversation>,
+    mut commands: Commands,
+    mut exits: MessageWriter<AppExit>,
+) {
+    match run.step {
+        Step::Start => {
+            let Some(agent) = primary(&agents) else {
+                return;
+            };
+            let Ok((chosen, connected, _)) = models_of.get(agent) else {
+                return;
+            };
+            let model = match (&mode.0.model, chosen) {
+                (Some(model), _) => Some(model.clone()),
+                (None, Some(_)) if connected => None,
+                (None, Some(chosen)) => Some(chosen.0.clone()),
+                (None, None) => match models::available_models().first() {
+                    Some(spec) => Some(models::reference(spec)),
+                    None => {
+                        eprintln!(
+                            "rig: no model can be reached: set a provider's API key, or name one \
+                             with --model"
+                        );
+                        run.step = Step::Done;
+                        exits.write(AppExit::from_code(1));
+                        return;
+                    }
+                },
+            };
+            if let Some(model) = model {
+                commands.trigger(SetModel {
+                    entity: agent,
+                    model,
+                });
+            }
+            run.step = Step::Connecting {
+                agent,
+                frames: CONNECT_FRAMES,
+            };
+        }
+        Step::Connecting { agent, frames } => {
+            let connected = models_of
+                .get(agent)
+                .is_ok_and(|(_, connected, _)| connected);
+            if !connected {
+                if frames == 0 {
+                    run.step = Step::Done;
+                    exits.write(AppExit::from_code(1));
+                } else {
+                    run.step = Step::Connecting {
+                        agent,
+                        frames: frames - 1,
+                    };
+                }
+                return;
+            }
+            let text = full_prompt(&run.prompt);
+            if text.trim().is_empty() {
+                eprintln!("rig: no prompt: give one after --print, or pipe it in");
+                run.step = Step::Done;
+                exits.write(AppExit::from_code(2));
+                return;
+            }
+            let before = conversations.get(agent).map_or(0, |c| c.0.len());
+            commands.trigger(Submit {
+                entity: agent,
+                text,
+            });
+            run.step = Step::Sent { agent, before };
+        }
+        Step::Sent { agent, before } => {
+            // The turn starts with the request; a command may start none.
+            if models_of.get(agent).is_ok_and(|(.., busy)| busy) {
+                return;
+            }
+            let answer = conversations
+                .get(agent)
+                .ok()
+                .filter(|conversation| conversation.0.len() > before)
+                .and_then(|conversation| conversation.0.last())
+                .and_then(answer_text);
+            let ok = !run.failed || answer.is_some();
+            if run.json {
+                emit(&json!({"type": "done", "ok": ok}));
+            } else if let Some(answer) = &answer {
+                println!("{}", answer.trim_end());
+            }
+            run.step = Step::Done;
+            exits.write(if ok {
+                AppExit::Success
+            } else {
+                AppExit::from_code(1)
+            });
+        }
+        Step::Done => {}
+    }
+}
+
+/// The text of a final answer: the model's last message, with no tool
+/// calls left to run.
+fn answer_text(message: &Message) -> Option<String> {
+    let Message::Assistant(reply) = message else {
+        return None;
+    };
+    let mut text = String::new();
+    for part in &reply.content {
+        match part {
+            AssistantContent::Text(part) => text.push_str(&part.text),
+            AssistantContent::ToolCall(_) => return None,
+            _ => {}
+        }
+    }
+    Some(text)
+}
+
+/// Notes failures, and without `--json` writes them to stderr, with every
+/// notice of a `/command` prompt.
+fn print_notices(mut run: ResMut<PrintRun>, mut notices: MessageReader<Notice>) {
+    // A command's answers are its notices.
+    let command = run.prompt.trim_start().starts_with('/');
+    for notice in notices.read() {
+        if notice.level != NoticeLevel::Error {
+            if command && !run.json {
+                eprintln!("{}", notice.text);
+            }
+            continue;
+        }
+        if let Step::Sent { agent, .. } | Step::Connecting { agent, .. } = run.step
+            && notice.agent.is_none_or(|about| about == agent)
+        {
+            run.failed = true;
+        }
+        if !run.json {
+            eprintln!("rig: {}", notice.text);
+        }
+    }
+}

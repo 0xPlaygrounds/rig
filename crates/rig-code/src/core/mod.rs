@@ -21,6 +21,7 @@ pub mod subagents;
 pub mod tools;
 pub mod turn;
 pub mod usage;
+pub mod workdir;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -81,6 +82,7 @@ impl Plugin for AgentPlugin {
                 ),
             )
             .add_observer(approval::give_policy)
+            .add_observer(workdir::inherit_workdir)
             .add_observer(approval::on_approve)
             .add_observer(turn::on_submit)
             .add_observer(turn::on_call_model)

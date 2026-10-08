@@ -23,10 +23,11 @@ use std::sync::Mutex;
 
 use bevy_app::prelude::*;
 use bevy_log::{info, warn};
-use rig::code_protocol::Home;
+use rig::code_protocol::{Home, Mode};
 
 use crate::core::rewind::{FileSnapshots, Restored, Snapshots};
 use crate::core::save::SessionPaths;
+use crate::host::headless::RunMode;
 
 /// Keeps snapshots of the working tree for rewinds, when the agent runs in
 /// a git work tree and git is installed. Added by
@@ -39,6 +40,14 @@ impl Plugin for SnapshotPlugin {
         let Some(paths) = app.world().get_resource::<SessionPaths>().cloned() else {
             return;
         };
+        // An eval's trials work in directories of their own, not this one.
+        if app
+            .world()
+            .get_resource::<RunMode>()
+            .is_some_and(|mode| matches!(mode.mode(), Mode::Eval { .. }))
+        {
+            return;
+        }
         let Some(tree) = std::env::current_dir().ok().and_then(|cwd| work_tree(&cwd)) else {
             info!("not in a git work tree: rewinds leave the files alone");
             return;

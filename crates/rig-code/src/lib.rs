@@ -9,7 +9,8 @@
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
 //! as a third-party plugin registers its own.
 //!
-//! [`RigCodePlugins`] is the agent app: the session, the agent core,
+//! [`RigCodePlugins`] is the agent app: the session, its mode (the
+//! terminal view, or `--print`, `--rpc` or `eval` without one), the agent core,
 //! saving, working-tree snapshots for rewinds, the project context, the launcher protocol, `/reload` and the
 //! session commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
@@ -81,12 +82,15 @@ pub mod prelude {
     pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
     pub use crate::core::usage::{Spending, TurnSpending};
+    pub use crate::core::workdir::WorkDir;
+    pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
     pub use crate::{HeadlessPlugins, RigCodePlugins};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
 }
 
-/// What every rig-code app has: the session, snapshots of the working
+/// What every rig-code app has: the session and its [`RunMode`](host::headless::RunMode)
+/// (with the print, RPC and eval modes), snapshots of the working
 /// tree for rewinds, the agent core and saving, the approval policy new
 /// agents start with (`RIG_HOME/policy.json`),
 /// the project context in the system prompt (`AGENTS.md` and the
@@ -101,6 +105,7 @@ impl PluginGroup for RigCodePlugins {
     fn build(self) -> PluginGroupBuilder {
         let group = PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
+            .add(host::headless::ModePlugin)
             .add(host::snapshots::SnapshotPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)

@@ -11,6 +11,7 @@ use serde_json::json;
 
 use super::{MAX_FILE_BYTES, clip};
 use crate::core::blocking::blocking;
+use crate::core::workdir;
 
 const MAX_MATCHES: usize = 200;
 const MAX_LINE: usize = 300;
@@ -61,7 +62,8 @@ impl PortableTool for Search {
 fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
     let pattern = Regex::new(&args.pattern)
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
-    let root = args.path.as_deref().unwrap_or(".");
+    let root = workdir::resolve(args.path.as_deref().unwrap_or("."));
+    let root = root.as_str();
     let mut walk = WalkBuilder::new(root);
     walk.filter_entry(|entry| entry.file_name() != "target");
     if let Some(glob) = &args.glob {
@@ -106,8 +108,12 @@ fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
     Ok(found.join("\n"))
 }
 
+/// `path` as the model named it: relative to the working directory.
 fn show(path: &Path) -> String {
-    path.strip_prefix("./")
+    let dir = workdir::current();
+    dir.as_deref()
+        .and_then(|dir| path.strip_prefix(dir).ok())
+        .or_else(|| path.strip_prefix("./").ok())
         .unwrap_or(path)
         .display()
         .to_string()

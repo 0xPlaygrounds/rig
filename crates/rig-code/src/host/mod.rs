@@ -4,6 +4,8 @@
 //! The host depends on the core; the core never depends on the host.
 
 pub mod context;
+pub mod eval;
+pub mod headless;
 pub mod launcher;
 #[cfg(feature = "mcp")]
 pub mod mcp;

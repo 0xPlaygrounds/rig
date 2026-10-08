@@ -11,6 +11,7 @@
 //! finished.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
@@ -54,6 +55,7 @@ use super::rewind::{Checkpoint, History, Snapshots};
 use super::subagents::{self, Assignment, Delegates, SubagentOf};
 use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
+use super::workdir::{self, WorkDir};
 
 /// The systems polling running calls, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1055,6 +1057,7 @@ pub(crate) struct ToolStarter<'w, 's> {
             &'static Effort,
             &'static SystemPrompt,
             Option<&'static Policy>,
+            Option<&'static WorkDir>,
         ),
     >,
     lineage: Query<'w, 's, &'static SubagentOf>,
@@ -1081,7 +1084,7 @@ impl ToolStarter<'_, '_> {
     /// `task` call also spawns the subagent that answers it, unless it is
     /// refused.
     fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
-        let Ok((id, access, model, &effort, prompt, policy)) = self.agents.get(agent) else {
+        let Ok((id, access, model, &effort, prompt, policy, dir)) = self.agents.get(agent) else {
             return;
         };
         let name = run.call.function.name.as_str();
@@ -1130,10 +1133,11 @@ impl ToolStarter<'_, '_> {
         let (effect, work) =
             run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);
+        let dir = dir.map(|dir| Arc::from(dir.0.as_path()));
         commands.entity(call).insert(Running::spawn(
             tool_pool(),
             &self.wake,
-            work.instrument(span),
+            workdir::scoped(dir, work).instrument(span),
         ));
         if let Some(plan) = plan {
             subagents::spawn(commands, plan, (agent, id), call, effect);

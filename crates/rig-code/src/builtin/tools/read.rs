@@ -6,6 +6,7 @@ use serde_json::json;
 
 use super::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, clip, read_text};
 use crate::core::blocking::blocking;
+use crate::core::workdir;
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
@@ -54,7 +55,7 @@ impl PortableTool for Read {
 }
 
 fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
-    let text = read_text(&args.path)?;
+    let text = read_text(&workdir::resolve(&args.path))?;
     let first = args.offset.unwrap_or(1).max(1);
     let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
     let total = text.lines().count();

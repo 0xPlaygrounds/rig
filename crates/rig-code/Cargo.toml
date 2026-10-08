@@ -27,7 +27,8 @@ mcp = ["dep:rig-rmcp", "dep:rmcp", "dep:tokio", "dep:http"]
 [dependencies]
 base64 = { workspace = true }
 bevy_app = { workspace = true }
-bevy_ecs = { workspace = true }
+# `serialize`: entities in requests read from JSON (the RPC mode).
+bevy_ecs = { workspace = true, features = ["serialize"] }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }

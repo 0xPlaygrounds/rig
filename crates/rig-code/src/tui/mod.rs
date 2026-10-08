@@ -36,6 +36,14 @@ pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
+        // A print, RPC or eval run has stdout for its own output.
+        if app
+            .world()
+            .get_resource::<crate::host::headless::RunMode>()
+            .is_some_and(crate::host::headless::RunMode::is_headless)
+        {
+            return;
+        }
         renderers::add_builtin_renderers(app);
         app.init_resource::<view::TuiView>()
             .init_resource::<complete::FileIndex>()
