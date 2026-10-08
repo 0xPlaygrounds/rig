@@ -7,16 +7,19 @@
 //! other way (stopped, failed) hands what was typed and not delivered back
 //! to the views as [`Recalled`], so nothing typed is lost or sent unasked,
 //! and puts the subagents' answers in the conversation for the next turn.
+//! A delivered answer is logged with the subagent message it carries, so a
+//! restore knows which answers arrived.
 
 use std::collections::VecDeque;
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::Message;
 
-use super::agent::{ActiveTurn, Agent, Connection, Conversation, Notice, Submit};
+use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Notice, Submit, TurnOf};
 use super::attach;
+use super::journal::{MessageRef, SessionLog};
+use super::turn::CallModel;
 
 /// What was typed to the agent while it worked, not yet sent.
 #[derive(Component, Clone, Debug, Default)]
@@ -27,7 +30,7 @@ pub struct Inbox {
     pub follow_ups: VecDeque<String>,
     /// Answers of the agent's subagents, sent like follow-ups after the
     /// user's.
-    pub reports: VecDeque<String>,
+    pub reports: VecDeque<Answer>,
 }
 
 impl Inbox {
@@ -48,6 +51,15 @@ impl Inbox {
     }
 }
 
+/// A subagent's answer on its way to the agent that started it.
+#[derive(Clone, Debug)]
+pub struct Answer {
+    /// The answer, headed by the subagent's id and task.
+    pub text: String,
+    /// The subagent's message it answers with.
+    pub origin: MessageRef,
+}
+
 /// Send `text` to the agent once its running turn would end, or now when
 /// it is idle. A slash command runs now either way.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
@@ -66,8 +78,8 @@ pub struct FollowUp {
 pub(crate) struct Report {
     /// The agent that started the subagent.
     pub(crate) entity: Entity,
-    /// The answer, headed by the subagent's id and task.
-    pub(crate) text: String,
+    /// The answer.
+    pub(crate) answer: Answer,
 }
 
 /// Messages typed to the agent that its turn ended without sending, joined
@@ -78,6 +90,18 @@ pub struct Recalled {
     pub agent: Entity,
     /// The messages.
     pub text: String,
+}
+
+/// The agent a message goes to, and what adding it needs.
+pub(crate) struct Delivery<'a> {
+    /// The agent.
+    pub(crate) agent: Entity,
+    /// Its id, which names its log.
+    pub(crate) id: &'a AgentId,
+    /// Its model, which decides whether images go with the message.
+    pub(crate) spec: Option<&'static ModelSpec>,
+    /// The log every message goes through.
+    pub(crate) log: &'a SessionLog,
 }
 
 /// Queues a follow-up for a busy agent, or submits it to an idle one.
@@ -104,47 +128,85 @@ pub(crate) fn on_follow_up(
     }
 }
 
-/// Queues a subagent's answer for a busy agent, or submits it to an idle
-/// one.
+/// Queues a subagent's answer for a busy agent, or sends it to an idle one
+/// in a new turn.
 pub(crate) fn on_report(
     report: On<Report>,
-    mut agents: Query<(&mut Inbox, Has<ActiveTurn>), With<Agent>>,
+    mut agents: Query<
+        (
+            &AgentId,
+            &mut Inbox,
+            &mut Conversation,
+            Option<&Connection>,
+            Has<ActiveTurn>,
+        ),
+        With<Agent>,
+    >,
+    log: Res<SessionLog>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
     let agent = report.entity;
-    let Ok((mut inbox, busy)) = agents.get_mut(agent) else {
+    let Ok((id, mut inbox, mut conversation, connection, busy)) = agents.get_mut(agent) else {
         return;
     };
     if busy {
-        inbox.reports.push_back(report.text.clone());
-    } else {
-        commands.trigger(Submit {
-            entity: agent,
-            text: report.text.clone(),
-        });
+        inbox.reports.push_back(report.answer.clone());
+        return;
     }
+    let to = Delivery {
+        agent,
+        id,
+        spec: connection.map(|connection| connection.spec),
+        log: &log,
+    };
+    let answer = report.answer.clone();
+    append_user(
+        &to,
+        &answer.text,
+        Some(answer.origin),
+        &mut conversation,
+        &mut notices,
+    );
+    let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+    commands.trigger(CallModel { entity: turn });
 }
 
 /// Hands back what the user typed that a turn that just ended did not
 /// send, and puts the subagents' answers it did not send in the
-/// conversation, where the next turn reads them.
+/// conversation, where the next turn reads them. A conversation left
+/// ending in the user's message is logged as halted, so a restore does not
+/// answer it.
 pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
-    mut agents: Query<(&mut Inbox, &mut Conversation, Option<&Connection>)>,
+    mut agents: Query<(&AgentId, &mut Inbox, &mut Conversation, Option<&Connection>)>,
+    log: Res<SessionLog>,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = end.entity;
-    let Ok((mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
+    let Ok((id, mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
         return;
     };
     if !inbox.reports.is_empty() {
-        let spec = connection.map(|connection| connection.spec);
-        let reports: Vec<String> = inbox.reports.drain(..).collect();
-        for text in reports {
-            append_user(agent, &text, &mut conversation.0, spec, &mut notices);
+        let to = Delivery {
+            agent,
+            id,
+            spec: connection.map(|connection| connection.spec),
+            log: &log,
+        };
+        let reports: Vec<Answer> = inbox.reports.drain(..).collect();
+        for answer in reports {
+            append_user(
+                &to,
+                &answer.text,
+                Some(answer.origin),
+                &mut conversation,
+                &mut notices,
+            );
         }
     }
+    log.halt(id, &conversation);
     if !inbox.steering.is_empty() || !inbox.follow_ups.is_empty() {
         recalled.write(Recalled {
             agent,
@@ -158,17 +220,16 @@ pub(crate) fn recall_on_turn_end(
 /// the model waits for, so user and model keep taking turns. Whether there
 /// were any.
 pub(crate) fn deliver_steering(
-    agent: Entity,
+    to: &Delivery<'_>,
     inbox: &mut Inbox,
-    conversation: &mut Vec<Message>,
-    spec: Option<&ModelSpec>,
+    conversation: &mut Conversation,
     notices: &mut MessageWriter<Notice>,
 ) -> bool {
     if inbox.steering.is_empty() {
         return false;
     }
     for text in inbox.steering.drain(..) {
-        append_user(agent, &text, conversation, spec, notices);
+        append_user(to, &text, None, conversation, notices);
     }
     true
 }
@@ -176,41 +237,35 @@ pub(crate) fn deliver_steering(
 /// Moves the oldest follow-up into the conversation, the user's before
 /// the subagents' answers. Whether there was one.
 pub(crate) fn deliver_follow_up(
-    agent: Entity,
+    to: &Delivery<'_>,
     inbox: &mut Inbox,
-    conversation: &mut Vec<Message>,
-    spec: Option<&ModelSpec>,
+    conversation: &mut Conversation,
     notices: &mut MessageWriter<Notice>,
 ) -> bool {
-    let Some(text) = inbox
-        .follow_ups
-        .pop_front()
-        .or_else(|| inbox.reports.pop_front())
-    else {
-        return false;
+    let (text, origin) = match inbox.follow_ups.pop_front() {
+        Some(text) => (text, None),
+        None => match inbox.reports.pop_front() {
+            Some(answer) => (answer.text, Some(answer.origin)),
+            None => return false,
+        },
     };
-    append_user(agent, &text, conversation, spec, notices);
+    append_user(to, &text, origin, conversation, notices);
     true
 }
 
-/// Appends `text` as the user's, into the last message when it is the
-/// user's.
+/// Commits `text` as the user's, with the images it names; it goes into
+/// the last message when that is the user's. `origin` names the subagent
+/// answer it delivers.
 fn append_user(
-    agent: Entity,
+    to: &Delivery<'_>,
     text: &str,
-    conversation: &mut Vec<Message>,
-    spec: Option<&ModelSpec>,
+    origin: Option<MessageRef>,
+    conversation: &mut Conversation,
     notices: &mut MessageWriter<Notice>,
 ) {
-    let (message, notes) = attach::user_message(text, spec);
+    let (message, notes) = attach::user_message(text, to.spec);
     for note in notes {
-        notices.write(Notice::info(agent, note));
+        notices.write(Notice::info(to.agent, note));
     }
-    let Message::User { content: added } = message else {
-        return;
-    };
-    match conversation.last_mut() {
-        Some(Message::User { content }) => content.extend(added),
-        _ => conversation.push(Message::User { content: added }),
-    }
+    to.log.commit(to.id, conversation, message, origin);
 }

@@ -10,8 +10,8 @@
 //! as a third-party plugin registers its own.
 //!
 //! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
-//! terminal view, or `--print` without one), the agent core, saving, the
-//! project context, the launcher protocol, `/reload` and the session
+//! terminal view, or `--print` without one), the agent core, the session
+//! logs, the project context, the launcher protocol, `/reload` and the session
 //! commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
 //! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead: the
@@ -69,9 +69,9 @@ pub mod prelude {
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
     pub use crate::core::compaction::Compacted;
     pub use crate::core::inbox::{FollowUp, Inbox, Recalled};
+    pub use crate::core::journal::ReflectSaved;
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
-    pub use crate::core::save::ReflectSaved;
     pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
     pub use crate::core::usage::{Spending, TurnSpending};
@@ -82,8 +82,8 @@ pub mod prelude {
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
-/// (with the print mode), the agent core and saving, the project context in
-/// the system prompt (`AGENTS.md` and the environment, with `/context`), the
+/// (with the print mode), the agent core and the session logs, the project
+/// context in the system prompt (`AGENTS.md` and the environment, with `/context`), the
 /// launcher protocol, `/reload` and `/new`, `/resume` and `/name`. The tools,
 /// the commands other than `/reload` and the views are plugins of their own, so `plugins.toml`
 /// lists the built-in ones like any other and can leave them out.
@@ -95,7 +95,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(host::session::SessionPlugin)
             .add(host::headless::ModePlugin)
             .add(core::AgentPlugin)
-            .add(core::save::SavePlugin)
+            .add(core::journal::JournalPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)

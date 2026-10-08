@@ -196,14 +196,25 @@ are summarized by the model into a structured checkpoint (goal, progress,
 decisions, next steps, files read and changed) that requests send in their
 place; the newest 20k tokens stay as they are. `/compact` does it now, and
 `/compact <focus>` says what the summary should keep. The summarized messages
-stay in the transcript and the saved session, under a line that shows the
-summary. `/reload` rebuilds the agent
-and restarts it on the same session; it shows cargo's progress, keeps the
+stay in the transcript, under a line that shows the summary; a resumed
+session starts from the messages the summary kept. `/reload` rebuilds the agent
+and restarts it on the same session without waiting for running turns; it
+shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
-the new one crashes during startup. The session is saved after every turn;
-if the agent crashes or the terminal closes, the next `rig` in the same
-directory resumes it. `/quit` ends it. `/new` starts a new session, `/name`
+the new one crashes during startup.
+
+The session is written as it happens. Each agent, subagents included, has an
+append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
+usage and compactions; images are stored once in `blobs/`, and `meta.json`
+caches what `/resume` lists. A tool call that may change something starts
+only once the reply that asked for it is on disk. After a crash, a closed
+terminal or a `/reload`, the next start reads the logs back and settles what
+was left half done: read-only tool calls run again, other unfinished tool
+calls are answered as interrupted by the restart, subagent answers that had
+not arrived are delivered, and a turn that waited on the model carries on.
+If the agent crashes or the terminal closes, the next `rig` in the same
+directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 directory, cost, age) and resumes the one picked, in its own directory;
 `rig --continue` resumes the last session run in the working directory and
@@ -278,7 +289,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
-the prompt history `history.jsonl`, and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
+the prompt history `history.jsonl`, and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
 cache directory. Several `rig` processes can share one `RIG_HOME`.

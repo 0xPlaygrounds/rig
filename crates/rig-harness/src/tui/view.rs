@@ -11,9 +11,9 @@ use crate::core::agent::{
     Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
 };
 use crate::core::inbox::Recalled;
+use crate::core::journal::SessionPaths;
 use crate::core::login::LoginProvider;
 use crate::core::models;
-use crate::core::save::SessionPaths;
 use crate::core::subagents::{self, RosterQuery, SubagentOf};
 use crate::host::reload::ReloadFailed;
 use crate::host::sessions;
@@ -268,7 +268,7 @@ pub(crate) fn collect_notices(
             .agent
             .or(view.agent)
             .and_then(|agent| conversations.get(agent).ok())
-            .map_or(0, |conversation| conversation.0.len());
+            .map_or(0, |conversation| conversation.messages().len());
         view.notices.push(ShownNotice {
             agent: notice.agent,
             after,

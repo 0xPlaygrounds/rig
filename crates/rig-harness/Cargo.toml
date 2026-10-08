@@ -13,7 +13,7 @@ workspace = true
 [features]
 default = ["tui"]
 # The ratatui view. Without it the crate is the agent core alone: the agent
-# loop, tools, effects and saving.
+# loop, tools, effects and the session logs.
 tui = [
     "dep:ratatui",
     "dep:crossterm",
@@ -50,6 +50,8 @@ rig-reqwest = { workspace = true }
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# The names of the images the session logs store.
+sha2 = { workspace = true }
 # The unified diff `edit` returns, and the diffs the terminal view draws.
 similar = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

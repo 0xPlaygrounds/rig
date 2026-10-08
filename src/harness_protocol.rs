@@ -33,6 +33,12 @@ pub mod env {
     pub const AGENT_ONLY: [&str; 3] = [SESSION, LAUNCHER, NOTICE];
 }
 
+/// The extension of an agent log, and of the effect log.
+const AGENT_LOG: &str = ".jsonl";
+
+/// The effect log's file stem, which no agent id takes.
+const EFFECTS: &str = "effects";
+
 /// A session's id: digits and dashes, so it is safe as a path segment. The
 /// launcher makes one per new session; the agent makes its own when it
 /// runs without the launcher.
@@ -232,9 +238,9 @@ fn directory_key(directory: &Path) -> String {
     format!("{key:016x}")
 }
 
-/// A session's directory: the agent's saved state, effect log and text
-/// log, the file that tells the launcher the agent started, and the lock
-/// of the launcher running it.
+/// A session's directory: one append-only log per agent, the listing cache,
+/// the stored images, the effect log and text log, the file that tells the
+/// launcher the agent started, and the lock of the launcher running it.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -244,14 +250,44 @@ impl SessionDir {
         &self.0
     }
 
-    /// The saved agents.
-    pub fn state(&self) -> PathBuf {
-        self.0.join("state.json")
+    /// The log of the agent with the id `agent`: one JSON record per line,
+    /// only ever appended to.
+    pub fn agent_log(&self, agent: &str) -> PathBuf {
+        self.0.join(format!("{agent}{AGENT_LOG}"))
+    }
+
+    /// Every agent log in the directory, in no particular order.
+    pub fn agent_logs(&self) -> Vec<PathBuf> {
+        let Ok(entries) = std::fs::read_dir(&self.0) else {
+            return Vec::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(|name| name.strip_suffix(AGENT_LOG))
+                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
+            })
+            .collect()
+    }
+
+    /// Whether any agent of the session wrote its log, so it can be
+    /// resumed.
+    pub fn is_saved(&self) -> bool {
+        !self.agent_logs().is_empty()
+    }
+
+    /// Content-addressed files the agent logs refer to, such as images:
+    /// `blobs/<sha256>.<ext>`.
+    pub fn blobs(&self) -> PathBuf {
+        self.0.join("blobs")
     }
 
     /// The effect log, one effect record per line.
     pub fn effects(&self) -> PathBuf {
-        self.0.join("effects.jsonl")
+        self.0.join(format!("{EFFECTS}{AGENT_LOG}"))
     }
 
     /// The agent's text log.
@@ -282,10 +318,11 @@ impl SessionDir {
         self.0.join("directory")
     }
 
-    /// What `/resume` lists about the session, as JSON the agent writes
-    /// with each save: its name, title, cost and size.
-    pub fn summary(&self) -> PathBuf {
-        self.0.join("summary.json")
+    /// What `/resume` lists about the session, as JSON the agent rewrites
+    /// at the end of each turn: its name, title, directory, model, cost
+    /// and when it was last updated. The agent logs hold the same facts.
+    pub fn meta(&self) -> PathBuf {
+        self.0.join("meta.json")
     }
 
     /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to

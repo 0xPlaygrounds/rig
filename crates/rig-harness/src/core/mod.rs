@@ -1,8 +1,8 @@
 //! The agent core: agents as entities, the turn loop, subagents, the one
 //! effect dispatch path, the tool and command
-//! registries, models and `/login` sign-ins, and session saving. It depends
-//! on neither the host nor any view: the host fills in what the core needs,
-//! such as [`save::SessionPaths`].
+//! registries, models and `/login` sign-ins, and the session logs. It
+//! depends on neither the host nor any view: the host fills in what the core
+//! needs, such as [`journal::SessionPaths`].
 
 pub mod agent;
 pub mod attach;
@@ -12,11 +12,12 @@ pub mod commands;
 pub mod compaction;
 pub mod effects;
 pub mod inbox;
+pub mod journal;
 pub mod login;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
-pub mod save;
+pub mod restore;
 pub mod subagents;
 pub mod tools;
 pub mod turn;
@@ -30,33 +31,30 @@ use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest, TurnFinished};
 use calls::{Wake, poll_calls};
 use compaction::Summary;
 use effects::Effects;
+use journal::{SessionLog, SessionPaths};
 use recovery::RetryDue;
 use rig_core::message::ToolResult;
-use save::SessionPaths;
 use turn::{ModelReply, PollCalls};
 
 /// Agents, their turn loop, effects, and the tool and command registries.
-/// Spawns one agent at startup when the restored session has none. It sets
-/// no error handler: that is the application's choice.
+/// Spawns one agent at startup when the restored session has none. Its
+/// [`SessionLog`] logs nothing until [`journal::JournalPlugin`] restored
+/// the session. It sets no error handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
-        let log = app
-            .world()
-            .get_resource::<SessionPaths>()
-            .map(|paths| paths.effects());
-        let effects = Effects::continuing(log.as_deref());
+        let paths = app.world().get_resource::<SessionPaths>().cloned();
+        let effects_log = paths.as_ref().map(|paths| paths.effects());
+        let effects = Effects::continuing(effects_log.as_deref());
         app.insert_resource(effects)
+            .insert_resource(SessionLog::new(paths.map(|paths| paths.0)))
             .init_resource::<Wake>()
             .add_message::<Notice>()
             .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
-            .add_systems(
-                Startup,
-                (spawn_first_agent, describe_tools, subagents::link_restored),
-            )
+            .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
                 Update,
                 (
@@ -76,7 +74,6 @@ impl Plugin for AgentPlugin {
                     log_agents,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)
-                        .before(save::save_session)
                         .run_if(on_message::<AppExit>),
                 ),
             )

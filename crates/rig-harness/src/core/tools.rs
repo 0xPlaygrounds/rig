@@ -257,14 +257,15 @@ impl Serve for Unavailable {
 }
 
 /// Run `call` through `handler` on the one dispatch path, recorded with
-/// `parent` (the model call that asked for it) as its parent; with no
+/// `parent` (the model call that asked for it, unknown for a call a restart
+/// runs again) as its parent; with no
 /// handler, the call is answered as unavailable on that same path. A
 /// missing tool, bad arguments, a failure or a panic all become an error
 /// result for the model. Returns the call's effect id and its work.
 pub(crate) fn run_tool_call(
     effects: &Effects,
     scope: &str,
-    parent: EffectId,
+    parent: Option<EffectId>,
     handler: Option<ErasedHandler>,
     call: ToolCall,
 ) -> (EffectId, impl Future<Output = ToolResult> + Send + 'static) {
@@ -274,12 +275,7 @@ pub(crate) fn run_tool_call(
         call.function.invalid_arguments.clone().unwrap_or_else(|| {
             serde_json::Value::Object(call.function.arguments.clone()).to_string()
         });
-    let (id, reply) = effects.dispatch(
-        scope,
-        Some(parent),
-        handler,
-        EffectKind::ToolCall { name, args },
-    );
+    let (id, reply) = effects.dispatch(scope, parent, handler, EffectKind::ToolCall { name, args });
     let outcome = effects.caught(id, async { reply.await.into_outcome().await });
     let work = async move {
         match outcome.await {

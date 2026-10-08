@@ -179,7 +179,7 @@ pub(crate) fn render(
         if let Some((agent, (conversation, compacted, ..))) = shown {
             transcript.update(
                 agent,
-                &conversation.0,
+                conversation.messages(),
                 changed.contains(agent),
                 &by_tool,
                 transcript_area.width,
@@ -189,7 +189,7 @@ pub(crate) fn render(
                 .iter()
                 .filter(|notice| notice.is_for(view.agent))
                 .peekable();
-            for index in 0..conversation.0.len() {
+            for index in 0..conversation.messages().len() {
                 let mut extra = Vec::new();
                 while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
                     notice_lines(notice, &mut extra);
@@ -531,7 +531,7 @@ fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
         inbox
             .follow_ups
             .iter()
-            .chain(&inbox.reports)
+            .chain(inbox.reports.iter().map(|answer| &answer.text))
             .map(|text| ("after this turn", text)),
     );
     for (when, text) in waiting {

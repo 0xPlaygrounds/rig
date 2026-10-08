@@ -9,7 +9,7 @@ use bevy_log::tracing_subscriber::fmt;
 use bevy_log::{BoxedFmtLayer, error};
 use rig::harness_protocol::{Home, SessionId};
 
-use crate::core::save::SessionPaths;
+use crate::core::journal::SessionPaths;
 
 /// The session the launcher names, or a new one when the agent runs
 /// without it, under the launcher's `RIG_HOME`, with its directory
@@ -20,7 +20,7 @@ pub(crate) fn paths_from_env() -> SessionPaths {
         .flatten()
         .unwrap_or_else(SessionId::generate);
     let dir = Home::from_env().session(&id);
-    // A directory that cannot be created shows up as a failed save.
+    // A directory that cannot be created shows up as a failed log write.
     fs::create_dir_all(dir.path()).ok();
     SessionPaths(dir)
 }

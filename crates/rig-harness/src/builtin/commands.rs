@@ -58,7 +58,7 @@ impl Plugin for BuiltinCommandsPlugin {
             agents,
         )
         .add_command("help", "List the commands", help)
-        .add_command("quit", "Save and quit", quit);
+        .add_command("quit", "Quit; the session stays for /resume", quit);
     }
 }
 

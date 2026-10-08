@@ -10,7 +10,7 @@ use bevy_log::error;
 use rig::harness_protocol::env;
 
 use crate::core::agent::Notice;
-use crate::core::save::SessionPaths;
+use crate::core::journal::SessionPaths;
 
 /// Shows the launcher's startup notice and writes the ready file.
 pub struct LauncherPlugin;

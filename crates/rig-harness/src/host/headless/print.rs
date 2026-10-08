@@ -152,7 +152,9 @@ fn drive(
                 exits.write(AppExit::from_code(2));
                 return;
             }
-            let before = conversations.get(agent).map_or(0, |c| c.0.len());
+            let before = conversations
+                .get(agent)
+                .map_or(0, |conversation| conversation.messages().len());
             commands.trigger(Submit {
                 entity: agent,
                 text,
@@ -169,8 +171,8 @@ fn drive(
             let answer = conversations
                 .get(agent)
                 .ok()
-                .filter(|conversation| conversation.0.len() > before)
-                .and_then(|conversation| conversation.0.last())
+                .filter(|conversation| conversation.messages().len() > before)
+                .and_then(|conversation| conversation.messages().last())
                 .and_then(answer_text);
             let ok = !run.failed || answer.is_some();
             if let Some(answer) = &answer {

@@ -1,12 +1,12 @@
 //! A clean exit on SIGINT, SIGTERM and SIGHUP: a signal exits like
 //! `/quit`, so running calls and a `/reload` build are stopped with their
-//! process groups and the session is saved.
+//! process groups and the session logs get their last records.
 //!
 //! Bevy's `TerminalCtrlCHandlerPlugin` force-exits on a second signal
 //! (`references/bevy/crates/bevy_app/src/terminal_ctrl_c_handler.rs:55-59`).
 //! Closing a terminal sends two SIGHUPs within a millisecond, one from the
-//! tty hangup and one from the shell, so that handler skipped the save and
-//! orphaned every child. Here a repeat signal forces the exit only once the
+//! tty hangup and one from the shell, so that handler skipped the last
+//! log writes and orphaned every child. Here a repeat signal forces the exit only once the
 //! clean exit had two seconds to finish. Installing this handler first
 //! also makes Bevy's plugin, if `DefaultPlugins` adds it, skip its own
 //! (`:93-96`).

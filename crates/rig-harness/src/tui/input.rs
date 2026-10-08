@@ -19,7 +19,7 @@ use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetMod
 use crate::core::calls::Wake;
 use crate::core::commands::SlashCommand;
 use crate::core::inbox::FollowUp;
-use crate::core::save::SessionPaths;
+use crate::core::journal::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::sessions::SwitchSession;
 

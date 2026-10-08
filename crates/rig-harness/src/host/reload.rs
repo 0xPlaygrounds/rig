@@ -3,6 +3,11 @@
 //! thread forwards line by line. Until cargo's own `done/total` counter
 //! appears, the build is resolving dependencies and its latest line is the
 //! progress. Quitting during the build kills it with cargo and rustc.
+//!
+//! The restart does not wait for running turns: it exits as a crash would,
+//! after giving running tool calls that may change something a few seconds
+//! to finish, and the new build carries the turns on from the session
+//! logs.
 
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
@@ -19,7 +24,7 @@ use rig::harness_protocol::RELOAD_EXIT_CODE;
 
 use super::launcher;
 use super::process::{detach, kill_group};
-use crate::core::agent::{Notice, TurnOf};
+use crate::core::agent::Notice;
 use crate::core::calls::Wake;
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::turn::PollCalls;
@@ -81,8 +86,7 @@ impl ReloadBuild {
         self.latest.as_deref()
     }
 
-    /// Whether the build succeeded and the restart waits for every agent
-    /// to be idle.
+    /// Whether the build succeeded and the agent restarts on it.
     pub fn is_ready(&self) -> bool {
         self.ready
     }
@@ -214,15 +218,12 @@ fn cargo_progress(line: &str) -> Option<(u32, u32)> {
 
 fn reload(
     In(_): In<CommandArgs>,
-    turns: Query<(), With<TurnOf>>,
     build: Option<Res<ReloadBuild>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let notice = if !turns.is_empty() {
-        "A turn is running. Press Esc to stop it, then /reload.".to_owned()
-    } else if build.is_some() {
+    let notice = if build.is_some() {
         "A rebuild is already running; Esc cancels it.".to_owned()
     } else if let Some(launcher) = launcher::executable() {
         match ReloadBuild::start(&launcher, wake.clone()) {
@@ -287,14 +288,15 @@ fn drain_reload(
     }
 }
 
-/// Exits with [`RELOAD_EXIT_CODE`] once the build is ready and no turn
-/// runs. The session is saved on exit.
+/// Exits with [`RELOAD_EXIT_CODE`] once the build is ready, at most once.
+/// The exit leaves the running turns to the new build.
 fn finish_reload(
     build: Option<Res<ReloadBuild>>,
-    turns: Query<(), With<TurnOf>>,
+    mut exiting: Local<bool>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if build.is_some_and(|build| build.ready) && turns.is_empty() {
+    if !*exiting && build.is_some_and(|build| build.ready) {
+        *exiting = true;
         exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
     }
 }

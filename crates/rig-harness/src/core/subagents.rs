@@ -15,7 +15,9 @@
 //!
 //! Stopping an agent's turn stops only that agent. Despawning an agent
 //! despawns its subagents (`linked_spawn`). A finished subagent stays, so
-//! a view can show its transcript and the user can talk to it.
+//! a view can show its transcript and the user can talk to it. Each
+//! subagent has its own log, whose header names the call that started it;
+//! a restored session links them again by it.
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -25,7 +27,7 @@ use rig_core::effect::{
     EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::ToolCall;
+use rig_core::message::{CallId, ToolCall};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult};
 use serde::Deserialize;
@@ -33,9 +35,9 @@ use serde::Deserialize;
 use super::agent::{
     ActiveTurn, Agent, AgentId, Conversation, Effort, ModelChoice, SystemPrompt, ToolAccess, TurnOf,
 };
-use super::inbox::Report;
+use super::inbox::{Answer, Report};
+use super::journal::{MessageRef, SessionLog};
 use super::models;
-use super::save::ReflectSaved;
 use super::tools::{Footprint, ToolOptions, register_tool};
 use super::turn::CallModel;
 use super::usage::Spending;
@@ -97,25 +99,22 @@ pub struct SubagentOf(pub Entity);
 #[relationship_target(relationship = SubagentOf, linked_spawn)]
 pub struct Subagents(Vec<Entity>);
 
-/// Saved on a subagent: the stable id of the agent that started it and
-/// the task's title. Restoring a session links the two again.
+/// On a subagent: the task's title, as its log's header holds it.
 #[derive(Component, Reflect, Clone, Debug)]
-#[reflect(Component, Clone, Debug, Saved)]
+#[reflect(Component, Clone, Debug)]
 pub struct Delegated {
-    /// The [`AgentId`] of the agent that started it.
-    pub by: String,
     /// The task's short title.
     pub task: String,
 }
 
 /// On a subagent while it works on its task: the `task` call's effect,
 /// which the subagent's model calls are recorded under. The turn end that
-/// sends its answer to the parent takes it; a session that stops first
-/// does not save it, so nothing is sent.
+/// sends its answer to the parent takes it. A restored subagent whose
+/// answer did not arrive gets one again, with no effect.
 #[derive(Component, Debug)]
 pub struct Assignment {
-    /// The `task` call's effect.
-    pub effect: EffectId,
+    /// The `task` call's effect, unknown after a restart.
+    pub effect: Option<EffectId>,
 }
 
 /// Registers the `task` tool, which runs beside the reply's other calls
@@ -221,12 +220,7 @@ pub(crate) fn plan(
     match settle(call, parent, tools) {
         Ok(settled) => {
             let id = AgentId::default();
-            let started = format!(
-                "Started subagent `{}` on \"{}\". It works in the background; its answer \
-                 will arrive as a message when it finishes. Use /agents to watch it.",
-                short(&id),
-                settled.task
-            );
+            let started = started(&id, &settled.task);
             let plan = Plan {
                 id,
                 task: settled.task,
@@ -346,17 +340,28 @@ fn settle(call: &ToolCall, parent: &Parent<'_>, tools: &[(&str, bool)]) -> Resul
     })
 }
 
+/// What a `task` call that started the subagent `id` on `task` answers.
+pub(crate) fn started(id: &AgentId, task: &str) -> String {
+    format!(
+        "Started subagent `{}` on \"{task}\". It works in the background; its answer \
+         will arrive as a message when it finishes. Use /agents to watch it.",
+        short(id)
+    )
+}
+
 /// The first characters of an agent's id, enough to tell agents apart.
 fn short(id: &AgentId) -> &str {
     id.0.get(..8).unwrap_or(&id.0)
 }
 
-/// Spawns the subagent of `plan` for the `task` call of `parent` whose
-/// effect is `effect`, and starts its turn.
+/// Spawns the subagent of `plan` for the `task` call `call` of `parent`
+/// whose effect is `effect`, starts its log and its turn.
 pub(crate) fn spawn(
     commands: &mut Commands,
+    log: &SessionLog,
     plan: Plan,
     parent: (Entity, &AgentId),
+    call: &CallId,
     effect: EffectId,
 ) {
     let Plan {
@@ -368,22 +373,24 @@ pub(crate) fn spawn(
         tools,
         prompt,
     } = plan;
+    log.open_subagent(&id, parent.1, call, &task);
+    let mut conversation = Conversation::default();
+    log.commit(&id, &mut conversation, Message::user(instructions), None);
     let child = commands
         .spawn((
             Name::new(format!("subagent: {task}")),
             Agent,
             id,
             SubagentOf(parent.0),
-            Delegated {
-                by: parent.1.0.clone(),
-                task,
+            Delegated { task },
+            Assignment {
+                effect: Some(effect),
             },
-            Assignment { effect },
             model,
             effort,
             ToolAccess::Only(tools),
             SystemPrompt(prompt),
-            Conversation(vec![Message::user(instructions)]),
+            conversation,
         ))
         .id();
     let turn = commands.spawn((Name::new("turn"), TurnOf(child))).id();
@@ -394,6 +401,7 @@ pub(crate) fn spawn(
 /// the subagent ends with none of its own subagents still at their tasks:
 /// its final message, or why it has none. A subagent that ends its turn
 /// while its own subagents work answers after their answers carried it on.
+/// Nothing is sent while the app exits: the restart carries the turn on.
 pub(crate) fn answer_on_turn_end(
     end: On<Remove<ActiveTurn>>,
     agents: Query<
@@ -407,42 +415,44 @@ pub(crate) fn answer_on_turn_end(
         With<Assignment>,
     >,
     assigned: Query<(), With<Assignment>>,
+    log: Res<SessionLog>,
     mut commands: Commands,
 ) {
     let agent = end.entity;
     let Ok((id, conversation, delegated, parent, subagents)) = agents.get(agent) else {
         return;
     };
-    if subagents.is_some_and(|subagents| subagents.iter().any(|child| assigned.contains(child))) {
+    if log.is_exiting()
+        || subagents.is_some_and(|subagents| subagents.iter().any(|child| assigned.contains(child)))
+    {
         return;
     }
-    let head = format!("{REPORT_PREFIX}{} \"{}\"", short(id), delegated.task);
-    let text = match final_answer(&conversation.0) {
-        Ok(answer) => format!("{head} finished]\n{answer}"),
-        Err(why) => format!("{head} stopped without an answer]\n{why}"),
-    };
     commands.entity(agent).try_remove::<Assignment>();
     commands.trigger(Report {
         entity: parent.0,
-        text,
+        answer: answer(id, &delegated.task, conversation, &log),
     });
 }
 
-/// Links each restored subagent to the agent that started it again, by
-/// the stable id saved in its [`Delegated`]. One whose parent is gone
-/// stays on its own.
-pub(crate) fn link_restored(
-    subagents: Query<(Entity, &Delegated), Without<SubagentOf>>,
-    agents: Query<(Entity, &AgentId), With<Agent>>,
-    mut commands: Commands,
-) {
-    for (subagent, delegated) in &subagents {
-        if let Some((parent, _)) = agents
-            .iter()
-            .find(|(parent, id)| id.0 == delegated.by && *parent != subagent)
-        {
-            commands.entity(subagent).insert(SubagentOf(parent));
-        }
+/// The answer of the subagent `id` on `task` to the agent that started
+/// it: its final message, or why it has none.
+pub(crate) fn answer(
+    id: &AgentId,
+    task: &str,
+    conversation: &Conversation,
+    log: &SessionLog,
+) -> Answer {
+    let head = format!("{REPORT_PREFIX}{} \"{task}\"", short(id));
+    let text = match final_answer(conversation.messages()) {
+        Ok(answer) => format!("{head} finished]\n{answer}"),
+        Err(why) => format!("{head} stopped without an answer]\n{why}"),
+    };
+    Answer {
+        text,
+        origin: MessageRef {
+            agent: id.0.clone(),
+            seq: log.last_message(id),
+        },
     }
 }
 

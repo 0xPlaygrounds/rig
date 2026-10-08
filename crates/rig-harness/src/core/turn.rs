@@ -10,6 +10,7 @@
 //! the turn ends it, and the agent's [`ActiveTurn`] going away reports it
 //! finished.
 
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
@@ -19,7 +20,7 @@ use bevy_log::info_span;
 use bevy_log::tracing::Instrument;
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use futures::{FutureExt, StreamExt};
 use rig_core::catalog::ModelSpec;
@@ -43,7 +44,8 @@ use super::compaction::{
     self, CompactReason, Compacted, MAX_COMPACTIONS, Summarize, Summarizing, Summary,
 };
 use super::effects::Effects;
-use super::inbox::{Inbox, deliver_follow_up, deliver_steering};
+use super::inbox::{Delivery, Inbox, deliver_follow_up, deliver_steering};
+use super::journal::SessionLog;
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
@@ -105,6 +107,7 @@ pub(crate) fn on_submit(
     submit: On<Submit>,
     mut agents: Query<
         (
+            &AgentId,
             &mut Conversation,
             &mut Inbox,
             Option<&Connection>,
@@ -113,6 +116,7 @@ pub(crate) fn on_submit(
         With<Agent>,
     >,
     slash: Query<(Entity, &SlashCommand)>,
+    log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -147,7 +151,7 @@ pub(crate) fn on_submit(
         }
         return;
     }
-    let Ok((mut conversation, mut inbox, connection, busy)) = agents.get_mut(agent) else {
+    let Ok((id, mut conversation, mut inbox, connection, busy)) = agents.get_mut(agent) else {
         return;
     };
     // A message to a busy agent steers its turn.
@@ -159,14 +163,8 @@ pub(crate) fn on_submit(
     for note in notes {
         notices.write(Notice::info(agent, note));
     }
-    // After a failure that kept the user's message, the conversation ends with the user's: the new text joins
-    // it, so user and model keep taking turns.
-    match (conversation.0.last_mut(), message) {
-        (Some(Message::User { content }), Message::User { content: added }) => {
-            content.extend(added);
-        }
-        (_, message) => conversation.0.push(message),
-    }
+    // After a failure that kept the user's message, the new text joins it.
+    log.commit(id, &mut conversation, message, None);
     let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
     commands.trigger(CallModel { entity: turn });
 }
@@ -187,7 +185,7 @@ pub(crate) fn on_retry(
         notices.write(Notice::info(agent, "A turn is running."));
         return;
     }
-    if !matches!(conversation.0.last(), Some(Message::User { .. })) {
+    if !matches!(conversation.messages().last(), Some(Message::User { .. })) {
         notices.write(Notice::info(
             agent,
             "Nothing to retry: the model answered the last message.",
@@ -203,28 +201,46 @@ pub(crate) fn on_turn_end(end: On<Remove<ActiveTurn>>, mut finished: MessageWrit
     finished.write(TurnFinished { agent: end.entity });
 }
 
-/// Stops a running turn. Every tool call of the last reply gets a result,
-/// real or "interrupted", and despawning the turn cancels its calls.
+/// Stops a running turn. The text a streaming reply had sent is kept as
+/// the model's message, every tool call of the last reply gets a result,
+/// real or "interrupted", and despawning the turn cancels its calls. The
+/// outcome is written to the log at once, so a log that ends mid-turn
+/// always means a crash or a restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
-    mut agents: Query<(&mut Conversation, &ActiveTurn)>,
+    mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
     turns: Query<&Calls>,
     runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>)>,
+    partials: Query<&Partial, With<ModelCall>>,
+    log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = interrupt.entity;
-    let Ok((mut conversation, active)) = agents.get_mut(agent) else {
+    let Ok((id, mut conversation, active)) = agents.get_mut(agent) else {
         return;
     };
     let turn = active.turn();
-    let runs = turns
+    let calls: Vec<Entity> = turns
         .get(turn)
-        .into_iter()
-        .flat_map(|calls| runs.iter_many(calls.iter()).flatten());
-    conversation
-        .0
-        .extend(stopped_results(runs, "interrupted by the user"));
+        .map(|calls| calls.iter().collect())
+        .unwrap_or_default();
+    let aborted: String = partials
+        .iter_many(calls.iter().copied())
+        .flatten()
+        .map(|partial| partial.text.as_str())
+        .collect();
+    if !aborted.trim().is_empty() {
+        log.commit(id, &mut conversation, Message::assistant(aborted), None);
+    }
+    if let Some(results) = stopped_results(
+        runs.iter_many(calls.iter().copied()).flatten(),
+        "interrupted by the user",
+    ) {
+        log.commit(id, &mut conversation, results, None);
+    }
+    log.halt(id, &conversation);
+    log.flush();
     commands.entity(turn).despawn();
     notices.write(Notice::info(agent, "Interrupted."));
 }
@@ -232,7 +248,7 @@ pub(crate) fn on_interrupt(
 /// The results of a stopped reply's tool calls, in call order: each
 /// finished call's result, and an error saying `why` for the others. `None`
 /// when the reply made no calls.
-pub(crate) fn stopped_results<'a>(
+fn stopped_results<'a>(
     runs: impl Iterator<Item = (&'a ToolCallRun, Option<&'a Done<ToolResult>>)>,
     why: &str,
 ) -> Option<Message> {
@@ -245,36 +261,71 @@ pub(crate) fn stopped_results<'a>(
     (!results.is_empty()).then(|| Message::tool_results(results))
 }
 
-/// The result of a tool call the session stopped before it finished.
-pub(crate) const STOPPED: &str = "the session stopped before this call finished";
-
 /// How long exit waits for running calls to be cancelled. A cancellation
 /// waits for a pool thread to drop the call's future, which records its
 /// effect as cancelled before the last flush; a plugin tool that blocks in
 /// `poll` must not stall the exit, so whatever misses this is dropped.
 const EXIT_GRACE: Duration = Duration::from_secs(1);
 
+/// How long exit waits for running tool calls that may change something to
+/// finish: one cut short can leave a change half made.
+const UNSAFE_GRACE: Duration = Duration::from_secs(5);
+
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
-/// On exit, stops every running turn before the session is saved, so the
-/// saved conversation never ends in unanswered tool calls. Running calls
-/// are cancelled and waited for, within a second for all of them;
-/// every unfinished tool call is answered as stopped.
+/// On exit, which `/reload` and switching sessions go through too, leaves
+/// the running turns for the restart to carry on, as after a crash: model
+/// calls are cancelled, read-only tool calls are cancelled and run again
+/// after the restart, and the other tool calls get [`UNSAFE_GRACE`] to
+/// finish. The results that came in are logged; the restart answers the
+/// rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
-    // A subagent stopped here keeps its transcript and sends no answer.
-    let assigned: Vec<Entity> = world
-        .query_filtered::<Entity, With<Assignment>>()
-        .iter(world)
-        .collect();
-    for agent in assigned {
-        if let Ok(mut agent) = world.get_entity_mut(agent) {
-            agent.remove::<Assignment>();
-        }
+    let log = world.get_resource::<SessionLog>().cloned();
+    if let Some(log) = &log {
+        log.set_exiting();
     }
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
-    take_running::<ToolResult>(world, &mut cancelling);
     take_running::<Summary>(world, &mut cancelling);
+    let tool_calls: Vec<(Entity, bool)> = world
+        .query_filtered::<(Entity, &ToolCallRun), With<Running<ToolResult>>>()
+        .iter(world)
+        .map(|(call, run)| (call, matches!(run.touch, Touch::Read(_))))
+        .collect();
+    let mut finishing: Vec<(Entity, Task<ToolResult>)> = Vec::new();
+    for (call, reads) in tool_calls {
+        let Some(Running(task)) = world
+            .get_entity_mut(call)
+            .ok()
+            .and_then(|mut call| call.take::<Running<ToolResult>>())
+        else {
+            continue;
+        };
+        if reads {
+            cancelling.push(Box::pin(async move {
+                task.cancel().await;
+            }));
+        } else {
+            finishing.push((call, task));
+        }
+    }
+    let mut finished: HashMap<Entity, ToolResult> = HashMap::new();
+    let deadline = Instant::now() + UNSAFE_GRACE;
+    while !finishing.is_empty() && Instant::now() < deadline {
+        finishing.retain_mut(|(call, task)| match check_ready(task) {
+            Some(result) => {
+                finished.insert(*call, result);
+                false
+            }
+            None => true,
+        });
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    for (_, task) in finishing {
+        cancelling.push(Box::pin(async move {
+            task.cancel().await;
+        }));
+    }
     let deadline = Instant::now() + EXIT_GRACE;
     while !cancelling.is_empty() && Instant::now() < deadline {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
@@ -285,15 +336,25 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         .iter(world)
         .map(|(turn, of)| (turn, of.0))
         .collect();
-    let mut runs = world.query::<(&ToolCallRun, Option<&Done<ToolResult>>)>();
+    let mut runs = world.query::<(Entity, Option<&Done<ToolResult>>)>();
     for (turn, agent) in turns {
         let calls: Vec<Entity> = world
             .get::<Calls>(turn)
             .map(|calls| calls.iter().collect())
             .unwrap_or_default();
-        let results = stopped_results(runs.iter_many(world, calls).flatten(), STOPPED);
-        if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
-            conversation.0.extend(results);
+        let results: Vec<ToolResult> = runs
+            .iter_many(world, calls)
+            .flatten()
+            .filter_map(|(call, done)| match done {
+                Some(Done(result)) => Some(result.clone()),
+                None => finished.get(&call).cloned(),
+            })
+            .collect();
+        if !results.is_empty()
+            && let (Some(log), Some(id)) = (&log, world.get::<AgentId>(agent).cloned())
+            && let Some(mut conversation) = world.get_mut::<Conversation>(agent)
+        {
+            log.commit(&id, &mut conversation, Message::tool_results(results), None);
         }
         world.despawn(turn);
     }
@@ -351,13 +412,13 @@ pub(crate) fn on_set_model(
 /// reasoning setting the new model does not take is reset.
 pub(crate) fn on_model_chosen(
     chosen: On<Insert<ModelChoice>>,
-    mut agents: Query<(&ModelChoice, &mut Effort)>,
+    agents: Query<(&ModelChoice, &Effort)>,
     mut effects: ResMut<Effects>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = chosen.entity;
-    let Ok((choice, mut effort)) = agents.get_mut(agent) else {
+    let Ok((choice, effort)) = agents.get(agent) else {
         return;
     };
     let connection = models::resolve(&choice.0)
@@ -385,7 +446,7 @@ pub(crate) fn on_model_chosen(
         format!("Model: {} ({}).", spec.display_name, choice.0),
     ));
     if let Err(refusal) = models::check_effort(spec, effort.0) {
-        effort.0 = None;
+        commands.entity(agent).insert(Effort(None));
         notices.write(Notice::info(
             agent,
             format!("Reasoning reset to default: {refusal}."),
@@ -397,10 +458,11 @@ pub(crate) fn on_model_chosen(
 /// Sets the agent's reasoning setting after checking it against the model.
 pub(crate) fn on_set_effort(
     set: On<SetEffort>,
-    mut agents: Query<(Option<&Connection>, &mut Effort, Has<ActiveTurn>), With<Agent>>,
+    agents: Query<(Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((connection, mut effort, busy)) = agents.get_mut(set.entity) else {
+    let Ok((connection, busy)) = agents.get(set.entity) else {
         return;
     };
     if refused_mid_turn(set.entity, busy, "effort", &mut notices) {
@@ -412,7 +474,7 @@ pub(crate) fn on_set_effort(
     };
     match models::check_effort(connection.spec, set.effort.0) {
         Ok(()) => {
-            *effort = set.effort;
+            commands.entity(set.entity).insert(set.effort);
             notices.write(Notice::info(
                 set.entity,
                 format!("Reasoning: {}.", models::effort_label(set.effort.0)),
@@ -460,6 +522,7 @@ pub(crate) fn on_call_model(
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
     effects: Res<Effects>,
+    log: Res<SessionLog>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -498,8 +561,13 @@ pub(crate) fn on_call_model(
         });
         return;
     }
-    let spec = connection.map(|connection| connection.spec);
-    deliver_steering(agent, &mut inbox, &mut conversation.0, spec, &mut notices);
+    let to = Delivery {
+        agent,
+        id,
+        spec: connection.map(|connection| connection.spec),
+        log: &log,
+    };
+    deliver_steering(&to, &mut inbox, &mut conversation, &mut notices);
     let request = connection
         .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
         .and_then(|connection| {
@@ -513,7 +581,7 @@ pub(crate) fn on_call_model(
             let preamble =
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
-            let messages = compacted.request(&conversation.0);
+            let messages = compacted.request(conversation.messages());
             prepare(messages, connection, effort, preamble, definitions)
                 .map(|request| models::with_cache_key(connection.spec, request, &id.0))
                 .map(|request| (connection.handler.clone(), connection.spec, request))
@@ -522,7 +590,7 @@ pub(crate) fn on_call_model(
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, why));
-            drop_unanswered(agent, &mut conversation, &mut notices);
+            drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
             commands.entity(turn).despawn();
             return;
         }
@@ -530,7 +598,7 @@ pub(crate) fn on_call_model(
     // A subagent's calls are recorded under the `task` call it works on.
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.map(|assignment| assignment.effect),
+        assignment.and_then(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,
@@ -572,12 +640,14 @@ fn must_summarize(
     let used = spent
         .context
         .unwrap_or(0)
-        .max(compacted.estimate(&conversation.0));
+        .max(compacted.estimate(conversation.messages()));
     if !compaction::over_threshold(used, spec) {
         return false;
     }
-    let cleared =
-        recovery::clear_tool_outputs(compacted.live_mut(&mut conversation.0), KEEP_RECENT_OUTPUTS);
+    let cleared = recovery::clear_tool_outputs(
+        compacted.live_mut(conversation.messages_mut()),
+        KEEP_RECENT_OUTPUTS,
+    );
     let left = used.saturating_sub(cleared.tokens);
     if cleared.results > 0 {
         spent.context = Some(left);
@@ -591,7 +661,10 @@ fn must_summarize(
             ),
         ));
     }
-    compaction::over_threshold(left, spec) && compacted.cut(&conversation.0, spec, false).is_some()
+    compaction::over_threshold(left, spec)
+        && compacted
+            .cut(conversation.messages(), spec, false)
+            .is_some()
 }
 
 /// Removes the user's last message when no model answered it, so the next
@@ -599,20 +672,27 @@ fn must_summarize(
 /// asked for them.
 fn drop_unanswered(
     agent: Entity,
+    id: &AgentId,
     conversation: &mut Conversation,
+    log: &SessionLog,
     notices: &mut MessageWriter<Notice>,
 ) {
-    let unanswered = conversation.0.last().is_some_and(|message| {
+    let unanswered = conversation.messages().last().is_some_and(|message| {
         matches!(message, Message::User { content }
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
-        conversation.0.pop();
+        log.retract(id, conversation);
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",
         ));
     }
+}
+
+/// The catalog reference of `spec`, under which the log keeps its usage.
+fn model_name(spec: Option<&ModelSpec>) -> String {
+    spec.map_or_else(|| "unknown".to_owned(), models::reference)
 }
 
 /// The request for the agent's next model call, checked against the
@@ -687,12 +767,13 @@ pub(crate) fn on_model_done(
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(
-        (&mut Conversation, &mut Inbox),
+        (&AgentId, &mut Conversation, &mut Inbox),
         &Compacted,
         Option<&Connection>,
         &mut Spending,
     )>,
     starter: ToolStarter,
+    log: Res<SessionLog>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -705,25 +786,29 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((mut conversation, mut inbox), compacted, connection, mut spent)) =
+    let Ok(((id, mut conversation, mut inbox), compacted, connection, mut spent)) =
         agents.get_mut(agent)
     else {
         return;
     };
+    let spec = connection.map(|connection| connection.spec);
     let response = match reply {
         Ok(response) => {
             // A reply the turn-failure rule rejects was still billed.
             spent.record(&response.usage);
             turn_spent.0.record(&response.usage);
+            log.usage(id, &model_name(spec), &response.usage, spent.context);
             recovery.retries = 0;
             response
         }
         Err(report) => {
             let failed = Failed {
                 agent,
+                id,
                 turn,
                 report,
-                spec: connection.map(|connection| connection.spec),
+                spec,
+                log: &log,
             };
             failed.recover(
                 &mut recovery,
@@ -736,7 +821,9 @@ pub(crate) fn on_model_done(
             return;
         }
     };
-    conversation.0.extend(response.message());
+    if let Some(message) = response.message() {
+        log.commit(id, &mut conversation, message, None);
+    }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
     let failure = turn_failure(
         &response.choice,
@@ -746,24 +833,28 @@ pub(crate) fn on_model_done(
     if let Some(failure) = failure {
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {
-            conversation.0.push(Message::tool_results(
-                tool_calls
-                    .iter()
-                    .map(|tool_call| failed(tool_call, format!("not run: {failure}")))
-                    .collect(),
-            ));
+            let results = tool_calls
+                .iter()
+                .map(|tool_call| failed(tool_call, format!("not run: {failure}")))
+                .collect();
+            log.commit(id, &mut conversation, Message::tool_results(results), None);
         }
         notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
-        drop_unanswered(agent, &mut conversation, &mut notices);
+        drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
         commands.entity(turn).despawn();
         return;
     }
     if tool_calls.is_empty() {
         // What was typed meanwhile carries the turn on: steering first,
         // then one follow-up.
-        let spec = connection.map(|connection| connection.spec);
-        let carried = deliver_steering(agent, &mut inbox, &mut conversation.0, spec, &mut notices)
-            || deliver_follow_up(agent, &mut inbox, &mut conversation.0, spec, &mut notices);
+        let to = Delivery {
+            agent,
+            id,
+            spec,
+            log: &log,
+        };
+        let carried = deliver_steering(&to, &mut inbox, &mut conversation, &mut notices)
+            || deliver_follow_up(&to, &mut inbox, &mut conversation, &mut notices);
         if carried {
             commands.trigger(CallModel { entity: turn });
         } else {
@@ -781,7 +872,7 @@ pub(crate) fn on_model_done(
                 .footprint(call.function.name.as_str())
                 .of(&call.function.arguments),
             call,
-            parent: model_call.effect,
+            parent: Some(model_call.effect),
         };
         let ready = earlier.iter().all(|touch| !run.touch.waits_for(touch));
         earlier.push(run.touch.clone());
@@ -798,10 +889,12 @@ pub(crate) fn on_model_done(
 /// A failed model call of a turn.
 struct Failed<'a> {
     agent: Entity,
+    id: &'a AgentId,
     turn: Entity,
     report: &'a ErrorReport,
     /// The model that failed.
     spec: Option<&'static ModelSpec>,
+    log: &'a SessionLog,
 }
 
 impl Failed<'_> {
@@ -851,9 +944,9 @@ impl Failed<'_> {
                     return;
                 }
                 if recovery.compactions < MAX_COMPACTIONS
-                    && self
-                        .spec
-                        .is_some_and(|spec| compacted.cut(&conversation.0, spec, true).is_some())
+                    && self.spec.is_some_and(|spec| {
+                        compacted.cut(conversation.messages(), spec, true).is_some()
+                    })
                 {
                     recovery.compactions += 1;
                     notices.write(Notice::info(
@@ -913,7 +1006,8 @@ impl Failed<'_> {
     ) -> bool {
         let keep = recovery::keep_for(recovery.clearings);
         recovery.clearings += 1;
-        let cleared = recovery::clear_tool_outputs(compacted.live_mut(&mut conversation.0), keep);
+        let cleared =
+            recovery::clear_tool_outputs(compacted.live_mut(conversation.messages_mut()), keep);
         if cleared.results > 0 {
             notices.write(Notice::info(
                 self.agent,
@@ -936,7 +1030,7 @@ impl Failed<'_> {
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) {
-        drop_unanswered(self.agent, conversation, notices);
+        drop_unanswered(self.agent, self.id, conversation, self.log, notices);
         commands.entity(self.turn).despawn();
     }
 }
@@ -961,9 +1055,10 @@ pub(crate) fn on_tool_done(
     done: On<Add<Done<ToolResult>>>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,
-    mut agents: Query<&mut Conversation>,
+    mut agents: Query<(&AgentId, &mut Conversation)>,
     runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>, Has<Queued>)>,
     starter: ToolStarter,
+    log: Res<SessionLog>,
     mut commands: Commands,
 ) {
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
@@ -972,7 +1067,7 @@ pub(crate) fn on_tool_done(
     let Ok((&TurnOf(agent), calls)) = turns.get(turn) else {
         return;
     };
-    let Ok(mut conversation) = agents.get_mut(agent) else {
+    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
         return;
     };
     // The calls not finished yet, in call order, each holding back the
@@ -996,7 +1091,7 @@ pub(crate) fn on_tool_done(
     if !unfinished.is_empty() {
         return;
     }
-    conversation.0.push(Message::tool_results(results));
+    log.commit(id, &mut conversation, Message::tool_results(results), None);
     commands.entity(turn).despawn_related::<Calls>();
     commands.trigger(CallModel { entity: turn });
 }
@@ -1028,13 +1123,14 @@ pub(crate) struct ToolStarter<'w, 's> {
     >,
     lineage: Query<'w, 's, &'static SubagentOf>,
     effects: Res<'w, Effects>,
+    log: Res<'w, SessionLog>,
     wake: Res<'w, Wake>,
 }
 
 impl ToolStarter<'_, '_> {
     /// What the calls of the tool `name` touch; a tool that is not
     /// registered runs on its own.
-    fn footprint(&self, name: &str) -> Footprint {
+    pub(crate) fn footprint(&self, name: &str) -> Footprint {
         self.tools
             .iter()
             .find(|(def, ..)| def.0.name.as_str() == name)
@@ -1045,7 +1141,15 @@ impl ToolStarter<'_, '_> {
     /// path. A call to a tool that is not registered, or that the agent may
     /// not use, is dispatched and recorded like any other and answered with
     /// an error. A `task` call also spawns the subagent that works on it.
-    fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
+    /// Before a call that may change something, the session log is written,
+    /// so the reply that asked for it is on disk first.
+    pub(crate) fn start(
+        &self,
+        commands: &mut Commands,
+        call: Entity,
+        agent: Entity,
+        run: &ToolCallRun,
+    ) {
         let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
             return;
         };
@@ -1054,6 +1158,9 @@ impl ToolStarter<'_, '_> {
             .tools
             .iter()
             .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name));
+        if !tool.is_some_and(|(_, _, footprint, _)| matches!(footprint, Footprint::Reads { .. })) {
+            self.log.flush();
+        }
         let (handler, plan) = match tool {
             Some((.., true)) => {
                 let parent = subagents::Parent {
@@ -1076,19 +1183,19 @@ impl ToolStarter<'_, '_> {
         };
         let (effect, work) =
             run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
-        let span = info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);
+        let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);
         commands.entity(call).insert(Running::spawn(
             tool_pool(),
             &self.wake,
             work.instrument(span),
         ));
         if let Some(plan) = plan {
-            subagents::spawn(commands, plan, (agent, id), effect);
+            subagents::spawn(commands, &self.log, plan, (agent, id), &run.call.id, effect);
         }
     }
 }
 
-fn tool_name(run: &ToolCallRun) -> Name {
+pub(crate) fn tool_name(run: &ToolCallRun) -> Name {
     Name::new(format!("tool call {}", run.call.function.name.as_str()))
 }
 
@@ -1120,7 +1227,7 @@ pub(crate) fn on_compact(
         return;
     };
     if compacted
-        .cut(&conversation.0, connection.spec, true)
+        .cut(conversation.messages(), connection.spec, true)
         .is_none()
     {
         notices.write(Notice::info(agent, "Nothing to compact yet."));
@@ -1167,11 +1274,11 @@ pub(crate) fn on_summarize(
         .ok_or_else(|| "no model is connected".to_owned())
         .and_then(|connection| {
             let upto = compacted
-                .cut(&conversation.0, connection.spec, true)
+                .cut(conversation.messages(), connection.spec, true)
                 .ok_or_else(|| "nothing to summarize yet".to_owned())?;
             compaction::plan(
                 compacted,
-                &conversation.0,
+                conversation.messages(),
                 upto,
                 connection.spec,
                 reason.clone(),
@@ -1188,7 +1295,7 @@ pub(crate) fn on_summarize(
     };
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.map(|assignment| assignment.effect),
+        assignment.and_then(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,
@@ -1209,14 +1316,21 @@ pub(crate) fn on_summarize(
 }
 
 /// Takes a finished summary: the agent's [`Compacted`] now replaces the
-/// summarized messages with it. A failed summary replaces nothing. Either
-/// way the turn carries on with its model call, or ends when the user
-/// asked for the compaction.
+/// summarized messages with it, and its log records the compaction. A
+/// failed summary replaces nothing. Either way the turn carries on with its
+/// model call, or ends when the user asked for the compaction.
 pub(crate) fn on_summary_done(
     done: On<Add<Done<Summary>>>,
     calls: Query<(&CallOf, &Summarizing, &Done<Summary>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending)>,
-    mut agents: Query<(&Conversation, &mut Compacted, &mut Spending)>,
+    mut agents: Query<(
+        &AgentId,
+        &Conversation,
+        &mut Compacted,
+        &mut Spending,
+        Option<&Connection>,
+    )>,
+    log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1228,7 +1342,7 @@ pub(crate) fn on_summary_done(
     let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((conversation, mut compacted, mut spent)) = agents.get_mut(agent) else {
+    let Ok((id, conversation, mut compacted, mut spent, connection)) = agents.get_mut(agent) else {
         return;
     };
     let summary = reply
@@ -1237,6 +1351,8 @@ pub(crate) fn on_summary_done(
         .and_then(|response| {
             spent.record_aside(&response.usage);
             turn_spent.0.record_aside(&response.usage);
+            let model = model_name(connection.map(|connection| connection.spec));
+            log.usage(id, &model, &response.usage, spent.context);
             compaction::summary_text(response)
         });
     match summary {
@@ -1247,7 +1363,8 @@ pub(crate) fn on_summary_done(
                 read: summarizing.read.clone(),
                 modified: summarizing.modified.clone(),
             };
-            let left = compacted.estimate(&conversation.0);
+            log.compaction(id, &compacted);
+            let left = compacted.estimate(conversation.messages());
             spent.context = Some(left);
             notices.write(Notice::info(
                 agent,

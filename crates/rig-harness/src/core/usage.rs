@@ -1,6 +1,6 @@
 //! What each agent's model calls used and cost, and how full its context is.
 //! Every finished model call adds the usage its provider reported to its
-//! agent's [`Spending`], which is saved, and to its turn's
+//! agent's [`Spending`], which its log keeps by model, and to its turn's
 //! [`TurnSpending`]. rig-core prices a reply its provider did not price at
 //! the model's catalog [`Pricing`](rig_core::catalog::Pricing), so the cost
 //! here is the provider's figure or the catalog's list price.
@@ -17,22 +17,12 @@ use rig_core::completion::Usage;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{AgentId, TurnOf};
-use super::save::ReflectSaved;
 
 /// Model calls' usage summed: tokens by kind, cost and how many calls the
-/// sum holds. An agent's is saved with its session; a turn's is a
-/// [`TurnSpending`].
+/// sum holds. An agent's is logged with its session, by model; a turn's
+/// is a [`TurnSpending`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(
-    opaque,
-    Component,
-    Default,
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    Saved
-)]
+#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Spending {
     /// The token counters summed, with no cost: a call whose provider did
     /// not report a counter adds nothing to it.
@@ -66,6 +56,14 @@ impl Spending {
         if let Some(context) = context_tokens(usage) {
             self.context = Some(context);
         }
+    }
+
+    /// Adds what `other` summed, but not its context.
+    pub fn add(&mut self, other: &Spending) {
+        self.tokens += other.tokens;
+        self.cost += other.cost;
+        self.unpriced += other.unpriced;
+        self.calls += other.calls;
     }
 
     /// Adds the `usage` of a call that did not send the conversation, such

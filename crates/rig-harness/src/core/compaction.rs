@@ -2,8 +2,9 @@
 //! the user asks with `/compact`, its older messages are replaced in
 //! requests by a structured summary the model writes. The messages stay in
 //! the [`Conversation`](super::agent::Conversation), so views still show
-//! them and saving keeps them: an agent's [`Compacted`] says how many of
-//! them requests leave out, and what goes in their place.
+//! them: an agent's [`Compacted`] says how many of them requests leave
+//! out, and what goes in their place. Its log records the compaction, and a
+//! restored session starts from the first message it kept.
 //!
 //! Automatic compaction first clears old tool outputs, which costs no model
 //! call; only when that is not enough does it summarize. The summary is a
@@ -29,7 +30,6 @@ use rig_memory::{HeuristicTokenCounter, TokenCounter};
 use serde::{Deserialize, Serialize};
 
 use super::models;
-use super::save::ReflectSaved;
 
 /// Tokens left free below the model's window: past `window - RESERVE` the
 /// conversation is compacted before the next call (pi's `reserveTokens`).
@@ -48,18 +48,9 @@ const SNIPPET_CHARS: usize = 2_000;
 const DEFAULT_SUMMARIZED_CHARS: usize = 400_000;
 
 /// Which of the agent's messages requests leave out, and the summary sent
-/// in their place. The default leaves out none. Saved with the session.
+/// in their place. The default leaves out none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(
-    opaque,
-    Component,
-    Default,
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    Saved
-)]
+#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Compacted {
     /// How many of the conversation's first messages the summary replaces.
     pub upto: usize,

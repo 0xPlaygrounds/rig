@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use super::compaction::Compacted;
 use super::inbox::Inbox;
 use super::recovery::Recovery;
-use super::save::ReflectSaved;
 use super::tools::Touch;
 use super::usage::{Spending, TurnSpending};
 
@@ -34,7 +33,7 @@ use super::usage::{Spending, TurnSpending};
 )]
 pub struct Agent;
 
-/// The agent's stable id, used in saved state, effect scopes and logs.
+/// The agent's stable id, used in its log's name, effect scopes and logs.
 /// `Entity` ids are not stable across a restart; this one is. It never
 /// changes after spawn.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
@@ -50,17 +49,52 @@ impl Default for AgentId {
 
 /// The conversation: every message sent to and received from the model.
 /// Requests leave out the ones its agent's
-/// [`Compacted`] replaced with a summary.
+/// [`Compacted`] replaced with a summary. Messages are added only through
+/// the [`SessionLog`](super::journal::SessionLog), which logs each one.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
-pub struct Conversation(pub Vec<Message>);
+#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+pub struct Conversation(Vec<Message>);
+
+impl Conversation {
+    /// The messages, oldest first.
+    pub fn messages(&self) -> &[Message] {
+        &self.0
+    }
+
+    /// The messages, to change in place, such as clearing old tool outputs.
+    /// Nothing can be added or taken out through it.
+    pub(crate) fn messages_mut(&mut self) -> &mut [Message] {
+        &mut self.0
+    }
+
+    /// Adds `message`: a user message goes into the last message when that
+    /// is the user's too, such as the tool results the model waits for, so
+    /// user and model keep taking turns. Whether it went into the last one.
+    pub(in crate::core) fn append(&mut self, message: Message) -> bool {
+        match (self.0.last_mut(), message) {
+            (Some(Message::User { content }), Message::User { content: added }) => {
+                content.extend(added);
+                true
+            }
+            (_, message) => {
+                self.0.push(message);
+                false
+            }
+        }
+    }
+
+    /// Takes out the last message.
+    pub(in crate::core) fn retract(&mut self) -> Option<Message> {
+        self.0.pop()
+    }
+}
 
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, and each insert rebuilds the
-/// agent's [`Connection`].
+/// agent's [`Connection`] and logs the agent's settings.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[component(immutable)]
-#[reflect(Component, Clone, Saved)]
+#[reflect(Component, Clone)]
 pub struct ModelChoice(pub String);
 
 /// The connected model of an agent with a [`ModelChoice`]: its catalog
@@ -76,18 +110,13 @@ pub struct Connection {
 }
 
 /// The reasoning setting sent with each request, or `None` for the
-/// provider's default.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(
-    opaque,
-    Component,
-    Default,
-    Clone,
-    Debug,
-    Serialize,
-    Deserialize,
-    Saved
+/// provider's default. It never changes in place: each insert logs the
+/// agent's settings.
+#[derive(
+    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
 )]
+#[component(immutable)]
+#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Effort(pub Option<Reasoning>);
 
 /// The agent's own part of its system prompt: who it is and how it works.
@@ -95,7 +124,7 @@ pub struct Effort(pub Option<Reasoning>);
 /// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
 /// the project's instructions and the environment.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
+#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub struct SystemPrompt(pub String);
 
 impl Default for SystemPrompt {
@@ -123,7 +152,7 @@ impl Default for SystemPrompt {
 
 /// Which registered tools the agent may call.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
+#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]
@@ -199,8 +228,9 @@ pub struct Partial {
 pub struct ToolCallRun {
     /// The call.
     pub call: ToolCall,
-    /// The effect id of the model call that asked for it.
-    pub parent: EffectId,
+    /// The effect id of the model call that asked for it; `None` for a
+    /// call that a restart runs again.
+    pub parent: Option<EffectId>,
     /// What it touches.
     pub(crate) touch: Touch,
 }

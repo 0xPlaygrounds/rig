@@ -7,8 +7,8 @@
 //!
 //! A session belongs to the directory it runs in. Until it quits cleanly
 //! (exit code 0), `resume/<hash of the directory>` names it, so after a
-//! crash, a kill or a closed terminal the next `rig` there resumes it from
-//! its last autosave, unless another launcher still runs it.
+//! crash, a kill or a closed terminal the next `rig` there resumes it where
+//! it stopped, unless another launcher still runs it.
 //! `last/<hash of the directory>` names the last session run there however
 //! it ended, for `rig --continue`. The agent's `/new` and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
@@ -126,7 +126,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         if !rejected {
             eprintln!(
                 "The agent stopped ({status}). Run `rig` here again to resume the session \
-                 from its last autosave. Log: {}",
+                 where it stopped. Log: {}",
                 log.display()
             );
             return Ok(exit_code(status));
@@ -222,13 +222,13 @@ fn names(marker: &Path, session: &SessionId) -> bool {
     fs::read_to_string(marker).is_ok_and(|named| named.trim() == session.as_str())
 }
 
-/// The session a marker file names, when it has saved state.
+/// The session a marker file names, when it has an agent log.
 fn named_session(home: &Home, marker: Option<&Path>) -> Option<SessionId> {
     fs::read_to_string(marker?)
         .ok()
         // A marker that is not a session id cannot name a path elsewhere.
         .and_then(|id| id.trim().parse::<SessionId>().ok())
-        .filter(|id| home.session(id).state().is_file())
+        .filter(|id| home.session(id).is_saved())
 }
 
 /// The session to run for `start` from the working directory `here`, held
@@ -249,7 +249,7 @@ fn claim(
                 Some(lock) => (
                     id,
                     lock,
-                    Some("Resumed this directory's session from its last autosave.".to_owned()),
+                    Some("Resumed this directory's session where it stopped.".to_owned()),
                 ),
                 None => fresh(home)?,
             },
@@ -278,8 +278,8 @@ fn claim(
             }
         }
         Start::Resume(id) => {
-            if !home.session(&id).state().is_file() {
-                return Err(format!("session {id} has no saved state").into());
+            if !home.session(&id).is_saved() {
+                return Err(format!("session {id} has no saved conversation").into());
             }
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;

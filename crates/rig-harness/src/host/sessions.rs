@@ -1,7 +1,7 @@
-//! Sessions beyond the one running: `/new`, `/resume` and `/name`. Each
-//! save also writes the session's [`SessionDir::summary`] (its name, title,
-//! cost and size), which `/resume` lists with the session's directory and
-//! age. Running another session is the launcher's job, so the agent stays
+//! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
+//! of each turn rewrites the session's [`SessionDir::meta`] (its name,
+//! title, directory, model, cost and when it was updated), which `/resume`
+//! lists. Running another session is the launcher's job, so the agent stays
 //! one session per process: it names the next session in
 //! [`SessionDir::switch`] and exits with the reload code, as `/reload`
 //! does, and the launcher starts it in its own directory.
@@ -9,7 +9,7 @@
 use std::cmp::Reverse;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
@@ -26,7 +26,7 @@ use crate::core::agent::{
     Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, TurnFinished, TurnOf,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::save::{SessionPaths, save_session};
+use crate::core::journal::{SessionPaths, now_ms};
 use crate::core::subagents::Delegated;
 use crate::core::usage::{self, Spending};
 
@@ -35,7 +35,8 @@ const TITLE_CHARS: usize = 60;
 /// Most sessions `/resume` lists.
 const LISTED: usize = 200;
 
-/// `/new`, `/resume`, `/name`, and the summary written with each save.
+/// `/new`, `/resume`, `/name`, and the listing cache written at the end of
+/// each turn.
 pub struct SessionsPlugin;
 
 impl Plugin for SessionsPlugin {
@@ -57,9 +58,9 @@ impl Plugin for SessionsPlugin {
             .add_systems(Startup, record_directory)
             .add_systems(
                 Last,
-                write_summary
+                write_meta
                     .in_set(OnAppExitSystems)
-                    .after(save_session)
+                    .after(crate::core::turn::stop_turns_on_exit)
                     .run_if(
                         on_message::<TurnFinished>
                             .or_eager(on_message::<AppExit>)
@@ -74,8 +75,8 @@ impl Plugin for SessionsPlugin {
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct SessionName(pub Option<String>);
 
-/// Run another session: the one named, or a new one. The current session
-/// is saved first. Refused while a turn runs, and without the launcher.
+/// Run another session: the one named, or a new one. Refused while a turn
+/// runs, and without the launcher.
 #[derive(Event, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct SwitchSession {
@@ -83,24 +84,28 @@ pub struct SwitchSession {
     pub session: Option<String>,
 }
 
-/// What a session's `summary.json` holds.
+/// What a session's `meta.json` holds: a cache for listing it, of facts
+/// its agent logs hold too, but for the name.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub struct Summary {
-    /// The name set with `/name`.
-    #[serde(default)]
-    pub name: Option<String>,
+pub struct Meta {
     /// The start of the first message typed.
     #[serde(default)]
     pub title: String,
-    /// What the session's model calls cost, in USD.
+    /// The name set with `/name`.
     #[serde(default)]
-    pub cost: f64,
-    /// The messages of every agent.
+    pub name: Option<String>,
+    /// The working directory it ran in.
     #[serde(default)]
-    pub messages: usize,
+    pub cwd: Option<PathBuf>,
     /// The first agent's model.
     #[serde(default)]
     pub model: Option<String>,
+    /// What the session's model calls cost, in USD.
+    #[serde(default)]
+    pub cost: f64,
+    /// When it was written, in milliseconds since the Unix epoch.
+    #[serde(default)]
+    pub updated: u64,
 }
 
 /// An earlier session, as `/resume` lists it.
@@ -108,11 +113,11 @@ pub struct Summary {
 pub struct SessionEntry {
     /// Its id.
     pub id: SessionId,
-    /// Its summary; empty for a session saved before summaries.
-    pub summary: Summary,
+    /// Its listing cache; empty when no turn of it ended.
+    pub meta: Meta,
     /// The directory it runs in, if known.
     pub directory: Option<PathBuf>,
-    /// When it was last saved.
+    /// When it last changed.
     pub saved: SystemTime,
 }
 
@@ -120,7 +125,7 @@ impl SessionEntry {
     /// One line: age, name or title, directory, cost.
     pub fn label(&self) -> String {
         let age = age(self.saved.elapsed().unwrap_or_default());
-        let title = match (&self.summary.name, self.summary.title.as_str()) {
+        let title = match (&self.meta.name, self.meta.title.as_str()) {
             (Some(name), _) => name.clone(),
             (None, "") => format!("session {}", self.id),
             (None, title) => title.to_owned(),
@@ -129,14 +134,15 @@ impl SessionEntry {
         if let Some(directory) = &self.directory {
             label.push_str(&format!("  · {}", tilde(directory)));
         }
-        if self.summary.cost > 0.0 {
-            label.push_str(&format!("  · {}", usage::dollars(self.summary.cost)));
+        if self.meta.cost > 0.0 {
+            label.push_str(&format!("  · {}", usage::dollars(self.meta.cost)));
         }
         label
     }
 }
 
-/// The saved sessions under `home` other than `current`, newest first.
+/// The sessions under `home` with an agent log, other than `current`,
+/// newest first.
 pub fn list(home: &Home, current: &Path) -> Vec<SessionEntry> {
     let Ok(entries) = fs::read_dir(home.sessions()) else {
         return Vec::new();
@@ -146,18 +152,20 @@ pub fn list(home: &Home, current: &Path) -> Vec<SessionEntry> {
         .filter_map(|entry| {
             let id: SessionId = entry.file_name().to_str()?.parse().ok()?;
             let dir = home.session(&id);
-            if dir.path() == current {
+            if dir.path() == current || !dir.is_saved() {
                 return None;
             }
-            let saved = fs::metadata(dir.state()).ok()?.modified().ok()?;
-            let summary = fs::read(dir.summary())
+            let meta: Option<Meta> = fs::read(dir.meta())
                 .ok()
-                .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-                .unwrap_or_default();
+                .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+            let saved = match &meta {
+                Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
+                None => fs::metadata(dir.path()).ok()?.modified().ok()?,
+            };
             Some(SessionEntry {
                 directory: dir.working_directory(),
                 id,
-                summary,
+                meta: meta.unwrap_or_default(),
                 saved,
             })
         })
@@ -187,17 +195,17 @@ fn tilde(path: &Path) -> String {
     }
 }
 
-/// Reads the name the session was saved with.
+/// Reads the session's name from its listing cache.
 fn restore_name(paths: Option<Res<SessionPaths>>, mut name: ResMut<SessionName>) {
     let Some(paths) = paths else {
         return;
     };
-    if let Some(summary) = fs::read(paths.summary())
+    if let Some(meta) = fs::read(paths.meta())
         .ok()
-        .and_then(|bytes| serde_json::from_slice::<Summary>(&bytes).ok())
+        .and_then(|bytes| serde_json::from_slice::<Meta>(&bytes).ok())
     {
         // Not a change: nothing to write back.
-        name.bypass_change_detection().0 = summary.name;
+        name.bypass_change_detection().0 = meta.name;
     }
 }
 
@@ -217,8 +225,9 @@ fn record_directory(paths: Option<Res<SessionPaths>>) {
     }
 }
 
-/// Writes the session's summary after the save.
-fn write_summary(
+/// Rewrites the session's listing cache, at the end of a turn, on a new
+/// name and on exit, once some agent logged a message.
+fn write_meta(
     paths: Option<Res<SessionPaths>>,
     name: Res<SessionName>,
     agents: Query<
@@ -232,39 +241,39 @@ fn write_summary(
         With<Agent>,
     >,
 ) {
-    let Some(paths) = paths else {
+    let Some(paths) = paths.filter(|paths| paths.is_saved()) else {
         return;
     };
     // The agents the user started come first: the title and model are
     // theirs, not a subagent's.
     let mut agents: Vec<_> = agents.iter().collect();
     agents.sort_by(|a, b| (a.4, &a.0.0).cmp(&(b.4, &b.0.0)));
-    let summary = Summary {
-        name: name.0.clone(),
+    let meta = Meta {
         title: agents
             .iter()
-            .find_map(|(_, conversation, ..)| first_typed(&conversation.0))
+            .find_map(|(_, conversation, ..)| first_typed(conversation.messages()))
             .map(|text| title(&text))
             .unwrap_or_default(),
-        cost: agents.iter().map(|(_, _, spent, ..)| spent.cost).sum(),
-        messages: agents
-            .iter()
-            .map(|(_, conversation, ..)| conversation.0.len())
-            .sum(),
+        name: name.0.clone(),
+        cwd: paths
+            .working_directory()
+            .or_else(|| std::env::current_dir().ok()),
         model: agents
             .first()
             .and_then(|(_, _, _, model, _)| model.map(|model| model.0.clone())),
+        cost: agents.iter().map(|(_, _, spent, ..)| spent.cost).sum(),
+        updated: now_ms(),
     };
-    let written = serde_json::to_vec_pretty(&summary)
+    let written = serde_json::to_vec_pretty(&meta)
         .map_err(|failure| failure.to_string())
         .and_then(|bytes| {
-            let temporary = paths.summary().with_extension("json.tmp");
+            let temporary = paths.meta().with_extension("json.tmp");
             fs::write(&temporary, bytes)
-                .and_then(|()| fs::rename(&temporary, paths.summary()))
+                .and_then(|()| fs::rename(&temporary, paths.meta()))
                 .map_err(|failure| failure.to_string())
         });
     if let Err(failure) = written {
-        error!("could not write the session summary: {failure}");
+        error!("could not write the session's meta.json: {failure}");
     }
 }
 
@@ -296,7 +305,7 @@ fn new(
 ) {
     if conversations
         .iter()
-        .all(|conversation| conversation.0.is_empty())
+        .all(|conversation| conversation.messages().is_empty())
     {
         notices.write(Notice::info(args.agent, "This session is new already."));
         return;
@@ -342,8 +351,7 @@ fn name(
     name.0 = Some(title);
 }
 
-/// Names the next session for the launcher and exits for it; the exit
-/// saves this one.
+/// Names the next session for the launcher and exits for it.
 fn on_switch_session(
     switch: On<SwitchSession>,
     turns: Query<(), With<TurnOf>>,
@@ -388,14 +396,15 @@ fn on_switch_session(
     }
 }
 
-/// `id` when it names a saved session other than the running one.
+/// `id` when it names a session with an agent log other than the running
+/// one.
 fn checked(id: &str, current: &SessionDir) -> Result<SessionId, String> {
     let id: SessionId = id.trim().parse().map_err(|failure| format!("{failure}."))?;
     let dir = Home::from_env().session(&id);
     if dir.path() == current.path() {
         return Err("That is this session.".to_owned());
     }
-    if !dir.state().is_file() {
+    if !dir.is_saved() {
         return Err(format!("No saved session {id}."));
     }
     Ok(id)
