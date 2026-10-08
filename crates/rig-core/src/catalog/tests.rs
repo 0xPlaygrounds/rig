@@ -131,7 +131,8 @@ fn an_override_wins_field_by_field() {
         }}}"#,
     )
     .expect("parses");
-    let catalog = Catalog::from_json(SAMPLE).expect("parses").merge(overrides);
+    let base = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = base.with_overrides(&overrides);
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.max_output_tokens, Some(128_000));
     assert_eq!(claude.context_window, Some(200_000), "kept");
@@ -145,6 +146,32 @@ fn an_override_wins_field_by_field() {
         "Claude Y"
     );
     assert_eq!(catalog.iter().count(), 5);
+
+    assert_eq!(base.iter().count(), 4, "the base is unchanged");
+    assert_eq!(
+        spec(&base, "anthropic", "claude-x").max_output_tokens,
+        Some(64_000)
+    );
+    let shared = |catalog: &Catalog, vendor: &str, model: &str| {
+        let position = catalog.position(vendor, model).expect("listed");
+        Arc::clone(&catalog.entries.get(position).expect("in range").spec)
+    };
+    assert!(
+        Arc::ptr_eq(
+            &shared(&base, "gcp.gemini", "gemini-x"),
+            &shared(&catalog, "gcp.gemini", "gemini-x")
+        ),
+        "a row the override leaves alone is shared, not copied"
+    );
+}
+
+#[test]
+fn cloning_a_catalog_shares_its_rows() {
+    let builtin = Catalog::builtin();
+    let copy = builtin.clone();
+    assert!(Arc::ptr_eq(&builtin.entries, &copy.entries));
+    let unchanged = builtin.with_overrides(&Catalog::default());
+    assert!(Arc::ptr_eq(&builtin.entries, &unchanged.entries));
 }
 
 #[test]
