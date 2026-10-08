@@ -589,3 +589,38 @@ fn raw_tools_count_for_parallel_tool_calls() {
         json!({"type": "auto", "disable_parallel_tool_use": true})
     );
 }
+
+/// A Claude model the catalog says does not reason (an override can say
+/// so) is answered by the shared rule: `Off` sends no thinking, and an
+/// effort or budget is refused because the model does not reason.
+#[test]
+fn a_model_that_does_not_reason_is_answered_by_the_shared_rule() {
+    use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport};
+    use crate::providers::registry::ProviderId;
+
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    let spec = ModelSpec::new(anthropic, CLAUDE_HAIKU_4_5).with_reasoning(ReasoningSupport::None);
+    let wire = wire(CLAUDE_HAIKU_4_5).with_facts(ModelFacts::new(spec));
+
+    let off = sent(
+        &wire,
+        request(GenerationOptions::default().reasoning(Reasoning::Off)),
+        Mode::Unary,
+    )
+    .expect("off is taken");
+    assert_eq!(off.get("thinking"), None, "{off}");
+
+    for reasoning in [Reasoning::Budget { tokens: 1024 }, Effort::High.into()] {
+        match sent(
+            &wire,
+            request(GenerationOptions::default().reasoning(reasoning)),
+            Mode::Unary,
+        ) {
+            Err(ProviderError::UnsupportedOption(option)) => {
+                assert_eq!(option.option, "reasoning");
+                assert_eq!(option.reason, "the model does not reason", "{reasoning:?}");
+            }
+            other => panic!("expected a refusal of {reasoning:?}, got {other:?}"),
+        }
+    }
+}

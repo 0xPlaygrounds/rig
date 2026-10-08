@@ -25,6 +25,14 @@ fn claude_reasoning(
     max_tokens: Option<u64>,
 ) -> Mapping {
     let support = spec.map(|spec| &spec.reasoning);
+    // A model the catalog says does not reason is answered by the shared
+    // rule: nothing to turn off, and nothing else to take.
+    if let Some(support) = support.filter(|support| !support.supported()) {
+        return match support.refusal(reasoning) {
+            Some(reason) => Mapping::unsupported(reason),
+            None => Mapping::Omit("the model does not reason"),
+        };
+    }
     match reasoning {
         Reasoning::Off => match spec {
             Some(spec) if spec.reasoning.can_disable() == Some(false) => {
