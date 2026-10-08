@@ -81,8 +81,9 @@ where
     ///
     /// # Errors
     ///
-    /// [`CheckError::Unsupported`] with every refusal, or
-    /// [`CheckError::Invalid`] when the request cannot be built for another
+    /// [`CheckError::Unsupported`](crate::completion::CheckError::Unsupported)
+    /// with every refusal, or
+    /// [`CheckError::Invalid`](crate::completion::CheckError::Invalid) when the request cannot be built for another
     /// reason.
     pub fn check(
         &self,
