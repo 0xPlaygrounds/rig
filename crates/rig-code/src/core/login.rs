@@ -33,7 +33,7 @@ use rig_core::providers::registry::{ConnectError, ConnectOptions};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::serve::{Dispatch, Reply, Serve};
 
-use super::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice};
+use super::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
 use super::calls::{Done, Running, Wake};
 use super::effects::Effects;
 use super::models;
@@ -72,6 +72,14 @@ impl LoginProvider {
     pub fn title(self) -> &'static str {
         match self {
             Self::ChatGpt => "ChatGPT",
+        }
+    }
+
+    /// The model a fresh sign-in switches to: the plan's latest frontier
+    /// model, first in Codex's own model list.
+    pub fn frontier_model(self) -> &'static str {
+        match self {
+            Self::ChatGpt => "chatgpt/gpt-6.1-sol",
         }
     }
 
@@ -402,15 +410,24 @@ pub(crate) fn on_signed_in(
             notices.write(Notice::info(
                 login.agent,
                 format!(
-                    "Signed in to {title}. /model lists its models; the credential is in {}.",
+                    "Signed in to {title}; switching to {}. /model lists its other models; \
+                     the credential is in {}.",
+                    login.provider.frontier_model(),
                     login.provider.auth_file().display()
                 ),
             ));
             for (agent, choice) in &unconnected {
-                if models::resolve(&choice.0).and_then(LoginProvider::of) == Some(login.provider) {
+                if agent != login.agent
+                    && models::resolve(&choice.0).and_then(LoginProvider::of)
+                        == Some(login.provider)
+                {
                     commands.entity(agent).insert(choice.clone());
                 }
             }
+            commands.trigger(SetModel {
+                entity: login.agent,
+                model: login.provider.frontier_model().to_owned(),
+            });
         }
         Err(why) => {
             notices.write(Notice::error(

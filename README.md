@@ -221,7 +221,8 @@ print the URL or code. Once signed in, `/model` lists the
 plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
 `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
 `gpt-5.6-luna` and `gpt-5.5`, besides the older `gpt-5.4` and `gpt-5.3` rows.
-Esc or a second `/login` cancels a sign-in that waits. The credential is kept
+A successful sign-in switches the agent to the plan's latest frontier model,
+`chatgpt/gpt-6.1-sol`. Esc or a second `/login` cancels a sign-in that waits. The credential is kept
 in `RIG_HOME/auth/chatgpt.json`, readable by you alone, and refreshed before
 a request when it has expired, so a long session keeps working;
 `/logout chatgpt` deletes it. It is rig's own sign-in, separate from the Codex
