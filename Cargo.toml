@@ -169,6 +169,9 @@ exclude = [
     # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
     # Excluding it keeps that subtree out of the workspace lockfile.
     "examples/discord_bot",
+    # Its own workspace: Monty, which it embeds, needs a newer toolchain than
+    # the one this workspace pins.
+    "crates/rig-harness-codemode",
     # Only the frozen release changelog of the removed rig-ecs crate remains;
     # the release PR deletes it.
     "crates/rig-ecs",

@@ -1,0 +1,39 @@
+[package]
+name = "rig-harness-codemode"
+version = "0.44.0"
+edition = "2024"
+license = "MIT"
+description = "Code mode for the rig-harness agent: a `run_code` tool whose Python script, run in the Pydantic Monty sandbox, orchestrates agents and tools."
+repository = "https://github.com/0xPlaygrounds/rig"
+publish = false
+
+# Deliberately its own workspace, and excluded from the root one. Monty 1.1.0
+# declares Rust 1.96 but does not build on it (its JSON string cache iterates
+# `&mut Box<[T; N]>`, which only newer toolchains accept), and the root
+# workspace pins 1.96.0 in rust-toolchain.toml. Kept out, it is neither in the
+# workspace lockfile nor built by CI; the agent builds it when plugins.toml
+# lists it, with a toolchain Monty builds on.
+[workspace]
+
+[lints.clippy]
+dbg_macro = "forbid"
+expect_used = "deny"
+indexing_slicing = "deny"
+panic = "deny"
+todo = "forbid"
+unimplemented = "forbid"
+unreachable = "deny"
+unwrap_used = "deny"
+
+[dependencies]
+bevy_app = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
+bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
+bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
+futures = "0.3"
+# The Python sandbox, in process: the interpreter and its boundary types.
+monty = "1.1"
+monty-types = "1.1"
+rig-core = { path = "../rig-core", version = "0.44.0" }
+rig-harness = { path = "../rig-harness", version = "0.44.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
