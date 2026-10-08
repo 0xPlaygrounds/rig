@@ -77,6 +77,13 @@ pub struct ModelCall {
     snapshot: Receiver<Option<Result<String, String>>>,
 }
 
+impl ModelCall {
+    /// The call's effect id, as `effects.jsonl` records it.
+    pub fn effect(&self) -> EffectId {
+        self.effect
+    }
+}
+
 /// A streamed fragment for [`Partial`].
 enum Delta {
     Text(String),

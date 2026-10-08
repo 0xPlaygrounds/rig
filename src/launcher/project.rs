@@ -15,6 +15,10 @@ use super::{BEVY_VERSION, Result, VERSION};
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-code-agent";
 
+/// rig-code's modules that are off by default, each with the cargo feature
+/// a plugin listed from it turns on.
+const OPTIONAL_VIEWS: [(&str, &str); 1] = [("gui", "gui")];
+
 /// The lock this launcher was built with: the workspace's in a checkout,
 /// the `rig` crate's own when installed from crates.io.
 const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
@@ -104,12 +108,35 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
          [dependencies]\n",
         home.config().display()
     );
+    // rig-code's optional views are cargo features, on only when listed:
+    // the window builds Bevy's renderer.
+    let own_features: Vec<String> = OPTIONAL_VIEWS
+        .iter()
+        .filter(|(module, _)| {
+            config.plugins.iter().any(|plugin| {
+                plugin.package.is_none()
+                    && plugin
+                        .type_path
+                        .strip_prefix("rig_code::")
+                        .and_then(|path| path.strip_prefix(module))
+                        .is_some_and(|rest| rest.starts_with("::"))
+            })
+        })
+        .map(|(_, feature)| quoted(feature))
+        .collect();
+    let own_features = if own_features.is_empty() {
+        String::new()
+    } else {
+        format!(", features = [{}]", own_features.join(", "))
+    };
     match source {
         RigSource::Local(checkout) => text.push_str(&format!(
-            "rig-code = {{ path = {} }}\n",
+            "rig-code = {{ path = {}{own_features} }}\n",
             quoted_path(&checkout.join("crates/rig-code"))
         )),
-        RigSource::Registry => text.push_str(&format!("rig-code = \"={VERSION}\"\n")),
+        RigSource::Registry => text.push_str(&format!(
+            "rig-code = {{ version = \"={VERSION}\"{own_features} }}\n"
+        )),
     }
     // Only a plugin asking for Bevy features makes the project depend on the
     // `bevy` crate, which carries them; rig-code itself uses the `bevy_*`

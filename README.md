@@ -292,6 +292,22 @@ It prints a table per model (checks passed, cost, mean time, tool calls) and
 writes `report.json`, with every trial's agent id for its effects, under the
 session's `eval/`; `--json` prints the report instead.
 
+A window can run beside the terminal, in the same process: list
+`rig_code::gui::GuiPlugin` in `plugins.toml` (the template has it commented
+out) and `/reload`. It shows the agent graph (subagents under the agent that
+started them, forks and eval trials beside it, each with its state, model,
+cost and context), a timeline per agent of every turn, model call, tool call,
+summary and retry wait (queued time dim, time waiting for approval yellow;
+1m, 5m, 30m or all), the selected call's arguments, reply, result and diff,
+the cost by agent and by model call, and buttons that answer approvals; its
+prompt line sends to the shown agent (Enter, Ctrl+Enter queues, Esc stops).
+It is a Bevy UI on winit's reactive loop, woken by the same signal the
+terminal view sleeps on, and an optional cargo feature of rig-code that the
+launcher turns on only when the plugin is listed, since it builds Bevy's
+renderer. X11 is built in; `bevy_features = ["wayland"]` on its entry adds
+native Wayland. Without a display it adds nothing; without the terminal view,
+closing it quits.
+
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,

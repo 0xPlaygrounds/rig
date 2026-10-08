@@ -29,7 +29,8 @@
 //!     App::new()
 //!         .set_error_handler(rig_code::error::warn)
 //!         .add_plugins((RigCodePlugins, HeadlessPlugins))
-//!         // With feature `tui`, `rig_code::tui::TuiPlugin` adds the terminal view.
+//!         // With feature `tui`, `rig_code::tui::TuiPlugin` adds the terminal view;
+//!         // with feature `gui`, `rig_code::gui::GuiPlugin` a window beside it.
 //!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin))
 //!         .run()
 //! }
@@ -37,6 +38,8 @@
 
 pub mod builtin;
 pub mod core;
+#[cfg(feature = "gui")]
+pub mod gui;
 pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;

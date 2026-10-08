@@ -23,9 +23,33 @@ tui = [
 # Tools of MCP servers listed in `RIG_HOME/mcp.json`, through rig-rmcp, on a
 # small tokio runtime of their own.
 mcp = ["dep:rig-rmcp", "dep:rmcp", "dep:tokio", "dep:http"]
+# A window beside the terminal (`rig_code::gui::GuiPlugin`): the agent graph,
+# a timeline of every model and tool call, diffs, cost and approvals. Off by
+# default: it builds Bevy's renderer. The `rig` launcher turns it on when
+# `plugins.toml` lists the plugin; X11 is built in, and `bevy_features =
+# ["wayland"]` on that entry adds native Wayland.
+gui = ["dep:bevy"]
 
 [dependencies]
 base64 = { workspace = true }
+bevy = { workspace = true, optional = true, features = [
+    "std",
+    "multi_threaded",
+    "async_executor",
+    "bevy_asset",
+    "bevy_window",
+    "bevy_winit",
+    "x11",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_ui_widgets",
+    "bevy_text",
+    "default_font",
+    "bevy_picking",
+    "ui_picking",
+] }
 bevy_app = { workspace = true }
 # `serialize`: entities in requests read from JSON (the RPC mode).
 bevy_ecs = { workspace = true, features = ["serialize"] }

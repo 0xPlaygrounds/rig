@@ -30,6 +30,13 @@ plugin = "rig_code::builtin::BuiltinCommandsPlugin"
 [[plugin]]
 plugin = "rig_code::tui::TuiPlugin"
 
+# A window beside the terminal: the agent graph, a timeline of every model and
+# tool call, diffs, cost and approvals. It builds Bevy's renderer, so the first
+# build takes a few minutes. X11 is built in; add "wayland" for native Wayland.
+# [[plugin]]
+# plugin = "rig_code::gui::GuiPlugin"
+# bevy_features = ["wayland"]
+
 # A plugin from another crate:
 # [[plugin]]
 # crate = "rig-hello"               # the package name
