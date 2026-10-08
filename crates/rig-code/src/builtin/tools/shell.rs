@@ -4,8 +4,9 @@ use std::collections::VecDeque;
 use std::io::Read;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::thread::{self, JoinHandle};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use rig_core::tool::{PortableTool, ToolExecutionError};
@@ -19,8 +20,11 @@ use crate::host::process::{detach, kill_group};
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
 /// How long output pipes may stay open after the command exits before the
-/// rest of its process group is killed.
+/// rest of its process group is killed, and how long reading goes on after
+/// that kill.
 const PIPE_GRACE: Duration = Duration::from_millis(100);
+/// How often the command's state is checked while no output arrives.
+const POLL: Duration = Duration::from_millis(20);
 /// Output past which the command is killed. Only the last `MAX_BYTES` are
 /// kept in memory while it runs.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
@@ -139,8 +143,8 @@ fn run(
     let mut child =
         spawned.map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))?;
     leader.store(child.id(), Ordering::SeqCst);
-    let written = Arc::new(AtomicU64::new(0));
-    let output = drain(reader, Arc::clone(&written));
+    let chunks = drain(reader);
+    let mut tail = Tail::default();
     let deadline = Instant::now() + timeout;
     let end = loop {
         let exited = child.try_wait();
@@ -152,8 +156,13 @@ fn run(
             Ok(Some(status)) => break End::Exited(status),
             Ok(None) if stopped.load(Ordering::Relaxed) => break End::Stopped,
             Ok(None) if Instant::now() >= deadline => break End::TimedOut,
-            Ok(None) if written.load(Ordering::Relaxed) > OUTPUT_LIMIT => break End::TooLong,
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
+            Ok(None) => match chunks.recv_timeout(POLL) {
+                Ok(chunk) => tail.push(&chunk),
+                Err(RecvTimeoutError::Timeout) => {}
+                // The command closed its output but still runs.
+                Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+            },
             Err(error) => {
                 kill_group(&mut child);
                 return Err(ToolExecutionError::other(format!(
@@ -164,14 +173,16 @@ fn run(
     };
     leader.store(0, Ordering::SeqCst);
     // After a normal exit, something the command left running in the
-    // background may still hold the output pipes open. Only then is the
-    // group killed: a member is alive, so the group id is still its own and
-    // cannot have been reused.
-    if !matches!(end, End::Exited(_)) || !pipe_closed(&output) {
+    // background may still hold the output pipe open; then the rest of its
+    // group is killed. A process that left the group, such as one started
+    // with `setsid`, survives that and may hold the pipe for good, so
+    // reading stops a moment later with what came.
+    if !matches!(end, End::Exited(_)) || !tail.read_rest(&chunks) {
         kill_group(&mut child);
+        tail.read_rest(&chunks);
     }
     child.wait().ok();
-    let mut output = output.join().map(Tail::text).unwrap_or_default();
+    let mut output = tail.text();
     match end {
         End::Exited(status) => match status.code() {
             Some(code) => output.push_str(&format!("[exit code {code}]")),
@@ -202,23 +213,11 @@ enum End {
     TooLong,
 }
 
-/// Whether the output pipe reached its end within a moment: every process
-/// holding it exited or closed it.
-fn pipe_closed(output: &JoinHandle<Tail>) -> bool {
-    let deadline = Instant::now() + PIPE_GRACE;
-    loop {
-        if output.is_finished() || Instant::now() >= deadline {
-            return output.is_finished();
-        }
-        thread::sleep(Duration::from_millis(5));
-    }
-}
-
-/// Reads the command's output until every writer closed it, keeping only
-/// the last `MAX_BYTES` bytes and counting every byte in `written`.
-fn drain(mut pipe: impl Read + Send + 'static, written: Arc<AtomicU64>) -> JoinHandle<Tail> {
+/// Reads the command's output on a thread of its own, until every writer
+/// closed it or the receiver is gone, and sends it on in chunks.
+fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
+    let (sender, chunks) = sync_channel(16);
     thread::spawn(move || {
-        let mut tail = Tail::default();
         let mut buffer = [0; 8192];
         loop {
             let read = match pipe.read(&mut buffer) {
@@ -227,21 +226,20 @@ fn drain(mut pipe: impl Read + Send + 'static, written: Arc<AtomicU64>) -> JoinH
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 Err(_) => break,
             };
-            written.fetch_add(read as u64, Ordering::Relaxed);
-            tail.bytes.extend(buffer.iter().take(read));
-            let excess = tail.bytes.len().saturating_sub(MAX_BYTES);
-            if excess > 0 {
-                tail.cut_lines += tail.bytes.drain(..excess).filter(|&b| b == b'\n').count();
-                tail.cut = true;
+            let chunk = buffer.iter().take(read).copied().collect();
+            if sender.send(chunk).is_err() {
+                break;
             }
         }
-        tail
-    })
+    });
+    chunks
 }
 
 /// The end of a command's output.
 #[derive(Default)]
 struct Tail {
+    /// Every byte received.
+    written: u64,
     /// The last bytes.
     bytes: VecDeque<u8>,
     /// Whether earlier bytes were dropped.
@@ -251,6 +249,31 @@ struct Tail {
 }
 
 impl Tail {
+    /// Appends `chunk`, keeping only the last `MAX_BYTES` bytes.
+    fn push(&mut self, chunk: &[u8]) {
+        self.written += chunk.len() as u64;
+        self.bytes.extend(chunk);
+        let excess = self.bytes.len().saturating_sub(MAX_BYTES);
+        if excess > 0 {
+            self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
+            self.cut = true;
+        }
+    }
+
+    /// Receives output until the pipe's end, for at most [`PIPE_GRACE`].
+    /// Returns whether the end came: every process holding the pipe exited
+    /// or closed it.
+    fn read_rest(&mut self, chunks: &Receiver<Vec<u8>>) -> bool {
+        let deadline = Instant::now() + PIPE_GRACE;
+        loop {
+            match chunks.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(chunk) => self.push(&chunk),
+                Err(RecvTimeoutError::Disconnected) => return true,
+                Err(RecvTimeoutError::Timeout) => return false,
+            }
+        }
+    }
+
     /// The kept output, at most `MAX_LINES` lines, after a line saying how
     /// many earlier ones were cut.
     fn text(self) -> String {
@@ -279,3 +302,6 @@ impl Tail {
         text
     }
 }
+
+#[cfg(test)]
+mod tests;
