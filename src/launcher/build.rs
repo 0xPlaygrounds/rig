@@ -14,9 +14,9 @@ use super::project::{self, PACKAGE, RigSource};
 use super::{BEVY_VERSION, Result};
 
 /// Reads `plugins.toml`, writes the agent project, checks its Bevy version,
-/// builds it, and copies the binary to `staged`. Unless `again`, a build
-/// already tried once is not staged again: at startup, that keeps a build
-/// rolled back for crashing from being retried until something changes.
+/// builds it, and copies the binary to `staged`. Unless `again`, a known
+/// build is not staged again: at startup, that keeps a build rolled back
+/// for crashing from being retried until something changes.
 pub fn compile(home: &Home, staged: &Path, again: bool) -> Result<()> {
     let config = Config::load(&home.config())?;
     project::generate(home, &config, &RigSource::detect()?)?;
@@ -59,17 +59,25 @@ fn cargo(home: &Home) -> Command {
 }
 
 /// Copies the built binary to `staged`, keeping its modification time so
-/// the copy carries its [`stamp`]. Unless `again`, the build last tried, or
-/// one `rig build` already staged for any launcher, is not staged again.
+/// the copy carries its [`stamp`]. Unless `again`, a build that is already
+/// the good one, already staged for any launcher, or was rejected for
+/// crashing at startup is not staged again. A build `rig build` staged for
+/// any launcher that differs from this one is older, so it goes.
 fn stage(home: &Home, staged: &Path, again: bool) -> Result<()> {
     let artifact = home
         .target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
     let built = stamp(&artifact)?;
-    let tried = fs::read_to_string(home.bin("tried")).is_ok_and(|tried| tried == built);
-    let pending = stamp(&home.bin("staged")).is_ok_and(|staged| staged == built);
-    if !again && (tried || pending) {
+    let shared = home.bin("staged");
+    if stamp(&shared).is_ok_and(|stamp| stamp != built) {
+        fs::remove_file(&shared)?;
+    }
+    let known = [home.bin("good"), shared]
+        .iter()
+        .any(|binary| stamp(binary).is_ok_and(|stamp| stamp == built))
+        || fs::read_to_string(home.bin("rejected")).is_ok_and(|rejected| rejected == built);
+    if !again && known {
         return Ok(());
     }
     let staging = home.bin("staged.tmp");
@@ -83,10 +91,10 @@ fn stage(home: &Home, staged: &Path, again: bool) -> Result<()> {
     Ok(())
 }
 
-/// Records `binary`, a staged build about to run as a trial, as the build
-/// last tried.
-pub fn tried(home: &Home, binary: &Path) -> Result<()> {
-    fs::write(home.bin("tried"), stamp(binary)?)?;
+/// Records `trial`, a build that stopped before it was ready, as rejected,
+/// so a start does not stage it again until something changes.
+pub fn reject(home: &Home, trial: &Path) -> Result<()> {
+    fs::write(home.bin("rejected"), stamp(trial)?)?;
     Ok(())
 }
 

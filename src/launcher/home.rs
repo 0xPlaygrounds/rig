@@ -45,7 +45,7 @@ impl Home {
         self.root.join("target")
     }
 
-    /// A file in `bin/`: `staged`, `good`, `tried`, `lock`, or a
+    /// A file in `bin/`: `staged`, `good`, `rejected`, `lock`, or a
     /// launcher's own `staged-<session>` and `trial-<session>`.
     pub fn bin(&self, name: &str) -> PathBuf {
         self.root.join("bin").join(name)

@@ -1,4 +1,4 @@
-//! `rig`: build the agent when needed, then run it. Exit code 75 restarts
+//! `rig`: build the agent before every start, then run it. Exit code 75 restarts
 //! it on the staged build. A new build runs as this launcher's own trial
 //! and becomes the good build once it signals ready; one that exits before
 //! that is rolled back to the last good build. Several launchers can share
@@ -44,9 +44,6 @@ pub fn run(home: &Home) -> Result<ExitCode> {
     let ready = home.session(session).join("ready");
     loop {
         let (binary, is_trial) = pick(home, session, &trial)?;
-        if is_trial {
-            build::tried(home, &binary)?;
-        }
         remove_if_present(&ready)?;
         let mut command = Command::new(&binary);
         command
@@ -79,6 +76,7 @@ pub fn run(home: &Home) -> Result<ExitCode> {
         promoted?;
         let rejected = is_trial && !started;
         if rejected {
+            build::reject(home, &trial)?;
             fs::remove_file(&trial)?;
         }
         if status.code() == Some(RELOAD_EXIT_CODE) {
@@ -224,7 +222,7 @@ fn remove_if_present(path: &Path) -> Result<()> {
 
 /// Builds before every start, staging for this launcher; cargo does no
 /// work when nothing changed. With no good build yet, the build is staged
-/// even if it was tried before, so each start retries it. A failed build
+/// even if it was rejected before, so each start retries it. A failed build
 /// with an older binary at hand becomes the notice that binary starts with.
 fn rebuild(home: &Home, session: &str) -> Result<Option<String>> {
     let first_run = !["staged", "good"]
