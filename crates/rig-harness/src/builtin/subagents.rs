@@ -27,7 +27,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, Focus, ModelChoice, Notice, PickKind,
@@ -36,7 +36,7 @@ use crate::core::agent::{
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use crate::core::journal::ReflectSaved;
+use crate::core::journal::AppSaveExt;
 use crate::core::models;
 use crate::core::restore::Restored;
 use crate::core::tools::{
@@ -132,6 +132,8 @@ impl Plugin for SubagentsPlugin {
             "List the agents and subagents and show one; /agents <number or title> shows it",
             agents,
         )
+        .save_component::<Subtask>()
+        .save_component::<Requests>()
         .add_observer(name_subagent)
         .add_observer(report_on_turn_end)
         .add_observer(report_restored);
@@ -145,8 +147,8 @@ impl Plugin for SubagentsPlugin {
 }
 
 /// On a subagent: its task's short title, which names it.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(Component, Default, Clone, Debug)]
 pub struct Subtask {
     /// The title.
     pub title: String,
@@ -154,8 +156,8 @@ pub struct Subtask {
 
 /// On a subagent: the requests it was sent that no report answered yet,
 /// oldest first.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(Component, Default, Clone, Debug)]
 pub struct Requests(pub Vec<RequestId>);
 
 fn task_parameters() -> serde_json::Value {

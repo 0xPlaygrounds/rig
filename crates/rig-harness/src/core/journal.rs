@@ -8,9 +8,9 @@
 //! is one more record. [`restore`](super::restore) folds the logs back at
 //! startup.
 //!
-//! A plugin component is logged when its type is reflected with
-//! `#[reflect(Component, Saved)]`; a logged component whose type is gone is
-//! skipped on restore.
+//! A plugin component is logged when the plugin registered it with
+//! [`AppSaveExt::save_component`]; a logged component no plugin registers
+//! any more is skipped on restore.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::{self, File, OpenOptions};
@@ -25,13 +25,12 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
-use bevy_reflect::CreateTypeData;
-use bevy_reflect::serde::TypedReflectSerializer;
 use rig::harness_protocol::SessionDir;
 use rig_core::completion::{Message, Usage};
 use rig_core::message::{
     DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -44,15 +43,70 @@ use super::effects::Effects;
 use super::inbox::Origin;
 use super::usage::Spending;
 
-/// Type data marking a plugin component as part of the session: each
-/// change is logged, and restoring the session inserts it again. Derive it
-/// with `#[reflect(Component, Saved)]`.
-#[derive(Clone)]
-pub struct ReflectSaved;
+/// Registers plugin components that are part of the session.
+pub trait AppSaveExt {
+    /// Saves the agent component `T` with the session: each change of it
+    /// on an agent is logged at the end of the frame, as is its removal,
+    /// and restoring the session inserts it again. Its type name names it
+    /// in the log, so renaming the type drops what was saved.
+    fn save_component<T: Component + Serialize + DeserializeOwned>(&mut self) -> &mut Self;
+}
 
-impl<T> CreateTypeData<T> for ReflectSaved {
-    fn create_type_data(_input: ()) -> Self {
-        Self
+impl AppSaveExt for App {
+    fn save_component<T: Component + Serialize + DeserializeOwned>(&mut self) -> &mut Self {
+        self.world_mut()
+            .get_resource_or_init::<SavedComponents>()
+            .0
+            .insert(std::any::type_name::<T>(), insert_saved::<T>);
+        self.add_systems(
+            Last,
+            log_saved::<T>
+                .in_set(OnAppExitSystems)
+                .after(super::turn::stop_turns_on_exit)
+                .before(write_logs),
+        )
+    }
+}
+
+/// Inserts a saved component's logged value on an agent.
+pub(crate) type InsertSaved = fn(&mut EntityWorldMut, Value) -> serde_json::Result<()>;
+
+/// How each component registered with [`AppSaveExt::save_component`] is
+/// restored, by type name.
+#[derive(Resource, Default)]
+pub(crate) struct SavedComponents(pub(crate) HashMap<&'static str, InsertSaved>);
+
+fn insert_saved<T: Component + DeserializeOwned>(
+    agent: &mut EntityWorldMut,
+    value: Value,
+) -> serde_json::Result<()> {
+    agent.insert(serde_json::from_value::<T>(value)?);
+    Ok(())
+}
+
+/// Logs each change and removal of the saved component `T` on the agents.
+fn log_saved<T: Component + Serialize>(
+    changed: Query<(&AgentId, &T), (With<Agent>, Changed<T>)>,
+    mut removed: RemovedComponents<T>,
+    agents: Query<&AgentId, With<Agent>>,
+    log: Res<SessionLog>,
+) {
+    if !log.is_live() {
+        return;
+    }
+    let name = std::any::type_name::<T>();
+    for (id, component) in &changed {
+        match serde_json::to_value(component) {
+            Ok(value) => log.component(id, name, Some(value)),
+            Err(failure) => error!("not logging {name}: {failure}"),
+        }
+    }
+    for entity in removed.read() {
+        if let Ok(id) = agents.get(entity)
+            && !changed.contains(entity)
+        {
+            log.component(id, name, None);
+        }
     }
 }
 
@@ -560,16 +614,6 @@ impl SessionLog {
         book.record(&agent.0, record);
     }
 
-    /// The saved plugin components logged as present on `agent`, by type
-    /// path.
-    pub(crate) fn components(&self, agent: &AgentId) -> BTreeSet<String> {
-        self.book()
-            .agents
-            .get(&agent.0)
-            .map(|log| log.components.keys().cloned().collect())
-            .unwrap_or_default()
-    }
-
     /// Logs the saved plugin component `component` of `agent` when its
     /// value changed; `None` when it was removed.
     pub(crate) fn component(&self, agent: &AgentId, component: &str, value: Option<Value>) {
@@ -770,8 +814,7 @@ impl Plugin for JournalPlugin {
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(
                 Last,
-                (log_saved_components, write_logs)
-                    .chain()
+                write_logs
                     .in_set(OnAppExitSystems)
                     .after(super::turn::stop_turns_on_exit),
             )
@@ -810,61 +853,6 @@ fn log_settings(
 ) {
     if let Ok((id, model, &effort, prompt, access)) = agents.get(inserted.entity) {
         log.settings(id, Settings::of(model, effort, prompt, access));
-    }
-}
-
-/// Logs each saved plugin component that changed since the last frame,
-/// and each one removed, on every agent.
-fn log_saved_components(world: &mut World) {
-    let (Some(log), Some(registry)) = (
-        world.get_resource::<SessionLog>().cloned(),
-        world.get_resource::<AppTypeRegistry>().cloned(),
-    ) else {
-        return;
-    };
-    if !log.is_live() {
-        return;
-    }
-    let (last_run, this_run) = (world.last_change_tick(), world.change_tick());
-    let registry = registry.read();
-    let agents: Vec<(Entity, AgentId)> = world
-        .query_filtered::<(Entity, &AgentId), With<Agent>>()
-        .iter(world)
-        .map(|(entity, id)| (entity, id.clone()))
-        .collect();
-    for (entity, id) in agents {
-        let Ok(agent) = world.get_entity(entity) else {
-            continue;
-        };
-        let known = log.components(&id);
-        for (registration, _) in registry.iter_with_data::<ReflectSaved>() {
-            let path = registration.type_info().type_path();
-            let (Some(component), Some(component_id)) = (
-                registration.data::<ReflectComponent>(),
-                world.components().get_id(registration.type_id()),
-            ) else {
-                continue;
-            };
-            let Some(ticks) = agent.get_change_ticks_by_id(component_id) else {
-                if known.contains(path) {
-                    log.component(&id, path, None);
-                }
-                continue;
-            };
-            if known.contains(path) && !ticks.is_changed(last_run, this_run) {
-                continue;
-            }
-            let Some(value) = component.reflect(agent) else {
-                continue;
-            };
-            match serde_json::to_value(TypedReflectSerializer::new(
-                value.as_partial_reflect(),
-                &registry,
-            )) {
-                Ok(value) => log.component(&id, path, Some(value)),
-                Err(failure) => error!("not logging {path}: {failure}"),
-            }
-        }
     }
 }
 

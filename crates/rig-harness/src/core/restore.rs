@@ -25,13 +25,10 @@ use std::path::{Path, PathBuf};
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use bevy_reflect::serde::TypedReflectDeserializer;
-use bevy_reflect::{ReflectFromReflect, TypeRegistry};
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{CallId, ToolCall, ToolResult, UserContent};
 use serde::Deserialize;
-use serde::de::{DeserializeSeed, IgnoredAny};
-use serde_json::Value;
+use serde::de::IgnoredAny;
 
 use super::agent::{
     Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, SpawnedBy, SystemPrompt, ToolAccess,
@@ -39,7 +36,7 @@ use super::agent::{
 };
 use super::compaction::Compacted;
 use super::journal::{
-    AgentLog, COMPONENT_VERSION, Header, Line, Record, ReflectSaved, SavedValue, SessionLog,
+    AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
     SessionPaths, Settings, UsageRecord, load_blobs,
 };
 use super::tools::failed;
@@ -128,7 +125,10 @@ pub(crate) fn restore_session(world: &mut World) {
         .iter()
         .map(|agent| (agent.header.agent.clone(), agent.header.parent.clone()))
         .collect();
-    let registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let saved_components = world
+        .get_resource::<SavedComponents>()
+        .map(|saved| saved.0.clone())
+        .unwrap_or_default();
     let mut restored = Vec::new();
     let mut logs = Vec::new();
     for agent in folded {
@@ -163,17 +163,18 @@ pub(crate) fn restore_session(world: &mut World) {
             spawned.insert(ModelChoice(model));
         }
         let entity = spawned.id();
-        if let Some(registry) = &registry {
-            let registry = registry.read();
-            for (path, saved) in &components {
-                let outcome = if saved.v > COMPONENT_VERSION {
-                    Err(format!("it was saved by a newer build (version {})", saved.v).into())
-                } else {
-                    restore_component(world, entity, &registry, path, saved.value.clone())
-                };
-                if let Err(failure) = outcome {
-                    notices.push(format!("Skipped saved component `{path}`: {failure}."));
-                }
+        for (path, saved) in &components {
+            let outcome = match saved_components.get(path.as_str()) {
+                _ if saved.v > COMPONENT_VERSION => Err(format!(
+                    "it was saved by a newer build (version {})",
+                    saved.v
+                )),
+                None => Err("no plugin saves it any more".to_owned()),
+                Some(insert) => insert(&mut world.entity_mut(entity), saved.value.clone())
+                    .map_err(|failure| format!("its saved value no longer fits: {failure}")),
+            };
+            if let Err(failure) = outcome {
+                notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
         let depth = depth(&header.agent, &parents);
@@ -378,33 +379,6 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
         }
     }
     Ok(folded)
-}
-
-fn restore_component(
-    world: &mut World,
-    entity: Entity,
-    registry: &TypeRegistry,
-    path: &str,
-    value: Value,
-) -> Result<(), Box<dyn Error>> {
-    let registration = registry
-        .get_with_type_path(path)
-        .ok_or("its plugin is not loaded")?;
-    let component = registration
-        .data::<ReflectComponent>()
-        .filter(|_| registration.data::<ReflectSaved>().is_some())
-        .ok_or("it is no longer a saved component")?;
-    let value = TypedReflectDeserializer::new(registration, registry).deserialize(value)?;
-    let value = match registration.data::<ReflectFromReflect>() {
-        Some(from_reflect) => from_reflect
-            .from_reflect(value.as_ref())
-            .ok_or("its saved value no longer fits the type")?
-            .into_partial_reflect(),
-        None => value,
-    };
-    let mut entity = world.get_entity_mut(entity)?;
-    component.insert(&mut entity, value.as_ref(), registry);
-    Ok(())
 }
 
 /// Settles what the restored agents left half done, parents before the

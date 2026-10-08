@@ -75,7 +75,7 @@ pub mod prelude {
     pub use crate::core::inbox::{
         Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
-    pub use crate::core::journal::ReflectSaved;
+    pub use crate::core::journal::AppSaveExt;
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
     pub use crate::core::restore::Restored;
