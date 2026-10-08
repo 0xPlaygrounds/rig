@@ -72,9 +72,11 @@ impl Plugin for TuiPlugin {
             .add_systems(
                 PostUpdate,
                 render::render.run_if(
-                    resource_exists::<terminal::Tui>.and_then(render::needs_redraw.or_eager(
+                    resource_exists::<terminal::Tui>.and_then(
+                        render::needs_redraw.or_eager(
                             resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
-                        )),
+                        ),
+                    ),
                 ),
             )
             .add_systems(Last, terminal::keep_screen_on_reload)
