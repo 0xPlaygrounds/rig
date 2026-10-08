@@ -35,7 +35,8 @@ use rig_core::tool::ToolErrorKind;
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
     Effort, Ending, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel,
-    SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome, TurnRequest,
+    SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+    TurnRequest,
 };
 use super::calls::{Done, Running, Wake};
 use super::compaction::{
@@ -364,6 +365,7 @@ pub(crate) fn on_set_model(
             commands
                 .entity(set.entity)
                 .insert(ModelChoice(models::reference(spec)));
+            commands.trigger(SettingsChosen { entity: set.entity });
         }
         None => {
             notices.write(Notice::error(
@@ -442,6 +444,7 @@ pub(crate) fn on_set_effort(
     match models::check_effort(connection.spec, set.effort.0) {
         Ok(()) => {
             commands.entity(set.entity).insert(set.effort);
+            commands.trigger(SettingsChosen { entity: set.entity });
             notices.write(Notice::info(
                 set.entity,
                 format!("Reasoning: {}.", models::effort_label(set.effort.0)),

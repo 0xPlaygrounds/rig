@@ -262,3 +262,27 @@ mod browser_sign_in {
         }
     }
 }
+
+/// The credential file and the directory created for it are the owner's alone.
+#[cfg(unix)]
+#[test]
+fn credential_file_is_written_private() -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = assert_fs::TempDir::new()?;
+    let path = dir.path().join("chatgpt").join("auth.json");
+    let record: super::AuthRecord = serde_json::from_value(serde_json::json!({
+        "access_token": "synthetic-token",
+        "refresh_token": null,
+        "id_token": null,
+        "expires_at": null,
+        "account_id": null
+    }))?;
+    super::write_json_record(Some(&path), &record)?;
+    let file_mode = std::fs::metadata(&path)?.permissions().mode() & 0o777;
+    anyhow::ensure!(file_mode == 0o600, "file mode {file_mode:o}");
+    let parent = path.parent().ok_or_else(|| anyhow::anyhow!("no parent"))?;
+    let dir_mode = std::fs::metadata(parent)?.permissions().mode() & 0o777;
+    anyhow::ensure!(dir_mode == 0o700, "directory mode {dir_mode:o}");
+    Ok(())
+}

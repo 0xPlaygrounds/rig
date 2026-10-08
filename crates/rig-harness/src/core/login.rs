@@ -8,7 +8,7 @@
 //! call of that provider reads it, refreshed when it has expired, before
 //! its request. ChatGPT is the one provider so far.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{fs, io};
 
@@ -312,8 +312,7 @@ async fn sign_in_flow(
     let device_prompt = prompt.clone();
     let handler = DeviceCodeHandler::new(move |code| device_prompt(LoginPrompt::DeviceCode(code)));
     let flow = async {
-        private_dir(&file).map_err(|error| error.to_string())?;
-        let auth = Authenticator::new(AuthSource::OAuth, Some(file.clone()), handler, true);
+        let auth = Authenticator::new(AuthSource::OAuth, Some(file), handler, true);
         let http = rig_reqwest::shared();
         let browser = match method {
             Method::Browser => {
@@ -332,34 +331,10 @@ async fn sign_in_flow(
             }
             other => other,
         }
-        .map_err(|error| error.to_string())?;
-        private_file(&file).map_err(|error| error.to_string())
+        .map(drop)
+        .map_err(|error| error.to_string())
     };
     SignedInResult(flow.await)
-}
-
-/// Creates the directory of `file`, readable by the owner alone on Unix.
-fn private_dir(file: &Path) -> io::Result<()> {
-    let Some(dir) = file.parent() else {
-        return Ok(());
-    };
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder.create(dir)
-}
-
-/// Makes `file` readable by the owner alone on Unix.
-fn private_file(file: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(file, fs::Permissions::from_mode(0o600))?;
-    }
-    #[cfg(not(unix))]
-    let _ = file;
-    Ok(())
 }
 
 /// Shows what a sign-in asks the user to do.

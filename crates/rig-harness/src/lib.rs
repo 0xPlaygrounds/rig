@@ -67,8 +67,8 @@ pub mod prelude {
     pub use crate::core::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
         Effort, Focus, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
-        Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
-        TurnRequest,
+        SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
+        TurnOf, TurnOutcome, TurnRequest,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;

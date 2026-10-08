@@ -375,6 +375,15 @@ pub struct SetEffort {
     pub effort: Effort,
 }
 
+/// The user chose the agent's model or reasoning setting with [`SetModel`]
+/// or [`SetEffort`], and it took: the agent's [`ModelChoice`] and [`Effort`]
+/// hold the choice. Restoring a session never sends it.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct SettingsChosen {
+    /// The agent.
+    pub entity: Entity,
+}
+
 /// How a [`Notice`] is shown and logged.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NoticeLevel {

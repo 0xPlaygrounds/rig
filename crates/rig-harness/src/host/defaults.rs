@@ -12,7 +12,7 @@ use bevy_log::warn;
 use rig::harness_protocol::Home;
 use serde::{Deserialize, Serialize};
 
-use crate::core::agent::{Agent, Effort, ModelChoice, SpawnedBy};
+use crate::core::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
 
 /// Remembers the last chosen model and reasoning setting and gives them to
 /// an agent that starts without a model.
@@ -22,8 +22,7 @@ impl Plugin for DefaultsPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(DefaultsFile(Home::from_env().defaults()))
             .add_systems(PostStartup, apply_defaults)
-            .add_observer(remember_model)
-            .add_observer(remember_effort);
+            .add_observer(remember);
     }
 }
 
@@ -91,23 +90,12 @@ fn apply_defaults(
     }
 }
 
-/// Remembers a model chosen for an agent the user talks to.
-fn remember_model(
-    chosen: On<Insert<ModelChoice>>,
-    agents: Query<(&ModelChoice, &Effort), Without<SpawnedBy>>,
-    file: Res<DefaultsFile>,
-) {
-    if let Ok((model, effort)) = agents.get(chosen.entity) {
-        file.write(&Defaults {
-            model: Some(model.0.clone()),
-            effort: *effort,
-        });
-    }
-}
-
-/// Remembers a reasoning setting chosen for an agent the user talks to.
-fn remember_effort(
-    chosen: On<Insert<Effort>>,
+/// Remembers the model and reasoning the user chose with `/model` or
+/// `/effort` for an agent they talk to. Only [`SettingsChosen`] counts:
+/// restoring a session or spawning a subagent inserts the same components
+/// but is not a choice.
+fn remember(
+    chosen: On<SettingsChosen>,
     agents: Query<(Option<&ModelChoice>, &Effort), Without<SpawnedBy>>,
     file: Res<DefaultsFile>,
 ) {
