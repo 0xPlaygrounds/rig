@@ -7,7 +7,7 @@ use std::panic::AssertUnwindSafe;
 use bevy::prelude::*;
 use bevy::tasks::futures::check_ready;
 use bevy::tasks::futures_lite::{FutureExt, StreamExt};
-use bevy::tasks::{AsyncComputeTaskPool, IoTaskPool, Task};
+use bevy::tasks::{AsyncComputeTaskPool, IoTaskPool, Task, block_on};
 use rig_core::ErrorReport;
 use rig_core::completion::{
     CompletionRequest, CompletionResponse, GenerationOptions, Message as ChatMessage,
@@ -360,6 +360,28 @@ pub(crate) fn collect_tool_results(
             .despawn_related::<Work>()
             .insert(NeedsModelCall);
         *status = AgentStatus::Streaming;
+    }
+}
+
+/// On exit, cancels every call in flight and waits until each has dropped
+/// its future, so the cancellations are recorded before the last effect
+/// flush. Dropping a task alone would leave that to a pool thread later.
+pub(crate) fn cancel_work_on_exit(world: &mut World) {
+    let work: Vec<Entity> = world
+        .query_filtered::<Entity, With<WorkOf>>()
+        .iter(world)
+        .collect();
+    for entity in work {
+        let Ok(mut entity) = world.get_entity_mut(entity) else {
+            continue;
+        };
+        if let Some(task) = entity.take::<ModelTask>() {
+            block_on(task.0.cancel());
+        }
+        if let Some(task) = entity.take::<CallTask<ToolResult>>() {
+            block_on(task.0.cancel());
+        }
+        entity.despawn();
     }
 }
 

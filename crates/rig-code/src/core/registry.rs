@@ -286,8 +286,8 @@ fn close_open_calls(
 }
 
 /// On exit, stops every running turn the way Esc does, before the exit
-/// save, so the saved conversation is one the next binary can send and the
-/// cancelled calls reach the effect log.
+/// save, so the saved conversation is one the next binary can send. The
+/// work itself is cancelled by `turn::cancel_work_on_exit`.
 pub(crate) fn stop_turns_on_exit(
     mut commands: Commands,
     mut agents: Query<(Entity, &mut Conversation, &mut AgentStatus, Option<&Work>)>,
@@ -298,10 +298,7 @@ pub(crate) fn stop_turns_on_exit(
             continue;
         }
         close_open_calls(&mut conversation, work, &calls);
-        commands
-            .entity(agent)
-            .despawn_related::<Work>()
-            .remove::<NeedsModelCall>();
+        commands.entity(agent).remove::<NeedsModelCall>();
         *status = AgentStatus::Idle;
     }
 }

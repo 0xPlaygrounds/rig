@@ -88,7 +88,8 @@ impl Plugin for CorePlugin {
             .add_systems(
                 Last,
                 (
-                    registry::stop_turns_on_exit
+                    (registry::stop_turns_on_exit, turn::cancel_work_on_exit)
+                        .chain()
                         .before(dispatch::flush_effects)
                         .before(session::save_session)
                         .in_set(OnAppExitSystems)
