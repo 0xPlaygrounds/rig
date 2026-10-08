@@ -31,16 +31,14 @@ const MAX_BYTES: usize = 50 * 1024;
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Registers the built-in tools, each with the rules on when to pick it and
-/// what its calls touch, with [`AppToolsExt::add_tool_with`]: `read` and
-/// `search` run beside each other, `edit` and `write` beside calls on other
-/// files, and `shell` alone.
+/// whether its calls run beside others, with [`AppToolsExt::add_tool_with`]:
+/// `read` and `search` run beside each other, `edit`, `write` and `shell`
+/// alone.
 #[derive(Default)]
 pub struct BuiltinToolsPlugin;
 
 impl Plugin for BuiltinToolsPlugin {
     fn build(&self, app: &mut App) {
-        let reads = Footprint::Reads { arg: "path" };
-        let writes = Footprint::Writes { arg: "path" };
         app.add_tool_with(
             Read,
             ToolOptions {
@@ -48,8 +46,7 @@ impl Plugin for BuiltinToolsPlugin {
                     "Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`.",
                     "Read several files at once by calling `read` several times in one reply.",
                 ],
-                footprint: reads,
-                ..ToolOptions::default()
+                footprint: Footprint::ReadOnly,
             },
         )
         .add_tool_with(
@@ -62,7 +59,6 @@ impl Plugin for BuiltinToolsPlugin {
                      one entry of `edits` per change; each matches the file as it was before \
                      the call.",
                 ],
-                footprint: writes,
                 ..ToolOptions::default()
             },
         )
@@ -70,7 +66,6 @@ impl Plugin for BuiltinToolsPlugin {
             Write,
             ToolOptions {
                 rules: &["Use `write` for new files and complete rewrites only."],
-                footprint: writes,
                 ..ToolOptions::default()
             },
         )
@@ -84,7 +79,6 @@ impl Plugin for BuiltinToolsPlugin {
                     "Do not start programs that wait for input or never end, such as editors, \
                      pagers or servers in the foreground.",
                 ],
-                footprint: Footprint::Exclusive,
                 ..ToolOptions::default()
             },
         )
@@ -92,8 +86,7 @@ impl Plugin for BuiltinToolsPlugin {
             Search,
             ToolOptions {
                 rules: &["Use `search` to find code, not `grep` or `rg` in `shell`."],
-                footprint: reads,
-                ..ToolOptions::default()
+                footprint: Footprint::ReadOnly,
             },
         );
     }

@@ -227,8 +227,7 @@ If the agent crashes or the terminal closes, the next `rig` in the same
 directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
-`rig --continue` resumes the last session run in the working directory and
-`rig --resume <id>` a given one.
+and `rig --resume <id>` resumes a given one.
 
 A ChatGPT subscription can pay for the model
 calls instead of an API key: `/login chatgpt` opens your browser on the

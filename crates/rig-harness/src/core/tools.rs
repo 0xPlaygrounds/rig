@@ -13,8 +13,6 @@
 //!     });
 //! ```
 
-use std::path::{Component as PathPart, Path, PathBuf};
-
 use bevy_app::App;
 use bevy_ecs::observer::IntoEntityObserver;
 use bevy_ecs::prelude::*;
@@ -97,97 +95,30 @@ pub struct ToolCalled {
 #[derive(Component)]
 pub struct OpenCall(pub OpenEffect);
 
-/// What a tool's calls touch, on the tool's entity. It decides which calls
-/// of one reply run at once: calls that only read run side by side, and a
-/// call waits for every earlier call of the reply that touches what it
-/// touches, so two edits of one file still apply in order.
+/// Whether a tool's calls may run beside the other calls of one reply, on
+/// the tool's entity.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Footprint {
-    /// Anything: a call waits for every earlier call of its reply and holds
-    /// back every later one. The default, right for `shell` and for any
-    /// tool that does not say.
+    /// May change anything: a call waits for every earlier call of its
+    /// reply and holds back every later one. The default, right for
+    /// `write`, `edit`, `shell` and any tool that does not say.
     #[default]
     Exclusive,
-    /// Reads the file or directory named by the string argument `arg`, the
-    /// working directory when the argument is absent, and changes nothing.
-    Reads {
-        /// The argument holding the path.
-        arg: &'static str,
-    },
-    /// Changes the file named by the string argument `arg`, and nothing
-    /// else.
-    Writes {
-        /// The argument holding the path.
-        arg: &'static str,
-    },
-    /// Nothing the reply's other calls touch, as far as ordering goes: a
-    /// call waits only for earlier [`Exclusive`](Self::Exclusive) calls.
-    /// Right for a tool that hands work to another agent.
+    /// Changes nothing: calls run side by side with every call that is
+    /// not exclusive, and a call a restart cut short runs again.
+    ReadOnly,
+    /// Changes nothing the reply's other calls see, such as handing work
+    /// to another agent: runs side by side like [`ReadOnly`](Self::ReadOnly),
+    /// but is never run again after a restart.
     Independent,
 }
 
 impl Footprint {
-    /// What a call with `args` touches.
-    pub(crate) fn of(self, args: &serde_json::Map<String, serde_json::Value>) -> Touch {
-        let path = |arg: &str| args.get(arg).and_then(serde_json::Value::as_str);
-        match self {
-            Self::Exclusive => Touch::All,
-            Self::Independent => Touch::Nothing,
-            Self::Reads { arg } => Touch::Read(lexical(path(arg).unwrap_or("."))),
-            Self::Writes { arg } => match path(arg) {
-                Some(path) => Touch::Write(lexical(path)),
-                // The call fails on its arguments; it still waits its turn.
-                None => Touch::All,
-            },
-        }
+    /// Whether a call of this footprint must wait for an earlier call of
+    /// the reply with footprint `earlier`.
+    pub(crate) fn waits_for(self, earlier: Self) -> bool {
+        self == Self::Exclusive || earlier == Self::Exclusive
     }
-}
-
-/// What one tool call touches, from its tool's [`Footprint`] and its
-/// arguments.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Touch {
-    /// Anything.
-    All,
-    /// Reads this path, or anything under it.
-    Read(PathBuf),
-    /// Changes this path.
-    Write(PathBuf),
-    /// Nothing another call waits for, unless that call touches anything.
-    Nothing,
-}
-
-impl Touch {
-    /// Whether a call touching `self` must wait for an earlier call
-    /// touching `earlier`: either may touch anything, or one changes a
-    /// path the other reads or changes. Paths are compared as written,
-    /// made absolute without following links, so two names for one file
-    /// through a symlink are not caught.
-    pub(crate) fn waits_for(&self, earlier: &Touch) -> bool {
-        let overlap = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
-        match (self, earlier) {
-            (Touch::All, _) | (_, Touch::All) => true,
-            (Touch::Nothing, _) | (_, Touch::Nothing) | (Touch::Read(_), Touch::Read(_)) => false,
-            (Touch::Read(a) | Touch::Write(a), Touch::Read(b) | Touch::Write(b)) => overlap(a, b),
-        }
-    }
-}
-
-/// `path` made absolute against the working directory, with `.` and `..`
-/// folded away without touching the file system.
-fn lexical(path: &str) -> PathBuf {
-    let path = std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path));
-    let mut out = PathBuf::new();
-    for part in path.components() {
-        match part {
-            PathPart::CurDir => {}
-            PathPart::ParentDir => {
-                out.pop();
-            }
-            part => out.push(part),
-        }
-    }
-    out
 }
 
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
@@ -198,20 +129,10 @@ pub struct ToolOptions<'a> {
     /// `shell`". The tool's description says what it does; its rules say
     /// when to pick it.
     pub rules: &'a [&'a str],
-    /// What its calls touch; the default runs each call on its own.
+    /// Whether its calls run beside others; the default runs each call on
+    /// its own.
     pub footprint: Footprint,
-    /// For an open tool: a call left without an output by a restart is
-    /// started again, so the tool's observer gets [`ToolCalled`] for it once
-    /// more and can carry it on, instead of the core answering it as
-    /// interrupted. The observer sees the same call id and decides from its
-    /// own saved state what is left to do.
-    pub resumable: bool,
 }
-
-/// On an open tool's entity: its calls are started again after a restart
-/// (see [`ToolOptions::resumable`]).
-#[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Resumable;
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
@@ -238,13 +159,12 @@ pub trait AppToolsExt {
     }
 
     /// [`add_tool`](Self::add_tool), with the rules on how to use it and
-    /// what its calls touch:
+    /// whether its calls run beside others:
     ///
     /// ```ignore
     /// app.add_tool_with(Outline, ToolOptions {
     ///     rules: &["Use `outline` before reading a large file."],
-    ///     footprint: Footprint::Reads { arg: "path" },
-    ///     ..ToolOptions::default()
+    ///     footprint: Footprint::ReadOnly,
     /// });
     /// ```
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
@@ -347,14 +267,8 @@ pub(crate) fn register_tool(
         ),
         options.footprint,
     ));
-    match handler {
-        Some(handler) => {
-            entity.insert(ToolHandler(handler));
-        }
-        None if options.resumable => {
-            entity.insert(Resumable);
-        }
-        None => {}
+    if let Some(handler) = handler {
+        entity.insert(ToolHandler(handler));
     }
     Some(entity.id())
 }

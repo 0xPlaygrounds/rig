@@ -11,7 +11,7 @@ mod print;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Invocation, Mode};
+use rig::harness_protocol::Invocation;
 
 use crate::core::agent::{Agent, AgentId, SpawnedBy};
 
@@ -22,14 +22,9 @@ use crate::core::agent::{Agent, AgentId, SpawnedBy};
 pub struct RunMode(pub Invocation);
 
 impl RunMode {
-    /// The mode.
-    pub fn mode(&self) -> &Mode {
-        &self.0.mode
-    }
-
     /// Whether nobody sits at a terminal view.
     pub fn is_headless(&self) -> bool {
-        self.0.mode.is_headless()
+        self.0.is_headless()
     }
 }
 
@@ -47,12 +42,11 @@ impl Plugin for ModePlugin {
             });
             app.insert_resource(RunMode(invocation));
         }
-        let mode = app
+        let print = app
             .world()
             .get_resource::<RunMode>()
-            .map(|mode| mode.0.mode.clone())
-            .unwrap_or_default();
-        if let Mode::Print { prompt } = mode {
+            .and_then(|mode| mode.0.print.clone());
+        if let Some(prompt) = print {
             app.add_plugins(print::PrintPlugin { prompt });
         }
     }

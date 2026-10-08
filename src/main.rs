@@ -9,7 +9,7 @@ mod launcher;
 use std::process::ExitCode;
 
 use launcher::run::Start;
-use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation, Mode};
+use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation};
 
 const USAGE: &str = "\
 Usage: rig [session] [mode] | rig build | rig help
@@ -21,7 +21,6 @@ Usage: rig [session] [mode] | rig build | rig help
                          it, and stage the new binary for the next start.
 
 Session (a print run starts a new one unless told otherwise):
-  -c, --continue         Continue the last session run in this directory.
   -r, --resume <id>      Resume the session <id>, in the directory it ran in.
                          In the agent, /resume lists the sessions.
   -n, --new              Start a new session.
@@ -70,7 +69,6 @@ fn parse(args: &[String]) -> Result<(Start, Invocation), String> {
     let mut rest = args;
     loop {
         let (chosen, taken) = match rest {
-            [flag, ..] if flag == "-c" || flag == "--continue" => (Start::Continue, 1),
             [flag, ..] if flag == "-n" || flag == "--new" => (Start::New, 1),
             [flag, id, ..] if flag == "-r" || flag == "--resume" => (
                 Start::Resume(id.parse().map_err(|failure| format!("{failure}"))?),
@@ -79,16 +77,17 @@ fn parse(args: &[String]) -> Result<(Start, Invocation), String> {
             _ => break,
         };
         if start.replace(chosen).is_some() {
-            return Err("give at most one of --continue, --resume and --new".to_owned());
+            return Err("give at most one of --resume and --new".to_owned());
         }
         rest = rest.get(taken..).unwrap_or_default();
     }
     let invocation = Invocation::parse(rest)?;
     // A headless run is its own session unless one is named: it must not
     // pick up the session this directory's terminal view left behind.
-    let start = start.unwrap_or(match invocation.mode {
-        Mode::Interactive => Start::Default,
-        _ => Start::New,
+    let start = start.unwrap_or(if invocation.is_headless() {
+        Start::New
+    } else {
+        Start::Default
     });
     Ok((start, invocation))
 }

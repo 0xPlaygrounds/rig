@@ -440,9 +440,7 @@ fn start_call(
     mut commands: Commands,
 ) {
     let run = ToolCallRun {
-        touch: starter
-            .footprint(call.function.name.as_str())
-            .of(&call.function.arguments),
+        footprint: starter.footprint(call.function.name.as_str()),
         call,
         parent,
     };

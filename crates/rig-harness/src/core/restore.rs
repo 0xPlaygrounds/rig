@@ -410,8 +410,8 @@ fn restore_component(
 /// Settles what the restored agents left half done, parents before the
 /// agents they spawned. Each agent first gets [`Restored`]; then, by
 /// appending records, a tool call without a result starts again when its
-/// tool is an ordinary one that only reads or a resumable open one, and is
-/// answered as interrupted otherwise; and an agent whose conversation ends
+/// tool is an ordinary read-only one, and is answered as interrupted
+/// otherwise; and an agent whose conversation ends
 /// in the user's message, or in a full set of tool results, calls its
 /// model again. An agent an observer kept idle only gets the interrupted
 /// results.
@@ -467,9 +467,7 @@ fn settle(
             .into_iter()
             .map(|call| {
                 let run = ToolCallRun {
-                    touch: starter
-                        .footprint(call.function.name.as_str())
-                        .of(&call.function.arguments),
+                    footprint: starter.footprint(call.function.name.as_str()),
                     call,
                     parent: None,
                 };

@@ -8,9 +8,8 @@
 //! A session belongs to the directory it runs in. Until it quits cleanly
 //! (exit code 0), `resume/<hash of the directory>` names it, so after a
 //! crash, a kill or a closed terminal the next `rig` there resumes it where
-//! it stopped, unless another launcher still runs it.
-//! `last/<hash of the directory>` names the last session run there however
-//! it ended, for `rig --continue`. The agent's `/new` and `/resume` leave a
+//! it stopped, unless another launcher still runs it. The agent's `/new`
+//! and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory.
 //!
@@ -38,8 +37,6 @@ pub enum Start {
     /// The working directory's session that did not quit cleanly, else a
     /// new one.
     Default,
-    /// The last session run in the working directory, else a new one.
-    Continue,
     /// The named session, in the directory it ran in.
     Resume(SessionId),
     /// A new session.
@@ -50,7 +47,7 @@ pub enum Start {
 /// returns its exit code.
 pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
-    let headless = invocation.mode.is_headless();
+    let headless = invocation.is_headless();
     let (mut claimed, mut notice, mut build_failure) = {
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
@@ -244,8 +241,8 @@ fn named_session(home: &Home, marker: Option<&Path>) -> Option<SessionId> {
 }
 
 /// The session to run for `start` from the working directory `here`, held
-/// locked, and the line the agent shows about it. Its directory's markers
-/// then name it, unless the resume marker names a session another launcher
+/// locked, and the line the agent shows about it. Its directory's marker
+/// then names it, unless the resume marker names a session another launcher
 /// runs. A headless run passes `mark` false: its directory's resume marker
 /// is left alone. Call it holding [`home::lock`].
 fn claim(
@@ -267,28 +264,6 @@ fn claim(
             },
             None => fresh(home)?,
         },
-        Start::Continue => {
-            let last = here.map(|here| home.last_marker(here));
-            match named_session(home, last.as_deref()) {
-                Some(id) => {
-                    let lock = home::hold_session(home, &id)?
-                        .ok_or_else(|| format!("session {id} is open in another rig"))?;
-                    (
-                        id,
-                        lock,
-                        Some("Continuing this directory's last session.".to_owned()),
-                    )
-                }
-                None => {
-                    let (id, lock, _) = fresh(home)?;
-                    (
-                        id,
-                        lock,
-                        Some("No earlier session here; this is a new one.".to_owned()),
-                    )
-                }
-            }
-        }
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
@@ -313,9 +288,6 @@ fn claim(
         .as_deref()
         .filter(|_| mark)
         .map(|directory| home.resume_marker(directory));
-    if let Some(directory) = &directory {
-        write_atomic(&home.last_marker(directory), id.as_str())?;
-    }
     if let Some(marker) = &marker
         && !held_elsewhere(home, marker, &id)?
     {

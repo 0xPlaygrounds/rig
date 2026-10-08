@@ -114,7 +114,6 @@ impl Plugin for SubagentsPlugin {
             ToolOptions {
                 rules: RULES,
                 footprint: Footprint::Independent,
-                ..ToolOptions::default()
             },
             on_task,
         )
@@ -125,7 +124,6 @@ impl Plugin for SubagentsPlugin {
             ToolOptions {
                 rules: &[],
                 footprint: Footprint::Independent,
-                ..ToolOptions::default()
             },
             on_message,
         )

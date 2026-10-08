@@ -156,7 +156,6 @@ impl Plugin for SteelPlugin {
             ToolOptions {
                 rules: RULES,
                 footprint: Footprint::Exclusive,
-                ..ToolOptions::default()
             },
             on_run_steel,
         );

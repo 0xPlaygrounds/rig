@@ -1,9 +1,9 @@
 //! The turn loop. A user message spawns a turn entity, [`TurnOf`] its
 //! agent; the turn's model call and tool calls are entities [`CallOf`] the
 //! turn, and observers of their [`Done`] outputs and [`ToolOutput`]s carry
-//! the turn on. A reply's tool calls run side by side where their tools'
-//! [`Footprint`]s allow, and in order where they touch the same thing;
-//! their results go back in call order. rig-core's turn-failure
+//! the turn on. A reply's read-only tool calls run side by side and the
+//! others alone, in order, as their tools' [`Footprint`]s say; their
+//! results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
 //! retried or recovered from as [`recovery`] decides. A conversation near
 //! the model's window is [`compaction`]-ed before the next call. Despawning
@@ -51,8 +51,8 @@ use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
 use super::tools::{
-    Footprint, OpenCall, Refused, Resumable, ToolCalled, ToolDef, ToolHandler, ToolOutput, Touch,
-    failed, outcome_of, recorded_args, refusal, run_tool_call,
+    Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, failed, outcome_of,
+    recorded_args, refusal, run_tool_call,
 };
 use super::usage::{self, Spending, TurnSpending};
 
@@ -69,13 +69,6 @@ pub type ModelReply = Result<CompletionResponse, ErrorReport>;
 pub struct ModelCall {
     effect: EffectId,
     feed: Receiver<Delta>,
-}
-
-impl ModelCall {
-    /// The call's effect id, as `effects.jsonl` records it.
-    pub fn effect(&self) -> EffectId {
-        self.effect
-    }
 }
 
 /// A streamed fragment for [`Partial`].
@@ -258,7 +251,7 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     let tool_calls: Vec<(Entity, bool)> = world
         .query_filtered::<(Entity, &ToolCallRun), With<Running<ToolResult>>>()
         .iter(world)
-        .map(|(call, run)| (call, matches!(run.touch, Touch::Read(_))))
+        .map(|(call, run)| (call, run.footprint == Footprint::ReadOnly))
         .collect();
     let mut finishing: Vec<(Entity, Task<ToolResult>)> = Vec::new();
     for (call, reads) in tool_calls {
@@ -741,8 +734,8 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 /// Takes a finished reply: appends it, then lets rig-core's turn-failure
 /// rule decide. A failed reply runs none of its tool calls and ends the
 /// turn; a reply without tool calls ends it too; otherwise each of its
-/// tool calls starts that no earlier call touching the same thing holds
-/// back, and the rest are [`Queued`].
+/// tool calls starts that no earlier call holds back, and the rest are
+/// [`Queued`].
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
@@ -853,22 +846,19 @@ pub(crate) fn on_model_done(
         end_turn(&mut commands, turn, outcome);
         return;
     }
-    // Every call is waited on by the later calls of the reply until it
-    // finishes, so a call starts now when no earlier one touches what it
-    // touches. Every call exists before any starts: an open call may end
-    // at once.
-    let mut earlier: Vec<Touch> = Vec::with_capacity(tool_calls.len());
+    // Every call exists before any starts: an open call may end at once.
+    let mut earlier: Vec<Footprint> = Vec::with_capacity(tool_calls.len());
     let mut ready = Vec::new();
     for call in tool_calls {
         let run = ToolCallRun {
-            touch: starter
-                .footprint(call.function.name.as_str())
-                .of(&call.function.arguments),
+            footprint: starter.footprint(call.function.name.as_str()),
             call,
             parent: Some(model_call.effect),
         };
-        let waits = earlier.iter().any(|touch| run.touch.waits_for(touch));
-        earlier.push(run.touch.clone());
+        let waits = earlier
+            .iter()
+            .any(|&before| run.footprint.waits_for(before));
+        earlier.push(run.footprint);
         let mut entity = commands.spawn((tool_name(&run), CallOf(turn), run.clone()));
         if waits {
             entity.insert(Queued);
@@ -1072,8 +1062,8 @@ pub(crate) fn on_tool_done(
         return;
     };
     // The calls not finished yet, in call order, each holding back the
-    // later ones that touch what it touches.
-    let mut unfinished: Vec<&Touch> = Vec::new();
+    // later ones it must not run beside.
+    let mut unfinished: Vec<Footprint> = Vec::new();
     let mut results = Vec::new();
     for call in calls.iter() {
         let Ok((run, output, queued)) = runs.get(call) else {
@@ -1083,11 +1073,15 @@ pub(crate) fn on_tool_done(
             results.push(result.clone());
             continue;
         }
-        if queued && unfinished.iter().all(|touch| !run.touch.waits_for(touch)) {
+        if queued
+            && unfinished
+                .iter()
+                .all(|&before| !run.footprint.waits_for(before))
+        {
             commands.entity(call).remove::<Queued>();
             starter.start(&mut commands, call, agent, run);
         }
-        unfinished.push(&run.touch);
+        unfinished.push(run.footprint);
     }
     if !unfinished.is_empty() {
         return;
@@ -1108,7 +1102,6 @@ pub(crate) struct ToolStarter<'w, 's> {
             Entity,
             &'static ToolDef,
             Option<&'static ToolHandler>,
-            Has<Resumable>,
             &'static Footprint,
         ),
     >,
@@ -1119,8 +1112,8 @@ pub(crate) struct ToolStarter<'w, 's> {
 }
 
 impl ToolStarter<'_, '_> {
-    /// What the calls of the tool `name` touch; a tool that is not
-    /// registered runs on its own.
+    /// The footprint of the tool `name`; a tool that is not registered
+    /// runs on its own.
     pub(crate) fn footprint(&self, name: &str) -> Footprint {
         self.tools
             .iter()
@@ -1129,19 +1122,12 @@ impl ToolStarter<'_, '_> {
     }
 
     /// Whether a call of the tool `name` left without a result by a restart
-    /// starts again: an ordinary tool that only reads, or a
-    /// [`Resumable`] open tool. Any other such call is answered as
-    /// interrupted.
+    /// starts again: an ordinary read-only tool. Any other such call is
+    /// answered as interrupted.
     pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tools
-            .iter()
-            .any(|(_, def, handler, resumable, footprint)| {
-                def.0.name.as_str() == name
-                    && match handler {
-                        Some(_) => matches!(footprint, Footprint::Reads { .. }),
-                        None => resumable,
-                    }
-            })
+        self.tools.iter().any(|(_, def, handler, footprint)| {
+            def.0.name.as_str() == name && handler.is_some() && *footprint == Footprint::ReadOnly
+        })
     }
 
     /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
@@ -1168,7 +1154,7 @@ impl ToolStarter<'_, '_> {
             .tools
             .iter()
             .find(|(_, def, ..)| def.0.name.as_str() == name && access.allows(name));
-        if !tool.is_some_and(|(.., footprint)| matches!(footprint, Footprint::Reads { .. })) {
+        if !tool.is_some_and(|(.., footprint)| *footprint == Footprint::ReadOnly) {
             self.log.flush();
         }
         let refused = |kind: ToolErrorKind, why: String| {

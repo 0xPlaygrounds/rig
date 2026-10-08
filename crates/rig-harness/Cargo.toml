@@ -55,7 +55,7 @@ sha2 = { workspace = true }
 # The unified diff `edit` returns, and the diffs the terminal view draws.
 similar = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
-ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }
+ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 # Markdown in replies and the width of wrapped text, for the terminal view.
 pulldown-cmark = { workspace = true, optional = true }

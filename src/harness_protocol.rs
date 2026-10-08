@@ -235,12 +235,6 @@ impl Home {
     pub fn resume_marker(&self, directory: &Path) -> PathBuf {
         self.root.join("resume").join(directory_key(directory))
     }
-
-    /// The file naming the last session run in `directory`, however it
-    /// ended: the one `rig --continue` there resumes.
-    pub fn last_marker(&self, directory: &Path) -> PathBuf {
-        self.root.join("last").join(directory_key(directory))
-    }
 }
 
 /// A file name for `directory`: a hash of its path. FNV-1a, which is
@@ -319,11 +313,6 @@ impl SessionDir {
         self.0.join("ready")
     }
 
-    /// The draft the terminal view hands to `$EDITOR`.
-    pub fn draft(&self) -> PathBuf {
-        self.0.join("draft.md")
-    }
-
     /// Held by the launcher running the session while it lives.
     pub fn launcher_lock(&self) -> PathBuf {
         self.0.join("launcher.lock")
@@ -365,36 +354,17 @@ impl SessionDir {
     }
 }
 
-/// How the agent runs, from its arguments. The launcher takes the same
-/// arguments after its own session options and passes them on unchanged
+/// The agent's arguments. The launcher takes the same arguments after its
+/// own session options and passes them on unchanged
 /// ([`Invocation::to_args`]), so `rig -p "…"` and the agent binary run
 /// alone agree on them.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub enum Mode {
-    /// The terminal view, or no view at all without one.
-    #[default]
-    Interactive,
-    /// One prompt, then exit: the answer on stdout. Text piped in on stdin
-    /// follows the prompt.
-    Print {
-        /// The prompt; may be empty when stdin is piped.
-        prompt: String,
-    },
-}
-
-impl Mode {
-    /// Whether nobody sits at a terminal view, and the run ends by itself:
-    /// every mode but [`Mode::Interactive`].
-    pub fn is_headless(&self) -> bool {
-        !matches!(self, Self::Interactive)
-    }
-}
-
-/// The agent's arguments: its [`Mode`] and the model to start with.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Invocation {
-    /// How it runs.
-    pub mode: Mode,
+    /// `Some` for print mode: answer this one prompt, then exit, with the
+    /// answer on stdout and text piped in on stdin after the prompt (which
+    /// may be empty when stdin is piped). `None` runs the terminal view, or
+    /// no view at all without one.
+    pub print: Option<String>,
     /// A catalog model (`vendor/model`) for the session's first agent.
     pub model: Option<String>,
 }
@@ -427,16 +397,11 @@ impl Invocation {
                 word => words.push(word),
             }
         }
-        let mode = if print {
-            Mode::Print {
-                prompt: words.join(" "),
-            }
-        } else if words.is_empty() {
-            Mode::Interactive
-        } else {
+        if !print && !words.is_empty() {
             return Err("a prompt needs --print (-p)".to_owned());
-        };
-        Ok(Self { mode, model })
+        }
+        let print = print.then(|| words.join(" "));
+        Ok(Self { print, model })
     }
 
     /// The agent's own arguments, from the process's.
@@ -445,19 +410,21 @@ impl Invocation {
         Self::parse(&args)
     }
 
+    /// Whether nobody sits at a terminal view, and the run ends by itself.
+    pub fn is_headless(&self) -> bool {
+        self.print.is_some()
+    }
+
     /// The arguments that [`Self::parse`] reads back as `self`.
     pub fn to_args(&self) -> Vec<OsString> {
         let mut args: Vec<OsString> = Vec::new();
         if let Some(model) = &self.model {
             args.extend(["--model".into(), model.into()]);
         }
-        match &self.mode {
-            Mode::Interactive => {}
-            Mode::Print { prompt } => {
-                args.push("--print".into());
-                if !prompt.is_empty() {
-                    args.extend(["--".into(), prompt.into()]);
-                }
+        if let Some(prompt) = &self.print {
+            args.push("--print".into());
+            if !prompt.is_empty() {
+                args.extend(["--".into(), prompt.into()]);
             }
         }
         args

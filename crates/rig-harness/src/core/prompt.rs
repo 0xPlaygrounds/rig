@@ -26,9 +26,6 @@ pub struct PromptSection {
 }
 
 impl PromptSection {
-    /// The order of instructions that hold for every project, such as a
-    /// plugin's own rules.
-    pub const ORDER_RULES: i32 = 100;
     /// The order of the project's instructions (`AGENTS.md`).
     pub const ORDER_PROJECT: i32 = 200;
     /// The order of facts about the machine and the day, which change most
