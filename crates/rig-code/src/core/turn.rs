@@ -91,9 +91,15 @@ pub fn on_submit(
                 },
             ),
             None => {
+                // /help comes from a plugin, so point at it only when loaded.
+                let hint = if slash.iter().any(|(_, command)| command.name == "help") {
+                    " /help lists the commands."
+                } else {
+                    ""
+                };
                 notices.write(Notice::error(
                     agent,
-                    format!("Unknown command /{name}. /help lists the commands."),
+                    format!("Unknown command /{name}.{hint}"),
                 ));
             }
         }
