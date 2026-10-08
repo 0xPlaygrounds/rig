@@ -1,6 +1,6 @@
 //! Slash commands are registered one-shot systems. A plugin adds one with
-//! [`RigAppExt::add_command`](super::RigAppExt::add_command), which
-//! registers the system and puts a [`SlashCommand`] on its entity.
+//! [`RigAppExt::add_command`], which registers the system and puts a
+//! [`SlashCommand`] on its entity.
 //! [`CommandsPlugin`] adds `/model`, `/effort`, `/help` and `/quit` that way.
 
 use bevy::{

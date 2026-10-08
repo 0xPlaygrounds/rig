@@ -1,6 +1,6 @@
 //! Tools are entities. A plugin adds one with
-//! [`RigAppExt::add_tool`](super::RigAppExt::add_tool), which spawns a
-//! [`RegisteredTool`] holding the tool's definition and its handler.
+//! [`RigAppExt::add_tool`], which spawns a [`RegisteredTool`] holding the
+//! tool's definition and its handler.
 //! [`ToolsPlugin`] adds the built-in `read`, `write`, `edit`, `bash` and
 //! `search` that way.
 
