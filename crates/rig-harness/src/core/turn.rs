@@ -273,8 +273,8 @@ const UNSAFE_GRACE: Duration = Duration::from_secs(5);
 
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
-/// On exit, which `/reload` and switching sessions go through too, leaves
-/// the running turns for the restart to carry on, as after a crash: model
+/// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
+/// idle agents) leaves the running turns for the restart to carry on, as after a crash: model
 /// calls are cancelled, read-only tool calls are cancelled and run again
 /// after the restart, and the other tool calls get [`UNSAFE_GRACE`] to
 /// finish. The results that came in are logged; the restart answers the

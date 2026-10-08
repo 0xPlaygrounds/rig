@@ -198,8 +198,9 @@ place; the newest 20k tokens stay as they are. `/compact` does it now, and
 `/compact <focus>` says what the summary should keep. The summarized messages
 stay in the transcript, under a line that shows the summary; a resumed
 session starts from the messages the summary kept. `/reload` rebuilds the agent
-and restarts it on the same session without waiting for running turns; it
-shows cargo's progress, keeps the
+and restarts it on the same session; it is refused while a turn runs (Esc
+stops the turn first), and a turn started during the build delays the
+restart until it ends. It shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
 the new one crashes during startup.
@@ -209,7 +210,7 @@ append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
 usage and compactions; images are stored once in `blobs/`, and `meta.json`
 caches what `/resume` lists. A tool call that may change something starts
 only once the reply that asked for it is on disk. After a crash, a closed
-terminal or a `/reload`, the next start reads the logs back and settles what
+terminal or a `/quit` mid-turn, the next start reads the logs back and settles what
 was left half done: read-only tool calls run again, other unfinished tool
 calls are answered as interrupted by the restart, subagent answers that had
 not arrived are delivered, and a turn that waited on the model carries on.

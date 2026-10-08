@@ -491,7 +491,7 @@ pub(crate) fn reconcile(
     // work. The answers go after every turn above started, so a parent
     // that works queues them.
     let mut order: Vec<&RestoredAgent> = restored.iter().collect();
-    order.sort_by(|a, b| b.depth.cmp(&a.depth));
+    order.sort_by_key(|agent| std::cmp::Reverse(agent.depth));
     let mut assigned: HashSet<Entity> = HashSet::new();
     for agent in order {
         let Some(parent) = agent.parent.as_ref().and_then(|parent| {
