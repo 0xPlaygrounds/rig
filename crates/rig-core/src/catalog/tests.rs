@@ -379,6 +379,11 @@ fn edit_distance_counts_single_character_edits() {
     assert_eq!(lookup::edit_distance("antropic", "anthropic"), 1);
     assert_eq!(lookup::edit_distance("kitten", "sitting"), 3);
     assert_eq!(lookup::edit_distance("5.5", "5-5"), 1);
+    // A swap of two adjacent characters is one edit.
+    assert_eq!(lookup::edit_distance("inptu", "input"), 1);
+    assert_eq!(lookup::edit_distance("ab", "ba"), 1);
+    assert_eq!(lookup::edit_distance("ca", "abc"), 3);
+    assert_eq!(lookup::edit_distance("output", "input"), 3);
 }
 
 #[test]

@@ -55,7 +55,7 @@ fn every_unknown_field_is_reported_with_its_path() {
         r#"{"anthropic": {"model": {}, "models": {"claude-opus-5-5": {
             "limits": {"output": 1},
             "limit": {"contxt": 1},
-            "cost": {"cache_reed": 1},
+            "cost": {"cache_reed": 1, "inptu": 1},
             "modalities": {"input": ["text"], "output": ["text"]},
             "reasoning_options": [{"type": "effort", "valus": ["low"]}],
             "rig": {"binds_contxt": true}
@@ -76,6 +76,11 @@ fn every_unknown_field_is_reported_with_its_path() {
             error(
                 "anthropic.models.claude-opus-5-5.cost.cache_reed",
                 unknown_field(Some("cache_read"))
+            ),
+            // Two swapped letters are one edit.
+            error(
+                "anthropic.models.claude-opus-5-5.cost.inptu",
+                unknown_field(Some("input"))
             ),
             error(
                 "anthropic.models.claude-opus-5-5.modalities.output",

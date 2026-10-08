@@ -98,21 +98,34 @@ pub(super) fn suggestions<'a>(
     close.into_iter().map(|(_, candidate)| candidate).collect()
 }
 
-/// The Levenshtein distance between `a` and `b`, by character.
+/// The edit distance between `a` and `b`, by character: insertions,
+/// deletions, substitutions and swaps of two adjacent characters each count
+/// one (optimal string alignment), so `inptu` is one edit from `input`.
 pub(crate) fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
+    let at = |row: &[usize], k: usize| row.get(k).copied().unwrap_or(usize::MAX);
+    let mut before: Vec<usize> = Vec::new();
     let mut previous: Vec<usize> = (0..=b.len()).collect();
-    for (i, left) in a.chars().enumerate() {
+    for (i, left) in a.iter().enumerate() {
         let mut current = Vec::with_capacity(b.len() + 1);
         current.push(i + 1);
         for (j, right) in b.iter().enumerate() {
-            let at = |row: &[usize], k: usize| row.get(k).copied().unwrap_or(usize::MAX);
-            let substitute = at(&previous, j).saturating_add(usize::from(left != *right));
+            let substitute = at(&previous, j).saturating_add(usize::from(left != right));
             let delete = at(&previous, j + 1).saturating_add(1);
             let insert = at(&current, j).saturating_add(1);
-            current.push(substitute.min(delete).min(insert));
+            let mut best = substitute.min(delete).min(insert);
+            let swapped = i > 0
+                && j > 0
+                && a.get(i - 1) == Some(right)
+                && b.get(j - 1) == Some(left)
+                && left != right;
+            if swapped {
+                best = best.min(at(&before, j - 1).saturating_add(1));
+            }
+            current.push(best);
         }
-        previous = current;
+        before = std::mem::replace(&mut previous, current);
     }
     previous.last().copied().unwrap_or(0)
 }
