@@ -326,8 +326,8 @@ impl SessionDir {
     }
 
     /// What `/resume` lists about the session, as JSON the agent rewrites
-    /// at the end of each turn: its name, title, directory, model, cost
-    /// and when it was last updated. The agent logs hold the same facts.
+    /// at the end of each turn: its name, title, cost and when it was last
+    /// updated. The agent logs hold the same facts.
     pub fn meta(&self) -> PathBuf {
         self.0.join("meta.json")
     }

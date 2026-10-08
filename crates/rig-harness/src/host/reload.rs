@@ -29,7 +29,6 @@ use super::process::{detach, kill_group};
 use crate::core::agent::{Notice, TurnOf};
 use crate::core::calls::Wake;
 use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::inbox::{Deliver, DeliveryMode};
 use crate::core::turn::PollCalls;
 
 /// Lines of a failed build shown, from its first error.
@@ -305,18 +304,17 @@ fn drain_reload(
                 Home::from_env().build_log().display()
             ),
         ));
-        commands.trigger(Deliver {
-            entity: build.agent,
-            text: launcher::build_failure_note(
+        launcher::note_build_failure(
+            &mut commands,
+            build.agent,
+            launcher::build_failure_note(
                 "/reload",
                 &format!(
                     "`rig build` exited with {status}. Its output from the first error:\n{}",
                     build.errors(NOTE_LINES)
                 ),
             ),
-            origin: launcher::build_origin(),
-            mode: DeliveryMode::Note,
-        });
+        );
         failures.write(ReloadFailed { output });
         commands.remove_resource::<ReloadBuild>();
     }

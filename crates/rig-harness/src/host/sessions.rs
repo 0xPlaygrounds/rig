@@ -23,8 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher;
 use crate::core::agent::{
-    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, SpawnedBy, TurnEnded,
-    TurnOf,
+    Agent, AgentId, Conversation, Notice, PickKind, PickRequest, SpawnedBy, TurnEnded, TurnOf,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::journal::{SessionPaths, now_ms};
@@ -57,7 +56,6 @@ impl Plugin for SessionsPlugin {
             )
             .add_observer(on_switch_session)
             .add_systems(PreStartup, restore_name)
-            .add_systems(Startup, record_directory)
             .add_systems(
                 Last,
                 write_meta
@@ -96,12 +94,6 @@ pub struct Meta {
     /// The name set with `/name`.
     #[serde(default)]
     pub name: Option<String>,
-    /// The working directory it ran in.
-    #[serde(default)]
-    pub cwd: Option<PathBuf>,
-    /// The first agent's model.
-    #[serde(default)]
-    pub model: Option<String>,
     /// What the session's model calls cost, in USD.
     #[serde(default)]
     pub cost: f64,
@@ -213,22 +205,6 @@ fn restore_name(paths: Option<Res<SessionPaths>>, mut name: ResMut<SessionName>)
     }
 }
 
-/// Records the working directory of a session the launcher did not start,
-/// so `/resume` can list it.
-fn record_directory(paths: Option<Res<SessionPaths>>) {
-    let Some(paths) = paths else {
-        return;
-    };
-    if paths.directory().exists() {
-        return;
-    }
-    if let Ok(here) = std::env::current_dir()
-        && let Err(failure) = fs::write(paths.directory(), here.to_string_lossy().as_bytes())
-    {
-        error!("could not record the session's directory: {failure}");
-    }
-}
-
 /// Changed whenever a turn ends, so the listing cache is rewritten.
 #[derive(Resource, Default)]
 struct TurnEndedMark;
@@ -244,24 +220,15 @@ fn mark_turn_end(ended: On<TurnEnded>, mut mark: ResMut<TurnEndedMark>) {
 fn write_meta(
     paths: Option<Res<SessionPaths>>,
     name: Res<SessionName>,
-    agents: Query<
-        (
-            &AgentId,
-            &Conversation,
-            &Spending,
-            Option<&ModelChoice>,
-            Has<SpawnedBy>,
-        ),
-        With<Agent>,
-    >,
+    agents: Query<(&AgentId, &Conversation, &Spending, Has<SpawnedBy>), With<Agent>>,
 ) {
     let Some(paths) = paths.filter(|paths| paths.is_saved()) else {
         return;
     };
-    // The agents the user started come first: the title and model are
-    // theirs, not a spawned agent's.
+    // The agents the user started come first: the title is theirs, not a
+    // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| (a.4, &a.0.0).cmp(&(b.4, &b.0.0)));
+    agents.sort_by(|a, b| (a.3, &a.0.0).cmp(&(b.3, &b.0.0)));
     let meta = Meta {
         title: agents
             .iter()
@@ -269,12 +236,6 @@ fn write_meta(
             .map(|text| title(&text))
             .unwrap_or_default(),
         name: name.0.clone(),
-        cwd: paths
-            .working_directory()
-            .or_else(|| std::env::current_dir().ok()),
-        model: agents
-            .first()
-            .and_then(|(_, _, _, model, _)| model.map(|model| model.0.clone())),
         cost: agents.iter().map(|(_, _, spent, ..)| spent.cost).sum(),
         updated: now_ms(),
     };

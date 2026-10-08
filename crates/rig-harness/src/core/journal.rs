@@ -88,11 +88,6 @@ pub(crate) struct Header {
     pub(crate) v: u32,
     /// The agent's id.
     pub(crate) agent: String,
-    /// The working directory the agent started in.
-    #[serde(default)]
-    pub(crate) cwd: Option<PathBuf>,
-    /// When the log was started, in milliseconds since the Unix epoch.
-    pub(crate) created: u64,
     /// The id of the agent it was [`SpawnedBy`](super::agent::SpawnedBy),
     /// if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -330,8 +325,6 @@ fn header(agent: &str, parent: Option<String>) -> Header {
     Header {
         v: LOG_VERSION,
         agent: agent.to_owned(),
-        cwd: std::env::current_dir().ok(),
-        created: now_ms(),
         parent,
     }
 }

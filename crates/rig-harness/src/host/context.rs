@@ -1,7 +1,7 @@
 //! The project context in every agent's system prompt: the instruction
 //! files (`AGENTS.md`, or `CLAUDE.md`) of `RIG_HOME` and of the working
 //! directory and each directory above it, and the environment (working
-//! directory, platform, date, git branch). Both are
+//! directory, platform, date). Both are
 //! [`PromptSection`]s, re-read when a turn starts and by `/context`, so an
 //! edited `AGENTS.md` counts from the next message without a rebuild.
 //! A section only changes when its text does, so the prompt stays cached.
@@ -81,14 +81,6 @@ struct Context {
     /// Files that exist but could not be read, with why.
     unreadable: Vec<String>,
     cwd: PathBuf,
-    git: Option<Git>,
-}
-
-/// The git repository the working directory is in.
-struct Git {
-    root: PathBuf,
-    /// The branch, or `detached at <commit>`.
-    head: String,
 }
 
 impl Context {
@@ -130,12 +122,10 @@ impl Context {
             }
         }
         files.reverse();
-        let git = git_head(&cwd);
         Self {
             files,
             unreadable,
             cwd,
-            git,
         }
     }
 
@@ -166,9 +156,9 @@ impl Context {
         PromptSection::new(PromptSection::ORDER_PROJECT, "project_instructions", text)
     }
 
-    /// The working directory, platform, date and git branch.
+    /// The working directory, platform and date.
     fn environment_section(&self) -> PromptSection {
-        let mut lines = vec![
+        let lines = [
             format!("Working directory: {}", self.cwd.display()),
             format!(
                 "Platform: {} ({})",
@@ -177,46 +167,12 @@ impl Context {
             ),
             format!("Today's date: {}", chrono::Local::now().format("%Y-%m-%d")),
         ];
-        lines.push(match &self.git {
-            Some(git) => format!("Git repository: {}, {}", git.root.display(), git.head),
-            None => "Git repository: none".to_owned(),
-        });
-        if super::launcher::executable().is_some() {
-            lines.push(build_paragraph());
-        }
         PromptSection::new(
             PromptSection::ORDER_ENVIRONMENT,
             "environment",
             lines.join("\n"),
         )
     }
-}
-
-/// How this agent is built, and what to do when a build fails: for an
-/// agent the `rig` launcher runs.
-fn build_paragraph() -> String {
-    let home = Home::from_env();
-    let source = std::env::var_os("RIG_SOURCE")
-        .filter(|source| !source.is_empty())
-        .map_or_else(
-            || "the rig-harness release from crates.io".to_owned(),
-            |source| {
-                format!(
-                    "the rig-harness source at {} (RIG_SOURCE)",
-                    Path::new(&source).display()
-                )
-            },
-        );
-    format!(
-        "\nThis agent runs from a project the `rig` launcher generates from the plugin list \
-         {plugins} and builds against {source}: {project}/Cargo.toml and {project}/src/main.rs. \
-         Every build writes its whole output to {log}. When a build fails (a note from plugin \
-         build in the conversation), read {log}, fix the cause (the plugins.toml entries, or the \
-         source), and tell the user to run /reload, or that the fix applies at the next start.",
-        plugins = home.config().display(),
-        project = home.project().display(),
-        log = home.build_log().display(),
-    )
 }
 
 /// The instruction file of `dir`, if it has one.
@@ -254,37 +210,6 @@ fn read_capped(path: &Path, cap: usize) -> std::io::Result<ContextFile> {
         path: path.to_path_buf(),
         text,
         size,
-    })
-}
-
-/// The git repository `cwd` is in and its checked-out branch, read from
-/// `.git/HEAD` (or the `gitdir:` a worktree's `.git` file names) without
-/// running git.
-fn git_head(cwd: &Path) -> Option<Git> {
-    let (root, dot_git) = cwd
-        .ancestors()
-        .map(|dir| (dir, dir.join(".git")))
-        .find(|(_, dot_git)| dot_git.exists())?;
-    let git_dir = if dot_git.is_file() {
-        let link = fs::read_to_string(&dot_git).ok()?;
-        let target = link.trim().strip_prefix("gitdir:")?.trim();
-        root.join(target)
-    } else {
-        dot_git
-    };
-    let head = fs::read_to_string(git_dir.join("HEAD")).ok()?;
-    let head = head.trim();
-    let head = match head.strip_prefix("ref:") {
-        Some(reference) => {
-            let reference = reference.trim();
-            let branch = reference.strip_prefix("refs/heads/").unwrap_or(reference);
-            format!("branch {branch}")
-        }
-        None => format!("detached at {}", head.get(..12).unwrap_or(head)),
-    };
-    Some(Git {
-        root: root.to_path_buf(),
-        head,
     })
 }
 

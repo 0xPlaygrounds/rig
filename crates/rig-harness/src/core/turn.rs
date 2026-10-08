@@ -43,7 +43,7 @@ use super::compaction::{
     self, CompactReason, Compacted, MAX_COMPACTIONS, Summarize, Summarizing, Summary,
 };
 use super::effects::Effects;
-use super::inbox::{Delivery, Inbox, deliver_notes, deliver_queued, deliver_steering};
+use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
@@ -535,7 +535,6 @@ pub(crate) fn on_call_model(
         spec: connection.map(|connection| connection.spec),
         log: &log,
     };
-    deliver_notes(&to, &mut inbox, &mut conversation, &mut notices);
     deliver_steering(
         &to,
         &mut inbox,

@@ -4,9 +4,9 @@
 //! it this build started.
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
-//! into the primary agent's conversation as a [`DeliveryMode::Note`] from
-//! [`BUILD_ORIGIN`]: the model reads why, and where the whole output and
-//! the files the build is made from are, without a turn starting.
+//! into the primary agent's conversation from [`BUILD_ORIGIN`]
+//! ([`note_build_failure`]): the model reads why, and where the whole
+//! output and the files the build is made from are.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
@@ -16,7 +16,9 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use rig::harness_protocol::{Home, env};
 
-use crate::core::agent::Notice;
+use rig_core::completion::Message;
+
+use crate::core::agent::{ActiveTurn, AgentId, Conversation, Notice};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
 use crate::core::journal::{SessionLog, SessionPaths};
 use crate::host::headless::{PrimaryQuery, primary};
@@ -77,6 +79,39 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
     note
 }
 
+/// Puts `note`, on a failed build, in `agent`'s conversation from
+/// [`build_origin`]. An idle agent gets it at once without a turn
+/// starting: it is logged as halted, so a restore does not answer it and
+/// the user's next message joins it. A busy agent's model reads it with
+/// the turn's next call.
+pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
+    commands.queue(move |world: &mut World| {
+        if world.get::<ActiveTurn>(agent).is_some() {
+            world.trigger(Deliver {
+                entity: agent,
+                text: note,
+                origin: build_origin(),
+                mode: DeliveryMode::Steer,
+            });
+            return;
+        }
+        let (Some(log), Some(id)) = (
+            world.get_resource::<SessionLog>().cloned(),
+            world.get::<AgentId>(agent).cloned(),
+        ) else {
+            return;
+        };
+        let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
+            return;
+        };
+        let origin = build_origin();
+        let header = origin.header().unwrap_or_default();
+        let message = Message::user(format!("{header}\n{note}"));
+        log.commit(&id, &mut conversation, message, Some(origin));
+        log.halt(&id, &conversation);
+    });
+}
+
 /// The launcher that started this agent, if one did.
 pub(crate) fn executable() -> Option<OsString> {
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
@@ -110,12 +145,11 @@ fn deliver_build_failure(
     let Some(agent) = primary(&agents).filter(|_| log.is_some_and(|log| log.is_live())) else {
         return;
     };
-    commands.trigger(Deliver {
-        entity: agent,
-        text: build_failure_note("before this start", &failure.0),
-        origin: build_origin(),
-        mode: DeliveryMode::Note,
-    });
+    note_build_failure(
+        &mut commands,
+        agent,
+        build_failure_note("before this start", &failure.0),
+    );
     commands.remove_resource::<StartBuildFailure>();
 }
 
