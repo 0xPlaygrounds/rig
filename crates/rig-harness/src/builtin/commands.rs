@@ -246,8 +246,9 @@ fn help(
          Shift+Enter or Ctrl+J adds a line, Up and Down browse earlier prompts, Tab completes \
          /commands and @paths. While a turn runs, \
          Enter steers it and Tab queues a follow-up. @path attaches an image file, and \
-         Ctrl+V pastes the clipboard's image. /agents shows a subagent's work, and what is \
-         typed then goes to it."
+         Ctrl+V pastes the clipboard's image. Subagents work in the background and their \
+         answers arrive as messages; /agents shows a subagent's work, and what is typed then \
+         goes to it. Esc stops only the shown agent."
             .to_owned(),
     );
     notices.write(Notice::info(args.agent, lines.join("\n")));

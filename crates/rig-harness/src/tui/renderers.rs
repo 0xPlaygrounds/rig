@@ -176,7 +176,7 @@ impl AppToolRenderersExt for App {
 /// The looks of the built-in tools: `read` and `search` summarize what
 /// they found, `edit` shows its change as a diff, `write` the start of the
 /// new file, `shell` the command and the end of its output, and `task` the
-/// subagent's title and the start of its answer.
+/// subagent's title and whether it started.
 pub(crate) fn add_builtin_renderers(app: &mut App) {
     app.add_tool_renderer("read", read)
         .add_tool_renderer("edit", edit)

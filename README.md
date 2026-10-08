@@ -239,11 +239,15 @@ reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 
 The model can hand work to subagents with the `task` tool: each is a new
 agent in the same process, with its own conversation and, if the call asks,
-another model, reasoning setting or a subset of the tools. Several run side
-by side, and each one's final message is the call's result. Esc stops the
-turn and its subagents with it. `/agents` lists every agent with its model,
-state and cost, and shows the one picked: its transcript, and what you type
-then goes to it. A subagent can start subagents of its own, one level deep.
+another model, reasoning setting or a subset of the tools. Subagents work in
+the background: the call returns at once, and each one's final message
+arrives later as a message to the agent that started it, which starts a turn
+of an idle agent or follows the running one. Nothing waits for them, so you
+can keep talking to the main agent, or steer it, meanwhile. Esc stops only
+the shown agent's turn, not its subagents. `/agents` lists every agent with
+its model, state and cost, and shows the one picked: its transcript, and what
+you type then goes to it. A subagent can start subagents of its own, one
+level deep.
 In the effect log, a subagent's model calls name the `task` call as their
 parent.
 

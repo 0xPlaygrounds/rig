@@ -19,6 +19,7 @@ use rig_core::message::{ToolResult, UserContent};
 use super::markdown;
 use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
+use crate::core::subagents::REPORT_PREFIX;
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
@@ -218,7 +219,11 @@ fn message_lines(
                 match item {
                     UserContent::Text(text) => {
                         lines.push(Line::default());
-                        user_lines(&text.text, &mut lines);
+                        if text.text.starts_with(REPORT_PREFIX) {
+                            report_lines(&text.text, &mut lines);
+                        } else {
+                            user_lines(&text.text, &mut lines);
+                        }
                     }
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
@@ -278,6 +283,17 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
             style,
         ));
     }
+}
+
+/// A subagent's answer: its header, then the start of the answer.
+/// `/agents` shows the subagent's whole transcript.
+fn report_lines(text: &str, lines: &mut Vec<Line<'static>>) {
+    let (head, answer) = text.split_once('\n').unwrap_or((text, ""));
+    lines.push(Line::styled(
+        format!("⤶ {head}"),
+        Style::new().magenta().bold(),
+    ));
+    lines.extend(excerpt(answer, RESULT_LINES, Style::new().dim()));
 }
 
 /// `text`'s lines in one style.

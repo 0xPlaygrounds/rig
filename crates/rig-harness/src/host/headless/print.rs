@@ -1,4 +1,5 @@
-//! `--print`: one prompt to the primary agent, then exit. The answer's text
+//! `--print`: one prompt to the primary agent, then exit once no agent
+//! works, so the subagents it started have answered. The answer's text
 //! goes to stdout and failures to stderr; the exit code
 //! is 0 when the turn ended with an answer, 1 otherwise. Text piped in on
 //! stdin follows the prompt, so `git diff | rig -p "review this"` works.
@@ -14,7 +15,7 @@ use rig_core::completion::{AssistantContent, Message};
 
 use super::{PrimaryQuery, RunMode, primary};
 use crate::core::agent::{
-    ActiveTurn, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
+    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
 };
 use crate::core::login::PendingLogin;
 use crate::core::models;
@@ -84,7 +85,8 @@ fn drive(
     mut run: ResMut<PrintRun>,
     mode: Res<RunMode>,
     agents: PrimaryQuery,
-    models_of: Query<(Option<&ModelChoice>, Has<Connection>, Has<ActiveTurn>)>,
+    models_of: Query<(Option<&ModelChoice>, Has<Connection>)>,
+    working: Query<(), (With<Agent>, With<ActiveTurn>)>,
     conversations: Query<&Conversation>,
     logins: Query<(), With<PendingLogin>>,
     mut commands: Commands,
@@ -97,7 +99,7 @@ fn drive(
             let Some(agent) = primary(&agents) else {
                 return;
             };
-            let Ok((chosen, connected, _)) = models_of.get(agent) else {
+            let Ok((chosen, connected)) = models_of.get(agent) else {
                 return;
             };
             let model = match (&mode.0.model, chosen) {
@@ -130,10 +132,7 @@ fn drive(
             };
         }
         Step::Connecting { agent, frames } => {
-            let connected = command
-                || models_of
-                    .get(agent)
-                    .is_ok_and(|(_, connected, _)| connected);
+            let connected = command || models_of.get(agent).is_ok_and(|(_, connected)| connected);
             if !connected {
                 if frames == 0 {
                     run.step = Step::Done;
@@ -162,8 +161,9 @@ fn drive(
         }
         Step::Sent { agent, before } => {
             // The turn starts with the request; a command may start none,
-            // or a sign-in.
-            if models_of.get(agent).is_ok_and(|(.., busy)| busy) || !logins.is_empty() {
+            // or a sign-in. A subagent's answer starts another turn of the
+            // agent that started it.
+            if !working.is_empty() || !logins.is_empty() {
                 return;
             }
             let answer = conversations

@@ -1,23 +1,25 @@
 //! Subagents. A `task` tool call spawns a child agent entity, in process,
 //! with its own model, reasoning setting and tools; the child is
-//! [`SubagentOf`] the agent that called, works through turns like any
-//! agent, and its final message comes back as the call's result. The call
-//! is dispatched and recorded like every tool call, and the child's model
-//! calls are recorded with that call's effect as their parent, so the
+//! [`SubagentOf`] the agent that called and works through turns like any
+//! agent, in the background: the call answers at once that it started. The
+//! call is dispatched and recorded like every tool call, and the child's
+//! model calls are recorded with that call's effect as their parent, so the
 //! effect log nests a subagent's work under the call that asked for it.
 //!
-//! Stopping is structural. Despawning an agent despawns its subagents
-//! (`linked_spawn`); stopping the turn whose call a subagent works on
-//! removes the child's [`Assignment`], which stops the child's turn and so
-//! its own subagents' work. A finished subagent stays, so a view can show
-//! its transcript and the user can talk to it.
-
-use std::sync::Mutex;
+//! When the child's turn ends, with none of its own subagents still at
+//! work, its final message, or why it has none, goes to the parent as a message marked with [`REPORT_PREFIX`],
+//! through the parent's [`Inbox`](super::inbox::Inbox) like a follow-up:
+//! it starts a turn of an idle parent, and waits for the end of a busy
+//! one's. So nothing waits for a subagent, and the user can talk to any
+//! agent meanwhile.
+//!
+//! Stopping an agent's turn stops only that agent. Despawning an agent
+//! despawns its subagents (`linked_spawn`). A finished subagent stays, so
+//! a view can show its transcript and the user can talk to it.
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use futures::channel::oneshot;
 use rig_core::completion::{AssistantContent, Message};
 use rig_core::effect::{
     EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
@@ -29,9 +31,9 @@ use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult};
 use serde::Deserialize;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, Conversation, Effort, Interrupt, ModelChoice, SystemPrompt,
-    ToolAccess, TurnOf,
+    ActiveTurn, Agent, AgentId, Conversation, Effort, ModelChoice, SystemPrompt, ToolAccess, TurnOf,
 };
+use super::inbox::Report;
 use super::models;
 use super::save::ReflectSaved;
 use super::tools::{Footprint, ToolOptions, register_tool};
@@ -48,10 +50,15 @@ pub const MAX_DEPTH: usize = 2;
 /// The most bytes of a subagent's answer that go back to its parent.
 const MAX_ANSWER_BYTES: usize = 50 * 1024;
 
+/// How a subagent's answer starts, in the message that brings it to its
+/// parent.
+pub const REPORT_PREFIX: &str = "[subagent ";
+
 const DESCRIPTION: &str = "Hand a self-contained task to a subagent: a new agent with a \
-    conversation of its own, which works with its tools until it can answer. Its final \
-    message is this call's result. It sees nothing of this conversation, only `prompt`. \
-    Several `task` calls in one reply run side by side.";
+    conversation of its own, which works with its tools until it can answer. The call \
+    returns at once and the subagent works in the background; its final message arrives \
+    later as a message starting with `[subagent <id> ...]`. It sees nothing of this \
+    conversation, only `prompt`. Several `task` calls run side by side.";
 
 const RULES: &[&str] = &[
     "Use `task` for work that would fill your context or can run on its own: a broad search \
@@ -59,15 +66,18 @@ const RULES: &[&str] = &[
      another model. Not for one quick read or edit.",
     "Write a `task` prompt as a full brief: the goal, what is known, where to look, and what \
      to return. Do not give two subagents changes to the same files.",
+    "A subagent's answer arrives as its own message when it finishes. Meanwhile keep working \
+     on what does not need it, or end your turn; do not poll or wait for it.",
 ];
 
 /// What every subagent is told about its role, after its parent's own
 /// system prompt.
 const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the task in the \
-    first message and waits for your answer; nobody answers questions while you work, so \
-    decide for yourself and say what you assumed. Your last message is returned to that \
-    agent as the task's result: make it complete on its own, with file paths, findings and \
-    what you changed, and keep it short.";
+    first message and expects your answer; nobody answers questions while you work, so \
+    decide for yourself and say what you assumed. Your last message is sent to that agent \
+    as the task's result: make it complete on its own, with file paths, findings and \
+    what you changed, and keep it short. If you start subagents of your own, end your \
+    turn while they work: their answers come back to you, and you answer once they have.";
 
 /// Marks a tool whose calls a subagent answers: starting one spawns a
 /// child agent instead of running a handler.
@@ -98,39 +108,15 @@ pub struct Delegated {
     pub task: String,
 }
 
-/// On a subagent while it works on a `task` call: the call's entity and
-/// its effect, which the subagent's model calls are recorded under.
-/// Despawning the call removes it, which stops the subagent's turn.
+/// On a subagent while it works on its task: the `task` call's effect,
+/// which the subagent's model calls are recorded under. The turn end that
+/// sends its answer to the parent takes it; a session that stops first
+/// does not save it, so nothing is sent.
 #[derive(Component, Debug)]
-#[relationship(relationship_target = Assignee)]
 pub struct Assignment {
-    /// The `task` call.
-    #[relationship]
-    pub call: Entity,
-    /// The call's effect; `None` only for an assignment made by hand,
-    /// whose calls are then recorded without a parent.
-    pub effect: Option<EffectId>,
+    /// The `task` call's effect.
+    pub effect: EffectId,
 }
-
-/// On a `task` call: the subagent working on it.
-#[derive(Component, Debug)]
-#[relationship_target(relationship = Assignment)]
-pub struct Assignee(Entity);
-
-impl Assignee {
-    /// The subagent.
-    pub fn agent(&self) -> Entity {
-        self.0
-    }
-}
-
-/// What a subagent's work comes to: its final message, or why it has none.
-type Answered = Result<String, String>;
-
-/// Where a subagent's answer goes: the `task` call's handler, waiting.
-/// Taken when the answer is sent.
-#[derive(Component, Default)]
-pub(crate) struct Answer(Option<oneshot::Sender<Answered>>);
 
 /// Registers the `task` tool, which runs beside the reply's other calls
 /// unless they touch anything.
@@ -211,22 +197,22 @@ pub(crate) struct Parent<'a> {
     pub(crate) depth: usize,
 }
 
-/// A subagent ready to spawn, and the sender its answer goes through.
+/// A subagent ready to spawn.
 pub(crate) struct Plan {
+    id: AgentId,
     task: String,
     instructions: String,
     model: ModelChoice,
     effort: Effort,
     tools: Vec<String>,
     prompt: String,
-    answer: oneshot::Sender<Answered>,
 }
 
-/// Plans the subagent of a `task` call: the per-call handler that waits
-/// for its answer, and the plan to spawn it with once the call has its
-/// effect id. A call that cannot start one gets a handler that answers
-/// with why, and no plan. `tools` are the parent's tools: each name, and
-/// whether it [`Delegates`].
+/// Plans the subagent of a `task` call: the per-call handler that answers
+/// at once that it started, and the plan to spawn it with once the call
+/// has its effect id. A call that cannot start one gets a handler that
+/// answers with why, and no plan. `tools` are the parent's tools: each
+/// name, and whether it [`Delegates`].
 pub(crate) fn plan(
     call: &ToolCall,
     parent: &Parent<'_>,
@@ -234,18 +220,24 @@ pub(crate) fn plan(
 ) -> (ErasedHandler, Option<Plan>) {
     match settle(call, parent, tools) {
         Ok(settled) => {
-            let (answer, waiting) = oneshot::channel();
+            let id = AgentId::default();
+            let started = format!(
+                "Started subagent `{}` on \"{}\". It works in the background; its answer \
+                 will arrive as a message when it finishes. Use /agents to watch it.",
+                short(&id),
+                settled.task
+            );
             let plan = Plan {
+                id,
                 task: settled.task,
                 instructions: settled.instructions,
                 model: settled.model,
                 effort: settled.effort,
                 tools: settled.tools,
                 prompt: format!("{}{SUBAGENT_ROLE}", parent.prompt.0),
-                answer,
             };
             (
-                ErasedHandler::new(TaskHandler::new(Ok(waiting))),
+                ErasedHandler::new(TaskHandler::new(Ok(started))),
                 Some(plan),
             )
         }
@@ -354,38 +346,39 @@ fn settle(call: &ToolCall, parent: &Parent<'_>, tools: &[(&str, bool)]) -> Resul
     })
 }
 
-/// Spawns the subagent of `plan` for the `task` call `call` of `parent`,
-/// whose effect is `effect`, and starts its turn.
+/// The first characters of an agent's id, enough to tell agents apart.
+fn short(id: &AgentId) -> &str {
+    id.0.get(..8).unwrap_or(&id.0)
+}
+
+/// Spawns the subagent of `plan` for the `task` call of `parent` whose
+/// effect is `effect`, and starts its turn.
 pub(crate) fn spawn(
     commands: &mut Commands,
     plan: Plan,
     parent: (Entity, &AgentId),
-    call: Entity,
     effect: EffectId,
 ) {
     let Plan {
+        id,
         task,
         instructions,
         model,
         effort,
         tools,
         prompt,
-        answer,
     } = plan;
     let child = commands
         .spawn((
             Name::new(format!("subagent: {task}")),
             Agent,
+            id,
             SubagentOf(parent.0),
             Delegated {
                 by: parent.1.0.clone(),
                 task,
             },
-            Assignment {
-                call,
-                effect: Some(effect),
-            },
-            Answer(Some(answer)),
+            Assignment { effect },
             model,
             effort,
             ToolAccess::Only(tools),
@@ -397,40 +390,42 @@ pub(crate) fn spawn(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// Sends a subagent's answer once its turn ends: its final message, or why
-/// it has none.
+/// Sends a subagent's answer to the agent that started it once a turn of
+/// the subagent ends with none of its own subagents still at their tasks:
+/// its final message, or why it has none. A subagent that ends its turn
+/// while its own subagents work answers after their answers carried it on.
 pub(crate) fn answer_on_turn_end(
     end: On<Remove<ActiveTurn>>,
-    mut agents: Query<(&Conversation, &mut Answer)>,
+    agents: Query<
+        (
+            &AgentId,
+            &Conversation,
+            &Delegated,
+            &SubagentOf,
+            Option<&Subagents>,
+        ),
+        With<Assignment>,
+    >,
+    assigned: Query<(), With<Assignment>>,
     mut commands: Commands,
 ) {
     let agent = end.entity;
-    let Ok((conversation, mut answer)) = agents.get_mut(agent) else {
+    let Ok((id, conversation, delegated, parent, subagents)) = agents.get(agent) else {
         return;
     };
-    let Some(sender) = answer.0.take() else {
+    if subagents.is_some_and(|subagents| subagents.iter().any(|child| assigned.contains(child))) {
         return;
-    };
-    // The call may be gone already; then nobody waits.
-    sender.send(final_answer(&conversation.0)).ok();
-    commands.entity(agent).try_remove::<(Assignment, Answer)>();
-}
-
-/// Stops a subagent whose `task` call went away before it answered: the
-/// turn that made the call was stopped.
-pub(crate) fn stop_when_unassigned(
-    removed: On<Remove<Assignment>>,
-    mut agents: Query<(&mut Answer, Has<ActiveTurn>)>,
-    mut commands: Commands,
-) {
-    let agent = removed.entity;
-    let Ok((mut answer, busy)) = agents.get_mut(agent) else {
-        return;
-    };
-    if answer.0.take().is_some() && busy {
-        commands.trigger(Interrupt { entity: agent });
     }
-    commands.entity(agent).try_remove::<Answer>();
+    let head = format!("{REPORT_PREFIX}{} \"{}\"", short(id), delegated.task);
+    let text = match final_answer(&conversation.0) {
+        Ok(answer) => format!("{head} finished]\n{answer}"),
+        Err(why) => format!("{head} stopped without an answer]\n{why}"),
+    };
+    commands.entity(agent).try_remove::<Assignment>();
+    commands.trigger(Report {
+        entity: parent.0,
+        text,
+    });
 }
 
 /// Links each restored subagent to the agent that started it again, by
@@ -453,7 +448,7 @@ pub(crate) fn link_restored(
 
 /// The text of the subagent's last message when it is the model's, cut to
 /// [`MAX_ANSWER_BYTES`]; otherwise why the subagent has no answer.
-fn final_answer(conversation: &[Message]) -> Answered {
+fn final_answer(conversation: &[Message]) -> Result<String, String> {
     let Some(Message::Assistant(reply)) = conversation.last() else {
         return Err(
             "The subagent stopped before it answered: it was interrupted, or its model \
@@ -485,22 +480,20 @@ fn final_answer(conversation: &[Message]) -> Answered {
 }
 
 /// The handler of `task` calls. The registered one only describes the
-/// tool; each call gets one of its own that waits for its subagent's
-/// answer, or answers at once why no subagent started.
+/// tool; each call gets one of its own that answers at once that its
+/// subagent started, or why none did.
 struct TaskHandler {
-    answer: Mutex<Option<Result<oneshot::Receiver<Answered>, String>>>,
+    answer: Option<Result<String, String>>,
 }
 
 impl TaskHandler {
     fn unbound() -> Self {
-        Self {
-            answer: Mutex::new(None),
-        }
+        Self { answer: None }
     }
 
-    fn new(answer: Result<oneshot::Receiver<Answered>, String>) -> Self {
+    fn new(answer: Result<String, String>) -> Self {
         Self {
-            answer: Mutex::new(Some(answer)),
+            answer: Some(answer),
         }
     }
 }
@@ -528,22 +521,14 @@ impl Serve for TaskHandler {
                 "the task tool answers tool calls only",
             )));
         }
-        let answer = self.answer.lock().ok().and_then(|mut answer| answer.take());
         let failure = |kind, why: String| ToolResult::failed(ToolExecutionError::new(kind, why));
-        let result = match answer {
+        let result = match &self.answer {
             None => failure(
                 ToolErrorKind::Other,
                 "`task` runs only inside an agent's turn".to_owned(),
             ),
-            Some(Err(why)) => failure(ToolErrorKind::InvalidArgs, why),
-            Some(Ok(waiting)) => match waiting.await {
-                Ok(Ok(text)) => ToolResult::success(ToolOutput::text(text)),
-                Ok(Err(why)) => failure(ToolErrorKind::Other, why),
-                Err(oneshot::Canceled) => failure(
-                    ToolErrorKind::Cancelled,
-                    "The subagent was stopped before it answered.".to_owned(),
-                ),
-            },
+            Some(Err(why)) => failure(ToolErrorKind::InvalidArgs, why.clone()),
+            Some(Ok(started)) => ToolResult::success(ToolOutput::text(started.clone())),
         };
         Reply::Outcome(Ok(Outcome::ToolResult { result }))
     }
@@ -600,7 +585,7 @@ pub fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
         };
         let title = match delegated {
             Some(delegated) => delegated.task.clone(),
-            None if several => format!("agent {}", id.0.get(..8).unwrap_or(&id.0)),
+            None if several => format!("agent {}", short(id)),
             None => "main agent".to_owned(),
         };
         let mut label = format!(

@@ -261,6 +261,16 @@ type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 /// are cancelled and waited for, within a second for all of them;
 /// every unfinished tool call is answered as stopped.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
+    // A subagent stopped here keeps its transcript and sends no answer.
+    let assigned: Vec<Entity> = world
+        .query_filtered::<Entity, With<Assignment>>()
+        .iter(world)
+        .collect();
+    for agent in assigned {
+        if let Ok(mut agent) = world.get_entity_mut(agent) {
+            agent.remove::<Assignment>();
+        }
+    }
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
     take_running::<ToolResult>(world, &mut cancelling);
@@ -520,7 +530,7 @@ pub(crate) fn on_call_model(
     // A subagent's calls are recorded under the `task` call it works on.
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.and_then(|assignment| assignment.effect),
+        assignment.map(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,
@@ -1034,7 +1044,7 @@ impl ToolStarter<'_, '_> {
     /// Starts `run`, the call entity `call` of `agent`, on the one dispatch
     /// path. A call to a tool that is not registered, or that the agent may
     /// not use, is dispatched and recorded like any other and answered with
-    /// an error. A `task` call also spawns the subagent that answers it.
+    /// an error. A `task` call also spawns the subagent that works on it.
     fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
         let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
             return;
@@ -1073,7 +1083,7 @@ impl ToolStarter<'_, '_> {
             work.instrument(span),
         ));
         if let Some(plan) = plan {
-            subagents::spawn(commands, plan, (agent, id), call, effect);
+            subagents::spawn(commands, plan, (agent, id), effect);
         }
     }
 }
@@ -1178,7 +1188,7 @@ pub(crate) fn on_summarize(
     };
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.and_then(|assignment| assignment.effect),
+        assignment.map(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,

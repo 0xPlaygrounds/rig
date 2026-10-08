@@ -2,9 +2,11 @@
 //! its [`Inbox`]: one sent with [`Submit`] steers the
 //! running turn and goes to the model with its next call, after the tool
 //! results it waits for; one sent with [`FollowUp`] goes once the turn
-//! would end, as the next step of the same turn. A turn that ends some
-//! other way (stopped, failed) hands what was not delivered back to the
-//! views as [`Recalled`], so nothing typed is lost or sent unasked.
+//! would end, as the next step of the same turn. A subagent's answer,
+//! sent with [`Report`], goes like a follow-up. A turn that ends some
+//! other way (stopped, failed) hands what was typed and not delivered back
+//! to the views as [`Recalled`], so nothing typed is lost or sent unasked,
+//! and puts the subagents' answers in the conversation for the next turn.
 
 use std::collections::VecDeque;
 
@@ -13,7 +15,7 @@ use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 
-use super::agent::{ActiveTurn, Agent, Notice, Submit};
+use super::agent::{ActiveTurn, Agent, Connection, Conversation, Notice, Submit};
 use super::attach;
 
 /// What was typed to the agent while it worked, not yet sent.
@@ -23,15 +25,19 @@ pub struct Inbox {
     pub steering: Vec<String>,
     /// Messages for after the turn, sent one at a time when it would end.
     pub follow_ups: VecDeque<String>,
+    /// Answers of the agent's subagents, sent like follow-ups after the
+    /// user's.
+    pub reports: VecDeque<String>,
 }
 
 impl Inbox {
     /// Whether nothing waits.
     pub fn is_empty(&self) -> bool {
-        self.steering.is_empty() && self.follow_ups.is_empty()
+        self.steering.is_empty() && self.follow_ups.is_empty() && self.reports.is_empty()
     }
 
-    /// Takes every waiting message, steering first, joined by blank lines.
+    /// Takes every message the user typed, steering first, joined by blank
+    /// lines.
     pub fn take_all(&mut self) -> String {
         let all: Vec<String> = self
             .steering
@@ -51,6 +57,17 @@ pub struct FollowUp {
     pub entity: Entity,
     /// The text typed.
     pub text: String,
+}
+
+/// A subagent's answer for the agent that started it: sent like a
+/// follow-up, so it starts a turn of an idle agent and waits for the end of
+/// a busy one's.
+#[derive(EntityEvent, Clone, Debug)]
+pub(crate) struct Report {
+    /// The agent that started the subagent.
+    pub(crate) entity: Entity,
+    /// The answer, headed by the subagent's id and task.
+    pub(crate) text: String,
 }
 
 /// Messages typed to the agent that its turn ended without sending, joined
@@ -87,16 +104,48 @@ pub(crate) fn on_follow_up(
     }
 }
 
-/// Hands back what a turn that just ended did not send.
+/// Queues a subagent's answer for a busy agent, or submits it to an idle
+/// one.
+pub(crate) fn on_report(
+    report: On<Report>,
+    mut agents: Query<(&mut Inbox, Has<ActiveTurn>), With<Agent>>,
+    mut commands: Commands,
+) {
+    let agent = report.entity;
+    let Ok((mut inbox, busy)) = agents.get_mut(agent) else {
+        return;
+    };
+    if busy {
+        inbox.reports.push_back(report.text.clone());
+    } else {
+        commands.trigger(Submit {
+            entity: agent,
+            text: report.text.clone(),
+        });
+    }
+}
+
+/// Hands back what the user typed that a turn that just ended did not
+/// send, and puts the subagents' answers it did not send in the
+/// conversation, where the next turn reads them.
 pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
-    mut agents: Query<&mut Inbox>,
+    mut agents: Query<(&mut Inbox, &mut Conversation, Option<&Connection>)>,
     mut recalled: MessageWriter<Recalled>,
+    mut notices: MessageWriter<Notice>,
 ) {
     let agent = end.entity;
-    if let Ok(mut inbox) = agents.get_mut(agent)
-        && !inbox.is_empty()
-    {
+    let Ok((mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
+        return;
+    };
+    if !inbox.reports.is_empty() {
+        let spec = connection.map(|connection| connection.spec);
+        let reports: Vec<String> = inbox.reports.drain(..).collect();
+        for text in reports {
+            append_user(agent, &text, &mut conversation.0, spec, &mut notices);
+        }
+    }
+    if !inbox.steering.is_empty() || !inbox.follow_ups.is_empty() {
         recalled.write(Recalled {
             agent,
             text: inbox.take_all(),
@@ -124,7 +173,8 @@ pub(crate) fn deliver_steering(
     true
 }
 
-/// Moves the oldest follow-up into the conversation. Whether there was one.
+/// Moves the oldest follow-up into the conversation, the user's before
+/// the subagents' answers. Whether there was one.
 pub(crate) fn deliver_follow_up(
     agent: Entity,
     inbox: &mut Inbox,
@@ -132,7 +182,11 @@ pub(crate) fn deliver_follow_up(
     spec: Option<&ModelSpec>,
     notices: &mut MessageWriter<Notice>,
 ) -> bool {
-    let Some(text) = inbox.follow_ups.pop_front() else {
+    let Some(text) = inbox
+        .follow_ups
+        .pop_front()
+        .or_else(|| inbox.reports.pop_front())
+    else {
         return false;
     };
     append_user(agent, &text, conversation, spec, notices);
