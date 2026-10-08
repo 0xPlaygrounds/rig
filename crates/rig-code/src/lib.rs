@@ -37,8 +37,8 @@ pub mod prelude {
 
     pub use crate::RigCodePlugins;
     pub use crate::core::agent::{
-        Agent, AgentId, AgentStatus, Conversation, Effort, Interrupt, ModelChoice, Notice,
-        SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
+        Agent, AgentId, AgentStatus, Connection, Conversation, Effort, Interrupt, ModelChoice,
+        Notice, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};

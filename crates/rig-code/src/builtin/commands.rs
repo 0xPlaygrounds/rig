@@ -3,7 +3,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use crate::core::agent::{ModelChoice, Notice, PickKind, PickRequest, SetEffort, SetModel};
+use crate::core::agent::{Connection, Notice, PickKind, PickRequest, SetEffort, SetModel};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
 
@@ -43,17 +43,12 @@ fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWr
 
 fn effort(
     In(args): In<CommandArgs>,
-    agents: Query<&ModelChoice>,
+    agents: Query<&Connection>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(spec) = agents
-        .get(args.agent)
-        .ok()
-        .and_then(|choice| choice.0.as_deref())
-        .and_then(models::resolve)
-    else {
+    let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
         notices.write(Notice::to(
             args.agent,
             "Pick a model with /model first.".to_owned(),

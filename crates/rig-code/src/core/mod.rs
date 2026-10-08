@@ -73,6 +73,7 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_submit)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_set_model)
+            .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort);
     }
 }

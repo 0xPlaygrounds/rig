@@ -1,25 +1,26 @@
 //! The turn loop: requests from views, then model calls and tool calls as
-//! entities polled every frame in [`AgentSystems`].
+//! entities polled every frame in [`AgentSystems`]. A reply's tool calls
+//! run one at a time, in order; rig-core's turn-failure rule decides when a
+//! reply ends the turn instead.
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemId;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{AsyncComputeTaskPool, Task, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
+use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
-use rig_core::message::{ToolCall, ToolResult, UserContent};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::ModelSelector;
-use rig_core::serve::adapters::ModelAdapter;
-use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
+use rig_core::message::{ToolCall, UserContent};
+use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 
 use super::agent::{
-    Agent, AgentId, AgentStatus, CallOf, Calls, Conversation, Effort, Interrupt, ModelChoice,
-    NeedsCompletion, Notice, Partial, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess,
-    ToolCallRun, TurnFinished,
+    Agent, AgentId, AgentStatus, CallOf, Calls, Connection, Conversation, Effort, Interrupt,
+    ModelChoice, NeedsCompletion, Notice, Partial, SetEffort, SetModel, Submit, SystemPrompt,
+    ToolAccess, ToolCallRun, ToolState, TurnFinished,
 };
 use super::commands::{CommandArgs, SlashCommand};
 use super::effects::Effects;
@@ -33,7 +34,8 @@ pub enum AgentSystems {
     Start,
     /// Running model and tool calls are polled.
     Poll,
-    /// Agents whose tool calls all finished get their results.
+    /// Agents running tools start their next queued call, or get their
+    /// results once every call finished.
     Settle,
 }
 
@@ -44,10 +46,6 @@ pub struct ModelCall {
     task: Task<Result<CompletionResponse, ErrorReport>>,
     feed: Receiver<Delta>,
 }
-
-/// The task running one tool call.
-#[derive(Component)]
-pub struct ToolTask(Task<ToolResult>);
 
 /// A streamed fragment for [`Partial`].
 enum Delta {
@@ -63,7 +61,7 @@ fn pool() -> &'static AsyncComputeTaskPool {
 pub fn on_submit(
     submit: On<Submit>,
     mut agents: Query<(&mut Conversation, &mut AgentStatus), With<Agent>>,
-    slash: Query<&SlashCommand>,
+    slash: Query<(Entity, &SlashCommand)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -74,9 +72,10 @@ pub fn on_submit(
     }
     if let Some(line) = text.strip_prefix('/') {
         let (name, args) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
-        match slash.iter().find(|command| command.name == name) {
-            Some(command) => commands.run_system_with(
-                command.system,
+        match slash.iter().find(|(_, command)| command.name == name) {
+            // The command sits on its system's own entity.
+            Some((system, _)) => commands.run_system_with(
+                SystemId::<In<CommandArgs>>::from_entity(system),
                 CommandArgs {
                     agent,
                     args: args.trim().to_owned(),
@@ -134,8 +133,8 @@ pub fn on_interrupt(
             stopped
                 .into_iter()
                 .map(|run| {
-                    run.result
-                        .clone()
+                    run.result()
+                        .cloned()
                         .unwrap_or_else(|| failed(&run.call, "interrupted by the user".to_owned()))
                 })
                 .collect(),
@@ -164,58 +163,91 @@ pub fn stop_turns_on_exit(
     }
 }
 
-/// Sets the agent's model, resetting a reasoning setting the new model does
-/// not take.
+/// Chooses the agent's model: a known catalog model replaces the agent's
+/// [`ModelChoice`], and [`on_model_chosen`] connects it.
 pub fn on_set_model(
     set: On<SetModel>,
-    mut agents: Query<(&mut ModelChoice, &mut Effort), With<Agent>>,
+    agents: Query<(), With<Agent>>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((mut choice, mut effort)) = agents.get_mut(set.entity) else {
+    if !agents.contains(set.entity) {
+        return;
+    }
+    match models::resolve(&set.model) {
+        Some(spec) => {
+            commands
+                .entity(set.entity)
+                .insert(ModelChoice(models::reference(spec)));
+        }
+        None => {
+            notices.write(Notice::to(
+                set.entity,
+                format!("No catalog model `{}`. Use vendor/model.", set.model),
+            ));
+        }
+    }
+}
+
+/// Connects an agent whose [`ModelChoice`] was inserted, by `/model` or by
+/// restoring a session, so requests never re-resolve the provider. A
+/// reasoning setting the new model does not take is reset.
+pub fn on_model_chosen(
+    chosen: On<Insert<ModelChoice>>,
+    mut agents: Query<(&ModelChoice, &mut Effort)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = chosen.entity;
+    let Ok((choice, mut effort)) = agents.get_mut(agent) else {
         return;
     };
-    let Some(spec) = models::resolve(&set.model) else {
-        notices.write(Notice::to(
-            set.entity,
-            format!("No catalog model `{}`. Use vendor/model.", set.model),
-        ));
-        return;
+    let connection = models::resolve(&choice.0)
+        .ok_or_else(|| format!("the catalog has no model `{}`", choice.0))
+        .and_then(|spec| models::connect(spec).map_err(|error| error.to_string()));
+    let connection = match connection {
+        Ok(connection) => connection,
+        Err(why) => {
+            commands.entity(agent).remove::<Connection>();
+            notices.write(Notice::to(
+                agent,
+                format!("Cannot use {}: {why}.", choice.0),
+            ));
+            return;
+        }
     };
-    choice.0 = Some(models::reference(spec));
+    let spec = connection.spec;
     notices.write(Notice::to(
-        set.entity,
-        format!(
-            "Model: {} ({}).",
-            spec.display_name,
-            models::reference(spec)
-        ),
+        agent,
+        format!("Model: {} ({}).", spec.display_name, choice.0),
     ));
     if let Err(refusal) = models::check_effort(spec, effort.0) {
         effort.0 = None;
         notices.write(Notice::to(
-            set.entity,
+            agent,
             format!("Reasoning reset to default: {refusal}."),
         ));
     }
+    commands.entity(agent).insert(connection);
 }
 
 /// Sets the agent's reasoning setting after checking it against the model.
 pub fn on_set_effort(
     set: On<SetEffort>,
-    mut agents: Query<(&ModelChoice, &mut Effort), With<Agent>>,
+    mut agents: Query<(Option<&Connection>, &mut Effort), With<Agent>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((choice, mut effort)) = agents.get_mut(set.entity) else {
+    let Ok((connection, mut effort)) = agents.get_mut(set.entity) else {
         return;
     };
-    let Some(spec) = choice.0.as_deref().and_then(models::resolve) else {
+    let Some(connection) = connection else {
         notices.write(Notice::to(
             set.entity,
             "Pick a model with /model first.".to_owned(),
         ));
         return;
     };
-    match models::check_effort(spec, set.effort) {
+    match models::check_effort(connection.spec, set.effort) {
         Ok(()) => {
             effort.0 = set.effort;
             notices.write(Notice::to(
@@ -236,7 +268,7 @@ pub fn start_completions(
             Entity,
             &AgentId,
             &mut Conversation,
-            &ModelChoice,
+            Option<&Connection>,
             &Effort,
             &SystemPrompt,
             &ToolAccess,
@@ -250,14 +282,21 @@ pub fn start_completions(
     mut notices: MessageWriter<Notice>,
     mut finished: MessageWriter<TurnFinished>,
 ) {
-    for (agent, id, mut conversation, choice, effort, prompt, access, mut status) in &mut agents {
+    for (agent, id, mut conversation, connection, effort, prompt, access, mut status) in &mut agents
+    {
         commands.entity(agent).remove::<NeedsCompletion>();
-        let definitions = tools
-            .iter()
-            .filter(|tool| access.allows(tool.0.name.as_str()))
-            .map(|tool| tool.0.clone())
-            .collect();
-        match prepare(&conversation, choice, effort, prompt, definitions) {
+        let request = connection
+            .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
+            .and_then(|connection| {
+                let definitions = tools
+                    .iter()
+                    .filter(|tool| connection.spec.tools && access.allows(tool.0.name.as_str()))
+                    .map(|tool| tool.0.clone())
+                    .collect();
+                prepare(&conversation, connection, effort, prompt, definitions)
+                    .map(|request| (connection.handler.clone(), request))
+            });
+        match request {
             Ok((handler, request)) => {
                 let (effect, reply) = effects.dispatch(
                     &id.0,
@@ -269,7 +308,7 @@ pub fn start_completions(
                     },
                 );
                 let (sender, feed) = crossbeam_channel::unbounded();
-                let task = pool().spawn(stream_reply(reply, sender));
+                let task = pool().spawn(effects.caught(effect, stream_reply(reply, sender)));
                 commands.spawn((
                     Name::new("model call"),
                     ModelCall { effect, task, feed },
@@ -308,40 +347,29 @@ fn drop_unanswered(
     }
 }
 
-/// The handler and request for the agent's next model call, or what the
-/// user must fix first.
+/// The request for the agent's next model call, checked against the
+/// model's spec, or what the user must fix first.
 fn prepare(
     conversation: &Conversation,
-    choice: &ModelChoice,
+    connection: &Connection,
     effort: &Effort,
     prompt: &SystemPrompt,
     tools: Vec<rig_core::completion::ToolDefinition>,
-) -> Result<(ErasedHandler, CompletionRequest), String> {
-    let reference = choice
-        .0
-        .as_deref()
-        .ok_or("No model is chosen. Pick one with /model.")?;
-    let spec = models::resolve(reference)
-        .ok_or_else(|| format!("The catalog has no model `{reference}`."))?;
+) -> Result<CompletionRequest, String> {
     let options = models::generation_options(effort.0);
-    spec.validate(&options)
+    connection
+        .spec
+        .validate(&options)
         .map_err(|refusal| refusal.to_string())?;
     let (prompt_message, earlier) = conversation
         .0
         .split_last()
         .ok_or("The conversation is empty.")?;
-    let request = CompletionRequest::new(prompt_message.clone())
+    Ok(CompletionRequest::new(prompt_message.clone())
         .messages(earlier.to_vec())
         .preamble(prompt.0.clone())
         .tools(tools)
-        .options(options);
-    let model = ModelSelector::Spec(spec)
-        .provider_ref()
-        .map_err(|error| error.to_string())?
-        .completion_model()
-        .map_err(|error| error.to_string())?;
-    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(reference.to_owned(), model));
-    Ok((handler, request))
+        .options(options))
 }
 
 /// Streams the reply, feeding text and reasoning to the view, and returns
@@ -368,12 +396,12 @@ async fn stream_reply(
 }
 
 /// Polls model calls: streams deltas into [`Partial`], and on a finished
-/// reply appends it and starts its tool calls, or ends the turn.
+/// reply appends it. rig-core's turn-failure rule then decides: a failed
+/// turn runs none of its tool calls and ends; otherwise its tool calls are
+/// queued in order, or the turn ends when it made none.
 pub fn poll_model_calls(
     mut calls: Query<(Entity, &CallOf, &mut ModelCall, &mut Partial)>,
-    mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation, &mut AgentStatus), With<Agent>>,
-    tools: Query<(&ToolDef, &ToolHandler)>,
-    effects: Res<Effects>,
+    mut agents: Query<(&mut Conversation, &mut AgentStatus), With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
     mut finished: MessageWriter<TurnFinished>,
@@ -390,7 +418,7 @@ pub fn poll_model_calls(
         };
         commands.entity(entity).despawn();
         let agent = call_of.0;
-        let Ok((id, access, mut conversation, mut status)) = agents.get_mut(agent) else {
+        let Ok((mut conversation, mut status)) = agents.get_mut(agent) else {
             continue;
         };
         let response = match result {
@@ -408,6 +436,27 @@ pub fn poll_model_calls(
         };
         conversation.0.extend(response.message());
         let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
+        let failure = turn_failure(
+            &response.choice,
+            Some(&response.stop()),
+            response.finish_reason().as_ref(),
+        );
+        if let Some(failure) = failure {
+            // Every call in the history gets a result, though none ran.
+            if !tool_calls.is_empty() {
+                conversation.0.push(Message::tool_results(
+                    tool_calls
+                        .iter()
+                        .map(|tool_call| failed(tool_call, format!("not run: {failure}")))
+                        .collect(),
+                ));
+            }
+            notices.write(Notice::to(agent, format!("The turn failed: {failure}.")));
+            drop_unanswered(agent, &mut conversation, &mut notices);
+            *status = AgentStatus::Idle;
+            finished.write(TurnFinished { agent });
+            continue;
+        }
         if tool_calls.is_empty() {
             *status = AgentStatus::Idle;
             finished.write(TurnFinished { agent });
@@ -415,60 +464,93 @@ pub fn poll_model_calls(
         }
         *status = AgentStatus::RunningTools;
         for (index, tool_call) in tool_calls.into_iter().enumerate() {
-            let name = tool_call.function.name.as_str();
-            let handler = tools
-                .iter()
-                .find(|(def, _)| def.0.name.as_str() == name && access.allows(name))
-                .map(|(_, handler)| handler.0.clone());
-            let run = run_tool_call(&effects, &id.0, call.effect, handler, tool_call.clone());
             commands.spawn((
-                Name::new(format!("tool call {name}")),
+                Name::new(format!("tool call {}", tool_call.function.name.as_str())),
                 ToolCallRun {
                     index,
                     call: tool_call,
-                    result: None,
+                    parent: call.effect,
+                    state: ToolState::Queued,
                 },
-                ToolTask(pool().spawn(run)),
                 CallOf(agent),
             ));
         }
     }
 }
 
-/// Polls tool calls and keeps each result on its call entity.
-pub fn poll_tool_calls(
-    mut runs: Query<(Entity, &mut ToolCallRun, &mut ToolTask)>,
-    mut commands: Commands,
-) {
-    for (entity, mut run, mut task) in &mut runs {
-        if let Some(result) = check_ready(&mut task.0) {
-            run.result = Some(result);
-            commands.entity(entity).remove::<ToolTask>();
+/// Polls running tool calls and keeps each result on its call entity.
+pub fn poll_tool_calls(mut runs: Query<&mut ToolCallRun>) {
+    for mut run in &mut runs {
+        let ready = match &mut run.bypass_change_detection().state {
+            ToolState::Running(task) => check_ready(task),
+            ToolState::Queued | ToolState::Done(_) => None,
+        };
+        if let Some(result) = ready {
+            run.state = ToolState::Done(result);
         }
     }
 }
 
-/// Appends the results of an agent whose tool calls all finished, in call
-/// order, and asks for the next model call.
+/// For each agent running tools: once its earlier calls finished, starts
+/// the next queued call; once every call finished, appends their results
+/// in call order and asks for the next model call. A call to a tool that
+/// is not registered, or that the agent may not use, is dispatched and
+/// recorded like any other and answered with an error.
 pub fn settle_tools(
-    mut agents: Query<(Entity, &Calls, &mut Conversation, &mut AgentStatus), With<Agent>>,
-    runs: Query<&ToolCallRun>,
+    mut agents: Query<
+        (
+            Entity,
+            &AgentId,
+            &ToolAccess,
+            &Calls,
+            &mut Conversation,
+            &mut AgentStatus,
+        ),
+        With<Agent>,
+    >,
+    mut runs: Query<&mut ToolCallRun>,
+    tools: Query<(&ToolDef, &ToolHandler)>,
+    effects: Res<Effects>,
     mut commands: Commands,
 ) {
-    for (agent, calls, mut conversation, mut status) in &mut agents {
+    for (agent, id, access, calls, mut conversation, mut status) in &mut agents {
         if *status != AgentStatus::RunningTools {
             continue;
         }
-        let mut done: Vec<&ToolCallRun> = runs.iter_many(calls.iter()).flatten().collect();
-        if done.is_empty() || done.iter().any(|run| run.result.is_none()) {
+        let mut order: Vec<(usize, Entity)> = calls
+            .iter()
+            .filter_map(|entity| runs.get(entity).ok().map(|run| (run.index, entity)))
+            .collect();
+        order.sort_unstable();
+        let mut results = Vec::with_capacity(order.len());
+        let mut waiting = false;
+        for (_, entity) in &order {
+            let Ok(mut run) = runs.get_mut(*entity) else {
+                continue;
+            };
+            match &run.state {
+                ToolState::Done(result) => results.push(result.clone()),
+                ToolState::Running(_) => waiting = true,
+                ToolState::Queued => {
+                    let name = run.call.function.name.as_str();
+                    let handler = tools
+                        .iter()
+                        .find(|(def, _)| def.0.name.as_str() == name && access.allows(name))
+                        .map(|(_, handler)| handler.0.clone());
+                    let work =
+                        run_tool_call(&effects, &id.0, run.parent, handler, run.call.clone());
+                    run.state = ToolState::Running(pool().spawn(work));
+                    waiting = true;
+                }
+            }
+            if waiting {
+                break;
+            }
+        }
+        if waiting || results.is_empty() {
             continue;
         }
-        done.sort_by_key(|run| run.index);
-        conversation.0.push(Message::tool_results(
-            done.into_iter()
-                .filter_map(|run| run.result.clone())
-                .collect(),
-        ));
+        conversation.0.push(Message::tool_results(results));
         commands
             .entity(agent)
             .despawn_related::<Calls>()

@@ -1,10 +1,16 @@
 //! Catalog models the agent can use, and the reasoning settings each takes.
 
 use std::collections::HashMap;
+use std::error::Error;
 
 use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::completion::{GenerationOptions, Reasoning, UnsupportedOption};
+use rig_core::operation::Completion;
 use rig_core::providers::registry::{ModelSelector, ProviderId};
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
+
+use super::agent::Connection;
 
 /// Token budgets for the named levels on models that take a budget instead
 /// of levels, clamped into the model's range.
@@ -18,6 +24,16 @@ pub fn resolve(reference: &str) -> Option<&'static ModelSpec> {
 /// The `vendor/model` reference of `spec`.
 pub fn reference(spec: &ModelSpec) -> String {
     format!("{}/{}", spec.provider.vendor(), spec.id)
+}
+
+/// Connects to `spec`: builds its provider's client from the environment
+/// and wraps the model as an effect handler.
+pub fn connect(spec: &'static ModelSpec) -> Result<Connection, Box<dyn Error + Send + Sync>> {
+    let model = ModelSelector::Spec(spec)
+        .provider_ref()?
+        .completion_model()?;
+    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(reference(spec), model));
+    Ok(Connection { spec, handler })
 }
 
 /// Catalog models that call tools and whose provider has a credential in

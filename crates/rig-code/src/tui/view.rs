@@ -111,7 +111,7 @@ pub fn open_pickers(
         let current = agents
             .get(request.agent)
             .ok()
-            .and_then(|choice| choice.0.as_deref());
+            .map(|choice| choice.0.as_str());
         let (title, items) = match request.kind {
             PickKind::Model => {
                 let items: Vec<(String, PickValue)> = models::available_models()

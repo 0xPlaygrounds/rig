@@ -3,30 +3,29 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use bevy_tasks::Task;
+use rig_core::catalog::ModelSpec;
 use rig_core::completion::{Message, Reasoning};
-use rig_core::message::ToolCall;
+use rig_core::effect::EffectId;
+use rig_core::message::{ToolCall, ToolResult};
+use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
 use super::save::ReflectSaved;
 
 /// Marks an agent. Spawning it adds every per-agent component with its
-/// default, including a fresh [`AgentId`].
+/// default, including a fresh [`AgentId`]. An agent has no [`ModelChoice`]
+/// until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(
-    AgentId,
-    Conversation,
-    ModelChoice,
-    Effort,
-    SystemPrompt,
-    ToolAccess,
-    AgentStatus
-)]
+#[require(AgentId, Conversation, Effort, SystemPrompt, ToolAccess, AgentStatus)]
 pub struct Agent;
 
 /// The agent's stable id, used in saved state, effect scopes and logs.
-/// `Entity` ids are not stable across a restart; this one is.
+/// `Entity` ids are not stable across a restart; this one is. It never
+/// changes after spawn.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
+#[component(immutable)]
 #[reflect(Component)]
 pub struct AgentId(pub String);
 
@@ -41,11 +40,25 @@ impl Default for AgentId {
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
 pub struct Conversation(pub Vec<Message>);
 
-/// The chosen catalog model, as `vendor/model`, or `None` until one is
-/// picked.
-#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
-pub struct ModelChoice(pub Option<String>);
+/// The chosen catalog model, as `vendor/model`. It never changes in place:
+/// choosing another model inserts a new one, and each insert rebuilds the
+/// agent's [`Connection`].
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
+#[component(immutable)]
+#[reflect(Component, Clone, Saved)]
+pub struct ModelChoice(pub String);
+
+/// The connected model of an agent with a [`ModelChoice`]: its catalog
+/// entry and the effect handler every model call is dispatched to. Built
+/// from the environment once per choice, and not saved: restoring the
+/// choice rebuilds it.
+#[derive(Component, Clone)]
+pub struct Connection {
+    /// The model's catalog entry.
+    pub spec: &'static ModelSpec,
+    /// The model as an effect handler.
+    pub handler: ErasedHandler,
+}
 
 /// The reasoning setting sent with each request, or `None` for the
 /// provider's default.
@@ -129,15 +142,39 @@ pub struct Partial {
     pub reasoning: String,
 }
 
-/// A tool call of the model's last reply, running or finished.
+/// Where a tool call of the last reply is. The calls of one reply run one
+/// at a time, in order: two edits of one file in a reply would otherwise
+/// both read the original text, and one would be lost.
+pub enum ToolState {
+    /// Waiting for the reply's earlier calls.
+    Queued,
+    /// Running; dropping the task cancels it.
+    Running(Task<ToolResult>),
+    /// Finished.
+    Done(ToolResult),
+}
+
+/// A tool call of the model's last reply.
 #[derive(Component)]
 pub struct ToolCallRun {
     /// The call's position in the reply.
     pub index: usize,
     /// The call.
     pub call: ToolCall,
+    /// The effect id of the model call that asked for it.
+    pub parent: EffectId,
+    /// Where it is.
+    pub state: ToolState,
+}
+
+impl ToolCallRun {
     /// The result, once the tool finished.
-    pub result: Option<rig_core::message::ToolResult>,
+    pub fn result(&self) -> Option<&ToolResult> {
+        match &self.state {
+            ToolState::Done(result) => Some(result),
+            ToolState::Queued | ToolState::Running(_) => None,
+        }
+    }
 }
 
 /// Send `text` to the agent: a slash command when it starts with `/`,

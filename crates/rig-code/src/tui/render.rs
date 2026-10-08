@@ -47,7 +47,7 @@ pub fn needs_redraw(
 pub fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
-    agents: Query<(&Conversation, &ModelChoice, &Effort, &AgentStatus)>,
+    agents: Query<(&Conversation, Option<&ModelChoice>, &Effort, &AgentStatus)>,
     partials: Query<(&CallOf, &Partial)>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
@@ -127,14 +127,14 @@ fn draw_transcript(frame: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scr
     frame.render_widget(paragraph.scroll((top, 0)), area);
 }
 
-fn status_line(shown: Option<(&ModelChoice, &Effort, &AgentStatus)>) -> Line<'static> {
+fn status_line(shown: Option<(Option<&ModelChoice>, &Effort, &AgentStatus)>) -> Line<'static> {
     let Some((model, effort, status)) = shown else {
         return Line::from("no agent").dim();
     };
-    let model = model
-        .0
-        .clone()
-        .unwrap_or_else(|| "no model: /model picks one".to_owned());
+    let model = model.map_or_else(
+        || "no model: /model picks one".to_owned(),
+        |model| model.0.clone(),
+    );
     let status = match status {
         AgentStatus::Idle => Span::from("idle").green(),
         AgentStatus::Thinking => Span::from("thinking… (Esc stops)").yellow(),

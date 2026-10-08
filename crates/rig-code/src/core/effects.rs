@@ -2,16 +2,19 @@
 //! [`Effects::dispatch`], which records it with rig-core's effect types
 //! under the agent's stable id.
 
+use std::any::Any;
 use std::fs::OpenOptions;
 use std::io::{self, Write};
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
+use futures::FutureExt;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_core::error::ErrorReport;
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply};
 use rig_core::streaming::{Item, StreamEvent};
 
@@ -69,6 +72,32 @@ impl Effects {
         (id, async move { handler.handle(kind, dispatch).await })
     }
 
+    /// Run `work`, the task that drives the effect `id`. A panic in it, in
+    /// the handler or in the reply's stream, becomes an internal error that
+    /// is also recorded as the effect's outcome.
+    pub fn caught<T>(
+        &self,
+        id: EffectId,
+        work: impl Future<Output = Result<T, ErrorReport>> + Send + 'static,
+    ) -> impl Future<Output = Result<T, ErrorReport>> + Send + 'static {
+        let recorder = self.recorder.clone();
+        async move {
+            // Unwinding drops the dispatch's observer, which records a
+            // cancellation; the panic recorded here replaces it.
+            AssertUnwindSafe(work)
+                .catch_unwind()
+                .await
+                .unwrap_or_else(|panic| {
+                    let report = ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!("panicked: {}", panic_message(panic.as_ref())),
+                    );
+                    recorder.resolve(id, Err(report.clone()));
+                    Err(report)
+                })
+        }
+    }
+
     /// Append every resolved effect to the JSON-lines log at `path`. Effects
     /// still in flight stay for a later flush.
     pub fn flush(&self, path: &Path) -> io::Result<()> {
@@ -87,6 +116,15 @@ impl Effects {
             .open(path)?
             .write_all(&lines)
     }
+}
+
+/// The message a panic was raised with.
+fn panic_message(panic: &(dyn Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+        .unwrap_or("no message")
 }
 
 /// The recorder's view of one dispatch.

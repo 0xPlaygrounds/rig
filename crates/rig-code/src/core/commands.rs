@@ -1,10 +1,10 @@
-//! The slash command registry. A command is an entity holding a registered
-//! one-shot system; plugins add commands with
-//! [`AppCommandsExt::add_command`].
+//! The slash command registry. A command is a registered one-shot system
+//! whose own entity carries its [`SlashCommand`], so despawning that entity
+//! unregisters the command and its system together. Plugins add commands
+//! with [`AppCommandsExt::add_command`].
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 
 /// What a command system receives: the agent the command was typed for and
@@ -17,16 +17,14 @@ pub struct CommandArgs {
     pub args: String,
 }
 
-/// A slash command: its name without the `/`, its help line, and its
-/// system.
+/// A slash command, on the entity of the one-shot system it runs: its name
+/// without the `/` and its help line.
 #[derive(Component, Clone)]
 pub struct SlashCommand {
     /// The name typed after `/`.
     pub name: String,
     /// One line of help.
     pub help: String,
-    /// The system run with the command's [`CommandArgs`].
-    pub system: SystemId<In<CommandArgs>>,
 }
 
 /// Registers slash commands on an [`App`].
@@ -59,12 +57,11 @@ impl AppCommandsExt for App {
             return self;
         }
         let system = self.register_system(system);
-        self.world_mut().spawn((
+        self.world_mut().entity_mut(system.entity()).insert((
             Name::new(format!("command:/{name}")),
             SlashCommand {
                 name: name.to_owned(),
                 help: help.to_owned(),
-                system,
             },
         ));
         self
