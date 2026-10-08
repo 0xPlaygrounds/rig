@@ -7,6 +7,10 @@ mod search;
 mod shell;
 mod write;
 
+use std::fs::{self, File};
+use std::io::{ErrorKind, Write as _};
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use bevy_app::prelude::*;
 use rig_core::tool::ToolExecutionError;
 
@@ -65,6 +69,51 @@ fn read_text(path: &str) -> Result<String, ToolExecutionError> {
         )));
     }
     std::fs::read_to_string(path).map_err(|error| io_error(path, error))
+}
+
+/// Replaces the file at `path` with `contents` in one step: a temporary
+/// file beside it is written, synced and renamed over it, so a crash or a
+/// full disk never leaves it half written. A symlink's target is replaced
+/// and the link kept; an existing file keeps its permissions. Anything but
+/// a regular file is refused, because opening a FIFO or a device for
+/// writing can block forever.
+fn write_atomic(path: &str, contents: &[u8]) -> Result<(), ToolExecutionError> {
+    /// Tells apart the temporary files of calls running at once.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let (target, permissions) = match fs::metadata(path) {
+        Ok(meta) if !meta.is_file() => {
+            return Err(ToolExecutionError::invalid_args(format!(
+                "{path} is not a regular file"
+            )));
+        }
+        Ok(meta) => (
+            fs::canonicalize(path).map_err(|error| io_error(path, error))?,
+            Some(meta.permissions()),
+        ),
+        Err(error) if error.kind() == ErrorKind::NotFound => (path.into(), None),
+        Err(error) => return Err(io_error(path, error)),
+    };
+    let name = target
+        .file_name()
+        .ok_or_else(|| ToolExecutionError::invalid_args(format!("{path} names no file")))?;
+    let temporary = target.with_file_name(format!(
+        ".{}.{}-{}.tmp",
+        name.to_string_lossy(),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = File::create_new(&temporary).and_then(|mut file| {
+        if let Some(permissions) = permissions {
+            file.set_permissions(permissions)?;
+        }
+        file.write_all(contents)?;
+        file.sync_all()?;
+        fs::rename(&temporary, &target)
+    });
+    written.map_err(|error| {
+        fs::remove_file(&temporary).ok();
+        io_error(path, error)
+    })
 }
 
 /// A model-visible error for an I/O failure on `path`.

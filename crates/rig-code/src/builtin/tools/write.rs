@@ -6,7 +6,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::io_error;
+use super::{io_error, write_atomic};
 use crate::core::blocking::blocking;
 
 /// Writes a whole file, creating its parent directories.
@@ -49,15 +49,7 @@ impl PortableTool for Write {
             {
                 std::fs::create_dir_all(parent).map_err(|error| io_error(&args.path, error))?;
             }
-            // Opening a FIFO or a device for writing can block forever.
-            if std::fs::metadata(&args.path).is_ok_and(|meta| !meta.is_file()) {
-                return Err(ToolExecutionError::invalid_args(format!(
-                    "{} is not a regular file",
-                    args.path
-                )));
-            }
-            std::fs::write(&args.path, &args.content)
-                .map_err(|error| io_error(&args.path, error))?;
+            write_atomic(&args.path, args.content.as_bytes())?;
             Ok(format!(
                 "Wrote {} bytes to {}.",
                 args.content.len(),
