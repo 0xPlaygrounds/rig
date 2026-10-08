@@ -91,7 +91,7 @@ impl Plugin for CorePlugin {
                         .in_set(AgentSet::Start),
                 ),
             )
-            .add_systems(Last, dispatch::flush_effects);
+            .add_systems(Last, (turn::stop_on_exit, dispatch::flush_effects).chain());
     }
 }
 

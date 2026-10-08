@@ -4,19 +4,19 @@
 //! to its agent by [`CallOf`], so despawning it cancels the work.
 
 use async_channel::{Receiver, Sender};
+use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
 use futures::StreamExt;
 use rig_core::ErrorReport;
+use rig_core::completion::message::turn_failure;
 use rig_core::completion::options::Reasoning;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
 use rig_core::effect::{
     EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
 };
-use rig_core::message::{
-    self, AssistantContent, AssistantMessage, Message, StopReason, ToolResultContent,
-};
+use rig_core::message::{self, AssistantContent, AssistantMessage, Message, ToolResultContent};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent, delivered};
 use rig_core::tool::{ToolExecutionError, ToolResult};
@@ -162,6 +162,24 @@ pub(crate) fn stop(
     commands.trigger(Notice::info(agent, "Stopped."));
     end_turn(&mut commands, agent, &mut status);
     Ok(())
+}
+
+/// Stops every busy agent when the app is about to exit, before the last
+/// effects are written and the state is saved, so the cancelled calls are
+/// recorded and the conversation is whole.
+pub(crate) fn stop_on_exit(
+    mut exits: MessageReader<AppExit>,
+    agents: Query<(Entity, &Status)>,
+    mut commands: Commands,
+) {
+    if exits.read().next().is_none() {
+        return;
+    }
+    for (agent, status) in &agents {
+        if *status != Status::Idle {
+            commands.trigger(Stop { entity: agent });
+        }
+    }
 }
 
 /// Starts a model call for every queued agent.
@@ -315,8 +333,33 @@ pub(crate) fn poll_model_calls(
             conversation.0.push(message);
         }
         let tool_calls: Vec<message::ToolCall> = response.tool_calls().cloned().collect();
-        match response.stop() {
-            StopReason::ToolUse if !tool_calls.is_empty() => {
+        // rig-core's one rule for how a turn ends: a failed turn runs none
+        // of its calls, and a turn the token limit cut with a call runs it
+        // (cut-off arguments come back to the model as invalid).
+        let failure = turn_failure(
+            &response.choice,
+            Some(&response.stop()),
+            response.finish_reason().as_ref(),
+        );
+        match failure {
+            Some(failure) => {
+                if !tool_calls.is_empty() {
+                    // Every call in the history gets its result.
+                    conversation.0.push(Message::tool_results(
+                        tool_calls
+                            .iter()
+                            .map(|call| {
+                                call.error_result(vec![ToolResultContent::text(format!(
+                                    "Not run: {failure}."
+                                ))])
+                            })
+                            .collect(),
+                    ));
+                }
+                commands.trigger(Notice::error(agent, failure));
+                end_turn(&mut commands, agent, &mut status);
+            }
+            None if !tool_calls.is_empty() => {
                 for (index, call) in tool_calls.into_iter().enumerate() {
                     commands.spawn((
                         CallOf(agent),
@@ -329,33 +372,7 @@ pub(crate) fn poll_model_calls(
                 }
                 *status = Status::Tools;
             }
-            // Arguments cut off by the output limit are not run. The model
-            // is told when the user continues; retrying at once could
-            // repeat paid calls that hit the limit every time.
-            StopReason::Length if !tool_calls.is_empty() => {
-                conversation.0.push(Message::tool_results(
-                    tool_calls
-                        .iter()
-                        .map(|call| {
-                            call.error_result(vec![ToolResultContent::text(
-                                "The reply hit the output token limit, so this call was cut \
-                                 off and not run.",
-                            )])
-                        })
-                        .collect(),
-                ));
-                commands.trigger(Notice::error(
-                    agent,
-                    "The reply hit the output token limit, so its tool calls were not run.",
-                ));
-                end_turn(&mut commands, agent, &mut status);
-            }
-            stop => {
-                if let StopReason::Error(reason) = stop {
-                    commands.trigger(Notice::error(agent, reason));
-                }
-                end_turn(&mut commands, agent, &mut status);
-            }
+            None => end_turn(&mut commands, agent, &mut status),
         }
     }
 }

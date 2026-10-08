@@ -3,8 +3,9 @@
 //! it when it exits with the reload code, and rolls back to the last build
 //! that started when a new build crashes during startup.
 //!
-//! `rig [-j N]` runs the agent. `rig build` regenerates and builds the agent
-//! project for `/reload`, with cargo's JSON messages on stdout and its
+//! `rig [-j N]` runs the agent. `rig build`, which the agent runs for
+//! `/reload`, regenerates and builds the agent project and stages it in its
+//! launcher's run directory, with cargo's JSON messages on stdout and its
 //! progress bar on stderr. `-j N` sets `CARGO_BUILD_JOBS` for every build.
 //!
 //! With `RIG_HOME` set, every file lives under it; otherwise the XDG base
@@ -75,6 +76,7 @@ enum Error {
     SecondBevy {
         plugins: PathBuf,
         dependency: String,
+        package: String,
         version: String,
     },
     /// A cargo command failed; cargo has said why.
@@ -94,10 +96,11 @@ impl fmt::Display for Error {
             Self::SecondBevy {
                 plugins,
                 dependency,
+                package,
                 version,
             } => write!(
                 f,
-                "the {dependency} uses Bevy {version}, but rig needs exactly Bevy \
+                "the {dependency} uses Bevy {version} ({package} {version}), but rig needs exactly Bevy \
                  {BEVY}, and two Bevy versions cannot share one app. Update the plugin to \
                  depend on Bevy ={BEVY}, or remove it from {}.",
                 plugins.display()
@@ -127,6 +130,10 @@ struct Launcher {
     /// The rig repository to build the agent from, in local-source mode.
     source: Option<PathBuf>,
     jobs: Option<String>,
+    /// This launcher's own files: the staged build, the ready file and the
+    /// resume file. Each launcher has its own, so several can share one
+    /// root; `rig build` gets its launcher's in `RIG_RUN_DIR`.
+    run: PathBuf,
 }
 
 /// A plugin of `plugins.toml`.
@@ -173,12 +180,22 @@ impl Launcher {
             }
         }
         let (config, cache, data) = directories();
+        let run = match mode {
+            Mode::Run => cache.join("run").join(std::process::id().to_string()),
+            Mode::Build => std::env::var_os("RIG_RUN_DIR")
+                .filter(|run| !run.is_empty())
+                .map(PathBuf::from)
+                .ok_or_else(|| {
+                    Error::Usage("`rig build` is run by the agent for /reload".to_owned())
+                })?,
+        };
         let launcher = Self {
             config,
             cache,
             data,
             source: source(),
             jobs,
+            run,
         };
         Ok((launcher, mode))
     }
@@ -204,13 +221,51 @@ impl Launcher {
         cargo
     }
 
+    /// Claims this launcher's run directory, runs the agent, and removes the
+    /// directory again. Run directories whose launcher is gone, killed
+    /// with its terminal for example, are removed first.
+    fn run(&self) -> ExitCode {
+        let lock = match self.claim() {
+            Ok(lock) => lock,
+            Err(error) => return fail(&error),
+        };
+        let code = self.run_agent();
+        drop(lock);
+        let _ = fs::remove_dir_all(&self.run);
+        code
+    }
+
+    /// Creates the run directory and locks it for as long as the returned
+    /// file is open, after removing the run directories nobody holds.
+    fn claim(&self) -> Result<fs::File, Error> {
+        if let Ok(entries) = fs::read_dir(self.cache.join("run")) {
+            for entry in entries.flatten() {
+                let dir = entry.path();
+                let held = fs::File::open(dir.join("lock"))
+                    .map(|file| file.try_lock().is_err())
+                    // A directory without a lock may be one being created.
+                    .unwrap_or(true);
+                if !held && dir != self.run {
+                    let _ = fs::remove_dir_all(&dir);
+                }
+            }
+        }
+        let _ = fs::remove_dir_all(&self.run);
+        fs::create_dir_all(&self.run).map_err(io(|| format!("create {}", self.run.display())))?;
+        let path = self.run.join("lock");
+        let lock = fs::File::create(&path).map_err(io(|| format!("create {}", path.display())))?;
+        lock.lock()
+            .map_err(io(|| format!("lock {}", path.display())))?;
+        Ok(lock)
+    }
+
     /// Builds the agent, then runs it until it quits: a reload starts the
     /// newest build, and a new build that crashes before it is ready is
     /// replaced by the last one that was.
-    fn run(&self) -> ExitCode {
+    fn run_agent(&self) -> ExitCode {
         let current = self.bin("current");
-        let candidate = self.bin("candidate");
-        let ready = self.bin("ready");
+        let candidate = self.run.join("candidate");
+        let ready = self.run.join("ready");
         let mut notice = None;
         if let Err(error) = self.build(false) {
             eprintln!("error: {error}");
@@ -235,6 +290,9 @@ impl Launcher {
             agent
                 .env("RIG_LAUNCHER", &launcher)
                 .env("RIG_READY_FILE", &ready)
+                .env("RIG_RESUME_FILE", self.run.join("resume"))
+                .env("RIG_RUN_DIR", &self.run)
+                .env("RIG_DATA_DIR", &self.data)
                 .env_remove("RIG_NOTICE");
             if let Some(jobs) = &self.jobs {
                 agent.env("CARGO_BUILD_JOBS", jobs);
@@ -279,7 +337,9 @@ impl Launcher {
         agent: &mut Command,
         trying: bool,
     ) -> Result<std::process::ExitStatus, Error> {
-        let ready = self.bin("ready");
+        let ready = self.run.join("ready");
+        // Printed once the agent has left the terminal.
+        let mut warning = None;
         let mut child = agent.spawn().map_err(io(|| "start the agent".to_owned()))?;
         let mut promoted = !trying;
         loop {
@@ -294,12 +354,15 @@ impl Launcher {
             if !promoted && ready.exists() {
                 // The candidate stays the build that runs; it is promoted
                 // again after the next successful start.
-                if let Err(error) = fs::rename(self.bin("candidate"), self.bin("current")) {
-                    eprintln!("rig: cannot promote the new build: {error}");
+                if let Err(error) = fs::rename(self.run.join("candidate"), self.bin("current")) {
+                    warning = Some(format!("rig: cannot promote the new build: {error}"));
                 }
                 promoted = true;
             }
             if let Some(status) = exited {
+                if let Some(warning) = warning {
+                    eprintln!("{warning}");
+                }
                 return Ok(status);
             }
             sleep(Duration::from_millis(100));
@@ -339,11 +402,12 @@ impl Launcher {
         let built = target
             .join("debug")
             .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
-        let staged = self.bin("candidate.partial");
+        let staged = self.run.join("candidate.partial");
         let bin = self.cache.join("bin");
         fs::create_dir_all(&bin).map_err(io(|| format!("create {}", bin.display())))?;
         fs::copy(&built, &staged).map_err(io(|| format!("copy {}", built.display())))?;
-        fs::rename(&staged, self.bin("candidate")).map_err(io(|| "stage the new build".to_owned()))
+        fs::rename(&staged, self.run.join("candidate"))
+            .map_err(io(|| "stage the new build".to_owned()))
     }
 
     /// Writes the agent project from `plugins.toml`, creating the list on
@@ -437,6 +501,9 @@ impl Launcher {
             return Err(Error::Cargo("resolving the agent's dependencies"));
         }
         let tree = String::from_utf8_lossy(&output.stdout);
+        // Every package with the dependency of the agent project it came
+        // through.
+        let mut packages = Vec::new();
         let mut top = "";
         for line in tree.lines() {
             let package = line.trim_start_matches(|character: char| character.is_ascii_digit());
@@ -448,20 +515,31 @@ impl Launcher {
             if depth == "1" {
                 top = name;
             }
-            let version = version.trim_start_matches('v');
-            let bevy = name == "bevy" || name.starts_with("bevy_");
-            if bevy && version != BEVY {
-                let plugin = plugins.iter().any(|plugin| plugin.krate == top);
-                return Err(Error::SecondBevy {
-                    plugins: self.plugins_path(),
-                    dependency: if plugin {
-                        format!("plugin crate \"{top}\"")
-                    } else {
-                        format!("crate \"{top}\"")
-                    },
-                    version: version.to_owned(),
-                });
-            }
+            packages.push((name, version.trim_start_matches('v'), top));
+        }
+        // Bevy's own crates are the ones the agent uses at BEVY. Ecosystem
+        // crates named `bevy_*` version on their own and are left alone; a
+        // second Bevy shows up as one of Bevy's crates at another version.
+        let own: Vec<&str> = packages
+            .iter()
+            .filter(|(name, version, _)| name.starts_with("bevy_") && *version == BEVY)
+            .map(|(name, _, _)| *name)
+            .collect();
+        let second = packages
+            .iter()
+            .find(|(name, version, _)| own.contains(name) && *version != BEVY);
+        if let Some((name, version, top)) = second {
+            let plugin = plugins.iter().any(|plugin| plugin.krate == *top);
+            return Err(Error::SecondBevy {
+                plugins: self.plugins_path(),
+                dependency: if plugin {
+                    format!("plugin crate \"{top}\"")
+                } else {
+                    format!("crate \"{top}\"")
+                },
+                package: (*name).to_owned(),
+                version: (*version).to_owned(),
+            });
         }
         Ok(())
     }

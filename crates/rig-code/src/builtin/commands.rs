@@ -82,8 +82,8 @@ fn effort(input: In<CommandInput>, agents: Query<Option<&Connection>>, mut comma
         commands.trigger(Notice::error(agent, "Pick a model with /model first."));
         return;
     };
-    let options = effort_options(&connection.spec);
-    if options.is_empty() {
+    let levels = effort_options(&connection.spec);
+    if levels.is_empty() {
         commands.trigger(Notice::error(
             agent,
             format!(
@@ -93,6 +93,14 @@ fn effort(input: In<CommandInput>, agents: Query<Option<&Connection>>, mut comma
         ));
         return;
     }
+    // `default` goes back to what the model does when no effort is sent.
+    let options: Vec<(String, Option<Reasoning>)> = std::iter::once(("default".to_owned(), None))
+        .chain(
+            levels
+                .into_iter()
+                .map(|(label, reasoning)| (label, Some(reasoning))),
+        )
+        .collect();
     if input.args.is_empty() {
         commands.trigger(OpenPicker {
             entity: agent,
@@ -102,9 +110,12 @@ fn effort(input: In<CommandInput>, agents: Query<Option<&Connection>>, mut comma
                 .into_iter()
                 .map(|(label, reasoning)| PickerOption {
                     detail: match reasoning {
-                        Reasoning::Off => "no reasoning".to_owned(),
-                        Reasoning::Budget { tokens } => format!("{tokens} reasoning tokens"),
-                        _ => "effort level".to_owned(),
+                        None => "the model's default".to_owned(),
+                        Some(Reasoning::Off) => "no reasoning".to_owned(),
+                        Some(Reasoning::Budget { tokens }) => {
+                            format!("{tokens} reasoning tokens")
+                        }
+                        Some(_) => "effort level".to_owned(),
                     },
                     value: label.clone(),
                     label,
@@ -115,7 +126,7 @@ fn effort(input: In<CommandInput>, agents: Query<Option<&Connection>>, mut comma
     }
     match options.iter().find(|(label, _)| *label == input.args) {
         Some((label, reasoning)) => {
-            commands.entity(agent).insert(Effort(Some(*reasoning)));
+            commands.entity(agent).insert(Effort(*reasoning));
             commands.trigger(Notice::info(agent, format!("Effort: {label}.")));
         }
         None => {

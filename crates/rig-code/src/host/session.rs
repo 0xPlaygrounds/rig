@@ -13,22 +13,30 @@ use bevy_log::{BoxedFmtLayer, tracing_subscriber};
 
 use crate::core::{SessionDir, append, random};
 
-/// The agent's data directory, which holds its sessions: `$RIG_HOME/data`
-/// when `RIG_HOME` is set, else `$XDG_DATA_HOME/rig` or
-/// `~/.local/share/rig`. The launcher uses the same rules.
+/// Where the agent keeps its files. The launcher names them in
+/// `RIG_DATA_DIR` and `RIG_RESUME_FILE`. Without a launcher, as under
+/// `cargo run`, the data directory is `$RIG_HOME/data` when `RIG_HOME` is
+/// set, else `$XDG_DATA_HOME/rig` or `~/.local/share/rig`, as the launcher
+/// would choose.
 #[derive(Resource, Clone, Debug)]
 pub struct Dirs {
-    /// Sessions and the resume file.
+    /// The directory of the sessions.
     pub data: PathBuf,
+    /// The file naming the session the next start restores. It is written
+    /// before a reload exit and deleted once the restarted agent is ready.
+    /// Each launcher has its own, so two agents on one data directory do
+    /// not swap sessions.
+    pub resume: PathBuf,
 }
 
 impl Dirs {
-    /// The directory the environment selects.
+    /// The files the environment selects.
     pub fn from_env() -> Self {
         let set = |variable: &str| std::env::var_os(variable).filter(|value| !value.is_empty());
-        let data = match set("RIG_HOME") {
-            Some(home) => PathBuf::from(home).join("data"),
-            None => set("XDG_DATA_HOME")
+        let data = match (set("RIG_DATA_DIR"), set("RIG_HOME")) {
+            (Some(data), _) => PathBuf::from(data),
+            (None, Some(home)) => PathBuf::from(home).join("data"),
+            (None, None) => set("XDG_DATA_HOME")
                 .map_or_else(
                     || {
                         std::env::home_dir()
@@ -39,13 +47,8 @@ impl Dirs {
                 )
                 .join("rig"),
         };
-        Self { data }
-    }
-
-    /// The file naming the session the next start restores. It is written
-    /// before a reload exit and deleted once the restarted agent is ready.
-    pub fn resume_path(&self) -> PathBuf {
-        self.data.join("resume")
+        let resume = set("RIG_RESUME_FILE").map_or_else(|| data.join("resume"), PathBuf::from);
+        Self { data, resume }
     }
 }
 
@@ -54,7 +57,7 @@ impl Dirs {
 /// the session log.
 pub(crate) fn open(app: &mut App) {
     let dirs = Dirs::from_env();
-    let resume = fs::read_to_string(dirs.resume_path())
+    let resume = fs::read_to_string(&dirs.resume)
         .ok()
         .map(|id| id.trim().to_owned())
         .filter(|id| {

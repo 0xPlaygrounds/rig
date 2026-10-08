@@ -65,7 +65,7 @@ impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, restore)
             .add_observer(autosave)
-            .add_systems(Last, save_on_exit);
+            .add_systems(Last, save_on_exit.after(super::turn::stop_on_exit));
     }
 }
 

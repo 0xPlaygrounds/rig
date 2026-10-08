@@ -283,6 +283,7 @@ fn poll_build(mut jobs: Query<(Entity, &mut BuildJob)>, mut commands: Commands) 
             Ok(Some(status)) => status.success(),
             Err(_) => false,
         };
+        job.child.stop();
         if status {
             job.built = true;
             commands.trigger(Notice::info(
@@ -322,7 +323,7 @@ fn finish_reload(
     if statuses.iter().any(|status| *status != Status::Idle) {
         return;
     }
-    match fs::write(dirs.resume_path(), &session.id) {
+    match fs::write(&dirs.resume, &session.id) {
         Ok(()) => {
             exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
         }
@@ -355,7 +356,7 @@ fn ready(dirs: Res<Dirs>) -> Result {
     if let Some(path) = std::env::var_os("RIG_READY_FILE") {
         fs::write(path, b"")?;
     }
-    match fs::remove_file(dirs.resume_path()) {
+    match fs::remove_file(&dirs.resume) {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
         _ => Ok(()),
     }

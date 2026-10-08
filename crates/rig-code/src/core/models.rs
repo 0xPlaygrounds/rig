@@ -31,15 +31,18 @@ pub fn model_id(spec: &ModelSpec) -> String {
 }
 
 /// The catalog models whose provider's credential variable is set and not
-/// empty, by vendor then id.
+/// empty, or whose provider needs no credential, such as a local server; by
+/// vendor then id.
 pub fn available_models() -> Vec<&'static ModelSpec> {
     Catalog::builtin()
         .iter()
         .filter(|spec| {
-            spec.provider
-                .api_key_env()
-                .and_then(std::env::var_os)
-                .is_some_and(|value| !value.is_empty())
+            !spec.provider.requires_credential()
+                || spec
+                    .provider
+                    .api_key_env()
+                    .and_then(std::env::var_os)
+                    .is_some_and(|value| !value.is_empty())
         })
         .collect()
 }
@@ -78,7 +81,8 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Reasoning)> {
     {
         for (name, tokens) in BUDGETS {
             let budget = Reasoning::Budget {
-                tokens: tokens.clamp(*range.start(), *range.end()),
+                // Not `clamp`, which panics on a reversed range.
+                tokens: tokens.max(*range.start()).min(*range.end()),
             };
             if !options.iter().any(|(_, option)| *option == budget) {
                 options.push((name.to_owned(), budget));

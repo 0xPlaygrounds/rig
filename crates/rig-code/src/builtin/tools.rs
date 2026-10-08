@@ -135,7 +135,17 @@ impl PortableTool for ReadTool {
             )));
         }
         let limit = args.limit.unwrap_or(MAX_LINES).clamp(1, MAX_LINES);
-        let lines: Vec<&str> = text.lines().skip(start).take(limit).collect();
+        // Whole lines up to the byte cap, so the range reported is the range
+        // the model sees; only a single line longer than the cap is cut.
+        let mut lines = Vec::new();
+        let mut bytes = 0;
+        for line in text.lines().skip(start).take(limit) {
+            bytes += line.len() + 1;
+            if !lines.is_empty() && bytes > MAX_BYTES {
+                break;
+            }
+            lines.push(line);
+        }
         let end = start + lines.len();
         let mut output = head(lines.join("\n"));
         if end < total {
@@ -274,7 +284,8 @@ impl PortableTool for ShellTool {
     fn description(&self) -> String {
         format!(
             "Run a shell command in the working directory and return its output and exit \
-             code. It gets no input. The default timeout is {DEFAULT_TIMEOUT} seconds, the \
+             code. It gets no input, and anything it leaves running in the background is \
+             stopped when it ends. The default timeout is {DEFAULT_TIMEOUT} seconds, the \
              longest {MAX_TIMEOUT}."
         )
     }
@@ -324,7 +335,8 @@ impl PortableTool for ShellTool {
 #[cfg(unix)]
 fn shell(command: &str) -> Command {
     let mut shell = Command::new("sh");
-    shell.arg("-c").arg(command);
+    // A git password prompt would wait for a terminal it cannot have.
+    shell.arg("-c").arg(command).env("GIT_TERMINAL_PROMPT", "0");
     shell
 }
 
@@ -370,8 +382,9 @@ fn supervise(
             Err(error) => break Err(failure(format!("cannot wait for the command: {error}"))),
         }
     };
-    // Kills the process group unless it exited, so the pipes close.
-    drop(child);
+    // Kills whatever the command left in the background too, so the pipes
+    // close and nothing outlives the call.
+    child.stop();
     let output = output(
         stdout.join().unwrap_or_default(),
         stderr.join().unwrap_or_default(),
