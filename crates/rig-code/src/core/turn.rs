@@ -1,7 +1,9 @@
 //! The turn loop. A user message spawns a turn entity, [`TurnOf`] its
 //! agent; the turn's model call and tool calls are entities [`CallOf`] the
 //! turn, and observers of their [`Done`] outputs carry the turn on. A
-//! reply's tool calls run one at a time, in order; rig-core's turn-failure
+//! reply's tool calls run side by side where their tools'
+//! [`Footprint`]s allow, and in order where they touch the same thing;
+//! their results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
 //! retried or recovered from as [`recovery`] decides. A conversation near
 //! the model's window is [`compaction`]-ed before the next call. Despawning
@@ -45,7 +47,7 @@ use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
-use super::tools::{ToolDef, ToolHandler, failed, run_tool_call};
+use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
 
 /// The systems polling running calls, in `Update`.
@@ -631,8 +633,9 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 
 /// Takes a finished reply: appends it, then lets rig-core's turn-failure
 /// rule decide. A failed reply runs none of its tool calls and ends the
-/// turn; a reply without tool calls ends it too; otherwise its first tool
-/// call starts and the rest are [`Queued`] in order.
+/// turn; a reply without tool calls ends it too; otherwise each of its
+/// tool calls starts that no earlier call touching the same thing holds
+/// back, and the rest are [`Queued`].
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
@@ -645,7 +648,7 @@ pub(crate) fn on_model_done(
         Option<&Connection>,
         &mut Spending,
     )>,
-    tools: Query<(&ToolDef, &ToolHandler)>,
+    tools: Tools,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -712,18 +715,33 @@ pub(crate) fn on_model_done(
         commands.entity(turn).despawn();
         return;
     }
-    let mut runs = tool_calls.into_iter().map(|call| ToolCallRun {
-        call,
-        parent: model_call.effect,
-    });
-    let Some(first) = runs.next() else {
+    if tool_calls.is_empty() {
         commands.entity(turn).despawn();
         return;
-    };
-    let running = start_tool(&first, &id.0, access, &tools, &effects, &wake);
-    commands.spawn((tool_name(&first), first, running, CallOf(turn)));
-    for run in runs {
-        commands.spawn((tool_name(&run), run, Queued, CallOf(turn)));
+    }
+    // Every call is waited on by the later calls of the reply until it
+    // finishes, so a call starts now when no earlier one touches what it
+    // touches.
+    let mut earlier: Vec<Touch> = Vec::with_capacity(tool_calls.len());
+    for call in tool_calls {
+        let footprint = tools
+            .iter()
+            .find(|(def, ..)| def.0.name == call.function.name)
+            .map_or_else(Footprint::default, |(.., &footprint)| footprint);
+        let run = ToolCallRun {
+            touch: footprint.of(&call.function.arguments),
+            call,
+            parent: model_call.effect,
+        };
+        let ready = earlier.iter().all(|touch| !run.touch.waits_for(touch));
+        earlier.push(run.touch.clone());
+        let mut entity = commands.spawn((tool_name(&run), CallOf(turn)));
+        if ready {
+            entity.insert(start_tool(&run, &id.0, access, &tools, &effects, &wake));
+        } else {
+            entity.insert(Queued);
+        }
+        entity.insert(run);
     }
 }
 
@@ -886,16 +904,16 @@ pub(crate) fn on_retry_due(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// Takes a finished tool call: starts the next queued call of the reply,
-/// or, once every call finished, appends their results in call order and
-/// calls the model again.
+/// Takes a finished tool call: starts each queued call of the reply that
+/// no earlier unfinished call holds back, or, once every call finished,
+/// appends their results in call order and calls the model again.
 pub(crate) fn on_tool_done(
     done: On<Add<Done<ToolResult>>>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,
     mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation)>,
     runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>, Has<Queued>)>,
-    tools: Query<(&ToolDef, &ToolHandler)>,
+    tools: Tools,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -909,25 +927,34 @@ pub(crate) fn on_tool_done(
     let Ok((id, access, mut conversation)) = agents.get_mut(agent) else {
         return;
     };
+    // The calls not finished yet, in call order, each holding back the
+    // later ones that touch what it touches.
+    let mut unfinished: Vec<&Touch> = Vec::new();
     let mut results = Vec::new();
     for call in calls.iter() {
         let Ok((run, output, queued)) = runs.get(call) else {
             continue;
         };
-        match output {
-            Some(Done(result)) => results.push(result.clone()),
-            None if queued => {
-                let running = start_tool(run, &id.0, access, &tools, &effects, &wake);
-                commands.entity(call).remove::<Queued>().insert(running);
-                return;
-            }
-            None => return,
+        if let Some(Done(result)) = output {
+            results.push(result.clone());
+            continue;
         }
+        if queued && unfinished.iter().all(|touch| !run.touch.waits_for(touch)) {
+            let running = start_tool(run, &id.0, access, &tools, &effects, &wake);
+            commands.entity(call).remove::<Queued>().insert(running);
+        }
+        unfinished.push(&run.touch);
+    }
+    if !unfinished.is_empty() {
+        return;
     }
     conversation.0.push(Message::tool_results(results));
     commands.entity(turn).despawn_related::<Calls>();
     commands.trigger(CallModel { entity: turn });
 }
+
+/// The registered tools, as [`start_tool`] looks them up.
+type Tools<'w, 's> = Query<'w, 's, (&'static ToolDef, &'static ToolHandler, &'static Footprint)>;
 
 /// Starts `run` on the one dispatch path. A call to a tool that is not
 /// registered, or that the agent may not use, is dispatched and recorded
@@ -936,15 +963,15 @@ fn start_tool(
     run: &ToolCallRun,
     scope: &str,
     access: &ToolAccess,
-    tools: &Query<(&ToolDef, &ToolHandler)>,
+    tools: &Tools,
     effects: &Effects,
     wake: &Wake,
 ) -> Running<ToolResult> {
     let name = run.call.function.name.as_str();
     let handler = tools
         .iter()
-        .find(|(def, _)| def.0.name.as_str() == name && access.allows(name))
-        .map(|(_, handler)| handler.0.clone());
+        .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name))
+        .map(|(_, handler, _)| handler.0.clone());
     let work = run_tool_call(effects, scope, run.parent, handler, run.call.clone());
     let span = info_span!("tool_call", agent = %scope, tool = name, parent = %run.parent);
     Running::spawn(tool_pool(), wake, work.instrument(span))

@@ -1,6 +1,8 @@
 //! The tool registry. A tool is an entity holding its definition, its
-//! effect handler and its [`ToolRules`]; plugins add tools with
-//! [`AppToolsExt::add_tool`].
+//! effect handler, its [`ToolRules`] and its [`Footprint`]; plugins add
+//! tools with [`AppToolsExt::add_tool`].
+
+use std::path::{Component as PathPart, Path, PathBuf};
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -20,11 +22,110 @@ use super::prompt::ToolRules;
 
 /// What the model is told about a tool.
 #[derive(Component, Clone)]
+#[require(ToolRules, Footprint)]
 pub struct ToolDef(pub ToolDefinition);
 
 /// The effect handler that runs a tool.
 #[derive(Component, Clone)]
 pub struct ToolHandler(pub ErasedHandler);
+
+/// What a tool's calls touch, on the tool's entity. It decides which calls
+/// of one reply run at once: calls that only read run side by side, and a
+/// call waits for every earlier call of the reply that touches what it
+/// touches, so two edits of one file still apply in order.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Footprint {
+    /// Anything: a call waits for every earlier call of its reply and holds
+    /// back every later one. The default, right for `shell` and for any
+    /// tool that does not say.
+    #[default]
+    Exclusive,
+    /// Reads the file or directory named by the string argument `arg`, the
+    /// working directory when the argument is absent, and changes nothing.
+    Reads {
+        /// The argument holding the path.
+        arg: &'static str,
+    },
+    /// Changes the file named by the string argument `arg`, and nothing
+    /// else.
+    Writes {
+        /// The argument holding the path.
+        arg: &'static str,
+    },
+}
+
+impl Footprint {
+    /// What a call with `args` touches.
+    pub(crate) fn of(self, args: &serde_json::Map<String, serde_json::Value>) -> Touch {
+        let path = |arg: &str| args.get(arg).and_then(serde_json::Value::as_str);
+        match self {
+            Self::Exclusive => Touch::All,
+            Self::Reads { arg } => Touch::Read(lexical(path(arg).unwrap_or("."))),
+            Self::Writes { arg } => match path(arg) {
+                Some(path) => Touch::Write(lexical(path)),
+                // The call fails on its arguments; it still waits its turn.
+                None => Touch::All,
+            },
+        }
+    }
+}
+
+/// What one tool call touches, from its tool's [`Footprint`] and its
+/// arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Touch {
+    /// Anything.
+    All,
+    /// Reads this path, or anything under it.
+    Read(PathBuf),
+    /// Changes this path.
+    Write(PathBuf),
+}
+
+impl Touch {
+    /// Whether a call touching `self` must wait for an earlier call
+    /// touching `earlier`: either may touch anything, or one changes a
+    /// path the other reads or changes. Paths are compared as written,
+    /// made absolute without following links, so two names for one file
+    /// through a symlink are not caught.
+    pub(crate) fn waits_for(&self, earlier: &Touch) -> bool {
+        let overlap = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
+        match (self, earlier) {
+            (Touch::All, _) | (_, Touch::All) => true,
+            (Touch::Read(_), Touch::Read(_)) => false,
+            (Touch::Read(a) | Touch::Write(a), Touch::Read(b) | Touch::Write(b)) => overlap(a, b),
+        }
+    }
+}
+
+/// `path` made absolute against the working directory, with `.` and `..`
+/// folded away without touching the file system.
+fn lexical(path: &str) -> PathBuf {
+    let path = std::path::absolute(path).unwrap_or_else(|_| PathBuf::from(path));
+    let mut out = PathBuf::new();
+    for part in path.components() {
+        match part {
+            PathPart::CurDir => {}
+            PathPart::ParentDir => {
+                out.pop();
+            }
+            part => out.push(part),
+        }
+    }
+    out
+}
+
+/// How a tool is registered with [`AppToolsExt::add_tool_with`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ToolOptions<'a> {
+    /// Lines of the system prompt of every agent the tool is offered to,
+    /// on how to use it, such as "Use `read` to look at files, not `cat` in
+    /// `shell`". The tool's description says what it does; its rules say
+    /// when to pick it.
+    pub rules: &'a [&'a str],
+    /// What its calls touch; the default runs each call on its own.
+    pub footprint: Footprint,
+}
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
@@ -47,18 +148,23 @@ pub trait AppToolsExt {
     /// }
     /// ```
     fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self {
-        self.add_tool_with_rules(tool, &[])
+        self.add_tool_with(tool, ToolOptions::default())
     }
 
-    /// [`add_tool`](Self::add_tool), with `rules` on how to use it: lines
-    /// of the system prompt of every agent the tool is offered to, such as
-    /// "Use `read` to look at files, not `cat` in `shell`". The tool's
-    /// description says what it does; its rules say when to pick it.
-    fn add_tool_with_rules<T: Tool + 'static>(&mut self, tool: T, rules: &[&str]) -> &mut Self;
+    /// [`add_tool`](Self::add_tool), with the rules on how to use it and
+    /// what its calls touch:
+    ///
+    /// ```ignore
+    /// app.add_tool_with(Outline, ToolOptions {
+    ///     rules: &["Use `outline` before reading a large file."],
+    ///     footprint: Footprint::Reads { arg: "path" },
+    /// });
+    /// ```
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
 }
 
 impl AppToolsExt for App {
-    fn add_tool_with_rules<T: Tool + 'static>(&mut self, tool: T, rules: &[&str]) -> &mut Self {
+    fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
         let name = match ToolName::new(T::NAME) {
             Ok(name) => name,
             Err(error) => {
@@ -80,7 +186,14 @@ impl AppToolsExt for App {
             Name::new(format!("tool:{}", T::NAME)),
             ToolDef(definition),
             ToolHandler(ErasedHandler::new(ToolAdapter::new(tool))),
-            ToolRules(rules.iter().map(|rule| (*rule).to_owned()).collect()),
+            ToolRules(
+                options
+                    .rules
+                    .iter()
+                    .map(|rule| (*rule).to_owned())
+                    .collect(),
+            ),
+            options.footprint,
         ));
         self
     }

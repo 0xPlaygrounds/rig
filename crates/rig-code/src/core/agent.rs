@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::compaction::Compacted;
 use super::recovery::Recovery;
 use super::save::ReflectSaved;
+use super::tools::Touch;
 use super::usage::{Spending, TurnSpending};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
@@ -186,21 +187,24 @@ pub struct Partial {
     pub reasoning: String,
 }
 
-/// A tool call of the model's last reply. It is [`Queued`] until the
-/// reply's earlier calls finished, then runs as a
+/// A tool call of the model's last reply. It is [`Queued`] while an
+/// earlier call of the reply touches what it touches (see
+/// [`Footprint`](super::tools::Footprint)), then runs as a
 /// [`Running<ToolResult>`](super::calls::Running) and ends with a
-/// [`Done<ToolResult>`](super::calls::Done). The calls of one reply run one
-/// at a time: two edits of one file would otherwise both read the original
-/// text, and one would be lost.
+/// [`Done<ToolResult>`](super::calls::Done). Calls that only read run side
+/// by side; two edits of one file run in order, or one would be lost.
 #[derive(Component)]
 pub struct ToolCallRun {
     /// The call.
     pub call: ToolCall,
     /// The effect id of the model call that asked for it.
     pub parent: EffectId,
+    /// What it touches.
+    pub(crate) touch: Touch,
 }
 
-/// A tool call waiting for the earlier calls of its reply.
+/// A tool call waiting for earlier calls of its reply that touch what it
+/// touches.
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
 pub struct Queued;

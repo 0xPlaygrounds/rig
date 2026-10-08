@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bevy_app::prelude::*;
 use rig_core::tool::ToolExecutionError;
 
-use crate::core::tools::AppToolsExt;
+use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
 
 pub use edit::Edit;
 pub use read::Read;
@@ -30,42 +30,66 @@ const MAX_BYTES: usize = 50 * 1024;
 /// The largest file `read` and `edit` load whole, and `search` scans.
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// Registers the built-in tools, each with the rules on when to pick it,
-/// with [`AppToolsExt::add_tool_with_rules`].
+/// Registers the built-in tools, each with the rules on when to pick it and
+/// what its calls touch, with [`AppToolsExt::add_tool_with`]: `read` and
+/// `search` run beside each other, `edit` and `write` beside calls on other
+/// files, and `shell` alone.
 #[derive(Default)]
 pub struct BuiltinToolsPlugin;
 
 impl Plugin for BuiltinToolsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_tool_with_rules(
+        let reads = Footprint::Reads { arg: "path" };
+        let writes = Footprint::Writes { arg: "path" };
+        app.add_tool_with(
             Read,
-            &["Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`."],
+            ToolOptions {
+                rules: &[
+                    "Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`.",
+                    "Read several files at once by calling `read` several times in one reply.",
+                ],
+                footprint: reads,
+            },
         )
-        .add_tool_with_rules(
+        .add_tool_with(
             Edit,
-            &[
-                "Use `edit` to change part of a file. Copy `old_text` from what `read` \
-                 returned, without the line numbers, with enough lines around the change to \
-                 match once.",
-            ],
+            ToolOptions {
+                rules: &[
+                    "Use `edit` to change part of a file. Copy each `old_text` from what `read` \
+                     returned, without the line numbers, with just enough lines around the \
+                     change to match once. Make all changes to one file in one `edit` call, \
+                     one entry of `edits` per change; each matches the file as it was before \
+                     the call.",
+                ],
+                footprint: writes,
+            },
         )
-        .add_tool_with_rules(
+        .add_tool_with(
             Write,
-            &["Use `write` for new files and complete rewrites only."],
+            ToolOptions {
+                rules: &["Use `write` for new files and complete rewrites only."],
+                footprint: writes,
+            },
         )
-        .add_tool_with_rules(
+        .add_tool_with(
             Shell,
-            &[
-                "Use `shell` to build, test, run programs and use git. Each call starts a \
-                 fresh `sh` in the working directory: a `cd` or a variable does not carry \
-                 over to the next call.",
-                "Do not start programs that wait for input or never end, such as editors, \
-                 pagers or servers in the foreground.",
-            ],
+            ToolOptions {
+                rules: &[
+                    "Use `shell` to build, test, run programs and use git. Each call starts a \
+                     fresh `sh` in the working directory: a `cd` or a variable does not carry \
+                     over to the next call.",
+                    "Do not start programs that wait for input or never end, such as editors, \
+                     pagers or servers in the foreground.",
+                ],
+                footprint: Footprint::Exclusive,
+            },
         )
-        .add_tool_with_rules(
+        .add_tool_with(
             Search,
-            &["Use `search` to find code, not `grep` or `rg` in `shell`."],
+            ToolOptions {
+                rules: &["Use `search` to find code, not `grep` or `rg` in `shell`."],
+                footprint: reads,
+            },
         );
     }
 }

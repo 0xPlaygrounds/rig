@@ -47,7 +47,7 @@ impl PromptSection {
 
 /// How a tool should be used, on the tool's entity: lines added to the
 /// system prompt of every agent the tool is offered to. Registered with
-/// [`AppToolsExt::add_tool_with_rules`](super::tools::AppToolsExt::add_tool_with_rules).
+/// [`AppToolsExt::add_tool_with`](super::tools::AppToolsExt::add_tool_with).
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Clone, Debug, Default)]
 pub struct ToolRules(pub Vec<String>);
