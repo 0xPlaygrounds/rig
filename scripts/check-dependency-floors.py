@@ -96,14 +96,16 @@ def parse_version(v: str) -> tuple[int, ...]:
 
 def satisfies(version: str, req: str) -> bool:
     """Minimal caret/exact semver matching, enough for the requirement forms
-    this workspace uses (`"1"`, `"0.4"`, `"1.2.3"`, `"=1.2.3"`)."""
+    this workspace uses (`"1"`, `"0.4"`, `"1.2.3"`, `"=1.2.3"`, `"=0.20.0-rc.2"`)."""
     # Build metadata does not affect SemVer precedence or requirement matching.
     # e.g. toml publishes 1.1.2+spec-1.1.0 for the requirement ^1.1.2.
     version = version.split("+", 1)[0]
-    if "-" in version:
-        return False
+    # An exact requirement names its version, a pre-release included (the
+    # workspace pins Bevy at a release candidate).
     if req.startswith("="):
         return version == req[1:].split("+", 1)[0]
+    if "-" in version:
+        return False
     req = req.lstrip("^")
     floor = parse_version(req)
     v = parse_version(version)
