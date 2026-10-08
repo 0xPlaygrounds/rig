@@ -1,11 +1,15 @@
-//! The built-in slash commands: `/model`, `/effort`, `/help` and `/quit`.
+//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/help` and
+//! `/quit`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use crate::core::agent::{Connection, Effort, Notice, PickKind, PickRequest, SetEffort, SetModel};
+use crate::core::agent::{
+    ActiveTurn, Connection, Effort, Notice, PickKind, PickRequest, SetEffort, SetModel,
+};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
+use crate::core::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
 #[derive(Default)]
@@ -22,6 +26,11 @@ impl Plugin for BuiltinCommandsPlugin {
             "effort",
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
+        )
+        .add_command(
+            "usage",
+            "Show the tokens, cost and context the session used",
+            usage,
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Save and quit", quit);
@@ -79,6 +88,48 @@ fn effort(
             ));
         }
     }
+}
+
+fn usage(
+    In(args): In<CommandArgs>,
+    agents: Query<(&Spending, Option<&Connection>, Option<&ActiveTurn>)>,
+    turns: Query<&TurnSpending>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((spent, connection, turn)) = agents.get(args.agent) else {
+        return;
+    };
+    if spent.calls == 0 {
+        notices.write(Notice::info(args.agent, "No model call yet."));
+        return;
+    }
+    let mut lines = vec![format!("Session: {}.", spent.summary())];
+    if let Some(TurnSpending(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
+        && turn.calls > 0
+    {
+        lines.push(format!("This turn: {}.", turn.summary()));
+    }
+    let spec = connection.map(|connection| connection.spec);
+    match spent.context_use(spec) {
+        Some(context) => lines.push(format!(
+            "Context: {} tokens{}.",
+            context.label(),
+            if context.window.is_none() {
+                ", the model's window is not in the catalog"
+            } else {
+                ""
+            }
+        )),
+        None => lines.push("Context: not reported by the provider.".to_owned()),
+    }
+    if spent.unpriced > 0 {
+        lines.push(format!(
+            "{} of {} calls had no price: their provider did not report one and the catalog \
+             lists none, or the model is local or billed by subscription.",
+            spent.unpriced, spent.calls
+        ));
+    }
+    notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
 fn help(

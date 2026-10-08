@@ -179,7 +179,11 @@ rig                         # builds the agent (later starts rebuild what change
 
 In the agent, `/model` picks a model (providers that need no key, such as a
 local Ollama, are listed last), `/effort` its reasoning setting, `/help`
-lists the commands, and Esc stops a running turn. `/reload` rebuilds the agent
+lists the commands, and Esc stops a running turn. The status line shows the
+session's tokens (uncached input, output, cache reads and writes), its cost
+(the provider's figure, else the catalog's list price; `+` when some calls had
+no price) and the context in use against the model's window; `/usage` breaks
+them down. `/reload` rebuilds the agent
 and restarts it on the same session; it shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if

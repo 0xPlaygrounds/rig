@@ -13,6 +13,7 @@ pub mod prompt;
 pub mod save;
 pub mod tools;
 pub mod turn;
+pub mod usage;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -70,7 +71,8 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_turn_end)
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
-            .add_observer(turn::on_set_effort);
+            .add_observer(turn::on_set_effort)
+            .add_observer(usage::log_turn_spending);
     }
 }
 

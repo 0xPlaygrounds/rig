@@ -11,13 +11,14 @@ use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
 use super::save::ReflectSaved;
+use super::usage::{Spending, TurnSpending};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no [`ModelChoice`]
 /// until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(AgentId, Conversation, Effort, SystemPrompt, ToolAccess)]
+#[require(AgentId, Conversation, Effort, Spending, SystemPrompt, ToolAccess)]
 pub struct Agent;
 
 /// The agent's stable id, used in saved state, effect scopes and logs.
@@ -128,10 +129,12 @@ impl ToolAccess {
 
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
-/// cancels its calls; its end removes the agent's [`ActiveTurn`].
+/// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
+/// sums its model calls' usage in a [`TurnSpending`].
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
+#[require(TurnSpending)]
 pub struct TurnOf(pub Entity);
 
 /// The agent's running turn. An agent with it is busy.

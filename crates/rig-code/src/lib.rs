@@ -67,6 +67,7 @@ pub mod prelude {
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::save::ReflectSaved;
     pub use crate::core::tools::AppToolsExt;
+    pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::{HeadlessPlugins, RigCodePlugins};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
 }

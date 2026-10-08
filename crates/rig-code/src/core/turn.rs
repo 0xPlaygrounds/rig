@@ -36,6 +36,7 @@ use super::effects::Effects;
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::tools::{ToolDef, ToolHandler, failed, run_tool_call};
+use super::usage::{Spending, TurnSpending};
 
 /// The systems polling running calls, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -536,8 +537,8 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation)>,
+    mut turns: Query<(&TurnOf, &mut TurnSpending)>,
+    mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation, &mut Spending)>,
     tools: Query<(&ToolDef, &ToolHandler)>,
     effects: Res<Effects>,
     wake: Res<Wake>,
@@ -549,14 +550,19 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok(&TurnOf(agent)) = turns.get(turn) else {
+    let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((id, access, mut conversation)) = agents.get_mut(agent) else {
+    let Ok((id, access, mut conversation, mut spent)) = agents.get_mut(agent) else {
         return;
     };
     let response = match reply {
-        Ok(response) => response,
+        Ok(response) => {
+            // A reply the turn-failure rule rejects was still billed.
+            spent.record(&response.usage);
+            turn_spent.0.record(&response.usage);
+            response
+        }
         Err(report) => {
             notices.write(Notice::error(
                 agent,

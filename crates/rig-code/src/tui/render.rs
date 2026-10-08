@@ -12,10 +12,12 @@ use rig_core::message::{ToolResult, UserContent};
 use super::terminal::Tui;
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use crate::core::agent::{
-    ActiveTurn, Calls, Conversation, Effort, ModelChoice, NoticeLevel, Partial, ToolCallRun,
+    ActiveTurn, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
+    ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
 use crate::core::models;
+use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 
 /// Lines of a tool result shown in the transcript.
@@ -48,9 +50,10 @@ pub(crate) fn needs_redraw(
             Changed<ModelChoice>,
             Changed<Effort>,
             Changed<ActiveTurn>,
+            Changed<Spending>,
         )>,
     >,
-    turns: Query<(), Changed<Calls>>,
+    turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
 ) -> bool {
     view.is_changed() || !agents.is_empty() || !turns.is_empty() || !partials.is_empty()
@@ -65,8 +68,10 @@ pub(crate) fn render(
         Option<&ModelChoice>,
         &Effort,
         Option<&ActiveTurn>,
+        &Spending,
+        Option<&Connection>,
     )>,
-    turns: Query<&Calls>,
+    turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
     tool_calls: Query<(), With<ToolCallRun>>,
     slash: Query<&SlashCommand>,
@@ -76,11 +81,12 @@ pub(crate) fn render(
     // redraw for.
     let view = view.bypass_change_detection();
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
-    let calls = shown
-        .and_then(|(.., turn)| turn)
+    let turn = shown
+        .and_then(|(_, _, _, turn, ..)| turn)
         .and_then(|turn| turns.get(turn.turn()).ok());
+    let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
-    let activity = if shown.and_then(|(.., turn)| turn).is_none() {
+    let activity = if turn.is_none() {
         Activity::Idle
     } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
         Activity::RunningTools
@@ -95,7 +101,7 @@ pub(crate) fn render(
         let input_height = input_lines.clamp(1, INPUT_LINES);
         let input_scroll =
             u16::try_from(input_lines.saturating_sub(input_height)).unwrap_or(u16::MAX);
-        let [transcript, status, input] = Layout::vertical([
+        let [transcript, status_area, input] = Layout::vertical([
             Constraint::Min(1),
             Constraint::Length(1),
             Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
@@ -130,13 +136,25 @@ pub(crate) fn render(
         // /model comes from a plugin, so point at it only when loaded.
         let model_hint = slash.iter().any(|command| command.name == "model");
         let mut line = status_line(
-            shown.map(|(_, model, effort, _)| (model, effort, activity)),
+            shown.map(|(_, model, effort, ..)| (model, effort, activity)),
             model_hint,
         );
+        if let Some((_, spent)) = turn
+            && let Some(cost) = spent.0.cost_label()
+        {
+            line.push_span(Span::from(format!("  this turn {cost}")).dim());
+        }
         if let Some(build) = &build {
             line.push_span(reload_span(build));
         }
+        let usage = shown
+            .map(|(.., spent, connection)| usage_line(spent, connection))
+            .unwrap_or_default();
+        let width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
+        let [status, meter] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(width)]).areas(status_area);
         frame.render_widget(line, status);
+        frame.render_widget(usage, meter);
         frame.render_widget(
             input_text
                 .scroll((input_scroll, 0))
@@ -183,6 +201,43 @@ fn status_line(
         Span::from(format!("  reasoning {}  ", models::effort_label(effort.0))).dim(),
         status,
     ])
+}
+
+/// The agent's tokens, cost and context use: uncached input, output, cache
+/// reads and writes, then the context against the model's window, yellow
+/// past 70% and red past 90%.
+fn usage_line(spent: &Spending, connection: Option<&Connection>) -> Line<'static> {
+    if spent.calls == 0 {
+        return Line::default();
+    }
+    let mut parts = vec![
+        format!("↑{}", usage::tokens(spent.uncached_input())),
+        format!(
+            "↓{}",
+            usage::tokens(spent.tokens.output_tokens.unwrap_or(0))
+        ),
+    ];
+    if let Some(read) = spent.tokens.cached_input_tokens.filter(|read| *read > 0) {
+        parts.push(format!("R{}", usage::tokens(read)));
+    }
+    if let Some(written) = spent
+        .tokens
+        .cache_creation_input_tokens
+        .filter(|written| *written > 0)
+    {
+        parts.push(format!("W{}", usage::tokens(written)));
+    }
+    parts.extend(spent.cost_label());
+    let mut spans = vec![Span::from(parts.join(" ")).dim()];
+    if let Some(context) = spent.context_use(connection.map(|connection| connection.spec)) {
+        let style = match context.percent() {
+            Some(90..) => Style::new().red(),
+            Some(70..) => Style::new().yellow(),
+            _ => Style::new().dim(),
+        };
+        spans.push(Span::styled(format!("  ctx {} ", context.label()), style));
+    }
+    Line::from(spans)
 }
 
 fn reload_span(build: &ReloadBuild) -> Span<'static> {
