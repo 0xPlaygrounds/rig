@@ -25,6 +25,10 @@ const BUILD_FAILED: u8 = 1;
 /// Exit code for a configuration or Bevy-version problem.
 const CONFIG_FAILED: u8 = 2;
 
+/// Why a build that crashed during startup is not used again.
+const REJECTED: &str =
+    "this build crashed during startup before, so it is not used; change the source to rebuild it";
+
 const USAGE: &str = "\
 usage: rig [-j N] [build]
 
@@ -129,14 +133,16 @@ fn run() -> Result<u8, Failure> {
     let dirs = Dirs::resolve()?;
     if arguments.mode == Mode::Build {
         if build::build(&dirs, arguments.jobs)? == build::Staged::Rejected {
-            return Err(Failure::build(
-                "this build crashed during startup before; change the source and build again",
-            ));
+            return Err(Failure::build(REJECTED));
         }
         return Ok(0);
     }
     let notice = match build::build(&dirs, arguments.jobs) {
-        Ok(_) => None,
+        Ok(build::Staged::Ready) => None,
+        Ok(build::Staged::Rejected) => {
+            eprintln!("rig: {REJECTED}; starting the last working build");
+            None
+        }
         Err(failure) if dirs.current_bin().exists() => {
             eprintln!("rig: {}", failure.message);
             eprintln!("rig: the build failed; starting the last working build");

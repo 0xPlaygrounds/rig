@@ -70,10 +70,6 @@ fn stage(dirs: &Dirs, built: &Path) -> Result<Staged, Failure> {
         .map(|elapsed| elapsed.as_nanos().to_string())
         .unwrap_or_default();
     if std::fs::read_to_string(dirs.rejected_stamp()).is_ok_and(|rejected| rejected == stamp) {
-        eprintln!(
-            "rig: this build crashed during startup before, so it is not staged; change the \
-             source to rebuild it"
-        );
         return Ok(Staged::Rejected);
     }
     let candidate = dirs.candidate_bin();
