@@ -877,6 +877,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.3-codex": {
@@ -886,6 +889,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.3-codex-spark": {
@@ -895,6 +901,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.3-instant": {
@@ -906,6 +915,9 @@
             "text",
             "image"
           ]
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.4": {
@@ -915,6 +927,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.4-pro": {
@@ -924,6 +939,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.5": {
@@ -933,6 +951,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.6-luna": {
@@ -942,6 +963,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.6-sol": {
@@ -951,6 +975,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-5.6-terra": {
@@ -960,6 +987,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-6-astra": {
@@ -969,6 +999,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-6-luna": {
@@ -978,6 +1011,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-6-sol": {
@@ -987,6 +1023,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       },
       "gpt-6.1-sol": {
@@ -996,6 +1035,9 @@
           "output": null,
           "cache_read": null,
           "cache_write": null
+        },
+        "rig": {
+          "cache": ["long"]
         }
       }
     }
