@@ -1145,7 +1145,6 @@ fn catalog_cost(origin: &Origin, usage: &Usage) -> Option<crate::completion::Cos
         return None;
     }
     crate::catalog::lookup(&origin.provider, &origin.model)
-        .or_else(|| crate::catalog::lookup_snapshot(&origin.provider, &origin.model))
         .and_then(|spec| spec.pricing.as_ref())
         .and_then(|pricing| pricing.cost(usage))
 }

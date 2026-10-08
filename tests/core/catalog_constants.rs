@@ -739,7 +739,7 @@ fn every_public_model_constant_has_a_catalog_entry() {
             let provider = ProviderId::catalog(&vendor)
                 .unwrap_or_else(|| panic!("`{vendor}` is no vendor the catalog knows"));
             checked += 1;
-            if catalog.get(provider, model).is_none() {
+            if catalog.get_exact(provider, model).is_none() {
                 missing.insert(format!(
                     "{}: {} ({model:?}) has no catalog entry under `{vendor}`",
                     constant.file, constant.name

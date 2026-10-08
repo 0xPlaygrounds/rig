@@ -727,6 +727,7 @@ async fn a_model_spec_checks_every_runs_options_before_it_starts() {
     let haiku = Catalog::builtin()
         .resolve("anthropic/claude-haiku-4-5")
         .expect("listed")
+        .spec
         .clone();
     let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
     let agent = AgentBuilder::new(model.clone())
@@ -827,6 +828,7 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
     let haiku = Catalog::builtin()
         .resolve("anthropic/claude-haiku-4-5")
         .expect("listed")
+        .spec
         .clone();
     let own = MockCompletionModel::from_turns([MockTurn::text("unused")]);
     let opus = scripted("anthropic", "claude-opus-4-8");
@@ -866,6 +868,7 @@ async fn a_model_spec_checks_the_model_a_switched_run_calls() {
             Catalog::builtin()
                 .resolve("anthropic/claude-haiku-4-5")
                 .expect("listed")
+                .spec
                 .clone(),
         )
         .model_route("opus", opus_by_hook.clone())
@@ -940,6 +943,7 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
     let mut short_only = Catalog::builtin()
         .resolve("anthropic/claude-haiku-4-5")
         .expect("listed")
+        .spec
         .clone();
     short_only.caching.retention = vec![CacheRetention::Short];
     let own = MockCompletionModel::from_turns([MockTurn::text("one")]);

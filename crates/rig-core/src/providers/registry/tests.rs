@@ -683,7 +683,8 @@ fn connect_selects_by_spec_or_reference() {
     );
     let spec = crate::catalog::Catalog::builtin()
         .resolve("openai/gpt-5.5")
-        .expect("listed");
+        .expect("listed")
+        .spec;
     assert_eq!(
         reference(spec.into()),
         Ok("openai/openai:gpt-5.5".to_owned())
@@ -691,7 +692,8 @@ fn connect_selects_by_spec_or_reference() {
 
     let bedrock = crate::catalog::Catalog::builtin()
         .resolve("aws_bedrock/us.anthropic.claude-sonnet-5")
-        .expect("listed");
+        .expect("listed")
+        .spec;
     for selector in [
         ModelSelector::from(bedrock),
         "aws_bedrock/us.anthropic.claude-sonnet-5".into(),
@@ -793,7 +795,8 @@ fn a_repeated_reference_field_is_refused() {
 fn connect_takes_every_selector_spelling() {
     let spec = crate::catalog::Catalog::builtin()
         .resolve("openai/gpt-5.5")
-        .expect("listed");
+        .expect("listed")
+        .spec;
     let owned = "openai/gpt-5.5".to_owned();
     let label = ModelRef::new("openai/gpt-5.5");
     for selector in [

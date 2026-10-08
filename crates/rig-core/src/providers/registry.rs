@@ -992,7 +992,7 @@ pub enum ConnectError {
 /// use rig_core::providers::registry::connect;
 ///
 /// let model = connect("anthropic/claude-opus-5-5", "sk-ant-...")?;
-/// let spec = Catalog::builtin().resolve("openai/gpt-5.5").ok_or("listed")?;
+/// let spec = Catalog::builtin().resolve("openai/gpt-5.5")?.spec;
 /// let other = connect(spec, "sk-...")?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```

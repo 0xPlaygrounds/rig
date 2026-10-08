@@ -1367,7 +1367,8 @@ mod catalog_validation {
                 ProviderId::resolve("gcp.gemini").expect("Gemini is registered"),
                 GEMINI_3_8_FLASH,
             )
-            .expect("Gemini 3.8 Flash has a catalog entry");
+            .expect("Gemini 3.8 Flash has a catalog entry")
+            .spec;
         let refused = gemini
             .validate(&reasoning(Effort::Minimal))
             .expect_err("Gemini 3.8 Flash has no minimal level");
@@ -1378,7 +1379,8 @@ mod catalog_validation {
 
         let haiku = catalog
             .resolve("anthropic/claude-haiku-4-5")
-            .expect("the reference resolves");
+            .expect("the reference resolves")
+            .spec;
         assert_eq!(haiku.id, CLAUDE_HAIKU_4_5);
         assert!(
             haiku.reasoning.levels() == Some(&[]),
@@ -1788,7 +1790,7 @@ mod citations_and_cost {
                 ProviderId::resolve("deepseek").expect("DeepSeek is registered"),
                 DEEPSEEK_FLASH,
             )
-            .and_then(|spec| spec.pricing.as_ref())
+            .and_then(|found| found.spec.pricing.as_ref())
             .expect("the catalog prices DeepSeek Flash");
         let Usage {
             input_tokens: Some(input),

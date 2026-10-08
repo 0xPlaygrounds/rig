@@ -1681,26 +1681,26 @@ fn a_server_tool_result_never_replays_without_its_use() {
     );
 }
 
+/// Anthropic's wire reads its own ids and their dated snapshots. Another
+/// vendor's spelling is that vendor's catalog row, which carries the
+/// Anthropic facts itself.
 #[test]
-fn context_binding_reads_every_spelling_of_a_claude_model() {
+fn context_binding_reads_anthropics_ids_and_their_snapshots() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
         "claude-opus-5",
         "claude-fable-5-1",
         "claude-sonnet-5-5",
-        "anthropic/claude-opus-5.5",
-        "claude-opus-5.5",
-        "anthropic.claude-opus-5-5-v1:0",
-        "us.anthropic.claude-opus-5-5-20260101-v1:0",
-        "us.anthropic.claude-opus-5",
     ] {
         assert!(binds_context(model), "{model}");
     }
     for model in [
         "claude-sonnet-5",
         "claude-haiku-4-5-20251001",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "anthropic/claude-opus-5.5",
+        "claude-opus-5.5",
+        "us.anthropic.claude-opus-5",
         "gpt-5",
     ] {
         assert!(!binds_context(model), "{model}");

@@ -239,21 +239,40 @@ const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-
     nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
     qwen.qwen3-next writer.palmyra zai.glm";
 
-/// The catalog entry of the Bedrock `model`. A Claude id is read as every
-/// wire that serves Claude reads it ([`claude_spec`]: the Anthropic model's
-/// entry, past a region prefix, a `-v1:N` revision or a dated snapshot), so
-/// its reasoning, sampling and context binding match Anthropic's own API.
-/// Any other id is a base model id or system inference profile, or the last
-/// part of its ARN, listed under Bedrock. `None` for a model the catalog
-/// does not list.
-///
-/// [`claude_spec`]: rig_core::providers::anthropic::completion::claude_spec
+/// The catalog entry of the Bedrock `model`: a base model id or inference
+/// profile, or the last part of its ARN, looked up under Bedrock by the
+/// catalog's one rule ([`Catalog::get`]). An id the catalog does not list is
+/// read as Bedrock names models: a cross-region profile (`jp.<base id>`) as
+/// its base model, and a `-vN[:M]` revision as the model it revises. A
+/// Claude row carries the Anthropic model's reasoning options and wire
+/// facts, so its reasoning, sampling and context binding match Anthropic's
+/// own API. `None` for a model the catalog does not list.
 pub fn spec(model: &str) -> Option<&'static ModelSpec> {
     let id = model.rsplit('/').next().unwrap_or(model);
-    if id.contains("anthropic.") || id.starts_with("claude") {
-        return rig_core::providers::anthropic::completion::claude_spec(id);
-    }
-    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
+    let provider = ProviderId::catalog(PROVIDER_NAME)?;
+    let catalog = Catalog::builtin();
+    let base = id
+        .split_once('.')
+        .filter(|(geo, base)| {
+            !geo.is_empty()
+                && geo.bytes().all(|byte| byte.is_ascii_lowercase())
+                && base.contains('.')
+        })
+        .map(|(_, base)| base);
+    [Some(id), base]
+        .into_iter()
+        .flatten()
+        .flat_map(|id| [Some(id), unrevised(id)])
+        .flatten()
+        .find_map(|id| catalog.get(provider, id).map(|found| found.spec))
+}
+
+/// `id` without a trailing Bedrock revision, `-v1` or `-v1:0`.
+fn unrevised(id: &str) -> Option<&str> {
+    let (model, revision) = id.rsplit_once("-v")?;
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let (major, minor) = revision.split_once(':').unwrap_or((revision, "0"));
+    (digits(major) && digits(minor)).then_some(model)
 }
 
 impl ReplayTarget for Converse {

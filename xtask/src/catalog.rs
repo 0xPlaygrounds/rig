@@ -11,9 +11,9 @@
 //!    key by key, anything else replaces. A reviewed row that names
 //!    `"from": "<vendor>/<id>"` starts from that generated row instead. The
 //!    review's own keys (`from`, `source`, `note`) are dropped.
-//! 3. Give each Bedrock row serving an Anthropic model that model's reviewed
-//!    reasoning options and `rig` facts, since Bedrock serves Anthropic's
-//!    models, then lay the reviewed Bedrock rows over them again.
+//! 3. Give each gateway row whose models.dev `canonical_model_id` names an
+//!    Anthropic model that model's reviewed facts ([`ANTHROPIC_SERVERS`]),
+//!    then lay the reviewed rows over them again.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. `--check`
@@ -71,8 +71,9 @@ const KEYS: [(&str, &str); 22] = [
 ];
 
 /// The keys of a model row the catalog reads, in the order they are written.
-const ROW_KEYS: [&str; 11] = [
+const ROW_KEYS: [&str; 12] = [
     "name",
+    "canonical_model_id",
     "reasoning",
     "reasoning_options",
     "tool_call",
@@ -104,8 +105,16 @@ const RIG_KEYS: [&str; 12] = [
     "chat_tools_need_reasoning_off",
 ];
 
-/// The Anthropic facts a Bedrock row of the same model takes.
-const ANTHROPIC_KEYS: [&str; 2] = ["reasoning_options", "rig"];
+/// The vendors that serve Anthropic's models, and the keys of the Anthropic
+/// row a row of theirs takes when its `canonical_model_id` names that row.
+/// Bedrock and Vertex AI take Anthropic's own request fields, so they take
+/// its reasoning options too; OpenRouter maps reasoning its own way and
+/// keeps the options models.dev lists for it.
+const ANTHROPIC_SERVERS: [(&str, &[&str]); 3] = [
+    ("aws_bedrock", &["reasoning_options", "rig"]),
+    ("openrouter", &["rig"]),
+    ("vertexai", &["reasoning_options", "rig"]),
+];
 
 /// The catalog: vendor, then model id, then the row.
 type Rows = BTreeMap<String, BTreeMap<String, Map<String, Value>>>;
@@ -204,7 +213,7 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
     let review = read_rows(review)?;
     validate_review(&review)?;
     apply(&mut rows, &review)?;
-    bedrock_serves_anthropic(&mut rows);
+    serve_anthropic(&mut rows);
     apply(&mut rows, &review)?;
     rows.retain(|_, models| !models.is_empty());
     Ok(rows)
@@ -303,53 +312,53 @@ fn apply(rows: &mut Rows, review: &Rows) -> Result<(), String> {
     Ok(())
 }
 
-/// Give each Bedrock row serving an Anthropic model the Anthropic row's
-/// reasoning options and `rig` facts.
-fn bedrock_serves_anthropic(rows: &mut Rows) {
+/// Give each row of an [`ANTHROPIC_SERVERS`] vendor whose
+/// `canonical_model_id` is `anthropic/<model>` the keys its vendor takes from
+/// that Anthropic row. `<model>` is found as rig-core finds a model: the id
+/// as listed, or else the longest listed id it extends with `-20` and a
+/// year.
+fn serve_anthropic(rows: &mut Rows) {
     let Some(anthropic) = rows.get("anthropic").cloned() else {
         return;
     };
-    let Some(bedrock) = rows.get_mut("aws_bedrock") else {
-        return;
-    };
-    for (id, row) in bedrock.iter_mut() {
-        let Some(source) = anthropic_id(id).and_then(|model| {
-            anthropic
-                .get(&model)
-                .or_else(|| anthropic.get(undated(&model)?))
-        }) else {
+    for (vendor, keys) in ANTHROPIC_SERVERS {
+        let Some(models) = rows.get_mut(vendor) else {
             continue;
         };
-        for key in ANTHROPIC_KEYS {
-            if let Some(value) = source.get(key) {
-                row.insert(key.to_owned(), value.clone());
+        for row in models.values_mut() {
+            let Some(source) = row
+                .get("canonical_model_id")
+                .and_then(Value::as_str)
+                .and_then(|canonical| canonical.strip_prefix("anthropic/"))
+                .and_then(|model| anthropic_row(&anthropic, model))
+            else {
+                continue;
+            };
+            for key in keys {
+                if let Some(value) = source.get(*key) {
+                    row.insert((*key).to_owned(), value.clone());
+                }
             }
         }
     }
 }
 
-/// `model` without a trailing `-YYYYMMDD` snapshot date.
-fn undated(model: &str) -> Option<&str> {
-    let (rest, date) = model.rsplit_once('-')?;
-    (date.len() == 8 && date.bytes().all(|byte| byte.is_ascii_digit())).then_some(rest)
-}
-
-/// The Anthropic model id a Bedrock model id serves:
-/// `[geo.]anthropic.<model>[-v<n>[:<m>]]` to `<model>`, date included.
-fn anthropic_id(bedrock: &str) -> Option<String> {
-    let (_, model) = bedrock.split_once("anthropic.")?;
-    let model = match model.rsplit_once("-v") {
-        Some((model, version))
-            if !version.is_empty()
-                && version
-                    .split(':')
-                    .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())) =>
-        {
-            model
-        }
-        _ => model,
-    };
-    Some(model.to_owned())
+/// The Anthropic row of `model`, or of the model it is a dated snapshot of.
+fn anthropic_row<'a>(
+    anthropic: &'a BTreeMap<String, Map<String, Value>>,
+    model: &str,
+) -> Option<&'a Map<String, Value>> {
+    anthropic.get(model).or_else(|| {
+        model
+            .match_indices("-20")
+            .filter(|(at, _)| {
+                model
+                    .get(at + 3..at + 5)
+                    .is_some_and(|year| year.bytes().all(|byte| byte.is_ascii_digit()))
+            })
+            .filter_map(|(at, _)| anthropic.get(model.get(..at)?))
+            .last()
+    })
 }
 
 /// `models.dev` row reduced to the keys the catalog reads, each trimmed to

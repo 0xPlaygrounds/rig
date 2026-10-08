@@ -31,7 +31,7 @@ use crate::providers::registry::ProviderId;
 ///         .with_tools(true)
 ///         .with_pricing(Pricing::new(0.0, 0.0)),
 /// );
-/// let qwen = catalog.get(ollama, "qwen3:4b").ok_or("inserted")?;
+/// let qwen = catalog.get(ollama, "qwen3:4b").ok_or("inserted")?.spec;
 /// assert_eq!(qwen.context_window, Some(32_768));
 /// # Ok::<(), &str>(())
 /// ```

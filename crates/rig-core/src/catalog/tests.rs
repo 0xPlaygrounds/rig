@@ -12,7 +12,7 @@ fn options(reasoning: impl Into<Reasoning>) -> GenerationOptions {
 fn spec<'a>(catalog: &'a Catalog, vendor: &str, model: &str) -> &'a ModelSpec {
     let provider = ProviderId::catalog(vendor).expect("a known vendor");
     catalog
-        .get(provider, model)
+        .get_exact(provider, model)
         .unwrap_or_else(|| panic!("{vendor}/{model} is listed"))
 }
 
@@ -189,21 +189,24 @@ fn cloning_a_catalog_shares_its_rows() {
 #[test]
 fn references_name_a_vendor_and_a_model() {
     let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let id = |reference: &str| {
+        catalog
+            .resolve(reference)
+            .ok()
+            .map(|resolved| resolved.spec.id.clone())
+    };
     for reference in [
         "anthropic/claude-x",
         "anthropic:claude-x",
         "anthropic/anthropic:claude-x",
     ] {
-        assert_eq!(
-            catalog.resolve(reference).map(|spec| spec.id.as_str()),
-            Some("claude-x"),
-            "{reference}"
-        );
+        assert_eq!(id(reference).as_deref(), Some("claude-x"), "{reference}");
     }
     assert_eq!(
         catalog
             .resolve("aws_bedrock/us.anthropic.claude-x-v1:0")
-            .map(|spec| spec.provider.vendor()),
+            .ok()
+            .map(|resolved| resolved.spec.provider.vendor()),
         Some("aws_bedrock"),
         "a `:` inside the model id leaves `vendor/model`"
     );
@@ -214,54 +217,107 @@ fn references_name_a_vendor_and_a_model() {
         "anthropic/claude-x-1",
         "",
     ] {
-        assert!(catalog.resolve(missing).is_none(), "{missing}");
+        assert_eq!(id(missing), None, "{missing}");
     }
     let openrouter = Catalog::builtin()
         .resolve("openrouter/anthropic/claude-sonnet-4.5")
         .expect("OpenRouter lists it");
-    assert_eq!(openrouter.id, "anthropic/claude-sonnet-4.5");
+    assert_eq!(openrouter.spec.id, "anthropic/claude-sonnet-4.5");
 }
 
+/// `get` and `resolve` follow one rule: the id as listed, else the longest
+/// listed id the requested one extends with `-20` and a year. The result
+/// says which step matched; `get_exact` takes the first step only.
 #[test]
-fn the_encoders_find_a_dated_snapshot_by_its_model() {
+fn one_rule_finds_an_id_or_a_dated_snapshot_of_it() {
     let catalog = Catalog::from_json(SAMPLE).expect("parses");
-    for model in ["claude-x", "claude-x-20251001", "claude-x-2025-10-01"] {
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    let matched = |model: &str| catalog.get(anthropic, model).map(|found| found.matched);
+    assert_eq!(matched("claude-x"), Some(Matched::Exact));
+    for model in [
+        "claude-x-20251001",
+        "claude-x-2025-10-01",
+        "claude-x-20260601-v1:0",
+    ] {
+        assert_eq!(
+            matched(model),
+            Some(Matched::SnapshotOf("claude-x".to_owned())),
+            "{model}"
+        );
+        assert_eq!(catalog.get_exact(anthropic, model), None, "{model}");
         assert_eq!(
             catalog
-                .find_vendor("anthropic", model)
-                .map(|spec| spec.id.as_str()),
-            Some("claude-x"),
+                .resolve(&format!("anthropic/{model}"))
+                .map(|found| found.spec.id.clone()),
+            Ok("claude-x".to_owned()),
             "{model}"
         );
     }
     for model in [
         "claude-x-1",
-        "claude-x-2025101",
         "claude-x-0",
         "claude-x-25-10-01",
+        "claude-x-20b",
+        "claude-x-2",
+        "claude-x.20251001",
     ] {
-        assert!(catalog.find_vendor("anthropic", model).is_none(), "{model}");
+        assert_eq!(matched(model), None, "{model}");
     }
+
+    let builtin = Catalog::builtin();
+    let id = |model: &str| {
+        builtin
+            .get(anthropic, model)
+            .map(|found| (found.spec.id.as_str(), found.matched))
+    };
+    assert_eq!(
+        id("claude-opus-5-5-20260601-v1:0"),
+        Some((
+            "claude-opus-5-5",
+            Matched::SnapshotOf("claude-opus-5-5".into())
+        )),
+        "the longest listed id wins over `claude-opus-5`"
+    );
+    assert_eq!(
+        id("claude-sonnet-4-5-20250929"),
+        Some(("claude-sonnet-4-5-20250929", Matched::Exact)),
+        "a listed snapshot is its own row"
+    );
+    assert_eq!(
+        id("claude-opus-5.5"),
+        None,
+        "another spelling is not listed"
+    );
+    assert_eq!(id("claude-opus-5-5-latest"), None);
 }
 
-/// `find` is `get` on every listed id, and finds every listed id from its
-/// dated snapshot ids.
+/// Every listed id finds itself exactly, and its dated snapshot finds that
+/// snapshot's own row when listed, else the id.
 #[test]
-fn find_reads_every_row_and_its_dated_snapshots() {
+fn get_reads_every_row_and_its_dated_snapshots() {
     let catalog = Catalog::builtin();
     let mut rows = 0;
     for spec in catalog.iter() {
-        let found = |model: &str| catalog.find(spec.provider, model).map(|found| &found.id);
-        assert_eq!(found(&spec.id), Some(&spec.id), "{}", spec.id);
+        let found = |model: &str| {
+            catalog
+                .get(spec.provider, model)
+                .map(|found| &found.spec.id)
+        };
         assert_eq!(
-            catalog.find(spec.provider, &spec.id),
-            catalog.get(spec.provider, &spec.id)
+            catalog
+                .get(spec.provider, &spec.id)
+                .map(|found| found.matched),
+            Some(Matched::Exact),
+            "{}",
+            spec.id
         );
         for dated in [
             format!("{}-20260601", spec.id),
             format!("{}-2026-06-01", spec.id),
         ] {
-            let listed = catalog.get(spec.provider, &dated).map(|listed| &listed.id);
+            let listed = catalog
+                .get_exact(spec.provider, &dated)
+                .map(|listed| &listed.id);
             assert_eq!(found(&dated), listed.or(Some(&spec.id)), "{dated}");
         }
         rows += 1;
@@ -269,40 +325,55 @@ fn find_reads_every_row_and_its_dated_snapshots() {
     assert!(rows > 0, "the built-in catalog has rows");
 }
 
-/// On every listed id and every eight-digit dated snapshot of one, the
-/// snapshot lookup cost and Anthropic read agrees with `find`. It differs
-/// only on a suffix past the date (`-20260601-v1:0`), which `find` does
-/// not strip, so the two stay apart.
+/// A miss names close references to listed models that are not deprecated,
+/// closest first, five at most, and says so in its message.
 #[test]
-fn the_snapshot_lookup_agrees_with_find_up_to_a_suffix_past_the_date() {
+fn a_miss_suggests_close_references() {
     let catalog = Catalog::builtin();
-    for spec in catalog.iter() {
-        let vendor = spec.provider.vendor();
-        for model in [spec.id.clone(), format!("{}-20260601", spec.id)] {
-            assert_eq!(
-                lookup_snapshot(vendor, &model).map(|found| &found.id),
-                catalog.find(spec.provider, &model).map(|found| &found.id),
-                "{vendor}/{model}"
-            );
-        }
+    for typo in [
+        "anthropic/claude-opus-5.5",
+        "antropic/claude-opus-5-5",
+        "anthropic/claude-opus-5-55",
+    ] {
+        let missed = catalog.resolve(typo).expect_err("not listed");
+        assert_eq!(missed.reference, typo);
+        assert_eq!(
+            missed.suggestions.first().map(String::as_str),
+            Some("anthropic/claude-opus-5-5"),
+            "{typo}: {:?}",
+            missed.suggestions
+        );
+        assert!(missed.suggestions.len() <= 5, "{typo}");
+        assert!(
+            missed.to_string().contains("did you mean"),
+            "{typo}: {missed}"
+        );
     }
-    let past_the_date = "claude-opus-5-5-20260601-v1:0";
-    assert!(lookup_snapshot("anthropic", past_the_date).is_some());
-    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
-    assert!(catalog.find(anthropic, past_the_date).is_none());
+    let opus = catalog.resolve("anthropic/opus").expect_err("not listed");
+    assert!(!opus.suggestions.is_empty(), "a part of an id finds models");
+    for suggestion in &opus.suggestions {
+        let found = catalog.resolve(suggestion).expect("a suggestion is listed");
+        assert!(!found.spec.deprecated, "{suggestion}");
+        assert!(suggestion.contains("opus"), "{suggestion}");
+    }
+    let nothing = catalog
+        .resolve("nowhere/qqqqqqqqqqqqqqqqqqqq")
+        .expect_err("not listed");
+    assert_eq!(nothing.suggestions, Vec::<String>::new());
+    assert_eq!(
+        nothing.to_string(),
+        "the catalog lists no model `nowhere/qqqqqqqqqqqqqqqqqqqq`"
+    );
 }
 
-/// A snapshot is any suffix from `-20` after a listed id, the longest such
-/// id winning; another spelling is not listed.
 #[test]
-fn a_snapshot_lookup_reads_any_suffix_from_a_date() {
-    let id = |model: &str| lookup_snapshot("anthropic", model).map(|spec| spec.id.as_str());
-    assert_eq!(id("claude-opus-5-5"), Some("claude-opus-5-5"));
-    assert_eq!(id("claude-opus-5-5-20260601"), Some("claude-opus-5-5"));
-    assert_eq!(id("claude-opus-5-5-20260601-v1:0"), Some("claude-opus-5-5"));
-    assert_eq!(id("claude-opus-5-20260601"), Some("claude-opus-5"));
-    assert_eq!(id("claude-opus-5.5"), None);
-    assert_eq!(id("claude-opus-5-5-latest"), None);
+fn edit_distance_counts_single_character_edits() {
+    assert_eq!(lookup::edit_distance("", ""), 0);
+    assert_eq!(lookup::edit_distance("abc", ""), 3);
+    assert_eq!(lookup::edit_distance("", "abc"), 3);
+    assert_eq!(lookup::edit_distance("antropic", "anthropic"), 1);
+    assert_eq!(lookup::edit_distance("kitten", "sitting"), 3);
+    assert_eq!(lookup::edit_distance("5.5", "5-5"), 1);
 }
 
 /// An id the catalog lists reads images as its entry says; any other id is
@@ -532,7 +603,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
     );
     assert!(
         Catalog::builtin()
-            .get(ollama, "qwen3:4b")
+            .get_exact(ollama, "qwen3:4b")
             .is_none_or(|listed| listed != qwen),
         "the built-in catalog is unchanged"
     );
@@ -608,4 +679,27 @@ fn a_spec_row_overrides_what_the_spec_knows() {
         "an unknown limit is kept"
     );
     assert!(claude.pricing.is_some(), "unknown prices are kept");
+}
+
+/// A gateway row of a Claude model carries the Anthropic model's wire facts
+/// itself, so no reader rewrites its id into Anthropic's spelling.
+#[test]
+fn gateway_rows_of_a_claude_model_carry_its_facts() {
+    let catalog = Catalog::builtin();
+    let anthropic = spec(catalog, "anthropic", "claude-opus-5-5");
+    assert!(anthropic.compat.binds_context);
+    for (vendor, model) in [
+        ("aws_bedrock", "us.anthropic.claude-opus-5-5"),
+        ("openrouter", "anthropic/claude-opus-5.5"),
+        ("vertexai", "claude-opus-5-5@default"),
+    ] {
+        let gateway = spec(catalog, vendor, model);
+        assert_eq!(gateway.compat, anthropic.compat, "{vendor}/{model}");
+        assert_eq!(gateway.sampling, anthropic.sampling, "{vendor}/{model}");
+    }
+    assert_eq!(
+        spec(catalog, "aws_bedrock", "us.anthropic.claude-opus-5-5").reasoning,
+        anthropic.reasoning,
+        "Bedrock takes Anthropic's own reasoning fields"
+    );
 }

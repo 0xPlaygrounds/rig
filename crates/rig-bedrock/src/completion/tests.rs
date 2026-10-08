@@ -127,7 +127,7 @@ fn hosted_items_pair_and_calls_have_an_id_slot() {
 }
 
 /// Bedrock finds a model's catalog entry by its id or the last part of its
-/// ARN, and a Claude id takes the Anthropic model's entry.
+/// ARN, and a Claude row carries the Anthropic model's facts.
 #[test]
 fn bedrock_models_take_their_facts_from_the_catalog() {
     let opus = super::spec("us.anthropic.claude-opus-5-5").expect("listed");
@@ -136,7 +136,7 @@ fn bedrock_models_take_their_facts_from_the_catalog() {
         "arn:aws:bedrock:us-east-1:123456789012:inference-profile/us.anthropic.claude-opus-5-5";
     assert_eq!(
         super::spec(arn).map(|spec| spec.id.as_str()),
-        Some("claude-opus-5-5")
+        Some("us.anthropic.claude-opus-5-5")
     );
     assert!(
         super::spec(AMAZON_NOVA_LITE).is_some(),
@@ -151,10 +151,11 @@ fn bedrock_models_take_their_facts_from_the_catalog() {
 }
 
 /// A Claude id the catalog does not list under Bedrock (another region's
-/// profile, a `-v1:N` revision, a dated snapshot) takes the Anthropic
-/// model's entry, so its thinking and context binding still apply.
+/// profile, a `-v1:N` revision, a dated snapshot) takes its base model's
+/// Bedrock row, which carries the Anthropic facts, so its thinking and
+/// context binding still apply.
 #[test]
-fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
+fn an_unlisted_bedrock_claude_id_takes_its_base_models_row() {
     for model in [
         "in.anthropic.claude-opus-5-5",
         "us.anthropic.claude-opus-5-5-20260101-v1:0",
@@ -167,27 +168,38 @@ fn an_unlisted_bedrock_claude_id_takes_the_anthropic_entry() {
         );
     }
     let sonnet = super::spec("jp.anthropic.claude-sonnet-5-5").expect("a Claude entry");
+    assert_eq!(sonnet.id, "anthropic.claude-sonnet-5-5");
     assert_eq!(sonnet.compat.thinking_off.as_deref(), Some("between_tools"));
     assert!(sonnet.compat.binds_context);
     assert!(super::spec("jp.amazon.nova-unlisted-v1:0").is_none());
+    assert!(super::spec("anthropic.claude-unlisted-v1:0").is_none());
 }
 
-/// A model the catalog does not list under Bedrock (a region profile) reads
-/// images unless its id names a text-only family, so a text-only model's
-/// profile keeps its placeholder and an unlisted model of another family is
-/// sent images.
+/// A region profile the catalog does not list reads images as its base
+/// model's Bedrock row says. A model listed under neither reads images
+/// unless its id names a text-only family, so an unlisted model of another
+/// family is sent images.
 #[test]
 fn an_unlisted_region_profile_reads_images_as_its_base_model() {
     for model in [
         "eu.meta.llama3-3-70b-instruct-v1:0",
         "us.deepseek.v3-v1:0",
         "arn:aws:bedrock:eu-west-1:123456789012:inference-profile/eu.meta.llama3-3-70b-instruct-v1:0",
+        "us.writer.palmyra-unlisted-v1:0",
     ] {
-        assert!(spec(model).is_none(), "{model} is listed");
+        assert!(
+            spec(model).is_none_or(|base| !base.input.image),
+            "{model} reads text only"
+        );
         let accepts = Converse::new(model).accepts(model);
         assert!(!accepts.user_images, "{model}");
         assert!(!accepts.tool_result_images, "{model}");
     }
+    assert_eq!(
+        spec("eu.meta.llama3-3-70b-instruct-v1:0").map(|base| base.id.as_str()),
+        Some("meta.llama3-3-70b-instruct-v1:0")
+    );
+    assert!(spec("us.writer.palmyra-unlisted-v1:0").is_none());
     assert!(
         Converse::new("eu.amazon.nova-lite-v1:0")
             .accepts("eu.amazon.nova-lite-v1:0")
