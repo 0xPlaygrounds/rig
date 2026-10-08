@@ -4,8 +4,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::blocking::blocking;
 use super::{MAX_BYTES, MAX_LINES, clip, io_error};
+use crate::core::blocking::blocking;
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;

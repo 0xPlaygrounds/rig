@@ -16,7 +16,7 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crate::core::agent::{Agent, AgentStatus, Notice};
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::turn::AgentSystems;
-use crate::process::kill_group;
+use crate::process::{detach, kill_group};
 
 /// The exit code that asks the launcher to restart on the staged build. The
 /// launcher (`src/launcher/mod.rs` in the `rig` crate) repeats it.
@@ -84,9 +84,9 @@ impl ReloadBuild {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
-        // Its own process group, so cancelling stops cargo and rustc too.
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        // Its own session and process group, so cancelling stops cargo and
+        // rustc too, and a git prompt for a plugin cannot reach the screen.
+        detach(&mut command);
         let mut child = command.spawn()?;
         let (sender, lines) = crossbeam_channel::unbounded();
         if let Some(stderr) = child.stderr.take() {
@@ -206,7 +206,7 @@ fn reload(
     } else {
         "/reload needs the rig launcher: start the agent with `rig`.".to_owned()
     };
-    notices.write(Notice(notice));
+    notices.write(Notice::new(notice));
 }
 
 /// Reads the build's output; on its exit, reports a failure or marks the
@@ -233,7 +233,7 @@ fn drain_reload(
         Ok(Some(status)) => status,
         Ok(None) => return,
         Err(failure) => {
-            notices.write(Notice(format!("The rebuild failed: {failure}")));
+            notices.write(Notice::new(format!("The rebuild failed: {failure}")));
             commands.remove_resource::<ReloadBuild>();
             return;
         }
@@ -241,9 +241,9 @@ fn drain_reload(
     build.exited = true;
     if status.success() {
         build.ready = true;
-        notices.write(Notice("Build ready; restarting.".to_owned()));
+        notices.write(Notice::new("Build ready; restarting.".to_owned()));
     } else {
-        notices.write(Notice(format!(
+        notices.write(Notice::new(format!(
             "The rebuild failed ({status}); this build keeps running.\n{}",
             build.errors()
         )));
@@ -273,7 +273,7 @@ fn on_cancel_reload(
 ) {
     if build.is_some_and(|build| !build.ready) {
         commands.remove_resource::<ReloadBuild>();
-        notices.write(Notice("Rebuild cancelled.".to_owned()));
+        notices.write(Notice::new("Rebuild cancelled.".to_owned()));
     }
 }
 
@@ -282,7 +282,7 @@ fn launcher_notice(mut notices: MessageWriter<Notice>) {
     if let Ok(notice) = std::env::var("RIG_NOTICE")
         && !notice.is_empty()
     {
-        notices.write(Notice(notice));
+        notices.write(Notice::new(notice));
     }
 }
 

@@ -4,6 +4,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::UNIX_EPOCH;
 
@@ -15,9 +16,6 @@ use super::{BEVY_VERSION, Result};
 /// The agent project, generated.
 pub struct Project {
     config: Config,
-    /// Whether the project depends on the `bevy` crate, to turn on the
-    /// Bevy features plugins ask for.
-    bevy_umbrella: bool,
     /// Whether generation changed a file.
     pub changed: bool,
     /// Whether `rig-code` comes from a local checkout.
@@ -30,31 +28,35 @@ pub fn prepare(home: &Home) -> Result<Project> {
     let source = RigSource::detect()?;
     let changed = project::generate(home, &config, &source)?;
     Ok(Project {
-        bevy_umbrella: project::needs_bevy_umbrella(&config),
         config,
         changed,
         local: matches!(source, RigSource::Local(_)),
     })
 }
 
-/// Checks the Rust and Bevy versions, builds, and stages the binary when
-/// it is a new one.
-pub fn compile(home: &Home, project: &Project) -> Result<()> {
-    if project.bevy_umbrella {
-        check_rustc(home)?;
-    }
+/// Checks the Rust and Bevy versions, builds, and copies the binary to
+/// `staged`. Unless `again`, a build already staged once is not staged
+/// again: at startup, that keeps a build rolled back for crashing from
+/// being retried until something changes.
+pub fn compile(home: &Home, project: &Project, staged: &Path, again: bool) -> Result<()> {
     check_bevy(home, &project.config)?;
     let status = cargo(home).args(["build", "--package", PACKAGE]).status()?;
     if !status.success() {
         return Err("building the agent failed".into());
     }
-    stage(home)
+    stage(home, staged, again)
 }
 
-/// `rig build`, holding the root's build lock.
+/// `rig build`, holding the root's build lock. It always stages, so it also
+/// retries a build that was rolled back. Run by an agent's `/reload`
+/// (`RIG_SESSION` set), it stages for that agent's launcher alone.
 pub fn build(home: &Home) -> Result<()> {
     let _lock = home.lock()?;
-    compile(home, &prepare(home)?)
+    let staged = match std::env::var("RIG_SESSION") {
+        Ok(session) if !session.is_empty() => home.staged_for(&session),
+        _ => home.bin("staged"),
+    };
+    compile(home, &prepare(home)?, &staged, true)
 }
 
 /// cargo in the agent project, with stdout discarded and stderr passed
@@ -71,10 +73,9 @@ fn cargo(home: &Home) -> Command {
     command
 }
 
-/// Copies a newly built binary to `staged`. `built` records the build
-/// last staged, so a build that is unchanged, or that was rolled back after
-/// crashing at startup, is not staged again.
-fn stage(home: &Home) -> Result<()> {
+/// Copies the built binary to `staged`. `built` records the build last
+/// staged; unless `again`, that build is not staged a second time.
+fn stage(home: &Home, staged: &Path, again: bool) -> Result<()> {
     let artifact = home
         .target()
         .join("debug")
@@ -87,13 +88,13 @@ fn stage(home: &Home) -> Result<()> {
         .unwrap_or_default();
     let stamp = format!("{modified} {}\n", metadata.len());
     let record = home.bin("built");
-    if fs::read_to_string(&record).is_ok_and(|built| built == stamp) {
+    if !again && fs::read_to_string(&record).is_ok_and(|built| built == stamp) {
         return Ok(());
     }
     let staging = home.bin("staged.tmp");
     fs::create_dir_all(home.root().join("bin"))?;
     fs::copy(&artifact, &staging)?;
-    fs::rename(&staging, home.bin("staged"))?;
+    fs::rename(&staging, staged)?;
     fs::write(record, stamp)?;
     Ok(())
 }
@@ -101,9 +102,9 @@ fn stage(home: &Home) -> Result<()> {
 /// The oldest Rust the `bevy` crate builds with.
 const BEVY_RUST: (u32, u32) = (1, 96);
 
-/// Fails, in plain words, when the Rust toolchain that builds the project
-/// is older than [`BEVY_RUST`]. rustup picks it from the project directory,
-/// as it does for cargo.
+/// Fails, in plain words, when the project uses the `bevy` crate and the
+/// Rust toolchain that builds it is older than [`BEVY_RUST`]. rustup picks
+/// the toolchain from the project directory, as it does for cargo.
 fn check_rustc(home: &Home) -> Result<()> {
     let output = Command::new("rustc")
         .arg("--version")
@@ -127,10 +128,9 @@ fn check_rustc(home: &Home) -> Result<()> {
     }
     let (want_major, want_minor) = BEVY_RUST;
     Err(format!(
-        "a plugin in rig.toml asks for Bevy features, which turns on the `bevy` crate, and \
+        "a plugin in rig.toml uses the `bevy` crate (directly, or through bevy_features), and \
          Bevy {BEVY_VERSION} needs Rust {want_major}.{want_minor} or newer, but the toolchain \
-         for {} is Rust {major}.{minor}. Update it (`rustup update`), or remove the plugin's \
-         bevy_features.",
+         for {} is Rust {major}.{minor}. Update it (`rustup update`), or remove the plugin.",
         home.project().display()
     )
     .into())
@@ -146,7 +146,8 @@ struct Locked {
 }
 
 /// Resolves the project (writing `Cargo.lock`) and fails, in plain words,
-/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`].
+/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`], or the `bevy`
+/// crate with a Rust too old for it.
 fn check_bevy(home: &Home, config: &Config) -> Result<()> {
     let status = cargo(home)
         .args(["metadata", "--format-version", "1"])
@@ -155,6 +156,9 @@ fn check_bevy(home: &Home, config: &Config) -> Result<()> {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
     let lock = locked(&fs::read_to_string(home.project().join("Cargo.lock"))?);
+    if lock.iter().any(|package| package.name == "bevy") {
+        check_rustc(home)?;
+    }
     let Some(foreign) = lock.iter().position(|package| {
         ["bevy_app", "bevy_ecs"].contains(&package.name.as_str()) && package.version != BEVY_VERSION
     }) else {

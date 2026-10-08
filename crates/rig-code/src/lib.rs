@@ -41,6 +41,7 @@ pub mod prelude {
         Agent, AgentId, AgentStatus, Conversation, Effort, Interrupt, ModelChoice, Notice,
         SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
     };
+    pub use crate::core::blocking::blocking;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
     pub use crate::core::session::ReflectSaved;
     pub use crate::core::tools::AppToolsExt;

@@ -177,7 +177,30 @@ pub struct SetEffort {
 
 /// A line for the user, shown by views and logged.
 #[derive(Message, Clone, Debug)]
-pub struct Notice(pub String);
+pub struct Notice {
+    /// The agent it is about, or `None` when it is about the whole app.
+    pub agent: Option<Entity>,
+    /// The text.
+    pub text: String,
+}
+
+impl Notice {
+    /// A notice about the whole app, such as a rebuild.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            agent: None,
+            text: text.into(),
+        }
+    }
+
+    /// A notice about `agent`.
+    pub fn to(agent: Entity, text: impl Into<String>) -> Self {
+        Self {
+            agent: Some(agent),
+            text: text.into(),
+        }
+    }
+}
 
 /// An agent's turn ended: answered, failed or interrupted.
 #[derive(Message, Clone, Copy, Debug)]

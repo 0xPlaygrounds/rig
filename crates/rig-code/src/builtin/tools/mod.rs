@@ -1,7 +1,6 @@
 //! The built-in tools: read, edit, write, shell and search. Each runs its
 //! blocking work on a thread of its own, so no task pool thread blocks.
 
-mod blocking;
 mod edit;
 mod read;
 mod search;
