@@ -393,6 +393,14 @@ impl ProviderId {
             })
     }
 
+    /// Every vendor name [`Self::catalog`] knows, registered or
+    /// catalog-only. A vendor registered in two families appears twice.
+    pub(crate) fn catalog_vendors() -> impl Iterator<Item = &'static str> {
+        Self::all()
+            .map(|id| id.vendor())
+            .chain(CATALOG_ONLY.iter().map(|provider| provider.vendor))
+    }
+
     /// The vendor, spelled as the provider's own descriptor name.
     pub fn vendor(&self) -> &'static str {
         match &self.0 {

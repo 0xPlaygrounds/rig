@@ -9,6 +9,16 @@ fn options(reasoning: impl Into<Reasoning>) -> GenerationOptions {
     GenerationOptions::default().reasoning(reasoning)
 }
 
+/// A models.dev-style file read by the lenient reader.
+fn models_dev(json: &str) -> Result<Catalog, CatalogError> {
+    Catalog::from_models_dev(json).map(|(catalog, _)| catalog)
+}
+
+/// An override file read by the strict reader, every model in it new.
+fn strict(json: &str) -> Result<Catalog, OverrideErrors> {
+    Catalog::from_overrides(json, &Catalog::default())
+}
+
 fn spec<'a>(catalog: &'a Catalog, vendor: &str, model: &str) -> &'a ModelSpec {
     let provider = ProviderId::catalog(vendor).expect("a known vendor");
     catalog
@@ -44,7 +54,11 @@ const SAMPLE: &str = r#"{
 
 #[test]
 fn the_checked_in_catalog_loads_whole() {
-    let catalog = Catalog::from_json(BUILTIN).expect("the checked-in data parses");
+    let (catalog, skipped) = Catalog::from_models_dev(BUILTIN).expect("the checked-in data parses");
+    assert_eq!(skipped, [], "every row reads");
+    if let Err(errors) = Catalog::from_overrides(BUILTIN, &catalog) {
+        panic!("the checked-in data names only keys rig reads: {errors}");
+    }
     assert!(catalog.iter().count() > 1000, "{}", catalog.iter().count());
     assert_eq!(
         Catalog::builtin().iter().count(),
@@ -61,7 +75,7 @@ fn the_checked_in_catalog_loads_whole() {
 
 #[test]
 fn a_models_dev_row_becomes_a_spec() {
-    let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = models_dev(SAMPLE).expect("parses");
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.display_name, "Claude X");
     assert_eq!(claude.context_window, Some(200_000));
@@ -124,22 +138,16 @@ fn a_models_dev_row_becomes_a_spec() {
 }
 
 #[test]
-fn an_unknown_rig_fact_is_an_error() {
-    let json = r#"{"anthropic": {"models": {"m": {"rig": {"adaptive": true}}}}}"#;
-    assert!(Catalog::from_json(json).is_err());
-    assert!(Catalog::from_json("[]").is_err());
-}
-
-#[test]
 fn an_override_wins_field_by_field() {
-    let overrides = Catalog::from_json(
+    let base = models_dev(SAMPLE).expect("parses");
+    let overrides = Catalog::from_overrides(
         r#"{"anthropic": {"models": {
             "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true}},
-            "claude-y": {"name": "Claude Y"}
+            "claude-y": {"name": "Claude Y", "reasoning": false, "tool_call": true, "modalities": {"input": ["text"]}}
         }}}"#,
+        &base,
     )
     .expect("parses");
-    let base = Catalog::from_json(SAMPLE).expect("parses");
     let catalog = base.with_overrides(&overrides);
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert_eq!(claude.max_output_tokens, Some(128_000));
@@ -188,7 +196,7 @@ fn cloning_a_catalog_shares_its_rows() {
 
 #[test]
 fn references_name_a_vendor_and_a_model() {
-    let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = models_dev(SAMPLE).expect("parses");
     let id = |reference: &str| {
         catalog
             .resolve(reference)
@@ -227,7 +235,7 @@ fn references_name_a_vendor_and_a_model() {
 /// says which step matched; `get_exact` takes the first step only.
 #[test]
 fn one_rule_finds_an_id_or_a_dated_snapshot_of_it() {
-    let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = models_dev(SAMPLE).expect("parses");
     let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
     let matched = |model: &str| catalog.get(anthropic, model).map(|found| found.matched);
     assert_eq!(matched("claude-x"), Some(Matched::Exact));
@@ -375,7 +383,7 @@ fn edit_distance_counts_single_character_edits() {
 
 #[test]
 fn catalog_only_providers_have_entries_and_no_preset() {
-    let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = models_dev(SAMPLE).expect("parses");
     let bedrock = spec(&catalog, "aws_bedrock", "us.anthropic.claude-x-v1:0");
     assert!(!bedrock.provider.is_registered());
     assert_eq!(bedrock.provider.format(), None);
@@ -387,7 +395,7 @@ fn catalog_only_providers_have_entries_and_no_preset() {
 
 #[test]
 fn validate_refuses_what_the_model_does_not_take() {
-    let catalog = Catalog::from_json(SAMPLE).expect("parses");
+    let catalog = models_dev(SAMPLE).expect("parses");
     let claude = spec(&catalog, "anthropic", "claude-x");
     assert!(claude.validate(&options(Effort::High)).is_ok());
     assert!(
@@ -443,7 +451,7 @@ fn validate_refuses_what_the_model_does_not_take() {
 /// only the hand-entered `"reasoning_control": "none"` makes it refuse.
 #[test]
 fn a_reasoning_row_without_options_is_unknown_unless_it_says_none() {
-    let catalog = Catalog::from_json(
+    let catalog = models_dev(
         r#"{"openrouter": {"models": {
             "listed-nothing": {"reasoning": true, "reasoning_options": []},
             "absent": {"reasoning": true, "rig": {"reasoning_default": "medium"}},
@@ -529,13 +537,12 @@ fn a_spec_row_carries_its_reasoning_state() {
         let row = ModelSpec::new(openai, "o1-mini")
             .with_reasoning(state.clone())
             .to_row_json();
-        let overrides = Catalog::from_json(
-            &serde_json::json!({"openai": {"models": {"o1-mini": row}}}).to_string(),
-        )
-        .expect("parses");
+        let overrides =
+            strict(&serde_json::json!({"openai": {"models": {"o1-mini": row}}}).to_string())
+                .expect("parses");
         for base in [
             Catalog::builtin().clone(),
-            Catalog::from_json(SAMPLE).expect("parses"),
+            models_dev(SAMPLE).expect("parses"),
         ] {
             let catalog = base.with_overrides(&overrides);
             assert_eq!(spec(&catalog, "openai", "o1-mini").reasoning, state);
@@ -545,9 +552,8 @@ fn a_spec_row_carries_its_reasoning_state() {
 
 #[test]
 fn a_cache_retention_the_model_does_not_honour_is_refused() {
-    let catalog =
-        Catalog::from_json(r#"{"openai": {"models": {"m": {"rig": {"cache": ["short"]}}}}}"#)
-            .expect("parses");
+    let catalog = models_dev(r#"{"openai": {"models": {"m": {"rig": {"cache": ["short"]}}}}}"#)
+        .expect("parses");
     let model = spec(&catalog, "openai", "m");
     let refused = model
         .validate(&GenerationOptions::default().cache(CacheRetention::Long))
@@ -595,9 +601,11 @@ fn a_spec_built_in_code_joins_the_catalog() {
         "the built-in catalog is unchanged"
     );
 
-    let overrides =
-        Catalog::from_json(r#"{"ollama": {"models": {"qwen3:4b": {"limit": {"output": 8192}}}}}"#)
-            .expect("parses");
+    let overrides = Catalog::from_overrides(
+        r#"{"ollama": {"models": {"qwen3:4b": {"limit": {"output": 8192}}}}}"#,
+        &catalog,
+    )
+    .expect("the model is listed in the catalog it is laid over");
     let overridden = catalog.with_overrides(&overrides);
     let qwen = spec(&overridden, "ollama", "qwen3:4b");
     assert_eq!(qwen.max_output_tokens, Some(8192));
@@ -607,7 +615,7 @@ fn a_spec_built_in_code_joins_the_catalog() {
         Some(Pricing::new(0.1, 0.4).with_cache_read(0.01))
     );
 
-    let mut sample = Catalog::from_json(SAMPLE).expect("parses");
+    let mut sample = models_dev(SAMPLE).expect("parses");
     let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
     sample.insert(ModelSpec::new(anthropic, "claude-x"));
     let replaced = spec(&sample, "anthropic", "claude-x");
@@ -631,7 +639,7 @@ fn every_spec_round_trips_through_serde_and_its_row() {
         let vendor = spec.provider.vendor();
         let file =
             serde_json::json!({ vendor: { "models": { spec.id.as_str(): spec.to_row_json() } } });
-        let catalog = Catalog::from_json(&file.to_string()).expect("the row reads");
+        let catalog = strict(&file.to_string()).expect("the row reads");
         assert_eq!(
             catalog.iter().collect::<Vec<_>>(),
             [spec],
@@ -649,11 +657,10 @@ fn a_spec_row_overrides_what_the_spec_knows() {
     let row = ModelSpec::new(anthropic, "claude-x")
         .with_display_name("Claude X2")
         .to_row_json();
-    let overrides = Catalog::from_json(
-        &serde_json::json!({"anthropic": {"models": {"claude-x": row}}}).to_string(),
-    )
-    .expect("parses");
-    let catalog = Catalog::from_json(SAMPLE)
+    let overrides =
+        strict(&serde_json::json!({"anthropic": {"models": {"claude-x": row}}}).to_string())
+            .expect("parses");
+    let catalog = models_dev(SAMPLE)
         .expect("parses")
         .with_overrides(&overrides);
     let claude = spec(&catalog, "anthropic", "claude-x");
@@ -698,7 +705,7 @@ fn gateway_rows_of_a_claude_model_carry_its_facts() {
 fn a_row_names_the_family_its_model_is_reached_by() {
     use crate::providers::registry::Format;
 
-    let catalog = Catalog::from_json(
+    let catalog = models_dev(
         r#"{"zai": {"models": {
             "glm-x": {"name": "GLM X"},
             "glm-y": {"name": "GLM Y", "rig": {"format": "anthropic"}}
@@ -727,19 +734,23 @@ fn a_row_names_the_family_its_model_is_reached_by() {
         None
     );
 
-    let error =
-        Catalog::from_json(r#"{"openai": {"models": {"gpt-x": {"rig": {"format": "gemini"}}}}}"#)
-            .expect_err("OpenAI speaks no Gemini endpoint");
-    assert!(
-        matches!(&error, CatalogError::Format { vendor: "openai", model, format: Format::Gemini } if model == "gpt-x"),
+    let file = r#"{"openai": {"models": {"gpt-x": {"rig": {"format": "gemini"}}}}}"#;
+    let error = Catalog::from_overrides(file, Catalog::builtin())
+        .expect_err("OpenAI speaks no Gemini endpoint");
+    assert_eq!(
+        error.0.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+        ["openai.models.gpt-x.rig.format", "openai.models.gpt-x"],
         "{error}"
     );
+    let (lenient, skipped) = Catalog::from_models_dev(file).expect("reads");
+    assert_eq!(lenient.iter().count(), 0);
+    assert_eq!(skipped.len(), 1, "the row is skipped: {skipped:?}");
 
     // The override replaces the family the base row names.
     let messages = catalog.get_exact(zai, "glm-y").expect("listed").clone();
     let mut chat = messages.clone();
     chat.provider = zai;
-    let overrides = Catalog::from_json(&format!(
+    let overrides = strict(&format!(
         r#"{{"zai": {{"models": {{"glm-y": {}}}}}}}"#,
         chat.to_row_json()
     ))
@@ -752,7 +763,7 @@ fn a_row_names_the_family_its_model_is_reached_by() {
     assert_eq!(
         catalog
             .with_overrides(
-                &Catalog::from_json(&format!(
+                &strict(&format!(
                     r#"{{"zai": {{"models": {{"glm-x": {}}}}}}}"#,
                     messages.to_row_json()
                 ))

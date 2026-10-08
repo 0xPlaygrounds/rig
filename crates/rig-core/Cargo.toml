@@ -42,6 +42,8 @@ serde = { workspace = true, features = ["derive"] }
 # a replayed item matches its recording; float_roundtrip keeps its numbers
 # exact. Comparisons stay `Value` equality, which ignores key order.
 serde_json = { workspace = true, features = ["raw_value", "preserve_order", "float_roundtrip"] }
+# Paths in the errors a strict catalog override file reports.
+serde_path_to_error = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -87,7 +89,6 @@ tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tokio-test = { workspace = true }
 redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
-serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 # required for otel
 opentelemetry = { workspace = true }
