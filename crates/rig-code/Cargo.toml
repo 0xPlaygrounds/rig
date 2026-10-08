@@ -1,0 +1,38 @@
+[package]
+name = "rig-code"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "A terminal coding agent on rig-core and Bevy: agents are entities, and tools and slash commands come from Bevy plugins."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The ratatui view. Without it the crate is the agent core alone: the agent
+# loop, tools, effects and saving.
+tui = ["dep:ratatui", "dep:crossterm"]
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+crossbeam-channel = { workspace = true }
+futures = { workspace = true }
+ignore = { workspace = true }
+regex = { workspace = true }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["reqwest"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }
+crossterm = { workspace = true, optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
