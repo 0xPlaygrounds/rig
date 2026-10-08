@@ -23,8 +23,7 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
-# Only for `termination`: Bevy's Ctrl+C handler then also turns SIGTERM and
-# SIGHUP (a closed terminal) into a clean exit.
+# `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 futures = { workspace = true }
 ignore = { workspace = true }

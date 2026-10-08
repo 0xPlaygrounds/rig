@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use bevy_app::{
     PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
-    TaskPoolThreadAssignmentPolicy, TerminalCtrlCHandlerPlugin,
+    TaskPoolThreadAssignmentPolicy,
 };
 use bevy_log::LogPlugin;
 
@@ -79,10 +79,7 @@ impl PluginGroup for RigCodePlugins {
             .add(TaskPoolPlugin {
                 task_pool_options: task_pools(),
             })
-            // A signal exits like `/quit`: running calls and a `/reload`
-            // build are stopped with their process groups, and the session is
-            // saved.
-            .add(TerminalCtrlCHandlerPlugin)
+            .add(host::signals::ExitOnSignalPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
             .add(host::launcher::LauncherPlugin)
