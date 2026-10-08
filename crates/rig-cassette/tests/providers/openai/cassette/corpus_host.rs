@@ -136,7 +136,7 @@ async fn embed_prompt_streamed_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn a_model_chosen_from_config_yields_the_golden_effect_log() {
     with_openai_corpus_host_cassette("corpus_host/embed_prompt", |client| async move {
-        let reference = rig::providers::registry::ProviderRef::parse("openai:gpt-4o")
+        let reference = rig::providers::registry::ProviderRef::parse("openai/gpt-4o")
             .expect("a registered reference");
         let config = client.openai.config.clone();
         let http = rig_test_support::rebased::Rebased::new(

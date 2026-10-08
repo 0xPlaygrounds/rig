@@ -172,3 +172,15 @@ fn a_reviewed_reasoning_control_reaches_the_row() {
     assert_eq!(claude["reasoning_options"], json!([]));
     assert_eq!(claude["rig"], json!({"reasoning_control": "none"}));
 }
+
+#[test]
+fn a_reviewed_format_reaches_the_row() {
+    let review = json!({
+        "anthropic": {"models": {"claude-x-1": {"rig": {"format": "anthropic"}}}}
+    });
+    let rows = generate(&models_dev(), &review).expect("generates");
+    assert_eq!(
+        rows["anthropic"]["claude-x-1"]["rig"],
+        json!({"format": "anthropic"})
+    );
+}

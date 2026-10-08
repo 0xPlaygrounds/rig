@@ -199,7 +199,7 @@ async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
             "routing/codex_models_route_through_responses.yaml",
         ),
     ] {
-        let reference = ProviderRef::parse(&format!("copilot/openai:{model}"))
+        let reference = ProviderRef::parse(&format!("copilot/{model}"))
             .expect("a registered Copilot selection");
         let request = registry_request(reference, cassette).await;
         assert_eq!(

@@ -269,7 +269,16 @@ impl AnthropicConfig {
 
     /// A Messages-format provider from the variables its dialect names.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        let mut provider = Self::with_key(dialect, env::required(dialect.api_key_env)?);
+        Self::from_env_with_credential(dialect, env::required(dialect.api_key_env)?)
+    }
+
+    /// `dialect` with `api_key` and the base URL its environment variable
+    /// names, if set.
+    pub(crate) fn from_env_with_credential(
+        dialect: &Dialect,
+        api_key: impl Into<Secret>,
+    ) -> Result<Self, EnvError> {
+        let mut provider = Self::with_key(dialect, api_key);
         if let Some(name) = dialect.base_url_env
             && let Some(base_url) = env::optional(name)?
         {

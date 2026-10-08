@@ -7,7 +7,7 @@ use super::spec::{
     CacheSupport, Compat, Modalities, ModelSpec, Pricing, ReasoningSupport, Sampling,
 };
 use crate::completion::{CacheRetention, Effort};
-use crate::providers::registry::ProviderId;
+use crate::providers::registry::{Format, ProviderId};
 
 /// A models.dev model row. Every field is optional, so an override row
 /// names only what it changes; fields rig does not read are ignored.
@@ -82,6 +82,8 @@ struct Cost {
 #[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Facts {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<Format>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_default: Option<Effort>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -205,6 +207,7 @@ impl Row {
                 .to_owned(),
             ),
             rig: Facts {
+                format: spec.provider.format(),
                 reasoning_default: reasoning.default_effort(),
                 reasoning_control,
                 cache: (!spec.caching.retention.is_empty()).then(|| spec.caching.retention.clone()),
@@ -254,8 +257,19 @@ impl Row {
         }
     }
 
-    /// The spec of model `id` served by `provider`.
+    /// The protocol family the row's `rig` facts name, if any.
+    pub(super) fn format(&self) -> Option<Format> {
+        self.rig.format
+    }
+
+    /// The spec of model `id` served by `provider`, in the family the row
+    /// names when that family is registered for `provider`'s vendor.
     pub(super) fn spec(&self, provider: ProviderId, id: &str) -> ModelSpec {
+        let provider = self
+            .rig
+            .format
+            .and_then(|format| ProviderId::new(provider.vendor(), format))
+            .unwrap_or(provider);
         let max_output_tokens = positive(self.limit.output);
         ModelSpec {
             id: id.to_owned(),
@@ -356,6 +370,7 @@ impl Row {
 impl Facts {
     fn overlay(self, over: Facts) -> Facts {
         Facts {
+            format: over.format.or(self.format),
             reasoning_default: over.reasoning_default.or(self.reasoning_default),
             reasoning_control: over.reasoning_control.or(self.reasoning_control),
             cache: over.cache.or(self.cache),

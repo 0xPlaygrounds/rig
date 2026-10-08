@@ -90,7 +90,8 @@ const ROW_KEYS: [&str; 12] = [
 const REVIEW_KEYS: [&str; 3] = ["from", "source", "note"];
 
 /// The facts a reviewed row may set under `rig`, as rig-core reads them.
-const RIG_KEYS: [&str; 12] = [
+const RIG_KEYS: [&str; 13] = [
+    "format",
     "reasoning_default",
     "reasoning_control",
     "cache",

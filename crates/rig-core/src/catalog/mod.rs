@@ -8,9 +8,10 @@
 //! [`Catalog::from_json`] and lay it over the built-in one with
 //! [`Catalog::with_overrides`]. [`ModelSpec::validate`] checks a request's
 //! [`GenerationOptions`](crate::completion::GenerationOptions) against what
-//! the model takes before anything is sent. A completion wire encodes and
-//! prices with the [`ModelFacts`] it was connected with, so a catalog's
-//! overrides reach its requests and reported cost.
+//! the model takes before anything is sent. [`Catalog::connect`] builds a
+//! model from a `vendor/model` reference with the key from the environment;
+//! the model encodes and prices with the [`ModelFacts`] it was connected
+//! with, so the catalog's overrides reach its requests and reported cost.
 //!
 //! ```
 //! use rig_core::catalog::Catalog;
@@ -66,6 +67,17 @@ pub enum CatalogError {
     /// keys, each with a `models` object keyed by model id.
     #[error("not a models.dev-style catalog: {0}")]
     Json(#[from] serde_json::Error),
+    /// A row's `rig.format` names a protocol family its vendor is not
+    /// registered for.
+    #[error("`{vendor}/{model}`: `{vendor}` speaks no {format} endpoint in this build")]
+    Format {
+        /// The row's vendor.
+        vendor: &'static str,
+        /// The row's model id.
+        model: String,
+        /// The family the row names.
+        format: Format,
+    },
 }
 
 /// A provider's section of the data. models.dev's other provider keys
@@ -126,26 +138,28 @@ impl Catalog {
         self.exact(provider.vendor(), model)
     }
 
-    /// The model a reference names, by [`Self::get`]'s rule: `vendor/model`
-    /// (`anthropic/claude-opus-5-5`, `openrouter/anthropic/claude-sonnet-4.5`)
-    /// or `vendor[/format]:model` as [`ProviderRef`] spells it. The second
-    /// form applies when the text before the first `:` is a vendor or a
-    /// `vendor/format` pair, so a model id holding a `:` (`ollama/qwen3:4b`)
-    /// still reads as the first.
+    /// The model a reference names, by [`Self::get`]'s rule. A reference is
+    /// `vendor/model`, split at the first `/`, so the model id keeps any
+    /// `/` and `:` of its own (`openrouter/anthropic/claude-sonnet-4.5`,
+    /// `ollama/qwen3:4b`). The older `vendor/format:model` spelling is still
+    /// read; its format plays no part in the lookup.
     ///
     /// # Errors
     ///
     /// [`NotFound`] when the reference names no listed model, with up to
     /// five close references to models that are not deprecated.
-    ///
-    /// [`ProviderRef`]: crate::providers::registry::ProviderRef
     pub fn resolve(&self, reference: &str) -> Result<Resolved<'_>, NotFound> {
-        split_reference(reference)
-            .and_then(|(vendor, model)| self.get_vendor(vendor, model))
-            .ok_or_else(|| NotFound {
-                reference: reference.to_owned(),
-                suggestions: lookup::suggestions(reference, self.iter()),
-            })
+        Reference::parse(reference)
+            .and_then(|parsed| self.get_vendor(parsed.vendor, parsed.model))
+            .ok_or_else(|| self.not_found(reference))
+    }
+
+    /// The miss [`Self::resolve`] reports for `reference`.
+    pub(crate) fn not_found(&self, reference: &str) -> NotFound {
+        NotFound {
+            reference: reference.to_owned(),
+            suggestions: lookup::suggestions(reference, self.iter()),
+        }
     }
 
     /// Every model, by vendor then id.
@@ -158,7 +172,15 @@ impl Catalog {
     /// models.dev key (`google`, `amazon-bedrock`) or a rig vendor name
     /// (`gcp.gemini`); a key that is neither is skipped, so models.dev's own
     /// `api.json` reads whole. Rig's hand-entered facts go under each row's
-    /// `rig` object.
+    /// `rig` object, among them `format`, the protocol family the model is
+    /// reached by when that is not its vendor's own (see
+    /// [`ProviderId::catalog`]).
+    ///
+    /// # Errors
+    ///
+    /// [`CatalogError::Json`] when the text is not in this shape, and
+    /// [`CatalogError::Format`] when a row names a family its vendor is not
+    /// registered for.
     pub fn from_json(json: &str) -> Result<Catalog, CatalogError> {
         let sections: BTreeMap<String, Section> = serde_json::from_str(json)?;
         let mut catalog = Catalog::default();
@@ -167,6 +189,15 @@ impl Catalog {
                 continue;
             };
             for (id, row) in section.models {
+                if let Some(format) = row.format()
+                    && ProviderId::new(provider.vendor(), format).is_none()
+                {
+                    return Err(CatalogError::Format {
+                        vendor: provider.vendor(),
+                        model: id,
+                        format,
+                    });
+                }
                 catalog.put(provider, &id, row);
             }
         }
@@ -274,21 +305,43 @@ fn vendor_of(key: &str) -> &str {
         .unwrap_or(key)
 }
 
-/// `(vendor, model)` from a reference, by the grammar [`Catalog::resolve`]
-/// documents.
-pub(crate) fn split_reference(reference: &str) -> Option<(&str, &str)> {
-    if let Some((selection, model)) = reference.split_once(':') {
-        let vendor = match selection.split_once('/') {
-            None => Some(selection),
-            Some((vendor, format)) => Format::named(format).map(|_| vendor),
-        };
-        if let Some(vendor) = vendor.filter(|vendor| !vendor.is_empty()) {
-            return (!model.is_empty()).then_some((vendor, model));
+/// A model reference as text spells it: `vendor/model`, or the older
+/// `vendor/format:model`, which also names a protocol family. Every reader
+/// of a reference string in rig parses it here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Reference<'a> {
+    /// The text before the first `/`.
+    pub(crate) vendor: &'a str,
+    /// The provider's model id.
+    pub(crate) model: &'a str,
+    /// The family the older spelling names, if it was used.
+    pub(crate) format: Option<Format>,
+}
+
+impl<'a> Reference<'a> {
+    /// `text` split at its first `/`, or `None` when either side is empty.
+    /// The rest is read as `format:model` only when the text before its
+    /// first `:` is a [`Format`]'s name.
+    pub(crate) fn parse(text: &'a str) -> Option<Self> {
+        let (vendor, rest) = text.split_once('/')?;
+        if vendor.is_empty() || rest.is_empty() {
+            return None;
         }
+        if let Some((format, model)) = rest.split_once(':')
+            && let Some(format) = Format::named(format)
+        {
+            return (!model.is_empty()).then_some(Self {
+                vendor,
+                model,
+                format: Some(format),
+            });
+        }
+        Some(Self {
+            vendor,
+            model: rest,
+            format: None,
+        })
     }
-    reference
-        .split_once('/')
-        .filter(|(vendor, model)| !vendor.is_empty() && !model.is_empty())
 }
 
 #[cfg(test)]

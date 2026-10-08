@@ -195,11 +195,7 @@ fn references_name_a_vendor_and_a_model() {
             .ok()
             .map(|resolved| resolved.spec.id.clone())
     };
-    for reference in [
-        "anthropic/claude-x",
-        "anthropic:claude-x",
-        "anthropic/anthropic:claude-x",
-    ] {
+    for reference in ["anthropic/claude-x", "anthropic/anthropic:claude-x"] {
         assert_eq!(id(reference).as_deref(), Some("claude-x"), "{reference}");
     }
     assert_eq!(
@@ -212,6 +208,7 @@ fn references_name_a_vendor_and_a_model() {
     );
     for missing in [
         "claude-x",
+        "anthropic:claude-x",
         "anthropic/",
         "/claude-x",
         "anthropic/claude-x-1",
@@ -691,5 +688,78 @@ fn gateway_rows_of_a_claude_model_carry_its_facts() {
         spec(catalog, "aws_bedrock", "us.anthropic.claude-opus-5-5").reasoning,
         anthropic.reasoning,
         "Bedrock takes Anthropic's own reasoning fields"
+    );
+}
+
+/// A row's `rig.format` names the family its model is reached by; without
+/// it the vendor's primary applies. A family the vendor is not registered
+/// for is an error, and a spec's row carries its family over another row.
+#[test]
+fn a_row_names_the_family_its_model_is_reached_by() {
+    use crate::providers::registry::Format;
+
+    let catalog = Catalog::from_json(
+        r#"{"zai": {"models": {
+            "glm-x": {"name": "GLM X"},
+            "glm-y": {"name": "GLM Y", "rig": {"format": "anthropic"}}
+        }}}"#,
+    )
+    .expect("parses");
+    let zai = ProviderId::catalog("zai").expect("known");
+    let format = |model: &str| catalog.get(zai, model).map(|found| found.spec.format());
+    assert_eq!(format("glm-x"), Some(Some(Format::OpenAi)));
+    assert_eq!(format("glm-y"), Some(Some(Format::Anthropic)));
+    assert_eq!(
+        Catalog::builtin()
+            .resolve("minimax/MiniMax-M2.7")
+            .expect("listed")
+            .spec
+            .format(),
+        Some(Format::Anthropic),
+        "MiniMax's primary family is Anthropic's"
+    );
+    assert_eq!(
+        Catalog::builtin()
+            .resolve("aws_bedrock/us.anthropic.claude-sonnet-5")
+            .expect("listed")
+            .spec
+            .format(),
+        None
+    );
+
+    let error =
+        Catalog::from_json(r#"{"openai": {"models": {"gpt-x": {"rig": {"format": "gemini"}}}}}"#)
+            .expect_err("OpenAI speaks no Gemini endpoint");
+    assert!(
+        matches!(&error, CatalogError::Format { vendor: "openai", model, format: Format::Gemini } if model == "gpt-x"),
+        "{error}"
+    );
+
+    // The override replaces the family the base row names.
+    let messages = catalog.get_exact(zai, "glm-y").expect("listed").clone();
+    let mut chat = messages.clone();
+    chat.provider = zai;
+    let overrides = Catalog::from_json(&format!(
+        r#"{{"zai": {{"models": {{"glm-y": {}}}}}}}"#,
+        chat.to_row_json()
+    ))
+    .expect("parses");
+    let laid = catalog.with_overrides(&overrides);
+    assert_eq!(
+        laid.get_exact(zai, "glm-y").map(ModelSpec::format),
+        Some(Some(Format::OpenAi))
+    );
+    assert_eq!(
+        catalog
+            .with_overrides(
+                &Catalog::from_json(&format!(
+                    r#"{{"zai": {{"models": {{"glm-x": {}}}}}}}"#,
+                    messages.to_row_json()
+                ))
+                .expect("parses")
+            )
+            .get_exact(zai, "glm-x")
+            .map(ModelSpec::format),
+        Some(Some(Format::Anthropic))
     );
 }

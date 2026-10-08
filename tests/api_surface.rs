@@ -70,7 +70,7 @@ async fn models_from_clients_and_strings_hold_a_conversation() -> anyhow::Result
 
     let deepseek = deepseek::from_env()?.chat(deepseek::DEEPSEEK_V4_FLASH);
     anyhow::ensure!(deepseek.id() == Some(deepseek::DEEPSEEK_V4_FLASH));
-    let any = ProviderRef::parse("deepseek:deepseek-chat")?.completion_model()?;
+    let any = ProviderRef::parse("deepseek/deepseek-chat")?.completion_model()?;
     anyhow::ensure!(any.name() == "deepseek" && any.id() == Some("deepseek-chat"));
 
     let model = OpenAI::from_env()?.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);

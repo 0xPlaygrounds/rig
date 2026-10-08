@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::completion::{
     CacheRetention, Cost, Effort, GenerationOptions, Reasoning, UnsupportedOption, Usage,
 };
-use crate::providers::registry::ProviderId;
+use crate::providers::registry::{Format, ProviderId};
 
 /// One model's facts: limits, input modalities, the reasoning and caching it
 /// takes, and its prices. [`Catalog`](super::Catalog) builds one per row of
@@ -40,7 +40,10 @@ use crate::providers::registry::ProviderId;
 pub struct ModelSpec {
     /// The provider's own model id.
     pub id: String,
-    /// The provider serving the model under [`Self::id`].
+    /// The provider serving the model under [`Self::id`], in the protocol
+    /// family the model is reached by: its vendor's own
+    /// ([`ProviderId::catalog`]) unless the catalog row names another
+    /// under `rig.format`. [`Self::format`] reads it.
     pub provider: ProviderId,
     /// A human-readable name.
     pub display_name: String,
@@ -341,6 +344,15 @@ impl ModelSpec {
             sampling: None,
             compat: Compat::default(),
         }
+    }
+
+    /// The protocol family a connection to this model speaks unless told
+    /// otherwise, or `None` for a provider the registry cannot configure.
+    /// To reach the model in another family its vendor is registered for,
+    /// build the spec with that [`ProviderId`] or pass the family to
+    /// [`ConnectOptions::format`](crate::providers::registry::ConnectOptions::format).
+    pub fn format(&self) -> Option<Format> {
+        self.provider.format()
     }
 
     /// This spec named `name`.
