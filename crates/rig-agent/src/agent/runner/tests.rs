@@ -715,80 +715,145 @@ fn a_runner_overrides_content_telemetry_for_its_run() {
     );
 }
 
-/// An agent with its model's catalog entry checks each run's options before
-/// the run starts: a refused option fails it with nothing sent, unless the
-/// options ignore what the model cannot take.
-#[tokio::test]
-async fn a_model_spec_checks_every_runs_options_before_it_starts() {
-    use rig_core::catalog::Catalog;
-    use rig_core::completion::{Effort, OnUnsupported, Reasoning};
-    use rig_core::error::ProviderError;
+/// A reply the Anthropic wire decodes, for a model connected over a
+/// recording transport.
+const ANTHROPIC_REPLY: &str = r#"{"id":"msg_1","type":"message","role":"assistant","model":"claude-haiku-4-5","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}"#;
 
-    let haiku = Catalog::builtin()
-        .resolve("anthropic/claude-haiku-4-5")
-        .expect("listed")
-        .clone();
-    let model = MockCompletionModel::from_turns([MockTurn::text("one"), MockTurn::text("two")]);
-    let agent = AgentBuilder::new(model.clone())
-        .model_spec(haiku)
+/// `reference` connected through `catalog`, over a transport that records
+/// what is sent and answers every call with [`ANTHROPIC_REPLY`].
+fn connected(
+    catalog: &rig_core::catalog::Catalog,
+    reference: &str,
+) -> (
+    rig_core::DynModel<rig_core::operation::Completion>,
+    rig_core::test_utils::RecordingHttpClient,
+) {
+    let http = rig_core::test_utils::RecordingHttpClient::new(ANTHROPIC_REPLY);
+    let model = catalog
+        .connect_with(
+            reference,
+            rig_core::providers::registry::ConnectOptions::new()
+                .api_key("sk-test")
+                .http(http.clone()),
+        )
+        .expect("connects");
+    (model, http)
+}
+
+/// The JSON bodies `http` was sent.
+fn sent_bodies(http: &rig_core::test_utils::RecordingHttpClient) -> Vec<serde_json::Value> {
+    http.requests()
+        .iter()
+        .map(|request| serde_json::from_slice(&request.body).expect("a JSON body"))
+        .collect()
+}
+
+/// Whether `error` is the model refusing `option` for `model` before
+/// sending: the refusal crosses the bus as a request error naming both.
+fn refused(error: &crate::completion::PromptError, option: &str, model: &str) -> bool {
+    matches!(
+        error,
+        crate::completion::PromptError::Report(report)
+            if report.kind == rig_core::error::ErrorKind::Request
+                && report.message.contains(&format!(
+                    "`{option}` is not supported by anthropic model `{model}`"
+                ))
+    )
+}
+
+/// An agent needs no copy of its model's spec: the model checks every call
+/// against the spec it was connected with, when it encodes the call. A
+/// refused option fails the run with nothing sent, unless the options
+/// ignore what the model cannot take, and the same holds for a model a run
+/// switches to, by value, by route or by a selection hook.
+#[tokio::test]
+async fn the_connected_model_checks_every_call_including_a_switched_one() {
+    use rig_core::catalog::Catalog;
+    use rig_core::completion::{Effort, OnUnsupported};
+
+    let (haiku, haiku_http) = connected(Catalog::builtin(), "anthropic/claude-haiku-4-5");
+    let (opus, opus_http) = connected(Catalog::builtin(), "anthropic/claude-opus-4-8");
+    let agent = AgentBuilder::new(haiku.clone())
+        .model_route("opus", opus.clone())
         .reasoning(Effort::High)
         .build();
 
-    let refused = agent.prompt("go").run().await.expect_err("refused");
-    let crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(option)) =
-        &refused
-    else {
-        panic!("an unsupported option: {refused:?}");
-    };
-    assert_eq!(option.option, "reasoning");
-    assert_eq!(option.provider, "anthropic");
-    let mut stream = agent.prompt("go").stream();
-    assert!(matches!(
-        stream.next().await,
-        Some(Err(crate::completion::PromptError::Provider(
-            ProviderError::UnsupportedOption(_)
-        )))
-    ));
-    let typed = agent
-        .prompt_typed::<Vec<String>>("go")
-        .retries(2)
-        .await
-        .expect_err("refused");
+    // Haiku 4.5, the agent's own model, takes no effort level.
+    let error = agent.prompt("go").run().await.expect_err("refused");
     assert!(
-        matches!(
-            &typed,
-            crate::completion::StructuredOutputError::Prompt(
-                crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(_))
-            )
-        ),
-        "an unsupported option: {typed:?}"
+        refused(&error, "reasoning", "claude-haiku-4-5"),
+        "{error:?}"
     );
-    assert!(model.requests().is_empty(), "nothing was sent");
+    let mut stream = agent.prompt("go").stream();
+    let Some(Err(error)) = stream.next().await else {
+        panic!("the stream fails");
+    };
+    assert!(
+        refused(&error, "reasoning", "claude-haiku-4-5"),
+        "{error:?}"
+    );
+    assert!(haiku_http.requests().is_empty(), "nothing was sent");
 
     agent
         .prompt("go")
-        .reasoning(Reasoning::Budget { tokens: 2048 })
-        .run()
-        .await
-        .expect("a budget Haiku 4.5 takes");
-    agent
-        .prompt("again")
         .on_unsupported(OnUnsupported::Ignore)
         .run()
         .await
         .expect("ignored, with a warning");
-    let requests = model.requests();
-    let [budget, ignored] = requests.as_slice() else {
-        panic!("two requests: {requests:?}");
-    };
-    assert_eq!(
-        budget.options.reasoning,
-        Some(Reasoning::Budget { tokens: 2048 })
+    let [ignored] = sent_bodies(&haiku_http).try_into().expect("one request");
+    assert!(ignored.get("thinking").is_none(), "{ignored}");
+    assert!(ignored.get("output_config").is_none(), "{ignored}");
+
+    // Opus 4.8 takes `high`, whichever way the run switches to it.
+    agent
+        .prompt("go")
+        .using_model("opus")
+        .run()
+        .await
+        .expect("the route is Opus 4.8");
+    let (by_value, by_value_http) = connected(Catalog::builtin(), "anthropic/claude-opus-4-8");
+    agent
+        .prompt("go")
+        .using_model_value(by_value)
+        .run()
+        .await
+        .expect("Opus 4.8 by value takes `high`");
+    let (default, default_http) = connected(Catalog::builtin(), "anthropic/claude-opus-4-8");
+    agent
+        .clone()
+        .with_model(default)
+        .prompt("go")
+        .run()
+        .await
+        .expect("Opus 4.8 as the agent's new default takes `high`");
+    assert_eq!(default_http.requests().len(), 1);
+    let hooked = AgentBuilder::new(haiku.clone())
+        .model_route("opus", opus)
+        .add_hook(SelectOpus)
+        .reasoning(Effort::High)
+        .build();
+    hooked
+        .prompt("go")
+        .run()
+        .await
+        .expect("the hook selects Opus 4.8");
+    assert_eq!(opus_http.requests().len(), 2);
+    assert_eq!(by_value_http.requests().len(), 1);
+
+    // A switch to a model that refuses the option fails that call.
+    let (snapshot, snapshot_http) =
+        connected(Catalog::builtin(), "anthropic/claude-haiku-4-5-20251001");
+    let error = agent
+        .prompt("go")
+        .using_model_value(snapshot)
+        .run()
+        .await
+        .expect_err("a Haiku 4.5 snapshot takes no effort level");
+    assert!(
+        refused(&error, "reasoning", "claude-haiku-4-5-20251001"),
+        "{error:?}"
     );
-    assert_eq!(
-        ignored.options.reasoning, None,
-        "the refused effort was dropped"
-    );
+    assert!(snapshot_http.requests().is_empty());
 }
 
 /// A selection hook that sends every call to the model labelled `opus`.
@@ -804,161 +869,40 @@ impl AgentHook for SelectOpus {
     }
 }
 
-/// A run that switches models is checked against the model each call goes
-/// to: the new model's catalog entry, found by the provider and model id it
-/// was registered with, whether `using_model_value`, `using_model` or a
-/// selection hook switched it. A model the catalog does not list is not
-/// checked, and the run says so.
+/// A model connected through the application's own catalog is checked
+/// against that catalog's spec: an override that narrows what the model
+/// takes reaches the agent with no extra wiring.
 #[tokio::test]
-async fn a_model_spec_checks_the_model_a_switched_run_calls() {
+async fn an_override_in_the_applications_catalog_reaches_the_agent() {
     use rig_core::catalog::Catalog;
-    use rig_core::completion::{Effort, Reasoning};
-    use rig_core::error::ProviderError;
-    use rig_core::test_utils::MockScript;
-
-    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard().await;
-    let capture = crate::test_utils::TraceCapture::default();
-    let _default = tracing::subscriber::set_default(capture.subscriber());
-    let scripted = |provider: &str, id: &str| {
-        let mut model = MockCompletionModel::from_turns([MockTurn::text("ok")]);
-        model.wire = MockScript::new(provider).with_id(id);
-        model
-    };
-    let haiku = Catalog::builtin()
-        .resolve("anthropic/claude-haiku-4-5")
-        .expect("listed")
-        .clone();
-    let own = MockCompletionModel::from_turns([MockTurn::text("unused")]);
-    let opus = scripted("anthropic", "claude-opus-4-8");
-    let agent = AgentBuilder::new(own.clone())
-        .model_spec(haiku)
-        .model_route("opus", opus.clone())
-        .reasoning(Effort::High)
-        .build();
-    let refused = |error: &crate::completion::PromptError| {
-        matches!(
-            error,
-            crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(_))
-        )
-    };
-
-    // Haiku 4.5, the agent's own model, takes no effort level.
-    let error = agent.prompt("go").run().await.expect_err("refused");
-    assert!(refused(&error), "{error:?}");
-
-    // Opus 4.8 takes `high`, whichever way the run switched to it.
-    let value = scripted("anthropic", "claude-opus-4-8");
-    agent
-        .prompt("go")
-        .using_model_value(value.clone())
-        .run()
-        .await
-        .expect("Opus 4.8 takes `high`");
-    agent
-        .prompt("go")
-        .using_model("opus")
-        .run()
-        .await
-        .expect("the route is Opus 4.8");
-    let opus_by_hook = scripted("anthropic", "claude-opus-4-8");
-    let hooked = AgentBuilder::new(own.clone())
-        .model_spec(
-            Catalog::builtin()
-                .resolve("anthropic/claude-haiku-4-5")
-                .expect("listed")
-                .clone(),
-        )
-        .model_route("opus", opus_by_hook.clone())
-        .add_hook(SelectOpus)
-        .reasoning(Effort::High)
-        .build();
-    hooked
-        .prompt("go")
-        .run()
-        .await
-        .expect("the hook selects Opus 4.8");
-
-    // A switch to a listed model that refuses the option fails that call.
-    let error = agent
-        .prompt("go")
-        .using_model_value(scripted("anthropic", "claude-haiku-4-5"))
-        .run()
-        .await
-        .expect_err("Haiku 4.5 by value takes no effort level");
-    assert!(refused(&error), "{error:?}");
-
-    // A dated snapshot id finds its model, as the encoders find it.
-    let error = agent
-        .prompt("go")
-        .using_model_value(scripted("anthropic", "claude-haiku-4-5-20251001"))
-        .run()
-        .await
-        .expect_err("a Haiku 4.5 snapshot takes no effort level");
-    assert!(refused(&error), "{error:?}");
-
-    // A model the catalog does not list is let through, with a warning.
-    let unlisted = scripted("anthropic", "claude-unlisted-9");
-    capture.clear();
-    agent
-        .prompt("go")
-        .using_model_value(unlisted.clone())
-        .run()
-        .await
-        .expect("not checked");
-    assert!(
-        capture.events().iter().any(|event| {
-            event.level == tracing::Level::WARN && event.message().contains("not checked")
-        }),
-        "the run says the options were not checked"
-    );
-
-    for model in [&value, &opus, &opus_by_hook, &unlisted] {
-        let requests = model.requests();
-        let [request] = requests.as_slice() else {
-            panic!("one request: {requests:?}");
-        };
-        assert_eq!(
-            request.options.reasoning,
-            Some(Reasoning::Effort(Effort::High))
-        );
-    }
-    assert!(own.requests().is_empty(), "the refused call was not sent");
-}
-
-/// Under `OnUnsupported::Ignore` a cache retention the model refuses is
-/// dropped as a refused effort is; under `Error` it fails the run. A route
-/// registered from a model value that names no model id is not checked, and
-/// a route registered as a handler is found by its label read as a catalog
-/// reference.
-#[tokio::test]
-async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
-    use rig_core::catalog::Catalog;
-    use rig_core::completion::{CacheRetention, Effort, OnUnsupported};
-    use rig_core::error::ProviderError;
-    use rig_core::serve::adapters::ModelAdapter;
+    use rig_core::completion::{CacheRetention, OnUnsupported};
 
     let mut short_only = Catalog::builtin()
         .resolve("anthropic/claude-haiku-4-5")
         .expect("listed")
+        .spec
         .clone();
     short_only.caching.retention = vec![CacheRetention::Short];
-    let own = MockCompletionModel::from_turns([MockTurn::text("one")]);
-    let unnamed = MockCompletionModel::from_turns([MockTurn::text("unnamed")]);
-    let handled = MockCompletionModel::from_turns([MockTurn::text("unused")]);
-    let haiku = "anthropic/claude-haiku-4-5";
-    let agent = AgentBuilder::new(own.clone())
-        .model_spec(short_only)
-        .model_route("unnamed", unnamed.clone())
-        .model_route_handler(haiku, ModelAdapter::new(haiku, handled.clone()))
-        .build();
-    let refused = |error: &crate::completion::PromptError, option: &str| {
-        matches!(
-            error,
-            crate::completion::PromptError::Provider(ProviderError::UnsupportedOption(refused))
-                if refused.option == option
-        )
-    };
+    let mut catalog = Catalog::builtin().clone();
+    catalog.insert(short_only);
+    let (model, http) = connected(&catalog, "anthropic/claude-haiku-4-5");
+    let agent = AgentBuilder::new(model).build();
 
+    let error = agent
+        .prompt("go")
+        .cache(CacheRetention::Long)
+        .run()
+        .await
+        .expect_err("the override takes only short retention");
+    assert!(refused(&error, "cache", "claude-haiku-4-5"), "{error:?}");
+    assert!(http.requests().is_empty(), "nothing was sent");
+
+    agent
+        .prompt("go")
+        .cache(CacheRetention::Short)
+        .run()
+        .await
+        .expect("short retention is listed");
     agent
         .prompt("go")
         .cache(CacheRetention::Long)
@@ -966,43 +910,7 @@ async fn a_model_spec_drops_a_refused_cache_and_reads_a_handler_routes_label() {
         .run()
         .await
         .expect("ignored, with a warning");
-    let requests = own.requests();
-    let [ignored] = requests.as_slice() else {
-        panic!("one request: {requests:?}");
-    };
-    assert_eq!(
-        ignored.options.cache, None,
-        "the refused retention was dropped"
-    );
-
-    let error = agent
-        .prompt("go")
-        .cache(CacheRetention::Long)
-        .run()
-        .await
-        .expect_err("refused");
-    assert!(refused(&error, "cache"), "{error:?}");
-
-    agent
-        .prompt("go")
-        .using_model("unnamed")
-        .reasoning(Effort::High)
-        .run()
-        .await
-        .expect("a model value with no model id is not checked");
-    assert_eq!(unnamed.requests().len(), 1);
-
-    let error = agent
-        .prompt("go")
-        .using_model(haiku)
-        .reasoning(Effort::High)
-        .run()
-        .await
-        .expect_err("the label names Haiku 4.5, which takes no effort level");
-    assert!(refused(&error, "reasoning"), "{error:?}");
-    assert!(
-        handled.requests().is_empty(),
-        "the refused call was not sent"
-    );
-    assert_eq!(own.requests().len(), 1, "the refused run sent nothing");
+    let [short, ignored] = sent_bodies(&http).try_into().expect("two requests");
+    assert_ne!(short, ignored, "the long retention was dropped, not sent");
+    assert!(!ignored.to_string().contains("\"1h\""), "{ignored}");
 }

@@ -16,6 +16,7 @@ use serde_json::{Map, Value, json};
 
 use super::CohereConfig;
 use super::streaming::ChatDecoder;
+use crate::catalog::ModelFacts;
 use crate::completion::options::{BaseInput, FinalBody, RawAt, request_params};
 use crate::completion::{CompletionRequest, Document, ProviderCapabilities, Replay};
 use crate::error::EncodeError;
@@ -45,6 +46,9 @@ pub struct NativeChat {
     /// Whether requests ask Cohere to hold tool calls to their schemas
     /// (`strict_tools`).
     pub strict_tools: bool,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: ModelFacts,
 }
 
 impl NativeChat {
@@ -54,7 +58,15 @@ impl NativeChat {
             provider,
             model: model.into(),
             strict_tools: false,
+            facts: ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// Ask Cohere to hold every tool call to its tool's schema.
@@ -400,6 +412,7 @@ impl Wire for NativeChat {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(super::PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default().with_native_output_tool_composition(true),
             ))
@@ -454,7 +467,7 @@ impl crate::completion::ReplayTarget for NativeChat {
         let model = request.model.as_deref().unwrap_or(&self.model);
         // A model that thinks does so by default. An id the catalog does
         // not list thinks when its name says `reasoning`.
-        let thinks = super::thinks(model);
+        let thinks = super::thinks(&self.facts, model);
         let reasons = thinks.unwrap_or_else(|| model.contains("reasoning"));
         const NO_FIELD: &str = "Cohere's chat API has no such field";
         OptionMap {
@@ -509,6 +522,10 @@ impl crate::completion::ReplayTarget for NativeChat {
         crate::message::Api::from_static(API)
     }
 
+    fn facts(&self) -> Option<&ModelFacts> {
+        Some(&self.facts)
+    }
+
     fn provider(&self) -> &str {
         super::PROVIDER_NAME
     }
@@ -521,7 +538,7 @@ impl crate::completion::ReplayTarget for NativeChat {
     /// assistant turns or tool results.
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         crate::completion::Accepts {
-            user_images: crate::catalog::reads_images_or(
+            user_images: self.facts.reads_images_or(
                 super::PROVIDER_NAME,
                 model,
                 super::reads_images,

@@ -319,7 +319,7 @@ where
 
                     // Pin output mode across registry changes between turns.
                     let committed_output_tool = run.output_tool_name().map(str::to_owned);
-                    let (mut request, mut prepared) = match build_prepared_completion_request(
+                    let (request, mut prepared) = match build_prepared_completion_request(
                         &runner,
                         &hook_ctx,
                         &selected_model,
@@ -333,15 +333,6 @@ where
                         Ok(prepared) => prepared,
                         Err(err) => fail!(PromptError::from(err), break 'outer),
                     };
-                    // Checked against the model this call goes to, after
-                    // selection: a refused option fails the run before the
-                    // call is sent.
-                    if let Err(err) = runner
-                        .config
-                        .check_call_options(&selected_label, &mut request.options)
-                    {
-                        fail!(PromptError::from(err), break 'outer);
-                    }
                     let turn_tool_snapshot = prepared.tool_snapshot.clone();
                     // What this request advertises becomes run data, so a
                     // resumed run or another driver can re-pair the calls

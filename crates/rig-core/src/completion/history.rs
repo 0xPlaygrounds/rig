@@ -190,6 +190,13 @@ pub trait ReplayTarget: std::fmt::Debug + WasmCompatSync {
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap;
 
+    /// The model facts this wire encodes with: the spec it was connected
+    /// to and the catalog that answers for other models. `None`, the
+    /// default, answers from the built-in catalog.
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        None
+    }
+
     /// Whether the encoder carries `media` to `model`: its source (data,
     /// URL, file id or string), its media type, and where it sits. [`adapt`]
     /// replaces every part this refuses with a placeholder, or a text

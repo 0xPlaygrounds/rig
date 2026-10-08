@@ -31,13 +31,23 @@ pub use rig_core::providers::gemini::completion::GEMINI_2_5_FLASH;
 #[derive(Clone, Debug, PartialEq)]
 pub struct GenerateContent {
     pub model: String,
+    /// The model facts the encoder reads and replies are priced by.
+    pub facts: rig_core::catalog::ModelFacts,
 }
 
 impl GenerateContent {
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),
+            facts: rig_core::catalog::ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: rig_core::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 }
 
@@ -53,6 +63,7 @@ impl Wire for GenerateContent {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .replay(self)
     }
 
@@ -160,7 +171,11 @@ impl rig_core::completion::ReplayTarget for GenerateContent {
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        rest::generate_content_options(model, rest::Route::Vertex, fields)
+        rest::generate_content_options(&self.facts, model, rest::Route::Vertex, fields)
+    }
+
+    fn facts(&self) -> Option<&rig_core::catalog::ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> rig_core::message::Api {

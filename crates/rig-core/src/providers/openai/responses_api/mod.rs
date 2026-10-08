@@ -390,6 +390,7 @@ impl wire::Responses {
         )?;
         crate::providers::openai::options::check_body(
             self,
+            &self.facts,
             request,
             body,
             crate::providers::openai::options::Endpoint::Responses,

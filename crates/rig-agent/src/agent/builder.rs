@@ -356,6 +356,13 @@ impl<ToolState> AgentBuilder<ToolState> {
     /// [`GenerationOptions::on_unsupported`](rig_core::completion::GenerationOptions::on_unsupported) does,
     /// keeping its other fields. See
     /// [`Self::options`] for the order of calls.
+    ///
+    /// Each call is checked by the model it goes to, when that model encodes
+    /// it, against the catalog spec the model was connected with: a refused
+    /// option fails the run under `Error` with nothing sent, and is dropped
+    /// with a warning under `Ignore`. A model a run switches to checks its
+    /// own calls the same way. To see every refusal before a run starts, call
+    /// [`DynModel::check`](rig_core::DynModel::check) on the model.
     pub fn on_unsupported(mut self, policy: rig_core::completion::OnUnsupported) -> Self {
         self.config.options = std::mem::take(&mut self.config.options).on_unsupported(policy);
         self
@@ -389,29 +396,6 @@ impl<ToolState> AgentBuilder<ToolState> {
     ) -> Self {
         self.config.provider_options =
             std::mem::take(&mut self.config.provider_options).set(options);
-        self
-    }
-
-    /// Check the generation options of every model call against the
-    /// catalog entry of the model the call goes to, before it is sent:
-    /// `spec` (the agent's own model's entry) for a call to the model the
-    /// agent was built with, and for a call to another model (a run's
-    /// [`using_model`](crate::agent::AgentRunner::using_model) or
-    /// [`using_model_value`](crate::agent::AgentRunner::using_model_value),
-    /// [`Agent::set_model`](crate::agent::Agent::set_model), a
-    /// [`model_route`](Self::model_route) a model-selection hook picks) the
-    /// built-in catalog's entry for the provider and model id that model was
-    /// registered with. A model the catalog does not list, or one served by
-    /// a handler rig cannot see the model id of (a host's key, a
-    /// [`model_route_handler`](Self::model_route_handler)), is not checked,
-    /// and the run logs a warning saying so. Under
-    /// [`OnUnsupported::Error`](rig_core::completion::OnUnsupported::Error) an
-    /// option the model does not take fails the run with
-    /// [`ProviderError::UnsupportedOption`](rig_core::error::ProviderError::UnsupportedOption)
-    /// before that call is sent; under `Ignore` it is dropped from that call
-    /// with a warning.
-    pub fn model_spec(mut self, spec: rig_core::catalog::ModelSpec) -> Self {
-        self.config.model_spec = Some(spec);
         self
     }
 
@@ -496,9 +480,6 @@ impl<ToolState> AgentBuilder<ToolState> {
         let label = label.into();
         let model = model.into();
         let suffix = rig_core::effect::model_key(label.as_str()).to_string();
-        self.config
-            .pending_model_ids
-            .push((suffix.clone(), crate::agent::drive::ModelId::of(&model)));
         self.routes.push(label.as_str().to_owned());
         self.pending
             .push((suffix, ErasedHandler::new(ModelAdapter::new(label, model))));
@@ -662,12 +643,6 @@ impl<ToolState> AgentBuilder<ToolState> {
             let key = config.bus.raw_key(&suffix);
             crate::agent::drive::register_generated(config.bus.register_erased(key, handler));
         }
-        for (suffix, id) in std::mem::take(&mut config.pending_model_ids) {
-            config
-                .bus
-                .note_model(config.bus.raw_key(&suffix).as_str(), id);
-        }
-        config.model_spec_key = Some(config.model_key.clone());
         for (suffix, slot) in dynamic_contexts {
             // The slot is this builder's own, filled exactly once.
             let key = config.bus.key(&suffix);
@@ -717,19 +692,12 @@ impl AgentBuilder<NoToolConfig> {
         model: impl Into<rig_core::DynModel<rig_core::operation::Completion>>,
     ) -> Self {
         let label = label.into();
-        let model = model.into();
-        let id = crate::agent::drive::ModelId::of(&model);
-        let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model));
-        let mut builder = Self::start(
+        let handler = ErasedHandler::new(ModelAdapter::new(label.clone(), model.into()));
+        Self::start(
             BusSource::Owned(ServingPolicy::default()),
             None,
-            DefaultModel::Labelled(label.clone(), handler),
-        );
-        builder
-            .config
-            .pending_model_ids
-            .push((rig_core::effect::model_key(label.as_str()).to_string(), id));
-        builder
+            DefaultModel::Labelled(label, handler),
+        )
     }
 
     /// Build over a host-driven bus using `model` verbatim and owner-qualified

@@ -120,6 +120,14 @@ impl CohereChat {
         self
     }
 
+    /// The same wire, both APIs encoding with `facts` and pricing their
+    /// replies by them.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.compatibility_api = self.compatibility_api.with_facts(facts.clone());
+        self.native_api = self.native_api.with_facts(facts);
+        self
+    }
+
     /// Ask both APIs to hold every tool call to its tool's schema.
     pub fn with_strict_tools(mut self) -> Self {
         self.compatibility_api = self.compatibility_api.with_strict_tools();
@@ -188,6 +196,10 @@ impl ReplayTarget for CohereChat {
         } else {
             self.compatibility_api.map_options(request, fields)
         }
+    }
+
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        self.compatibility_api.facts()
     }
 
     fn api(&self) -> crate::message::Api {

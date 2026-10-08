@@ -6,6 +6,7 @@
 
 use serde_json::json;
 
+use crate::catalog::{ModelFacts, ReasoningSupport};
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, Effort, Reasoning, ServiceTier};
 
@@ -26,11 +27,11 @@ pub enum Route {
 }
 
 /// The thinking a Gemini model takes, from its catalog entry.
-enum Thinking {
+enum Thinking<'a> {
     /// These levels, and whether thinking turns off (Gemma 4, by level
     /// `minimal`). Gemini 3 cannot turn it off.
     Levels {
-        levels: &'static [Effort],
+        levels: &'a [Effort],
         can_disable: bool,
     },
     /// A token budget in this range (Gemini 2.5), and whether `0` turns it
@@ -47,26 +48,38 @@ enum Thinking {
 
 /// The thinking `model` takes, by its id past a `models/` prefix. An id
 /// the catalog does not list is looked up as the model it versions: without
-/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, its family
+/// a `-001` revision or a `-preview…`/`-exp…` tag. Failing that, or when
+/// its entry does not say which thinking controls it takes, its family
 /// decides ([`named_thinking`]).
-fn thinking(model: &str) -> Thinking {
+fn thinking<'f>(facts: &'f ModelFacts, model: &str) -> Thinking<'f> {
     let model = model.to_ascii_lowercase();
     let model = model.strip_prefix("models/").unwrap_or(&model);
-    let lookup = |model: &str| crate::catalog::lookup(super::PROVIDER_NAME, model);
+    let lookup = |model: &str| facts.for_model(super::PROVIDER_NAME, model);
     let Some(spec) = lookup(model).or_else(|| lookup(versioned_model(model)?)) else {
         return named_thinking(model);
     };
-    let support = &spec.reasoning;
-    match &support.budget {
-        _ if !support.supported => Thinking::None,
-        Some(range) if support.levels.is_empty() => Thinking::Budget {
+    match &spec.reasoning {
+        ReasoningSupport::Listed {
+            levels,
+            budget: Some(range),
+            can_disable,
+            ..
+        } if levels.is_empty() => Thinking::Budget {
             range: range.clone(),
-            can_disable: support.can_disable,
+            can_disable: *can_disable,
         },
-        _ => Thinking::Levels {
-            levels: &support.levels,
-            can_disable: support.can_disable,
+        ReasoningSupport::Listed {
+            levels,
+            can_disable,
+            ..
+        } => Thinking::Levels {
+            levels,
+            can_disable: *can_disable,
         },
+        // A thinking row that lists no controls: its family decides, as for
+        // a model the catalog does not list.
+        ReasoningSupport::Unknown { .. } => named_thinking(model),
+        _ => Thinking::None,
     }
 }
 
@@ -77,7 +90,7 @@ const MINIMAL_TO_HIGH: &[Effort] = &[Effort::Minimal, Effort::Low, Effort::Mediu
 /// starts with (`gemini-2.5-flash-latest`, a `-tts` variant): Gemini 3's
 /// levels, Gemini 2.5's budgets, no thinking before 2.5, and otherwise
 /// unknown.
-fn named_thinking(model: &str) -> Thinking {
+fn named_thinking(model: &str) -> Thinking<'static> {
     let levels: [(&str, &'static [Effort]); 10] = [
         ("gemini-3.8-flash", LOW_TO_HIGH),
         ("gemini-3.7-flash", LOW_TO_HIGH),
@@ -133,13 +146,19 @@ fn config(value: serde_json::Value) -> Mapping {
     Mapping::Send(json!({ "generationConfig": value }))
 }
 
-/// How a GenerateContent wire on `route` answers `fields` for `model`
-/// (section 6.4 of `TYPED_OPTIONS.md`). Every GenerateContent wire calls it,
-/// so the REST, Vertex AI and gRPC wires agree.
+/// How a GenerateContent wire on `route` answers `fields` for `model`, by
+/// the Gemini API facts `facts` give it (section 6.4 of
+/// `TYPED_OPTIONS.md`). Every GenerateContent wire calls it, so the REST,
+/// Vertex AI and gRPC wires agree.
 ///
 /// For rig's own crates; not covered by semver.
 #[doc(hidden)]
-pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<'_>) -> OptionMap {
+pub fn generate_content_options(
+    facts: &ModelFacts,
+    model: &str,
+    route: Route,
+    fields: OptionFields<'_>,
+) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -150,7 +169,7 @@ pub fn generate_content_options(model: &str, route: Route, fields: OptionFields<
         seed,
         stop,
     } = fields;
-    let thinking = thinking(model);
+    let thinking = thinking(facts, model);
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match (reasoning, &thinking) {
             (
@@ -263,7 +282,7 @@ fn generation_config(value: serde_json::Value) -> Mapping {
 }
 
 /// How the Interactions wire answers `fields` for `model`.
-pub(super) fn interactions(model: &str, fields: OptionFields<'_>) -> OptionMap {
+pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -275,7 +294,7 @@ pub(super) fn interactions(model: &str, fields: OptionFields<'_>) -> OptionMap {
         stop,
     } = fields;
     const NO_FIELD: &str = "the Interactions API has no such field";
-    let thinking = thinking(model);
+    let thinking = thinking(facts, model);
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Off | Reasoning::Budget { .. } => Mapping::unsupported(

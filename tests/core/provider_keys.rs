@@ -255,7 +255,7 @@ fn every_catalog_vendor_key_is_pinned() {
 fn every_models_dev_rename_is_pinned() {
     for (models_dev, vendor) in MODELS_DEV_RENAMES {
         let json = format!(r#"{{"{models_dev}": {{"models": {{"m": {{}}}}}}}}"#);
-        let catalog = Catalog::from_json(&json)
+        let (catalog, _) = Catalog::from_models_dev(&json)
             .unwrap_or_else(|error| panic!("{models_dev} should read: {error}"));
         let read: Vec<&str> = catalog.iter().map(|spec| spec.provider.vendor()).collect();
         assert_eq!(read, [vendor], "models.dev `{models_dev}`");

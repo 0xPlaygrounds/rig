@@ -1,3 +1,4 @@
+use crate::catalog::ReasoningSupport;
 use serde_json::{Value, json};
 
 use crate::completion::{
@@ -93,7 +94,9 @@ fn generate_content_reasoning_follows_the_models_thinking() {
 }
 
 /// On GenerateContent the encoder refuses a reasoning option exactly when
-/// `ModelSpec::validate` does, for every Gemini API row.
+/// `ModelSpec::validate` does, for every Gemini API row whose thinking the
+/// catalog knows. A row whose controls it does not know refuses nothing in
+/// `validate`; the encoder answers it by its family, as an unlisted id.
 #[test]
 fn generate_content_reasoning_agrees_with_validate() {
     let reasonings = [
@@ -115,6 +118,10 @@ fn generate_content_reasoning_agrees_with_validate() {
         for reasoning in &reasonings {
             let options = GenerationOptions::default().reasoning(*reasoning);
             let encoded = sent(&rest(&spec.id), with(options.clone()));
+            if let ReasoningSupport::Unknown { .. } = spec.reasoning {
+                assert!(spec.validate(&options).is_ok(), "{}", spec.id);
+                continue;
+            }
             assert_eq!(
                 refused(encoded).is_some(),
                 spec.validate(&options).is_err(),

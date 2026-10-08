@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
+use crate::catalog::ModelFacts;
 use crate::completion::options::{BaseInput, RawAt, Rewrite, request_params};
 use crate::completion::{CompletionRequest, FinishReason, ProviderCapabilities, Replay};
 use crate::error::{EncodeError, ProviderError};
@@ -47,6 +48,9 @@ pub struct Chat {
     pub strict_tools: bool,
     /// Whether tool-result messages serialize their content as arrays.
     pub tool_result_array_content: bool,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: ModelFacts,
 }
 
 /// The error for media in a form Chat Completions cannot carry, which the
@@ -210,6 +214,7 @@ impl Chat {
         )?;
         let body = crate::providers::openai::options::check_body(
             self,
+            &self.facts,
             &request,
             body,
             crate::providers::openai::options::Endpoint::ChatCompletions,
@@ -239,7 +244,7 @@ impl Chat {
     /// OpenRouter under its full id (`moonshotai/kimi-k2.6` behind any
     /// gateway). Each lookup is asked for the field, not just the entry, so a
     /// gateway's own row without one does not hide the vendor's.
-    fn reasoning_field(&self, model: &str) -> Option<&'static str> {
+    fn reasoning_field<'a>(&'a self, model: &str) -> Option<&'a str> {
         use crate::providers::openai::wire::{MOONSHOT, OPENROUTER};
         let deepseek = self
             .provider
@@ -248,7 +253,8 @@ impl Chat {
             .contains("deepseek.com");
         let name = model.rsplit('/').next().unwrap_or(model);
         let field = |vendor: &str, id: &str| {
-            crate::catalog::lookup(vendor, id)
+            self.facts
+                .for_model(vendor, id)
                 .and_then(|spec| spec.compat.reasoning_field.as_deref())
         };
         let listed = field(self.provider.dialect.name, model)
@@ -269,7 +275,15 @@ impl Chat {
             model: model.into(),
             strict_tools: false,
             tool_result_array_content: false,
+            facts: ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// Sanitize tool schemas for OpenAI's strict mode, so the provider can
@@ -782,6 +796,7 @@ impl Wire for Chat {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(self.provider.dialect.name)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default().with_native_output_tool_composition(
                     self.provider.dialect.quirks.supports_response_format,
@@ -813,6 +828,10 @@ impl crate::completion::ReplayTarget for Chat {
         crate::providers::openai::options::chat_options(self, request, fields)
     }
 
+    fn facts(&self) -> Option<&ModelFacts> {
+        Some(&self.facts)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("openai.chat")
     }
@@ -831,7 +850,7 @@ impl crate::completion::ReplayTarget for Chat {
     /// documented model rules (`reads_images`).
     fn accepts(&self, model: &str) -> crate::completion::Accepts {
         let quirks = &self.provider.dialect.quirks;
-        let user_images = reads_images(&self.provider.dialect, model);
+        let user_images = reads_images(&self.facts, &self.provider.dialect, model);
         crate::completion::Accepts {
             user_images,
             assistant_images: false,
@@ -1016,15 +1035,14 @@ fn image_rule(vendor: &str) -> Option<(&str, fn(&str) -> bool)> {
 /// lists it, or by the naming rule of [`image_rule`] for a model it does not
 /// list. OpenRouter names a model `vendor/model`: its own catalog entry
 /// decides, or failing that the vendor's naming rule.
-fn reads_images(dialect: &super::Dialect, model: &str) -> bool {
+fn reads_images(facts: &ModelFacts, dialect: &super::Dialect, model: &str) -> bool {
     match model.split_once('/') {
-        Some((vendor, upstream)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => {
-            crate::catalog::reads_images_or(dialect.name, model, |_| {
+        Some((vendor, upstream)) if dialect.quirks.rewrite == BodyRewrite::OpenRouter => facts
+            .reads_images_or(dialect.name, model, |_| {
                 image_rule(vendor).is_some_and(|(_, rule)| rule(upstream))
-            })
-        }
+            }),
         _ => image_rule(dialect.name)
-            .is_some_and(|(vendor, rule)| crate::catalog::reads_images_or(vendor, model, rule)),
+            .is_some_and(|(vendor, rule)| facts.reads_images_or(vendor, model, rule)),
     }
 }
 

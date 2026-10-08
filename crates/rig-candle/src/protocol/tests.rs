@@ -281,6 +281,7 @@ fn every_renderer_takes_any_media_the_adapter_hands_over() {
     let generation = crate::Generation {
         model: "qwen3-test".to_owned(),
         protocol: ConversationProtocol::Qwen3,
+        facts: Default::default(),
     };
     let adapted = rig_core::completion::adapt(&history, &generation);
     for protocol in [

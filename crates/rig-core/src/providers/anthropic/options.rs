@@ -8,7 +8,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelSpec, Sampling};
+use crate::catalog::ModelSpec;
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
 use crate::message::ToolChoice;
@@ -25,9 +25,17 @@ fn claude_reasoning(
     max_tokens: Option<u64>,
 ) -> Mapping {
     let support = spec.map(|spec| &spec.reasoning);
+    // A model the catalog says does not reason is answered by the shared
+    // rule: nothing to turn off, and nothing else to take.
+    if let Some(support) = support.filter(|support| !support.supported()) {
+        return match support.refusal(reasoning) {
+            Some(reason) => Mapping::unsupported(reason),
+            None => Mapping::Omit("the model does not reason"),
+        };
+    }
     match reasoning {
         Reasoning::Off => match spec {
-            Some(spec) if !spec.reasoning.can_disable => {
+            Some(spec) if spec.reasoning.can_disable() == Some(false) => {
                 Mapping::unsupported("thinking cannot be disabled on this model")
             }
             _ => {
@@ -41,13 +49,20 @@ fn claude_reasoning(
             Mapping::unsupported("Claude has no `minimal` effort level")
         }
         Reasoning::Effort(effort) => match spec {
-            Some(spec) if spec.reasoning.levels.is_empty() => {
+            Some(spec) if spec.reasoning.levels().is_some_and(<[Effort]>::is_empty) => {
                 Mapping::unsupported("this model takes a thinking budget, not an effort level")
             }
-            Some(spec) if !spec.reasoning.levels.contains(effort) => Mapping::unsupported(format!(
-                "this model has no `{}` effort level",
-                effort.as_str()
-            )),
+            Some(spec)
+                if spec
+                    .reasoning
+                    .levels()
+                    .is_some_and(|levels| !levels.contains(effort)) =>
+            {
+                Mapping::unsupported(format!(
+                    "this model has no `{}` effort level",
+                    effort.as_str()
+                ))
+            }
             Some(spec) if !spec.compat.adaptive_thinking => {
                 Mapping::Send(json!({"output_config": {"effort": effort.as_str()}}))
             }
@@ -57,7 +72,8 @@ fn claude_reasoning(
             })),
         },
         Reasoning::Budget { tokens } => match support {
-            Some(support) if support.budget.is_none() => {
+            // Known levels with no budget: the catalog says it takes none.
+            Some(support) if support.levels().is_some() && support.budget().is_none() => {
                 Mapping::unsupported("this model takes an effort level, not a thinking budget")
             }
             _ if *tokens < 1024 => {
@@ -73,15 +89,24 @@ fn claude_reasoning(
     }
 }
 
-/// `top_p` on the model `spec` describes, which some models fix and the
-/// rest take only without `temperature`.
-fn claude_top_p(spec: Option<&ModelSpec>, top_p: f64, temperature: bool) -> Mapping {
-    match spec.and_then(|spec| spec.sampling) {
-        Some(Sampling::Never) => Mapping::unsupported("this model does not take `top_p`"),
-        _ if temperature => {
-            Mapping::unsupported("this model takes `temperature` or `top_p`, not both")
-        }
-        _ => Mapping::Send(json!({"top_p": top_p})),
+/// `top_p` on the model `spec` describes: refused by its catalog entry's
+/// sampling rule (the one [`ModelSpec::refusals`] applies) for a model
+/// that fixes its sampling, and otherwise taken only without
+/// `temperature`.
+fn claude_top_p(
+    spec: Option<&ModelSpec>,
+    reasoning: Option<&Reasoning>,
+    top_p: f64,
+    temperature: bool,
+) -> Mapping {
+    if let Some(reason) =
+        spec.and_then(|spec| spec.sampling_refusal("top_p", spec.reasons_with(reasoning)))
+    {
+        return Mapping::unsupported(reason);
+    }
+    match temperature {
+        true => Mapping::unsupported("this model takes `temperature` or `top_p`, not both"),
+        false => Mapping::Send(json!({"top_p": top_p})),
     }
 }
 
@@ -123,7 +148,7 @@ pub(super) fn map_options(
         if model == wire.model {
             wire.default_max_tokens
         } else {
-            wire.provider.dialect.default_max_tokens(model)
+            wire.provider.dialect.default_max_tokens(&wire.facts, model)
         }
     });
     // Not `options::param`, which calls `map_options`.
@@ -158,7 +183,7 @@ fn anthropic(
         seed,
         stop,
     } = fields;
-    let spec = super::completion::claude_spec(model);
+    let spec = super::completion::spec(&wire.facts, model);
     let places = wire.prompt_caching || wire.static_prefix_cache_ttl.is_some();
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
@@ -191,7 +216,7 @@ fn anthropic(
             parallel_tool_calls(request, has_tools, parallel)
         }),
         top_p: Mapping::of(top_p, |top_p| {
-            claude_top_p(spec, top_p, request.temperature.is_some())
+            claude_top_p(spec, reasoning, top_p, request.temperature.is_some())
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Anthropic has no seed parameter")

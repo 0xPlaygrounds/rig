@@ -27,7 +27,7 @@ pub use handle::ModelRef;
 pub use history::{Accepts, LaterSystem, Media, Pairing, Place, Replay, ReplayTarget, adapt};
 pub use message::{AssistantContent, AssistantMessage, Message, MessageError};
 pub use options::{
-    CacheRetention, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier,
+    CacheRetention, CheckError, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier,
     UnsupportedOption, Verbosity,
 };
 pub use provider_options::{

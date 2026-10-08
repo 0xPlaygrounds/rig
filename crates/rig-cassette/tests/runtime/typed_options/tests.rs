@@ -716,7 +716,7 @@ mod option_matrix {
             ),
             (
                 "zai",
-                chat(&ZAI, "glm-5"),
+                chat(&ZAI, "glm-5.2"),
                 [
                     Merge(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "high"})),
                     Omit,
@@ -881,7 +881,8 @@ mod option_matrix {
                     Refuse,
                     Refuse,
                     Merge(json!({"parallel_tool_calls": false})),
-                    Merge(json!({"top_p": 0.5})),
+                    // OpenAI's sampling rule: GPT-5.3 Codex always reasons.
+                    Refuse,
                     Refuse,
                     Refuse,
                 ],
@@ -1367,7 +1368,8 @@ mod catalog_validation {
                 ProviderId::resolve("gcp.gemini").expect("Gemini is registered"),
                 GEMINI_3_8_FLASH,
             )
-            .expect("Gemini 3.8 Flash has a catalog entry");
+            .expect("Gemini 3.8 Flash has a catalog entry")
+            .spec;
         let refused = gemini
             .validate(&reasoning(Effort::Minimal))
             .expect_err("Gemini 3.8 Flash has no minimal level");
@@ -1378,9 +1380,14 @@ mod catalog_validation {
 
         let haiku = catalog
             .resolve("anthropic/claude-haiku-4-5")
-            .expect("the reference resolves");
+            .expect("the reference resolves")
+            .spec;
         assert_eq!(haiku.id, CLAUDE_HAIKU_4_5);
-        assert!(haiku.reasoning.levels.is_empty(), "{:?}", haiku.reasoning);
+        assert!(
+            haiku.reasoning.levels() == Some(&[]),
+            "{:?}",
+            haiku.reasoning
+        );
         let refused = haiku
             .validate(&reasoning(Effort::High))
             .expect_err("Claude Haiku 4.5 takes a budget, not an effort");
@@ -1784,7 +1791,7 @@ mod citations_and_cost {
                 ProviderId::resolve("deepseek").expect("DeepSeek is registered"),
                 DEEPSEEK_FLASH,
             )
-            .and_then(|spec| spec.pricing.as_ref())
+            .and_then(|found| found.spec.pricing.as_ref())
             .expect("the catalog prices DeepSeek Flash");
         let Usage {
             input_tokens: Some(input),
@@ -1811,15 +1818,22 @@ mod citations_and_cost {
             cost.output
                 .is_some_and(|part| close(part, output as f64 * per_token(pricing.output)))
         );
-        assert!(cost.cache_read.is_some_and(|part| close(
-            part,
-            read as f64 * per_token(pricing.cache_read.unwrap_or(pricing.input))
-        )));
+        assert!(cost.cache_read.is_some_and(|part| {
+            close(
+                part,
+                read as f64
+                    * per_token(
+                        pricing
+                            .cache_read
+                            .expect("DeepSeek lists a cache-read price"),
+                    ),
+            )
+        }));
         let parts = [cost.input, cost.output, cost.cache_read, cost.cache_write];
         assert!(close(cost.total, parts.into_iter().flatten().sum::<f64>()));
         assert!(
-            parts.iter().all(Option::is_some),
-            "a catalog cost knows every part"
+            parts.iter().all(Option::is_some) && cost.is_complete(),
+            "a catalog cost knows every part the usage has tokens for"
         );
 
         // A model the catalog does not list has no cost.

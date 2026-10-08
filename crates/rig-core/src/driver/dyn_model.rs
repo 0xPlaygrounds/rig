@@ -24,6 +24,8 @@ pub(crate) trait ErasedModel<Op: Operation>: WasmCompatSend + WasmCompatSync {
         mode: Mode,
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<Op>, ProviderError>;
+
+    fn dry_run(&self, request: Op::Request) -> Result<(), ProviderError>;
 }
 
 impl<W, T> ErasedModel<W::Op> for Model<W, T>
@@ -42,6 +44,10 @@ where
         observation: Option<AdapterContext>,
     ) -> Result<Streamed<W::Op>, ProviderError> {
         Model::open(self, request, mode, observation)
+    }
+
+    fn dry_run(&self, request: <W::Op as Operation>::Request) -> Result<(), ProviderError> {
+        Model::dry_run(self, request)
     }
 }
 
@@ -128,6 +134,14 @@ impl<Op: Operation> DynModel<Op> {
         self.inner.describe().model
     }
 
+    /// The catalog facts of the model the wire addresses: the spec it was
+    /// connected to, else the catalog's entry for its id. `None` for an
+    /// operation that addresses no model, or a model the catalog does not
+    /// list.
+    pub fn spec(&self) -> Option<&crate::catalog::ModelSpec> {
+        self.inner.describe().spec()
+    }
+
     /// What a runtime accounts for about this model.
     pub fn capabilities(&self) -> Capabilities {
         self.inner.describe().capabilities
@@ -180,6 +194,38 @@ impl<Op: Operation> DynModel<Op> {
     ) -> Result<Streamed<Op>, ProviderError> {
         self.inner
             .open(request.into(), Mode::Streaming, Some(observation))
+    }
+}
+
+impl DynModel<crate::operation::Completion> {
+    /// Every option of `request` this model would refuse, with nothing
+    /// sent; [`Model::check`] with the model erased.
+    ///
+    /// ```no_run
+    /// use rig_core::catalog::Catalog;
+    /// use rig_core::completion::{CheckError, CompletionRequest, Effort};
+    /// use rig_core::providers::registry::ConnectOptions;
+    ///
+    /// let model = Catalog::builtin().connect_with("openai/gpt-6-sol", ConnectOptions::new())?;
+    /// let request = CompletionRequest::new("hi")
+    ///     .temperature(0.2)
+    ///     .reasoning(Effort::High);
+    /// if let Err(CheckError::Unsupported(refused)) = model.check(&request) {
+    ///     for refusal in refused {
+    ///         println!("{refusal}");
+    ///     }
+    /// }
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// As [`Model::check`].
+    pub fn check(
+        &self,
+        request: &crate::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CheckError> {
+        super::check_with(request, |request| self.inner.dry_run(request))
     }
 }
 

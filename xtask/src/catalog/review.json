@@ -932,7 +932,21 @@
     "models": {
       "command-a-plus-05-2026": {
         "source": "https://docs.cohere.com/docs/models",
-        "note": "Cohere's model page says it does not reason; models.dev lists a toggle and budget"
+        "note": "Cohere's model page says it does not reason; models.dev lists a toggle and budget. Effort `high` is the Compatibility API's switch for thinking (https://docs.cohere.com/docs/compatibility-api), as models.dev lists for north-mini-code-1-0",
+        "reasoning_options": [
+          {"type": "effort", "values": ["none", "high"]},
+          {"type": "budget_tokens", "min": 1},
+          {"type": "toggle"}
+        ]
+      },
+      "command-a-reasoning-08-2025": {
+        "source": "https://docs.cohere.com/docs/compatibility-api",
+        "note": "effort `high` is the Compatibility API's switch for thinking, as models.dev lists for north-mini-code-1-0; the native API's `thinking.type: enabled` is the same switch",
+        "reasoning_options": [
+          {"type": "effort", "values": ["none", "high"]},
+          {"type": "budget_tokens", "min": 1},
+          {"type": "toggle"}
+        ]
       },
       "embed-english-light-v3.0": {
         "source": "https://docs.cohere.com/docs/models",
@@ -3111,8 +3125,10 @@
           "cache": [
             "short"
           ],
-          "sampling": "never"
-        }
+          "sampling": "never",
+          "reasoning_control": "none"
+        },
+        "note": "o1-mini and o1-preview predate `reasoning_effort`; the API rejects the parameter on them"
       },
       "o1-mini-2024-09-12": {
         "name": "o1-mini",
@@ -3135,8 +3151,10 @@
           "cache": [
             "short"
           ],
-          "sampling": "never"
-        }
+          "sampling": "never",
+          "reasoning_control": "none"
+        },
+        "note": "o1-mini and o1-preview predate `reasoning_effort`; the API rejects the parameter on them"
       },
       "o1-preview": {
         "name": "o1-preview",
@@ -3159,8 +3177,10 @@
           "cache": [
             "short"
           ],
-          "sampling": "never"
-        }
+          "sampling": "never",
+          "reasoning_control": "none"
+        },
+        "note": "o1-mini and o1-preview predate `reasoning_effort`; the API rejects the parameter on them"
       },
       "o1-preview-2024-09-12": {
         "name": "o1-preview",
@@ -3183,8 +3203,10 @@
           "cache": [
             "short"
           ],
-          "sampling": "never"
-        }
+          "sampling": "never",
+          "reasoning_control": "none"
+        },
+        "note": "o1-mini and o1-preview predate `reasoning_effort`; the API rejects the parameter on them"
       },
       "o1-pro": {
         "source": "https://developers.openai.com/api/docs/pricing",
@@ -3998,8 +4020,10 @@
         "rig": {
           "cache": [
             "short"
-          ]
-        }
+          ],
+          "reasoning_control": "none"
+        },
+        "note": "Grok 4 reasons always and the API rejects `reasoning_effort` on it"
       },
       "grok-4.20-0309-non-reasoning": {
         "source": "https://docs.x.ai/docs/models",

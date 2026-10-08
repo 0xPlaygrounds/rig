@@ -606,3 +606,51 @@ fn a_string_source_is_the_same_inline_data_on_both_gemini_wires() -> anyhow::Res
     );
     Ok(())
 }
+
+/// The facts the Interactions wire is given are the facts it answers with: its
+/// [`ReplayTarget::facts`](crate::completion::ReplayTarget::facts), which
+/// the shared option rules and the cost read, and its descriptor's spec,
+/// which `DynModel::spec` returns.
+#[test]
+fn the_wire_answers_from_the_facts_it_is_given() {
+    use crate::catalog::{ModelFacts, ModelSpec};
+    use crate::completion::ReplayTarget as _;
+    use crate::wire::Wire as _;
+
+    let vendor = crate::providers::registry::ProviderId::catalog("gcp.gemini").expect("a vendor");
+    let spec = ModelSpec::new(vendor, "gemini-2.5-flash").with_max_output_tokens(1_234);
+    let wire = crate::providers::gemini::GeminiConfig::new("test-key")
+        .interactions("gemini-2.5-flash")
+        .with_facts(ModelFacts::new(spec));
+    let bound = wire.facts().and_then(ModelFacts::spec);
+    assert_eq!(bound.and_then(|spec| spec.max_output_tokens), Some(1_234));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+}
+
+/// A resume names no model, so it prices the model its reply names from the
+/// facts it is given.
+#[test]
+fn a_resume_keeps_the_facts_it_is_given() {
+    use crate::catalog::{ModelFacts, ModelSpec};
+    use crate::completion::ReplayTarget as _;
+
+    let vendor = crate::providers::registry::ProviderId::catalog("gcp.gemini").expect("a vendor");
+    let spec = ModelSpec::new(vendor, "gemini-2.5-flash").with_max_output_tokens(1_234);
+    let resume = InteractionResume::new(
+        crate::providers::gemini::GeminiConfig::new("test-key"),
+        "v1_REDACTED_1",
+    )
+    .with_facts(ModelFacts::new(spec));
+    let facts = resume.facts().expect("a resume has facts");
+    assert_eq!(
+        facts
+            .for_model("gcp.gemini", "gemini-2.5-flash")
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+}

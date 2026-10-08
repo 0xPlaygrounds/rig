@@ -16,7 +16,7 @@
 use aws_sdk_bedrockruntime::config::http::HttpResponse;
 use aws_sdk_bedrockruntime::error::{ProvideErrorMetadata, SdkError};
 use aws_sdk_bedrockruntime::operation::RequestId;
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{ModelFacts, ModelSpec};
 use rig_core::completion::options::FinalBody;
 use rig_core::completion::{Accepts, CompletionRequest, Media, Pairing, ReplayTarget};
 use rig_core::driver::{Exchange, Opened, Opening, Transport};
@@ -24,7 +24,6 @@ use rig_core::error::{EncodeError, ProviderError};
 use rig_core::json_utils::Lenient;
 use rig_core::message::{Api, DocumentData, DocumentSourceKind, Origin, ToolChoice};
 use rig_core::operation::Completion;
-use rig_core::providers::registry::ProviderId;
 use rig_core::wire::{Descriptor, Mode, Wire};
 use serde_json::Value;
 
@@ -150,6 +149,8 @@ pub struct Converse {
     /// Set through [`Converse::with_family`]; otherwise [`Family::of`]
     /// the model id decides.
     pub family: Option<Family>,
+    /// The model facts the encoder reads and replies are priced by.
+    pub facts: ModelFacts,
 }
 
 impl Converse {
@@ -157,7 +158,15 @@ impl Converse {
         Self {
             model: model.into(),
             family: None,
+            facts: ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// State the family of this wire's model, for a model id that names no
@@ -211,6 +220,7 @@ impl Wire for Converse {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .replay(self)
     }
 
@@ -239,21 +249,46 @@ const TEXT_ONLY: &str = "amazon.nova-micro deepseek. meta.llama3-8b meta.llama3-
     nvidia.nemotron-super openai.gpt-oss qwen.qwen3-2 qwen.qwen3-3 qwen.qwen3-coder \
     qwen.qwen3-next writer.palmyra zai.glm";
 
-/// The catalog entry of the Bedrock `model`. A Claude id is read as every
-/// wire that serves Claude reads it ([`claude_spec`]: the Anthropic model's
-/// entry, past a region prefix, a `-v1:N` revision or a dated snapshot), so
-/// its reasoning, sampling and context binding match Anthropic's own API.
-/// Any other id is a base model id or system inference profile, or the last
-/// part of its ARN, listed under Bedrock. `None` for a model the catalog
-/// does not list.
-///
-/// [`claude_spec`]: rig_core::providers::anthropic::completion::claude_spec
-pub fn spec(model: &str) -> Option<&'static ModelSpec> {
-    let id = model.rsplit('/').next().unwrap_or(model);
-    if id.contains("anthropic.") || id.starts_with("claude") {
-        return rig_core::providers::anthropic::completion::claude_spec(id);
+impl Converse {
+    /// The facts the encoder reads for the Bedrock `model`: a base model id
+    /// or inference profile, or the last part of its ARN, looked up under
+    /// Bedrock in the wire's facts ([`ModelFacts::for_model`]). An id they
+    /// do not list is read as Bedrock names models: a cross-region profile
+    /// (`jp.<base id>`) as its base model, and a `-vN[:M]` revision as the
+    /// model it revises. A Claude row carries the Anthropic model's
+    /// reasoning options and wire facts, so its reasoning, sampling and
+    /// context binding match Anthropic's own API. `None` for a model the
+    /// catalog does not list.
+    pub fn spec(&self, model: &str) -> Option<&ModelSpec> {
+        spec_in(&self.facts, model)
     }
-    ProviderId::catalog(PROVIDER_NAME).and_then(|provider| Catalog::builtin().get(provider, id))
+}
+
+/// [`Converse::spec`] in `facts`.
+fn spec_in<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
+    let id = model.rsplit('/').next().unwrap_or(model);
+    let base = id
+        .split_once('.')
+        .filter(|(geo, base)| {
+            !geo.is_empty()
+                && geo.bytes().all(|byte| byte.is_ascii_lowercase())
+                && base.contains('.')
+        })
+        .map(|(_, base)| base);
+    [Some(id), base]
+        .into_iter()
+        .flatten()
+        .flat_map(|id| [Some(id), unrevised(id)])
+        .flatten()
+        .find_map(|id| facts.for_model(PROVIDER_NAME, id))
+}
+
+/// `id` without a trailing Bedrock revision, `-v1` or `-v1:0`.
+fn unrevised(id: &str) -> Option<&str> {
+    let (model, revision) = id.rsplit_once("-v")?;
+    let digits = |part: &str| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit());
+    let (major, minor) = revision.split_once(':').unwrap_or((revision, "0"));
+    (digits(major) && digits(minor)).then_some(model)
 }
 
 impl ReplayTarget for Converse {
@@ -265,7 +300,11 @@ impl ReplayTarget for Converse {
         fields: rig_core::completion::options::OptionFields<'_>,
     ) -> rig_core::completion::options::OptionMap {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        crate::options::converse(self.family(model), model, request, fields)
+        crate::options::converse(self, self.family(model), model, request, fields)
+    }
+
+    fn facts(&self) -> Option<&ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> Api {
@@ -287,7 +326,7 @@ impl ReplayTarget for Converse {
     /// `eu.meta.llama3-3-70b-instruct-v1:0`), the text-only families.
     fn accepts(&self, model: &str) -> Accepts {
         let images = self.family(model) == Family::Claude
-            || spec(model).map_or_else(
+            || self.spec(model).map_or_else(
                 || {
                     !TEXT_ONLY
                         .split_whitespace()
@@ -307,7 +346,9 @@ impl ReplayTarget for Converse {
     /// on Converse as on Anthropic's own API.
     fn binds_context(&self, model: &str) -> bool {
         self.family(model) == Family::Claude
-            && spec(model).is_some_and(|spec| spec.compat.binds_context)
+            && self
+                .spec(model)
+                .is_some_and(|spec| spec.compat.binds_context)
     }
 
     /// Converse rejects a conversation that does not start with a user

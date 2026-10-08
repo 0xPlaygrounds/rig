@@ -55,32 +55,49 @@ fn refused(result: Result<Value, ProviderError>) -> &'static str {
 /// one.
 #[test]
 fn the_catalog_holds_each_models_thinking_facts() {
-    let spec = |model: &str| super::super::completion::spec(model);
+    let spec =
+        |model: &str| super::super::completion::spec(crate::catalog::ModelFacts::builtin(), model);
     let haiku = spec("claude-haiku-4-5-20251001").expect("listed");
-    assert!(haiku.reasoning.levels.is_empty() && haiku.reasoning.budget.is_some());
-    assert!(haiku.reasoning.can_disable && !haiku.compat.adaptive_thinking);
+    assert!(haiku.reasoning.levels() == Some(&[]) && haiku.reasoning.budget().is_some());
+    assert!(haiku.reasoning.can_disable() == Some(true) && !haiku.compat.adaptive_thinking);
     let opus_4_5 = spec("claude-opus-4-5").expect("listed");
-    assert_eq!(opus_4_5.reasoning.levels.len(), 3);
+    assert_eq!(opus_4_5.reasoning.levels().map(<[_]>::len), Some(3));
     assert!(!opus_4_5.compat.adaptive_thinking);
     let sonnet_4_6 = spec("claude-sonnet-4-6").expect("listed");
-    assert!(sonnet_4_6.compat.adaptive_thinking && sonnet_4_6.reasoning.budget.is_some());
-    assert!(!sonnet_4_6.reasoning.levels.contains(&Effort::XHigh));
+    assert!(sonnet_4_6.compat.adaptive_thinking && sonnet_4_6.reasoning.budget().is_some());
+    assert!(
+        !sonnet_4_6
+            .reasoning
+            .levels()
+            .unwrap_or_default()
+            .contains(&Effort::XHigh)
+    );
     let opus_4_8 = spec(CLAUDE_OPUS_4_8).expect("listed");
-    assert!(opus_4_8.reasoning.budget.is_none());
+    assert!(opus_4_8.reasoning.budget().is_none());
     assert_eq!(opus_4_8.sampling, Some(crate::catalog::Sampling::Never));
     let sonnet_5_5 = spec(CLAUDE_SONNET_5_5).expect("listed");
     assert_eq!(
         sonnet_5_5.compat.thinking_off.as_deref(),
         Some("between_tools")
     );
-    assert!(
-        !spec("claude-opus-5-5-20260101")
+    assert_eq!(
+        spec("claude-opus-5-5-20260101")
             .expect("a snapshot")
             .reasoning
-            .can_disable
+            .can_disable(),
+        Some(false)
     );
-    assert!(!spec(CLAUDE_FABLE_5).expect("listed").reasoning.can_disable);
-    assert!(spec(CLAUDE_OPUS_5).expect("listed").reasoning.can_disable);
+    assert_eq!(
+        spec(CLAUDE_FABLE_5)
+            .expect("listed")
+            .reasoning
+            .can_disable(),
+        Some(false)
+    );
+    assert_eq!(
+        spec(CLAUDE_OPUS_5).expect("listed").reasoning.can_disable(),
+        Some(true)
+    );
     assert!(spec("claude-opus-5-50").is_none());
     assert!(spec("custom-model").is_none());
 }
@@ -571,4 +588,39 @@ fn raw_tools_count_for_parallel_tool_calls() {
         body["tool_choice"],
         json!({"type": "auto", "disable_parallel_tool_use": true})
     );
+}
+
+/// A Claude model the catalog says does not reason (an override can say
+/// so) is answered by the shared rule: `Off` sends no thinking, and an
+/// effort or budget is refused because the model does not reason.
+#[test]
+fn a_model_that_does_not_reason_is_answered_by_the_shared_rule() {
+    use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport};
+    use crate::providers::registry::ProviderId;
+
+    let anthropic = ProviderId::catalog("anthropic").expect("a known vendor");
+    let spec = ModelSpec::new(anthropic, CLAUDE_HAIKU_4_5).with_reasoning(ReasoningSupport::None);
+    let wire = wire(CLAUDE_HAIKU_4_5).with_facts(ModelFacts::new(spec));
+
+    let off = sent(
+        &wire,
+        request(GenerationOptions::default().reasoning(Reasoning::Off)),
+        Mode::Unary,
+    )
+    .expect("off is taken");
+    assert_eq!(off.get("thinking"), None, "{off}");
+
+    for reasoning in [Reasoning::Budget { tokens: 1024 }, Effort::High.into()] {
+        match sent(
+            &wire,
+            request(GenerationOptions::default().reasoning(reasoning)),
+            Mode::Unary,
+        ) {
+            Err(ProviderError::UnsupportedOption(option)) => {
+                assert_eq!(option.option, "reasoning");
+                assert_eq!(option.reason, "the model does not reason", "{reasoning:?}");
+            }
+            other => panic!("expected a refusal of {reasoning:?}, got {other:?}"),
+        }
+    }
 }

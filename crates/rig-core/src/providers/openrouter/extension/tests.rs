@@ -112,8 +112,8 @@ fn metadata_lands_under_metadata() {
 fn reasoning_exclude_joins_the_mapped_effort() {
     let request = request_with::<OpenRouterExt>(&OpenRouterOptions::new().reasoning_exclude(true))
         .reasoning(Effort::High);
-    let body =
-        encoded_body(&chat(MODEL), request, Mode::Unary).unwrap_or_else(|error| panic!("{error}"));
+    let body = encoded_body(&chat("openai/gpt-5-mini"), request, Mode::Unary)
+        .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
         body["reasoning"],
         json!({"effort": "high", "exclude": true})

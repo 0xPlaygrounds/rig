@@ -23,7 +23,7 @@ mod merge;
 
 pub use mapping::{Mapping, OptionFields, OptionMap};
 pub use merge::{BaseInput, FinalBody, RawAt, Rewrite, check, param, request_params};
-pub(crate) use merge::{CatalogRefusal, catalog_refusals};
+pub(crate) use merge::{CatalogRefusal, catalog_refusals, collect_refusals};
 
 /// Provider-neutral generation knobs for one request. An unset field leaves
 /// the provider's default. A field the wire or model cannot honour is
@@ -359,6 +359,31 @@ impl UnsupportedOption {
             reason: reason.into(),
         }
     }
+}
+
+/// Why a dry run of a completion request failed: what
+/// [`DynModel::check`](crate::DynModel::check) returns.
+#[non_exhaustive]
+#[derive(Debug, thiserror::Error)]
+pub enum CheckError {
+    /// Every option the wire or model cannot honour, in the order the wire
+    /// meets them. The request builds once they are removed.
+    #[error("{}", unsupported_list(.0))]
+    Unsupported(Vec<UnsupportedOption>),
+    /// The request cannot be built for another reason, such as an empty
+    /// history. Refusals met before it are not listed, since the build
+    /// stopped there.
+    #[error(transparent)]
+    Invalid(crate::error::ProviderError),
+}
+
+/// The refusals, one per clause.
+fn unsupported_list(refusals: &[UnsupportedOption]) -> String {
+    refusals
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 #[cfg(test)]

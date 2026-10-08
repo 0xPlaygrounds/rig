@@ -1048,7 +1048,8 @@ fn an_unreported_cost_comes_from_the_catalog() {
             .is_some_and(|cost| close(cost.total, 3.0))
     );
 
-    // A cache read with no price of its own is charged as input.
+    // A cache read is charged at its listed price; a cache write with no
+    // price of its own is unknown, and the total is a lower bound.
     let end = Finish {
         usage: tokens(1_000_000, 0).cached_input_tokens(1_000_000),
         ..Finish::default()
@@ -1065,10 +1066,43 @@ fn an_unreported_cost_comes_from_the_catalog() {
     };
     let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
     let cost = response.usage.cost.expect("the catalog prices the model");
-    assert!(
-        cost.cache_write.is_some_and(|part| close(part, 0.15)),
-        "{cost:?}"
-    );
+    assert_eq!(cost.cache_write, None, "{cost:?}");
+    assert!(!cost.is_complete() && close(cost.total, 0.0), "{cost:?}");
+}
+
+/// The fold prices a reply by the facts of the wire that answers: the spec
+/// it was connected to, and that spec's catalog for a request that names
+/// another model. The built-in prices do not apply.
+#[test]
+fn a_reply_is_priced_by_the_wire_facts() {
+    use crate::catalog::{Catalog, Pricing};
+    use crate::wire::{Call, Descriptor, Mode, Operation};
+    let anthropic = crate::providers::registry::ProviderId::catalog("anthropic").expect("a vendor");
+    let mut catalog = Catalog::builtin().clone();
+    for id in ["claude-sonnet-4-6", "claude-haiku-4-5"] {
+        let spec = catalog.get_exact(anthropic, id).expect("listed").clone();
+        catalog.insert(spec.with_pricing(Pricing::new(1.0, 2.0)));
+    }
+    let facts = catalog.facts(anthropic, "claude-sonnet-4-6");
+    let descriptor = Descriptor::new("anthropic")
+        .model("claude-sonnet-4-6")
+        .facts(&facts);
+    for request in [
+        crate::completion::CompletionRequest::new("hi"),
+        crate::completion::CompletionRequest::new("hi").model("claude-haiku-4-5"),
+    ] {
+        let turn = Completion::fold(&request, &mut Call::new(&descriptor, Mode::Unary));
+        let end = Finish {
+            usage: tokens(1_000_000, 1_000_000),
+            ..Finish::default()
+        };
+        let response = response(decode_with(turn, "test", |reply| {
+            let _ = reply.out().end(end);
+            Ok(())
+        }));
+        let cost = response.usage.cost.expect("the facts price the model");
+        assert!(close(cost.total, 3.0), "{:?}: {cost:?}", request.model);
+    }
 }
 
 /// No cost is made up: an unlisted model, a model with no price, or a
@@ -1104,13 +1138,17 @@ fn a_cost_is_none_without_a_price_or_counters() {
 #[test]
 fn subscription_and_local_providers_have_no_catalog_cost() {
     assert!(
-        crate::catalog::lookup("copilot", "gpt-5.3-codex")
+        crate::catalog::Catalog::builtin()
+            .get_vendor("copilot", "gpt-5.3-codex")
+            .map(|resolved| resolved.spec)
             .and_then(|spec| spec.pricing.as_ref())
             .is_some(),
         "the catalog prices Copilot's API rate"
     );
     assert!(
-        crate::catalog::lookup("ollama", "gpt-oss:20b")
+        crate::catalog::Catalog::builtin()
+            .get_vendor("ollama", "gpt-oss:20b")
+            .map(|resolved| resolved.spec)
             .and_then(|spec| spec.pricing.as_ref())
             .is_some(),
         "the catalog prices Ollama Cloud"

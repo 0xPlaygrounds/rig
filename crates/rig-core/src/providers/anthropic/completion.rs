@@ -15,7 +15,7 @@ use serde_json::{Map, Value, json};
 
 #[doc(hidden)]
 use super::wire::Messages;
-use crate::catalog::ModelSpec;
+use crate::catalog::{ModelFacts, ModelSpec};
 use crate::completion::options::{BaseInput, FinalBody, RawAt, Rewrite, request_params};
 use crate::completion::{self, CompletionRequest, Replay};
 use crate::error::EncodeError;
@@ -75,34 +75,20 @@ pub enum CacheTtl {
     OneHour,
 }
 
-/// The catalog entry of Anthropic's `model`, or of the model a snapshot
-/// (`<id>-YYYYMMDD`, or any suffix from `-20`) names. `None` for a model the
-/// catalog does not list, which gets the newest models' behaviour.
-pub(super) fn spec(model: &str) -> Option<&'static ModelSpec> {
-    crate::catalog::lookup_snapshot(super::ANTHROPIC.name, model)
-}
-
-/// The catalog entry of the Claude `model`, however the serving API spells
-/// it: Anthropic's `claude-opus-5-5`, OpenRouter's `anthropic/claude-opus-5.5`
-/// or Bedrock's `us.anthropic.claude-opus-5-5-v1:0`, or one of its dated
-/// snapshots. Its reasoning, sampling and context binding are read through
-/// this one spelling rule on every wire that serves Claude.
-#[doc(hidden)]
-pub fn claude_spec(model: &str) -> Option<&'static ModelSpec> {
-    let model = model
-        .rsplit_once("anthropic.")
-        .map_or(model, |(_, rest)| rest);
-    let model = model.strip_prefix("anthropic/").unwrap_or(model);
-    let model = model.split_once("-v1:").map_or(model, |(id, _)| id);
-    spec(&model.replace('.', "-"))
+/// The facts of Anthropic's `model`: the spec the wire was connected to,
+/// else its catalog's entry by the one lookup rule (an id as listed, or a
+/// dated snapshot of one). `None` for a model the catalog does not list,
+/// which gets the newest models' behaviour.
+pub(super) fn spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
+    facts.for_model(super::ANTHROPIC.name, model)
 }
 
 /// The published synchronous output limit of a listed model. A model the
 /// catalog does not list under the `claude-opus-4`, `claude-sonnet-4` or
 /// `claude-haiku-4-5` prefixes takes 64000; any other requires an explicit
 /// `max_tokens` value.
-pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    match spec(model) {
+pub(super) fn default_max_tokens_for_model(facts: &ModelFacts, model: &str) -> Option<u64> {
+    match spec(facts, model) {
         Some(spec) => spec.max_output_tokens.map(u64::from),
         None => ["claude-opus-4", "claude-sonnet-4", "claude-haiku-4-5"]
             .iter()
@@ -112,22 +98,21 @@ pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
 }
 
 /// Whether `model` rejects a forced tool choice.
-pub(super) fn rejects_forced_tool_choice(model: &str) -> bool {
-    spec(model).is_some_and(|spec| spec.compat.rejects_forced_tool_choice)
+pub(super) fn rejects_forced_tool_choice(facts: &ModelFacts, model: &str) -> bool {
+    spec(facts, model).is_some_and(|spec| spec.compat.rejects_forced_tool_choice)
 }
 
 /// Whether `model` takes `role: "system"` inside `messages` (the
 /// mid-conversation system messages page). A model the catalog does not
 /// list takes system text only in the request's `system`.
-pub(super) fn takes_mid_conversation_system(model: &str) -> bool {
-    spec(model).is_some_and(|spec| spec.compat.mid_conversation_system)
+pub(super) fn takes_mid_conversation_system(facts: &ModelFacts, model: &str) -> bool {
+    spec(facts, model).is_some_and(|spec| spec.compat.mid_conversation_system)
 }
 
 /// Whether the Claude `model` binds its thinking blocks to the request's
-/// tools and system prompt, however the serving API spells it
-/// ([`claude_spec`]).
-pub(super) fn binds_context(model: &str) -> bool {
-    claude_spec(model).is_some_and(|spec| spec.compat.binds_context)
+/// tools and system prompt.
+pub(super) fn binds_context(facts: &ModelFacts, model: &str) -> bool {
+    spec(facts, model).is_some_and(|spec| spec.compat.binds_context)
 }
 
 /// The beta that lets a request ask Anthropic to drop a thinking block bound
@@ -151,7 +136,9 @@ pub(super) fn drops_unbound_thinking(
     thinking: Option<&Value>,
 ) -> bool {
     let adaptive = thinking.is_none_or(|thinking| thinking.str("type") == Some("adaptive"));
-    wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(model) && adaptive
+    wire.provider.dialect.name == super::ANTHROPIC.name
+        && binds_context(&wire.facts, model)
+        && adaptive
 }
 
 /// `body`'s `thinking` with `drop_block` set: the caller's adaptive
@@ -196,12 +183,12 @@ pub(super) fn body(
         None => wire
             .provider
             .dialect
-            .default_max_tokens(&model)
+            .default_max_tokens(&wire.facts, &model)
             .or(wire.default_max_tokens),
     }
     .ok_or_else(|| EncodeError::request("`max_tokens` must be set for Anthropic"))?;
     let mut rewrites = Vec::new();
-    if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&model) {
+    if wire.provider.dialect.name == super::ANTHROPIC.name && binds_context(&wire.facts, &model) {
         rewrites.push(Rewrite::DropUnboundThinking);
     }
     if mode == Mode::Streaming {
@@ -231,8 +218,10 @@ fn base(
     let strict = wire.strict_tools && wire.provider.dialect.quirks.strict_tool_schemas;
     let eager = wire.tool_input_streaming == super::wire::ToolInputStreaming::Eager;
     let mut tools = tools(request.tools.clone(), input.raw_tools()?, strict, eager);
-    let (mut system, history) =
-        split_system(&request.chat_history, takes_mid_conversation_system(model));
+    let (mut system, history) = split_system(
+        &request.chat_history,
+        takes_mid_conversation_system(&wire.facts, model),
+    );
     let ids = WireIds::for_target(&history, wire, model);
     let mut messages: Vec<Value> = Vec::new();
     for message in &history {

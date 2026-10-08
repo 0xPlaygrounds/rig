@@ -80,6 +80,8 @@ fn builders_set_each_field_and_serde_uses_the_wire_words() {
     );
     let back = value.and_then(|value| serde_json::from_value::<GenerationOptions>(value).ok());
     assert_eq!(back, Some(options));
+    let words = [Verbosity::Low, Verbosity::Medium, Verbosity::High].map(|level| level.as_str());
+    assert_eq!(words, ["low", "medium", "high"]);
 }
 
 #[test]

@@ -1,10 +1,15 @@
 use super::*;
 
-/// A listed model's cached-read ratio comes from the catalog's pricing;
-/// an unlisted one keeps the default, as does every other parameter.
+/// A spec's cached-read ratio comes from its pricing; a spec with no price
+/// keeps the default, as does every other parameter.
 #[test]
-fn a_policy_for_a_model_reads_its_cached_ratio_from_the_catalog() {
-    let image = AutoCache::for_model("gemini-2.5-flash-image");
+fn a_policy_for_a_spec_reads_its_cached_ratio_from_its_pricing() {
+    let gemini = crate::providers::registry::ProviderId::catalog(super::super::PROVIDER_NAME)
+        .expect("a catalog vendor");
+    let spec = crate::catalog::Catalog::builtin()
+        .get_exact(gemini, "gemini-2.5-flash-image")
+        .expect("listed");
+    let image = AutoCache::for_spec(spec);
     assert!((image.cached_ratio - 0.25).abs() < 1e-9, "{image:?}");
     assert_eq!(
         AutoCache {
@@ -13,7 +18,8 @@ fn a_policy_for_a_model_reads_its_cached_ratio_from_the_catalog() {
         },
         AutoCache::default()
     );
-    assert_eq!(AutoCache::for_model("x-rig-unlisted"), AutoCache::default());
+    let unpriced = crate::catalog::ModelSpec::new(gemini, "x-rig-unlisted");
+    assert_eq!(AutoCache::for_spec(&unpriced), AutoCache::default());
 }
 
 /// Prices the ratio cannot come from keep the default ratio: no cached-read

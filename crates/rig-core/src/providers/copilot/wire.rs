@@ -273,6 +273,13 @@ impl CopilotWire {
         self.with_intent(CopilotIntent::Edits)
     }
 
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them, on whichever route answers.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.wire = self.wire.with_facts(facts);
+        self
+    }
+
     /// Sanitize tool schemas for strict mode on whichever route answers.
     ///
     /// The shared [`Responses::new`](crate::providers::openai::responses_api::wire::Responses::new)

@@ -99,37 +99,70 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
     assert_eq!(
-        default_max_tokens_for_model(CLAUDE_FABLE_5_1),
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5_1),
         Some(128_000)
     );
-    assert_eq!(default_max_tokens_for_model(CLAUDE_FABLE_5), Some(128_000));
-    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_5), Some(128_000));
-    assert_eq!(default_max_tokens_for_model(CLAUDE_SONNET_5), Some(128_000));
-    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_8), Some(128_000));
-    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_7), Some(128_000));
-    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_6), Some(128_000));
     assert_eq!(
-        default_max_tokens_for_model(CLAUDE_SONNET_4_6),
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_FABLE_5),
         Some(128_000)
     );
-    assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
     assert_eq!(
-        default_max_tokens_for_model("claude-sonnet-4-20250514"),
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_OPUS_5),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_SONNET_5),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_OPUS_4_8),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_OPUS_4_7),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_OPUS_4_6),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_SONNET_4_6),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), CLAUDE_HAIKU_4_5),
         Some(64_000)
     );
     assert_eq!(
-        default_max_tokens_for_model("claude-opus-4-1-20250805"),
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "claude-sonnet-4-20250514"
+        ),
+        Some(64_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "claude-opus-4-1-20250805"
+        ),
         Some(32_000),
         "the Models API's limit for Claude Opus 4.1"
     );
-    assert_eq!(default_max_tokens_for_model("claude-3-opus"), None);
+    assert_eq!(
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-3-opus"),
+        None
+    );
     // An id the catalog does not list takes its family's default.
     assert_eq!(
-        default_max_tokens_for_model("claude-opus-4.6"),
+        default_max_tokens_for_model(crate::catalog::ModelFacts::builtin(), "claude-opus-4.6"),
         Some(64_000)
     );
     assert_eq!(
-        default_max_tokens_for_model("claude-sonnet-4-6@20260101"),
+        default_max_tokens_for_model(
+            crate::catalog::ModelFacts::builtin(),
+            "claude-sonnet-4-6@20260101"
+        ),
         Some(64_000)
     );
 }
@@ -1681,29 +1714,35 @@ fn a_server_tool_result_never_replays_without_its_use() {
     );
 }
 
+/// Anthropic's wire reads its own ids and their dated snapshots. Another
+/// vendor's spelling is that vendor's catalog row, which carries the
+/// Anthropic facts itself.
 #[test]
-fn context_binding_reads_every_spelling_of_a_claude_model() {
+fn context_binding_reads_anthropics_ids_and_their_snapshots() {
     for model in [
         "claude-opus-5-5",
         "claude-opus-5-5-20260101",
         "claude-opus-5",
         "claude-fable-5-1",
         "claude-sonnet-5-5",
-        "anthropic/claude-opus-5.5",
-        "claude-opus-5.5",
-        "anthropic.claude-opus-5-5-v1:0",
-        "us.anthropic.claude-opus-5-5-20260101-v1:0",
-        "us.anthropic.claude-opus-5",
     ] {
-        assert!(binds_context(model), "{model}");
+        assert!(
+            binds_context(crate::catalog::ModelFacts::builtin(), model),
+            "{model}"
+        );
     }
     for model in [
         "claude-sonnet-5",
         "claude-haiku-4-5-20251001",
-        "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "anthropic/claude-opus-5.5",
+        "claude-opus-5.5",
+        "us.anthropic.claude-opus-5",
         "gpt-5",
     ] {
-        assert!(!binds_context(model), "{model}");
+        assert!(
+            !binds_context(crate::catalog::ModelFacts::builtin(), model),
+            "{model}"
+        );
     }
 }
 
@@ -2102,4 +2141,22 @@ fn an_invalid_raw_top_level_cache_marker_is_refused() {
             "{error}"
         );
     }
+}
+
+/// Claude forces one named tool at most: a choice of one names it, and a
+/// choice of several is an error rather than a silently narrowed choice.
+#[test]
+fn a_forced_choice_names_one_tool() {
+    let name = |name: &str| crate::message::ToolName::new(name).expect("tool name");
+    let one = tool_choice(message::ToolChoice::Specific {
+        function_names: vec![name("get_weather")],
+    })
+    .expect("one tool is forced");
+    assert_eq!(one, json!({ "type": "tool", "name": "get_weather" }));
+    assert!(
+        tool_choice(message::ToolChoice::Specific {
+            function_names: vec![name("get_weather"), name("get_time")],
+        })
+        .is_err()
+    );
 }

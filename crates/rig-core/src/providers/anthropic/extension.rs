@@ -22,7 +22,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
-use super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5, claude_spec};
+use super::completion::{CLAUDE_OPUS_4_8, CLAUDE_OPUS_5, CLAUDE_OPUS_5_5};
 use super::wire::MESSAGES_API;
 use crate::catalog::Sampling;
 use crate::completion::{
@@ -241,7 +241,10 @@ impl ExtensionOptions for AnthropicOptions {
             .as_deref()
             .filter(|model| !model.is_empty())
             .unwrap_or_else(|| target.model());
-        let Some(spec) = claude_spec(model) else {
+        let facts = target
+            .facts()
+            .unwrap_or_else(|| crate::catalog::ModelFacts::builtin());
+        let Some(spec) = facts.for_model(target.provider(), model) else {
             return Vec::new();
         };
         let mut refused = Vec::new();

@@ -6,7 +6,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelSpec, ReasoningSupport, Sampling};
+use crate::catalog::{ModelFacts, ModelSpec, ReasoningSupport, Sampling};
 use crate::completion::options::{CatalogRefusal, FinalBody, Mapping, OptionFields, OptionMap};
 use crate::completion::{
     CacheRetention, CompletionRequest, Effort, Reasoning, ReplayTarget, ServiceTier, Verbosity,
@@ -18,9 +18,9 @@ use super::wire::Chat;
 /// The catalog entry of OpenAI's `model`, read past a `vendor/` prefix and
 /// a dated snapshot suffix. `None` for a model the catalog does not list (an
 /// Azure deployment name, a fine-tune).
-pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
+pub(crate) fn openai_spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
     let name = model.rsplit('/').next().unwrap_or(model);
-    crate::catalog::lookup(super::wire::OPENAI.name, name)
+    facts.for_model(super::wire::OPENAI.name, name)
 }
 
 /// Whether OpenAI's `model` reasons, as its catalog entry says. For a model
@@ -28,9 +28,9 @@ pub(crate) fn openai_spec(model: &str) -> Option<&'static ModelSpec> {
 /// and the o-series (see [`named_reasoning`]), `Some(false)` for an earlier
 /// numbered GPT, `None` for an id that names neither (an Azure deployment
 /// name, a fine-tune).
-pub(crate) fn reasons(model: &str) -> Option<bool> {
-    match openai_spec(model) {
-        Some(spec) => Some(spec.reasoning.supported),
+pub(crate) fn reasons(facts: &ModelFacts, model: &str) -> Option<bool> {
+    match openai_spec(facts, model) {
+        Some(spec) => Some(spec.reasoning.supported()),
         None => named_reasons(model),
     }
 }
@@ -140,44 +140,40 @@ fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
     }
 }
 
-/// `top_p` on OpenAI's Chat Completions and Responses, by the model's
-/// catalog sampling rule: [`Sampling::Never`] refuses it, and
-/// [`Sampling::ReasoningOff`] takes it only while reasoning is off. That is
-/// `reasoning` set to `Off` or, with no `reasoning` set, a model that can
-/// turn reasoning off and whose entry names no default effort, so defaults
-/// to `none` (the rule [`check_body`] applies to a raw `top_p`). GPT-5.6 and
-/// GPT-6 name `medium`. A model
-/// whose entry gives no rule, or that the catalog does not list, goes by
-/// its id ([`named_top_p`]).
-fn openai_top_p(model: &str, top_p: f64, reasoning: Option<&Reasoning>) -> Mapping {
-    let spec = openai_spec(model);
+/// `top_p` on OpenAI's Chat Completions and Responses, by the sampling
+/// rule of the model's catalog entry, the one [`ModelSpec::refusals`]
+/// applies. A model whose entry gives no rule, or that the catalog does
+/// not list, goes by its id ([`named_top_p`]), with reasoning off when
+/// `reasoning` is `Off` or, with no `reasoning` set, when the entry says
+/// the model can turn reasoning off and names no default effort.
+fn openai_top_p(
+    facts: &ModelFacts,
+    model: &str,
+    top_p: f64,
+    reasoning: Option<&Reasoning>,
+) -> Mapping {
+    let spec = openai_spec(facts, model);
+    if let Some(spec) = spec.filter(|spec| spec.sampling.is_some()) {
+        return spec
+            .sampling_refusal("top_p", spec.reasons_with(reasoning))
+            .map_or_else(|| send("top_p", top_p), Mapping::unsupported);
+    }
     let reasoning_off = match reasoning {
         Some(reasoning) => matches!(reasoning, Reasoning::Off),
-        None => {
-            spec.is_some_and(|spec| spec.reasoning.can_disable && spec.reasoning.default.is_none())
-        }
+        None => spec.is_some_and(|spec| {
+            spec.reasoning.can_disable() == Some(true) && spec.reasoning.default_effort().is_none()
+        }),
     };
     match spec {
-        Some(spec) if spec.reasoning.supported => match spec.sampling {
-            Some(Sampling::Any) => send("top_p", top_p),
-            Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
-            Some(Sampling::ReasoningOff) => {
-                Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
-            }
-            Some(Sampling::Never) => {
-                Mapping::unsupported("this model takes no sampling parameters")
-            }
-            None => named_top_p(model, top_p, reasoning_off),
-        },
-        Some(_) => send("top_p", top_p),
-        None => named_top_p(model, top_p, reasoning_off),
+        Some(spec) if !spec.reasoning.supported() => send("top_p", top_p),
+        _ => named_top_p(model, top_p, reasoning_off),
     }
 }
 
 /// `stop` on OpenAI's Chat Completions: at most 4 sequences, and none on a
 /// reasoning model (the o-series and the GPT-5 family), at any effort.
-fn openai_stop(model: &str, stop: &[String]) -> Mapping {
-    match reasons(model) {
+fn openai_stop(facts: &ModelFacts, model: &str, stop: &[String]) -> Mapping {
+    match reasons(facts, model) {
         Some(true) => Mapping::unsupported("an OpenAI reasoning model takes no `stop`"),
         _ => stop_list(stop, Some(4), "stop"),
     }
@@ -187,11 +183,12 @@ fn openai_stop(model: &str, stop: &[String]) -> Mapping {
 /// A model that does not reason takes only `medium`, its default, so
 /// `Medium` sends nothing there and the other levels are refused.
 fn openai_verbosity(
+    facts: &ModelFacts,
     model: &str,
     verbosity: &Verbosity,
     send: impl FnOnce(&Verbosity) -> Mapping,
 ) -> Mapping {
-    match (reasons(model), verbosity) {
+    match (reasons(facts, model), verbosity) {
         (Some(false), Verbosity::Medium) => Mapping::Omit("`medium` is the model's only verbosity"),
         (Some(false), _) => Mapping::unsupported("this model takes only `medium` verbosity"),
         _ => send(verbosity),
@@ -199,11 +196,15 @@ fn openai_verbosity(
 }
 
 /// Why OpenAI's `model` cannot turn reasoning off, or `None` when it can (or
-/// does not reason): its catalog entry's `can_disable`, else its id.
-fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
+/// does not reason): its catalog entry's `can_disable`, else (no entry, or
+/// one that does not say) its id.
+fn off_refusal(facts: &ModelFacts, spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
     let can_disable = match spec {
-        Some(spec) => spec.reasoning.can_disable,
-        None => reasons(model) != Some(true) || named_can_disable(model),
+        Some(spec) => spec
+            .reasoning
+            .can_disable()
+            .unwrap_or_else(|| named_can_disable(model)),
+        None => reasons(facts, model) != Some(true) || named_can_disable(model),
     };
     (!can_disable).then(|| Mapping::unsupported("this model cannot turn reasoning off"))
 }
@@ -211,8 +212,8 @@ fn off_refusal(spec: Option<&ModelSpec>, model: &str) -> Option<Mapping> {
 /// Whether `model`'s prompt cache takes `prompt_cache_options` (GPT-5.6 and
 /// later, which keep one 30 minute retention): its catalog entry's, or for
 /// a model the catalog does not list, its GPT generation's.
-pub(crate) fn caches_by_options(model: &str) -> bool {
-    match openai_spec(model) {
+pub(crate) fn caches_by_options(facts: &ModelFacts, model: &str) -> bool {
+    match openai_spec(facts, model) {
         Some(spec) => spec.compat.prompt_cache_options,
         None => gpt_version(model).is_some_and(|version| version >= (5, 6)),
     }
@@ -228,9 +229,14 @@ pub(crate) fn caches_by_options(model: &str) -> bool {
 /// catalog does not list is read by its GPT generation: `Long` on GPT-4.1
 /// and GPT-5 to 5.5, `24h` only on GPT-5.5, and `prompt_cache_options` from
 /// GPT-5.6 on.
-pub(crate) fn openai_cache(model: &str, cache: &CacheRetention, long: Mapping) -> Mapping {
-    let spec = openai_spec(model);
-    let options = caches_by_options(model);
+pub(crate) fn openai_cache(
+    facts: &ModelFacts,
+    model: &str,
+    cache: &CacheRetention,
+    long: Mapping,
+) -> Mapping {
+    let spec = openai_spec(facts, model);
+    let options = caches_by_options(facts, model);
     let version = gpt_version(model);
     let honours = |retention: CacheRetention| match spec.map(|spec| &spec.caching.retention) {
         Some(listed) if !listed.is_empty() => listed.contains(&retention),
@@ -274,39 +280,39 @@ pub(crate) enum Endpoint {
 /// its exact id (an OpenRouter `openai/` id is the gateway's to check),
 /// reported through the request's policy by
 /// [`catalog_refusals`](crate::completion::options::catalog_refusals): a
-/// request that sets no generation options is sent as built. While the
-/// model reasons, a model whose sampling rule is [`Sampling::ReasoningOff`]
-/// takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
-/// Completions, `logprobs`), and one marked `chat_tools_need_reasoning_off`
-/// whose reasoning cannot be turned off takes no tools on Chat Completions
-/// at all. (One that can turn it off takes them at effort `none`; the API's
-/// own error names that fix, and a recorded session pins it.) The model
-/// reasons unless the body sets effort `none`; with no effort it reasons
-/// when the catalog names its default level, and is not checked otherwise.
-/// These are fields `additional_params` can set, so the check reads the
-/// final body.
+/// request that sets no generation options is sent as built. It applies
+/// the [`Sampling::ReasoningOff`] rule of [`ModelSpec::refusals`] to the
+/// final body, which also holds what `additional_params` and the provider
+/// options set, with the effort the body asks for: while the model reasons
+/// it takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
+/// Completions, `logprobs`). One rule is the route's own: a
+/// model marked `chat_tools_need_reasoning_off` whose reasoning cannot be
+/// turned off takes no tools on Chat Completions at all. (One that can turn
+/// it off takes them at effort `none`; the API's own error names that fix,
+/// and a recorded session pins it.)
 ///
 /// # Errors
 ///
 /// A refusal under [`OnUnsupported::Error`](crate::completion::OnUnsupported::Error).
 pub(crate) fn check_body(
     target: &dyn ReplayTarget,
+    facts: &ModelFacts,
     request: &CompletionRequest,
     body: FinalBody,
     endpoint: Endpoint,
 ) -> Result<FinalBody, EncodeError> {
-    let refusals = body_refusals(&body, endpoint);
+    let refusals = body_refusals(facts, &body, endpoint);
     crate::completion::options::catalog_refusals(target, request, body, refusals)
 }
 
 /// The parts of `body` the catalog entry of its model refuses on
 /// `endpoint`, as [`check_body`] describes.
-fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
+fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
     let mut refusals = Vec::new();
     let Some(model) = body.get("model").and_then(serde_json::Value::as_str) else {
         return refusals;
     };
-    let Some(spec) = crate::catalog::lookup(super::wire::OPENAI.name, model) else {
+    let Some(spec) = facts.for_model(super::wire::OPENAI.name, model) else {
         return refusals;
     };
     let (effort, effort_field) = match endpoint {
@@ -315,16 +321,18 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
     };
     let reasons = match effort.and_then(serde_json::Value::as_str) {
         Some(effort) => effort != "none",
-        None => spec.reasoning.default.is_some(),
+        None => spec.reasons_by_default(),
     };
     let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
+    let sampling: &[&'static str] = match endpoint {
+        Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
+        Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
+    };
+    // `Sampling::Never` is the shared rule's alone: it refuses the typed
+    // fields before the wire encodes.
     if reasons && spec.sampling == Some(Sampling::ReasoningOff) {
-        let sampling: &[&'static str] = match endpoint {
-            Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
-            Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
-        };
         for field in sampling.iter().copied().filter(|field| present(field)) {
-            let fix = match spec.reasoning.can_disable {
+            let fix = match spec.reasoning.can_disable() == Some(true) {
                 true => format!("remove `{field}` or set `{effort_field}` to `none`"),
                 false => format!("remove `{field}`"),
             };
@@ -344,7 +352,7 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
     if endpoint == Endpoint::ChatCompletions
         && carries_tools
         && spec.compat.chat_tools_need_reasoning_off
-        && !spec.reasoning.can_disable
+        && spec.reasoning.can_disable() == Some(false)
     {
         refusals.push(CatalogRefusal {
             field: "tools",
@@ -356,9 +364,10 @@ fn body_refusals(body: &FinalBody, endpoint: Endpoint) -> Vec<CatalogRefusal> {
 }
 
 /// Why the model `spec` describes cannot take effort `effort`, from its
-/// catalog levels, or `None` when it can or the catalog does not list it.
+/// catalog levels, or `None` when it can or the catalog does not list it or
+/// its levels.
 fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> {
-    let levels = &spec?.reasoning.levels;
+    let levels = spec?.reasoning.levels()?;
     (!levels.contains(effort)).then(|| {
         Mapping::unsupported(format!(
             "this model has no `{}` effort level",
@@ -368,21 +377,25 @@ fn effort_refusal(spec: Option<&ModelSpec>, effort: &Effort) -> Option<Mapping> 
 }
 
 /// The reasoning a gateway dialect's catalog row gives for `model`, or
-/// `None` when the catalog does not list it or the row marks a reasoning
-/// model but lists none of its options, which says nothing a gateway's
-/// request can be checked against.
-fn listed_reasoning(dialect: &str, model: &str) -> Option<&'static ReasoningSupport> {
-    let reasoning = &crate::catalog::lookup(dialect, model)?.reasoning;
-    let lists_options =
-        !reasoning.levels.is_empty() || reasoning.budget.is_some() || reasoning.can_disable;
-    (!reasoning.supported || lists_options).then_some(reasoning)
+/// `None` when the catalog does not list it.
+fn catalog_reasoning<'f>(
+    facts: &'f ModelFacts,
+    dialect: &str,
+    model: &str,
+) -> Option<&'f ReasoningSupport> {
+    Some(&facts.for_model(dialect, model)?.reasoning)
 }
 
 /// Why `dialect`'s `model` cannot take `reasoning`, as its catalog row says
-/// (the check [`ModelSpec::validate`] makes), or `None` when it can or
-/// [`listed_reasoning`] gives no row.
-fn catalog_refusal(dialect: &str, model: &str, reasoning: &Reasoning) -> Option<Mapping> {
-    listed_reasoning(dialect, model)?
+/// (the check [`ModelSpec::validate`] makes), or `None` when it can, the
+/// catalog does not list it or does not know its reasoning controls.
+fn catalog_refusal(
+    facts: &ModelFacts,
+    dialect: &str,
+    model: &str,
+    reasoning: &Reasoning,
+) -> Option<Mapping> {
+    catalog_reasoning(facts, dialect, model)?
         .refusal(reasoning)
         .map(Mapping::unsupported)
 }
@@ -390,11 +403,17 @@ fn catalog_refusal(dialect: &str, model: &str, reasoning: &Reasoning) -> Option<
 /// `reasoning_effort` for `reasoning` on a dialect whose catalog rows
 /// decide the levels a model takes and whether it can turn reasoning off,
 /// `none` for `Off`; a model the catalog does not list takes every value.
-fn catalog_effort(dialect: &str, model: &str, reasoning: &Reasoning, budget: &str) -> Mapping {
+fn catalog_effort(
+    facts: &ModelFacts,
+    dialect: &str,
+    model: &str,
+    reasoning: &Reasoning,
+    budget: &str,
+) -> Mapping {
     if let Reasoning::Budget { .. } = reasoning {
         return Mapping::unsupported(budget);
     }
-    catalog_refusal(dialect, model, reasoning).unwrap_or_else(|| match reasoning {
+    catalog_refusal(facts, dialect, model, reasoning).unwrap_or_else(|| match reasoning {
         Reasoning::Effort(effort) => reasoning_effort(effort),
         _ => send("reasoning_effort", "none"),
     })
@@ -473,26 +492,32 @@ pub(crate) fn chat_options(
         XIAOMIMIMO, ZAI,
     };
     let model = request.model.as_deref().unwrap_or(&chat.model);
+    let facts = &chat.facts;
     let name = chat.provider.dialect.name;
     let is = |dialect: &super::wire::Dialect| name == dialect.name;
     if is(&OPENAI) {
-        openai_chat(model, fields, None)
+        openai_chat(facts, model, fields, None)
     } else if is(&AZURE) {
-        openai_chat(model, fields, Some(chat.provider.api_version.as_deref()))
+        openai_chat(
+            facts,
+            model,
+            fields,
+            Some(chat.provider.api_version.as_deref()),
+        )
     } else if is(&OPENROUTER) {
-        openrouter(model, fields)
+        openrouter(facts, model, fields)
     } else if is(&DEEPSEEK) {
         deepseek(fields)
     } else if is(&MISTRAL) {
-        mistral(model, fields)
+        mistral(facts, model, fields)
     } else if is(&GROQ) {
-        groq(model, fields)
+        groq(facts, model, fields)
     } else if name == crate::providers::xai::DIALECT.name {
-        xai(model, fields)
+        xai(facts, model, fields)
     } else if is(&TOGETHER) {
         together(fields)
     } else if is(&VENICE) {
-        venice(model, fields)
+        venice(facts, model, fields)
     } else if is(&MOONSHOT) {
         moonshot(model, fields)
     } else if is(&ZAI) {
@@ -502,7 +527,7 @@ pub(crate) fn chat_options(
     } else if is(&OLLAMA) {
         ollama(fields)
     } else if is(&COHERE) {
-        cohere(model, fields)
+        cohere(facts, model, fields)
     } else if is(&PERPLEXITY) {
         perplexity(model, fields)
     } else if is(&MINIMAX) {
@@ -525,7 +550,12 @@ pub(crate) fn chat_options(
 
 /// OpenAI's own Chat Completions, and Azure's when `azure` names the
 /// deployment's `api-version`.
-fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>>) -> OptionMap {
+fn openai_chat(
+    facts: &ModelFacts,
+    model: &str,
+    fields: OptionFields<'_>,
+    azure: Option<Option<&str>>,
+) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -551,20 +581,19 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
             if dated {
                 return refuse_dated();
             }
-            let spec = openai_spec(model);
+            let spec = openai_spec(facts, model);
             match reasoning {
                 Reasoning::Budget { .. } => {
                     Mapping::unsupported("Chat Completions takes an effort level, not a budget")
                 }
-                Reasoning::Off if reasons(model) == Some(false) => {
+                Reasoning::Off if reasons(facts, model) == Some(false) => {
                     Mapping::Omit("the model does not reason")
                 }
-                _ if reasons(model) == Some(false) => {
+                _ if reasons(facts, model) == Some(false) => {
                     Mapping::unsupported("the model does not reason")
                 }
-                Reasoning::Off => {
-                    off_refusal(spec, model).unwrap_or_else(|| send("reasoning_effort", "none"))
-                }
+                Reasoning::Off => off_refusal(facts, spec, model)
+                    .unwrap_or_else(|| send("reasoning_effort", "none")),
                 Reasoning::Effort(Effort::Max) if azure.is_some() => {
                     Mapping::unsupported("Azure takes `max` effort only on Responses")
                 }
@@ -578,6 +607,7 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
                 return refuse_dated();
             }
             openai_cache(
+                facts,
                 model,
                 cache,
                 Mapping::unsupported("Chat Completions has no longer retention from GPT-5.6 on"),
@@ -594,16 +624,16 @@ fn openai_chat(model: &str, fields: OptionFields<'_>, azure: Option<Option<&str>
             if dated {
                 return refuse_dated();
             }
-            openai_verbosity(model, verbosity, |verbosity| {
+            openai_verbosity(facts, model, verbosity, |verbosity| {
                 send("verbosity", verbosity.as_str())
             })
         }),
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
             send("parallel_tool_calls", parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| openai_top_p(model, top_p, reasoning)),
+        top_p: Mapping::of(top_p, |top_p| openai_top_p(facts, model, top_p, reasoning)),
         seed: Mapping::of(seed, |seed| send("seed", seed)),
-        stop: Mapping::of_stop(stop, |stop| openai_stop(model, stop)),
+        stop: Mapping::of_stop(stop, |stop| openai_stop(facts, model, stop)),
     }
 }
 
@@ -635,11 +665,16 @@ pub(crate) fn openrouter_cache(model: &str, cache: &CacheRetention) -> Mapping {
 
 /// OpenRouter's `reasoning` object for `model`, shared by its two routes.
 /// `Off` is refused where the upstream's catalog row lists its reasoning
-/// options and none turns reasoning off ([`listed_reasoning`]).
-pub(crate) fn openrouter_reasoning(model: &str, reasoning: &Reasoning) -> Mapping {
+/// options and none turns reasoning off.
+pub(crate) fn openrouter_reasoning(
+    facts: &ModelFacts,
+    model: &str,
+    reasoning: &Reasoning,
+) -> Mapping {
     let cannot_disable = || {
-        listed_reasoning(super::wire::OPENROUTER.name, model)
-            .is_some_and(|reasoning| reasoning.supported && !reasoning.can_disable)
+        catalog_reasoning(facts, super::wire::OPENROUTER.name, model).is_some_and(|reasoning| {
+            reasoning.supported() && reasoning.can_disable() == Some(false)
+        })
     };
     match reasoning {
         Reasoning::Off if cannot_disable() => {
@@ -664,7 +699,7 @@ pub(crate) fn openrouter_tier(tier: &ServiceTier) -> Mapping {
     }
 }
 
-fn openrouter(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn openrouter(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -677,7 +712,7 @@ fn openrouter(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            openrouter_reasoning(model, reasoning)
+            openrouter_reasoning(facts, model, reasoning)
         }),
         cache: Mapping::of(cache, |cache| openrouter_cache(model, cache)),
         service_tier: Mapping::of(service_tier, openrouter_tier),
@@ -737,7 +772,7 @@ fn deepseek(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn mistral(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn mistral(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -751,6 +786,7 @@ fn mistral(model: &str, fields: OptionFields<'_>) -> OptionMap {
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
             catalog_effort(
+                facts,
                 super::wire::MISTRAL.name,
                 model,
                 reasoning,
@@ -777,7 +813,7 @@ fn mistral(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn groq(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -793,11 +829,12 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
             // An id the catalog does not list keeps the name rule.
             Reasoning::Off
                 if model.contains("gpt-oss")
-                    && crate::catalog::lookup(super::wire::GROQ.name, model).is_none() =>
+                    && facts.for_model(super::wire::GROQ.name, model).is_none() =>
             {
                 Mapping::unsupported("GPT-OSS cannot turn reasoning off")
             }
             reasoning => catalog_effort(
+                facts,
                 super::wire::GROQ.name,
                 model,
                 reasoning,
@@ -824,31 +861,36 @@ fn groq(model: &str, fields: OptionFields<'_>) -> OptionMap {
 }
 
 /// The catalog entry of xAI's `model`.
-fn xai_spec(model: &str) -> Option<&'static ModelSpec> {
-    crate::catalog::lookup(crate::providers::xai::DIALECT.name, model)
+fn xai_spec<'f>(facts: &'f ModelFacts, model: &str) -> Option<&'f ModelSpec> {
+    facts.for_model(crate::providers::xai::DIALECT.name, model)
 }
 
 /// Whether xAI's `model` reasons, as its catalog entry says; a Grok model
 /// the catalog does not list reasons unless its id says `non-reasoning`.
-fn grok_reasons(model: &str) -> bool {
-    xai_spec(model).map_or(!model.contains("non-reasoning"), |spec| {
-        spec.reasoning.supported
+fn grok_reasons(facts: &ModelFacts, model: &str) -> bool {
+    xai_spec(facts, model).map_or(!model.contains("non-reasoning"), |spec| {
+        spec.reasoning.supported()
     })
 }
 
 /// xAI's `reasoning` on either route: `effort` spells a level (`none` for
 /// `Off` on a model whose catalog entry can turn reasoning off) as the route
-/// takes it. The levels a model takes are its catalog entry's.
+/// takes it. The levels a model takes are its catalog entry's; one whose
+/// entry does not list them takes every xAI level.
 pub(crate) fn xai_reasoning(
+    facts: &ModelFacts,
     model: &str,
     reasoning: &Reasoning,
     effort: impl FnOnce(&str) -> Mapping,
 ) -> Mapping {
     match reasoning {
-        Reasoning::Off if xai_spec(model).is_some_and(|spec| spec.reasoning.can_disable) => {
+        Reasoning::Off
+            if xai_spec(facts, model)
+                .is_some_and(|spec| spec.reasoning.can_disable() == Some(true)) =>
+        {
             effort("none")
         }
-        Reasoning::Off if grok_reasons(model) => {
+        Reasoning::Off if grok_reasons(facts, model) => {
             Mapping::unsupported("a reasoning Grok model cannot turn reasoning off")
         }
         Reasoning::Off => Mapping::Omit("the model does not reason"),
@@ -856,7 +898,7 @@ pub(crate) fn xai_reasoning(
             Mapping::unsupported(format!("xAI has no `{}` effort level", level.as_str()))
         }
         Reasoning::Effort(level) => {
-            effort_refusal(xai_spec(model), level).unwrap_or_else(|| effort(level.as_str()))
+            effort_refusal(xai_spec(facts, model), level).unwrap_or_else(|| effort(level.as_str()))
         }
         Reasoning::Budget { .. } => Mapping::unsupported("xAI takes an effort level, not a budget"),
     }
@@ -873,7 +915,7 @@ pub(crate) fn xai_tier(tier: &ServiceTier) -> Mapping {
     }
 }
 
-fn xai(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn xai(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -886,7 +928,9 @@ fn xai(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            xai_reasoning(model, reasoning, |effort| send("reasoning_effort", effort))
+            xai_reasoning(facts, model, reasoning, |effort| {
+                send("reasoning_effort", effort)
+            })
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, xai_tier),
@@ -898,7 +942,7 @@ fn xai(model: &str, fields: OptionFields<'_>) -> OptionMap {
         }),
         top_p: Mapping::of(top_p, |top_p| send("top_p", top_p)),
         seed: Mapping::of(seed, |_| Mapping::unsupported("unverified for xai")),
-        stop: Mapping::of_stop(stop, |stop| match grok_reasons(model) {
+        stop: Mapping::of_stop(stop, |stop| match grok_reasons(facts, model) {
             true => Mapping::unsupported("a reasoning Grok model takes no stop sequences"),
             false => stop_list(stop, None, "stop"),
         }),
@@ -949,7 +993,7 @@ fn together(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn venice(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn venice(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -963,6 +1007,7 @@ fn venice(model: &str, fields: OptionFields<'_>) -> OptionMap {
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
             catalog_effort(
+                facts,
                 super::wire::VENICE.name,
                 model,
                 reasoning,
@@ -1168,7 +1213,7 @@ fn ollama(fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn cohere(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn cohere(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -1184,7 +1229,7 @@ fn cohere(model: &str, fields: OptionFields<'_>) -> OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Off => send("reasoning_effort", "none"),
             Reasoning::Effort(Effort::High)
-                if crate::providers::cohere::thinks(model) == Some(false) =>
+                if crate::providers::cohere::thinks(facts, model) == Some(false) =>
             {
                 Mapping::unsupported("the model does not think")
             }
@@ -1344,13 +1389,16 @@ pub(crate) fn responses_options(
     use super::responses_api::wire::ResponsesContract;
     use super::wire::{OPENAI, OPENROUTER};
     let model = request.model.as_deref().unwrap_or(&responses.model);
+    let facts = &responses.facts;
     let dialect = &responses.provider.dialect;
     match dialect.quirks.responses.contract {
         ResponsesContract::Codex => codex(fields),
-        ResponsesContract::Xai => xai_responses(model, fields),
-        ResponsesContract::OpenAi if dialect.name == OPENAI.name => openai_responses(model, fields),
+        ResponsesContract::Xai => xai_responses(facts, model, fields),
+        ResponsesContract::OpenAi if dialect.name == OPENAI.name => {
+            openai_responses(facts, model, fields)
+        }
         ResponsesContract::OpenAi if dialect.name == OPENROUTER.name => {
-            openrouter_responses(model, fields)
+            openrouter_responses(facts, model, fields)
         }
         ResponsesContract::OpenAi
             if dialect.name == crate::providers::copilot::wire::DIALECT.name =>
@@ -1370,7 +1418,7 @@ fn reasoning_object(effort: &str) -> Mapping {
     send("reasoning", json!({"effort": effort}))
 }
 
-fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn openai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -1381,26 +1429,31 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
         seed,
         stop,
     } = fields;
-    let spec = openai_spec(model);
+    let spec = openai_spec(facts, model);
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| match reasoning {
             Reasoning::Budget { .. } => {
                 Mapping::unsupported("Responses takes an effort level, not a budget")
             }
-            Reasoning::Off if reasons(model) == Some(false) => {
+            Reasoning::Off if reasons(facts, model) == Some(false) => {
                 Mapping::Omit("the model does not reason")
             }
-            _ if reasons(model) == Some(false) => Mapping::unsupported("the model does not reason"),
+            _ if reasons(facts, model) == Some(false) => {
+                Mapping::unsupported("the model does not reason")
+            }
             Reasoning::Off if spec.is_none() && !named_responses_can_disable(model) => {
                 Mapping::unsupported("this model cannot turn reasoning off")
             }
-            Reasoning::Off => off_refusal(spec, model).unwrap_or_else(|| reasoning_object("none")),
+            Reasoning::Off => {
+                off_refusal(facts, spec, model).unwrap_or_else(|| reasoning_object("none"))
+            }
             Reasoning::Effort(effort) => {
                 effort_refusal(spec, effort).unwrap_or_else(|| reasoning_object(effort.as_str()))
             }
         }),
         cache: Mapping::of(cache, |cache| {
             openai_cache(
+                facts,
                 model,
                 cache,
                 send("prompt_cache_options", json!({"ttl": "30m"})),
@@ -1413,12 +1466,12 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
             ServiceTier::Priority => send("service_tier", "priority"),
         }),
         verbosity: Mapping::of(verbosity, |verbosity| {
-            openai_verbosity(model, verbosity, text_verbosity)
+            openai_verbosity(facts, model, verbosity, text_verbosity)
         }),
         parallel_tool_calls: Mapping::of(parallel_tool_calls, |parallel| {
             send("parallel_tool_calls", parallel)
         }),
-        top_p: Mapping::of(top_p, |top_p| openai_top_p(model, top_p, reasoning)),
+        top_p: Mapping::of(top_p, |top_p| openai_top_p(facts, model, top_p, reasoning)),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Responses has no seed parameter")
         }),
@@ -1428,7 +1481,7 @@ fn openai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn xai_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -1442,7 +1495,7 @@ fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     const UNSUPPORTED: &str = "xAI's Responses API does not support it";
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            xai_reasoning(model, reasoning, reasoning_object)
+            xai_reasoning(facts, model, reasoning, reasoning_object)
         }),
         cache: Mapping::of(cache, automatic_cache),
         service_tier: Mapping::of(service_tier, xai_tier),
@@ -1456,7 +1509,7 @@ fn xai_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     }
 }
 
-fn openrouter_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
+fn openrouter_responses(facts: &ModelFacts, model: &str, fields: OptionFields<'_>) -> OptionMap {
     let OptionFields {
         reasoning,
         cache,
@@ -1469,10 +1522,12 @@ fn openrouter_responses(model: &str, fields: OptionFields<'_>) -> OptionMap {
     } = fields;
     OptionMap {
         reasoning: Mapping::of(reasoning, |reasoning| {
-            openrouter_reasoning(model, reasoning)
+            openrouter_reasoning(facts, model, reasoning)
         }),
         cache: Mapping::of(cache, |cache| match cache {
-            CacheRetention::None if model.starts_with("openai/") && caches_by_options(model) => {
+            CacheRetention::None
+                if model.starts_with("openai/") && caches_by_options(facts, model) =>
+            {
                 send("prompt_cache_options", json!({"mode": "explicit"}))
             }
             cache => openrouter_cache(model, cache),

@@ -29,9 +29,17 @@ fn claude_reasoning(
     reasoning: &Reasoning,
     max_tokens: Option<u64>,
 ) -> Mapping {
+    // A model the catalog says does not reason is answered by the shared
+    // rule: nothing to turn off, and nothing else to take.
+    if let Some(spec) = spec.filter(|spec| !spec.reasoning.supported()) {
+        return match spec.reasoning.refusal(reasoning) {
+            Some(reason) => Mapping::unsupported(reason),
+            None => Mapping::Omit("the model does not reason"),
+        };
+    }
     match reasoning {
         Reasoning::Off => match spec {
-            Some(spec) if !spec.reasoning.can_disable => {
+            Some(spec) if spec.reasoning.can_disable() == Some(false) => {
                 Mapping::unsupported("thinking cannot be disabled on this model")
             }
             Some(spec) if !spec.compat.adaptive_thinking => {
@@ -47,10 +55,10 @@ fn claude_reasoning(
             }
         },
         Reasoning::Effort(effort @ (Effort::Low | Effort::Medium | Effort::High)) => match spec {
-            Some(spec) if !spec.reasoning.levels.is_empty() && !spec.compat.adaptive_thinking => {
+            Some(spec) if takes_effort(spec) && !spec.compat.adaptive_thinking => {
                 model_fields(json!({"output_config": {"effort": effort.as_str()}}))
             }
-            Some(spec) if !spec.reasoning.levels.is_empty() => model_fields(json!({
+            Some(spec) if takes_effort(spec) => model_fields(json!({
                 "thinking": {"type": "adaptive"},
                 "output_config": {"effort": effort.as_str()},
             })),
@@ -64,7 +72,10 @@ fn claude_reasoning(
             effort.as_str()
         )),
         Reasoning::Budget { tokens } => match spec {
-            Some(spec) if spec.reasoning.budget.is_none() => {
+            // Known levels with no budget: the catalog says it takes none.
+            Some(spec)
+                if spec.reasoning.levels().is_some() && spec.reasoning.budget().is_none() =>
+            {
                 Mapping::unsupported("this model takes an effort level, not a thinking budget")
             }
             _ if *tokens < 1024 => {
@@ -79,6 +90,14 @@ fn claude_reasoning(
         },
         _ => Mapping::unsupported(NO_FORM),
     }
+}
+
+/// Whether the model `spec` describes lists effort levels. A model whose
+/// levels the catalog does not know is answered as one it does not list.
+fn takes_effort(spec: &ModelSpec) -> bool {
+    spec.reasoning
+        .levels()
+        .is_some_and(|levels| !levels.is_empty())
 }
 
 /// The answer for a setting a later rig adds that this crate has no form
@@ -112,6 +131,7 @@ fn nova_reasoning(request: &CompletionRequest, reasoning: &Reasoning) -> Mapping
 
 /// How Converse answers `fields` for `request` to `model`, of `family`.
 pub(crate) fn converse(
+    wire: &crate::completion::Converse,
     family: Family,
     model: &str,
     request: &CompletionRequest,
@@ -128,7 +148,7 @@ pub(crate) fn converse(
         stop,
     } = fields;
     let spec = (family == Family::Claude)
-        .then(|| crate::completion::spec(model))
+        .then(|| wire.spec(model))
         .flatten();
     let always_reasons = model.contains("deepseek.r1");
     let caches = family == Family::Claude || family == Family::Nova;

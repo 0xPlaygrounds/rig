@@ -203,3 +203,39 @@ fn a_message_checkpoint_after_reasoning_is_reported_not_skipped() {
         );
     }
 }
+
+/// A Claude model the catalog says does not reason (an override can say
+/// so) is answered by the shared rule: `Off` sends no thinking, and an
+/// effort or budget is refused because the model does not reason.
+#[test]
+fn a_claude_model_that_does_not_reason_is_answered_by_the_shared_rule() {
+    use rig_core::catalog::{ModelFacts, ModelSpec, ReasoningSupport};
+    use rig_core::providers::registry::ProviderId;
+
+    let bedrock = ProviderId::catalog("aws_bedrock").expect("a known vendor");
+    let spec =
+        ModelSpec::new(bedrock, ANTHROPIC_CLAUDE_HAIKU_4_5).with_reasoning(ReasoningSupport::None);
+    let wire = Converse::new(ANTHROPIC_CLAUDE_HAIKU_4_5).with_facts(ModelFacts::new(spec));
+    let send = |reasoning: Reasoning| -> Result<Value, ProviderError> {
+        let request = Completion::prepare(
+            with(GenerationOptions::default().reasoning(reasoning)),
+            &wire.describe(),
+        )?;
+        Ok(serde_json::to_value(
+            &wire.encode(request, Mode::Unary)?.body,
+        )?)
+    };
+
+    let off = send(Reasoning::Off).expect("off is taken");
+    assert_eq!(off.get("additionalModelRequestFields"), None, "{off}");
+
+    for reasoning in [Reasoning::Budget { tokens: 1024 }, Effort::High.into()] {
+        match send(reasoning) {
+            Err(ProviderError::UnsupportedOption(option)) => {
+                assert_eq!(option.option, "reasoning");
+                assert_eq!(option.reason, "the model does not reason", "{reasoning:?}");
+            }
+            other => panic!("expected a refusal of {reasoning:?}, got {other:?}"),
+        }
+    }
+}

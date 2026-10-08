@@ -30,7 +30,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "o4-mini-2025-04-16",
     ] {
         assert!(
-            reasons(model) == Some(true),
+            reasons(crate::catalog::ModelFacts::builtin(), model) == Some(true),
             "{model} rejects `max_tokens` and must get the modern spelling"
         );
     }
@@ -55,7 +55,7 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
         "",
     ] {
         assert!(
-            reasons(model) != Some(true),
+            reasons(crate::catalog::ModelFacts::builtin(), model) != Some(true),
             "{model:?} still takes `max_tokens`; changing its request would be a regression"
         );
     }

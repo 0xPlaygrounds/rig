@@ -64,6 +64,56 @@ impl<W, T> Model<W, T> {
     }
 }
 
+impl<W, T> Model<W, T>
+where
+    W: Wire<Op = crate::operation::Completion>,
+    T: Transport<W>,
+{
+    /// Every option of `request` this model would refuse, found by preparing
+    /// and encoding it as [`Self::call`] does, with nothing sent. It lists
+    /// the refusals of the model's catalog entry
+    /// ([`ModelSpec::refusals`](crate::catalog::ModelSpec::refusals)) and
+    /// those of the wire and its route, all of them rather than the first.
+    /// The request's [`OnUnsupported`](crate::completion::OnUnsupported)
+    /// policy does not change what is listed, but a request whose
+    /// [`GenerationOptions`](crate::completion::GenerationOptions) are
+    /// default is not checked against the catalog, as when it is sent.
+    ///
+    /// # Errors
+    ///
+    /// [`CheckError::Unsupported`](crate::completion::CheckError::Unsupported)
+    /// with every refusal, or
+    /// [`CheckError::Invalid`](crate::completion::CheckError::Invalid) when the request cannot be built for another
+    /// reason.
+    pub fn check(
+        &self,
+        request: &crate::completion::CompletionRequest,
+    ) -> Result<(), crate::completion::CheckError> {
+        check_with(request, |request| self.dry_run(request))
+    }
+}
+
+/// The answer of `run`, a dry run of `request`, for [`Model::check`]. The
+/// run goes on past each refusal as under
+/// [`OnUnsupported::Ignore`](crate::completion::OnUnsupported::Ignore), so
+/// it meets every one; a request whose options are default stays default,
+/// so it is not checked against the catalog, as when it is sent.
+pub(crate) fn check_with(
+    request: &crate::completion::CompletionRequest,
+    run: impl FnOnce(crate::completion::CompletionRequest) -> Result<(), ProviderError>,
+) -> Result<(), crate::completion::CheckError> {
+    use crate::completion::{CheckError, OnUnsupported};
+    let mut request = request.clone();
+    if !request.options.is_default() {
+        request.options.on_unsupported = Some(OnUnsupported::Ignore);
+    }
+    match crate::completion::options::collect_refusals(|| run(request)) {
+        (Err(error), _) => Err(CheckError::Invalid(error)),
+        (Ok(()), refusals) if refusals.is_empty() => Ok(()),
+        (Ok(()), refusals) => Err(CheckError::Unsupported(refusals)),
+    }
+}
+
 /// Sends a wire's payloads and delivers its replies' frames.
 ///
 /// HTTP clients ([`HttpClientExt`](crate::http_client::HttpClientExt)) are
@@ -275,6 +325,15 @@ where
             .map_err(|error| (error, String::new()))?
             .finish_routed()
             .await
+    }
+
+    /// `request` prepared and encoded as [`Self::call`] would, with nothing
+    /// sent.
+    pub(crate) fn dry_run(&self, request: Request<W>) -> Result<(), ProviderError> {
+        let describe = self.wire.describe();
+        let request = <W::Op as Operation>::prepare(request, &describe)?;
+        self.wire.encode(request, Mode::Unary)?;
+        Ok(())
     }
 
     /// The one entry to the driver: the operation's fold for the reply,

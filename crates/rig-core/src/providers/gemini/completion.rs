@@ -74,6 +74,9 @@ pub struct GenerateContent {
     /// Which thought signatures requests re-send. See [`ThoughtReplay`].
     #[serde(default)]
     pub thought_replay: ThoughtReplay,
+    /// The model facts the encoder reads and replies are priced by.
+    #[serde(skip)]
+    pub facts: crate::catalog::ModelFacts,
 }
 
 /// Which earlier thought signatures a request re-sends.
@@ -109,7 +112,15 @@ impl GenerateContent {
             model: model.into(),
             cached_content: None,
             thought_replay: ThoughtReplay::All,
+            facts: crate::catalog::ModelFacts::default(),
         }
+    }
+
+    /// The same wire, encoding with `facts` and pricing its replies by
+    /// them.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// Re-send thought signatures as `replay` says. See [`ThoughtReplay`].
@@ -167,6 +178,7 @@ impl Wire for GenerateContent {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .telemetry(|_| GenAiOperation::GenerateContent)
             .replay(self)
     }
@@ -216,6 +228,10 @@ impl Wire for GenerateContent {
 }
 
 impl ReplayTarget for GenerateContent {
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        Some(&self.facts)
+    }
+
     fn api(&self) -> crate::message::Api {
         crate::message::Api::from_static("gemini.generate_content")
     }
@@ -266,7 +282,7 @@ impl ReplayTarget for GenerateContent {
         fields: crate::completion::options::OptionFields<'_>,
     ) -> crate::completion::options::OptionMap {
         let model = request.model.as_deref().unwrap_or(&self.model);
-        generate_content_options(model, Route::Rest, fields)
+        generate_content_options(&self.facts, model, Route::Rest, fields)
     }
 }
 

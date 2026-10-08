@@ -52,6 +52,9 @@ pub struct Chat {
     pub provider: OllamaConfig,
     /// The model to address, e.g. [`QWEN3`](super::QWEN3).
     pub model: String,
+    /// The model facts the wire describes its model by.
+    #[serde(skip)]
+    pub facts: crate::catalog::ModelFacts,
 }
 
 impl Chat {
@@ -60,7 +63,14 @@ impl Chat {
         Self {
             provider,
             model: model.into(),
+            facts: crate::catalog::ModelFacts::default(),
         }
+    }
+
+    /// The same wire, describing its model by `facts`.
+    pub fn with_facts(mut self, facts: crate::catalog::ModelFacts) -> Self {
+        self.facts = facts;
+        self
     }
 
     /// The `/api/chat` body `request` sends in `mode`: the wire's encoding,
@@ -346,6 +356,7 @@ impl Wire for Chat {
     fn describe(&self) -> Descriptor<'_> {
         Descriptor::new(PROVIDER_NAME)
             .model(self.model.as_str())
+            .facts(&self.facts)
             .capabilities(Capabilities::completion(
                 ProviderCapabilities::default().with_native_output_tool_composition(true),
             ))
@@ -432,6 +443,10 @@ impl ReplayTarget for Chat {
                 Mapping::Send(json!({"options": {"stop": stop}}))
             }),
         }
+    }
+
+    fn facts(&self) -> Option<&crate::catalog::ModelFacts> {
+        Some(&self.facts)
     }
 
     fn api(&self) -> crate::message::Api {
