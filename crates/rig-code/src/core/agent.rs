@@ -246,6 +246,15 @@ pub struct Compact {
     pub focus: String,
 }
 
+/// Ask the views to show the agent and send what is typed to it, such as
+/// a subagent picked with `/agents`. The core does nothing with it.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Focus {
+    /// The agent.
+    pub entity: Entity,
+}
+
 /// Stop the agent's running turn.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
@@ -334,10 +343,13 @@ pub enum PickKind {
     /// An earlier session to resume; the view answers with the host's
     /// `SwitchSession`.
     Session,
+    /// An agent to show, from [`roster`](crate::core::subagents::roster);
+    /// the view answers with [`Focus`].
+    Agent,
 }
 
 /// Asks a view to open a picker for the agent. The view answers with
-/// [`SetModel`] or [`SetEffort`].
+/// what the [`PickKind`] names.
 #[derive(Message, Clone, Copy, Debug)]
 pub struct PickRequest {
     /// The agent.

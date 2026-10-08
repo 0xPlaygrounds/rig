@@ -82,6 +82,7 @@ impl Plugin for TuiPlugin {
                         )),
                 ),
             )
-            .add_systems(Last, terminal::keep_screen_on_reload);
+            .add_systems(Last, terminal::keep_screen_on_reload)
+            .add_observer(view::on_focus);
     }
 }

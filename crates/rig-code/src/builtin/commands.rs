@@ -1,15 +1,16 @@
 //! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
-//! `/compact`, `/help` and `/quit`.
+//! `/compact`, `/agents`, `/help` and `/quit`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use crate::core::agent::{
-    ActiveTurn, Compact, Connection, Effort, Notice, PickKind, PickRequest, Retry, SetEffort,
-    SetModel,
+    ActiveTurn, Compact, Connection, Effort, Focus, Notice, PickKind, PickRequest, Retry,
+    SetEffort, SetModel,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
+use crate::core::subagents::{self, RosterQuery};
 use crate::core::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
@@ -42,6 +43,11 @@ impl Plugin for BuiltinCommandsPlugin {
             "compact",
             "Summarize the older conversation to free context; /compact <focus> says what to keep",
             compact,
+        )
+        .add_command(
+            "agents",
+            "List the agents and subagents and show one; /agents <number or title> shows it",
+            agents,
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Save and quit", quit);
@@ -154,6 +160,55 @@ fn compact(In(args): In<CommandArgs>, mut commands: Commands) {
     });
 }
 
+fn agents(
+    In(args): In<CommandArgs>,
+    roster: RosterQuery,
+    mut commands: Commands,
+    mut picks: MessageWriter<PickRequest>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if args.args.is_empty() {
+        picks.write(PickRequest {
+            agent: args.agent,
+            kind: PickKind::Agent,
+        });
+        return;
+    }
+    let entries = subagents::roster(&roster);
+    let wanted = args.args.to_lowercase();
+    let chosen = args
+        .args
+        .parse::<usize>()
+        .ok()
+        .and_then(|number| number.checked_sub(1))
+        .and_then(|index| entries.get(index))
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|entry| entry.label.to_lowercase().contains(&wanted))
+        });
+    match chosen {
+        Some(entry) => commands.trigger(Focus {
+            entity: entry.agent,
+        }),
+        None => {
+            let listed: Vec<String> = entries
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| format!("{}. {}", index + 1, entry.label))
+                .collect();
+            notices.write(Notice::error(
+                args.agent,
+                format!(
+                    "No agent matches `{}`. The agents:\n{}",
+                    args.args,
+                    listed.join("\n")
+                ),
+            ));
+        }
+    }
+}
+
 fn help(
     In(args): In<CommandArgs>,
     commands: Query<&SlashCommand>,
@@ -169,7 +224,8 @@ fn help(
          Shift+Enter or Ctrl+J adds a line, Up and Down browse earlier prompts, Tab completes \
          /commands and @paths, and Ctrl+G edits the input in $EDITOR. While a turn runs, \
          Enter steers it and Tab queues a follow-up. @path attaches an image file, and \
-         Ctrl+V pastes the clipboard's image."
+         Ctrl+V pastes the clipboard's image. /agents shows a subagent's work, and what is \
+         typed then goes to it."
             .to_owned(),
     );
     notices.write(Notice::info(args.agent, lines.join("\n")));

@@ -1,7 +1,8 @@
 //! rig-code: a terminal coding agent built as a Bevy app on rig-core.
 //!
 //! An agent is an entity whose components hold its conversation, model,
-//! reasoning setting, system prompt and tool access. A running turn is an
+//! reasoning setting, system prompt and tool access; a subagent that the
+//! `task` tool starts is one more, related to the agent that started it. A running turn is an
 //! entity of its agent, and the turn's model calls and tool calls are
 //! entities of the turn that run on Bevy's task pools; every one goes
 //! through the one recorded dispatch path. Tools and
@@ -58,7 +59,7 @@ pub mod prelude {
     pub use bevy_reflect::prelude::*;
 
     pub use crate::core::agent::{
-        ActiveTurn, Agent, AgentId, Compact, Connection, Conversation, Effort, Interrupt,
+        ActiveTurn, Agent, AgentId, Compact, Connection, Conversation, Effort, Focus, Interrupt,
         ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Submit, SystemPrompt,
         ToolAccess, TurnFinished, TurnOf,
     };
@@ -70,6 +71,7 @@ pub mod prelude {
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
     pub use crate::core::save::ReflectSaved;
+    pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::sessions::{SessionName, SwitchSession};

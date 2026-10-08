@@ -17,7 +17,7 @@ use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::external::EditRequested;
 use super::view::{Overlay, PickValue, Picker, TuiView};
-use crate::core::agent::{ActiveTurn, Effort, Interrupt, SetEffort, SetModel, Submit};
+use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetModel, Submit};
 use crate::core::calls::Wake;
 use crate::core::commands::SlashCommand;
 use crate::core::inbox::FollowUp;
@@ -376,6 +376,7 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
                 Some(PickValue::Session(session)) => commands.trigger(SwitchSession {
                     session: Some(session),
                 }),
+                Some(PickValue::Agent(entity)) => commands.trigger(Focus { entity }),
                 None => return false,
             }
             return true;

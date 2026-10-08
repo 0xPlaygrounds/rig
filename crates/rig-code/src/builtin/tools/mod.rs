@@ -1,5 +1,6 @@
-//! The built-in tools: read, edit, write, shell and search. Each runs its
-//! blocking work on a thread of its own, so no task pool thread blocks.
+//! The built-in tools: read, edit, write, shell and search, and `task`,
+//! which starts a subagent. Each runs its blocking work on a thread of its
+//! own, so no task pool thread blocks.
 
 mod edit;
 mod read;
@@ -15,6 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bevy_app::prelude::*;
 use rig_core::tool::ToolExecutionError;
 
+use crate::core::subagents;
 use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
 
 pub use edit::Edit;
@@ -33,7 +35,8 @@ const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 /// Registers the built-in tools, each with the rules on when to pick it and
 /// what its calls touch, with [`AppToolsExt::add_tool_with`]: `read` and
 /// `search` run beside each other, `edit` and `write` beside calls on other
-/// files, and `shell` alone.
+/// files, and `shell` alone; `task` subagents run beside everything but
+/// `shell`.
 #[derive(Default)]
 pub struct BuiltinToolsPlugin;
 
@@ -91,6 +94,7 @@ impl Plugin for BuiltinToolsPlugin {
                 footprint: reads,
             },
         );
+        subagents::add_task_tool(app);
     }
 }
 

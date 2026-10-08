@@ -27,6 +27,7 @@ use crate::core::agent::{
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::save::{SessionPaths, save_session};
+use crate::core::subagents::Delegated;
 use crate::core::usage::{self, Spending};
 
 /// Most characters of a session's title.
@@ -220,13 +221,24 @@ fn record_directory(paths: Option<Res<SessionPaths>>) {
 fn write_summary(
     paths: Option<Res<SessionPaths>>,
     name: Res<SessionName>,
-    agents: Query<(&AgentId, &Conversation, &Spending, Option<&ModelChoice>), With<Agent>>,
+    agents: Query<
+        (
+            &AgentId,
+            &Conversation,
+            &Spending,
+            Option<&ModelChoice>,
+            Has<Delegated>,
+        ),
+        With<Agent>,
+    >,
 ) {
     let Some(paths) = paths else {
         return;
     };
+    // The agents the user started come first: the title and model are
+    // theirs, not a subagent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| a.0.0.cmp(&b.0.0));
+    agents.sort_by(|a, b| (a.4, &a.0.0).cmp(&(b.4, &b.0.0)));
     let summary = Summary {
         name: name.0.clone(),
         title: agents
@@ -234,14 +246,14 @@ fn write_summary(
             .find_map(|(_, conversation, ..)| first_typed(&conversation.0))
             .map(|text| title(&text))
             .unwrap_or_default(),
-        cost: agents.iter().map(|(_, _, spent, _)| spent.cost).sum(),
+        cost: agents.iter().map(|(_, _, spent, ..)| spent.cost).sum(),
         messages: agents
             .iter()
             .map(|(_, conversation, ..)| conversation.0.len())
             .sum(),
         model: agents
             .first()
-            .and_then(|(.., model)| model.map(|model| model.0.clone())),
+            .and_then(|(_, _, _, model, _)| model.map(|model| model.0.clone())),
     };
     let written = serde_json::to_vec_pretty(&summary)
         .map_err(|failure| failure.to_string())

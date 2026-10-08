@@ -217,6 +217,16 @@ wait under the transcript; Esc stops the turn and puts them back in the input.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
+The model can hand work to subagents with the `task` tool: each is a new
+agent in the same process, with its own conversation and, if the call asks,
+another model, reasoning setting or a subset of the tools. Several run side
+by side, and each one's final message is the call's result. Esc stops the
+turn and its subagents with it. `/agents` lists every agent with its model,
+state and cost, and shows the one picked: its transcript, and what you type
+then goes to it. A subagent can start subagents of its own, one level deep.
+In the effect log, a subagent's model calls name the `task` call as their
+parent.
+
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,

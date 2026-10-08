@@ -16,7 +16,7 @@ use super::transcript::{Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::core::agent::{
-    ActiveTurn, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
+    ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
     ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
@@ -24,6 +24,7 @@ use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
+use crate::core::subagents::{Assignee, Delegated};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 use crate::host::sessions::SessionName;
@@ -43,6 +44,8 @@ enum Activity {
     Idle,
     Thinking,
     RunningTools,
+    /// Waiting for this many subagents' answers.
+    Delegating(usize),
     /// Summarizing the older conversation.
     Compacting,
     /// Waiting `seconds` before retry `attempt` of a failed model call.
@@ -103,9 +106,13 @@ pub(crate) fn render(
     changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
-    tool_calls: Query<(), With<ToolCallRun>>,
-    summaries: Query<(), With<Summarizing>>,
+    (tool_calls, summaries, assigned): (
+        Query<(), With<ToolCallRun>>,
+        Query<(), With<Summarizing>>,
+        Query<(), With<Assignee>>,
+    ),
     waits: Query<&Backoff>,
+    everyone: Query<(Entity, Has<ActiveTurn>, Option<&Delegated>), With<Agent>>,
     slash: Query<&SlashCommand>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
@@ -133,6 +140,11 @@ pub(crate) fn render(
         }
     } else if calls.is_some_and(|calls| calls.iter().any(|call| summaries.contains(call))) {
         Activity::Compacting
+    } else if let Some(waiting) = calls
+        .map(|calls| calls.iter().filter(|call| assigned.contains(*call)).count())
+        .filter(|waiting| *waiting > 0)
+    {
+        Activity::Delegating(waiting)
     } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
         Activity::RunningTools
     } else {
@@ -228,8 +240,25 @@ pub(crate) fn render(
             shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
             model_hint,
         );
+        // Which agent this is, when it is a subagent, and how many others
+        // are at work.
+        let focused = view.agent;
+        if let Some(task) = focused
+            .and_then(|agent| everyone.get(agent).ok())
+            .and_then(|(_, _, delegated)| delegated)
+        {
+            line.spans
+                .insert(0, Span::from(format!("⤷ {}  ", task.task)).magenta());
+        }
         if let Some(name) = &name.0 {
             line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
+        }
+        let working = everyone
+            .iter()
+            .filter(|(agent, busy, _)| *busy && Some(*agent) != focused)
+            .count();
+        if working > 0 {
+            line.push_span(Span::from(format!("  +{working} more working (/agents)")).magenta());
         }
         if let Some((_, spent)) = turn
             && let Some(cost) = spent.0.cost_label()
@@ -335,6 +364,13 @@ fn status_line(
         Activity::Idle => Span::from("idle").green(),
         Activity::Thinking => Span::from("thinking… (Esc stops)").yellow(),
         Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+        Activity::Delegating(1) => {
+            Span::from("waiting on a subagent… (Esc stops, /agents shows it)").yellow()
+        }
+        Activity::Delegating(count) => Span::from(format!(
+            "waiting on {count} subagents… (Esc stops, /agents shows them)"
+        ))
+        .yellow(),
         Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
         Activity::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"

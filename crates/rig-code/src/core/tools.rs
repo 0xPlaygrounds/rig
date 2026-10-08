@@ -52,6 +52,10 @@ pub enum Footprint {
         /// The argument holding the path.
         arg: &'static str,
     },
+    /// Nothing the reply's other calls touch, as far as ordering goes: a
+    /// call waits only for earlier [`Exclusive`](Self::Exclusive) calls.
+    /// Right for `task`, whose subagents run side by side.
+    Independent,
 }
 
 impl Footprint {
@@ -60,6 +64,7 @@ impl Footprint {
         let path = |arg: &str| args.get(arg).and_then(serde_json::Value::as_str);
         match self {
             Self::Exclusive => Touch::All,
+            Self::Independent => Touch::Nothing,
             Self::Reads { arg } => Touch::Read(lexical(path(arg).unwrap_or("."))),
             Self::Writes { arg } => match path(arg) {
                 Some(path) => Touch::Write(lexical(path)),
@@ -80,6 +85,8 @@ pub(crate) enum Touch {
     Read(PathBuf),
     /// Changes this path.
     Write(PathBuf),
+    /// Nothing another call waits for, unless that call touches anything.
+    Nothing,
 }
 
 impl Touch {
@@ -92,7 +99,7 @@ impl Touch {
         let overlap = |a: &Path, b: &Path| a.starts_with(b) || b.starts_with(a);
         match (self, earlier) {
             (Touch::All, _) | (_, Touch::All) => true,
-            (Touch::Read(_), Touch::Read(_)) => false,
+            (Touch::Nothing, _) | (_, Touch::Nothing) | (Touch::Read(_), Touch::Read(_)) => false,
             (Touch::Read(a) | Touch::Write(a), Touch::Read(b) | Touch::Write(b)) => overlap(a, b),
         }
     }
@@ -165,38 +172,54 @@ pub trait AppToolsExt {
 
 impl AppToolsExt for App {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
-        let name = match ToolName::new(T::NAME) {
-            Ok(name) => name,
-            Err(error) => {
-                warn!("tool not registered: {error}");
-                return self;
-            }
-        };
-        let world = self.world_mut();
-        if world
-            .query::<&ToolDef>()
-            .iter(world)
-            .any(|def| def.0.name == name)
-        {
-            warn!("tool not registered: a tool named `{name}` already exists");
-            return self;
-        }
-        let definition = ToolDefinition::new(name, tool.description(), tool.parameters());
-        world.spawn((
-            Name::new(format!("tool:{}", T::NAME)),
-            ToolDef(definition),
-            ToolHandler(ErasedHandler::new(ToolAdapter::new(tool))),
-            ToolRules(
-                options
-                    .rules
-                    .iter()
-                    .map(|rule| (*rule).to_owned())
-                    .collect(),
-            ),
-            options.footprint,
-        ));
+        let (description, parameters) = (tool.description(), tool.parameters());
+        let handler = ErasedHandler::new(ToolAdapter::new(tool));
+        register_tool(self, T::NAME, description, parameters, handler, options);
         self
     }
+}
+
+/// Spawns the entity of the tool `name`, served by `handler`, and returns
+/// it; `None`, with a warning, when the name is invalid or taken.
+pub(crate) fn register_tool(
+    app: &mut App,
+    name: &str,
+    description: String,
+    parameters: serde_json::Value,
+    handler: ErasedHandler,
+    options: ToolOptions<'_>,
+) -> Option<Entity> {
+    let tool_name = match ToolName::new(name) {
+        Ok(tool_name) => tool_name,
+        Err(error) => {
+            warn!("tool not registered: {error}");
+            return None;
+        }
+    };
+    let world = app.world_mut();
+    if world
+        .query::<&ToolDef>()
+        .iter(world)
+        .any(|def| def.0.name == tool_name)
+    {
+        warn!("tool not registered: a tool named `{name}` already exists");
+        return None;
+    }
+    let definition = ToolDefinition::new(tool_name, description, parameters);
+    let entity = world.spawn((
+        Name::new(format!("tool:{name}")),
+        ToolDef(definition),
+        ToolHandler(handler),
+        ToolRules(
+            options
+                .rules
+                .iter()
+                .map(|rule| (*rule).to_owned())
+                .collect(),
+        ),
+        options.footprint,
+    ));
+    Some(entity.id())
 }
 
 /// Answers a call to a tool that is not registered, or that the agent may
@@ -231,14 +254,14 @@ impl Serve for Unavailable {
 /// `parent` (the model call that asked for it) as its parent; with no
 /// handler, the call is answered as unavailable on that same path. A
 /// missing tool, bad arguments, a failure or a panic all become an error
-/// result for the model.
+/// result for the model. Returns the call's effect id and its work.
 pub(crate) fn run_tool_call(
     effects: &Effects,
     scope: &str,
     parent: EffectId,
     handler: Option<ErasedHandler>,
     call: ToolCall,
-) -> impl Future<Output = ToolResult> + Send + 'static {
+) -> (EffectId, impl Future<Output = ToolResult> + Send + 'static) {
     let name = call.function.name.as_str().to_owned();
     let handler = handler.unwrap_or_else(|| ErasedHandler::new(Unavailable(name.clone())));
     let args =
@@ -252,7 +275,7 @@ pub(crate) fn run_tool_call(
         EffectKind::ToolCall { name, args },
     );
     let outcome = effects.caught(id, async { reply.await.into_outcome().await });
-    async move {
+    let work = async move {
         match outcome.await {
             Ok(Outcome::ToolResult { result }) => {
                 let is_error = !result.is_success();
@@ -269,7 +292,8 @@ pub(crate) fn run_tool_call(
             ),
             Err(report) => failed(&call, report.to_string()),
         }
-    }
+    };
+    (id, work)
 }
 
 /// An error result for `call` saying `why`.

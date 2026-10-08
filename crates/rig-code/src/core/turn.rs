@@ -14,7 +14,7 @@ use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemId;
+use bevy_ecs::system::{SystemId, SystemParam};
 use bevy_log::info_span;
 use bevy_log::tracing::Instrument;
 use bevy_reflect::prelude::*;
@@ -49,6 +49,7 @@ use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
+use super::subagents::{self, Assignment, Delegates, SubagentOf};
 use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
 
@@ -424,7 +425,7 @@ pub(crate) fn on_call_model(
     call: On<CallModel>,
     mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
-        (&AgentId, &mut Conversation, &mut Inbox),
+        (&AgentId, &mut Conversation, &mut Inbox, Option<&Assignment>),
         &Compacted,
         &mut Spending,
         Option<&Connection>,
@@ -444,7 +445,7 @@ pub(crate) fn on_call_model(
         return;
     };
     let Ok((
-        (id, mut conversation, mut inbox),
+        (id, mut conversation, mut inbox, assignment),
         compacted,
         mut spent,
         connection,
@@ -502,9 +503,10 @@ pub(crate) fn on_call_model(
             return;
         }
     };
+    // A subagent's calls are recorded under the `task` call it works on.
     let (effect, reply) = effects.dispatch(
         &id.0,
-        None,
+        assignment.and_then(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,
@@ -661,15 +663,12 @@ pub(crate) fn on_model_done(
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(
-        &AgentId,
-        &ToolAccess,
         (&mut Conversation, &mut Inbox),
         &Compacted,
         Option<&Connection>,
         &mut Spending,
     )>,
-    tools: Tools,
-    effects: Res<Effects>,
+    starter: ToolStarter,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -682,7 +681,7 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((id, access, (mut conversation, mut inbox), compacted, connection, mut spent)) =
+    let Ok(((mut conversation, mut inbox), compacted, connection, mut spent)) =
         agents.get_mut(agent)
     else {
         return;
@@ -753,24 +752,22 @@ pub(crate) fn on_model_done(
     // touches.
     let mut earlier: Vec<Touch> = Vec::with_capacity(tool_calls.len());
     for call in tool_calls {
-        let footprint = tools
-            .iter()
-            .find(|(def, ..)| def.0.name == call.function.name)
-            .map_or_else(Footprint::default, |(.., &footprint)| footprint);
         let run = ToolCallRun {
-            touch: footprint.of(&call.function.arguments),
+            touch: starter
+                .footprint(call.function.name.as_str())
+                .of(&call.function.arguments),
             call,
             parent: model_call.effect,
         };
         let ready = earlier.iter().all(|touch| !run.touch.waits_for(touch));
         earlier.push(run.touch.clone());
-        let mut entity = commands.spawn((tool_name(&run), CallOf(turn)));
+        let entity = commands.spawn((tool_name(&run), CallOf(turn))).id();
         if ready {
-            entity.insert(start_tool(&run, &id.0, access, &tools, &effects, &wake));
+            starter.start(&mut commands, entity, agent, &run);
         } else {
-            entity.insert(Queued);
+            commands.entity(entity).insert(Queued);
         }
-        entity.insert(run);
+        commands.entity(entity).insert(run);
     }
 }
 
@@ -940,11 +937,9 @@ pub(crate) fn on_tool_done(
     done: On<Add<Done<ToolResult>>>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,
-    mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation)>,
+    mut agents: Query<&mut Conversation>,
     runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>, Has<Queued>)>,
-    tools: Tools,
-    effects: Res<Effects>,
-    wake: Res<Wake>,
+    starter: ToolStarter,
     mut commands: Commands,
 ) {
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
@@ -953,7 +948,7 @@ pub(crate) fn on_tool_done(
     let Ok((&TurnOf(agent), calls)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, access, mut conversation)) = agents.get_mut(agent) else {
+    let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
     // The calls not finished yet, in call order, each holding back the
@@ -969,8 +964,8 @@ pub(crate) fn on_tool_done(
             continue;
         }
         if queued && unfinished.iter().all(|touch| !run.touch.waits_for(touch)) {
-            let running = start_tool(run, &id.0, access, &tools, &effects, &wake);
-            commands.entity(call).remove::<Queued>().insert(running);
+            commands.entity(call).remove::<Queued>();
+            starter.start(&mut commands, call, agent, run);
         }
         unfinished.push(&run.touch);
     }
@@ -982,28 +977,91 @@ pub(crate) fn on_tool_done(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// The registered tools, as [`start_tool`] looks them up.
-type Tools<'w, 's> = Query<'w, 's, (&'static ToolDef, &'static ToolHandler, &'static Footprint)>;
+/// What starting a tool call reads: the registered tools, the calling
+/// agent, and for a `task` call what its subagent starts from.
+#[derive(SystemParam)]
+pub(crate) struct ToolStarter<'w, 's> {
+    tools: Query<
+        'w,
+        's,
+        (
+            &'static ToolDef,
+            &'static ToolHandler,
+            &'static Footprint,
+            Has<Delegates>,
+        ),
+    >,
+    agents: Query<
+        'w,
+        's,
+        (
+            &'static AgentId,
+            &'static ToolAccess,
+            Option<&'static ModelChoice>,
+            &'static Effort,
+            &'static SystemPrompt,
+        ),
+    >,
+    lineage: Query<'w, 's, &'static SubagentOf>,
+    effects: Res<'w, Effects>,
+    wake: Res<'w, Wake>,
+}
 
-/// Starts `run` on the one dispatch path. A call to a tool that is not
-/// registered, or that the agent may not use, is dispatched and recorded
-/// like any other and answered with an error.
-fn start_tool(
-    run: &ToolCallRun,
-    scope: &str,
-    access: &ToolAccess,
-    tools: &Tools,
-    effects: &Effects,
-    wake: &Wake,
-) -> Running<ToolResult> {
-    let name = run.call.function.name.as_str();
-    let handler = tools
-        .iter()
-        .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name))
-        .map(|(_, handler, _)| handler.0.clone());
-    let work = run_tool_call(effects, scope, run.parent, handler, run.call.clone());
-    let span = info_span!("tool_call", agent = %scope, tool = name, parent = %run.parent);
-    Running::spawn(tool_pool(), wake, work.instrument(span))
+impl ToolStarter<'_, '_> {
+    /// What the calls of the tool `name` touch; a tool that is not
+    /// registered runs on its own.
+    fn footprint(&self, name: &str) -> Footprint {
+        self.tools
+            .iter()
+            .find(|(def, ..)| def.0.name.as_str() == name)
+            .map_or_else(Footprint::default, |(_, _, &footprint, _)| footprint)
+    }
+
+    /// Starts `run`, the call entity `call` of `agent`, on the one dispatch
+    /// path. A call to a tool that is not registered, or that the agent may
+    /// not use, is dispatched and recorded like any other and answered with
+    /// an error. A `task` call also spawns the subagent that answers it.
+    fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
+        let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
+            return;
+        };
+        let name = run.call.function.name.as_str();
+        let tool = self
+            .tools
+            .iter()
+            .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name));
+        let (handler, plan) = match tool {
+            Some((.., true)) => {
+                let parent = subagents::Parent {
+                    model,
+                    effort,
+                    prompt,
+                    depth: self.lineage.iter_ancestors::<SubagentOf>(agent).count(),
+                };
+                let mine: Vec<(&str, bool)> = self
+                    .tools
+                    .iter()
+                    .filter(|(def, ..)| access.allows(def.0.name.as_str()))
+                    .map(|(def, _, _, delegates)| (def.0.name.as_str(), delegates))
+                    .collect();
+                let (handler, plan) = subagents::plan(&run.call, &parent, &mine);
+                (Some(handler), plan)
+            }
+            Some((_, handler, ..)) => (Some(handler.0.clone()), None),
+            None => (None, None),
+        };
+        let (effect, work) =
+            run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
+        let span = info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);
+        commands.entity(call).insert(Running::spawn(
+            tool_pool(),
+            &self.wake,
+            work.instrument(span),
+        ));
+        if let Some(plan) = plan {
+            subagents::spawn(commands, plan, (agent, id), call, effect);
+        }
+    }
 }
 
 fn tool_name(run: &ToolCallRun) -> Name {
@@ -1061,7 +1119,13 @@ pub(crate) fn on_compact(
 pub(crate) fn on_summarize(
     summarize: On<Summarize>,
     turns: Query<&TurnOf>,
-    agents: Query<(&AgentId, &Conversation, &Compacted, Option<&Connection>)>,
+    agents: Query<(
+        &AgentId,
+        &Conversation,
+        &Compacted,
+        Option<&Connection>,
+        Option<&Assignment>,
+    )>,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -1071,7 +1135,7 @@ pub(crate) fn on_summarize(
     let Ok(&TurnOf(agent)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, conversation, compacted, connection)) = agents.get(agent) else {
+    let Ok((id, conversation, compacted, connection, assignment)) = agents.get(agent) else {
         return;
     };
     let reason = &summarize.reason;
@@ -1100,7 +1164,7 @@ pub(crate) fn on_summarize(
     };
     let (effect, reply) = effects.dispatch(
         &id.0,
-        None,
+        assignment.and_then(|assignment| assignment.effect),
         handler,
         EffectKind::Completion {
             request,

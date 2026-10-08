@@ -8,11 +8,12 @@ use rig_core::completion::Reasoning;
 use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
-    Agent, AgentId, Connection, Conversation, Notice, NoticeLevel, PickKind, PickRequest,
+    Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
 };
 use crate::core::inbox::Recalled;
 use crate::core::models;
 use crate::core::save::SessionPaths;
+use crate::core::subagents::{self, RosterQuery, SubagentOf};
 use crate::host::reload::ReloadFailed;
 use crate::host::sessions;
 
@@ -75,6 +76,8 @@ pub(crate) enum PickValue {
     Effort(Option<Reasoning>),
     /// A session id.
     Session(String),
+    /// An agent to show.
+    Agent(Entity),
 }
 
 /// A filterable list to choose one item from.
@@ -112,29 +115,46 @@ impl Picker {
     }
 }
 
-/// Focuses the first agent by id when the focused one is gone.
+/// Focuses the first agent by id when the focused one is gone, one the
+/// user started before any subagent.
 pub(crate) fn focus_agent(
     mut view: ResMut<TuiView>,
-    agents: Query<(Entity, &AgentId), With<Agent>>,
+    agents: Query<(Entity, &AgentId, Has<SubagentOf>), With<Agent>>,
 ) {
     if view.agent.is_some_and(|agent| agents.contains(agent)) {
         return;
     }
     view.agent = agents
         .iter()
-        .min_by(|a, b| a.1.0.cmp(&b.1.0))
-        .map(|(entity, _)| entity);
+        .min_by(|a, b| (a.2, &a.1.0).cmp(&(b.2, &b.1.0)))
+        .map(|(entity, ..)| entity);
+}
+
+/// Shows the agent a [`Focus`] names.
+pub(crate) fn on_focus(
+    focus: On<Focus>,
+    agents: Query<(), With<Agent>>,
+    mut view: ResMut<TuiView>,
+) {
+    if !agents.contains(focus.entity) || view.agent == Some(focus.entity) {
+        return;
+    }
+    view.agent = Some(focus.entity);
+    view.scroll = 0;
+    view.completion = None;
 }
 
 /// Opens the picker a command asked for.
 pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
+    roster: RosterQuery,
     paths: Option<Res<SessionPaths>>,
     mut view: ResMut<TuiView>,
     mut notices: MessageWriter<Notice>,
 ) {
     for request in requests.read() {
+        let mut selected = 0;
         let current = agents
             .get(request.agent)
             .ok()
@@ -193,13 +213,31 @@ pub(crate) fn open_pickers(
                 }
                 ("Resume a session".to_owned(), items)
             }
+            PickKind::Agent => {
+                let entries = subagents::roster(&roster);
+                selected = entries
+                    .iter()
+                    .position(|entry| Some(entry.agent) == view.agent)
+                    .unwrap_or(0);
+                let items = entries
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, entry)| {
+                        (
+                            format!("{}. {}", index + 1, entry.label),
+                            PickValue::Agent(entry.agent),
+                        )
+                    })
+                    .collect();
+                ("Show an agent".to_owned(), items)
+            }
         };
         view.overlay = Some(Overlay::Picker(Picker {
             agent: request.agent,
             title,
             items,
             filter: String::new(),
-            selected: 0,
+            selected,
         }));
     }
 }

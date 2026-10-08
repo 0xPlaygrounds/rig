@@ -1,6 +1,6 @@
-//! The agent core: agents as entities, the turn loop, the one effect
-//! dispatch path, the tool and command registries, models, and session
-//! saving. It depends on neither the host nor any view: the host fills in
+//! The agent core: agents as entities, the turn loop, subagents, the one
+//! effect dispatch path, the tool and command registries, models, and
+//! session saving. It depends on neither the host nor any view: the host fills in
 //! what the core needs, such as [`save::SessionPaths`].
 
 pub mod agent;
@@ -15,6 +15,7 @@ pub mod models;
 pub mod prompt;
 pub mod recovery;
 pub mod save;
+pub mod subagents;
 pub mod tools;
 pub mod turn;
 pub mod usage;
@@ -50,7 +51,10 @@ impl Plugin for AgentPlugin {
             .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
-            .add_systems(Startup, (spawn_first_agent, describe_tools))
+            .add_systems(
+                Startup,
+                (spawn_first_agent, describe_tools, subagents::link_restored),
+            )
             .add_systems(
                 Update,
                 (
@@ -85,6 +89,8 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_turn_end)
             .add_observer(inbox::on_follow_up)
             .add_observer(inbox::recall_on_turn_end)
+            .add_observer(subagents::answer_on_turn_end)
+            .add_observer(subagents::stop_when_unassigned)
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort)
