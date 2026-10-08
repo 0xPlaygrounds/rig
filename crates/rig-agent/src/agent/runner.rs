@@ -772,7 +772,7 @@ impl AgentRunner {
             while let Some(item) = driver.next().await {
                 match item {
                     Ok(DriveItem::Done(done)) => response = Some(done),
-                    Ok(DriveItem::Item(_)) => {}
+                    Ok(DriveItem::Surfaced(_) | DriveItem::Projected(_)) => {}
                     Err(err) => {
                         // Drain through termination so engine teardown completes
                         // rather than being dropped at the error yield.

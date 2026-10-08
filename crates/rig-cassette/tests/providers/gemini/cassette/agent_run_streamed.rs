@@ -8,14 +8,14 @@ use std::collections::VecDeque;
 
 use futures::StreamExt;
 use rig::agent::run::{
-    AgentRun, AgentRunStep, StreamedInvalidToolCall, StreamedResolution, StreamedTurnAssembler,
-    StreamedTurnEvent, TurnPolicy,
+    AgentRun, AgentRunStep, CommittedItem, StreamedInvalidToolCall, StreamedResolution,
+    StreamedTurnAssembler, StreamedTurnEvent, TurnPolicy, project,
 };
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
 };
 use rig::completion::PromptError;
-use rig::message::{Message, ToolChoice, ToolResult};
+use rig::message::{Message, ToolChoice};
 use rig::providers::gemini;
 use rig::streaming::StreamEvent;
 use rig_agent::test_utils::validate_cancelled_failure;
@@ -33,9 +33,7 @@ enum TurnEnd {
     /// The turn was assembled and fed to the machine.
     Finished,
     /// Mid-stream recovery abandoned the turn (retry or skip).
-    Abandoned {
-        skipped_tool_result: Option<ToolResult>,
-    },
+    Abandoned,
 }
 
 /// Hand-drive one streamed model turn through [`StreamedTurnAssembler`],
@@ -92,9 +90,7 @@ async fn run_streamed_turn(
                                 | StreamedResolution::Ignored => {
                                     events.extend(replayed);
                                 }
-                                StreamedResolution::TurnAbandoned {
-                                    skipped_tool_result,
-                                } => {
+                                StreamedResolution::TurnAbandoned => {
                                     let response = stream
                                         .finish()
                                         .await
@@ -106,9 +102,7 @@ async fn run_streamed_turn(
                                         response.raw,
                                     )
                                     .expect("abandoned turns still record their completion call");
-                                    return Ok(TurnEnd::Abandoned {
-                                        skipped_tool_result,
-                                    });
+                                    return Ok(TurnEnd::Abandoned);
                                 }
                             }
                         }
@@ -247,6 +241,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                                 "the retry prompt is the synthetic tool-results message: {prompt:?}"
                             );
                         }
+                        let cursor = run.messages().len();
                         let end = run_streamed_turn(
                             &agent,
                             &mut run,
@@ -263,12 +258,16 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         .await
                         .expect("the streamed turn should be accepted");
                         match end {
-                            TurnEnd::Abandoned {
-                                skipped_tool_result,
-                            } => {
+                            TurnEnd::Abandoned => {
                                 assert!(expect_abandon, "only the first turn should abandon");
-                                let tool_result = skipped_tool_result
-                                    .expect("a skipped call surfaces its synthetic tool result");
+                                // A host streams the skip's answer as the
+                                // projection of what the run committed.
+                                let tool_result = project(&run.messages()[cursor..])
+                                    .find_map(|item| match item {
+                                        CommittedItem::ToolResult(result) => Some(result),
+                                        _ => None,
+                                    })
+                                    .expect("a skipped call commits its synthetic tool result");
                                 // Gemini's wire supplies no tool-call id, and
                                 // rig no longer fabricates one from the tool
                                 // name — the synthetic result answers the

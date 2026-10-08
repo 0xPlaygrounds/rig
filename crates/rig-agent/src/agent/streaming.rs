@@ -13,7 +13,7 @@ use rig_core::{
 };
 
 use crate::{
-    agent::engine::{DriveItem, StreamingTurnSource, drive_agent},
+    agent::engine::{DriveItem, StreamingTurnSource, Surfaced, drive_agent},
     agent::hook::{AgentHook, RunSettled, SettledOutcome, StepEventKind},
     agent::runner::{AgentRunner, RunOrigin},
     streaming::{Item, StreamEvent},
@@ -26,7 +26,6 @@ use tracing_futures::Instrument;
 
 use crate::completion::PromptError;
 use crate::run::response::{CompletionCall, PromptResponse};
-use rig_core::message::Message;
 
 /// The stream a streamed run yields: its items, then its ending.
 pub type StreamingResult = WasmBoxedStream<'static, Result<MultiTurnStreamItem, PromptError>>;
@@ -44,22 +43,22 @@ pub enum MultiTurnStreamItem {
     /// starts and ends, text and reasoning fragments, a tool call's
     /// argument fragments as they stream (a call to a tool the turn does not
     /// allow is held for its resolution), and unmodeled passthrough
-    /// payloads. A call's end carries the validated call. The model's
-    /// completed calls are also reported as [`ToolCall`](Self::ToolCall)
-    /// when the turn commits.
+    /// payloads. A call's end carries the validated call; the same call id
+    /// is reported again as [`ToolCall`](Self::ToolCall) once history holds it.
     StreamAssistantItem(Item<StreamEvent>),
-    /// A tool call the **model emitted**, reported when the model turn is
-    /// committed, for each call Rig routes to execution. Such a call is
-    /// reported whether or not the tool body ultimately runs (a hook skip
-    /// still reports it); it is **not** an execution-lifecycle event (see
-    /// [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)).
+    /// A tool call **committed to the run's history**, in commit order.
     ///
-    /// Two kinds of model tool call are **not** reported here: a call rejected and
-    /// handled by invalid-tool-call recovery (surfaced via that recovery
-    /// path), and a structured-output Tool-mode output-tool call, which
-    /// finalizes the run directly; its structured result is surfaced in
-    /// the [`FinalResponse`](Self::FinalResponse) rather than as a completed
-    /// call.
+    /// The stream's tool items are a projection of committed history
+    /// ([`project`](crate::run::project)): every call history holds is
+    /// reported, and later answered by a [`ToolResult`](Self::ToolResult),
+    /// whether it ran, a hook skipped it, or invalid-call recovery or an
+    /// output reprompt answered it; a run resumed mid-batch reports the batch's
+    /// calls again ([`projection_start`](crate::run::AgentRun::projection_start)).
+    /// It is **not** an execution-lifecycle event
+    /// (see [`ToolExecutionCommitted`](Self::ToolExecutionCommitted)). A
+    /// structured-output Tool-mode output-tool call that finalizes the run is
+    /// committed as text, so it is reported in the
+    /// [`FinalResponse`](Self::FinalResponse) instead.
     ToolCall {
         /// The call as the model emitted it. Its id is equal on its
         /// execution commit and its result.
@@ -82,7 +81,8 @@ pub enum MultiTurnStreamItem {
         /// [`StreamAssistantItem`](Self::StreamAssistantItem).
         tool_call: rig_core::message::ToolCall,
     },
-    /// The **result** of an executed (or hook-skipped) tool call. The tool
+    /// A tool result **committed to the run's history**, answering a reported
+    /// [`ToolCall`](Self::ToolCall). The tool
     /// batch commits and surfaces atomically at every `tool_concurrency`
     /// (including the sequential default): results are surfaced in call order
     /// only after the whole batch settles successfully; a run that terminates
@@ -128,64 +128,27 @@ pub enum MultiTurnStreamItem {
     FinalResponse(PromptResponse),
 }
 
-/// Build the unified [`PromptResponse`] for the streaming surface from the
-/// final turn's structured content.
-fn final_response_from_content(
-    content: Vec<AssistantContent>,
-    aggregated_usage: crate::completion::Usage,
-    completion_calls: Vec<CompletionCall>,
-    history: Vec<Message>,
-) -> PromptResponse {
-    PromptResponse::from_content(content, aggregated_usage)
-        .with_completion_calls(completion_calls)
-        .with_messages(history)
+/// The one mapping from what the engine surfaces directly; tool items are
+/// built only from committed history.
+impl From<Surfaced> for MultiTurnStreamItem {
+    fn from(surfaced: Surfaced) -> Self {
+        match surfaced {
+            Surfaced::Provider(item) => Self::StreamAssistantItem(item),
+            Surfaced::CompletionCall(call) => Self::CompletionCall(call),
+            Surfaced::ModelTurnRetried { turn } => Self::ModelTurnRetried { turn },
+            Surfaced::Final(response) => Self::FinalResponse(response),
+        }
+    }
 }
 
 impl MultiTurnStreamItem {
-    pub(crate) fn stream_item(item: Item<StreamEvent>) -> Self {
-        Self::StreamAssistantItem(item)
-    }
-
-    /// Stamp a `FinalResponse` item with how the run's memory append
-    /// settled; any other item is returned unchanged.
-    pub(crate) fn with_memory_append(
-        self,
-        memory_append: Option<crate::run::MemoryAppend>,
-    ) -> Self {
-        match self {
-            Self::FinalResponse(response) => {
-                Self::FinalResponse(response.with_memory_append(memory_append))
-            }
-            other => other,
-        }
-    }
-
     /// Build a final response from structured content and aggregate usage.
     /// Concatenates text for output; completion details and history remain empty.
     pub fn final_response(
         content: Vec<AssistantContent>,
         aggregated_usage: crate::completion::Usage,
     ) -> Self {
-        Self::FinalResponse(final_response_from_content(
-            content,
-            aggregated_usage,
-            Vec::new(),
-            Vec::new(),
-        ))
-    }
-
-    pub(crate) fn final_response_with_completion_calls(
-        content: Vec<AssistantContent>,
-        aggregated_usage: crate::completion::Usage,
-        completion_calls: Vec<CompletionCall>,
-        history: Vec<Message>,
-    ) -> Self {
-        Self::FinalResponse(final_response_from_content(
-            content,
-            aggregated_usage,
-            completion_calls,
-            history,
-        ))
+        Self::FinalResponse(PromptResponse::from_content(content, aggregated_usage))
     }
 }
 
@@ -299,12 +262,14 @@ impl AgentRunner {
             memory_handle,
             hook_ctx,
         )
-        .filter_map(|item| {
-            std::future::ready(match item {
-                Ok(DriveItem::Item(item)) => Some(Ok(item)),
-                Ok(DriveItem::Done(_)) => None,
-                Err(err) => Some(Err(err)),
-            })
+        .flat_map(|item| {
+            let (head, tools) = match item {
+                Ok(DriveItem::Surfaced(item)) => (Some(Ok(item.into())), None),
+                Ok(DriveItem::Projected(items)) => (None, Some(items)),
+                Ok(DriveItem::Done(_)) => (None, None),
+                Err(err) => (Some(Err(err)), None),
+            };
+            futures::stream::iter(head.into_iter().chain(tools.into_iter().flatten().map(Ok)))
         });
         // The consumer of this stream drives the agent's bus: every poll that
         // leaves the run pending polls the driver.

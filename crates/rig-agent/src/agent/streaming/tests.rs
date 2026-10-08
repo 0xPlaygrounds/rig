@@ -425,7 +425,8 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
 
     let hook_context = HookContext::new(true, None, None);
     hook_context.set_turn(1);
-    let mut stream = drive_tool_calls(
+    let committed_before = run.messages().len();
+    let settled = drive_tool_calls(
         &runner,
         &hook_context,
         &mut run,
@@ -433,26 +434,18 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         tool_snapshot,
         |span| span,
         true,
-    );
-
-    let mut saw_commit = false;
-    let mut saw_result = false;
-    let mut saw_error = false;
-    while let Some(item) = stream.next().await {
-        match item {
-            Ok(MultiTurnStreamItem::ToolExecutionCommitted { .. }) => saw_commit = true,
-            Ok(MultiTurnStreamItem::ToolResult { .. }) => saw_result = true,
-            Err(_) => saw_error = true,
-            _ => {}
-        }
-    }
+    )
+    .await;
 
     assert!(
-        saw_error,
+        settled.is_err(),
         "the mismatched result must fail run-state commit"
     );
-    assert!(!saw_commit, "a failed run-state commit cannot be announced");
-    assert!(!saw_result, "an uncommitted result cannot be surfaced");
+    assert_eq!(
+        run.messages().len(),
+        committed_before,
+        "a failed run-state commit leaves nothing for the stream to project"
+    );
 }
 
 async fn assert_stream_usage_recorded_on_chat_spans(
@@ -913,14 +906,12 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
 
 #[test]
 fn final_response_serializes_completion_calls_with_missing_usage() {
-    let item: MultiTurnStreamItem = MultiTurnStreamItem::final_response_with_completion_calls(
-        vec![AssistantContent::text("done")],
-        usage(3, 4),
-        vec![
-            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
-            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
-        ],
-        Vec::new(),
+    let item = MultiTurnStreamItem::FinalResponse(
+        PromptResponse::from_content(vec![AssistantContent::text("done")], usage(3, 4))
+            .with_completion_calls(vec![
+                CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+                CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
+            ]),
     );
 
     if let MultiTurnStreamItem::FinalResponse(response) = &item {
@@ -3819,4 +3810,401 @@ async fn the_streamed_invalid_call_context_reports_the_patched_tool_choice() {
 
     assert!(error.is_none(), "the skip is accepted, got {error:?}");
     assert_eq!(hook.seen(), vec![Some(ToolChoice::Required)]);
+}
+
+/// What a stream consumer (a TUI keyed by call id) learns about tool calls,
+/// next to what the run committed to history.
+#[derive(Debug, Default)]
+struct StreamedToolLedger {
+    /// Call ids the stream announced: a tool-call `End` part or a
+    /// `ToolCall` item.
+    announced: BTreeSet<rig_core::message::CallId>,
+    /// Call ids the stream delivered a `ToolResult` for.
+    streamed_results: BTreeSet<rig_core::message::CallId>,
+    /// Call ids that history (`FinalResponse::messages`) holds a result for.
+    committed_results: BTreeSet<rig_core::message::CallId>,
+    /// Call ids that history holds an assistant tool call for.
+    committed_calls: BTreeSet<rig_core::message::CallId>,
+}
+
+async fn collect_streamed_tool_ledger(
+    mut stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, PromptError>> + Unpin,
+) -> StreamedToolLedger {
+    let mut ledger = StreamedToolLedger::default();
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::End {
+                content: AssistantContent::ToolCall(call),
+                ..
+            }))) => {
+                ledger.announced.insert(call.id);
+            }
+            Ok(MultiTurnStreamItem::ToolCall { tool_call }) => {
+                ledger.announced.insert(tool_call.id);
+            }
+            Ok(MultiTurnStreamItem::ToolResult { tool_result }) => {
+                ledger.streamed_results.insert(tool_result.call);
+            }
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                for message in response.messages() {
+                    match message {
+                        Message::User { content } => {
+                            for item in content.iter() {
+                                if let UserContent::ToolResult(result) = item {
+                                    ledger.committed_results.insert(result.call.clone());
+                                }
+                            }
+                        }
+                        Message::Assistant(assistant) => {
+                            for item in assistant.content.iter() {
+                                if let AssistantContent::ToolCall(call) = item {
+                                    ledger.committed_calls.insert(call.id.clone());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                break;
+            }
+            Ok(_) => {}
+            Err(err) => panic!("unexpected streaming error: {err:?}"),
+        }
+    }
+    ledger
+}
+
+/// The stream is a projection of what the run commits: every call the
+/// stream announces is eventually answered on the stream, every streamed
+/// result answers an announced call, and the results on the stream are the
+/// results in history.
+fn assert_stream_projects_history(ledger: &StreamedToolLedger) {
+    let unanswered: Vec<_> = ledger
+        .announced
+        .difference(&ledger.streamed_results)
+        .collect();
+    let orphaned: Vec<_> = ledger
+        .streamed_results
+        .difference(&ledger.announced)
+        .collect();
+    let committed_not_streamed: Vec<_> = ledger
+        .committed_results
+        .difference(&ledger.streamed_results)
+        .collect();
+    let committed_calls_not_announced: Vec<_> = ledger
+        .committed_calls
+        .difference(&ledger.announced)
+        .collect();
+    assert!(
+        unanswered.is_empty()
+            && orphaned.is_empty()
+            && committed_not_streamed.is_empty()
+            && committed_calls_not_announced.is_empty(),
+        "stream disagrees with history:\n  announced on stream but never answered on stream: \
+         {unanswered:?}\n  result streamed for a call the stream never announced: {orphaned:?}\n  \
+         result committed to history but never streamed: {committed_not_streamed:?}\n  call \
+         committed to history but never announced: {committed_calls_not_announced:?}\n  \
+         ledger: {ledger:#?}"
+    );
+}
+
+fn mixed_valid_and_invalid_tool_turn_model() -> MockCompletionModel {
+    MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::text("checking "),
+            MockStreamEvent::tool_call("tool_call_1", "add", serde_json::json!({"x": 2, "y": 3}))
+                .with_call_id("call_1"),
+            MockStreamEvent::tool_call(
+                "tool_call_2",
+                "default_api",
+                serde_json::json!({"x": 4, "y": 5}),
+            )
+            .with_call_id("call_2"),
+            MockStreamEvent::final_response_with_total_tokens(4),
+        ],
+        vec![
+            MockStreamEvent::text("continued"),
+            MockStreamEvent::final_response_with_total_tokens(6),
+        ],
+    ])
+}
+
+#[tokio::test]
+async fn invalid_tool_call_skip_streams_the_tool_results_history_commits() {
+    let agent = AgentBuilder::new(mixed_valid_and_invalid_tool_turn_model())
+        .tool(MockAddTool)
+        .build();
+    let stream = agent
+        .prompt("use the tool")
+        .add_hook(SkipDefaultApiHook)
+        .max_turns(3)
+        .history(Vec::<Message>::new())
+        .stream();
+
+    let ledger = collect_streamed_tool_ledger(stream).await;
+
+    assert_stream_projects_history(&ledger);
+}
+
+#[tokio::test]
+async fn invalid_tool_call_retry_streams_the_tool_results_history_commits() {
+    let agent = AgentBuilder::new(mixed_valid_and_invalid_tool_turn_model())
+        .tool(MockAddTool)
+        .build();
+    let stream = agent
+        .prompt("use the tool")
+        .add_hook(RetryDefaultApiHook)
+        .max_turns(3)
+        .history(Vec::<Message>::new())
+        .max_invalid_tool_call_retries(1)
+        .stream();
+
+    let ledger = collect_streamed_tool_ledger(stream).await;
+
+    assert_stream_projects_history(&ledger);
+}
+
+/// A unary-recovered turn parks preresolved results; a host resumes it on
+/// the streaming surface. Each committed result streams once, from history,
+/// and none claims its body ran.
+#[tokio::test]
+async fn a_preresolved_result_streams_exactly_once() {
+    let mut run = AgentRun::new("use the tool").max_turns(3);
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallModel { .. })
+    ));
+    let call = |id: &str, name: &str| {
+        AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
+            id,
+            rig_core::message::ToolFunction::new(
+                rig_core::message::ToolName::new(name).expect("tool name"),
+                serde_json::json!({"x": 2, "y": 3}),
+            ),
+        ))
+    };
+    let outcome = run
+        .model_response(crate::run::ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![call("call_1", "add"), call("call_2", "default_api")],
+            Usage::default(),
+            crate::run::TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
+            serde_json::json!({}),
+        ))
+        .expect("the turn is ingested");
+    assert!(matches!(
+        outcome,
+        crate::run::ModelTurnOutcome::NeedsResolution(_)
+    ));
+    run.resolve_invalid_tool_call(InvalidToolCallAction::skip("default_api was skipped"))
+        .expect("the skip is accepted");
+    let AgentRunStep::CallTools { calls } = run.next_step().expect("the tool step") else {
+        panic!("expected the tool step");
+    };
+    assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    let saved = serde_json::to_string(&run).expect("run serializes");
+    let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("continued"),
+        MockStreamEvent::final_response_with_total_tokens(6),
+    ]]))
+    .tool(MockAddTool)
+    .build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .resume(restored)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the resumed run streams");
+
+    let ledger =
+        collect_streamed_tool_ledger(futures::stream::iter(items.iter().cloned().map(Ok))).await;
+    assert_stream_projects_history(&ledger);
+    let streamed: Vec<_> = items
+        .iter()
+        .filter_map(|item| match item {
+            MultiTurnStreamItem::ToolResult { tool_result } => Some(tool_result.call.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(streamed, ["call_1", "call_2"]);
+    assert!(
+        !items
+            .iter()
+            .any(|item| matches!(item, MultiTurnStreamItem::ToolExecutionCommitted { .. })),
+        "a preresolved result ran no tool body"
+    );
+}
+
+/// A host persists a run while an ordinary tool batch is pending and resumes
+/// it on the streaming surface: the stream re-announces the pending call
+/// before its result, and the result is tagged as executed.
+#[tokio::test]
+async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
+    let mut run = AgentRun::new("use the tool").max_turns(3);
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallModel { .. })
+    ));
+    let outcome = run
+        .model_response(crate::run::ModelTurn::new(
+            rig_core::message::AssistantMessage::default(),
+            vec![AssistantContent::ToolCall(
+                rig_core::message::ToolCall::from_wire(
+                    "call_1",
+                    rig_core::message::ToolFunction::new(
+                        rig_core::message::ToolName::new("add").expect("tool name"),
+                        serde_json::json!({"x": 2, "y": 3}),
+                    ),
+                ),
+            )],
+            Usage::default(),
+            crate::run::TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
+            serde_json::json!({}),
+        ))
+        .expect("the turn is ingested");
+    assert!(matches!(
+        outcome,
+        crate::run::ModelTurnOutcome::Continue { .. }
+    ));
+    let AgentRunStep::CallTools { calls } = run.next_step().expect("the tool step") else {
+        panic!("expected the tool step");
+    };
+    assert!(calls.iter().all(|call| call.preresolved_result.is_none()));
+    assert_eq!(run.projection_start(), run.messages().len() - 1);
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+    let saved = serde_json::to_string(&run).expect("run serializes");
+    let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("continued"),
+        MockStreamEvent::final_response_with_total_tokens(6),
+    ]]))
+    .tool(MockAddTool)
+    .build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .resume(restored)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the resumed run streams");
+
+    let ledger =
+        collect_streamed_tool_ledger(futures::stream::iter(items.iter().cloned().map(Ok))).await;
+    assert_stream_projects_history(&ledger);
+    let tool_items: Vec<_> = items
+        .iter()
+        .filter_map(|item| match item {
+            MultiTurnStreamItem::ToolCall { tool_call } => Some(format!("call:{}", tool_call.id)),
+            MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => {
+                Some(format!("ran:{}", tool_call.id))
+            }
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                Some(format!("result:{}", tool_result.call))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tool_items, ["call:call_1", "ran:call_1", "result:call_1"]);
+}
+
+/// Skips any dispatch whose arguments name `100`.
+struct SkipHundredHook;
+
+impl AgentHook for SkipHundredHook {
+    async fn on_dispatch(&self, _: &HookContext, event: DispatchEvent<'_>) -> DispatchAction {
+        match event.tool_args() {
+            Some(args) if args.contains("100") => DispatchAction::skip("blocked by policy"),
+            _ => DispatchAction::proceed(),
+        }
+    }
+}
+
+/// A host-built turn may repeat a provider id; `AgentRun::tool_results`
+/// answers such a batch as a multiset. Resumed mid-batch, the first `x` is
+/// hook-skipped and the second runs: the execution commit must tag the
+/// second result, with that call's arguments, not the first result that
+/// merely shares its id.
+#[tokio::test]
+async fn a_repeated_call_id_tags_the_result_whose_body_ran() {
+    let add = |args: serde_json::Value| {
+        AssistantContent::ToolCall(rig_core::message::ToolCall::from_wire(
+            "x",
+            rig_core::message::ToolFunction::new(
+                rig_core::message::ToolName::new("add").expect("tool name"),
+                args,
+            ),
+        ))
+    };
+    let mut run = AgentRun::new("use the tool").max_turns(3);
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallModel { .. })
+    ));
+    run.model_response(crate::run::ModelTurn::new(
+        rig_core::message::AssistantMessage::default(),
+        vec![
+            add(serde_json::json!({"x": 100, "y": 0})),
+            add(serde_json::json!({"x": 1, "y": 2})),
+        ],
+        Usage::default(),
+        crate::run::TurnPolicy::new(["add".to_owned()].into(), None, None).expect("policy"),
+        serde_json::json!({}),
+    ))
+    .expect("the turn is ingested");
+    assert!(matches!(
+        run.next_step(),
+        Ok(AgentRunStep::CallTools { .. })
+    ));
+    run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
+
+    let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([[
+        MockStreamEvent::text("continued"),
+        MockStreamEvent::final_response_with_total_tokens(6),
+    ]]))
+    .tool(MockAddTool)
+    .add_hook(SkipHundredHook)
+    .build();
+    let items: Vec<MultiTurnStreamItem> = agent
+        .resume(run)
+        .stream()
+        .try_collect()
+        .await
+        .expect("the resumed run streams");
+
+    let tool_items: Vec<String> = items
+        .iter()
+        .filter_map(|item| match item {
+            MultiTurnStreamItem::ToolCall { tool_call } => Some(format!(
+                "call:{}",
+                serde_json::json!(tool_call.function.arguments)
+            )),
+            MultiTurnStreamItem::ToolExecutionCommitted { tool_call } => Some(format!(
+                "ran:{}",
+                serde_json::json!(tool_call.function.arguments)
+            )),
+            MultiTurnStreamItem::ToolResult { tool_result } => {
+                let body = serde_json::to_string(tool_result).unwrap_or_default();
+                Some(if body.contains("blocked by policy") {
+                    "result:skipped".to_owned()
+                } else {
+                    "result:ran".to_owned()
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        tool_items,
+        [
+            r#"call:{"x":100,"y":0}"#,
+            r#"call:{"x":1,"y":2}"#,
+            "result:skipped",
+            r#"ran:{"x":1,"y":2}"#,
+            "result:ran",
+        ],
+        "the execution commit must precede the result of the call that ran"
+    );
 }
