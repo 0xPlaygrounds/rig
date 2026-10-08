@@ -26,6 +26,7 @@ use bevy::{
 pub use bevy;
 
 pub mod ecs;
+pub mod launch;
 pub mod tui;
 
 /// The exit code that asks the launcher to start the freshly built binary.
@@ -36,8 +37,8 @@ pub const RELOAD_EXIT_CODE: u8 = 75;
 const FRAME: Duration = Duration::from_millis(16);
 
 /// Everything the agent needs: Bevy's task pools, file logging and a
-/// sleeping run loop, then the agent core, the built-in tools and commands,
-/// and the terminal UI.
+/// sleeping run loop, then the agent core, saving, the built-in tools and
+/// commands, `/reload`, and the terminal UI.
 pub struct RigCodePlugins;
 
 impl PluginGroup for RigCodePlugins {
@@ -54,8 +55,10 @@ impl PluginGroup for RigCodePlugins {
             })
             .add(ScheduleRunnerPlugin::run_loop(FRAME))
             .add(ecs::AgentPlugin)
+            .add(ecs::session::SessionPlugin)
             .add(ecs::tools::ToolsPlugin)
             .add(ecs::command::CommandsPlugin)
+            .add(launch::LauncherPlugin)
             .add(tui::TuiPlugin)
     }
 }

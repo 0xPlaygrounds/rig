@@ -35,6 +35,11 @@ pub fn effects_file() -> PathBuf {
     session_dir().join("effects.jsonl")
 }
 
+/// The saved agents, restored at startup.
+pub fn state_file() -> PathBuf {
+    session_dir().join("state.json")
+}
+
 /// `$RIG_HOME`, else `$XDG_DATA_HOME/rig`, else `~/.local/share/rig`.
 fn data_root() -> PathBuf {
     if let Some(home) = std::env::var_os("RIG_HOME") {

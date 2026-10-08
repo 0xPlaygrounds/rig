@@ -10,6 +10,9 @@ use std::{
 
 use bevy::prelude::*;
 use rig_core::{completion::Effort, message::Message};
+use serde::{Deserialize, Serialize};
+
+use super::session::ReflectSave;
 
 /// Marks an agent. Spawning it alone gives a working agent: every other
 /// building block is required with its default.
@@ -45,17 +48,27 @@ impl AgentId {
 }
 
 /// The conversation, oldest message first. The system prompt is not in it.
-#[derive(Component, Clone, Debug, Default)]
+/// Reflected as one opaque value saved through rig's own serde format.
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque)]
+#[reflect(Component, Default, Clone, Serialize, Deserialize, Save)]
+#[serde(transparent)]
 pub struct Conversation(pub Vec<Message>);
 
 /// The chosen model as a catalog reference such as `deepseek/deepseek-flash`,
 /// or `None` before one is picked.
-#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Default, Save)]
 pub struct ModelChoice(pub Option<String>);
 
 /// How much the model reasons. `Level` is a named effort; on a model that
-/// takes a token budget instead, it maps to a budget.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// takes a token budget instead, it maps to a budget. Reflected as an opaque
+/// value because rig's [`Effort`] is serde, not reflect.
+#[derive(
+    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[reflect(opaque)]
+#[reflect(Component, Default, Clone, Serialize, Deserialize, Save)]
 pub enum EffortChoice {
     /// Whatever the model does when a request names nothing.
     #[default]
@@ -78,7 +91,8 @@ impl EffortChoice {
 }
 
 /// The instructions sent ahead of the conversation.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, Default, Save)]
 pub struct SystemPrompt(pub String);
 
 impl Default for SystemPrompt {
@@ -94,7 +108,8 @@ impl Default for SystemPrompt {
 
 /// The directory the agent's tools work in. Relative tool paths resolve
 /// against it.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, Default, Save)]
 pub struct Workdir(pub PathBuf);
 
 impl Default for Workdir {
@@ -104,7 +119,8 @@ impl Default for Workdir {
 }
 
 /// Which registered tools the agent may call.
-#[derive(Component, Clone, Debug, Default)]
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Default, Save)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]

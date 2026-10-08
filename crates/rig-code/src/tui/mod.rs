@@ -30,12 +30,17 @@ type Output = Box<dyn Write + Send + Sync>;
 #[derive(Resource)]
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<Output>>,
+    /// Stay on the alternate screen, so the binary started by a reload
+    /// draws over the same screen.
+    keep_screen: bool,
 }
 
 impl Drop for Tui {
     fn drop(&mut self) {
         let _ = disable_raw_mode();
-        let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+        if !self.keep_screen {
+            let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+        }
         let _ = self.terminal.show_cursor();
     }
 }
@@ -64,7 +69,21 @@ impl Plugin for TuiPlugin {
             .init_resource::<view::Picker>()
             .init_resource::<view::NoticeLog>()
             .add_systems(PreUpdate, (view::keep_focus, input::read_terminal).chain())
-            .add_systems(PostUpdate, (view::read_core_messages, draw::draw).chain());
+            .add_systems(PostUpdate, (view::read_core_messages, draw::draw).chain())
+            .add_systems(
+                Last,
+                keep_screen_on_reload
+                    .in_set(bevy::app::OnAppExitSystems)
+                    .run_if(on_message::<AppExit>),
+            );
+    }
+}
+
+/// On a reload exit, leave the alternate screen to the next binary.
+fn keep_screen_on_reload(mut exits: MessageReader<AppExit>, mut tui: ResMut<Tui>) {
+    let reload = AppExit::from_code(crate::RELOAD_EXIT_CODE);
+    if exits.read().any(|exit| *exit == reload) {
+        tui.keep_screen = true;
     }
 }
 
@@ -78,6 +97,7 @@ fn open() -> std::io::Result<Tui> {
     execute!(output, EnterAlternateScreen, Clear(ClearType::All))?;
     Ok(Tui {
         terminal: Terminal::new(CrosstermBackend::new(output))?,
+        keep_screen: false,
     })
 }
 

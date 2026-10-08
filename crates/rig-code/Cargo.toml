@@ -13,7 +13,7 @@ workspace = true
 [dependencies]
 rig-core = { workspace = true, features = ["reqwest"] }
 rig-cassette = { workspace = true }
-bevy = { workspace = true, features = ["std", "multi_threaded", "async_executor", "bevy_log"] }
+bevy = { workspace = true, features = ["std", "multi_threaded", "async_executor", "bevy_log", "reflect_auto_register"] }
 crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 futures-timer = { workspace = true }

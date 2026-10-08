@@ -12,6 +12,7 @@ pub mod catalog;
 pub mod command;
 pub mod dispatch;
 pub mod paths;
+pub mod session;
 pub mod tools;
 mod turn;
 

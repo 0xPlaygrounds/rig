@@ -15,9 +15,12 @@ use super::{
     Tui,
     view::{Composer, Focus, NoticeEntry, NoticeLog, Picker, PickerState, Scroll},
 };
-use crate::ecs::{
-    NoticeLevel,
-    agent::{AgentStatus, Conversation, Draft, EffortChoice, ModelChoice},
+use crate::{
+    ecs::{
+        NoticeLevel,
+        agent::{AgentStatus, Conversation, Draft, EffortChoice, ModelChoice},
+    },
+    launch::BuildProgress,
 };
 
 /// Most lines of reasoning and tool output shown per block.
@@ -61,6 +64,7 @@ pub(super) fn draw(
     mut scroll: ResMut<Scroll>,
     picker: Res<Picker>,
     notices: Res<NoticeLog>,
+    build: Option<Res<BuildProgress>>,
 ) {
     let Some(agent) = focus.0.and_then(|agent| agents.get(agent).ok()) else {
         return;
@@ -79,7 +83,14 @@ pub(super) fn draw(
         .areas(frame.area());
         let lines = transcript(conversation, draft, &notices.0);
         draw_transcript(frame, transcript_area, &lines, &mut scroll.0);
-        draw_status(frame, status_area, model, *effort, *status);
+        draw_status(
+            frame,
+            status_area,
+            model,
+            *effort,
+            *status,
+            build.as_deref(),
+        );
         draw_composer(frame, composer_area, &composer, picker.0.is_none());
         if let Some(state) = &picker.0 {
             draw_picker(frame, state);
@@ -252,6 +263,7 @@ fn draw_status(
     model: &ModelChoice,
     effort: EffortChoice,
     status: AgentStatus,
+    build: Option<&BuildProgress>,
 ) {
     let model = model.0.as_deref().unwrap_or("no model: /model");
     let status = match status {
@@ -259,10 +271,16 @@ fn draw_status(
         AgentStatus::Thinking => "thinking (Esc stops)",
         AgentStatus::Tools => "running tools (Esc stops)",
     };
-    let line = format!(
-        " {model} | effort {} | {status} | /help, Ctrl-C quits",
-        effort.name()
-    );
+    let build = match build {
+        None => "/help, Ctrl-C quits".to_owned(),
+        Some(build) if build.finished => "build done, reloading when idle".to_owned(),
+        Some(build) if build.total == 0 => "building...".to_owned(),
+        Some(build) => format!(
+            "Compiling {}/{} crates ({})",
+            build.done, build.total, build.current
+        ),
+    };
+    let line = format!(" {model} | effort {} | {status} | {build}", effort.name());
     frame.render_widget(
         Paragraph::new(line).style(Style::new().fg(Color::Black).bg(Color::Gray)),
         area,
