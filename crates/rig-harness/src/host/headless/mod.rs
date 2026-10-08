@@ -1,8 +1,7 @@
 //! The modes without a terminal view, chosen by the process's arguments
 //! ([`rig::harness_protocol::Invocation`], which the `rig` launcher passes
 //! on): `--print` answers one prompt, `--print --json` streams every event
-//! as a line of JSON, `--rpc` takes requests as lines of JSON on stdin, and
-//! `eval` runs the tasks of a spec across models ([`super::eval`]). Each is
+//! as a line of JSON, and `eval` runs the tasks of a spec across models ([`super::eval`]). Each is
 //! a view like the terminal one: it reads agent components and messages and
 //! sends the agents the same requests, and it never owns the loop.
 //!
@@ -12,7 +11,6 @@
 
 pub mod events;
 mod print;
-mod rpc;
 
 use std::io::Write as _;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -49,7 +47,7 @@ impl RunMode {
 }
 
 /// Reads the [`RunMode`] and adds what its mode needs: the print loop, the
-/// JSON event stream, the RPC reader, or an eval run.
+/// JSON event stream, or an eval run.
 pub struct ModePlugin;
 
 impl Plugin for ModePlugin {
@@ -83,9 +81,6 @@ impl Plugin for ModePlugin {
                     app.add_plugins(events::EventStreamPlugin);
                 }
                 app.add_plugins(print::PrintPlugin { prompt, json });
-            }
-            Mode::Rpc => {
-                app.add_plugins((events::EventStreamPlugin, rpc::RpcPlugin));
             }
             Mode::Eval { spec, json } => {
                 app.add_plugins(super::eval::EvalPlugin { spec, json });

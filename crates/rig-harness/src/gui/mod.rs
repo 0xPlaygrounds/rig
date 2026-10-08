@@ -136,7 +136,7 @@ impl Plugin for GuiPlugin {
             return;
         }
         // Closing the window ends an interactive app that has no terminal
-        // view; next to the terminal, or in an RPC or eval run, the app
+        // view; next to the terminal, or in a print or eval run, the app
         // carries on without it.
         let mode = app.world().get_resource::<RunMode>().cloned();
         let interactive = mode

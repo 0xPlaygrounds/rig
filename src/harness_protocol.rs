@@ -357,9 +357,6 @@ pub enum Mode {
         /// Whether stdout gets the JSON event stream instead of the answer.
         json: bool,
     },
-    /// Requests as lines of JSON on stdin, events and answers as lines of
-    /// JSON on stdout, until stdin closes.
-    Rpc,
     /// Runs the tasks of an eval spec across its models, then writes the
     /// report.
     Eval {
@@ -399,8 +396,6 @@ pub const INVOCATION_USAGE: &str = "\
                          Text piped in on stdin follows the prompt.
   --json                 With --print: every event as a line of JSON instead.
                          With eval: the report as JSON.
-  --rpc                  Take requests as lines of JSON on stdin and write
-                         events and answers as lines of JSON on stdout.
   eval <spec.json>       Run an eval spec's tasks across its models.
   -m, --model <model>    The catalog model (vendor/model) to use.
 ";
@@ -410,7 +405,6 @@ impl Invocation {
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
         let mut print = false;
         let mut json = false;
-        let mut rpc = false;
         let mut eval: Option<PathBuf> = None;
         let mut model = None;
         let mut words: Vec<&str> = Vec::new();
@@ -419,7 +413,6 @@ impl Invocation {
             match arg {
                 "-p" | "--print" => print = true,
                 "--json" => json = true,
-                "--rpc" => rpc = true,
                 "eval" | "--eval" if eval.is_none() && words.is_empty() && !print => {
                     let spec = args.next().ok_or("eval needs a spec file")?;
                     let spec = PathBuf::from(spec);
@@ -436,18 +429,17 @@ impl Invocation {
                 word => words.push(word),
             }
         }
-        let mode = match (print || (json && eval.is_none()), rpc, eval) {
-            (false, false, None) if words.is_empty() => Mode::Interactive,
-            (false, false, None) => {
+        let mode = match (print || (json && eval.is_none()), eval) {
+            (false, None) if words.is_empty() => Mode::Interactive,
+            (false, None) => {
                 return Err("a prompt needs --print (-p)".to_owned());
             }
-            (true, false, None) => Mode::Print {
+            (true, None) => Mode::Print {
                 prompt: words.join(" "),
                 json,
             },
-            (false, true, None) if words.is_empty() && !json => Mode::Rpc,
-            (false, false, Some(spec)) if words.is_empty() => Mode::Eval { spec, json },
-            _ => return Err("--print, --rpc and eval do not go together".to_owned()),
+            (false, Some(spec)) if words.is_empty() => Mode::Eval { spec, json },
+            _ => return Err("--print and eval do not go together".to_owned()),
         };
         Ok(Self { mode, model })
     }
@@ -475,7 +467,6 @@ impl Invocation {
                     args.extend(["--".into(), prompt.into()]);
                 }
             }
-            Mode::Rpc => args.push("--rpc".into()),
             Mode::Eval { spec, json } => {
                 args.extend(["eval".into(), spec.into()]);
                 if *json {

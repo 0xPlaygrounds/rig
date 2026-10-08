@@ -1,4 +1,4 @@
-//! The JSON event stream of `--print --json` and `--rpc`: one object per
+//! The JSON event stream of `--print --json`: one object per
 //! line on stdout, each with a `type`. Every event about an agent names it
 //! by its stable [`AgentId`] as `agent`; requests may name it so too.
 //!

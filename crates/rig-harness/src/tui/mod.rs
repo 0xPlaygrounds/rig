@@ -35,7 +35,7 @@ pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
-        // A print, RPC or eval run has stdout for its own output.
+        // A print or eval run has stdout for its own output.
         if app
             .world()
             .get_resource::<crate::host::headless::RunMode>()

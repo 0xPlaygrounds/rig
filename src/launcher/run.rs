@@ -15,7 +15,7 @@
 //! then runs that session instead, in its own directory.
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
-//! headless run (`--print`, `--rpc`, `eval`) never becomes the session its
+//! headless run (`--print`, `eval`) never becomes the session its
 //! directory resumes, and a one-shot run (`--print`, `eval`) is not
 //! restarted on the reload code.
 

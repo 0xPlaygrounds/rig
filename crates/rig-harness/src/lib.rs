@@ -10,7 +10,7 @@
 //! as a third-party plugin registers its own.
 //!
 //! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
-//! terminal view, or `--print`, `--rpc` or `eval` without one), the agent core,
+//! terminal view, or `--print` or `eval` without one), the agent core,
 //! saving, working-tree snapshots for rewinds, the project context, the launcher protocol, `/reload` and the
 //! session commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
@@ -93,7 +93,7 @@ pub mod prelude {
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
-/// (with the print, RPC and eval modes), snapshots of the working
+/// (with the print and eval modes), snapshots of the working
 /// tree for rewinds, the agent core and saving, the approval policy new
 /// agents start with (`RIG_HOME/policy.json`),
 /// the project context in the system prompt (`AGENTS.md` and the

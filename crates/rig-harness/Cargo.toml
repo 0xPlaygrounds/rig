@@ -51,7 +51,7 @@ bevy = { workspace = true, optional = true, features = [
     "ui_picking",
 ] }
 bevy_app = { workspace = true }
-# `serialize`: entities in requests read from JSON (the RPC mode).
+# `serialize`: entities read from and written as JSON.
 bevy_ecs = { workspace = true, features = ["serialize"] }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }

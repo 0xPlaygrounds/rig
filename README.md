@@ -287,13 +287,7 @@ directory's last session instead of starting a new one. `rig -p --json`
 streams every event as a line of JSON instead: the session, agents, model
 choices, text and reasoning deltas, each message added to a conversation,
 tool calls and their results, approvals asked, notices and turn ends.
-`rig --rpc` writes the same stream and takes requests as lines of JSON on
-stdin: `{"id": 1, "type": "trigger", "event": "Submit", "value": {"text":
-"hi"}}` triggers any of the app's reflectable request events through Bevy's
-reflection (`Submit`, `FollowUp`, `Interrupt`, `Compact`, `SetModel`,
-`Approve`, `Rewind`, `Fork`, a plugin's own), with `entity` left out for the
-main agent or given as an agent id; `agents`, `messages`, `events`,
-`commands` and `quit` answer what they say. A headless run never becomes the
+A headless run never becomes the
 session its directory resumes, and in print mode a call the approval policy
 would ask about is refused.
 
