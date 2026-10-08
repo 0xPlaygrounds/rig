@@ -1,6 +1,9 @@
-//! The built-in slash commands: `/model`, `/effort`, `/help` and `/quit`.
+//! The built-in slash commands: `/model`, `/effort`, `/reload`, `/help` and
+//! `/quit`.
 //! Each is registered through [`AgentAppExt::add_command`], the same call a
 //! third-party plugin makes.
+
+mod reload;
 
 use bevy::prelude::*;
 use rig_core::catalog::Catalog;
@@ -10,6 +13,8 @@ use crate::core::{
     OfferChoices, RunCommand, SlashCommand, available_models, effort_label, effort_options,
     model_reference,
 };
+
+pub(crate) use reload::BuildProgress;
 
 /// Adds the built-in slash commands.
 #[derive(Default)]
@@ -25,8 +30,13 @@ impl Plugin for BuiltinCommands {
             SlashCommand::new("effort", "pick the reasoning effort: /effort [level]"),
             effort,
         )
+        .add_command(
+            SlashCommand::new("reload", "rebuild the agent and restart into the new build"),
+            reload::reload,
+        )
         .add_command(SlashCommand::new("help", "list the commands"), help)
-        .add_command(SlashCommand::new("quit", "exit"), quit);
+        .add_command(SlashCommand::new("quit", "exit"), quit)
+        .add_systems(Update, reload::poll_build);
     }
 }
 

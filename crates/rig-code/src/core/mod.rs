@@ -27,8 +27,8 @@ pub use registry::{
     AgentAppExt, Choice, Interrupt, Notice, NoticeLevel, OfferChoices, RunCommand, SlashCommand,
     Submit, ToolEntry, TurnFinished,
 };
-pub use session::Session;
-pub use turn::{ModelCall, StreamingText, ToolCallDone, ToolCallRun};
+pub use session::{RELOAD_EXIT_CODE, Session};
+pub use turn::{CallTask, ModelCall, StreamingText, ToolCallDone, ToolCallRun};
 
 /// The stages of the agent loop, in order, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -72,7 +72,7 @@ impl Plugin for CorePlugin {
                 )
                     .chain(),
             )
-            .add_systems(Startup, session::start_session)
+            .add_systems(Startup, (session::start_session, session::launcher_notice))
             .add_systems(
                 Update,
                 (
@@ -94,6 +94,11 @@ impl Plugin for CorePlugin {
                     session::save_session
                         .in_set(OnAppExitSystems)
                         .run_if(on_message::<TurnFinished>.or_eager(on_message::<AppExit>)),
+                    session::write_resume
+                        .after(session::save_session)
+                        .in_set(OnAppExitSystems)
+                        .run_if(on_message::<AppExit>),
+                    session::mark_ready.run_if(run_once),
                 ),
             );
     }

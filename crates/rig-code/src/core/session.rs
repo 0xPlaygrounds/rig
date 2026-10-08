@@ -4,6 +4,10 @@
 //! `sessions/<id>/state.json` as `{type path: value}`. Loading inserts the
 //! entries one by one, so a component whose plugin is gone, or whose shape
 //! changed, is skipped with a notice instead of failing the load.
+//!
+//! The launcher handshake lives here too: a reload exit names the session
+//! in `data/resume` for the next binary, and the first finished frame
+//! writes `RIG_READY_FILE` so the launcher keeps this binary.
 
 use std::path::{Path, PathBuf};
 
@@ -22,6 +26,9 @@ use super::registry::Notice;
 
 /// Version of the `state.json` layout.
 const FORMAT: u64 = 1;
+
+/// The exit code that asks the `rig` launcher to start the newest build.
+pub const RELOAD_EXIT_CODE: u8 = 75;
 
 /// The running session: its id and directory.
 #[derive(Resource, Clone)]
@@ -202,5 +209,46 @@ pub(crate) fn save_session(world: &mut World) {
         .and_then(|bytes| write_atomic(&session.dir.join("state.json"), &bytes));
     if let Err(error) = written {
         error!("cannot save session {}: {error}", session.id);
+    }
+}
+
+/// On a reload exit, names the session in `data/resume`, so the next binary
+/// restores it. Runs after the exit save.
+pub(crate) fn write_resume(
+    mut exits: MessageReader<AppExit>,
+    data: Res<DataDir>,
+    session: Option<Res<Session>>,
+) {
+    let reload = AppExit::from_code(RELOAD_EXIT_CODE);
+    if let (true, Some(session)) = (exits.read().any(|exit| *exit == reload), session)
+        && let Err(error) = write_atomic(&data.0.join("resume"), session.id.as_bytes())
+    {
+        error!("cannot write the resume marker: {error}");
+    }
+}
+
+/// After the first full frame, tells the launcher this binary works by
+/// creating `RIG_READY_FILE`, and only then forgets the resume marker, so a
+/// binary that crashes earlier leaves it for the one rolled back to.
+pub(crate) fn mark_ready(data: Res<DataDir>) {
+    if let Some(ready) = std::env::var_os("RIG_READY_FILE").filter(|value| !value.is_empty())
+        && let Err(error) = write_atomic(Path::new(&ready), b"ready")
+    {
+        error!("cannot write the ready file: {error}");
+    }
+    let resume = data.0.join("resume");
+    if resume.exists()
+        && let Err(error) = std::fs::remove_file(&resume)
+    {
+        error!("cannot remove the resume marker: {error}");
+    }
+}
+
+/// Shows the launcher's `RIG_NOTICE`, such as a rollback, to the user.
+pub(crate) fn launcher_notice(mut notices: MessageWriter<Notice>) {
+    if let Ok(text) = std::env::var("RIG_NOTICE")
+        && !text.is_empty()
+    {
+        notices.write(Notice::error(None, text));
     }
 }

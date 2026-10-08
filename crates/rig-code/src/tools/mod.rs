@@ -2,7 +2,7 @@
 //! rig-core `PortableTool` registered through [`AgentAppExt::add_tool`],
 //! the same call a third-party plugin makes.
 
-mod child;
+pub(crate) mod child;
 mod files;
 mod search;
 mod shell;

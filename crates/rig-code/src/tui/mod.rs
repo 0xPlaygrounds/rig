@@ -13,6 +13,7 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::{cursor, event, execute, terminal};
 
+use crate::commands::BuildProgress;
 use crate::core::{
     Agent, AgentStatus, Conversation, EffortChoice, ModelChoice, ModelEndpoint, StreamingText,
     ToolCallDone, ToolCallRun,
@@ -101,8 +102,13 @@ fn needs_redraw(
     >,
     streams: Query<(), Changed<StreamingText>>,
     calls: Query<(), Or<(Added<ToolCallRun>, Added<ToolCallDone>)>>,
+    builds: Query<(), Changed<BuildProgress>>,
 ) -> bool {
-    view.is_changed() || !agents.is_empty() || !streams.is_empty() || !calls.is_empty()
+    view.is_changed()
+        || !agents.is_empty()
+        || !streams.is_empty()
+        || !calls.is_empty()
+        || !builds.is_empty()
 }
 
 /// Draws the focused agent.
@@ -112,11 +118,12 @@ fn draw(
     agents: Query<render::AgentView, With<Agent>>,
     streams: Query<&StreamingText>,
     calls: Query<(&ToolCallRun, Option<&ToolCallDone>)>,
+    builds: Query<&BuildProgress>,
 ) {
     let Some(agent) = agents.iter().next() else {
         return;
     };
-    let scene = render::Scene::new(&agent, &streams, &calls);
+    let scene = render::Scene::new(&agent, &streams, &calls, builds.iter().next());
     if let Err(error) = tui.0.draw(|frame| render::frame(frame, &view, &scene)) {
         error!("cannot draw: {error}");
     }

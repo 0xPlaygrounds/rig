@@ -12,6 +12,7 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{ToolResultContent, UserContent};
 use unicode_width::UnicodeWidthChar;
 
+use crate::commands::BuildProgress;
 use crate::core::{
     AgentStatus, Conversation, EffortChoice, ModelChoice, ModelEndpoint, NoticeLevel,
     StreamingText, ToolCallDone, ToolCallRun, Work, effort_label,
@@ -46,6 +47,7 @@ impl Scene {
         agent: &AgentViewItem,
         streams: &Query<&StreamingText>,
         calls: &Query<(&ToolCallRun, Option<&ToolCallDone>)>,
+        build: Option<&BuildProgress>,
     ) -> Self {
         let mut conversation = Vec::new();
         for message in &agent.conversation.0 {
@@ -67,12 +69,12 @@ impl Scene {
         }
         Self {
             conversation,
-            status: status_line(agent),
+            status: status_line(agent, build),
         }
     }
 }
 
-fn status_line(agent: &AgentViewItem) -> Line<'static> {
+fn status_line(agent: &AgentViewItem, build: Option<&BuildProgress>) -> Line<'static> {
     let model = match (agent.endpoint, &agent.model.0) {
         (Some(endpoint), _) => endpoint.spec.display_name.clone(),
         (None, Some(reference)) => format!("{reference} (not connected)"),
@@ -93,13 +95,25 @@ fn status_line(agent: &AgentViewItem) -> Line<'static> {
             Color::Red,
         ),
     };
-    Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             format!("{model}{effort} · "),
             Style::new().fg(Color::DarkGray),
         ),
         Span::styled(state, Style::new().fg(color)),
-    ])
+    ];
+    if let Some(build) = build {
+        let counter = if build.total == 0 {
+            "starting".to_owned()
+        } else {
+            format!("{}/{}: {}", build.done, build.total, build.current)
+        };
+        spans.push(Span::styled(
+            format!(" · compiling {counter}"),
+            Style::new().fg(Color::Magenta),
+        ));
+    }
+    Line::from(spans)
 }
 
 fn message_lines(message: &Message, lines: &mut Vec<Line<'static>>) {
@@ -259,9 +273,13 @@ pub(super) fn frame(frame: &mut Frame, view: &TuiView, scene: &Scene) {
         };
         text_lines(text, style, "", &mut notices);
     }
-    let notice_height = u16::try_from(notices.len())
+    let mut notice_rows = Vec::new();
+    for line in &notices {
+        wrap(line, usize::from(area.width).max(1), &mut notice_rows);
+    }
+    let notice_height = u16::try_from(notice_rows.len())
         .unwrap_or(u16::MAX)
-        .min(area.height / 3);
+        .min(area.height / 2);
     let [conversation, notice_area, status, input] = Layout::vertical([
         Constraint::Min(1),
         Constraint::Length(notice_height),
@@ -274,10 +292,8 @@ pub(super) fn frame(frame: &mut Frame, view: &TuiView, scene: &Scene) {
         Paragraph::new(window(&scene.conversation, conversation, view.scroll)),
         conversation,
     );
-    frame.render_widget(
-        Paragraph::new(window(&notices, notice_area, 0)),
-        notice_area,
-    );
+    // From the top, so the first error of a long build failure shows.
+    frame.render_widget(Paragraph::new(notice_rows), notice_area);
     frame.render_widget(Paragraph::new(scene.status.clone()), status);
 
     let inner_width = usize::from(input.width.saturating_sub(2)).max(1);
