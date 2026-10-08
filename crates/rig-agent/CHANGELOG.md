@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.45.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.44.0...rig-agent-v0.45.0) - 2026-10-08
+
+### Added
+
+- *(agent)* [**breaking**] stream tool items as a projection of committed history ([#2763](https://github.com/0xPlaygrounds/rig/pull/2763)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(catalog)* [**breaking**] overrides reach every wire, one lookup and reference rule, connect from the environment ([#2769](https://github.com/0xPlaygrounds/rig/pull/2769)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-agent)* [**breaking**] runs survive a restart at any point: one answer owner, resumable in-flight steps, executable-only CallTools ([#2762](https://github.com/0xPlaygrounds/rig/pull/2762)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] one TurnPolicy per model turn owns its tool choice; Skip, hooks and the ECS checks read it ([#2757](https://github.com/0xPlaygrounds/rig/pull/2757)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2757
+- *(rig-core)* [**breaking**] one meaning for a document's text on every wire (DocumentSourceKind::String becomes DocumentData::Text) ([#2754](https://github.com/0xPlaygrounds/rig/pull/2754)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* every dispatched completion gets exactly one on_outcome ([#2756](https://github.com/0xPlaygrounds/rig/pull/2756)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- [**breaking**] remove the rig-ecs crate and its tests, goldens and fixtures ([#2761](https://github.com/0xPlaygrounds/rig/pull/2761)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2761
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.44.0](https://github.com/0xPlaygrounds/rig/compare/rig-agent-v0.43.0...rig-agent-v0.44.0) - 2026-10-07
 
 ### Added

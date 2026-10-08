@@ -12,11 +12,11 @@ repository = "https://github.com/0xPlaygrounds/rig"
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+rig-core = { path = "../rig-core", version = "0.45.0", default-features = false }
 tracing = { workspace = true }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
+rig-core = { path = "../rig-core", version = "0.45.0", features = ["reqwest"] }
 anyhow = { workspace = true }
 rig-agent.workspace = true
 serde_json = { workspace = true }

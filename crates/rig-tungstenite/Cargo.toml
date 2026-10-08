@@ -16,7 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-http = { path = "../rig-http", version = "0.44.0", features = ["websocket"] }
+rig-http = { path = "../rig-http", version = "0.45.0", features = ["websocket"] }
 futures = { workspace = true }
 thiserror = { workspace = true }
 
