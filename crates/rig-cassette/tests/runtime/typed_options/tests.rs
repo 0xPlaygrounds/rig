@@ -716,7 +716,7 @@ mod option_matrix {
             ),
             (
                 "zai",
-                chat(&ZAI, "glm-5"),
+                chat(&ZAI, "glm-5.2"),
                 [
                     Merge(json!({"thinking": {"type": "enabled"}, "reasoning_effort": "high"})),
                     Omit,
@@ -881,7 +881,8 @@ mod option_matrix {
                     Refuse,
                     Refuse,
                     Merge(json!({"parallel_tool_calls": false})),
-                    Merge(json!({"top_p": 0.5})),
+                    // OpenAI's sampling rule: GPT-5.3 Codex always reasons.
+                    Refuse,
                     Refuse,
                     Refuse,
                 ],

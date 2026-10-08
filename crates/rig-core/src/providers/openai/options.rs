@@ -140,15 +140,12 @@ fn named_top_p(model: &str, top_p: f64, reasoning_off: bool) -> Mapping {
     }
 }
 
-/// `top_p` on OpenAI's Chat Completions and Responses, by the model's
-/// catalog sampling rule: [`Sampling::Never`] refuses it, and
-/// [`Sampling::ReasoningOff`] takes it only while reasoning is off. That is
-/// `reasoning` set to `Off` or, with no `reasoning` set, a model that can
-/// turn reasoning off and whose entry names no default effort, so defaults
-/// to `none` (the rule [`check_body`] applies to a raw `top_p`). GPT-5.6 and
-/// GPT-6 name `medium`. A model
-/// whose entry gives no rule, or that the catalog does not list, goes by
-/// its id ([`named_top_p`]).
+/// `top_p` on OpenAI's Chat Completions and Responses, by the sampling
+/// rule of the model's catalog entry, the one [`ModelSpec::refusals`]
+/// applies. A model whose entry gives no rule, or that the catalog does
+/// not list, goes by its id ([`named_top_p`]), with reasoning off when
+/// `reasoning` is `Off` or, with no `reasoning` set, when the entry says
+/// the model can turn reasoning off and names no default effort.
 fn openai_top_p(
     facts: &ModelFacts,
     model: &str,
@@ -156,6 +153,11 @@ fn openai_top_p(
     reasoning: Option<&Reasoning>,
 ) -> Mapping {
     let spec = openai_spec(facts, model);
+    if let Some(spec) = spec.filter(|spec| spec.sampling.is_some()) {
+        return spec
+            .sampling_refusal("top_p", spec.reasons_with(reasoning))
+            .map_or_else(|| send("top_p", top_p), Mapping::unsupported);
+    }
     let reasoning_off = match reasoning {
         Some(reasoning) => matches!(reasoning, Reasoning::Off),
         None => spec.is_some_and(|spec| {
@@ -163,19 +165,8 @@ fn openai_top_p(
         }),
     };
     match spec {
-        Some(spec) if spec.reasoning.supported() => match spec.sampling {
-            Some(Sampling::Any) => send("top_p", top_p),
-            Some(Sampling::ReasoningOff) if reasoning_off => send("top_p", top_p),
-            Some(Sampling::ReasoningOff) => {
-                Mapping::unsupported("a reasoning model takes `top_p` only at effort `none`")
-            }
-            Some(Sampling::Never) => {
-                Mapping::unsupported("this model takes no sampling parameters")
-            }
-            None => named_top_p(model, top_p, reasoning_off),
-        },
-        Some(_) => send("top_p", top_p),
-        None => named_top_p(model, top_p, reasoning_off),
+        Some(spec) if !spec.reasoning.supported() => send("top_p", top_p),
+        _ => named_top_p(model, top_p, reasoning_off),
     }
 }
 
@@ -289,17 +280,16 @@ pub(crate) enum Endpoint {
 /// its exact id (an OpenRouter `openai/` id is the gateway's to check),
 /// reported through the request's policy by
 /// [`catalog_refusals`](crate::completion::options::catalog_refusals): a
-/// request that sets no generation options is sent as built. While the
-/// model reasons, a model whose sampling rule is [`Sampling::ReasoningOff`]
-/// takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
-/// Completions, `logprobs`), and one marked `chat_tools_need_reasoning_off`
-/// whose reasoning cannot be turned off takes no tools on Chat Completions
-/// at all. (One that can turn it off takes them at effort `none`; the API's
-/// own error names that fix, and a recorded session pins it.) The model
-/// reasons unless the body sets effort `none`; with no effort it reasons
-/// when the catalog names its default level, and is not checked otherwise.
-/// These are fields `additional_params` can set, so the check reads the
-/// final body.
+/// request that sets no generation options is sent as built. It applies
+/// the [`Sampling::ReasoningOff`] rule of [`ModelSpec::refusals`] to the
+/// final body, which also holds what `additional_params` and the provider
+/// options set, with the effort the body asks for: while the model reasons
+/// it takes no `temperature`, `top_p` or `top_logprobs` (nor, on Chat
+/// Completions, `logprobs`). One rule is the route's own: a
+/// model marked `chat_tools_need_reasoning_off` whose reasoning cannot be
+/// turned off takes no tools on Chat Completions at all. (One that can turn
+/// it off takes them at effort `none`; the API's own error names that fix,
+/// and a recorded session pins it.)
 ///
 /// # Errors
 ///
@@ -331,14 +321,16 @@ fn body_refusals(facts: &ModelFacts, body: &FinalBody, endpoint: Endpoint) -> Ve
     };
     let reasons = match effort.and_then(serde_json::Value::as_str) {
         Some(effort) => effort != "none",
-        None => spec.reasoning.default_effort().is_some(),
+        None => spec.reasons_by_default(),
     };
     let present = |field: &str| body.get(field).is_some_and(|value| !value.is_null());
+    let sampling: &[&'static str] = match endpoint {
+        Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
+        Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
+    };
+    // `Sampling::Never` is the shared rule's alone: it refuses the typed
+    // fields before the wire encodes.
     if reasons && spec.sampling == Some(Sampling::ReasoningOff) {
-        let sampling: &[&'static str] = match endpoint {
-            Endpoint::ChatCompletions => &["temperature", "top_p", "top_logprobs", "logprobs"],
-            Endpoint::Responses => &["temperature", "top_p", "top_logprobs"],
-        };
         for field in sampling.iter().copied().filter(|field| present(field)) {
             let fix = match spec.reasoning.can_disable() == Some(true) {
                 true => format!("remove `{field}` or set `{effort_field}` to `none`"),

@@ -11,9 +11,12 @@
 //!    key by key, anything else replaces. A reviewed row that names
 //!    `"from": "<vendor>/<id>"` starts from that generated row instead. The
 //!    review's own keys (`from`, `source`, `note`) are dropped.
-//! 3. Give each gateway row whose models.dev `canonical_model_id` names an
-//!    Anthropic model that model's reviewed facts ([`ANTHROPIC_SERVERS`]),
-//!    then lay the reviewed rows over them again.
+//! 3. Give each row of a vendor that serves another's models, whose
+//!    models.dev `canonical_model_id` names that vendor's model, that
+//!    model's facts it takes ([`SERVERS`]),
+//!    give each reasoning row of a gateway that translates reasoning
+//!    controls the controls it translates ([`REASONING_GATEWAYS`]), then lay
+//!    the reviewed rows over them again.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. `--check`
@@ -106,16 +109,41 @@ const RIG_KEYS: [&str; 13] = [
     "chat_tools_need_reasoning_off",
 ];
 
-/// The vendors that serve Anthropic's models, and the keys of the Anthropic
-/// row a row of theirs takes when its `canonical_model_id` names that row.
-/// Bedrock and Vertex AI take Anthropic's own request fields, so they take
-/// its reasoning options too; OpenRouter maps reasoning its own way and
-/// keeps the options models.dev lists for it.
-const ANTHROPIC_SERVERS: [(&str, &[&str]); 3] = [
-    ("aws_bedrock", &["reasoning_options", "rig"]),
-    ("openrouter", &["rig"]),
-    ("vertexai", &["reasoning_options", "rig"]),
+/// The vendors that serve another vendor's models, and the facts a row of
+/// theirs takes from the origin's row when its `canonical_model_id` names
+/// that row: `(origin, server, keys)`, where a key is a row key or
+/// `rig.<fact>` for one fact under `rig`. Bedrock and Vertex AI take
+/// Anthropic's own request fields, so they take its reasoning options too;
+/// OpenRouter maps reasoning its own way and keeps the options models.dev
+/// lists for it. Azure OpenAI and Copilot reach OpenAI's models through
+/// OpenAI's wire, which applies OpenAI's sampling rule, so they take it and
+/// the default effort it depends on.
+const SERVERS: [(&str, &str, &[&str]); 5] = [
+    ("anthropic", "aws_bedrock", &["reasoning_options", "rig"]),
+    ("anthropic", "openrouter", &["rig"]),
+    ("anthropic", "vertexai", &["reasoning_options", "rig"]),
+    (
+        "openai",
+        "azure.openai",
+        &["rig.sampling", "rig.reasoning_default"],
+    ),
+    (
+        "openai",
+        "copilot",
+        &["rig.sampling", "rig.reasoning_default"],
+    ),
 ];
+
+/// The gateways that translate reasoning controls for every model they
+/// route: each takes every effort level in [`GATEWAY_EFFORTS`] and a token
+/// budget for any reasoning model, whatever the upstream lists, except a
+/// budget for the upstreams by these id prefixes, which take only an
+/// effort.
+const REASONING_GATEWAYS: [(&str, &[&str]); 1] = [("openrouter", &["openai/", "x-ai/"])];
+
+/// The effort levels a [`REASONING_GATEWAYS`] gateway takes for every
+/// reasoning model.
+const GATEWAY_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
 
 /// The catalog: vendor, then model id, then the row.
 type Rows = BTreeMap<String, BTreeMap<String, Map<String, Value>>>;
@@ -214,7 +242,8 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
     let review = read_rows(review)?;
     validate_review(&review)?;
     apply(&mut rows, &review)?;
-    serve_anthropic(&mut rows);
+    serve(&mut rows);
+    translate_reasoning(&mut rows);
     apply(&mut rows, &review)?;
     rows.retain(|_, models| !models.is_empty());
     Ok(rows)
@@ -313,43 +342,125 @@ fn apply(rows: &mut Rows, review: &Rows) -> Result<(), String> {
     Ok(())
 }
 
-/// Give each row of an [`ANTHROPIC_SERVERS`] vendor whose
-/// `canonical_model_id` is `anthropic/<model>` the keys its vendor takes from
-/// that Anthropic row. `<model>` is found as rig-core finds a model: the id
-/// as listed, or else the longest listed id it extends with `-20` and a
-/// year.
-fn serve_anthropic(rows: &mut Rows) {
-    let Some(anthropic) = rows.get("anthropic").cloned() else {
-        return;
-    };
-    for (vendor, keys) in ANTHROPIC_SERVERS {
+/// Give each row of a [`SERVERS`] vendor whose `canonical_model_id` is
+/// `<origin>/<model>` the keys its vendor takes from that origin row.
+/// `<model>` is found as rig-core finds a model: the id as listed, or else
+/// the longest listed id it extends with `-20` and a year.
+fn serve(rows: &mut Rows) {
+    for (origin, vendor, keys) in SERVERS {
+        let Some(origin_rows) = rows.get(origin).cloned() else {
+            continue;
+        };
         let Some(models) = rows.get_mut(vendor) else {
             continue;
         };
+        let prefix = format!("{origin}/");
         for row in models.values_mut() {
             let Some(source) = row
                 .get("canonical_model_id")
                 .and_then(Value::as_str)
-                .and_then(|canonical| canonical.strip_prefix("anthropic/"))
-                .and_then(|model| anthropic_row(&anthropic, model))
+                .and_then(|canonical| canonical.strip_prefix(prefix.as_str()))
+                .and_then(|model| origin_row(&origin_rows, model))
             else {
                 continue;
             };
             for key in keys {
-                if let Some(value) = source.get(*key) {
-                    row.insert((*key).to_owned(), value.clone());
+                match key.split_once('.') {
+                    Some((outer, fact)) => {
+                        let Some(value) = source.get(outer).and_then(|facts| facts.get(fact))
+                        else {
+                            continue;
+                        };
+                        if let Value::Object(facts) = row
+                            .entry(outer.to_owned())
+                            .or_insert_with(|| Value::Object(Map::new()))
+                        {
+                            facts.insert(fact.to_owned(), value.clone());
+                        }
+                    }
+                    None => {
+                        if let Some(value) = source.get(*key) {
+                            row.insert((*key).to_owned(), value.clone());
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/// The Anthropic row of `model`, or of the model it is a dated snapshot of.
-fn anthropic_row<'a>(
-    anthropic: &'a BTreeMap<String, Map<String, Value>>,
+/// Give each reasoning row of a [`REASONING_GATEWAYS`] gateway that lists
+/// reasoning options the controls the gateway translates: the
+/// [`GATEWAY_EFFORTS`] beside the efforts it lists, and a token budget
+/// unless it lists one or its upstream takes none. Whether reasoning turns
+/// off stays as listed. A row that lists no options stays unknown.
+fn translate_reasoning(rows: &mut Rows) {
+    for (vendor, effort_only) in REASONING_GATEWAYS {
+        let Some(models) = rows.get_mut(vendor) else {
+            continue;
+        };
+        for (id, row) in models.iter_mut() {
+            if row.get("reasoning") != Some(&Value::Bool(true)) {
+                continue;
+            }
+            let Some(Value::Array(options)) = row.get_mut("reasoning_options") else {
+                continue;
+            };
+            if options.is_empty() {
+                continue;
+            }
+            let kind = |option: &Value| {
+                option
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+            };
+            let mut values: Vec<Value> = GATEWAY_EFFORTS
+                .iter()
+                .map(|&level| Value::from(level))
+                .collect();
+            for option in options
+                .iter()
+                .filter(|option| kind(option).as_deref() == Some("effort"))
+            {
+                for value in option
+                    .get("values")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                {
+                    if !values.contains(value) {
+                        values.push(value.clone());
+                    }
+                }
+            }
+            let budget = options
+                .iter()
+                .find(|option| kind(option).as_deref() == Some("budget_tokens"))
+                .cloned()
+                .or_else(|| {
+                    (!effort_only.iter().any(|prefix| id.starts_with(prefix)))
+                        .then(|| serde_json::json!({"type": "budget_tokens"}))
+                });
+            let toggle = options
+                .iter()
+                .find(|option| kind(option).as_deref() == Some("toggle"))
+                .cloned();
+            let mut translated = vec![serde_json::json!({"type": "effort", "values": values})];
+            translated.extend(budget);
+            translated.extend(toggle);
+            *options = translated;
+        }
+    }
+}
+
+/// The row of `model` among `origin`'s rows, or of the model it is a dated
+/// snapshot of.
+fn origin_row<'a>(
+    origin: &'a BTreeMap<String, Map<String, Value>>,
     model: &str,
 ) -> Option<&'a Map<String, Value>> {
-    anthropic.get(model).or_else(|| {
+    origin.get(model).or_else(|| {
         model
             .match_indices("-20")
             .filter(|(at, _)| {
@@ -357,7 +468,7 @@ fn anthropic_row<'a>(
                     .get(at + 3..at + 5)
                     .is_some_and(|year| year.bytes().all(|byte| byte.is_ascii_digit()))
             })
-            .filter_map(|(at, _)| anthropic.get(model.get(..at)?))
+            .filter_map(|(at, _)| origin.get(model.get(..at)?))
             .last()
     })
 }

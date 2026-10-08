@@ -238,6 +238,9 @@ fn refuse(
     let option = option.into();
     let provider = target.provider();
     let model = model_of(target, request);
+    if collected(|| UnsupportedOption::new(option.clone(), provider, model, reason.clone())) {
+        return Ok(());
+    }
     match request.options.unsupported_policy() {
         OnUnsupported::Error => Err(EncodeError::unsupported(UnsupportedOption::new(
             option, provider, model, reason,
@@ -371,6 +374,7 @@ pub fn check(
     unserialized(request)?;
     let settled = settle(target, request)?;
     clear(&mut request.options, &settled.ignored);
+    model_rules(target, request)?;
     let layer = provider_layer(target, request);
     for refusal in &layer.refused {
         refuse(
@@ -391,6 +395,77 @@ pub fn check(
     Ok(())
 }
 
+/// Report each option of `request` the catalog entry of its model on
+/// `target` refuses by [`ModelSpec::refusals`](crate::catalog::ModelSpec::refusals),
+/// under the request's policy, and clear it under
+/// [`OnUnsupported::Ignore`]. The wire's own answers come first, so an
+/// option it already refused is not reported twice.
+fn model_rules(
+    target: &dyn ReplayTarget,
+    request: &mut CompletionRequest,
+) -> Result<(), EncodeError> {
+    let facts = target
+        .facts()
+        .unwrap_or_else(|| crate::catalog::ModelFacts::builtin());
+    let Some(spec) = facts.for_model(target.provider(), model_of(target, request)) else {
+        return Ok(());
+    };
+    let refusals = spec.request_rules(request);
+    let mut ignored = Vec::new();
+    for CatalogRefusal { field, reason } in refusals {
+        refuse(target, request, field, reason)?;
+        ignored.push(field);
+    }
+    if ignored.contains(&"temperature") {
+        request.temperature = None;
+    }
+    clear(&mut request.options, &ignored);
+    Ok(())
+}
+
+thread_local! {
+    /// The refusals collected by [`collect_refusals`] on this thread, while
+    /// it runs.
+    static COLLECTED: std::cell::RefCell<Option<Vec<UnsupportedOption>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `encode` with every refusal collected instead of reported: each
+/// refused option is skipped as under [`OnUnsupported::Ignore`], without a
+/// warning, and the refusals come back in the order they were made. Encoding
+/// is synchronous and pure, so a thread-local scope sees every refusal it
+/// makes. `DynModel::check` dry-runs a request under it.
+pub(crate) fn collect_refusals<T>(encode: impl FnOnce() -> T) -> (T, Vec<UnsupportedOption>) {
+    /// Restores the enclosing scope's collection, also on unwind.
+    struct Scope(Option<Vec<UnsupportedOption>>);
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            let outer = self.0.take();
+            COLLECTED.with(|collected| collected.replace(outer));
+        }
+    }
+    let outer = COLLECTED.with(|collected| collected.replace(Some(Vec::new())));
+    let scope = Scope(outer);
+    let value = encode();
+    let refusals = COLLECTED
+        .with(|collected| collected.borrow_mut().take())
+        .unwrap_or_default();
+    drop(scope);
+    (value, refusals)
+}
+
+/// Whether a [`collect_refusals`] scope is open, after adding the refusal
+/// `make` builds to it.
+fn collected(make: impl FnOnce() -> UnsupportedOption) -> bool {
+    COLLECTED.with(|collected| match collected.borrow_mut().as_mut() {
+        Some(refusals) => {
+            refusals.push(make());
+            true
+        }
+        None => false,
+    })
+}
+
 /// A part of a final body that a model's catalog entry says the API
 /// rejects: a top-level body key, or `tools` for the request's tools, and
 /// why. Found on the final body, because `additional_params` can set the
@@ -409,6 +484,9 @@ pub(crate) struct CatalogRefusal {
 /// `temperature`, a generation option, a provider option) is left out of
 /// the body. A key whose value `additional_params` sets, and the request's
 /// `tools`, are sent as written.
+///
+/// Inside [`collect_refusals`], every refusal is collected and handled as
+/// under [`OnUnsupported::Ignore`], so a dry run lists them all.
 ///
 /// # Errors
 ///
@@ -435,7 +513,9 @@ pub(crate) fn catalog_refusals(
     }
     let FinalBody(mut body) = body;
     for CatalogRefusal { field, reason } in refusals {
-        if request.options.unsupported_policy() == OnUnsupported::Error {
+        let collecting =
+            collected(|| UnsupportedOption::new(field, provider, model, reason.clone()));
+        if !collecting && request.options.unsupported_policy() == OnUnsupported::Error {
             return Err(EncodeError::unsupported(UnsupportedOption::new(
                 field, provider, model, reason,
             )));
@@ -447,6 +527,9 @@ pub(crate) fn catalog_refusals(
         let typed = field != "tools" && raw.is_none_or(|raw| body.get(field) != Some(raw));
         if typed {
             body.shift_remove(field);
+        }
+        if collecting {
+            continue;
         }
         tracing::warn!(
             option = field,

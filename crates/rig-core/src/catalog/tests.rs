@@ -763,3 +763,276 @@ fn a_row_names_the_family_its_model_is_reached_by() {
         Some(Some(Format::Anthropic))
     );
 }
+
+/// `refusals` applies the sampling rule beside reasoning and cache: a model
+/// that takes no sampling parameters refuses `temperature` and `top_p`, and
+/// one that takes them only with reasoning off refuses them while it
+/// reasons, which with no `reasoning` set it does when it names a default
+/// effort. `validate` checks what the options hold, `top_p` included, and a
+/// request whose options are default is not checked.
+#[test]
+fn refusals_apply_the_sampling_rule_beside_reasoning_and_cache() {
+    use crate::completion::CompletionRequest;
+    let names = |spec: &ModelSpec, request: &CompletionRequest| -> Vec<String> {
+        spec.refusals(request)
+            .into_iter()
+            .map(|refusal| refusal.option.into_owned())
+            .collect()
+    };
+    let openai = ProviderId::catalog("openai").expect("a known vendor");
+    let thinker = ModelSpec::new(openai, "thinker")
+        .with_reasoning(ReasoningSupport::Listed {
+            levels: vec![Effort::Low, Effort::High],
+            budget: None,
+            can_disable: true,
+            default: Some(Effort::Low),
+        })
+        .with_caching(CacheSupport {
+            retention: vec![CacheRetention::Short],
+        })
+        .with_sampling(Sampling::ReasoningOff);
+    let sampled = CompletionRequest::new("hi").temperature(0.2).top_p(0.9);
+    assert_eq!(names(&thinker, &sampled), ["temperature", "top_p"]);
+    assert_eq!(
+        names(&thinker, &sampled.clone().reasoning(Reasoning::Off)),
+        Vec::<String>::new()
+    );
+    let everything = sampled.clone().reasoning(Effort::Medium).options(
+        GenerationOptions::default()
+            .reasoning(Effort::Medium)
+            .cache(CacheRetention::Long)
+            .top_p(0.9),
+    );
+    assert_eq!(
+        names(&thinker, &everything),
+        ["reasoning", "cache", "temperature", "top_p"]
+    );
+    let refusal = &thinker.refusals(&everything)[2];
+    assert_eq!(
+        (refusal.provider.as_str(), refusal.model.as_str()),
+        ("openai", "thinker")
+    );
+    assert_eq!(
+        thinker
+            .validate(&GenerationOptions::default().top_p(0.9))
+            .map_err(|refusal| refusal.option),
+        Err("top_p".into())
+    );
+    assert!(
+        thinker
+            .refusals(&CompletionRequest::new("hi").temperature(0.2))
+            .is_empty(),
+        "default options are not checked"
+    );
+
+    let fixed = thinker.clone().with_sampling(Sampling::Never);
+    assert_eq!(
+        names(&fixed, &sampled.clone().reasoning(Reasoning::Off)),
+        ["temperature", "top_p"]
+    );
+    let undecided = thinker.with_reasoning(ReasoningSupport::Listed {
+        levels: vec![Effort::Low],
+        budget: None,
+        can_disable: true,
+        default: None,
+    });
+    assert!(
+        names(&undecided, &sampled).is_empty(),
+        "a model that names no default effort and can turn reasoning off is not reasoning"
+    );
+}
+
+/// The requests the consistency test checks every row with: each reasoning
+/// value, each cache retention, the sampling parameters with and without
+/// reasoning, and `stop`.
+fn option_matrix() -> Vec<crate::completion::CompletionRequest> {
+    use crate::completion::CompletionRequest;
+    let base = || CompletionRequest::new("hi").max_tokens(4096);
+    let mut requests: Vec<CompletionRequest> = [
+        Reasoning::Off,
+        Reasoning::Effort(Effort::Minimal),
+        Reasoning::Effort(Effort::Low),
+        Reasoning::Effort(Effort::Medium),
+        Reasoning::Effort(Effort::High),
+        Reasoning::Effort(Effort::XHigh),
+        Reasoning::Effort(Effort::Max),
+        Reasoning::Budget { tokens: 2048 },
+        Reasoning::Budget { tokens: 30_000 },
+    ]
+    .into_iter()
+    .map(|reasoning| base().reasoning(reasoning))
+    .collect();
+    for cache in [
+        CacheRetention::None,
+        CacheRetention::Short,
+        CacheRetention::Long,
+    ] {
+        requests.push(base().options(GenerationOptions::default().cache(cache)));
+    }
+    requests.push(base().top_p(0.9));
+    requests.push(base().temperature(0.5).top_p(0.9));
+    requests.push(base().temperature(0.5).reasoning(Effort::High));
+    requests.push(base().temperature(0.5).reasoning(Reasoning::Off));
+    requests.push(base().stop(["END"]));
+    requests
+}
+
+/// The options `check` refuses for `request`, or `None` when the request
+/// cannot be built for another reason.
+fn checked(
+    model: &crate::DynModel<crate::operation::Completion>,
+    request: &crate::completion::CompletionRequest,
+) -> Option<Vec<String>> {
+    use crate::completion::CheckError;
+    match model.check(request) {
+        Ok(()) => Some(Vec::new()),
+        Err(CheckError::Unsupported(refused)) => Some(
+            refused
+                .into_iter()
+                .map(|refusal| refusal.option.into_owned())
+                .collect(),
+        ),
+        Err(_) => None,
+    }
+}
+
+/// `request` without the options in `dropped`, as `check` runs it, under
+/// `OnUnsupported::Ignore`: the request the catalog's rules see once the
+/// wire's refusals of `dropped` are applied.
+fn without(
+    request: &crate::completion::CompletionRequest,
+    dropped: &[&String],
+) -> crate::completion::CompletionRequest {
+    let mut request = request.clone();
+    if !request.options.is_default() {
+        request.options.on_unsupported = Some(crate::completion::OnUnsupported::Ignore);
+    }
+    let drops = |option: &str| dropped.iter().any(|dropped| *dropped == option);
+    let options = &mut request.options;
+    if drops("reasoning") {
+        options.reasoning = None;
+    }
+    if drops("cache") {
+        options.cache = None;
+    }
+    if drops("top_p") {
+        options.top_p = None;
+    }
+    if drops("stop") {
+        options.stop.clear();
+    }
+    if drops("temperature") {
+        request.temperature = None;
+    }
+    request
+}
+
+fn option_names(refusals: Vec<crate::completion::UnsupportedOption>) -> Vec<String> {
+    refusals
+        .into_iter()
+        .map(|refusal| refusal.option.into_owned())
+        .collect()
+}
+
+/// `validate` and the wires share one rule set. For every row rig-core
+/// connects and a matrix of requests, on the row's own wire:
+///
+/// - a request [`ModelSpec::refusals`] refuses, `DynModel::check` refuses,
+///   and `validate`'s refusal is one of them;
+/// - every option the catalog's rules refuse once the wire's own refusals
+///   are applied, `check` refuses too;
+/// - every other option `check` refuses, the wire refuses for that model id
+///   when the catalog lists nothing, so it is the wire's own rule (its
+///   route, its API or its naming rule) and reads no catalog fact.
+///
+/// The providers only the catalog knows are served, and checked, by their
+/// companion crates.
+#[test]
+fn check_refuses_what_the_catalog_refuses_and_the_rest_is_the_wires() {
+    use crate::providers::registry::ConnectOptions;
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let options = || {
+        ConnectOptions::new()
+            .api_key("sk-test")
+            .base_url("http://localhost")
+            .http(http.clone())
+    };
+    let requests = option_matrix();
+    let empty = Catalog::default();
+    let (mut rows, mut cells) = (0, 0);
+    let mut disagreements = Vec::new();
+    for spec in Catalog::builtin().iter() {
+        // A provider only the catalog knows is served by its companion crate.
+        let Some(format) = spec.format() else {
+            continue;
+        };
+        let model = Catalog::builtin()
+            .connect_with(spec, options())
+            .unwrap_or_else(|error| panic!("{}: {error}", spec.id));
+        rows += 1;
+        let reference = format!("{}/{}", spec.provider.vendor(), spec.id);
+        let mut bare = None;
+        for request in &requests {
+            let Some(refused) = checked(&model, request) else {
+                continue;
+            };
+            cells += 1;
+            let mut disagree = |what: String| {
+                disagreements.push(format!("{reference}: {what} ({:?})", request.options));
+            };
+            let catalog = option_names(spec.refusals(request));
+            if !catalog.is_empty() && refused.is_empty() {
+                disagree(format!("the catalog refuses {catalog:?}, check nothing"));
+            }
+            if let Err(first) = spec.validate(&request.options)
+                && !catalog.contains(&first.option.clone().into_owned())
+            {
+                disagree(format!("validate's {} is not a refusal", first.option));
+            }
+            // What `check` refuses beyond the catalog's rules: the wire's own
+            // refusals, and the catalog's once those are applied.
+            let others: Vec<&String> = refused
+                .iter()
+                .filter(|option| !catalog.contains(option))
+                .collect();
+            let after = option_names(spec.refusals(&without(request, &others)));
+            for option in after.iter().filter(|option| !refused.contains(option)) {
+                disagree(format!("{option} refused by the catalog, not by check"));
+            }
+            let caught_after = |kept: &String| {
+                let dropped: Vec<&String> = others
+                    .iter()
+                    .copied()
+                    .filter(|other| *other != kept)
+                    .collect();
+                option_names(spec.refusals(&without(request, &dropped))).contains(kept)
+            };
+            let own: Vec<&String> = others
+                .iter()
+                .copied()
+                .filter(|option| !caught_after(option))
+                .collect();
+            if own.is_empty() {
+                continue;
+            }
+            let bare = bare.get_or_insert_with(|| {
+                empty
+                    .connect_with(reference.as_str(), options().format(format))
+                    .expect("an unlisted model of a known vendor connects")
+            });
+            let wire = checked(bare, request).unwrap_or_default();
+            for option in own.into_iter().filter(|option| !wire.contains(option)) {
+                disagree(format!(
+                    "{option} refused by check by a catalog fact `refusals` does not apply"
+                ));
+            }
+        }
+    }
+    assert!(rows > 1000 && cells > 15_000, "{rows} rows, {cells} cells");
+    assert!(
+        disagreements.is_empty(),
+        "{} disagreements:\n{}",
+        disagreements.len(),
+        disagreements.join("\n")
+    );
+}

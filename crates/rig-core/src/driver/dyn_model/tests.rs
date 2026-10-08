@@ -154,3 +154,87 @@ fn an_erased_call_on_a_borrowed_prompt_outlives_the_prompt() {
     let response = futures::executor::block_on(future).expect("the call succeeds");
     assert_eq!(response.text(), "hi");
 }
+
+/// A model connected through the catalog, with a transport that records
+/// what it sends.
+fn connected(reference: &str) -> (DynModel<Completion>, crate::test_utils::RecordingHttpClient) {
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let model = crate::catalog::Catalog::builtin()
+        .connect_with(
+            reference,
+            crate::providers::registry::ConnectOptions::new()
+                .api_key("sk-test")
+                .http(http.clone()),
+        )
+        .expect("connects");
+    (model, http)
+}
+
+/// `check` lists every option the model refuses, the catalog's and the
+/// wire's, sends nothing, and leaves a request it accepts alone.
+#[test]
+fn check_lists_every_refusal_and_sends_nothing() {
+    use crate::completion::{CacheRetention, CheckError, Effort, Reasoning};
+    let (model, http) = connected("openai/gpt-6-sol");
+    let request = CompletionRequest::new("hi").temperature(0.2).options(
+        crate::completion::GenerationOptions::default()
+            .reasoning(Reasoning::Budget { tokens: 2048 })
+            .top_p(0.9)
+            .cache(CacheRetention::Long),
+    );
+    let Err(CheckError::Unsupported(refused)) = model.check(&request) else {
+        panic!("GPT-6 Sol refuses a budget and sampling while it reasons");
+    };
+    let options: Vec<&str> = refused
+        .iter()
+        .map(|refusal| refusal.option.as_ref())
+        .collect();
+    assert_eq!(
+        options,
+        ["reasoning", "top_p", "temperature"],
+        "{refused:?}"
+    );
+    assert!(
+        refused
+            .iter()
+            .all(|refusal| refusal.provider == "openai" && refusal.model == "gpt-6-sol")
+    );
+    assert!(http.requests().is_empty(), "a check sends nothing");
+
+    let fine = CompletionRequest::new("hi").reasoning(Effort::High);
+    assert!(model.check(&fine).is_ok());
+    let unchecked = CompletionRequest::new("hi").temperature(0.2);
+    assert!(
+        model.check(&unchecked).is_ok(),
+        "a request with default options is not checked against the catalog"
+    );
+}
+
+/// A request that cannot be built for another reason is `Invalid`, whatever
+/// it refuses.
+#[test]
+fn check_reports_a_request_that_cannot_be_built() {
+    use crate::completion::CheckError;
+    let (model, _) = connected("openai/gpt-6-sol");
+    let mut request = CompletionRequest::new("hi").temperature(0.2).top_p(0.9);
+    request.chat_history.clear();
+    assert!(matches!(model.check(&request), Err(CheckError::Invalid(_))));
+}
+
+/// The refusals `check` lists are what sending reports one at a time: under
+/// `Error` the call fails with the first.
+#[tokio::test]
+async fn check_lists_first_what_the_call_refuses() {
+    use crate::completion::CheckError;
+    let (model, _) = connected("anthropic/claude-fable-5");
+    let request = CompletionRequest::new("hi").temperature(0.2).top_p(0.9);
+    let Err(CheckError::Unsupported(refused)) = model.check(&request) else {
+        panic!("Claude Fable 5 takes no sampling parameters");
+    };
+    let Err(crate::error::ProviderError::UnsupportedOption(first)) = model.call(request).await
+    else {
+        panic!("the call is refused");
+    };
+    assert_eq!(refused.first(), Some(&first));
+    assert_eq!(refused.len(), 2, "{refused:?}");
+}

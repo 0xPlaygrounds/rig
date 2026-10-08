@@ -27,13 +27,30 @@ fn models_dev() -> serde_json::Value {
                 "name": "Claude X 1", "reasoning": true,
                 "reasoning_options": [{"type": "toggle"}],
                 "canonical_model_id": "anthropic/claude-x-1"
+            },
+            "openai/gpt-x": {
+                "name": "GPT X", "reasoning": true,
+                "reasoning_options": [{"type": "effort", "values": ["low", "high", "max"]}]
+            },
+            "vendor/thinker": {
+                "name": "Thinker", "reasoning": true,
+                "reasoning_options": [{"type": "budget_tokens", "min": 1024}]
+            },
+            "vendor/unknown": {"name": "Unknown", "reasoning": true},
+            "vendor/plain": {
+                "name": "Plain", "reasoning": false,
+                "reasoning_options": [{"type": "toggle"}]
             }
         }},
         "google-vertex": {"models": {
             "claude-x-1@default": {"name": "Claude X 1", "canonical_model_id": "anthropic/claude-x-1"}
         }},
         "github-copilot": {"models": {
-            "claude-x.1": {"name": "Claude X 1", "canonical_model_id": "anthropic/claude-x-1"}
+            "claude-x.1": {"name": "Claude X 1", "canonical_model_id": "anthropic/claude-x-1"},
+            "gpt-x": {"name": "GPT X", "canonical_model_id": "openai/gpt-x"}
+        }},
+        "azure": {"models": {
+            "gpt-x": {"name": "GPT X", "canonical_model_id": "openai/gpt-x", "rig": {"cache": ["short"]}}
         }},
         "somebody-else": {"models": {"m": {"name": "M"}}}
     })
@@ -47,6 +64,7 @@ fn sync_keeps_rigs_providers_and_the_fields_the_catalog_reads() {
         [
             "anthropic",
             "aws_bedrock",
+            "azure.openai",
             "copilot",
             "openrouter",
             "vertexai"
@@ -114,8 +132,12 @@ fn rows_whose_canonical_id_is_an_anthropic_model_take_its_facts() {
     assert_eq!(openrouter["rig"], claude["rig"]);
     assert_eq!(
         openrouter["reasoning_options"],
-        json!([{"type": "toggle"}]),
-        "OpenRouter keeps its own reasoning options"
+        json!([
+            {"type": "effort", "values": ["minimal", "low", "medium", "high", "xhigh"]},
+            {"type": "budget_tokens"},
+            {"type": "toggle"}
+        ]),
+        "OpenRouter keeps its own reasoning options, as it translates them"
     );
 
     let vertex = &rows["vertexai"]["claude-x-1@default"];
@@ -154,7 +176,7 @@ fn the_rendered_catalog_reads_back_to_itself() {
     assert_eq!(render(&read), rendered);
     assert_eq!(
         rendered.lines().count(),
-        19,
+        27,
         "one line per model:\n{rendered}"
     );
 }
@@ -182,5 +204,54 @@ fn a_reviewed_format_reaches_the_row() {
     assert_eq!(
         rows["anthropic"]["claude-x-1"]["rig"],
         json!({"format": "anthropic"})
+    );
+}
+
+#[test]
+fn a_gateway_that_translates_reasoning_takes_every_effort_and_a_budget() {
+    let rows = generate(&models_dev(), &json!({})).expect("generates");
+    let openrouter = &rows["openrouter"];
+    assert_eq!(
+        openrouter["openai/gpt-x"]["reasoning_options"],
+        json!([{"type": "effort", "values": ["minimal", "low", "medium", "high", "xhigh", "max"]}]),
+        "an OpenAI upstream takes no budget, and keeps the efforts it lists"
+    );
+    assert_eq!(
+        openrouter["vendor/thinker"]["reasoning_options"],
+        json!([
+            {"type": "effort", "values": ["minimal", "low", "medium", "high", "xhigh"]},
+            {"type": "budget_tokens", "min": 1024}
+        ]),
+        "a listed budget is kept, and reasoning still cannot be turned off"
+    );
+    assert_eq!(
+        openrouter["vendor/unknown"].get("reasoning_options"),
+        None,
+        "a row that lists nothing stays unknown"
+    );
+    assert_eq!(
+        openrouter["vendor/plain"]["reasoning_options"],
+        json!([{"type": "toggle"}]),
+        "a model that does not reason is left alone"
+    );
+}
+
+#[test]
+fn rows_whose_canonical_id_is_an_openai_model_take_its_sampling_rule() {
+    let review = json!({
+        "openai": {"models": {"gpt-x": {
+            "name": "GPT X",
+            "rig": {"sampling": "reasoning_off", "reasoning_default": "medium", "cache": ["long"]}
+        }}}
+    });
+    let rows = generate(&models_dev(), &review).expect("generates");
+    assert_eq!(
+        rows["copilot"]["gpt-x"]["rig"],
+        json!({"sampling": "reasoning_off", "reasoning_default": "medium"})
+    );
+    assert_eq!(
+        rows["azure.openai"]["gpt-x"]["rig"],
+        json!({"cache": ["short"], "sampling": "reasoning_off", "reasoning_default": "medium"}),
+        "the row's own facts stay, and only the sampling rule joins them"
     );
 }

@@ -8,7 +8,7 @@
 
 use serde_json::json;
 
-use crate::catalog::{ModelSpec, Sampling};
+use crate::catalog::ModelSpec;
 use crate::completion::options::{Mapping, OptionFields, OptionMap};
 use crate::completion::{CacheRetention, CompletionRequest, Effort, Reasoning, ServiceTier};
 use crate::message::ToolChoice;
@@ -81,15 +81,24 @@ fn claude_reasoning(
     }
 }
 
-/// `top_p` on the model `spec` describes, which some models fix and the
-/// rest take only without `temperature`.
-fn claude_top_p(spec: Option<&ModelSpec>, top_p: f64, temperature: bool) -> Mapping {
-    match spec.and_then(|spec| spec.sampling) {
-        Some(Sampling::Never) => Mapping::unsupported("this model does not take `top_p`"),
-        _ if temperature => {
-            Mapping::unsupported("this model takes `temperature` or `top_p`, not both")
-        }
-        _ => Mapping::Send(json!({"top_p": top_p})),
+/// `top_p` on the model `spec` describes: refused by its catalog entry's
+/// sampling rule (the one [`ModelSpec::refusals`] applies) for a model
+/// that fixes its sampling, and otherwise taken only without
+/// `temperature`.
+fn claude_top_p(
+    spec: Option<&ModelSpec>,
+    reasoning: Option<&Reasoning>,
+    top_p: f64,
+    temperature: bool,
+) -> Mapping {
+    if let Some(reason) =
+        spec.and_then(|spec| spec.sampling_refusal("top_p", spec.reasons_with(reasoning)))
+    {
+        return Mapping::unsupported(reason);
+    }
+    match temperature {
+        true => Mapping::unsupported("this model takes `temperature` or `top_p`, not both"),
+        false => Mapping::Send(json!({"top_p": top_p})),
     }
 }
 
@@ -199,7 +208,7 @@ fn anthropic(
             parallel_tool_calls(request, has_tools, parallel)
         }),
         top_p: Mapping::of(top_p, |top_p| {
-            claude_top_p(spec, top_p, request.temperature.is_some())
+            claude_top_p(spec, reasoning, top_p, request.temperature.is_some())
         }),
         seed: Mapping::of(seed, |_| {
             Mapping::unsupported("Anthropic has no seed parameter")

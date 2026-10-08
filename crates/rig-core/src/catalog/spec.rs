@@ -5,8 +5,10 @@ use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Serialize};
 
+use crate::completion::options::CatalogRefusal;
 use crate::completion::{
-    CacheRetention, Cost, Effort, GenerationOptions, Reasoning, UnsupportedOption, Usage,
+    CacheRetention, CompletionRequest, Cost, Effort, GenerationOptions, Reasoning,
+    UnsupportedOption, Usage,
 };
 use crate::providers::registry::{Format, ProviderId};
 
@@ -436,30 +438,138 @@ impl ModelSpec {
         super::row::Row::from_spec(self).to_json()
     }
 
-    /// Checks `options` against what the model takes: `reasoning` against
-    /// [`Self::reasoning`] and `cache` against [`Self::caching`]. The error
-    /// names the option, the provider's vendor and this model. A model whose
-    /// reasoning controls the catalog does not know
-    /// ([`ReasoningSupport::Unknown`]) refuses no `reasoning` value.
+    /// Checks `options` against the rules [`Self::refusals`] applies,
+    /// and returns the first refusal. It checks only what `options` holds,
+    /// so it never refuses `temperature`, which a request carries outside
+    /// its options; [`Self::refusals`] checks the whole request.
+    ///
+    /// # Errors
+    ///
+    /// The first option the model cannot take. The error names the option,
+    /// the provider's vendor and this model.
     pub fn validate(&self, options: &GenerationOptions) -> Result<(), UnsupportedOption> {
-        let refuse = |option: &'static str, reason: String| {
-            UnsupportedOption::new(option, self.provider.vendor(), &self.id, reason)
-        };
+        match self.rules(options, None).into_iter().next() {
+            Some(refusal) => Err(self.unsupported(refusal)),
+            None => Ok(()),
+        }
+    }
+
+    /// Every option of `request` the model cannot take, by the rules every
+    /// completion wire also applies before it encodes, so a request this
+    /// refuses is refused by the model's wire too:
+    ///
+    /// - `reasoning` against [`Self::reasoning`] ([`ReasoningSupport::refusal`]);
+    /// - `cache` against [`Self::caching`] ([`CacheSupport::refusal`]);
+    /// - `top_p` and `temperature` against [`Self::sampling`]:
+    ///   [`Sampling::Never`] refuses both, and [`Sampling::ReasoningOff`]
+    ///   refuses both while the model reasons. A model that cannot turn
+    ///   reasoning off always reasons; one that can reasons unless
+    ///   `reasoning` is `Off`, and with no `reasoning` set, when it names a
+    ///   default effort.
+    ///
+    /// A request whose [`GenerationOptions`] are default is not checked, as
+    /// [`GenerationOptions::is_default`] says, so this is empty for it. A
+    /// wire refuses more than this: what its route or API cannot carry
+    /// (`DynModel::check` reports both).
+    pub fn refusals(&self, request: &CompletionRequest) -> Vec<UnsupportedOption> {
+        self.request_rules(request)
+            .into_iter()
+            .map(|refusal| self.unsupported(refusal))
+            .collect()
+    }
+
+    /// [`Self::refusals`] as the options and reasons the wires report under
+    /// their own provider name.
+    pub(crate) fn request_rules(&self, request: &CompletionRequest) -> Vec<CatalogRefusal> {
+        if request.options.is_default() {
+            return Vec::new();
+        }
+        self.rules(&request.options, request.temperature)
+    }
+
+    /// The refusals of `options` and of a request's `temperature`.
+    fn rules(&self, options: &GenerationOptions, temperature: Option<f64>) -> Vec<CatalogRefusal> {
+        let mut refusals = Vec::new();
         if let Some(reason) = options
             .reasoning
             .as_ref()
             .and_then(|reasoning| self.reasoning.refusal(reasoning))
         {
-            return Err(refuse("reasoning", reason));
+            refusals.push(CatalogRefusal {
+                field: "reasoning",
+                reason,
+            });
         }
         if let Some(reason) = options
             .cache
             .as_ref()
             .and_then(|cache| self.caching.refusal(cache))
         {
-            return Err(refuse("cache", reason));
+            refusals.push(CatalogRefusal {
+                field: "cache",
+                reason,
+            });
         }
-        Ok(())
+        let reasons = self.reasons_with(options.reasoning.as_ref());
+        let sampled = [
+            ("temperature", temperature.is_some()),
+            ("top_p", options.top_p.is_some()),
+        ];
+        for (field, set) in sampled {
+            if let Some(reason) = set.then(|| self.sampling_refusal(field, reasons)).flatten() {
+                refusals.push(CatalogRefusal { field, reason });
+            }
+        }
+        refusals
+    }
+
+    /// Why the model takes no `field`, a sampling parameter, when it reasons
+    /// as `reasons` says, by [`Self::sampling`].
+    pub(crate) fn sampling_refusal(&self, field: &str, reasons: bool) -> Option<String> {
+        match self.sampling? {
+            Sampling::Never => Some(format!("the model takes no `{field}`")),
+            Sampling::ReasoningOff if reasons => {
+                Some(match self.reasoning.can_disable() == Some(true) {
+                    true => format!(
+                        "the model rejects `{field}` while it reasons; remove `{field}` or set \
+                         `reasoning` to `Off`"
+                    ),
+                    false => format!("the model rejects `{field}` while it reasons"),
+                })
+            }
+            Sampling::ReasoningOff | Sampling::Any => None,
+        }
+    }
+
+    /// Whether the model reasons when a request asks for `reasoning`: at
+    /// `Off`, only when it cannot turn reasoning off; with nothing asked, as
+    /// [`Self::reasons_by_default`] says.
+    pub(crate) fn reasons_with(&self, reasoning: Option<&Reasoning>) -> bool {
+        match reasoning {
+            Some(Reasoning::Off) => {
+                self.reasoning.supported() && self.reasoning.can_disable() == Some(false)
+            }
+            Some(_) => self.reasoning.supported(),
+            None => self.reasons_by_default(),
+        }
+    }
+
+    /// Whether the model reasons when a request asks for nothing: when it
+    /// names a default effort or cannot turn reasoning off.
+    pub(crate) fn reasons_by_default(&self) -> bool {
+        self.reasoning.supported()
+            && (self.reasoning.default_effort().is_some()
+                || self.reasoning.can_disable() == Some(false))
+    }
+
+    /// `refusal` named for this model.
+    fn unsupported(&self, refusal: CatalogRefusal) -> UnsupportedOption {
+        UnsupportedOption::new(
+            refusal.field,
+            self.provider.vendor(),
+            &self.id,
+            refusal.reason,
+        )
     }
 }
 
