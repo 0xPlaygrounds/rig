@@ -36,12 +36,14 @@ use super::agent::{
     Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, Submit,
     SystemPrompt, ToolAccess, ToolCallRun, TurnFinished, TurnOf,
 };
+use super::attach;
 use super::calls::{Done, Running, Wake};
 use super::commands::{CommandArgs, SlashCommand};
 use super::compaction::{
     self, CompactReason, Compacted, MAX_COMPACTIONS, Summarize, Summarizing, Summary,
 };
 use super::effects::Effects;
+use super::inbox::{Inbox, deliver_follow_up, deliver_steering};
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
@@ -90,10 +92,18 @@ fn tool_pool() -> &'static AsyncComputeTaskPool {
     AsyncComputeTaskPool::get_or_init(TaskPool::default)
 }
 
-/// Runs a slash command or starts a turn.
+/// Runs a slash command, starts a turn, or steers the running one.
 pub(crate) fn on_submit(
     submit: On<Submit>,
-    mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
+    mut agents: Query<
+        (
+            &mut Conversation,
+            &mut Inbox,
+            Option<&Connection>,
+            Has<ActiveTurn>,
+        ),
+        With<Agent>,
+    >,
     slash: Query<(Entity, &SlashCommand)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -129,17 +139,19 @@ pub(crate) fn on_submit(
         }
         return;
     }
-    let Ok((mut conversation, busy)) = agents.get_mut(agent) else {
+    let Ok((mut conversation, mut inbox, connection, busy)) = agents.get_mut(agent) else {
         return;
     };
+    // A message to a busy agent steers its turn.
     if busy {
-        notices.write(Notice::info(
-            agent,
-            "The agent is busy. Press Esc to stop the turn.",
-        ));
+        inbox.steering.push(text.to_owned());
         return;
     }
-    conversation.0.push(Message::user(text));
+    let (message, notes) = attach::user_message(text, connection.map(|connection| connection.spec));
+    for note in notes {
+        notices.write(Notice::info(agent, note));
+    }
+    conversation.0.push(message);
     let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
     commands.trigger(CallModel { entity: turn });
 }
@@ -412,8 +424,7 @@ pub(crate) fn on_call_model(
     call: On<CallModel>,
     mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
-        &AgentId,
-        &mut Conversation,
+        (&AgentId, &mut Conversation, &mut Inbox),
         &Compacted,
         &mut Spending,
         Option<&Connection>,
@@ -432,8 +443,15 @@ pub(crate) fn on_call_model(
     let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((id, mut conversation, compacted, mut spent, connection, effort, prompt, access)) =
-        agents.get_mut(agent)
+    let Ok((
+        (id, mut conversation, mut inbox),
+        compacted,
+        mut spent,
+        connection,
+        effort,
+        prompt,
+        access,
+    )) = agents.get_mut(agent)
     else {
         return;
     };
@@ -455,6 +473,8 @@ pub(crate) fn on_call_model(
         });
         return;
     }
+    let spec = connection.map(|connection| connection.spec);
+    deliver_steering(agent, &mut inbox, &mut conversation.0, spec, &mut notices);
     let request = connection
         .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
         .and_then(|connection| {
@@ -558,7 +578,7 @@ fn drop_unanswered(
 ) {
     let unanswered = conversation.0.last().is_some_and(|message| {
         matches!(message, Message::User { content }
-            if content.iter().all(|item| matches!(item, UserContent::Text(_))))
+            if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
         conversation.0.pop();
@@ -643,7 +663,7 @@ pub(crate) fn on_model_done(
     mut agents: Query<(
         &AgentId,
         &ToolAccess,
-        &mut Conversation,
+        (&mut Conversation, &mut Inbox),
         &Compacted,
         Option<&Connection>,
         &mut Spending,
@@ -662,7 +682,7 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((id, access, mut conversation, compacted, connection, mut spent)) =
+    let Ok((id, access, (mut conversation, mut inbox), compacted, connection, mut spent)) =
         agents.get_mut(agent)
     else {
         return;
@@ -716,7 +736,16 @@ pub(crate) fn on_model_done(
         return;
     }
     if tool_calls.is_empty() {
-        commands.entity(turn).despawn();
+        // What was typed meanwhile carries the turn on: steering first,
+        // then one follow-up.
+        let spec = connection.map(|connection| connection.spec);
+        let carried = deliver_steering(agent, &mut inbox, &mut conversation.0, spec, &mut notices)
+            || deliver_follow_up(agent, &mut inbox, &mut conversation.0, spec, &mut notices);
+        if carried {
+            commands.trigger(CallModel { entity: turn });
+        } else {
+            commands.entity(turn).despawn();
+        }
         return;
     }
     // Every call is waited on by the later calls of the reply until it

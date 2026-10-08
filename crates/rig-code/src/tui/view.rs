@@ -10,8 +10,11 @@ use super::editor::Editor;
 use crate::core::agent::{
     Agent, AgentId, Connection, Conversation, Notice, NoticeLevel, PickKind, PickRequest,
 };
+use crate::core::inbox::Recalled;
 use crate::core::models;
+use crate::core::save::SessionPaths;
 use crate::host::reload::ReloadFailed;
+use crate::host::sessions;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
@@ -70,6 +73,8 @@ pub(crate) enum PickValue {
     Model(String),
     /// A reasoning setting.
     Effort(Option<Reasoning>),
+    /// A session id.
+    Session(String),
 }
 
 /// A filterable list to choose one item from.
@@ -125,6 +130,7 @@ pub(crate) fn focus_agent(
 pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
+    paths: Option<Res<SessionPaths>>,
     mut view: ResMut<TuiView>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -169,6 +175,23 @@ pub(crate) fn open_pickers(
                     .map(|option| (option.label(), PickValue::Effort(option.1)))
                     .collect();
                 (format!("Reasoning for {}", spec.display_name), items)
+            }
+            PickKind::Session => {
+                let Some(paths) = &paths else {
+                    continue;
+                };
+                let items: Vec<(String, PickValue)> =
+                    sessions::list(&rig::code_protocol::Home::from_env(), paths.path())
+                        .into_iter()
+                        .map(|session| {
+                            (session.label(), PickValue::Session(session.id.to_string()))
+                        })
+                        .collect();
+                if items.is_empty() {
+                    notices.write(Notice::info(request.agent, "No earlier session to resume."));
+                    continue;
+                }
+                ("Resume a session".to_owned(), items)
             }
         };
         view.overlay = Some(Overlay::Picker(Picker {
@@ -216,4 +239,21 @@ pub(crate) fn collect_notices(
     }
     let excess = view.notices.len().saturating_sub(KEPT_NOTICES);
     view.notices.drain(..excess);
+}
+
+/// Puts the messages a turn did not send back in the input, before what
+/// is typed there now.
+pub(crate) fn recall_messages(mut recalled: MessageReader<Recalled>, mut view: ResMut<TuiView>) {
+    for recalled in recalled.read() {
+        if view.agent != Some(recalled.agent) {
+            continue;
+        }
+        let typed = view.editor.take();
+        let text = if typed.trim().is_empty() {
+            recalled.text.clone()
+        } else {
+            format!("{}\n\n{typed}", recalled.text)
+        };
+        view.editor.set(text);
+    }
 }

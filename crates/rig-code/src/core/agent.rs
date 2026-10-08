@@ -11,6 +11,7 @@ use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
 use super::compaction::Compacted;
+use super::inbox::Inbox;
 use super::recovery::Recovery;
 use super::save::ReflectSaved;
 use super::tools::Touch;
@@ -26,6 +27,7 @@ use super::usage::{Spending, TurnSpending};
     Compacted,
     Conversation,
     Effort,
+    Inbox,
     Spending,
     SystemPrompt,
     ToolAccess
@@ -210,7 +212,9 @@ pub struct ToolCallRun {
 pub struct Queued;
 
 /// Send `text` to the agent: a slash command when it starts with `/`,
-/// otherwise a user message that starts a turn.
+/// otherwise a user message that starts a turn, or that steers the running
+/// one (see [`Inbox`]). An image named as `@path` goes with it when the
+/// model reads images.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Submit {
@@ -327,6 +331,9 @@ pub enum PickKind {
     Model,
     /// A reasoning setting from [`effort_options`](crate::core::models::effort_options).
     Effort,
+    /// An earlier session to resume; the view answers with the host's
+    /// `SwitchSession`.
+    Session,
 }
 
 /// Asks a view to open a picker for the agent. The view answers with

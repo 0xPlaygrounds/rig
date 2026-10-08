@@ -167,7 +167,9 @@ fn help(
     lines.push(
         "Esc stops a running turn. Ctrl+C clears the input or quits. In the terminal view, \
          Shift+Enter or Ctrl+J adds a line, Up and Down browse earlier prompts, Tab completes \
-         /commands and @paths, and Ctrl+G edits the input in $EDITOR."
+         /commands and @paths, and Ctrl+G edits the input in $EDITOR. While a turn runs, \
+         Enter steers it and Tab queues a follow-up. @path attaches an image file, and \
+         Ctrl+V pastes the clipboard's image."
             .to_owned(),
     );
     notices.write(Notice::info(args.agent, lines.join("\n")));

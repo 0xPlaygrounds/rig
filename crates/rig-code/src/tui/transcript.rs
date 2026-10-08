@@ -235,6 +235,7 @@ fn message_lines(
                         };
                         lines.extend(excerpt(&text.join("\n"), RESULT_LINES, style));
                     }
+                    UserContent::Image(_) => lines.push(Line::from("  [image]").dim()),
                     _ => lines.push(Line::from("  [attachment]").dim()),
                 }
             }

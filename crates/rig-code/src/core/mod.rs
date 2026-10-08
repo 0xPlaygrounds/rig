@@ -4,11 +4,13 @@
 //! what the core needs, such as [`save::SessionPaths`].
 
 pub mod agent;
+pub mod attach;
 pub mod blocking;
 pub mod calls;
 pub mod commands;
 pub mod compaction;
 pub mod effects;
+pub mod inbox;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
@@ -47,6 +49,7 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
+            .add_message::<inbox::Recalled>()
             .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
                 Update,
@@ -80,6 +83,8 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_end)
+            .add_observer(inbox::on_follow_up)
+            .add_observer(inbox::recall_on_turn_end)
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort)

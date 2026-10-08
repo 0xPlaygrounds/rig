@@ -203,7 +203,19 @@ current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
 the new one crashes during startup. The session is saved after every turn;
 if the agent crashes or the terminal closes, the next `rig` in the same
-directory resumes it. `/quit` ends it.
+directory resumes it. `/quit` ends it. `/new` starts a new session, `/name`
+names this one, and `/resume` lists the earlier ones (name or first message,
+directory, cost, age) and resumes the one picked, in its own directory;
+`rig --continue` resumes the last session run in the working directory and
+`rig --resume <id>` a given one.
+
+Typing while the agent works is fine: Enter steers the running turn (the
+message goes to the model with its next call, after the tool results it waits
+for) and Tab queues a follow-up that is sent when the turn would end. Both
+wait under the transcript; Esc stops the turn and puts them back in the input.
+`@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
+reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
+`xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from

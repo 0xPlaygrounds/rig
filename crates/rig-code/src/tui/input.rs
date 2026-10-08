@@ -13,13 +13,17 @@ use bevy_log::error;
 use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
+use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::external::EditRequested;
 use super::view::{Overlay, PickValue, Picker, TuiView};
 use crate::core::agent::{ActiveTurn, Effort, Interrupt, SetEffort, SetModel, Submit};
 use crate::core::calls::Wake;
 use crate::core::commands::SlashCommand;
+use crate::core::inbox::FollowUp;
+use crate::core::save::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
+use crate::host::sessions::SwitchSession;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -117,17 +121,19 @@ pub(crate) fn read_input(
     build: Option<Res<ReloadBuild>>,
     slash: Query<&SlashCommand>,
     mut index: ResMut<FileIndex>,
+    clipboard: Res<Clipboard>,
+    paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
+    let busy = view
+        .agent
+        .and_then(|agent| agents.get(agent).ok())
+        .unwrap_or(false);
     // Esc stops a running turn first, and a running rebuild only when the
     // agent is idle.
-    let esc_cancels_reload = build.is_some_and(|build| !build.is_ready())
-        && view
-            .agent
-            .and_then(|agent| agents.get(agent).ok())
-            .is_some_and(|busy| !busy);
+    let esc_cancels_reload = build.is_some_and(|build| !build.is_ready()) && !busy;
     let mut edited = false;
     for event in input.events.try_iter() {
         match event {
@@ -143,9 +149,22 @@ pub(crate) fn read_input(
                         view.overlay = None;
                     }
                 }
+                None if key.code == KeyCode::Char('v')
+                    && key.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    let images = paths.as_ref().map_or_else(
+                        || std::env::temp_dir().join("rig-images"),
+                        |paths| paths.images(),
+                    );
+                    clipboard.paste_image(images, wake.clone());
+                }
                 None => {
                     edited = true;
-                    input_key(key, &mut view, &mut commands, &mut exit, esc_cancels_reload);
+                    let keys = Keys {
+                        busy,
+                        esc_cancels_reload,
+                    };
+                    input_key(key, &mut view, &mut commands, &mut exit, keys);
                 }
             },
             // A paste arrives whole, newlines included, so it is not sent
@@ -160,7 +179,19 @@ pub(crate) fn read_input(
                 Some(Overlay::ReloadFailure(_)) => {}
                 None => {
                     edited = true;
-                    view.editor.insert(&text);
+                    // A dropped image file becomes `@path`, which attaches it.
+                    match clipboard::dropped_image(&text) {
+                        Some(path) => {
+                            let before = view
+                                .editor
+                                .text()
+                                .get(..view.editor.cursor())
+                                .unwrap_or_default();
+                            let space = clipboard::separator(before);
+                            view.editor.insert(&format!("{space}@{} ", path.display()));
+                        }
+                        None => view.editor.insert(&text),
+                    }
                 }
             },
             Event::Resize(..) => view.set_changed(),
@@ -172,12 +203,25 @@ pub(crate) fn read_input(
     }
 }
 
+/// What a key does depends on.
+#[derive(Clone, Copy)]
+struct Keys {
+    /// The focused agent runs a turn: Enter steers it and Tab queues a
+    /// follow-up.
+    busy: bool,
+    /// Esc cancels the running rebuild.
+    esc_cancels_reload: bool,
+}
+
 fn input_key(
     key: KeyEvent,
     view: &mut TuiView,
     commands: &mut Commands,
     exit: &mut MessageWriter<AppExit>,
-    esc_cancels_reload: bool,
+    Keys {
+        busy,
+        esc_cancels_reload,
+    }: Keys,
 ) {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -224,6 +268,7 @@ fn input_key(
         KeyCode::Right => editor.right(),
         KeyCode::Home => editor.home(),
         KeyCode::End => editor.end(),
+        KeyCode::Tab if view.completion.is_none() && busy => send(view, commands, true),
         KeyCode::Tab => accept_completion(view),
         KeyCode::Enter if shift || alt => editor.insert_char('\n'),
         KeyCode::Enter => {
@@ -239,14 +284,7 @@ fn input_key(
             if view.editor.continue_line() {
                 return;
             }
-            if let Some(entity) = view.agent
-                && !view.editor.text().trim().is_empty()
-            {
-                let text = view.editor.take();
-                view.editor.remember(&text);
-                view.scroll = 0;
-                commands.trigger(Submit { entity, text });
-            }
+            send(view, commands, false);
         }
         KeyCode::Esc if view.completion.is_some() => {
             view.dismissed = view.completion.take().map(|completion| completion.start);
@@ -270,6 +308,25 @@ fn input_key(
         KeyCode::PageUp => view.scroll += PAGE,
         KeyCode::PageDown => view.scroll = view.scroll.saturating_sub(PAGE),
         _ => {}
+    }
+}
+
+/// Sends the input to the focused agent: as a follow-up for after its
+/// turn, or as a message that starts a turn or steers the running one.
+fn send(view: &mut TuiView, commands: &mut Commands, follow_up: bool) {
+    let Some(entity) = view.agent else {
+        return;
+    };
+    if view.editor.text().trim().is_empty() {
+        return;
+    }
+    let text = view.editor.take();
+    view.editor.remember(&text);
+    view.scroll = 0;
+    if follow_up {
+        commands.trigger(FollowUp { entity, text });
+    } else {
+        commands.trigger(Submit { entity, text });
     }
 }
 
@@ -315,6 +372,9 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
                 Some(PickValue::Effort(effort)) => commands.trigger(SetEffort {
                     entity,
                     effort: Effort(effort),
+                }),
+                Some(PickValue::Session(session)) => commands.trigger(SwitchSession {
+                    session: Some(session),
                 }),
                 None => return false,
             }

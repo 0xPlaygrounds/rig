@@ -10836,6 +10836,7 @@ dependencies = [
 name = "rig-code"
 version = "0.44.0"
 dependencies = [
+ "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",

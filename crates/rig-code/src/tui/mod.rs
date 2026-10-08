@@ -9,6 +9,7 @@
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 
+mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
@@ -38,12 +39,15 @@ impl Plugin for TuiPlugin {
         renderers::add_builtin_renderers(app);
         app.init_resource::<view::TuiView>()
             .init_resource::<complete::FileIndex>()
+            .init_resource::<clipboard::Clipboard>()
+            .init_resource::<crate::host::sessions::SessionName>()
             .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 PreUpdate,
                 (
                     input::read_input.run_if(resource_exists::<input::TerminalInput>),
                     complete::receive_paths,
+                    clipboard::receive_images,
                 )
                     .chain(),
             )
@@ -54,6 +58,7 @@ impl Plugin for TuiPlugin {
                     view::show_reload_failures,
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
+                    view::recall_messages,
                     external::start_external_edit.run_if(
                         resource_exists::<external::EditRequested>
                             .and_then(resource_exists::<terminal::Tui>)

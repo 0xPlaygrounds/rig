@@ -22,6 +22,7 @@ tui = [
 ]
 
 [dependencies]
+base64 = { workspace = true }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }

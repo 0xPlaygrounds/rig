@@ -21,10 +21,12 @@ use crate::core::agent::{
 };
 use crate::core::commands::SlashCommand;
 use crate::core::compaction::{Compacted, Summarizing};
+use crate::core::inbox::Inbox;
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
+use crate::host::sessions::SessionName;
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -66,13 +68,16 @@ pub(crate) fn needs_redraw(
             Changed<ActiveTurn>,
             Changed<Spending>,
             Changed<Compacted>,
+            Changed<Inbox>,
         )>,
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
     waits: Query<(), With<Backoff>>,
+    name: Res<SessionName>,
 ) -> bool {
     view.is_changed()
+        || name.is_changed()
         || !agents.is_empty()
         || !turns.is_empty()
         || !partials.is_empty()
@@ -93,6 +98,7 @@ pub(crate) fn render(
         Option<&ActiveTurn>,
         &Spending,
         Option<&Connection>,
+        &Inbox,
     )>,
     changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
@@ -104,6 +110,7 @@ pub(crate) fn render(
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
     build: Option<Res<ReloadBuild>>,
+    name: Res<SessionName>,
 ) -> Result {
     // Clamping the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
@@ -197,6 +204,9 @@ pub(crate) fn render(
                     extra.extend(markdown::render(&partial.text));
                 }
             }
+            if let Some((.., inbox)) = shown.map(|(_, shown)| shown) {
+                inbox_lines(inbox, &mut extra);
+            }
             parts.push(Part::Rows(wrap_all(&extra, rows_width)));
         } else {
             let mut extra = Vec::new();
@@ -218,6 +228,9 @@ pub(crate) fn render(
             shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
             model_hint,
         );
+        if let Some(name) = &name.0 {
+            line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
+        }
         if let Some((_, spent)) = turn
             && let Some(cost) = spent.0.cost_label()
         {
@@ -227,7 +240,7 @@ pub(crate) fn render(
             line.push_span(reload_span(build));
         }
         let usage = shown
-            .map(|(.., spent, connection)| usage_line(spent, connection))
+            .map(|(.., spent, connection, _)| usage_line(spent, connection))
             .unwrap_or_default();
         let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
         let [status, meter] =
@@ -235,10 +248,13 @@ pub(crate) fn render(
                 .areas(status_area);
         frame.render_widget(line, status);
         frame.render_widget(usage, meter);
-        let hint = if view.editor.is_empty() {
-            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+G editor · / commands · @ files "
-        } else {
-            ""
+        let hint = match (turn.is_some(), view.editor.is_empty()) {
+            (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+            (false, true) => {
+                " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+G editor · Ctrl+V image \
+                 · / commands · @ files "
+            }
+            (false, false) => "",
         };
         frame.render_widget(
             Paragraph::new(layout.rows)
@@ -462,6 +478,32 @@ fn summary_lines(compacted: &Compacted, lines: &mut Vec<Line<'static>>) {
             format!("  … {} more lines", total - SUMMARY_LINES),
             style.dim(),
         ));
+    }
+}
+
+/// What waits in the agent's inbox, under the transcript.
+fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
+    if inbox.is_empty() {
+        return;
+    }
+    lines.push(Line::default());
+    let waiting = inbox.steering.iter().map(|text| ("steering", text)).chain(
+        inbox
+            .follow_ups
+            .iter()
+            .map(|text| ("after this turn", text)),
+    );
+    for (when, text) in waiting {
+        let first = text.lines().next().unwrap_or_default();
+        let more = if text.lines().nth(1).is_some() {
+            " …"
+        } else {
+            ""
+        };
+        lines.push(Line::from(vec![
+            Span::from(format!("  ⏵ {when}: ")).cyan(),
+            Span::from(format!("{first}{more}")).dim(),
+        ]));
     }
 }
 
