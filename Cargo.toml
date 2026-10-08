@@ -222,7 +222,7 @@ opt-level = "s"
 version = "0.44.0"
 edition = "2024"
 # The toolchain in rust-toolchain.toml, the only one CI builds with.
-rust-version = "1.96.0"
+rust-version = "1.97.1"
 
 [workspace.dependencies]
 # Every requirement below is a FLOOR, not a pin: `tokio = "1"` means `^1`,
@@ -266,11 +266,11 @@ base64 = "0.22"
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
 # git; the tooling check verifies Bevy sources and requirements.
-bevy_app = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
-bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
-bevy_log = "=0.20.0-rc.2"
-bevy_reflect = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "auto_register_inventory"] }
-bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
+bevy_app = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
+bevy_log = "=0.20.0"
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory"] }
+bevy_tasks = { version = "=0.20.0", default-features = false, features = ["multi_threaded"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"

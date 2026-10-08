@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-const BEVY_REQUIREMENT: &str = "=0.20.0-rc.2";
+const BEVY_REQUIREMENT: &str = "=0.20.0";
 
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 

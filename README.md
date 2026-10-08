@@ -315,7 +315,7 @@ RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
 Plugins are Bevy plugins. A plugin crate depends on `rig-harness` and on Bevy
-crates at exactly `=0.20.0-rc.2`, and registers tools and slash commands the
+crates at exactly `=0.20.0`, and registers tools and slash commands the
 same way the built-in ones are registered:
 
 ```rust,ignore
@@ -414,7 +414,7 @@ A fan-out that asks three agents at once and keeps the shortest answer:
        (car answers) (cdr answers))
 ```
 
-The agent, like the rest of the workspace, needs Rust 1.96 or newer.
+The agent, like the rest of the workspace, needs Rust 1.97.1 or newer.
 
 `rig build` regenerates and builds the agent without starting it.
 `CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.

@@ -16,4 +16,4 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// The one Bevy version of the agent and of every plugin.
-pub const BEVY_VERSION: &str = "0.20.0-rc.2";
+pub const BEVY_VERSION: &str = "0.20.0";
