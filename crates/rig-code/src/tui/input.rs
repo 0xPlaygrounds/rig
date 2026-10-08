@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
@@ -15,7 +15,6 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
-use super::external::EditRequested;
 use super::view::{
     APPROVAL_CHOICES, ApprovalPrompt, DENY_CHOICE, Overlay, PickValue, Picker, TuiView,
 };
@@ -36,9 +35,6 @@ const PAGE: usize = 10;
 /// the view is gone.
 const POLL: Duration = Duration::from_millis(100);
 
-/// How long [`TerminalInput::pause`] waits for the thread to stop reading.
-const PAUSE_WAIT: Duration = Duration::from_millis(500);
-
 /// Terminal events read by the input thread. Dropping it stops the thread.
 #[derive(Resource)]
 pub(crate) struct TerminalInput {
@@ -50,10 +46,6 @@ pub(crate) struct TerminalInput {
 #[derive(Default)]
 struct Flags {
     stop: AtomicBool,
-    /// Asked to stop reading for now.
-    pause: AtomicBool,
-    /// Set by the thread while it is paused and not reading.
-    paused: AtomicBool,
 }
 
 impl TerminalInput {
@@ -66,11 +58,6 @@ impl TerminalInput {
             .name("rig-code-input".to_owned())
             .spawn(move || {
                 while !shared.stop.load(Ordering::Relaxed) {
-                    if shared.pause.load(Ordering::Acquire) {
-                        shared.paused.store(true, Ordering::Release);
-                        std::thread::sleep(Duration::from_millis(20));
-                        continue;
-                    }
                     let event = match event::poll(POLL) {
                         Ok(false) => continue,
                         Ok(true) => event::read(),
@@ -91,22 +78,6 @@ impl TerminalInput {
                 }
             })?;
         Ok(Self { events, flags })
-    }
-
-    /// Stops reading the terminal, so another program gets the keys. Waits
-    /// for a read in progress, up to half a second.
-    pub(crate) fn pause(&self) {
-        self.flags.pause.store(true, Ordering::Release);
-        let deadline = Instant::now() + PAUSE_WAIT;
-        while !self.flags.paused.load(Ordering::Acquire) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(5));
-        }
-    }
-
-    /// Reads the terminal again after [`TerminalInput::pause`].
-    pub(crate) fn resume(&self) {
-        self.flags.paused.store(false, Ordering::Release);
-        self.flags.pause.store(false, Ordering::Release);
     }
 }
 
@@ -241,13 +212,7 @@ fn input_key(
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
     let editor = &mut view.editor;
     match key.code {
-        KeyCode::Char('c') if control => {
-            if editor.is_empty() {
-                exit.write(AppExit::Success);
-            } else {
-                editor.clear();
-            }
-        }
+        KeyCode::Char('c') if control => editor.clear(),
         KeyCode::Char('d') if control => {
             if editor.is_empty() {
                 exit.write(AppExit::Success);
@@ -255,7 +220,6 @@ fn input_key(
                 editor.delete();
             }
         }
-        KeyCode::Char('g') if control => commands.insert_resource(EditRequested),
         KeyCode::Char('j') if control => editor.insert_char('\n'),
         KeyCode::Char('a') if control => editor.home(),
         KeyCode::Char('e') if control => editor.end(),

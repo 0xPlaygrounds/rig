@@ -4,8 +4,8 @@
 //! loop, `PreUpdate` handles what it read, and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
 //!
-//! The input is a multiline editor with the prompt history, `/` and `@`
-//! completion and Ctrl+G for `$EDITOR`. Answers are drawn as markdown and
+//! The input is a multiline editor with the prompt history and `/` and `@`
+//! completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 
@@ -13,7 +13,6 @@ mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
-mod external;
 mod input;
 pub mod markdown;
 mod render;
@@ -68,25 +67,12 @@ impl Plugin for TuiPlugin {
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
                     view::recall_messages,
-                    external::start_external_edit.run_if(
-                        resource_exists::<external::EditRequested>
-                            .and_then(resource_exists::<terminal::Tui>)
-                            .and_then(resource_exists::<input::TerminalInput>)
-                            .and_then(not(resource_exists::<external::ExternalEdit>)),
-                    ),
-                    external::finish_external_edit.run_if(
-                        resource_exists::<external::ExternalEdit>
-                            .and_then(resource_exists::<terminal::Tui>)
-                            .and_then(resource_exists::<input::TerminalInput>),
-                    ),
                 ),
             )
             .add_systems(
                 PostUpdate,
                 render::render.run_if(
-                    resource_exists::<terminal::Tui>
-                        .and_then(not(resource_exists::<external::ExternalEdit>))
-                        .and_then(render::needs_redraw.or_eager(
+                    resource_exists::<terminal::Tui>.and_then(render::needs_redraw.or_eager(
                             resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
                         )),
                 ),

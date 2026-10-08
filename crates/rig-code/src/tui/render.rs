@@ -318,7 +318,7 @@ pub(crate) fn render(
         let hint = match (turn.is_some(), view.editor.is_empty()) {
             (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
             (false, true) => {
-                " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+G editor · Ctrl+V image \
+                " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image \
                  · / commands · @ files "
             }
             (false, false) => "",

@@ -30,8 +30,6 @@ use crate::core::save::SessionPaths;
 #[derive(Resource)]
 pub(crate) struct Tui {
     pub(super) terminal: Terminal<CrosstermBackend<File>>,
-    /// Another copy of the screen, for a program the terminal is handed to.
-    screen: File,
     keep_screen: bool,
 }
 
@@ -41,7 +39,6 @@ impl Tui {
     /// instead of on the screen.
     fn open(log: Option<&Path>) -> io::Result<Self> {
         let screen = screen()?;
-        let spare = screen.try_clone()?;
         if let Some(log) = log {
             redirect_output(log)?;
         }
@@ -59,39 +56,8 @@ impl Tui {
         terminal.hide_cursor()?;
         Ok(Self {
             terminal,
-            screen: spare,
             keep_screen: false,
         })
-    }
-}
-
-impl Tui {
-    /// Gives the terminal back for another program, such as `$EDITOR`, and
-    /// returns a copy of the screen for that program's output: stdout and
-    /// stderr point at the log.
-    pub(crate) fn suspend(&mut self) -> io::Result<File> {
-        execute!(
-            self.terminal.backend_mut(),
-            DisableBracketedPaste,
-            LeaveAlternateScreen
-        )?;
-        self.terminal.show_cursor()?;
-        disable_raw_mode()?;
-        self.screen.try_clone()
-    }
-
-    /// Takes the terminal back after [`Tui::suspend`] and draws the next
-    /// frame whole.
-    pub(crate) fn resume(&mut self) -> io::Result<()> {
-        enable_raw_mode()?;
-        execute!(
-            self.terminal.backend_mut(),
-            EnterAlternateScreen,
-            EnableBracketedPaste,
-            Clear(ClearType::All)
-        )?;
-        self.terminal.hide_cursor()?;
-        self.terminal.clear()
     }
 }
 

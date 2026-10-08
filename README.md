@@ -340,8 +340,7 @@ Enter starts a new line, Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
 keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
-Tab or Enter takes the selected one. Ctrl+G opens the input in `$VISUAL` or
-`$EDITOR`. Answers are drawn as markdown, edits as diffs, and each built-in
+Tab or Enter takes the selected one. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
 `rig_code::tui::AppToolRenderersExt::add_tool_renderer`. PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
