@@ -17,6 +17,7 @@ use crate::core::agent::{
 };
 use crate::core::commands::SlashCommand;
 use crate::core::models;
+use crate::core::recovery::{Backoff, MAX_RETRIES};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 
@@ -35,12 +36,18 @@ enum Activity {
     Idle,
     Thinking,
     RunningTools,
+    /// Waiting `seconds` before retry `attempt` of a failed model call.
+    Retrying {
+        attempt: u32,
+        seconds: u64,
+    },
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
 /// key, a notice, a resize), an agent's drawn components, a turn's calls,
 /// or a streaming reply. A turn's end changes its conversation or comes
-/// with a notice. The rebuild's progress is checked separately.
+/// with a notice. A retry's countdown redraws every frame while it waits.
+/// The rebuild's progress is checked separately.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -55,8 +62,13 @@ pub(crate) fn needs_redraw(
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
+    waits: Query<(), With<Backoff>>,
 ) -> bool {
-    view.is_changed() || !agents.is_empty() || !turns.is_empty() || !partials.is_empty()
+    view.is_changed()
+        || !agents.is_empty()
+        || !turns.is_empty()
+        || !partials.is_empty()
+        || !waits.is_empty()
 }
 
 /// Draws one frame.
@@ -74,6 +86,7 @@ pub(crate) fn render(
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
     tool_calls: Query<(), With<ToolCallRun>>,
+    waits: Query<&Backoff>,
     slash: Query<&SlashCommand>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
@@ -86,8 +99,14 @@ pub(crate) fn render(
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let wait = calls.and_then(|calls| calls.iter().find_map(|call| waits.get(call).ok()));
     let activity = if turn.is_none() {
         Activity::Idle
+    } else if let Some(wait) = wait {
+        Activity::Retrying {
+            attempt: wait.attempt,
+            seconds: wait.seconds_left(),
+        }
     } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
         Activity::RunningTools
     } else {
@@ -195,6 +214,10 @@ fn status_line(
         Activity::Idle => Span::from("idle").green(),
         Activity::Thinking => Span::from("thinking… (Esc stops)").yellow(),
         Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+        Activity::Retrying { attempt, seconds } => Span::from(format!(
+            "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"
+        ))
+        .red(),
     };
     Line::from(vec![
         Span::from(model).bold(),

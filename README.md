@@ -183,7 +183,14 @@ lists the commands, and Esc stops a running turn. The status line shows the
 session's tokens (uncached input, output, cache reads and writes), its cost
 (the provider's figure, else the catalog's list price; `+` when some calls had
 no price) and the context in use against the model's window; `/usage` breaks
-them down. `/reload` rebuilds the agent
+them down. A model call that fails on a rate limit, an overloaded provider
+or a dropped connection is retried up to four times, waiting as long as the
+provider's `Retry-After` asks (or 2, 4, 8, 16 seconds); if it still fails,
+your message stays in the conversation and `/retry` sends it again. When the
+conversation outgrows the model's context window, older tool outputs are
+cleared and the call is sent again. Models whose catalog entry lists a prompt
+cache get it, with the agent's id as the cache key where the provider takes
+one. `/reload` rebuilds the agent
 and restarts it on the same session; it shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if

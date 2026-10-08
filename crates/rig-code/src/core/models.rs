@@ -3,9 +3,16 @@
 use std::collections::HashMap;
 
 use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
-use rig_core::completion::{GenerationOptions, Reasoning, UnsupportedOption};
+use rig_core::completion::{
+    CacheRetention, CompletionRequest, GenerationOptions, Reasoning, UnsupportedOption,
+};
 use rig_core::operation::Completion;
+use rig_core::providers::chatgpt::extension::ChatGptOptions;
+use rig_core::providers::mistral::extension::MistralOptions;
+use rig_core::providers::openai::extension::OpenAiOptions;
 use rig_core::providers::registry::{self, ConnectError, ProviderId};
+use rig_core::providers::venice::extension::VeniceOptions;
+use rig_core::providers::{chatgpt, mistral, openai, venice};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
@@ -135,4 +142,45 @@ pub(crate) fn check_effort(
     effort: Option<Reasoning>,
 ) -> Result<(), UnsupportedOption> {
     spec.validate(&generation_options(effort))
+}
+
+/// The options of a request to `spec` with `effort`: the reasoning
+/// setting, and the provider's short prompt cache when the catalog lists it
+/// for the model. Anthropic-style providers then mark the prompt's prefix
+/// for caching; providers that cache on their own take it as is. A model
+/// whose caching the catalog does not know gets no cache option, which it
+/// could refuse.
+pub(crate) fn request_options(spec: &ModelSpec, effort: Option<Reasoning>) -> GenerationOptions {
+    let options = generation_options(effort);
+    if spec.caching.retention.contains(&CacheRetention::Short) {
+        options.cache(CacheRetention::Short)
+    } else {
+        options
+    }
+}
+
+/// `request` with `key` as its prompt-cache routing key, on the providers
+/// that route their cache by one (`prompt_cache_key`): the same key on
+/// every call of an agent sends its calls to the server that holds its
+/// prefix. Other providers get the request unchanged.
+pub(crate) fn with_cache_key(
+    spec: &ModelSpec,
+    request: CompletionRequest,
+    key: &str,
+) -> CompletionRequest {
+    match spec.provider.vendor() {
+        openai::PROVIDER_NAME => {
+            request.provider_option(OpenAiOptions::new().prompt_cache_key(key))
+        }
+        chatgpt::PROVIDER_NAME => {
+            request.provider_option(ChatGptOptions::default().prompt_cache_key(key))
+        }
+        mistral::PROVIDER_NAME => {
+            request.provider_option(MistralOptions::new().prompt_cache_key(key))
+        }
+        venice::PROVIDER_NAME => {
+            request.provider_option(VeniceOptions::new().prompt_cache_key(key))
+        }
+        _ => request,
+    }
 }

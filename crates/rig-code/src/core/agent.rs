@@ -10,6 +10,7 @@ use rig_core::message::ToolCall;
 use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
+use super::recovery::Recovery;
 use super::save::ReflectSaved;
 use super::usage::{Spending, TurnSpending};
 
@@ -130,11 +131,12 @@ impl ToolAccess {
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
 /// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// sums its model calls' usage in a [`TurnSpending`].
+/// sums its model calls' usage in a [`TurnSpending`] and counts its
+/// retries in a [`Recovery`].
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(TurnSpending)]
+#[require(TurnSpending, Recovery)]
 pub struct TurnOf(pub Entity);
 
 /// The agent's running turn. An agent with it is busy.
@@ -201,6 +203,16 @@ pub struct Submit {
     pub entity: Entity,
     /// The text typed.
     pub text: String,
+}
+
+/// Send the agent's conversation to its model again as it stands: after a
+/// turn that failed on a transient error and kept the user's message, or
+/// one that stopped before the model answered the last tool results.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Retry {
+    /// The agent.
+    pub entity: Entity,
 }
 
 /// Stop the agent's running turn.

@@ -10,6 +10,7 @@ pub mod commands;
 pub mod effects;
 pub mod models;
 pub mod prompt;
+pub mod recovery;
 pub mod save;
 pub mod tools;
 pub mod turn;
@@ -22,6 +23,7 @@ use bevy_log::{info, warn};
 use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest, TurnFinished};
 use calls::{Wake, poll_calls};
 use effects::Effects;
+use recovery::RetryDue;
 use rig_core::message::ToolResult;
 use save::SessionPaths;
 use turn::{ModelReply, PollCalls};
@@ -49,6 +51,7 @@ impl Plugin for AgentPlugin {
                 (
                     poll_calls::<ModelReply>,
                     poll_calls::<ToolResult>,
+                    poll_calls::<RetryDue>,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),
@@ -67,6 +70,8 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
             .add_observer(turn::on_tool_done)
+            .add_observer(turn::on_retry_due)
+            .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_end)
             .add_observer(turn::on_set_model)

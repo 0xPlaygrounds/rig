@@ -58,13 +58,14 @@ pub mod prelude {
 
     pub use crate::core::agent::{
         ActiveTurn, Agent, AgentId, Connection, Conversation, Effort, Interrupt, ModelChoice,
-        Notice, NoticeLevel, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess, TurnFinished,
-        TurnOf,
+        Notice, NoticeLevel, Retry, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess,
+        TurnFinished, TurnOf,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
     pub use crate::core::prompt::{PromptSection, ToolRules};
+    pub use crate::core::recovery::{Backoff, Recovery};
     pub use crate::core::save::ReflectSaved;
     pub use crate::core::tools::AppToolsExt;
     pub use crate::core::usage::{Spending, TurnSpending};

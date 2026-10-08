@@ -10846,6 +10846,7 @@ dependencies = [
  "crossterm",
  "ctrlc",
  "futures",
+ "futures-timer",
  "ignore",
  "libc",
  "ratatui",

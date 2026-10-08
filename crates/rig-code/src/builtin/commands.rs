@@ -1,11 +1,11 @@
-//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/help` and
-//! `/quit`.
+//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
+//! `/help` and `/quit`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use crate::core::agent::{
-    ActiveTurn, Connection, Effort, Notice, PickKind, PickRequest, SetEffort, SetModel,
+    ActiveTurn, Connection, Effort, Notice, PickKind, PickRequest, Retry, SetEffort, SetModel,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::models;
@@ -31,6 +31,11 @@ impl Plugin for BuiltinCommandsPlugin {
             "usage",
             "Show the tokens, cost and context the session used",
             usage,
+        )
+        .add_command(
+            "retry",
+            "Send the conversation again after a failed model call",
+            retry,
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Save and quit", quit);
@@ -130,6 +135,10 @@ fn usage(
         ));
     }
     notices.write(Notice::info(args.agent, lines.join("\n")));
+}
+
+fn retry(In(args): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(Retry { entity: args.agent });
 }
 
 fn help(

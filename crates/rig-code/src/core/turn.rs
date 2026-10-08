@@ -2,7 +2,8 @@
 //! agent; the turn's model call and tool calls are entities [`CallOf`] the
 //! turn, and observers of their [`Done`] outputs carry the turn on. A
 //! reply's tool calls run one at a time, in order; rig-core's turn-failure
-//! rule decides when a reply ends the turn instead. Despawning the turn
+//! rule decides when a reply ends the turn instead. A failed model call is
+//! retried or recovered from as [`recovery`] decides. Despawning the turn
 //! ends it, and the agent's [`ActiveTurn`] going away reports it finished.
 
 use std::pin::Pin;
@@ -27,14 +28,15 @@ use rig_core::streaming::{Item, Relayed, StreamEvent};
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Connection, Conversation, Effort, Interrupt,
-    ModelChoice, Notice, Partial, Queued, SetEffort, SetModel, Submit, SystemPrompt, ToolAccess,
-    ToolCallRun, TurnFinished, TurnOf,
+    ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, Submit, SystemPrompt,
+    ToolAccess, ToolCallRun, TurnFinished, TurnOf,
 };
 use super::calls::{Done, Running, Wake};
 use super::commands::{CommandArgs, SlashCommand};
 use super::effects::Effects;
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
+use super::recovery::{self, Backoff, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict};
 use super::tools::{ToolDef, ToolHandler, failed, run_tool_call};
 use super::usage::{Spending, TurnSpending};
 
@@ -128,6 +130,33 @@ pub(crate) fn on_submit(
         return;
     }
     conversation.0.push(Message::user(text));
+    let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+    commands.trigger(CallModel { entity: turn });
+}
+
+/// Sends the conversation to the model again as it stands, when it ends
+/// in a message the model has not answered.
+pub(crate) fn on_retry(
+    retry: On<Retry>,
+    agents: Query<(&Conversation, Has<ActiveTurn>), With<Agent>>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = retry.entity;
+    let Ok((conversation, busy)) = agents.get(agent) else {
+        return;
+    };
+    if busy {
+        notices.write(Notice::info(agent, "A turn is running."));
+        return;
+    }
+    if !matches!(conversation.0.last(), Some(Message::User { .. })) {
+        notices.write(Notice::info(
+            agent,
+            "Nothing to retry: the model answered the last message.",
+        ));
+        return;
+    }
     let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
     commands.trigger(CallModel { entity: turn });
 }
@@ -408,6 +437,7 @@ pub(crate) fn on_call_model(
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
             prepare(&conversation, connection, effort, preamble, definitions)
+                .map(|request| models::with_cache_key(connection.spec, request, &id.0))
                 .map(|request| (connection.handler.clone(), connection.spec, request))
         });
     let (handler, spec, request) = match request {
@@ -469,7 +499,10 @@ fn drop_unanswered(
 }
 
 /// The request for the agent's next model call, checked against the
-/// model's spec, or what the user must fix first.
+/// model's spec, or what the user must fix first. It asks for the
+/// provider's prompt cache where the model has one; the preamble and tools
+/// come first and do not change between calls, so each call reads the
+/// prefix the last one wrote.
 fn prepare(
     conversation: &Conversation,
     connection: &Connection,
@@ -477,7 +510,7 @@ fn prepare(
     preamble: String,
     tools: Vec<rig_core::completion::ToolDefinition>,
 ) -> Result<CompletionRequest, String> {
-    let options = models::generation_options(effort.0);
+    let options = models::request_options(connection.spec, effort.0);
     connection
         .spec
         .validate(&options)
@@ -537,7 +570,7 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending)>,
+    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(&AgentId, &ToolAccess, &mut Conversation, &mut Spending)>,
     tools: Query<(&ToolDef, &ToolHandler)>,
     effects: Res<Effects>,
@@ -550,7 +583,7 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
     let Ok((id, access, mut conversation, mut spent)) = agents.get_mut(agent) else {
@@ -561,15 +594,22 @@ pub(crate) fn on_model_done(
             // A reply the turn-failure rule rejects was still billed.
             spent.record(&response.usage);
             turn_spent.0.record(&response.usage);
+            recovery.retries = 0;
             response
         }
         Err(report) => {
-            notices.write(Notice::error(
+            let failed = Failed {
                 agent,
-                format!("The model call failed: {report}"),
-            ));
-            drop_unanswered(agent, &mut conversation, &mut notices);
-            commands.entity(turn).despawn();
+                turn,
+                report,
+            };
+            failed.recover(
+                &mut recovery,
+                &mut conversation,
+                &wake,
+                &mut commands,
+                &mut notices,
+            );
             return;
         }
     };
@@ -608,6 +648,124 @@ pub(crate) fn on_model_done(
     for run in runs {
         commands.spawn((tool_name(&run), run, Queued, CallOf(turn)));
     }
+}
+
+/// A failed model call of a turn.
+struct Failed<'a> {
+    agent: Entity,
+    turn: Entity,
+    report: &'a ErrorReport,
+}
+
+impl Failed<'_> {
+    /// Carries the turn on after the failure, as [`recovery::verdict`]
+    /// decides: waits and calls again; clears old tool outputs and calls
+    /// again; or ends the turn, keeping the user's message when nothing is
+    /// wrong with it.
+    fn recover(
+        &self,
+        recovery: &mut Recovery,
+        conversation: &mut Conversation,
+        wake: &Wake,
+        commands: &mut Commands,
+        notices: &mut MessageWriter<Notice>,
+    ) {
+        let (agent, report) = (self.agent, self.report);
+        match recovery::verdict(report, recovery.retries) {
+            Verdict::Retry(delay) => {
+                recovery.retries += 1;
+                let backoff = Backoff {
+                    attempt: recovery.retries,
+                    until: Instant::now() + delay,
+                    why: report.to_string(),
+                };
+                notices.write(Notice::info(
+                    agent,
+                    format!(
+                        "The model call failed: {report}. Retrying in {}s ({}/{MAX_RETRIES}).",
+                        backoff.seconds_left(),
+                        backoff.attempt
+                    ),
+                ));
+                commands.spawn((
+                    Name::new("retry wait"),
+                    backoff,
+                    Running::spawn(model_pool(), wake, recovery::wait(delay)),
+                    CallOf(self.turn),
+                ));
+            }
+            Verdict::Overflow => {
+                while recovery.clearings < MAX_CLEARINGS {
+                    let keep = recovery::keep_for(recovery.clearings);
+                    recovery.clearings += 1;
+                    let cleared = recovery::clear_tool_outputs(&mut conversation.0, keep);
+                    if cleared.results > 0 {
+                        notices.write(Notice::info(
+                            agent,
+                            format!(
+                                "The conversation outgrew the model's context window: cleared \
+                                 {} older tool outputs (about {} tokens) and sending it again.",
+                                cleared.results,
+                                super::usage::tokens(cleared.tokens)
+                            ),
+                        ));
+                        commands.trigger(CallModel { entity: self.turn });
+                        return;
+                    }
+                }
+                notices.write(Notice::error(
+                    agent,
+                    format!(
+                        "The conversation does not fit the model's context window, even with \
+                         old tool outputs cleared: {report}"
+                    ),
+                ));
+                self.fail(conversation, commands, notices);
+            }
+            Verdict::GaveUp(why) => {
+                notices.write(Notice::error(
+                    agent,
+                    format!(
+                        "The model call failed: {report}. Not retrying: {why}. Your message is \
+                         kept; /retry sends it again."
+                    ),
+                ));
+                commands.entity(self.turn).despawn();
+            }
+            Verdict::Final => {
+                notices.write(Notice::error(
+                    agent,
+                    format!("The model call failed: {report}"),
+                ));
+                self.fail(conversation, commands, notices);
+            }
+        }
+    }
+
+    /// Ends the turn, taking out the user's message: the same request
+    /// would fail again.
+    fn fail(
+        &self,
+        conversation: &mut Conversation,
+        commands: &mut Commands,
+        notices: &mut MessageWriter<Notice>,
+    ) {
+        drop_unanswered(self.agent, conversation, notices);
+        commands.entity(self.turn).despawn();
+    }
+}
+
+/// Calls the model again once a retry's wait is over.
+pub(crate) fn on_retry_due(
+    done: On<Add<Done<RetryDue>>>,
+    of: Query<&CallOf>,
+    mut commands: Commands,
+) {
+    let Ok(&CallOf(turn)) = of.get(done.entity) else {
+        return;
+    };
+    commands.entity(done.entity).despawn();
+    commands.trigger(CallModel { entity: turn });
 }
 
 /// Takes a finished tool call: starts the next queued call of the reply,

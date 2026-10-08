@@ -28,6 +28,8 @@ crossbeam-channel = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 futures = { workspace = true }
+# The wait before a retried model call.
+futures-timer = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
 # The launcher protocol (`rig::code_protocol`), shared with the `rig` binary.
