@@ -35,7 +35,7 @@ use std::time::Duration;
 
 use bevy_app::{
     PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
-    TaskPoolThreadAssignmentPolicy,
+    TaskPoolThreadAssignmentPolicy, TerminalCtrlCHandlerPlugin,
 };
 use bevy_log::LogPlugin;
 
@@ -61,7 +61,8 @@ pub mod prelude {
 }
 
 /// What every rig-code app has: the session and its log, Bevy's task
-/// pools, the agent core and saving, the launcher protocol and `/reload`.
+/// pools, a clean exit on SIGINT, SIGTERM and SIGHUP, the agent core and
+/// saving, the launcher protocol and `/reload`.
 /// The tools, the commands other than `/reload`, the views and the
 /// [`runner`] are plugins of their own, so `plugins.toml` lists the
 /// built-in ones like any other and can leave them out.
@@ -78,6 +79,10 @@ impl PluginGroup for RigCodePlugins {
             .add(TaskPoolPlugin {
                 task_pool_options: task_pools(),
             })
+            // A signal exits like `/quit`: running calls and a `/reload`
+            // build are stopped with their process groups, and the session is
+            // saved.
+            .add(TerminalCtrlCHandlerPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
             .add(host::launcher::LauncherPlugin)
