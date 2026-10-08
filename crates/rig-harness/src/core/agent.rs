@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use super::compaction::Compacted;
 use super::inbox::Inbox;
 use super::recovery::Recovery;
-use super::rewind::History;
 use super::save::ReflectSaved;
 use super::tools::Touch;
 use super::usage::{Spending, TurnSpending};
@@ -28,7 +27,6 @@ use super::usage::{Spending, TurnSpending};
     Compacted,
     Conversation,
     Effort,
-    History,
     Inbox,
     Spending,
     SystemPrompt,
@@ -348,17 +346,6 @@ pub enum PickKind {
     /// An agent to show, from [`roster`](crate::core::subagents::roster);
     /// the view answers with [`Focus`].
     Agent,
-    /// A checkpoint to go back to, from
-    /// [`points`](crate::core::rewind::points); the view answers with
-    /// [`Rewind`](crate::core::rewind::Rewind), restoring the files when
-    /// `files`.
-    Rewind {
-        /// Whether the files go back too.
-        files: bool,
-    },
-    /// A checkpoint to clone the agent at, or now; the view answers with
-    /// [`Fork`](crate::core::rewind::Fork).
-    Fork,
 }
 
 /// Asks a view to open a picker for the agent. The view answers with

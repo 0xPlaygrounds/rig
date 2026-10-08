@@ -11,7 +11,6 @@
 //! finished.
 
 use std::pin::Pin;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
@@ -37,7 +36,6 @@ use super::agent::{
     Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, Submit,
     SystemPrompt, ToolAccess, ToolCallRun, TurnFinished, TurnOf,
 };
-use super::approval::{self, Policy};
 use super::attach;
 use super::calls::{Done, Running, Wake};
 use super::commands::{CommandArgs, SlashCommand};
@@ -51,11 +49,9 @@ use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
-use super::rewind::{Checkpoint, History, Snapshots};
 use super::subagents::{self, Assignment, Delegates, SubagentOf};
 use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
-use super::workdir::{self, WorkDir};
 
 /// The systems polling running calls, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -70,11 +66,6 @@ pub type ModelReply = Result<CompletionResponse, ErrorReport>;
 pub struct ModelCall {
     effect: EffectId,
     feed: Receiver<Delta>,
-    /// Where the agent was when the call was made, kept once it answers.
-    checkpoint: Checkpoint,
-    /// The working tree's snapshot for the checkpoint, sent before the
-    /// call's task ends; `None` when the app keeps none.
-    snapshot: Receiver<Option<Result<String, String>>>,
 }
 
 impl ModelCall {
@@ -168,8 +159,7 @@ pub(crate) fn on_submit(
     for note in notes {
         notices.write(Notice::info(agent, note));
     }
-    // After a rewind into a turn, or a failure that kept the user's
-    // message, the conversation ends with the user's: the new text joins
+    // After a failure that kept the user's message, the conversation ends with the user's: the new text joins
     // it, so user and model keep taking turns.
     match (conversation.0.last_mut(), message) {
         (Some(Message::User { content }), Message::User { content: added }) => {
@@ -450,7 +440,7 @@ pub(crate) fn on_call_model(
     mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox, Option<&Assignment>),
-        (&Compacted, &mut History),
+        &Compacted,
         &mut Spending,
         Option<&Connection>,
         &Effort,
@@ -460,7 +450,6 @@ pub(crate) fn on_call_model(
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
     effects: Res<Effects>,
-    snapshots: Option<Res<Snapshots>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -471,7 +460,7 @@ pub(crate) fn on_call_model(
     };
     let Ok((
         (id, mut conversation, mut inbox, assignment),
-        (compacted, mut history),
+        compacted,
         mut spent,
         connection,
         effort,
@@ -548,32 +537,10 @@ pub(crate) fn on_call_model(
     let reply = effects
         .caught(effect, stream_reply(reply, sender, wake.clone()))
         .instrument(span);
-    // The files are snapshotted beside the call, and the call ends only
-    // once the snapshot is taken, so no tool of its reply changes a file
-    // before the snapshot sees it.
-    let checkpoint = history.checkpoint(effect, conversation.0.len(), compacted);
-    let take = snapshots.map(|snapshots| snapshots.take());
-    let (taken, snapshot) = crossbeam_channel::bounded(1);
-    let work = async move {
-        let files = async move {
-            match take {
-                Some(take) => Some(take.await),
-                None => None,
-            }
-        };
-        let (reply, files) = futures::future::join(reply, files).await;
-        taken.send(files).ok();
-        reply
-    };
     commands.spawn((
         Name::new("model call"),
-        ModelCall {
-            effect,
-            feed,
-            checkpoint,
-            snapshot,
-        },
-        Running::spawn(model_pool(), &wake, work),
+        ModelCall { effect, feed },
+        Running::spawn(model_pool(), &wake, reply),
         Partial::default(),
         CallOf(turn),
     ));
@@ -710,13 +677,12 @@ pub(crate) fn on_model_done(
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(
-        (&mut Conversation, &mut Inbox, &mut History),
+        (&mut Conversation, &mut Inbox),
         &Compacted,
         Option<&Connection>,
         &mut Spending,
     )>,
     starter: ToolStarter,
-    snapshots: Option<Res<Snapshots>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -729,28 +695,13 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((mut conversation, mut inbox, mut history), compacted, connection, mut spent)) =
+    let Ok(((mut conversation, mut inbox), compacted, connection, mut spent)) =
         agents.get_mut(agent)
     else {
         return;
     };
     let response = match reply {
         Ok(response) => {
-            let mut checkpoint = model_call.checkpoint.clone();
-            match model_call.snapshot.try_recv() {
-                Ok(Some(Ok(files))) => checkpoint.files = Some(files),
-                Ok(Some(Err(why))) if snapshots.is_some_and(|s| s.first_failure()) => {
-                    notices.write(Notice::error(
-                        agent,
-                        format!(
-                            "Could not snapshot the files ({why}); rewinding will leave them \
-                             as they are."
-                        ),
-                    ));
-                }
-                _ => {}
-            }
-            history.record(checkpoint);
             // A reply the turn-failure rule rejects was still billed.
             spent.record(&response.usage);
             turn_spent.0.record(&response.usage);
@@ -1063,8 +1014,6 @@ pub(crate) struct ToolStarter<'w, 's> {
             Option<&'static ModelChoice>,
             &'static Effort,
             &'static SystemPrompt,
-            Option<&'static Policy>,
-            Option<&'static WorkDir>,
         ),
     >,
     lineage: Query<'w, 's, &'static SubagentOf>,
@@ -1085,13 +1034,9 @@ impl ToolStarter<'_, '_> {
     /// Starts `run`, the call entity `call` of `agent`, on the one dispatch
     /// path. A call to a tool that is not registered, or that the agent may
     /// not use, is dispatched and recorded like any other and answered with
-    /// an error. A call the agent's [`Policy`] refuses or leaves to the user
-    /// goes through the [approval](approval) layer; one that waits for the
-    /// user gets an [`AwaitingApproval`](approval::AwaitingApproval). A
-    /// `task` call also spawns the subagent that answers it, unless it is
-    /// refused.
+    /// an error. A `task` call also spawns the subagent that answers it.
     fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
-        let Ok((id, access, model, &effort, prompt, policy, dir)) = self.agents.get(agent) else {
+        let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
             return;
         };
         let name = run.call.function.name.as_str();
@@ -1099,7 +1044,7 @@ impl ToolStarter<'_, '_> {
             .tools
             .iter()
             .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name));
-        let (handler, mut plan) = match tool {
+        let (handler, plan) = match tool {
             Some((.., true)) => {
                 let parent = subagents::Parent {
                     model,
@@ -1119,32 +1064,13 @@ impl ToolStarter<'_, '_> {
             Some((_, handler, ..)) => (Some(handler.0.clone()), None),
             None => (None, None),
         };
-        // A tool that is not available is answered as such; any other call
-        // passes the agent's approval gate first.
-        let handler = handler.map(|handler| {
-            let (footprint, delegates) = tool.map_or(
-                (Footprint::default(), false),
-                |(_, _, &footprint, delegates)| (footprint, delegates),
-            );
-            let (layer, waiting, refused) =
-                approval::gate(policy, run, footprint, delegates, self.effects.denials());
-            if let Some(waiting) = waiting {
-                commands.entity(call).insert(waiting);
-            }
-            if let Some(refused) = refused {
-                plan = None;
-                commands.write_message(Notice::info(agent, refused));
-            }
-            handler.layered(layer)
-        });
         let (effect, work) =
             run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);
-        let dir = dir.map(|dir| Arc::from(dir.0.as_path()));
         commands.entity(call).insert(Running::spawn(
             tool_pool(),
             &self.wake,
-            workdir::scoped(dir, work).instrument(span),
+            work.instrument(span),
         ));
         if let Some(plan) = plan {
             subagents::spawn(commands, plan, (agent, id), call, effect);

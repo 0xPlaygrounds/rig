@@ -14,15 +14,11 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
-use super::view::{
-    APPROVAL_CHOICES, ApprovalPrompt, DENY_CHOICE, Overlay, PickValue, Picker, TuiView,
-};
+use super::view::{Overlay, PickValue, Picker, TuiView};
 use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetModel, Submit};
-use crate::core::approval::{ApprovalAnswer, Approve};
 use crate::core::calls::Wake;
 use crate::core::commands::SlashCommand;
 use crate::core::inbox::FollowUp;
-use crate::core::rewind::{Fork, Rewind};
 use crate::core::save::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::sessions::SwitchSession;
@@ -122,11 +118,6 @@ pub(crate) fn read_input(
                         view.overlay = None;
                     }
                 }
-                Some(Overlay::Approval(prompt)) => {
-                    if approval_key(key, prompt, &mut commands) {
-                        view.overlay = None;
-                    }
-                }
                 None if key.code == KeyCode::Char('v')
                     && key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
@@ -153,10 +144,6 @@ pub(crate) fn read_input(
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
                     picker.selected = 0;
-                }
-                Some(Overlay::Approval(prompt)) => {
-                    prompt.reason.push_str(&text.replace('\n', " "));
-                    prompt.selected = DENY_CHOICE;
                 }
                 Some(Overlay::ReloadFailure(_)) => {}
                 None => {
@@ -307,66 +294,6 @@ fn accept_completion(view: &mut TuiView) {
     }
 }
 
-/// Handles a key in an approval question; returns whether it closes. `y`,
-/// `a` and `n` answer at once unless No is highlighted; other typing
-/// highlights No and writes the reason it tells the model; Esc stops the
-/// turn, which refuses the call.
-fn approval_key(key: KeyEvent, prompt: &mut ApprovalPrompt, commands: &mut Commands) -> bool {
-    let control = key.modifiers.contains(KeyModifiers::CONTROL);
-    // With No highlighted, every letter goes to the reason.
-    let typed = !prompt.reason.is_empty() || prompt.selected == DENY_CHOICE;
-    let answer = match key.code {
-        KeyCode::Esc => {
-            commands.trigger(Interrupt {
-                entity: prompt.agent,
-            });
-            return true;
-        }
-        KeyCode::Char('c') if control => {
-            commands.trigger(Interrupt {
-                entity: prompt.agent,
-            });
-            return true;
-        }
-        KeyCode::Char(_) if control || key.modifiers.contains(KeyModifiers::ALT) => return false,
-        KeyCode::Char('y') if !typed => ApprovalAnswer::Allow,
-        KeyCode::Char('a') if !typed => ApprovalAnswer::AllowAlways,
-        KeyCode::Char('n') if !typed => ApprovalAnswer::Deny {
-            reason: String::new(),
-        },
-        KeyCode::Char(character) => {
-            prompt.reason.push(character);
-            prompt.selected = DENY_CHOICE;
-            return false;
-        }
-        KeyCode::Backspace => {
-            prompt.reason.pop();
-            return false;
-        }
-        KeyCode::Up => {
-            prompt.selected = prompt.selected.saturating_sub(1);
-            return false;
-        }
-        KeyCode::Down => {
-            prompt.selected = (prompt.selected + 1).min(APPROVAL_CHOICES - 1);
-            return false;
-        }
-        KeyCode::Enter => match prompt.selected {
-            0 => ApprovalAnswer::Allow,
-            1 => ApprovalAnswer::AllowAlways,
-            _ => ApprovalAnswer::Deny {
-                reason: prompt.reason.clone(),
-            },
-        },
-        _ => return false,
-    };
-    commands.trigger(Approve {
-        entity: prompt.call,
-        answer,
-    });
-    true
-}
-
 /// Handles a key in the open picker; returns whether the picker closes.
 fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bool {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -404,10 +331,6 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
                     session: Some(session),
                 }),
                 Some(PickValue::Agent(entity)) => commands.trigger(Focus { entity }),
-                Some(PickValue::Rewind { to, files }) => {
-                    commands.trigger(Rewind { entity, to, files });
-                }
-                Some(PickValue::Fork(at)) => commands.trigger(Fork { entity, at }),
                 None => return false,
             }
             return true;

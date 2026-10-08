@@ -15,10 +15,6 @@ use super::{BEVY_VERSION, Result, VERSION};
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-harness-agent";
 
-/// rig-harness's modules that are off by default, each with the cargo feature
-/// a plugin listed from it turns on.
-const OPTIONAL_VIEWS: [(&str, &str); 1] = [("gui", "gui")];
-
 /// The lock this launcher was built with: the workspace's in a checkout,
 /// the `rig` crate's own when installed from crates.io.
 const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
@@ -108,35 +104,14 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
          [dependencies]\n",
         home.config().display()
     );
-    // rig-harness's optional views are cargo features, on only when listed:
-    // the window builds Bevy's renderer.
-    let own_features: Vec<String> = OPTIONAL_VIEWS
-        .iter()
-        .filter(|(module, _)| {
-            config.plugins.iter().any(|plugin| {
-                plugin.package.is_none()
-                    && plugin
-                        .type_path
-                        .strip_prefix("rig_harness::")
-                        .and_then(|path| path.strip_prefix(module))
-                        .is_some_and(|rest| rest.starts_with("::"))
-            })
-        })
-        .map(|(_, feature)| quoted(feature))
-        .collect();
-    let own_features = if own_features.is_empty() {
-        String::new()
-    } else {
-        format!(", features = [{}]", own_features.join(", "))
-    };
     match source {
         RigSource::Local(checkout) => text.push_str(&format!(
-            "rig-harness = {{ path = {}{own_features} }}\n",
+            "rig-harness = {{ path = {} }}\n",
             quoted_path(&checkout.join("crates/rig-harness"))
         )),
-        RigSource::Registry => text.push_str(&format!(
-            "rig-harness = {{ version = \"={VERSION}\"{own_features} }}\n"
-        )),
+        RigSource::Registry => {
+            text.push_str(&format!("rig-harness = {{ version = \"={VERSION}\" }}\n"))
+        }
     }
     // Only a plugin asking for Bevy features makes the project depend on the
     // `bevy` crate, which carries them; rig-harness itself uses the `bevy_*`

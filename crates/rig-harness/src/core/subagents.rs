@@ -33,7 +33,6 @@ use super::agent::{
     ToolAccess, TurnOf,
 };
 use super::models;
-use super::rewind::Forked;
 use super::save::ReflectSaved;
 use super::tools::{Footprint, ToolOptions, register_tool};
 use super::turn::CallModel;
@@ -574,7 +573,6 @@ pub type RosterQuery<'w, 's> = Query<
         Option<&'static ModelChoice>,
         Has<ActiveTurn>,
         &'static Spending,
-        Option<&'static Forked>,
     ),
     With<Agent>,
 >;
@@ -597,19 +595,13 @@ pub fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
         if entries.len() >= total {
             break;
         }
-        let Ok((_, id, delegated, _, subagents, model, busy, spent, forked)) = agents.get(agent)
-        else {
+        let Ok((_, id, delegated, _, subagents, model, busy, spent)) = agents.get(agent) else {
             continue;
         };
-        let title = match (delegated, forked) {
-            (Some(delegated), _) => delegated.task.clone(),
-            (None, Some(forked)) => format!(
-                "agent {}, fork of {}",
-                id.0.get(..8).unwrap_or(&id.0),
-                forked.from.get(..8).unwrap_or(&forked.from)
-            ),
-            (None, None) if several => format!("agent {}", id.0.get(..8).unwrap_or(&id.0)),
-            (None, None) => "main agent".to_owned(),
+        let title = match delegated {
+            Some(delegated) => delegated.task.clone(),
+            None if several => format!("agent {}", id.0.get(..8).unwrap_or(&id.0)),
+            None => "main agent".to_owned(),
         };
         let mut label = format!(
             "{}{title} · {} · {}",

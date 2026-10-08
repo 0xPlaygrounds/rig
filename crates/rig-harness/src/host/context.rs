@@ -12,12 +12,11 @@ use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, Mode};
+use rig::harness_protocol::Home;
 
 use crate::core::agent::{Notice, TurnOf};
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::prompt::PromptSection;
-use crate::host::headless::RunMode;
 
 /// The names of an instruction file, in order of preference: one per
 /// directory is read.
@@ -34,14 +33,6 @@ pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
-        // An eval's trials work in directories of their own, not this one.
-        if app
-            .world()
-            .get_resource::<RunMode>()
-            .is_some_and(|mode| matches!(mode.mode(), Mode::Eval { .. }))
-        {
-            return;
-        }
         let context = Context::read();
         app.world_mut().spawn((
             Name::new("prompt:project"),

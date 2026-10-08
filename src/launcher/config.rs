@@ -25,17 +25,9 @@ plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 [[plugin]]
 plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
-# The terminal view. Without it the agent runs headless; a GUI plugin can sit
-# beside it or replace it.
+# The terminal view. Without it the agent runs headless.
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"
-
-# A window beside the terminal: the agent graph, a timeline of every model and
-# tool call, diffs, cost and approvals. It builds Bevy's renderer, so the first
-# build takes a few minutes. X11 is built in; add "wayland" for native Wayland.
-# [[plugin]]
-# plugin = "rig_harness::gui::GuiPlugin"
-# bevy_features = ["wayland"]
 
 # A plugin from another crate:
 # [[plugin]]

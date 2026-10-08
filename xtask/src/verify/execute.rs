@@ -83,7 +83,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         "@core-imports" => {
             // rig-harness's agent core must build without its host and its
             // views: no path under `core/` names them, or the TUI's crates.
-            const FORBIDDEN: [&str; 5] = ["host", "tui", "gui", "ratatui", "crossterm"];
+            const FORBIDDEN: [&str; 4] = ["host", "tui", "ratatui", "crossterm"];
             for path in tracked_inputs(root)?
                 .into_iter()
                 .chain(untracked_inputs(root)?)

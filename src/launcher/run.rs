@@ -15,9 +15,8 @@
 //! then runs that session instead, in its own directory.
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
-//! headless run (`--print`, `eval`) never becomes the session its
-//! directory resumes, and a one-shot run (`--print`, `eval`) is not
-//! restarted on the reload code.
+//! headless run (`--print`) never becomes the session its directory
+//! resumes, and is not restarted on the reload code.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
@@ -109,7 +108,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             fs::remove_file(&trial)?;
         }
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
-        if reload && !invocation.mode.is_one_shot() {
+        if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target, !headless)?;
             }

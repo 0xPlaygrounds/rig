@@ -266,8 +266,6 @@ base64 = "0.22"
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
 # git; the tooling check verifies Bevy sources and requirements.
-# The umbrella crate only for rig-harness's optional window (feature `gui`).
-bevy = { version = "=0.20.0-rc.2", default-features = false }
 bevy_app = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
 bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
 bevy_log = "=0.20.0-rc.2"

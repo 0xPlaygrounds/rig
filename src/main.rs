@@ -20,7 +20,7 @@ Usage: rig [session] [mode] | rig build | rig help
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
 
-Session (a print or eval run starts a new one unless told otherwise):
+Session (a print run starts a new one unless told otherwise):
   -c, --continue         Continue the last session run in this directory.
   -r, --resume <id>      Resume the session <id>, in the directory it ran in.
                          In the agent, /resume lists the sessions.

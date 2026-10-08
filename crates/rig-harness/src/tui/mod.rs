@@ -35,7 +35,7 @@ pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
-        // A print or eval run has stdout for its own output.
+        // A print run has stdout for its own output.
         if app
             .world()
             .get_resource::<crate::host::headless::RunMode>()
@@ -63,7 +63,6 @@ impl Plugin for TuiPlugin {
                 (
                     view::focus_agent,
                     view::show_reload_failures,
-                    view::open_approvals.after(view::open_pickers),
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
                     view::recall_messages,

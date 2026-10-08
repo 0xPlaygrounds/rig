@@ -1,5 +1,5 @@
-//! `--print`: one prompt to the primary agent, then exit. Without `--json`
-//! the answer's text goes to stdout and failures to stderr; the exit code
+//! `--print`: one prompt to the primary agent, then exit. The answer's text
+//! goes to stdout and failures to stderr; the exit code
 //! is 0 when the turn ended with an answer, 1 otherwise. Text piped in on
 //! stdin follows the prompt, so `git diff | rig -p "review this"` works.
 //!
@@ -11,9 +11,8 @@ use std::io::{IsTerminal, Read as _};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::completion::{AssistantContent, Message};
-use serde_json::json;
 
-use super::{PrimaryQuery, RunMode, emit, primary};
+use super::{PrimaryQuery, RunMode, primary};
 use crate::core::agent::{
     ActiveTurn, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
 };
@@ -26,14 +25,12 @@ const CONNECT_FRAMES: u32 = 3;
 /// Sends the prompt and exits when the turn ends.
 pub(super) struct PrintPlugin {
     pub(super) prompt: String,
-    pub(super) json: bool,
 }
 
 impl Plugin for PrintPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PrintRun {
             prompt: self.prompt.clone(),
-            json: self.json,
             step: Step::Start,
             failed: false,
         })
@@ -45,7 +42,6 @@ impl Plugin for PrintPlugin {
 #[derive(Resource)]
 struct PrintRun {
     prompt: String,
-    json: bool,
     step: Step,
     /// Whether an error notice about the agent came while it ran.
     failed: bool,
@@ -177,9 +173,7 @@ fn drive(
                 .and_then(|conversation| conversation.0.last())
                 .and_then(answer_text);
             let ok = !run.failed || answer.is_some();
-            if run.json {
-                emit(&json!({"type": "done", "ok": ok}));
-            } else if let Some(answer) = &answer {
+            if let Some(answer) = &answer {
                 println!("{}", answer.trim_end());
             }
             run.step = Step::Done;
@@ -210,14 +204,14 @@ fn answer_text(message: &Message) -> Option<String> {
     Some(text)
 }
 
-/// Notes failures, and without `--json` writes them to stderr, with every
-/// notice of a `/command` prompt.
+/// Notes failures and writes them to stderr, with every notice of a
+/// `/command` prompt.
 fn print_notices(mut run: ResMut<PrintRun>, mut notices: MessageReader<Notice>) {
     // A command's answers are its notices.
     let command = run.prompt.trim_start().starts_with('/');
     for notice in notices.read() {
         if notice.level != NoticeLevel::Error {
-            if command && !run.json {
+            if command {
                 eprintln!("{}", notice.text);
             }
             continue;
@@ -227,8 +221,6 @@ fn print_notices(mut run: ResMut<PrintRun>, mut notices: MessageReader<Notice>) 
         {
             run.failed = true;
         }
-        if !run.json {
-            eprintln!("rig: {}", notice.text);
-        }
+        eprintln!("rig: {}", notice.text);
     }
 }

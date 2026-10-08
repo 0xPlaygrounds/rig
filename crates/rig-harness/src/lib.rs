@@ -10,9 +10,9 @@
 //! as a third-party plugin registers its own.
 //!
 //! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
-//! terminal view, or `--print` or `eval` without one), the agent core,
-//! saving, working-tree snapshots for rewinds, the project context, the launcher protocol, `/reload` and the
-//! session commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
+//! terminal view, or `--print` without one), the agent core, saving, the
+//! project context, the launcher protocol, `/reload` and the session
+//! commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
 //! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead: the
 //! log, the task pools, a clean exit on signals, and a loop that sleeps
@@ -30,7 +30,6 @@
 //!         .set_error_handler(rig_harness::error::warn)
 //!         .add_plugins((RigHarnessPlugins, HeadlessPlugins))
 //!         // With feature `tui`, `rig_harness::tui::TuiPlugin` adds the terminal view;
-//!         // with feature `gui`, `rig_harness::gui::GuiPlugin` a window beside it.
 //!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin))
 //!         .run()
 //! }
@@ -38,8 +37,6 @@
 
 pub mod builtin;
 pub mod core;
-#[cfg(feature = "gui")]
-pub mod gui;
 pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
@@ -67,10 +64,6 @@ pub mod prelude {
         ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Submit, SystemPrompt,
         ToolAccess, TurnFinished, TurnOf,
     };
-    pub use crate::core::approval::{
-        ApprovalAnswer, ApprovalMode, Approve, AwaitingApproval, DefaultPolicy, Permission, Policy,
-        Rule,
-    };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
@@ -78,14 +71,10 @@ pub mod prelude {
     pub use crate::core::inbox::{FollowUp, Inbox, Recalled};
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
-    pub use crate::core::rewind::{
-        FileSnapshots, Fork, Forked, History, Rewind, Snapshots, UndoRewind,
-    };
     pub use crate::core::save::ReflectSaved;
     pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
     pub use crate::core::usage::{Spending, TurnSpending};
-    pub use crate::core::workdir::WorkDir;
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
@@ -93,33 +82,24 @@ pub mod prelude {
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
-/// (with the print and eval modes), snapshots of the working
-/// tree for rewinds, the agent core and saving, the approval policy new
-/// agents start with (`RIG_HOME/policy.json`),
-/// the project context in the system prompt (`AGENTS.md` and the
-/// environment, with `/context`), the launcher protocol, `/reload` and
-/// `/new`, `/resume` and `/name`; with feature `mcp`, the tools of the MCP
-/// servers in `RIG_HOME/mcp.json`, with `/mcp`. The tools, the commands other than
-/// `/reload` and the views are plugins of their own, so `plugins.toml`
+/// (with the print mode), the agent core and saving, the project context in
+/// the system prompt (`AGENTS.md` and the environment, with `/context`), the
+/// launcher protocol, `/reload` and `/new`, `/resume` and `/name`. The tools,
+/// the commands other than `/reload` and the views are plugins of their own, so `plugins.toml`
 /// lists the built-in ones like any other and can leave them out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
     fn build(self) -> PluginGroupBuilder {
-        let group = PluginGroupBuilder::start::<Self>()
+        PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
             .add(host::headless::ModePlugin)
-            .add(host::snapshots::SnapshotPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
-            .add(host::policy::PolicyPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
-            .add(host::sessions::SessionsPlugin);
-        #[cfg(feature = "mcp")]
-        let group = group.add(host::mcp::McpPlugin);
-        group
+            .add(host::sessions::SessionsPlugin)
     }
 }
 

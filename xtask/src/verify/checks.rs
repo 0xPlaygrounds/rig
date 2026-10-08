@@ -129,18 +129,6 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // The window is an opt-in feature with Bevy's renderer.
-                cargo(&[
-                    "clippy",
-                    "--locked",
-                    "-p",
-                    "rig-harness",
-                    "--features",
-                    "gui",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]),
             ],
         ),
         check(

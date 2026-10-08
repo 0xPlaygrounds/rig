@@ -8,7 +8,6 @@ use serde_json::json;
 
 use super::{io_error, write_atomic};
 use crate::core::blocking::blocking;
-use crate::core::workdir;
 
 /// Writes a whole file, creating its parent directories.
 pub struct Write;
@@ -45,13 +44,13 @@ impl PortableTool for Write {
 
     async fn call(&self, args: WriteArgs) -> Result<String, ToolExecutionError> {
         blocking(move || {
-            let path = workdir::resolve(&args.path);
-            if let Some(parent) = Path::new(&path).parent()
+            let path = args.path.as_str();
+            if let Some(parent) = Path::new(path).parent()
                 && !parent.as_os_str().is_empty()
             {
-                std::fs::create_dir_all(parent).map_err(|error| io_error(&path, error))?;
+                std::fs::create_dir_all(parent).map_err(|error| io_error(path, error))?;
             }
-            write_atomic(&path, args.content.as_bytes())?;
+            write_atomic(path, args.content.as_bytes())?;
             Ok(format!(
                 "Wrote {} bytes to {}.",
                 args.content.len(),

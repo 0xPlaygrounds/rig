@@ -5,17 +5,14 @@ use futures::channel::oneshot;
 use rig_core::tool::ToolExecutionError;
 
 /// Run `work` on a new thread and await its answer. A panic in `work`
-/// becomes an error. The thread runs in the calling tool call's
-/// [working directory](super::workdir).
+/// becomes an error.
 pub async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, ToolExecutionError> + Send + 'static,
 ) -> Result<T, ToolExecutionError> {
     let (sender, receiver) = oneshot::channel();
-    let dir = super::workdir::current();
     std::thread::Builder::new()
         .name("rig-harness-tool".to_owned())
         .spawn(move || {
-            let _entered = super::workdir::enter(dir);
             sender.send(work()).ok();
         })
         .map_err(|error| ToolExecutionError::other(format!("could not start the tool: {error}")))?;

@@ -128,16 +128,6 @@ impl Home {
         self.root.join("plugins.toml")
     }
 
-    /// `policy.json`, the approval policy every new agent starts with.
-    pub fn policy(&self) -> PathBuf {
-        self.root.join("policy.json")
-    }
-
-    /// `mcp.json`, the MCP servers whose tools the agents get.
-    pub fn mcp(&self) -> PathBuf {
-        self.root.join("mcp.json")
-    }
-
     /// `auth/<provider>.json`, the subscription credential `/login` keeps
     /// for `provider`, such as `chatgpt`.
     pub fn auth(&self, provider: &str) -> PathBuf {
@@ -220,13 +210,6 @@ impl Home {
     /// so a session comes back only where it ran.
     pub fn resume_marker(&self, directory: &Path) -> PathBuf {
         self.root.join("resume").join(directory_key(directory))
-    }
-
-    /// The object store of the working-tree snapshots taken in the git
-    /// work tree `directory`, shared by every session there, so a file
-    /// is stored once however many snapshots hold it.
-    pub fn snapshots(&self, directory: &Path) -> PathBuf {
-        self.root.join("snapshots").join(directory_key(directory))
     }
 
     /// The file naming the last session run in `directory`, however it
@@ -318,25 +301,12 @@ impl SessionDir {
         self.0.join("images")
     }
 
-    /// The session's own index into the snapshot store of
-    /// [`Home::snapshots`], so sessions in one work tree never wait on each
-    /// other's index lock.
-    pub fn snapshot_index(&self) -> PathBuf {
-        self.0.join("snapshot.index")
-    }
-
     /// The session's working directory, when [`Self::directory`] names one
     /// that still exists.
     pub fn working_directory(&self) -> Option<PathBuf> {
         let text = std::fs::read_to_string(self.directory()).ok()?;
         let directory = PathBuf::from(text.trim_end_matches('\n'));
         directory.is_dir().then_some(directory)
-    }
-
-    /// An eval run's working copies, one directory per trial, and its
-    /// `report.json`.
-    pub fn eval(&self) -> PathBuf {
-        self.0.join("eval")
     }
 }
 
@@ -349,34 +319,19 @@ pub enum Mode {
     /// The terminal view, or no view at all without one.
     #[default]
     Interactive,
-    /// One prompt, then exit: the answer on stdout, or with `json` every
-    /// event as a line of JSON. Text piped in on stdin follows the prompt.
+    /// One prompt, then exit: the answer on stdout. Text piped in on stdin
+    /// follows the prompt.
     Print {
         /// The prompt; may be empty when stdin is piped.
         prompt: String,
-        /// Whether stdout gets the JSON event stream instead of the answer.
-        json: bool,
-    },
-    /// Runs the tasks of an eval spec across its models, then writes the
-    /// report.
-    Eval {
-        /// The spec file, absolute.
-        spec: PathBuf,
-        /// Whether stdout gets the report as JSON instead of a table.
-        json: bool,
     },
 }
 
 impl Mode {
-    /// Whether nobody sits at a terminal view: every mode but
-    /// [`Mode::Interactive`].
+    /// Whether nobody sits at a terminal view, and the run ends by itself:
+    /// every mode but [`Mode::Interactive`].
     pub fn is_headless(&self) -> bool {
         !matches!(self, Self::Interactive)
-    }
-
-    /// Whether the run ends by itself: print and eval.
-    pub fn is_one_shot(&self) -> bool {
-        matches!(self, Self::Print { .. } | Self::Eval { .. })
     }
 }
 
@@ -385,8 +340,7 @@ impl Mode {
 pub struct Invocation {
     /// How it runs.
     pub mode: Mode,
-    /// A catalog model (`vendor/model`) for the session's first agent, or
-    /// every model of an eval.
+    /// A catalog model (`vendor/model`) for the session's first agent.
     pub model: Option<String>,
 }
 
@@ -394,9 +348,6 @@ pub struct Invocation {
 pub const INVOCATION_USAGE: &str = "\
   -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
                          Text piped in on stdin follows the prompt.
-  --json                 With --print: every event as a line of JSON instead.
-                         With eval: the report as JSON.
-  eval <spec.json>       Run an eval spec's tasks across its models.
   -m, --model <model>    The catalog model (vendor/model) to use.
 ";
 
@@ -404,20 +355,12 @@ impl Invocation {
     /// Reads the agent's arguments, without the program name.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
         let mut print = false;
-        let mut json = false;
-        let mut eval: Option<PathBuf> = None;
         let mut model = None;
         let mut words: Vec<&str> = Vec::new();
         let mut args = args.iter().map(AsRef::as_ref);
         while let Some(arg) = args.next() {
             match arg {
                 "-p" | "--print" => print = true,
-                "--json" => json = true,
-                "eval" | "--eval" if eval.is_none() && words.is_empty() && !print => {
-                    let spec = args.next().ok_or("eval needs a spec file")?;
-                    let spec = PathBuf::from(spec);
-                    eval = Some(std::path::absolute(&spec).unwrap_or(spec));
-                }
                 "-m" | "--model" => {
                     let name = args.next().ok_or("--model needs a vendor/model")?;
                     model = Some(name.to_owned());
@@ -429,17 +372,14 @@ impl Invocation {
                 word => words.push(word),
             }
         }
-        let mode = match (print || (json && eval.is_none()), eval) {
-            (false, None) if words.is_empty() => Mode::Interactive,
-            (false, None) => {
-                return Err("a prompt needs --print (-p)".to_owned());
-            }
-            (true, None) => Mode::Print {
+        let mode = if print {
+            Mode::Print {
                 prompt: words.join(" "),
-                json,
-            },
-            (false, Some(spec)) if words.is_empty() => Mode::Eval { spec, json },
-            _ => return Err("--print and eval do not go together".to_owned()),
+            }
+        } else if words.is_empty() {
+            Mode::Interactive
+        } else {
+            return Err("a prompt needs --print (-p)".to_owned());
         };
         Ok(Self { mode, model })
     }
@@ -458,19 +398,10 @@ impl Invocation {
         }
         match &self.mode {
             Mode::Interactive => {}
-            Mode::Print { prompt, json } => {
+            Mode::Print { prompt } => {
                 args.push("--print".into());
-                if *json {
-                    args.push("--json".into());
-                }
                 if !prompt.is_empty() {
                     args.extend(["--".into(), prompt.into()]);
-                }
-            }
-            Mode::Eval { spec, json } => {
-                args.extend(["eval".into(), spec.into()]);
-                if *json {
-                    args.push("--json".into());
                 }
             }
         }

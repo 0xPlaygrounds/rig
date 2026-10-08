@@ -8,14 +8,11 @@ use rig_core::completion::Reasoning;
 use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
-    Agent, AgentId, CallOf, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind,
-    PickRequest, TurnOf,
+    Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
 };
-use crate::core::approval::AwaitingApproval;
 use crate::core::inbox::Recalled;
 use crate::core::login::LoginProvider;
 use crate::core::models;
-use crate::core::rewind::{self, History};
 use crate::core::save::SessionPaths;
 use crate::core::subagents::{self, RosterQuery, SubagentOf};
 use crate::host::reload::ReloadFailed;
@@ -49,30 +46,6 @@ pub(crate) enum Overlay {
     Picker(Picker),
     /// A failed rebuild's output, until Esc or Enter.
     ReloadFailure(String),
-    /// A tool call of the shown agent waiting for the user's answer.
-    Approval(ApprovalPrompt),
-}
-
-/// The choices of an [`ApprovalPrompt`], in order.
-pub(crate) const APPROVAL_CHOICES: usize = 3;
-/// The choice that refuses the call.
-pub(crate) const DENY_CHOICE: usize = 2;
-
-/// A tool call waiting for an answer: Yes, Yes and stop asking, or No
-/// with what to tell the model.
-pub(crate) struct ApprovalPrompt {
-    /// The call entity.
-    pub(crate) call: Entity,
-    /// Its agent.
-    pub(crate) agent: Entity,
-    /// The tool.
-    pub(crate) tool: String,
-    /// What the call is about.
-    pub(crate) subject: String,
-    /// The highlighted choice.
-    pub(crate) selected: usize,
-    /// What to tell the model when refusing.
-    pub(crate) reason: String,
 }
 
 /// A notice placed in a transcript.
@@ -106,15 +79,6 @@ pub(crate) enum PickValue {
     Session(String),
     /// An agent to show.
     Agent(Entity),
-    /// A checkpoint to go back to, and whether the files go back too.
-    Rewind {
-        /// The checkpoint's effect id.
-        to: u64,
-        /// Whether the files go back too.
-        files: bool,
-    },
-    /// A checkpoint to fork at, or `None` for now.
-    Fork(Option<u64>),
 }
 
 /// A filterable list to choose one item from.
@@ -185,7 +149,6 @@ pub(crate) fn on_focus(
 pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
-    histories: Query<(&Conversation, &History)>,
     roster: RosterQuery,
     paths: Option<Res<SessionPaths>>,
     mut view: ResMut<TuiView>,
@@ -269,49 +232,6 @@ pub(crate) fn open_pickers(
                     .collect();
                 ("Show an agent".to_owned(), items)
             }
-            PickKind::Rewind { files } => {
-                let points = histories
-                    .get(request.agent)
-                    .map(|(conversation, history)| rewind::points(conversation, history))
-                    .unwrap_or_default();
-                let items = points
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, point)| {
-                        (
-                            format!("{}. {}", index + 1, point.label),
-                            PickValue::Rewind {
-                                to: point.effect,
-                                files,
-                            },
-                        )
-                    })
-                    .collect();
-                let title = if files {
-                    "Rewind to (conversation and files)"
-                } else {
-                    "Rewind the conversation to (files stay)"
-                };
-                (title.to_owned(), items)
-            }
-            PickKind::Fork => {
-                let points = histories
-                    .get(request.agent)
-                    .map(|(conversation, history)| rewind::points(conversation, history))
-                    .unwrap_or_default();
-                let items = std::iter::once((
-                    "now: the whole conversation".to_owned(),
-                    PickValue::Fork(None),
-                ))
-                .chain(points.into_iter().enumerate().map(|(index, point)| {
-                    (
-                        format!("{}. {}", index + 1, point.label),
-                        PickValue::Fork(Some(point.effect)),
-                    )
-                }))
-                .collect();
-                ("Fork a new agent at".to_owned(), items)
-            }
         };
         view.overlay = Some(Overlay::Picker(Picker {
             agent: request.agent,
@@ -319,41 +239,6 @@ pub(crate) fn open_pickers(
             items,
             filter: String::new(),
             selected,
-        }));
-    }
-}
-
-/// Asks about the shown agent's tool calls that wait for an answer, one at
-/// a time once nothing else is open, and closes the question when its
-/// call no longer waits: answered elsewhere, or stopped.
-pub(crate) fn open_approvals(
-    mut view: ResMut<TuiView>,
-    waiting: Query<(Entity, &AwaitingApproval, &CallOf)>,
-    turns: Query<&TurnOf>,
-) {
-    if let Some(Overlay::Approval(prompt)) = &view.overlay
-        && !waiting.contains(prompt.call)
-    {
-        view.overlay = None;
-    }
-    let Some(agent) = view.agent else {
-        return;
-    };
-    if view.overlay.is_some() {
-        return;
-    }
-    let first = waiting
-        .iter()
-        .filter(|&(_, _, &CallOf(turn))| turns.get(turn).is_ok_and(|&TurnOf(of)| of == agent))
-        .min_by_key(|(call, ..)| *call);
-    if let Some((call, waiting, _)) = first {
-        view.overlay = Some(Overlay::Approval(ApprovalPrompt {
-            call,
-            agent,
-            tool: waiting.tool.clone(),
-            subject: waiting.subject.clone(),
-            selected: 0,
-            reason: String::new(),
         }));
     }
 }

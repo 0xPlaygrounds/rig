@@ -1,11 +1,10 @@
 //! The agent core: agents as entities, the turn loop, subagents, the one
-//! effect dispatch path with its approval gate, the tool and command
+//! effect dispatch path, the tool and command
 //! registries, models and `/login` sign-ins, and session saving. It depends
 //! on neither the host nor any view: the host fills in what the core needs,
 //! such as [`save::SessionPaths`].
 
 pub mod agent;
-pub mod approval;
 pub mod attach;
 pub mod blocking;
 pub mod calls;
@@ -17,13 +16,11 @@ pub mod login;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
-pub mod rewind;
 pub mod save;
 pub mod subagents;
 pub mod tools;
 pub mod turn;
 pub mod usage;
-pub mod workdir;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -52,7 +49,6 @@ impl Plugin for AgentPlugin {
         let effects = Effects::continuing(log.as_deref());
         app.insert_resource(effects)
             .init_resource::<Wake>()
-            .init_resource::<approval::DefaultPolicy>()
             .add_message::<Notice>()
             .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
@@ -68,7 +64,6 @@ impl Plugin for AgentPlugin {
                     poll_calls::<ToolResult>,
                     poll_calls::<RetryDue>,
                     poll_calls::<Summary>,
-                    poll_calls::<rewind::FilesRestored>,
                     poll_calls::<login::SignedInResult>,
                     login::show_login_prompts,
                     turn::stream_partials,
@@ -85,9 +80,6 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
-            .add_observer(approval::give_policy)
-            .add_observer(workdir::inherit_workdir)
-            .add_observer(approval::on_approve)
             .add_observer(turn::on_submit)
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
@@ -97,10 +89,6 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_summarize)
             .add_observer(turn::on_summary_done)
             .add_observer(turn::on_retry)
-            .add_observer(rewind::on_rewind)
-            .add_observer(rewind::on_undo_rewind)
-            .add_observer(rewind::on_files_restored)
-            .add_observer(rewind::on_fork)
             .add_observer(turn::on_interrupt)
             .add_observer(login::on_sign_in)
             .add_observer(login::on_signed_in)

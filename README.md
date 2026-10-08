@@ -216,8 +216,8 @@ page returns to a one-shot listener on `127.0.0.1` port 1455 (1457 when 1455
 is taken). Without a graphical session (no `DISPLAY` or `WAYLAND_DISPLAY` on
 Linux and the BSDs), over SSH, or when both ports are taken, it shows a code
 to enter at `https://auth.openai.com/codex/device` instead, as
-`/login chatgpt --device` does. The same applies in the headless modes, which
-print the URL or code. Once signed in, `/model` lists the
+`/login chatgpt --device` does. The same applies in print mode, which prints
+the URL or code. Once signed in, `/model` lists the
 plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
 `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
 `gpt-5.6-luna` and `gpt-5.5`, besides the older `gpt-5.4` and `gpt-5.3` rows.
@@ -247,80 +247,13 @@ then goes to it. A subagent can start subagents of its own, one level deep.
 In the effect log, a subagent's model calls name the `task` call as their
 parent.
 
-Every model call leaves a checkpoint, named by the call's effect id. In a git
-work tree it also snapshots the files, into a git store under
-`RIG_HOME/snapshots` that leaves the project's own repository alone and
-skips what its `.gitignore` skips. `/rewind` lists the checkpoints, newest
-first, and goes back to the one picked: the conversation as that call found
-it and the files as they were then. Going back to the start of a turn puts
-your message back in the input to edit. `/rewind <n> chat` leaves the files
-alone, and `/rewind undo` undoes the last rewind, files included. `/fork`
-clones the agent at a checkpoint, or as it is with `/fork now`, into a new
-agent with the same model and tools; `/agents` switches between them. A fork
-shares the files.
-
-By default every tool call runs. `/approvals ask` makes the agent ask before
-any call that changes something (edits, writes, shell commands, MCP tools):
-`y` runs it, `a` runs it and stops asking for that tool, `n` refuses it, and
-whatever you type before Enter is what the refusal tells the model to do
-instead; Esc stops the turn. `/approvals read-only` refuses those calls
-outright. Rules go on top: `/approvals allow shell git status*` lets matching
-calls run, `deny` refuses them, `ask` asks; the last rule that matches a call
-decides, and `/approvals` lists them. `RIG_HOME/policy.json` sets what new
-agents start with, as `{"mode": "ask", "rules": [{"tool": "shell", "subject":
-"git *", "permission": "allow"}]}`; subagents and forks inherit their agent's
-policy, and a refused call is recorded in the effect log as `denied`.
-
-MCP servers listed in `RIG_HOME/mcp.json`, in the usual `mcpServers` shape
-(`command`, `args`, `env`, `cwd`, or `url` and `headers`, plus `disabled`
-and a per-call `timeout` in seconds), start with the agent; their tools appear
-as `mcp__<server>__<tool>` and follow the server's list as it changes. `/mcp`
-lists the servers and their tools, and `/mcp restart <server>` starts one
-again. A server's standard error goes to the session log.
-
 Without the terminal view, `rig -p "fix the failing test"` answers one prompt
 and exits: the answer goes to stdout, failures to stderr, and the exit code is
 0 when the turn ended with an answer. Text piped in follows the prompt
 (`git diff | rig -p "review this"`), `-m vendor/model` picks the model (else
 the session's, else the first one with a key), and `-c` continues this
-directory's last session instead of starting a new one. `rig -p --json`
-streams every event as a line of JSON instead: the session, agents, model
-choices, text and reasoning deltas, each message added to a conversation,
-tool calls and their results, approvals asked, notices and turn ends.
-A headless run never becomes the
-session its directory resumes, and in print mode a call the approval policy
-would ask about is refused.
-
-`rig eval spec.json` runs a spec's tasks on several models in one process:
-each trial is an agent of its own working in a fresh copy of the task's
-directory, up to `parallel` at once, scored by the task's `check` command
-passing and by its cost at the catalog's prices:
-
-```json
-{"models": ["anthropic/claude-sonnet-4-5", "openai/gpt-5"], "runs": 2, "parallel": 4,
- "tasks": [{"name": "fix-parser", "directory": "fixtures/parser", "setup": "git init -q",
-            "prompt": "The parser drops trailing commas. Fix it.", "check": "cargo test -q"}]}
-```
-
-It prints a table per model (checks passed, cost, mean time, tool calls) and
-writes `report.json`, with every trial's agent id for its effects, under the
-session's `eval/`; `--json` prints the report instead.
-
-A window can run beside the terminal, in the same process: list
-`rig_harness::gui::GuiPlugin` in `plugins.toml` (the template has it commented
-out) and `/reload`. It shows the agent graph (subagents under the agent that
-started them, forks and eval trials beside it, each with its state, model,
-cost and context), a timeline per agent of every turn, model call, tool call,
-summary and retry wait (queued time dim, time waiting for approval yellow;
-1m, 5m, 30m or all), the selected call's arguments, reply, result and diff,
-the cost by agent and by model call, and buttons that answer approvals; its
-prompt line sends to the shown agent (Enter, Ctrl+Enter queues, Esc stops).
-It is a Bevy UI on winit's reactive loop, woken by the same signal the
-terminal view sleeps on, and an optional cargo feature of rig-harness that the
-launcher turns on only when the plugin is listed, since it builds Bevy's
-renderer. X11 is built in; `bevy_features = ["wayland"]` on its entry adds
-native Wayland. Without a display it adds nothing; without the terminal view,
-closing it quits.
+directory's last session instead of starting a new one. A headless run
+never becomes the session its directory resumes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
@@ -340,7 +273,7 @@ tool's call in its own way; a plugin can draw its own tools' calls with
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
-`plugins.toml`, the approval policy `policy.json`, the MCP servers `mcp.json`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+`plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 the prompt history `history.jsonl`, and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

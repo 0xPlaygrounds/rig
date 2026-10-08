@@ -1,19 +1,16 @@
 //! The built-in slash commands: `/model`, `/effort`, `/login`, `/logout`,
-//! `/usage`, `/retry`, `/compact`, `/agents`, `/rewind`, `/fork`,
-//! `/approvals`, `/help` and `/quit`.
+//! `/usage`, `/retry`, `/compact`, `/agents`, `/help` and `/quit`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use crate::core::agent::{
-    ActiveTurn, Compact, Connection, Conversation, Effort, Focus, Notice, PickKind, PickRequest,
-    Retry, SetEffort, SetModel,
+    ActiveTurn, Compact, Connection, Effort, Focus, Notice, PickKind, PickRequest, Retry,
+    SetEffort, SetModel,
 };
-use crate::core::approval::{ApprovalMode, Permission, Policy, Rule};
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use crate::core::login::{SignIn, SignOut};
 use crate::core::models;
-use crate::core::rewind::{self, Fork, History, Point, Rewind, UndoRewind};
 use crate::core::subagents::{self, RosterQuery};
 use crate::core::usage::{Spending, TurnSpending};
 
@@ -39,11 +36,7 @@ impl Plugin for BuiltinCommandsPlugin {
              code to enter instead); /login again or Esc cancels",
             login,
         )
-        .add_command(
-            "logout",
-            "Forget a sign-in: /logout chatgpt",
-            logout,
-        )
+        .add_command("logout", "Forget a sign-in: /logout chatgpt", logout)
         .add_command(
             "usage",
             "Show the tokens, cost and context the session used",
@@ -63,23 +56,6 @@ impl Plugin for BuiltinCommandsPlugin {
             "agents",
             "List the agents and subagents and show one; /agents <number or title> shows it",
             agents,
-        )
-        .add_command(
-            "rewind",
-            "Go back to a checkpoint, conversation and files; /rewind <n> [chat] keeps the files \
-             with chat, /rewind undo undoes it",
-            rewind,
-        )
-        .add_command(
-            "fork",
-            "Clone this agent at a checkpoint into a new one; /fork now clones it as it is",
-            fork,
-        )
-        .add_command(
-            "approvals",
-            "Show which tool calls ask first; /approvals auto|ask|read-only sets the mode, \
-             /approvals allow|ask|deny <tool> [subject] adds a rule, /approvals forget <n> drops one",
-            approvals,
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Save and quit", quit);
@@ -195,101 +171,6 @@ fn usage(
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
-/// Shows or changes the agent's approval [`Policy`].
-fn approvals(
-    In(args): In<CommandArgs>,
-    mut policies: Query<&mut Policy>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = args.agent;
-    let Ok(mut policy) = policies.get_mut(agent) else {
-        return;
-    };
-    let mut words = args.args.split_whitespace();
-    let first = words.next();
-    let permission = match first {
-        Some("allow") => Some(Permission::Allow),
-        Some("ask") if words.clone().next().is_some() => Some(Permission::Ask),
-        Some("deny") => Some(Permission::Deny),
-        _ => None,
-    };
-    if let Some(permission) = permission {
-        let Some(tool) = words.next() else {
-            notices.write(Notice::error(
-                agent,
-                "Name the tool: /approvals allow shell git status*",
-            ));
-            return;
-        };
-        let subject = words.collect::<Vec<_>>().join(" ");
-        let rule = Rule {
-            tool: tool.to_owned(),
-            subject: (!subject.is_empty()).then_some(subject),
-            permission,
-        };
-        notices.write(Notice::info(agent, format!("Added: {}.", rule.label())));
-        policy.rules.push(rule);
-        return;
-    }
-    match first {
-        None => {}
-        Some("forget") => {
-            let index = words
-                .next()
-                .and_then(|number| number.parse::<usize>().ok())
-                .and_then(|number| number.checked_sub(1))
-                .filter(|index| *index < policy.rules.len());
-            match index {
-                Some(index) => {
-                    let rule = policy.rules.remove(index);
-                    notices.write(Notice::info(agent, format!("Dropped: {}.", rule.label())));
-                }
-                None => {
-                    notices.write(Notice::error(
-                        agent,
-                        "Name a rule by its number, as /approvals lists them.",
-                    ));
-                }
-            }
-            return;
-        }
-        Some(name) => match ApprovalMode::parse(name) {
-            Some(mode) => {
-                policy.mode = mode;
-                notices.write(Notice::info(agent, format!("Approvals: {}.", mode.name())));
-                return;
-            }
-            None => {
-                notices.write(Notice::error(
-                    agent,
-                    format!(
-                        "No mode `{name}`: auto runs every call, ask asks before any call that \
-                         changes something, read-only refuses those."
-                    ),
-                ));
-                return;
-            }
-        },
-    }
-    let mut lines = vec![format!(
-        "Approvals: {} (auto, ask or read-only; calls that only read always run).",
-        policy.mode.name()
-    )];
-    if policy.rules.is_empty() {
-        lines.push("No rules. /approvals allow <tool> [subject] adds one.".to_owned());
-    } else {
-        lines.push("Rules, the last that matches a call decides:".to_owned());
-        lines.extend(
-            policy
-                .rules
-                .iter()
-                .enumerate()
-                .map(|(index, rule)| format!("{}. {}", index + 1, rule.label())),
-        );
-    }
-    notices.write(Notice::info(agent, lines.join("\n")));
-}
-
 fn retry(In(args): In<CommandArgs>, mut commands: Commands) {
     commands.trigger(Retry { entity: args.agent });
 }
@@ -350,139 +231,6 @@ fn agents(
     }
 }
 
-/// The agent's checkpoints, newest first, or a notice that it has none.
-fn checkpoints(
-    agent: Entity,
-    agents: &Query<(&Conversation, &History)>,
-    notices: &mut MessageWriter<Notice>,
-) -> Option<Vec<Point>> {
-    let points = agents
-        .get(agent)
-        .map(|(conversation, history)| rewind::points(conversation, history))
-        .unwrap_or_default();
-    if points.is_empty() {
-        notices.write(Notice::info(
-            agent,
-            "No checkpoint yet: each model call makes one.",
-        ));
-        return None;
-    }
-    Some(points)
-}
-
-/// The checkpoint numbered `number` (1 is the newest), or a notice.
-fn numbered<'a>(
-    agent: Entity,
-    points: &'a [Point],
-    number: usize,
-    command: &str,
-    notices: &mut MessageWriter<Notice>,
-) -> Option<&'a Point> {
-    let point = number.checked_sub(1).and_then(|index| points.get(index));
-    if point.is_none() {
-        notices.write(Notice::error(
-            agent,
-            format!(
-                "No checkpoint {number}: there are {}. /{command} lists them.",
-                points.len()
-            ),
-        ));
-    }
-    point
-}
-
-fn rewind(
-    In(args): In<CommandArgs>,
-    agents: Query<(&Conversation, &History)>,
-    mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = args.agent;
-    let words: Vec<&str> = args.args.split_whitespace().collect();
-    if words == ["undo"] {
-        commands.trigger(UndoRewind { entity: agent });
-        return;
-    }
-    let mut files = true;
-    let mut number = None;
-    for word in &words {
-        match (*word, word.parse::<usize>()) {
-            ("chat", _) => files = false,
-            (_, Ok(parsed)) if number.is_none() => number = Some(parsed),
-            _ => {
-                notices.write(Notice::error(
-                    agent,
-                    "Use /rewind, /rewind <number> [chat] or /rewind undo.",
-                ));
-                return;
-            }
-        }
-    }
-    let Some(points) = checkpoints(agent, &agents, &mut notices) else {
-        return;
-    };
-    match number {
-        None => {
-            picks.write(PickRequest {
-                agent,
-                kind: PickKind::Rewind { files },
-            });
-        }
-        Some(number) => {
-            if let Some(point) = numbered(agent, &points, number, "rewind", &mut notices) {
-                commands.trigger(Rewind {
-                    entity: agent,
-                    to: point.effect,
-                    files,
-                });
-            }
-        }
-    }
-}
-
-fn fork(
-    In(args): In<CommandArgs>,
-    agents: Query<(&Conversation, &History)>,
-    mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = args.agent;
-    match args.args.as_str() {
-        "" => {
-            picks.write(PickRequest {
-                agent,
-                kind: PickKind::Fork,
-            });
-        }
-        "now" => {
-            commands.trigger(Fork {
-                entity: agent,
-                at: None,
-            });
-        }
-        text => {
-            let Ok(number) = text.parse::<usize>() else {
-                notices.write(Notice::error(
-                    agent,
-                    "Use /fork, /fork <number> or /fork now.",
-                ));
-                return;
-            };
-            let Some(points) = checkpoints(agent, &agents, &mut notices) else {
-                return;
-            };
-            if let Some(point) = numbered(agent, &points, number, "fork", &mut notices) {
-                commands.trigger(Fork {
-                    entity: agent,
-                    at: Some(point.effect),
-                });
-            }
-        }
-    }
-}
-
 fn help(
     In(args): In<CommandArgs>,
     commands: Query<&SlashCommand>,
@@ -499,8 +247,7 @@ fn help(
          /commands and @paths. While a turn runs, \
          Enter steers it and Tab queues a follow-up. @path attaches an image file, and \
          Ctrl+V pastes the clipboard's image. /agents shows a subagent's work, and what is \
-         typed then goes to it. /rewind goes back to an earlier \
-         checkpoint, files included, and /fork tries another way in a new agent."
+         typed then goes to it."
             .to_owned(),
     );
     notices.write(Notice::info(args.agent, lines.join("\n")));
