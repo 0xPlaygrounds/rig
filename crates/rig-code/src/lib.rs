@@ -15,6 +15,7 @@ pub mod agent;
 pub mod commands;
 pub mod effects;
 pub mod model;
+mod process;
 pub mod reload;
 pub mod session;
 pub mod tools;

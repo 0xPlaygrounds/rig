@@ -22,9 +22,9 @@ A plugin is a crate with a type implementing Bevy's `Plugin + Default`, listed i
 ```toml
 [[plugin]]
 crate = "rig-hello"
-path = "/home/me/rig-hello"          # or git = "..." (branch, tag, rev) or version = "..."
+path = "/home/me/rig-hello"          # relative to plugins.toml; or git = "..." (branch, tag, rev) or version = "..."
 plugin = "rig_hello::HelloPlugin"
-bevy_features = []                   # optional
+bevy_features = []                   # optional; adds the `bevy` crate, which needs Rust 1.96
 ```
 
 `/reload` (only while no turn runs) rebuilds the agent with `rig build`, shows the compile

@@ -96,7 +96,7 @@ pub fn build(home: &Home) -> Result<(), Failure> {
 /// Refuse a dependency graph with more than one Bevy version, naming the
 /// plugins that bring the other ones.
 fn check_bevy(dir: &Path, plugins_file: &Path, plugins: &[Plugin]) -> Result<(), Failure> {
-    let tree = cargo_tree(dir, &[])?;
+    let tree = cargo_tree(dir, plugins_file, &[])?;
     let versions: BTreeSet<&str> = tree
         .lines()
         .filter_map(|line| line.strip_prefix("bevy_ecs v"))
@@ -105,7 +105,11 @@ fn check_bevy(dir: &Path, plugins_file: &Path, plugins: &[Plugin]) -> Result<(),
         .collect();
     let mut problems = Vec::new();
     for version in versions {
-        let users = cargo_tree(dir, &["--invert", &format!("bevy_ecs@{version}")])?;
+        let users = cargo_tree(
+            dir,
+            plugins_file,
+            &["--invert", &format!("bevy_ecs@{version}")],
+        )?;
         let culprits: Vec<&str> = plugins
             .iter()
             .map(|plugin| plugin.krate.as_str())
@@ -136,7 +140,9 @@ fn check_bevy(dir: &Path, plugins_file: &Path, plugins: &[Plugin]) -> Result<(),
 }
 
 /// `cargo tree` of the project's normal dependencies, one package per line.
-fn cargo_tree(dir: &Path, args: &[&str]) -> Result<String, Failure> {
+/// A resolver failure over a Bevy requirement is a conflict too: cargo
+/// cannot fit a plugin's Bevy next to rig-code's exact pin.
+fn cargo_tree(dir: &Path, plugins_file: &Path, args: &[&str]) -> Result<String, Failure> {
     let output = Command::new("cargo")
         .args([
             "tree", "-e", "normal", "--prefix", "none", "--format", "{p}",
@@ -144,17 +150,27 @@ fn cargo_tree(dir: &Path, args: &[&str]) -> Result<String, Failure> {
         .args(args)
         .current_dir(dir)
         .stdin(Stdio::null())
-        .stderr(Stdio::inherit())
         .output()
         .map_err(|error| Failure::Failed(format!("cannot run cargo: {error}")))?;
-    if !output.status.success() {
-        return Err(Failure::Failed(format!(
-            "cargo tree failed ({}) in {}",
-            output.status,
-            dir.display()
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).into_owned());
+    }
+    let cargo_said = String::from_utf8_lossy(&output.stderr);
+    let cargo_said = cargo_said.trim_end();
+    if cargo_said.contains("failed to select a version") && cargo_said.contains("bevy") {
+        return Err(Failure::Conflict(format!(
+            "A plugin asks for a Bevy version that cannot be used together with rig-code's \
+             Bevy {BEVY_VERSION}. One app cannot mix two Bevy versions. Change the plugin's \
+             bevy dependency to \"={BEVY_VERSION}\" or remove it from {}.\n\
+             Cargo said:\n{cargo_said}",
+            plugins_file.display()
         )));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Err(Failure::Failed(format!(
+        "cargo tree failed ({}) in {}:\n{cargo_said}",
+        output.status,
+        dir.display()
+    )))
 }
 
 /// `cargo build` with the progress bar forced on, so it also shows when

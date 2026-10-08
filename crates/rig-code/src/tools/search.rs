@@ -63,24 +63,51 @@ impl PortableTool for Search {
             return Err(fail(format!("{} does not exist", root.display())));
         }
         let mut hits = Vec::new();
-        let mut pending = vec![root];
-        while let Some(path) = pending.pop() {
+        if !root.is_dir() {
+            search_file(&pattern, &root, &mut hits);
+        }
+        // Directories still to list. Symlinks below the root are searched as
+        // files and never followed, so a link to an ancestor cannot loop.
+        let mut pending = if root.is_dir() {
+            vec![root]
+        } else {
+            Vec::new()
+        };
+        let mut is_root = true;
+        while let Some(dir) = pending.pop() {
             if hits.len() >= MAX_HITS {
                 break;
             }
-            if path.is_dir() {
-                let entries = std::fs::read_dir(&path)
-                    .map_err(|error| io_fail("list", &path.display().to_string(), &error))?;
-                let mut children: Vec<PathBuf> = entries
-                    .filter_map(Result::ok)
-                    .map(|entry| entry.path())
-                    .filter(|child| !skipped(child))
-                    .collect();
-                children.sort_unstable_by(|a, b| b.cmp(a));
-                pending.extend(children);
-            } else {
-                search_file(&pattern, &path, &mut hits);
+            // Only the root must be listable; an unreadable directory below
+            // it is skipped.
+            let entries = match std::fs::read_dir(&dir) {
+                Ok(entries) => entries,
+                Err(error) if is_root => {
+                    return Err(io_fail("list", &dir.display().to_string(), &error));
+                }
+                Err(_) => continue,
+            };
+            is_root = false;
+            let mut children: Vec<(PathBuf, bool)> = entries
+                .filter_map(Result::ok)
+                .filter_map(|entry| {
+                    let is_dir = entry.file_type().ok()?.is_dir();
+                    let path = entry.path();
+                    (!skipped(&path, is_dir)).then_some((path, is_dir))
+                })
+                .collect();
+            children.sort_unstable();
+            let mut dirs = Vec::new();
+            for (path, is_dir) in children {
+                if is_dir {
+                    dirs.push(path);
+                } else if hits.len() < MAX_HITS {
+                    search_file(&pattern, &path, &mut hits);
+                }
             }
+            pending.extend(dirs.into_iter().rev());
+            // Let a dropped task stop between directories.
+            bevy_tasks::futures_lite::future::yield_now().await;
         }
         if hits.is_empty() {
             return Ok("No matches.".to_owned());
@@ -97,11 +124,11 @@ impl PortableTool for Search {
     }
 }
 
-fn skipped(path: &Path) -> bool {
+fn skipped(path: &Path, is_dir: bool) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return true;
     };
-    path.is_dir() && (name.starts_with('.') || SKIPPED_DIRS.contains(&name))
+    is_dir && (name.starts_with('.') || SKIPPED_DIRS.contains(&name))
 }
 
 /// Add `path`'s hits: the path itself, then each matching line.

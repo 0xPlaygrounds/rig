@@ -15,7 +15,10 @@ impl Home {
     /// The directories the environment names.
     pub fn from_env() -> Result<Self, String> {
         if let Some(root) = var("RIG_HOME") {
-            let root = PathBuf::from(root);
+            // Absolute, so paths written into the generated project and
+            // passed to the agent do not depend on the working directory.
+            let root = std::path::absolute(root)
+                .map_err(|error| format!("RIG_HOME is not a usable path: {error}"))?;
             return Ok(Self {
                 config: root.join("config"),
                 cache: root.join("cache"),
@@ -55,6 +58,36 @@ impl Home {
     /// A built binary not yet started.
     pub fn next(&self) -> PathBuf {
         self.data.join("bin").join("next")
+    }
+
+    /// A new build while it starts, until it reaches ready.
+    pub fn trial(&self) -> PathBuf {
+        self.data.join("bin").join("trial")
+    }
+
+    /// Hold the data directory for this launcher until the lock is dropped.
+    pub fn lock(&self) -> Result<std::fs::File, String> {
+        let path = self.data.join("rig.lock");
+        let file = std::fs::create_dir_all(&self.data)
+            .and_then(|()| {
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .write(true)
+                    .open(&path)
+            })
+            .map_err(|error| format!("cannot open {}: {error}", path.display()))?;
+        match file.try_lock() {
+            Ok(()) => Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => Err(format!(
+                "another rig is running with {}. Quit it first, or set RIG_HOME to \
+                 another directory.",
+                self.data.display()
+            )),
+            Err(std::fs::TryLockError::Error(error)) => {
+                Err(format!("cannot lock {}: {error}", path.display()))
+            }
+        }
     }
 
     /// The directory of session `id`.

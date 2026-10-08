@@ -101,6 +101,13 @@ pub enum AgentStatus {
     Tools(usize),
 }
 
+/// Whether an agent has a turn running: it is not idle, owes the model a
+/// reply, or has calls in flight. Prompts and `/reload` wait for this to
+/// be false.
+pub fn turn_running(status: AgentStatus, needs_reply: bool, has_calls: bool) -> bool {
+    status != AgentStatus::Idle || needs_reply || has_calls
+}
+
 /// The agent owes the model a request: set after a prompt or after tool
 /// results, cleared once the model call starts.
 #[derive(Component, Debug, Default)]
@@ -130,6 +137,8 @@ pub enum Feed {
     Text(String),
     /// Reasoning text.
     Reasoning(String),
+    /// The reply started a call of this tool.
+    ToolStart(String),
 }
 
 /// A model call in flight and what it has streamed so far.
@@ -142,6 +151,8 @@ pub struct ModelCall {
     pub text: String,
     /// The reasoning text so far.
     pub reasoning: String,
+    /// The tools the reply called so far, by name.
+    pub tools: Vec<String>,
 }
 
 impl ModelCall {
@@ -152,6 +163,7 @@ impl ModelCall {
             origin: None,
             text: String::new(),
             reasoning: String::new(),
+            tools: Vec::new(),
         }
     }
 
@@ -169,6 +181,7 @@ impl ModelCall {
                 Feed::Origin(origin) => self.origin = Some(origin),
                 Feed::Text(text) => self.text.push_str(&text),
                 Feed::Reasoning(text) => self.reasoning.push_str(&text),
+                Feed::ToolStart(name) => self.tools.push(name),
             }
         }
         changed

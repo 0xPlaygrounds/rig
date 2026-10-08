@@ -148,7 +148,7 @@ async fn serve(
                 kind: PartKind::ToolCall,
                 name: Some(name),
                 ..
-            }))) => Some(Feed::Text(format!("\n[calling {name}]\n"))),
+            }))) => Some(Feed::ToolStart(name.as_str().to_owned())),
             _ => None,
         };
         if let Some(piece) = piece {

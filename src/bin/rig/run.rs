@@ -1,6 +1,7 @@
 //! The run loop: start the agent, restart it on a new build when it exits
-//! with [`RELOAD`], promote a new build once it is ready, and roll back
-//! when a new build dies before that.
+//! with [`RELOAD`], promote a new build once it is ready, roll back when a
+//! new build dies before that, and restart once on the last autosave when
+//! a build that was ready crashes.
 
 use std::{
     path::Path,
@@ -27,6 +28,14 @@ pub fn run(home: &Home) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // One launcher per data directory: they share `bin/` and the project.
+    let _lock = match home.lock() {
+        Ok(lock) => lock,
+        Err(error) => {
+            eprintln!("error: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut notice = None;
     if build::needed(home) {
         eprintln!(
@@ -45,11 +54,19 @@ pub fn run(home: &Home) -> ExitCode {
             );
         }
     }
+    let mut restarted = false;
     loop {
-        let (binary, is_next) = if home.next().is_file() {
-            (home.next(), true)
+        // A new build runs from `bin/trial`, so a `/reload` can stage the
+        // next `bin/next` while it runs.
+        let is_new = home.next().is_file();
+        let binary = if is_new {
+            if let Err(error) = std::fs::rename(home.next(), home.trial()) {
+                eprintln!("error: cannot start the new build: {error}");
+                return ExitCode::FAILURE;
+            }
+            home.trial()
         } else {
-            (home.current(), false)
+            home.current()
         };
         let ready = session_dir.join("ready");
         // A stale ready file would promote a binary that never started.
@@ -63,19 +80,25 @@ pub fn run(home: &Home) -> ExitCode {
         if let Some(text) = notice.take() {
             command.env("RIG_NOTICE", text);
         }
-        let mut promoted = !is_next;
+        let mut promoted = !is_new;
+        let mut promote = || {
+            if !promoted && ready.exists() {
+                std::fs::rename(&binary, home.current())
+                    .map_err(|error| format!("cannot promote the new build: {error}"))?;
+                promoted = true;
+            }
+            Ok::<(), String>(())
+        };
         let status = match command.spawn() {
             Ok(mut child) => loop {
                 match child.try_wait() {
-                    Ok(Some(status)) => break Ok(status),
+                    // A build that got ready just before it exited still counts.
+                    Ok(Some(status)) => break promote().map(|()| status),
                     Ok(None) => {}
                     Err(error) => break Err(error.to_string()),
                 }
-                if !promoted && ready.exists() {
-                    match std::fs::rename(&binary, home.current()) {
-                        Ok(()) => promoted = true,
-                        Err(error) => break Err(format!("cannot promote the new build: {error}")),
-                    }
+                if let Err(error) = promote() {
+                    break Err(error);
                 }
                 std::thread::sleep(POLL);
             },
@@ -104,6 +127,16 @@ pub fn run(home: &Home) -> ExitCode {
                 ));
                 continue;
             }
+        } else if !restarted {
+            // A build that ran fine crashed later: restart it once on the
+            // last autosave.
+            restarted = true;
+            notice = Some(format!(
+                "rig-code {} and was restarted on the last autosave. The log is {}",
+                describe(status),
+                session_dir.join("rig-code.log").display()
+            ));
+            continue;
         }
         return crashed(status, &session_dir);
     }

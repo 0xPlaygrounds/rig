@@ -25,6 +25,7 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true, features = ["std", "auto_register_inventory"] }
 bevy_tasks = { workspace = true }
 futures = { workspace = true }
+futures-timer = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

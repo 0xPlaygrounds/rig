@@ -14,8 +14,8 @@ use rig_core::message::Message;
 use crate::{
     RigCodeAppExt as _,
     agent::{
-        Agent, AgentStatus, Choose, Conversation, Effort, ModelChoice, NeedsReply, Notice, Quit,
-        Submit,
+        Agent, AgentCalls, AgentStatus, Choose, Conversation, Effort, ModelChoice, NeedsReply,
+        Notice, Quit, Submit, turn_running,
     },
     model::{self, Credentials},
 };
@@ -45,7 +45,15 @@ pub struct CommandArgs {
 pub(crate) fn route_submit(
     mut submits: MessageReader<Submit>,
     slash: Query<&SlashCommand>,
-    mut agents: Query<(&mut Conversation, &AgentStatus, Has<NeedsReply>), With<Agent>>,
+    mut agents: Query<
+        (
+            &mut Conversation,
+            &AgentStatus,
+            Has<NeedsReply>,
+            Has<AgentCalls>,
+        ),
+        With<Agent>,
+    >,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -73,10 +81,10 @@ pub(crate) fn route_submit(
             }
             continue;
         }
-        let Ok((mut conversation, status, needs_reply)) = agents.get_mut(agent) else {
+        let Ok((mut conversation, status, needs_reply, calls)) = agents.get_mut(agent) else {
             continue;
         };
-        if *status != AgentStatus::Idle || needs_reply {
+        if turn_running(*status, needs_reply, calls) {
             notices.write(Notice {
                 agent,
                 text: "A turn is running. Press Esc to stop it first.".to_owned(),
@@ -139,7 +147,7 @@ fn model_command(
         notice(format!("{args} is not in the model catalog."));
         return;
     };
-    if !credentials.available(spec) {
+    if !credentials.usable(spec) {
         let key = spec.provider.api_key_env().unwrap_or("its credential");
         notice(format!("{args} needs {key} to be set."));
         return;

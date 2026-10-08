@@ -21,16 +21,13 @@ const BUDGET_PRESETS: &[(&str, u32)] = &[("low", 2048), ("medium", 8192), ("high
 /// Answer room kept above a reasoning budget in `max_tokens`.
 const ANSWER_TOKENS: u32 = 8192;
 
-/// Whether each vendor has a credential in the environment, checked once
-/// per vendor.
+/// Per vendor, whether a client can be built from the environment and
+/// whether its key variable is set, checked once per vendor.
 #[derive(Resource, Debug, Default)]
-pub struct Credentials(HashMap<&'static str, bool>);
+pub struct Credentials(HashMap<&'static str, (bool, bool)>);
 
 impl Credentials {
-    /// Whether `spec`'s provider can be reached with the environment's
-    /// credentials. A provider whose key is optional counts only when its
-    /// key variable is set.
-    pub fn available(&mut self, spec: &ModelSpec) -> bool {
+    fn check(&mut self, spec: &ModelSpec) -> (bool, bool) {
         *self.0.entry(spec.provider.vendor()).or_insert_with(|| {
             let configured = ModelSelector::from(spec)
                 .provider_ref()
@@ -40,8 +37,22 @@ impl Credentials {
                 .provider
                 .api_key_env()
                 .is_some_and(|name| std::env::var_os(name).is_some_and(|key| !key.is_empty()));
-            configured && (spec.provider.requires_credential() || key_set)
+            (configured, key_set)
         })
+    }
+
+    /// Whether `/model` lists `spec`: its provider can be reached with the
+    /// environment's credentials. A provider whose key is optional (a local
+    /// server) is listed only when its key variable is set.
+    pub fn available(&mut self, spec: &ModelSpec) -> bool {
+        let (configured, key_set) = self.check(spec);
+        configured && (spec.provider.requires_credential() || key_set)
+    }
+
+    /// Whether `spec` can be picked by name: its provider can be reached,
+    /// with or without a key when the key is optional.
+    pub fn usable(&mut self, spec: &ModelSpec) -> bool {
+        self.check(spec).0
     }
 }
 
@@ -162,6 +173,21 @@ pub fn build_request(
         options = options.reasoning(reasoning);
     }
     spec.validate(&options).map_err(|error| error.to_string())?;
+    // A budget needs room for an answer under the model's output limit.
+    let max_tokens = match reasoning {
+        Some(Reasoning::Budget { tokens }) => {
+            let ceiling = spec.max_output_tokens.unwrap_or(u32::MAX);
+            if tokens >= ceiling {
+                return Err(format!(
+                    "a {tokens}-token reasoning budget leaves no room for an answer under \
+                     {}'s {ceiling}-token output limit. Pick a smaller /effort.",
+                    spec.display_name
+                ));
+            }
+            Some(u64::from(tokens.saturating_add(ANSWER_TOKENS).min(ceiling)))
+        }
+        _ => None,
+    };
     let (last, prior) = conversation
         .split_last()
         .ok_or_else(|| "the conversation is empty".to_owned())?;
@@ -172,9 +198,8 @@ pub fn build_request(
     if spec.tools {
         request = request.tools(tools);
     }
-    if let Some(Reasoning::Budget { tokens }) = reasoning {
-        let ceiling = spec.max_output_tokens.unwrap_or(u32::MAX);
-        request = request.max_tokens(u64::from(tokens.saturating_add(ANSWER_TOKENS).min(ceiling)));
+    if let Some(max_tokens) = max_tokens {
+        request = request.max_tokens(max_tokens);
     }
     Ok(request)
 }

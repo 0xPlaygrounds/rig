@@ -59,7 +59,9 @@ impl PortableTool for Read {
             if total < start || next.is_some() {
                 continue;
             }
-            if total >= start + limit || (!out.is_empty() && out.len() + line.len() > MAX_BYTES) {
+            if total >= start.saturating_add(limit)
+                || (!out.is_empty() && out.len() + line.len() > MAX_BYTES)
+            {
                 next = Some(total);
                 continue;
             }

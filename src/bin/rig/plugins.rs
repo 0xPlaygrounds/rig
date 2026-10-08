@@ -28,6 +28,7 @@ pub struct Plugin {
 }
 
 /// Where a plugin package comes from.
+#[derive(PartialEq, Eq)]
 pub enum Source {
     /// A local directory.
     Path(String),
@@ -88,11 +89,35 @@ pub fn parse(path: &Path, text: &str) -> Result<Vec<Plugin>, String> {
         let value = parse_value(rest.trim()).map_err(|message| at(number, &message))?;
         table.entries.push((key, value, number));
     }
-    tables
-        .into_iter()
-        .map(|table| plugin(table).map_err(|(line, message)| at(line, &message)))
-        .collect()
+    let mut plugins: Vec<Plugin> = Vec::new();
+    for table in tables {
+        let line = table.line;
+        let plugin = plugin(table).map_err(|(line, message)| at(line, &message))?;
+        if RESERVED.contains(&plugin.krate.as_str()) {
+            return Err(at(
+                line,
+                &format!(
+                    "`{}` is part of every agent; it cannot be a plugin crate",
+                    plugin.krate
+                ),
+            ));
+        }
+        if plugins
+            .iter()
+            .any(|seen| seen.krate == plugin.krate && seen.source != plugin.source)
+        {
+            return Err(at(
+                line,
+                &format!("`{}` is listed again with another source", plugin.krate),
+            ));
+        }
+        plugins.push(plugin);
+    }
+    Ok(plugins)
 }
+
+/// Packages the generated project depends on itself.
+const RESERVED: &[&str] = &["bevy", "rig-code", crate::project::PACKAGE];
 
 /// A validated plugin from its table, or the line and the problem.
 fn plugin(table: Table) -> Result<Plugin, (usize, String)> {

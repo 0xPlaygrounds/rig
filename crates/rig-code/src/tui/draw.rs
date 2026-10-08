@@ -133,6 +133,11 @@ fn render(
         if let Ok(call) = model_calls.get(call) {
             rows.extend(call.reasoning.lines().map(|line| row(line, dim())));
             rows.extend(call.text.lines().map(|line| row(line, Style::default())));
+            rows.extend(
+                call.tools
+                    .iter()
+                    .map(|name| row(&format!("[calling {name}]"), dim())),
+            );
         }
         if let Ok(slot) = slots.get(call)
             && slot.result.is_none()

@@ -22,7 +22,7 @@ use crate::{
     agent::{
         Agent, AgentCalls, AgentId, AgentStatus, CallOf, Choose, Conversation, EffectTask, Effort,
         Interrupt, ModelCall, ModelChoice, NeedsReply, Notice, Quit, RigSet, Submit, SystemPrompt,
-        ToolAccess, ToolCallSlot, TurnEnded,
+        ToolAccess, ToolCallSlot, TurnEnded, turn_running,
     },
     commands::route_submit,
     effects::{EffectHub, describe_tools, flush_effects},
@@ -81,14 +81,27 @@ fn end_turn(commands: &mut Commands, agent: Entity, status: &mut AgentStatus) {
 /// an "Operation aborted" result.
 fn interrupt(
     mut interrupts: MessageReader<Interrupt>,
-    mut agents: Query<(&mut Conversation, &mut AgentStatus, Option<&AgentCalls>), With<Agent>>,
+    mut agents: Query<
+        (
+            &mut Conversation,
+            &mut AgentStatus,
+            Has<NeedsReply>,
+            Option<&AgentCalls>,
+        ),
+        With<Agent>,
+    >,
     calls: Query<(Option<&ModelCall>, Option<&ToolCallSlot>)>,
     mut commands: Commands,
 ) {
     for Interrupt { agent } in interrupts.read() {
-        let Ok((mut conversation, mut status, agent_calls)) = agents.get_mut(*agent) else {
+        let Ok((mut conversation, mut status, needs_reply, agent_calls)) = agents.get_mut(*agent)
+        else {
             continue;
         };
+        // An idle agent has no turn to end.
+        if !turn_running(*status, needs_reply, agent_calls.is_some()) {
+            continue;
+        }
         let mut results = Vec::new();
         for (model_call, slot) in agent_calls
             .into_iter()
@@ -225,6 +238,12 @@ fn poll_calls(
         commands.entity(call).remove::<EffectTask>();
         if let Some(mut slot) = slot {
             slot.result = Some(tool_result(&slot.call, outcome));
+            // Count down the calls still running; the batch ends at the last.
+            if let Ok((.., mut status)) = agents.get_mut(agent)
+                && let AgentStatus::Tools(running) = *status
+            {
+                *status = AgentStatus::Tools(running.saturating_sub(1).max(1));
+            }
             continue;
         }
         commands.entity(call).despawn();

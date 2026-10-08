@@ -11,12 +11,12 @@
 
 use std::{
     ffi::OsString,
-    io::Read as _,
-    process::{Command, ExitStatus, Stdio},
+    process::{Command, ExitStatus},
     sync::{
         Mutex, PoisonError,
         mpsc::{self, Receiver, Sender},
     },
+    time::{Duration, Instant},
 };
 
 use bevy_app::{App, AppExit, Plugin, Update};
@@ -25,8 +25,9 @@ use bevy_tasks::{AsyncComputeTaskPool, Task, futures::check_ready};
 
 use crate::{
     RigCodeAppExt as _,
-    agent::{Agent, AgentCalls, AgentStatus, NeedsReply, Notice, RigSet},
+    agent::{Agent, AgentCalls, AgentStatus, NeedsReply, Notice, RigSet, turn_running},
     commands::CommandArgs,
+    process::{POLL, Piped, sleep},
     session,
 };
 
@@ -36,6 +37,8 @@ pub const RELOAD_EXIT_CODE: u8 = 75;
 const KEPT_LINES: usize = 200;
 /// Lines of a failed build shown when no line starts with `error`.
 const TAIL_LINES: usize = 30;
+/// How long output is still read after the build exits.
+const DRAIN_GRACE: Duration = Duration::from_secs(1);
 
 /// Registers `/reload` and the systems that follow its build.
 pub struct ReloadPlugin;
@@ -87,8 +90,9 @@ impl ReloadBuild {
     /// Take one output segment: a progress bar updates the count, anything
     /// else is kept for the error report.
     fn take(&mut self, segment: &str) {
-        let text = segment.replace("\x1b[K", "");
-        let text = text.trim();
+        let raw = segment.replace("\x1b[K", "");
+        let raw = raw.trim_end();
+        let text = raw.trim_start();
         if text.is_empty() {
             return;
         }
@@ -110,7 +114,8 @@ impl ReloadBuild {
         {
             self.current = name.to_owned();
         }
-        self.lines.push(text.to_owned());
+        // rustc's `-->` and `|` gutters keep their indentation.
+        self.lines.push(raw.to_owned());
         let excess = self.lines.len().saturating_sub(KEPT_LINES);
         self.lines.drain(..excess);
     }
@@ -146,7 +151,7 @@ pub struct BuildFailed {
 fn busy(agents: &Query<(&AgentStatus, Has<NeedsReply>, Has<AgentCalls>), With<Agent>>) -> bool {
     agents
         .iter()
-        .any(|(status, needs_reply, calls)| *status != AgentStatus::Idle || needs_reply || calls)
+        .any(|(status, needs_reply, calls)| turn_running(*status, needs_reply, calls))
 }
 
 fn reload_command(
@@ -175,8 +180,8 @@ fn reload_command(
         return;
     }
     let (sender, output) = mpsc::channel();
-    let task = AsyncComputeTaskPool::get_or_init(Default::default)
-        .spawn(async move { run_build(launcher, &sender) });
+    let task =
+        AsyncComputeTaskPool::get_or_init(Default::default).spawn(run_build(launcher, sender));
     commands.spawn((
         ReloadBuild {
             agent,
@@ -192,29 +197,17 @@ fn reload_command(
 }
 
 /// Run `launcher build` with stdout and stderr joined, sending each line
-/// or progress-bar update as it arrives.
-fn run_build(launcher: OsString, output: &Sender<String>) -> std::io::Result<ExitStatus> {
-    let (mut reader, writer) = std::io::pipe()?;
+/// or progress-bar update as it arrives. Dropping the future kills the
+/// build.
+async fn run_build(launcher: OsString, output: Sender<String>) -> std::io::Result<ExitStatus> {
     let mut command = Command::new(launcher);
-    command
-        .arg("build")
-        .env("CARGO_TERM_COLOR", "never")
-        .stdin(Stdio::null())
-        .stdout(writer.try_clone()?)
-        .stderr(writer);
-    #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
-    let mut child = command.spawn()?;
-    // The command holds the parent's copies of the pipe's write end.
-    drop(command);
-    let mut buffer = [0; 8192];
+    command.arg("build").env("CARGO_TERM_COLOR", "never");
+    let mut process = Piped::spawn(command)?;
     let mut pending = Vec::new();
+    let mut exited = None;
     loop {
-        let read = reader.read(&mut buffer)?;
-        let Some(chunk) = buffer.get(..read).filter(|chunk| !chunk.is_empty()) else {
-            break;
-        };
-        for &byte in chunk {
+        let (bytes, open) = process.output();
+        for byte in bytes {
             if byte == b'\n' || byte == b'\r' {
                 // The app is gone when nobody listens; the build goes on.
                 let _ = output.send(String::from_utf8_lossy(&pending).into_owned());
@@ -223,9 +216,19 @@ fn run_build(launcher: OsString, output: &Sender<String>) -> std::io::Result<Exi
                 pending.push(byte);
             }
         }
+        if exited.is_none() {
+            exited = process.try_wait()?.map(|status| (status, Instant::now()));
+        }
+        // Wait for the pipe to close, unless something the build started
+        // keeps it open after the build itself exited.
+        if let Some((status, at)) = exited
+            && (!open || at.elapsed() >= DRAIN_GRACE)
+        {
+            let _ = output.send(String::from_utf8_lossy(&pending).into_owned());
+            return Ok(status);
+        }
+        sleep(POLL).await;
     }
-    let _ = output.send(String::from_utf8_lossy(&pending).into_owned());
-    child.wait()
 }
 
 /// Follow running builds: take their output, and on completion mark them
