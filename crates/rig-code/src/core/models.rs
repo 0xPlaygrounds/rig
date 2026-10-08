@@ -55,9 +55,9 @@ const BUDGETS: [(&str, u32); 4] = [
 
 /// The reasoning settings a model takes, with the names they are picked
 /// by: `off` when it can stop reasoning, then each effort level it lists.
-/// A model that takes a token budget and lists no levels gets the
-/// [`BUDGETS`], clamped into its range. A model that does not reason takes
-/// none.
+/// A model that takes a token budget and lists no levels gets named budgets
+/// instead (minimal 1024, low 2048, medium 8192 and high 16384 tokens),
+/// clamped into its range. A model that does not reason takes none.
 pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Reasoning)> {
     let support = &spec.reasoning;
     if !support.supported {

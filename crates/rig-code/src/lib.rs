@@ -3,7 +3,8 @@
 //! Every agent is an entity: its conversation, model, effort, system prompt,
 //! tool access and status are components, and each model or tool call in
 //! flight is an entity tied to its agent. Tools and slash commands are
-//! registered by Bevy plugins through [`AppExt`], the same way for built-ins
+//! registered by Bevy plugins through
+//! [`AppExt`](crate::core::registry::AppExt), the same way for built-ins
 //! and third-party plugins. Every model and tool call goes through one
 //! dispatch path that records it in the session's effect log.
 //!

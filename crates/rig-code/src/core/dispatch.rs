@@ -24,7 +24,7 @@ use super::session::{Session, append};
 /// The session's effect recorder and the next effect id.
 #[derive(Resource, Default)]
 pub struct Effects {
-    /// Records every dispatch until [`flush_effects`] writes it out.
+    /// Records every dispatch until the `Last` flush writes it out.
     pub recorder: EffectLogRecorder,
     /// The id the next dispatch gets.
     pub next_id: AtomicU64,
