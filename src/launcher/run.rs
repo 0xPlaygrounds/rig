@@ -45,7 +45,7 @@ pub fn run(paths: &Paths, jobs: Option<u32>, resume: bool) -> Result<ExitCode> {
         }
         Err(error) => return Err(error),
     }
-    supervise(paths, jobs, &session, running, notice).inspect_err(|_| leave_alternate_screen())
+    supervise(paths, jobs, &session, running, notice).inspect_err(|_| restore_terminal())
 }
 
 /// Run the agent, starting the next binary after each reload, until it exits
@@ -98,7 +98,7 @@ fn supervise(
                 ));
             }
             _ => {
-                leave_alternate_screen();
+                restore_terminal();
                 let log = session.join("agent.log");
                 if started {
                     eprintln!(
@@ -195,11 +195,18 @@ fn replace(from: &Path, to: &Path) -> Result<()> {
     Ok(())
 }
 
-/// A reload keeps the terminal on the alternate screen for the next binary;
-/// leave it before printing.
-fn leave_alternate_screen() {
+/// A reload keeps the terminal on the alternate screen for the next binary,
+/// and an agent killed by a signal leaves it in raw mode; restore both
+/// before printing.
+fn restore_terminal() {
+    #[cfg(unix)]
+    let _ = Command::new("stty")
+        .arg("sane")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
     let mut stdout = std::io::stdout();
-    let _ = stdout.write_all(b"\x1b[?1049l");
+    let _ = stdout.write_all(b"\x1b[?2004l\x1b[?1049l");
     let _ = stdout.flush();
 }
 
