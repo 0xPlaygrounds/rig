@@ -9,7 +9,7 @@
 //! as a third-party plugin registers its own.
 //!
 //! [`RigCodePlugins`] is the agent app: the session, the agent core,
-//! saving, the launcher protocol and `/reload`. It adds none of Bevy's own
+//! saving, the project context, the launcher protocol and `/reload`. It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
 //! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead: the
 //! log, the task pools, a clean exit on signals, and a loop that sleeps
@@ -64,6 +64,7 @@ pub mod prelude {
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
+    pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::save::ReflectSaved;
     pub use crate::core::tools::AppToolsExt;
     pub use crate::{HeadlessPlugins, RigCodePlugins};
@@ -71,7 +72,8 @@ pub mod prelude {
 }
 
 /// What every rig-code app has: the session, the agent core and saving,
-/// the launcher protocol and `/reload`. The tools, the commands other than
+/// the project context in the system prompt (`AGENTS.md` and the
+/// environment, with `/context`), the launcher protocol and `/reload`. The tools, the commands other than
 /// `/reload` and the views are plugins of their own, so `plugins.toml`
 /// lists the built-in ones like any other and can leave them out.
 pub struct RigCodePlugins;
@@ -82,6 +84,7 @@ impl PluginGroup for RigCodePlugins {
             .add(host::session::SessionPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
+            .add(host::context::ProjectContextPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
     }

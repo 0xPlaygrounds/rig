@@ -1,5 +1,6 @@
-//! The tool registry. A tool is an entity holding its definition and its
-//! effect handler; plugins add tools with [`AppToolsExt::add_tool`].
+//! The tool registry. A tool is an entity holding its definition, its
+//! effect handler and its [`ToolRules`]; plugins add tools with
+//! [`AppToolsExt::add_tool`].
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -15,6 +16,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::tool::{Tool, ToolErrorKind};
 
 use super::effects::Effects;
+use super::prompt::ToolRules;
 
 /// What the model is told about a tool.
 #[derive(Component, Clone)]
@@ -44,11 +46,19 @@ pub trait AppToolsExt {
     ///     .await
     /// }
     /// ```
-    fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self;
+    fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self {
+        self.add_tool_with_rules(tool, &[])
+    }
+
+    /// [`add_tool`](Self::add_tool), with `rules` on how to use it: lines
+    /// of the system prompt of every agent the tool is offered to, such as
+    /// "Use `read` to look at files, not `cat` in `shell`". The tool's
+    /// description says what it does; its rules say when to pick it.
+    fn add_tool_with_rules<T: Tool + 'static>(&mut self, tool: T, rules: &[&str]) -> &mut Self;
 }
 
 impl AppToolsExt for App {
-    fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self {
+    fn add_tool_with_rules<T: Tool + 'static>(&mut self, tool: T, rules: &[&str]) -> &mut Self {
         let name = match ToolName::new(T::NAME) {
             Ok(name) => name,
             Err(error) => {
@@ -70,6 +80,7 @@ impl AppToolsExt for App {
             Name::new(format!("tool:{}", T::NAME)),
             ToolDef(definition),
             ToolHandler(ErasedHandler::new(ToolAdapter::new(tool))),
+            ToolRules(rules.iter().map(|rule| (*rule).to_owned()).collect()),
         ));
         self
     }

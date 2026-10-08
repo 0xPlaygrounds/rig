@@ -187,6 +187,13 @@ the new one crashes during startup. The session is saved after every turn;
 if the agent crashes or the terminal closes, the next `rig` in the same
 directory resumes it. `/quit` ends it.
 
+The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
+of `RIG_HOME`, of the working directory and of each directory above it, from
+the most general to the most specific, at most 32 KB each and 64 KB together,
+along with the working directory, platform, date and git branch. They are
+re-read when a turn starts, so an edited `AGENTS.md` counts from the next
+message; `/context` re-reads them now and lists what the prompt holds.
+
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and

@@ -74,7 +74,10 @@ pub struct Connection {
 )]
 pub struct Effort(pub Option<Reasoning>);
 
-/// The system prompt sent first in every request.
+/// The agent's own part of its system prompt: who it is and how it works.
+/// Each request's prompt adds the rules of the tools the agent is offered
+/// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
+/// the project's instructions and the environment.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
 pub struct SystemPrompt(pub String);
@@ -82,9 +85,21 @@ pub struct SystemPrompt(pub String);
 impl Default for SystemPrompt {
     fn default() -> Self {
         Self(
-            "You are a coding agent working in the user's current directory. Use the tools \
-             to read, search, edit and write files and to run shell commands. Read a file \
-             before you edit it. Keep answers short."
+            "You are rig, a coding agent. You work in the user's project from their terminal: \
+             you read and search code, edit files and run commands with the tools you are \
+             given, and answer questions about the code.\n\
+             \n\
+             - Work in the working directory named below, unless the user says otherwise.\n\
+             - Read a file before you edit it. Change what was asked, in the style of the \
+             code around it, and nothing else.\n\
+             - After a change, check it when you can: build it, run the tests, or run the \
+             code.\n\
+             - When something fails, read the error and fix the cause. Ask the user when the \
+             request is unclear or you are blocked, rather than guess.\n\
+             - Do not undo changes you did not make, and do not run commands that delete \
+             work, rewrite history or reach outside the project unless the user asked.\n\
+             - Keep answers short. Say what you changed and what is left, and name files by \
+             their path."
                 .to_owned(),
         )
     }

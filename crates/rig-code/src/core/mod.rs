@@ -9,6 +9,7 @@ pub mod calls;
 pub mod commands;
 pub mod effects;
 pub mod models;
+pub mod prompt;
 pub mod save;
 pub mod tools;
 pub mod turn;
@@ -103,7 +104,14 @@ fn log_agents(
     }
 }
 
-/// Describes every registered tool in the effect log's header.
-fn describe_tools(effects: Res<Effects>, tools: Query<&tools::ToolHandler>) {
-    effects.describe(tools.iter().map(|tool| tool.0.descriptor()).collect());
+/// Describes every registered tool in the effect log's header, by name.
+fn describe_tools(effects: Res<Effects>, tools: Query<(&tools::ToolDef, &tools::ToolHandler)>) {
+    let mut tools: Vec<_> = tools.iter().collect();
+    tools.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+    effects.describe(
+        tools
+            .into_iter()
+            .map(|(_, tool)| tool.0.descriptor())
+            .collect(),
+    );
 }

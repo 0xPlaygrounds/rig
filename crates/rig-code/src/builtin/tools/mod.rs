@@ -30,17 +30,43 @@ const MAX_BYTES: usize = 50 * 1024;
 /// The largest file `read` and `edit` load whole, and `search` scans.
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
-/// Registers the built-in tools with [`AppToolsExt::add_tool`].
+/// Registers the built-in tools, each with the rules on when to pick it,
+/// with [`AppToolsExt::add_tool_with_rules`].
 #[derive(Default)]
 pub struct BuiltinToolsPlugin;
 
 impl Plugin for BuiltinToolsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_tool(Read)
-            .add_tool(Edit)
-            .add_tool(Write)
-            .add_tool(Shell)
-            .add_tool(Search);
+        app.add_tool_with_rules(
+            Read,
+            &["Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`."],
+        )
+        .add_tool_with_rules(
+            Edit,
+            &[
+                "Use `edit` to change part of a file. Copy `old_text` from what `read` \
+                 returned, without the line numbers, with enough lines around the change to \
+                 match once.",
+            ],
+        )
+        .add_tool_with_rules(
+            Write,
+            &["Use `write` for new files and complete rewrites only."],
+        )
+        .add_tool_with_rules(
+            Shell,
+            &[
+                "Use `shell` to build, test, run programs and use git. Each call starts a \
+                 fresh `sh` in the working directory: a `cd` or a variable does not carry \
+                 over to the next call.",
+                "Do not start programs that wait for input or never end, such as editors, \
+                 pagers or servers in the foreground.",
+            ],
+        )
+        .add_tool_with_rules(
+            Search,
+            &["Use `search` to find code, not `grep` or `rg` in `shell`."],
+        );
     }
 }
 

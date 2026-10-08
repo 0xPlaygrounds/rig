@@ -34,6 +34,7 @@ use super::calls::{Done, Running, Wake};
 use super::commands::{CommandArgs, SlashCommand};
 use super::effects::Effects;
 use super::models;
+use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::tools::{ToolDef, ToolHandler, failed, run_tool_call};
 
 /// The systems polling running calls, in `Update`.
@@ -377,7 +378,8 @@ pub(crate) fn on_call_model(
         &SystemPrompt,
         &ToolAccess,
     )>,
-    tools: Query<&ToolDef>,
+    tools: Query<(&ToolDef, &ToolRules)>,
+    sections: Query<&PromptSection>,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -394,12 +396,17 @@ pub(crate) fn on_call_model(
     let request = connection
         .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
         .and_then(|connection| {
-            let definitions = tools
+            // Sorted by name, so the tools, and the prompt with their
+            // rules, are the same on every call and stay cached.
+            let mut offered: Vec<(&ToolDef, &ToolRules)> = tools
                 .iter()
-                .filter(|tool| connection.spec.tools && access.allows(tool.0.name.as_str()))
-                .map(|tool| tool.0.clone())
+                .filter(|(def, _)| connection.spec.tools && access.allows(def.0.name.as_str()))
                 .collect();
-            prepare(&conversation, connection, effort, prompt, definitions)
+            offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+            let preamble =
+                system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
+            let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
+            prepare(&conversation, connection, effort, preamble, definitions)
                 .map(|request| (connection.handler.clone(), connection.spec, request))
         });
     let (handler, spec, request) = match request {
@@ -466,7 +473,7 @@ fn prepare(
     conversation: &Conversation,
     connection: &Connection,
     effort: &Effort,
-    prompt: &SystemPrompt,
+    preamble: String,
     tools: Vec<rig_core::completion::ToolDefinition>,
 ) -> Result<CompletionRequest, String> {
     let options = models::generation_options(effort.0);
@@ -480,7 +487,7 @@ fn prepare(
         .ok_or("The conversation is empty.")?;
     Ok(CompletionRequest::new(prompt_message.clone())
         .messages(earlier.to_vec())
-        .preamble(prompt.0.clone())
+        .preamble(preamble)
         .tools(tools)
         .options(options))
 }
