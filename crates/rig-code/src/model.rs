@@ -18,6 +18,8 @@ use crate::agent::Choice;
 /// Budget presets offered for models that take a token budget instead of
 /// effort levels, clamped into each model's range.
 const BUDGET_PRESETS: &[(&str, u32)] = &[("low", 2048), ("medium", 8192), ("high", 16384)];
+/// The least room for an answer a reasoning budget must leave.
+const MIN_ANSWER_TOKENS: u32 = 1024;
 /// Answer room kept above a reasoning budget in `max_tokens`.
 const ANSWER_TOKENS: u32 = 8192;
 
@@ -177,7 +179,8 @@ pub fn build_request(
     let max_tokens = match reasoning {
         Some(Reasoning::Budget { tokens }) => {
             let ceiling = spec.max_output_tokens.unwrap_or(u32::MAX);
-            if tokens >= ceiling {
+            // At least a minimal answer must fit beside the budget.
+            if tokens.saturating_add(MIN_ANSWER_TOKENS) > ceiling {
                 return Err(format!(
                     "a {tokens}-token reasoning budget leaves no room for an answer under \
                      {}'s {ceiling}-token output limit. Pick a smaller /effort.",

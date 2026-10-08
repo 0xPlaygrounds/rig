@@ -131,6 +131,12 @@ impl RigCodeAppExt for App {
         description: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self {
+        let world = self.world_mut();
+        let mut existing = world.query::<&SlashCommand>();
+        if existing.iter(world).any(|command| command.name == name) {
+            bevy_log::warn!("not adding /{name}: another plugin already added it");
+            return self;
+        }
         let run = self.register_system(system);
         self.world_mut().spawn(SlashCommand {
             name: name.to_owned(),

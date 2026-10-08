@@ -185,7 +185,7 @@ fn start_model_calls(
             Ok(started) => started,
             Err(text) => {
                 notices.write(Notice { agent, text });
-                *status = AgentStatus::Idle;
+                end_turn(&mut commands, agent, &mut status);
                 continue;
             }
         };

@@ -12,9 +12,12 @@ use std::{
 /// How long a waiting task sleeps between polls.
 pub(crate) const POLL: Duration = Duration::from_millis(50);
 
-/// A running child in its own process group, with stdout and stderr joined
-/// into one pipe. Dropping it before the child exits kills the group, so
-/// dropping the task that owns it stops the command.
+/// A running child in its own session and process group, with stdout and
+/// stderr joined into one pipe. Having no controlling terminal, a program
+/// that opens `/dev/tty` (a password or host-key prompt) fails at once
+/// instead of stopping or drawing over the TUI. Dropping it before the child
+/// exits kills the group, so dropping the task that owns it stops the
+/// command.
 pub(crate) struct Piped {
     child: Child,
     output: Receiver<Vec<u8>>,
@@ -28,9 +31,18 @@ impl Piped {
         command
             .stdin(Stdio::null())
             .stdout(writer.try_clone()?)
-            .stderr(writer);
+            .stderr(writer)
+            .env("GIT_TERMINAL_PROMPT", "0");
         #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        // SAFETY: `setsid` is async-signal-safe and touches no memory.
+        unsafe {
+            std::os::unix::process::CommandExt::pre_exec(&mut command, || {
+                if libc::setsid() == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
         let child = command.spawn()?;
         // The command holds the parent's copies of the pipe's write end.
         drop(command);
@@ -76,13 +88,11 @@ impl Piped {
     /// Kill the child and everything it started, then reap it.
     pub(crate) fn kill(&mut self) {
         #[cfg(unix)]
-        {
-            let _ = Command::new("kill")
-                .args(["-KILL", "--", &format!("-{}", self.child.id())])
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status();
+        if let Ok(group) = libc::pid_t::try_from(self.child.id()) {
+            // SAFETY: a plain syscall; the child leads its own group.
+            unsafe {
+                libc::kill(-group, libc::SIGKILL);
+            }
         }
         let _ = self.child.kill();
         let _ = self.child.wait();

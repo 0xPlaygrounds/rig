@@ -1,12 +1,14 @@
 use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 
-use super::io_fail;
+use super::{fail, io_fail};
 
 /// The most lines one read returns.
 const MAX_LINES: usize = 2000;
 /// The most bytes of file text one read returns.
 const MAX_BYTES: usize = 50 * 1024;
+/// The largest file `read` opens; it reads the whole file to page through it.
+const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
 /// Reads a text file as numbered lines, a window at a time.
 pub struct Read;
@@ -47,6 +49,20 @@ impl PortableTool for Read {
     }
 
     async fn call(&self, args: ReadArgs) -> Result<String, ToolExecutionError> {
+        // Checked before opening: opening a FIFO or a device can block forever.
+        let meta =
+            std::fs::metadata(&args.path).map_err(|error| io_fail("read", &args.path, &error))?;
+        if !meta.is_file() {
+            return Err(fail(format!("{} is not a regular file", args.path)));
+        }
+        if meta.len() > MAX_FILE_BYTES {
+            return Err(fail(format!(
+                "{} is {} MB; read opens files up to {} MB",
+                args.path,
+                meta.len() / (1024 * 1024),
+                MAX_FILE_BYTES / (1024 * 1024)
+            )));
+        }
         let text = std::fs::read_to_string(&args.path)
             .map_err(|error| io_fail("read", &args.path, &error))?;
         let start = args.offset.unwrap_or(1).max(1);

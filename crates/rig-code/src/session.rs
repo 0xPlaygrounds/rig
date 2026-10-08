@@ -9,7 +9,8 @@
 //! whose plugin is gone is skipped on restore instead of failing it.
 
 use std::{
-    path::PathBuf,
+    io::{BufRead as _, BufReader},
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -208,11 +209,17 @@ pub(crate) fn restore(world: &mut World) {
             }
         }
     });
+    // Effects flushed after the last save (a crash mid-turn) used ids the
+    // saved counter does not cover.
+    let logged = world
+        .get_resource::<Session>()
+        .map_or(0, |session| last_logged_effect(&session.dir));
+    let saved = state.as_ref().map_or(0, |state| state.next_effect_id);
+    if let Some(mut hub) = world.get_resource_mut::<EffectHub>() {
+        hub.next_id = hub.next_id.max(saved).max(logged);
+    }
     let mut agents = Vec::new();
     if let Some(state) = state {
-        if let Some(mut hub) = world.get_resource_mut::<EffectHub>() {
-            hub.next_id = hub.next_id.max(state.next_effect_id);
-        }
         let mut skipped = Vec::new();
         for components in state.agents {
             agents.push(restore_agent(world, components, &mut skipped));
@@ -232,6 +239,25 @@ pub(crate) fn restore(world: &mut World) {
     for text in notices {
         world.write_message(Notice { agent: first, text });
     }
+}
+
+/// The highest effect id in the session's `effects.jsonl`, or 0.
+fn last_logged_effect(dir: &Path) -> u64 {
+    let Ok(file) = std::fs::File::open(dir.join("effects.jsonl")) else {
+        return 0;
+    };
+    BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter_map(|line| {
+            serde_json::from_str::<Value>(&line)
+                .ok()?
+                .get("record")?
+                .get("id")?
+                .as_u64()
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// Spawn one saved agent, inserting each component that still fits.

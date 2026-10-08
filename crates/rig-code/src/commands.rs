@@ -48,6 +48,7 @@ pub(crate) fn route_submit(
     mut agents: Query<
         (
             &mut Conversation,
+            &ModelChoice,
             &AgentStatus,
             Has<NeedsReply>,
             Has<AgentCalls>,
@@ -81,13 +82,21 @@ pub(crate) fn route_submit(
             }
             continue;
         }
-        let Ok((mut conversation, status, needs_reply, calls)) = agents.get_mut(agent) else {
+        let Ok((mut conversation, choice, status, needs_reply, calls)) = agents.get_mut(agent)
+        else {
             continue;
         };
-        if turn_running(*status, needs_reply, calls) {
+        let refused = if turn_running(*status, needs_reply, calls) {
+            Some("A turn is running. Press Esc to stop it first.")
+        } else if choice.0.is_none() {
+            Some("Pick a model with /model first.")
+        } else {
+            None
+        };
+        if let Some(text) = refused {
             notices.write(Notice {
                 agent,
-                text: "A turn is running. Press Esc to stop it first.".to_owned(),
+                text: text.to_owned(),
             });
             continue;
         }

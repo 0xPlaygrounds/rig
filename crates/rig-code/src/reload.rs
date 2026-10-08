@@ -87,6 +87,19 @@ impl ReloadBuild {
         text
     }
 
+    /// Take every output segment that arrived so far.
+    fn drain(&mut self) {
+        let segments: Vec<String> = self
+            .output
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .try_iter()
+            .collect();
+        for segment in segments {
+            self.take(&segment);
+        }
+    }
+
     /// Take one output segment: a progress bar updates the count, anything
     /// else is kept for the error report.
     fn take(&mut self, segment: &str) {
@@ -241,18 +254,12 @@ fn poll_build(
 ) {
     for (entity, mut build, mut task) in &mut builds {
         let build = &mut *build;
-        let segments: Vec<String> = build
-            .output
-            .get_mut()
-            .unwrap_or_else(PoisonError::into_inner)
-            .try_iter()
-            .collect();
-        for segment in segments {
-            build.take(&segment);
-        }
+        build.drain();
         let Some(finished) = check_ready(&mut task.0) else {
             continue;
         };
+        // The build may have sent its last lines after the drain above.
+        build.drain();
         let agent = build.agent;
         match finished {
             Ok(status) if status.success() => {

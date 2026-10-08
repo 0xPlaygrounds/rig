@@ -35,4 +35,4 @@ a local checkout and `RIG_JOBS` to limit cargo's jobs. Without the launcher,
 
 Models come from Rig's model catalog; `/model` lists those whose provider has a key in the
 environment. Session logs, effect logs and the saved session (`state.json`) are written under `$RIG_HOME/data/sessions/`
-(or the platform data directory).
+(or, without `RIG_HOME`, under the XDG data directory, `~/.local/share/rig/sessions/`).

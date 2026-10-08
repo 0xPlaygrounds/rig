@@ -137,15 +137,13 @@ fn search_file(pattern: &Regex, path: &Path, hits: &mut Vec<String>) {
     if pattern.is_match(&shown) {
         hits.push(shown.clone());
     }
+    // Checked before opening: opening a FIFO or a device can block forever.
+    if std::fs::metadata(path).map_or(true, |meta| !meta.is_file() || meta.len() > MAX_FILE_BYTES) {
+        return;
+    }
     let Ok(file) = std::fs::File::open(path) else {
         return;
     };
-    if file
-        .metadata()
-        .map_or(true, |meta| meta.len() > MAX_FILE_BYTES)
-    {
-        return;
-    }
     let mut bytes = Vec::new();
     if file.take(MAX_FILE_BYTES).read_to_end(&mut bytes).is_err() || bytes.contains(&0) {
         return;

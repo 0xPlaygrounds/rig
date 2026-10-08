@@ -31,6 +31,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 ratatui = { workspace = true, optional = true, features = ["crossterm"] }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2.150"
+
 [features]
 default = ["tui"]
 # The terminal view. Everything outside `src/tui` compiles without it.

@@ -10605,6 +10605,7 @@ dependencies = [
  "bevy_tasks",
  "futures",
  "futures-timer",
+ "libc",
  "ratatui",
  "regex",
  "rig-cassette",

@@ -122,8 +122,10 @@ pub fn run(home: &Home) -> ExitCode {
             let _ = std::fs::remove_file(&binary);
             if home.current().is_file() {
                 notice = Some(format!(
-                    "The new build crashed during startup ({}). Rolled back to the previous build.",
-                    describe(status)
+                    "The new build crashed during startup ({}). Rolled back to the previous \
+                     build. The log is {}",
+                    describe(status),
+                    session_dir.join("rig-code.log").display()
                 ));
                 continue;
             }

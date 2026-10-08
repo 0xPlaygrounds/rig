@@ -83,20 +83,20 @@ impl EffectHub {
         };
         let recorder = self.recorder.clone();
         recorder.begin(id, key.clone(), kind.clone(), origin);
+        let is_tool = matches!(kind, EffectKind::ToolCall { .. });
+        let Some(handler) = handler else {
+            let error = ErrorReport::new(
+                ErrorKind::HandlerUnavailable,
+                format!("nothing serves `{}`", key.as_str()),
+            );
+            recorder.resolve(id, Err(error.clone()));
+            return AsyncComputeTaskPool::get_or_init(Default::default).spawn(async { Err(error) });
+        };
         let dispatch = Dispatch::new(id, kind.streams()).with_observer(Box::new(Recorded {
             recorder: recorder.clone(),
             id,
         }));
-        let is_tool = matches!(kind, EffectKind::ToolCall { .. });
         let work = async move {
-            let Some(handler) = handler else {
-                let error = ErrorReport::new(
-                    ErrorKind::HandlerUnavailable,
-                    format!("nothing serves `{}`", key.as_str()),
-                );
-                recorder.resolve(id, Err(error.clone()));
-                return Err(error);
-            };
             let served = AssertUnwindSafe(serve(&handler, kind, dispatch, feed))
                 .catch_unwind()
                 .await;

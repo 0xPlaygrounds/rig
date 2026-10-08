@@ -35,7 +35,8 @@ impl PortableTool for Shell {
 
     fn description(&self) -> String {
         format!(
-            "Run a shell command in the working directory, with no stdin. Returns stdout \
+            "Run a shell command in the working directory, with no stdin and no terminal, \
+             so interactive prompts fail at once. Returns stdout \
              and stderr interleaved (the last {} KB) and the exit status. The command is \
              killed after timeout_secs (default {DEFAULT_TIMEOUT_SECS}).",
             MAX_OUTPUT / 1024
