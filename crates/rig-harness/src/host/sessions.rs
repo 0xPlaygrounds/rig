@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use super::launcher;
 use crate::builtin::tools::{shorten, write_atomic};
 use crate::core::agent::{
-    Agent, AgentId, Conversation, Notice, PickKind, PickRequest, SpawnedBy, TurnEnded, TurnOf,
+    Agent, AgentId, Conversation, Notice, PickItem, PickRequest, SpawnedBy, TurnEnded, TurnOf,
     primary_order,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
@@ -286,13 +286,31 @@ fn new(
 
 fn resume(
     In(args): In<CommandArgs>,
+    paths: Option<Res<SessionPaths>>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
+    mut notices: MessageWriter<Notice>,
 ) {
     if args.args.is_empty() {
+        let Some(paths) = paths else {
+            return;
+        };
+        let items: Vec<PickItem> = list(&Home::from_env(), paths.path())
+            .into_iter()
+            .map(|session| PickItem {
+                label: session.label(),
+                command: format!("resume {}", session.id),
+            })
+            .collect();
+        if items.is_empty() {
+            notices.write(Notice::info(args.agent, "No earlier session to resume."));
+            return;
+        }
         picks.write(PickRequest {
             agent: args.agent,
-            kind: PickKind::Session,
+            title: "Resume a session".to_owned(),
+            items,
+            selected: 0,
         });
     } else {
         commands.trigger(SwitchSession {

@@ -1,16 +1,17 @@
-//! The built-in slash commands: `/model`, `/effort`, `/login`, `/logout`,
-//! `/usage`, `/retry`, `/compact`, `/help` and `/quit`.
+//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
+//! `/compact`, `/help` and `/quit`, with `/login` and `/logout` from the
+//! [`LoginPlugin`] they add.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
+use super::LoginPlugin;
 use crate::core::agent::{
-    ActiveTurn, Compact, Connection, Effort, Notice, PickKind, PickRequest, Retry, SetEffort,
+    ActiveTurn, Compact, Connection, Effort, Notice, PickItem, PickRequest, Retry, SetEffort,
     SetModel,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
-use crate::core::login::{SignIn, SignOut};
-use crate::core::models;
+use crate::core::models::{self, ModelConnector};
 use crate::core::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
@@ -30,13 +31,6 @@ impl Plugin for BuiltinCommandsPlugin {
             effort,
         )
         .add_command(
-            "login",
-            "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows a \
-             code to enter instead); /login again or Esc cancels",
-            login,
-        )
-        .add_command("logout", "Forget a sign-in: /logout chatgpt", logout)
-        .add_command(
             "usage",
             "Show the tokens, cost and context the session used",
             usage,
@@ -52,15 +46,48 @@ impl Plugin for BuiltinCommandsPlugin {
             compact,
         )
         .add_command("help", "List the commands", help)
-        .add_command("quit", "Quit; the session stays for /resume", quit);
+        .add_command("quit", "Quit; the session stays for /resume", quit)
+        .add_plugins(LoginPlugin);
     }
 }
 
-fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWriter<PickRequest>) {
+fn model(
+    In(args): In<CommandArgs>,
+    connector: Res<ModelConnector>,
+    mut commands: Commands,
+    mut picks: MessageWriter<PickRequest>,
+    mut notices: MessageWriter<Notice>,
+) {
     if args.args.is_empty() {
+        let items: Vec<PickItem> = connector
+            .available()
+            .into_iter()
+            .map(|spec| {
+                let reference = models::reference(spec);
+                let note = match connector.plan(spec) {
+                    Some(plan) => format!("  ({plan} plan)"),
+                    None if spec.provider.requires_credential() => String::new(),
+                    None => "  (no key needed)".to_owned(),
+                };
+                PickItem {
+                    label: format!("{reference}  {}{note}", spec.display_name),
+                    command: format!("model {reference}"),
+                }
+            })
+            .collect();
+        if items.is_empty() {
+            notices.write(Notice::error(
+                args.agent,
+                "No provider with tool-calling models can be reached: set a key such as \
+                 OPENAI_API_KEY, or sign in with /login chatgpt.",
+            ));
+            return;
+        }
         picks.write(PickRequest {
             agent: args.agent,
-            kind: PickKind::Model,
+            title: "Model".to_owned(),
+            items,
+            selected: 0,
         });
     } else {
         commands.trigger(SetModel {
@@ -68,20 +95,6 @@ fn model(In(args): In<CommandArgs>, mut commands: Commands, mut picks: MessageWr
             model: args.args,
         });
     }
-}
-
-fn login(In(args): In<CommandArgs>, mut commands: Commands) {
-    commands.trigger(SignIn {
-        entity: args.agent,
-        provider: args.args,
-    });
-}
-
-fn logout(In(args): In<CommandArgs>, mut commands: Commands) {
-    commands.trigger(SignOut {
-        entity: args.agent,
-        provider: args.args,
-    });
 }
 
 fn effort(
@@ -101,7 +114,15 @@ fn effort(
     if args.args.is_empty() {
         picks.write(PickRequest {
             agent: args.agent,
-            kind: PickKind::Effort,
+            title: format!("Reasoning for {}", spec.display_name),
+            items: models::effort_options(spec)
+                .into_iter()
+                .map(|option| PickItem {
+                    label: option.label(),
+                    command: format!("effort {}", option.0),
+                })
+                .collect(),
+            selected: 0,
         });
         return;
     }

@@ -3,20 +3,14 @@
 //! notices.
 
 use bevy_ecs::prelude::*;
-use rig_core::completion::Reasoning;
 
 use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
-    Agent, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
-    PrimaryQuery, RosterQuery, primary, roster,
+    Agent, Conversation, Focus, Notice, NoticeLevel, PickItem, PickRequest, PrimaryQuery, primary,
 };
 use crate::core::inbox::Recalled;
-use crate::core::journal::SessionPaths;
-use crate::core::login::LoginProvider;
-use crate::core::models;
 use crate::host::reload::ReloadFailed;
-use crate::host::sessions;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
@@ -68,27 +62,14 @@ impl ShownNotice {
     }
 }
 
-/// What choosing a picker item sets.
-#[derive(Clone, Debug)]
-pub(crate) enum PickValue {
-    /// A model reference.
-    Model(String),
-    /// A reasoning setting.
-    Effort(Option<Reasoning>),
-    /// A session id.
-    Session(String),
-    /// An agent to show.
-    Agent(Entity),
-}
-
 /// A filterable list to choose one item from.
 pub(crate) struct Picker {
     /// The agent the choice is for.
     pub(crate) agent: Entity,
     /// The title.
     pub(crate) title: String,
-    /// Every item: its label and value.
-    items: Vec<(String, PickValue)>,
+    /// Every item.
+    items: Vec<PickItem>,
     /// The filter typed so far.
     pub(crate) filter: String,
     /// The selected position among the visible items.
@@ -97,22 +78,22 @@ pub(crate) struct Picker {
 
 impl Picker {
     /// The items whose label holds every word of the filter, ignoring case.
-    pub(crate) fn visible(&self) -> Vec<&(String, PickValue)> {
+    pub(crate) fn visible(&self) -> Vec<&PickItem> {
         let filter = self.filter.to_lowercase();
         self.items
             .iter()
-            .filter(|(label, _)| {
-                let label = label.to_lowercase();
+            .filter(|item| {
+                let label = item.label.to_lowercase();
                 filter.split_whitespace().all(|word| label.contains(word))
             })
             .collect()
     }
 
-    /// The selected item's value.
-    pub(crate) fn chosen(&self) -> Option<PickValue> {
+    /// The command line of the selected item.
+    pub(crate) fn chosen(&self) -> Option<String> {
         self.visible()
             .get(self.selected)
-            .map(|(_, value)| value.clone())
+            .map(|item| item.command.clone())
     }
 }
 
@@ -140,99 +121,14 @@ pub(crate) fn on_focus(
 }
 
 /// Opens the picker a command asked for.
-pub(crate) fn open_pickers(
-    mut requests: MessageReader<PickRequest>,
-    agents: Query<&Connection>,
-    agent_tree: RosterQuery,
-    paths: Option<Res<SessionPaths>>,
-    mut view: ResMut<TuiView>,
-    mut notices: MessageWriter<Notice>,
-) {
+pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: ResMut<TuiView>) {
     for request in requests.read() {
-        let mut selected = 0;
-        let current = agents
-            .get(request.agent)
-            .ok()
-            .map(|connection| connection.spec);
-        let (title, items) = match request.kind {
-            PickKind::Model => {
-                let items: Vec<(String, PickValue)> = models::available_models()
-                    .into_iter()
-                    .map(|spec| {
-                        let reference = models::reference(spec);
-                        let note = match LoginProvider::of(spec) {
-                            Some(plan) => format!("  ({} plan)", plan.title()),
-                            None if spec.provider.requires_credential() => String::new(),
-                            None => "  (no key needed)".to_owned(),
-                        };
-                        (
-                            format!("{reference}  {}{note}", spec.display_name),
-                            PickValue::Model(reference),
-                        )
-                    })
-                    .collect();
-                if items.is_empty() {
-                    notices.write(Notice::error(
-                        request.agent,
-                        "No provider with tool-calling models can be reached: set a key such \
-                         as OPENAI_API_KEY, or sign in with /login chatgpt.",
-                    ));
-                    continue;
-                }
-                ("Model".to_owned(), items)
-            }
-            PickKind::Effort => {
-                let Some(spec) = current else {
-                    continue;
-                };
-                let items = models::effort_options(spec)
-                    .into_iter()
-                    .map(|option| (option.label(), PickValue::Effort(option.1)))
-                    .collect();
-                (format!("Reasoning for {}", spec.display_name), items)
-            }
-            PickKind::Session => {
-                let Some(paths) = &paths else {
-                    continue;
-                };
-                let items: Vec<(String, PickValue)> =
-                    sessions::list(&rig::harness_protocol::Home::from_env(), paths.path())
-                        .into_iter()
-                        .map(|session| {
-                            (session.label(), PickValue::Session(session.id.to_string()))
-                        })
-                        .collect();
-                if items.is_empty() {
-                    notices.write(Notice::info(request.agent, "No earlier session to resume."));
-                    continue;
-                }
-                ("Resume a session".to_owned(), items)
-            }
-            PickKind::Agent => {
-                let entries = roster(&agent_tree);
-                selected = entries
-                    .iter()
-                    .position(|entry| Some(entry.agent) == view.agent)
-                    .unwrap_or(0);
-                let items = entries
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, entry)| {
-                        (
-                            format!("{}. {}", index + 1, entry.label),
-                            PickValue::Agent(entry.agent),
-                        )
-                    })
-                    .collect();
-                ("Show an agent".to_owned(), items)
-            }
-        };
         view.overlay = Some(Overlay::Picker(Picker {
             agent: request.agent,
-            title,
-            items,
+            title: request.title.clone(),
+            items: request.items.clone(),
             filter: String::new(),
-            selected,
+            selected: request.selected,
         }));
     }
 }

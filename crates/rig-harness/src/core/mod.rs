@@ -1,6 +1,6 @@
 //! The agent core: agents as entities and the agents they spawn, the turn loop, the one
-//! effect dispatch path, the tool and command registries, models and
-//! `/login` sign-ins, and the session logs. It
+//! effect dispatch path, the tool and command registries, models, and the
+//! session logs. It
 //! depends on neither the host nor any view: the host fills in what the core
 //! needs, such as [`journal::SessionPaths`].
 
@@ -13,7 +13,6 @@ pub mod compaction;
 pub mod effects;
 pub mod inbox;
 pub mod journal;
-pub mod login;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
@@ -49,6 +48,7 @@ impl Plugin for AgentPlugin {
         app.insert_resource(effects)
             .insert_resource(SessionLog::new(paths.map(|paths| paths.0)))
             .init_resource::<Wake>()
+            .init_resource::<models::ModelConnector>()
             .add_message::<Notice>()
             .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
@@ -60,8 +60,6 @@ impl Plugin for AgentPlugin {
                     poll_calls::<ToolResult, tools::ToolOutput>,
                     poll_calls::<RetryDue, Done<RetryDue>>,
                     poll_calls::<Summary, Done<Summary>>,
-                    poll_calls::<login::SignedInResult, Done<login::SignedInResult>>,
-                    login::show_login_prompts,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),
@@ -86,10 +84,6 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_summary_done)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
-            .add_observer(login::on_sign_in)
-            .add_observer(login::on_signed_in)
-            .add_observer(login::on_sign_out)
-            .add_observer(login::cancel_on_interrupt)
             .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
             .add_observer(turn::on_set_model)

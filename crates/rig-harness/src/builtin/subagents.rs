@@ -30,9 +30,9 @@ use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use serde::{Deserialize, Serialize};
 
 use crate::core::agent::{
-    ActiveTurn, Agent, AgentId, EffectParent, Effort, Focus, ModelChoice, Notice, PickKind,
-    PickRequest, RosterQuery, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
-    TurnOutcome, answer_text, roster,
+    ActiveTurn, Agent, AgentId, EffectParent, Effort, Focus, ModelChoice, Notice, PickItem,
+    PickRequest, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome,
+    answer_text,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
@@ -42,6 +42,7 @@ use crate::core::restore::Restored;
 use crate::core::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed,
 };
+use crate::core::usage::Spending;
 
 /// The tool that starts a subagent.
 pub const TASK: &str = "task";
@@ -675,14 +676,26 @@ fn agents(
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
+    let entries = roster(&agent_tree);
     if args.args.is_empty() {
         picks.write(PickRequest {
             agent: args.agent,
-            kind: PickKind::Agent,
+            title: "Show an agent".to_owned(),
+            selected: entries
+                .iter()
+                .position(|entry| entry.agent == args.agent)
+                .unwrap_or(0),
+            items: entries
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| PickItem {
+                    label: format!("{}. {}", index + 1, entry.label),
+                    command: format!("agents {}", index + 1),
+                })
+                .collect(),
         });
         return;
     }
-    let entries = roster(&agent_tree);
     let wanted = args.args.to_lowercase();
     let chosen = args
         .args
@@ -715,6 +728,75 @@ fn agents(
             ));
         }
     }
+}
+
+/// One agent in [`roster`]: a line describing it.
+#[derive(Clone, Debug)]
+struct RosterEntry {
+    agent: Entity,
+    /// Its title, model, state and cost, indented by depth.
+    label: String,
+}
+
+/// What [`roster`] reads of each agent.
+type RosterQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static AgentId,
+        Option<&'static Name>,
+        Option<&'static SpawnedBy>,
+        Option<&'static Spawned>,
+        Option<&'static ModelChoice>,
+        Has<ActiveTurn>,
+        &'static Spending,
+    ),
+    With<Agent>,
+>;
+
+/// Every agent as a tree: the agents nothing spawned, by id, each followed
+/// by the agents it spawned in the order it spawned them. A spawned agent
+/// is titled by its [`Name`].
+fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
+    let mut roots: Vec<(Entity, &AgentId)> = agents
+        .iter()
+        .filter(|(_, _, _, of, ..)| of.is_none_or(|of| !agents.contains(of.0)))
+        .map(|(entity, id, ..)| (entity, id))
+        .collect();
+    roots.sort_by(|a, b| a.1.0.cmp(&b.1.0));
+    let several = roots.len() > 1;
+    let total = agents.iter().count();
+    let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|(root, _)| (*root, 0)).collect();
+    let mut entries = Vec::new();
+    while let Some((agent, depth)) = stack.pop() {
+        // A relationship loop cannot happen, but a bound costs nothing.
+        if entries.len() >= total {
+            break;
+        }
+        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
+            continue;
+        };
+        let title = match (name, of) {
+            (Some(name), Some(_)) => name.as_str().to_owned(),
+            _ if several => format!("agent {}", id.short()),
+            _ => "main agent".to_owned(),
+        };
+        let mut label = format!(
+            "{}{title} · {} · {}",
+            "  ".repeat(depth),
+            model.map_or("no model", |model| model.0.as_str()),
+            if busy { "working" } else { "idle" }
+        );
+        if let Some(cost) = spent.cost_label() {
+            label.push_str(&format!(" · {cost}"));
+        }
+        entries.push(RosterEntry { agent, label });
+        for child in spawned.into_iter().flat_map(|spawned| spawned.iter().rev()) {
+            stack.push((child, depth + 1));
+        }
+    }
+    entries
 }
 
 /// How `task` and `message` calls look in the terminal view.

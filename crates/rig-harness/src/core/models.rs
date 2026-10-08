@@ -1,6 +1,7 @@
 //! Catalog models the agent can use, and the reasoning settings each takes.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
 use rig_core::completion::{
@@ -16,8 +17,9 @@ use rig_core::providers::{chatgpt, mistral, openai, venice};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
+use bevy_ecs::prelude::*;
+
 use super::agent::{Effort, ModelChoice};
-use super::login::LoginProvider;
 
 /// The model and reasoning setting of an agent spawned by an agent with
 /// `parent`'s: `model`, a catalog reference of a model that calls tools,
@@ -64,51 +66,79 @@ pub fn reference(spec: &ModelSpec) -> String {
     format!("{}/{}", spec.provider.vendor(), spec.id)
 }
 
-/// Builds `spec`'s provider client from the environment and wraps the
-/// model as an effect handler. Without a key in the environment, a model of
-/// a provider signed in with `/login` signs each request with that
-/// credential instead.
-/// [`Effects::model_handler`](super::effects::Effects::model_handler) keeps
-/// one per model.
-pub(crate) fn handler(spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
-    match registry::connect(spec) {
-        Ok(model) => Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
-            reference(spec),
-            model,
-        ))),
-        Err(error @ ConnectError::MissingKey { .. }) => match signed_in(spec) {
-            Some(login) => login.model_handler(spec).map(ErasedHandler::new),
-            None => Err(error),
-        },
-        Err(error) => Err(error),
+/// A way to reach catalog models the environment has no key for, such as
+/// a subscription sign-in. A plugin sets it with [`ModelConnector::new`].
+pub trait SignIns: Send + Sync + 'static {
+    /// Whether a sign-in serves `spec` now.
+    fn serves(&self, spec: &ModelSpec) -> bool;
+    /// The handler serving `spec` with the signed-in credential.
+    fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError>;
+    /// The plan a sign-in to which serves `spec`, such as `ChatGPT`, for
+    /// pickers; signed in or not.
+    fn plan(&self, spec: &ModelSpec) -> Option<&'static str>;
+}
+
+/// Connects catalog models: with the environment's keys, else through the
+/// [`SignIns`] a plugin set.
+#[derive(Resource, Default, Clone)]
+pub struct ModelConnector(Option<Arc<dyn SignIns>>);
+
+impl ModelConnector {
+    /// A connector that falls back to `sign_ins`.
+    pub fn new(sign_ins: impl SignIns) -> Self {
+        Self(Some(Arc::new(sign_ins)))
     }
-}
 
-/// The provider `spec` is signed in to with `/login`, if any.
-pub fn signed_in(spec: &ModelSpec) -> Option<LoginProvider> {
-    LoginProvider::of(spec).filter(|login| login.signed_in())
-}
+    /// Builds `spec`'s provider client from the environment and wraps the
+    /// model as an effect handler. Without a key in the environment, a
+    /// model a sign-in serves signs each request with that credential
+    /// instead. [`Effects::model_handler`](super::effects::Effects::model_handler)
+    /// keeps one per model.
+    pub fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
+        match registry::connect(spec) {
+            Ok(model) => Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
+                reference(spec),
+                model,
+            ))),
+            Err(error @ ConnectError::MissingKey { .. }) => match &self.0 {
+                Some(sign_ins) if sign_ins.serves(spec) => sign_ins.handler(spec),
+                _ => Err(error),
+            },
+            Err(error) => Err(error),
+        }
+    }
 
-/// Catalog models that call tools and whose provider can be reached from
-/// the environment or a `/login` sign-in: first those of providers with a
-/// key set or signed in, then those of providers that need none (local
-/// servers such as Ollama), which a view marks "no key needed". The check
-/// builds the provider's client exactly as a request would, once per
-/// provider.
-pub fn available_models() -> Vec<&'static ModelSpec> {
-    let mut usable: HashMap<ProviderId, bool> = HashMap::new();
-    let mut models: Vec<&'static ModelSpec> = Catalog::builtin()
-        .iter()
-        .filter(|spec| spec.tools)
-        .filter(|spec| {
-            *usable
-                .entry(spec.provider)
-                .or_insert_with(|| registry::connect(*spec).is_ok() || signed_in(spec).is_some())
-        })
-        .collect();
-    // Stable: catalog order within each group.
-    models.sort_by_key(|spec| !spec.provider.requires_credential());
-    models
+    /// The plan a sign-in to which serves `spec`, if any.
+    pub fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
+        self.0.as_ref().and_then(|sign_ins| sign_ins.plan(spec))
+    }
+
+    /// Catalog models that call tools and whose provider can be reached
+    /// from the environment or a sign-in: first those of providers with a
+    /// key set or signed in, then those of providers that need none (local
+    /// servers such as Ollama), which a view marks "no key needed". The
+    /// check builds the provider's client exactly as a request would, once
+    /// per provider.
+    pub fn available(&self) -> Vec<&'static ModelSpec> {
+        let signed_in = |spec: &ModelSpec| {
+            self.0
+                .as_ref()
+                .is_some_and(|sign_ins| sign_ins.serves(spec))
+        };
+        let mut usable: HashMap<ProviderId, bool> = HashMap::new();
+        let mut models: Vec<&'static ModelSpec> = Catalog::builtin()
+            .iter()
+            .filter(|spec| spec.tools)
+            .filter(|spec| {
+                *usable
+                    .entry(spec.provider)
+                    .or_insert_with(|| registry::connect(*spec).is_ok() || signed_in(spec))
+            })
+            .collect();
+        // Stable: catalog order within each group.
+        models.sort_by_key(|spec| !spec.provider.requires_credential());
+        models
+    }
 }
 
 /// A reasoning setting a model takes: what `/effort` calls it (`default`,

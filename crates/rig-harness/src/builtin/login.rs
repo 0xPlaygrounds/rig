@@ -1,19 +1,20 @@
-//! Signing in to a provider's subscription from the agent. [`SignIn`] runs
-//! the provider's sign-in on the IO pool: in the browser, which it opens on
+//! `/login` and `/logout`: signing in to the ChatGPT plan from the agent,
+//! a plugin of its own that the core knows only as [`SignIns`] on its
+//! [`ModelConnector`]. `/login` runs the sign-in on the IO pool: in the browser, which it opens on
 //! the sign-in page and whose URL it shows as a notice, or with a device
 //! code shown as a notice when no browser can be assumed (no graphical
 //! session, or an SSH login), when the browser's callback ports are taken,
-//! or when asked with `--device`. [`SignOut`] forgets the credential. The
-//! credential is kept in `RIG_HOME/auth/<provider>.json`, and every model
-//! call of that provider reads it, refreshed when it has expired, before
-//! its request. ChatGPT is the one provider so far.
+//! or when asked with `--device`. `/logout` forgets the credential. The
+//! credential is kept in `RIG_HOME/auth/chatgpt.json`, and every model
+//! call of the plan reads it, refreshed when it has expired, before its
+//! request.
 
 use std::path::PathBuf;
 use std::sync::OnceLock;
 use std::{fs, io};
 
+use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::Home;
@@ -31,123 +32,99 @@ use rig_core::providers::chatgpt::{
 };
 use rig_core::providers::registry::{ConnectError, ConnectOptions};
 use rig_core::serve::adapters::ModelAdapter;
-use rig_core::serve::{Dispatch, Reply, Serve};
+use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 
-use super::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
-use super::calls::{Done, Running, Wake};
-use super::effects::Effects;
-use super::models;
+use crate::core::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
+use crate::core::calls::{Done, Running, Wake, poll_calls};
+use crate::core::commands::{AppCommandsExt, CommandArgs};
+use crate::core::effects::Effects;
+use crate::core::models::{self, ModelConnector, SignIns};
+use crate::core::turn::PollCalls;
 
-/// A provider `/login` signs in to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum LoginProvider {
-    /// The ChatGPT plan's models, the catalog's `chatgpt` vendor.
-    ChatGpt,
+/// The provider `/login` signs in to: the ChatGPT plan, the catalog's
+/// `chatgpt` vendor, which is also what `/login` takes.
+const PROVIDER: &str = chatgpt::PROVIDER_NAME;
+
+/// How the user knows [`PROVIDER`].
+const TITLE: &str = "ChatGPT";
+
+/// The model a fresh sign-in switches to: the plan's latest frontier
+/// model, first in Codex's own model list.
+const FRONTIER_MODEL: &str = "chatgpt/gpt-6.1-sol";
+
+/// Adds `/login` and `/logout`, and connects the plan's models with the
+/// signed-in credential.
+#[derive(Default)]
+pub struct LoginPlugin;
+
+impl Plugin for LoginPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(ModelConnector::new(ChatGptSignIn))
+            .add_command(
+                "login",
+                "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows \
+                 a code to enter instead); /login again or Esc cancels",
+                on_login,
+            )
+            .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
+            .add_systems(
+                Update,
+                (
+                    poll_calls::<SignedInResult, Done<SignedInResult>>,
+                    show_login_prompts,
+                )
+                    .in_set(PollCalls),
+            )
+            .add_observer(on_signed_in)
+            .add_observer(cancel_on_interrupt);
+    }
 }
 
-impl LoginProvider {
-    /// Every provider, in the order `/login` lists them.
-    pub const ALL: [Self; 1] = [Self::ChatGpt];
+/// Where the credential is kept.
+fn auth_file() -> PathBuf {
+    Home::from_env().auth(PROVIDER)
+}
 
-    /// The catalog vendor, which is also what `/login` takes.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::ChatGpt => chatgpt::PROVIDER_NAME,
-        }
+/// Whether `spec` is one of the plan's models.
+fn of_plan(spec: &ModelSpec) -> bool {
+    spec.provider.vendor() == PROVIDER
+}
+
+/// The process's one reader of the credential, so concurrent calls
+/// refresh it once. It never starts a sign-in.
+fn session() -> &'static Authenticator {
+    static SESSION: OnceLock<Authenticator> = OnceLock::new();
+    SESSION.get_or_init(|| {
+        Authenticator::new(
+            AuthSource::OAuth,
+            Some(auth_file()),
+            DeviceCodeHandler::default(),
+            false,
+        )
+    })
+}
+
+/// The plan's models, connected with the signed-in credential.
+struct ChatGptSignIn;
+
+impl SignIns for ChatGptSignIn {
+    fn serves(&self, spec: &ModelSpec) -> bool {
+        of_plan(spec) && auth_file().is_file()
     }
 
-    /// The provider `name` names.
-    pub fn named(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|provider| provider.name() == name)
-    }
-
-    /// The provider whose sign-in serves `spec`.
-    pub fn of(spec: &ModelSpec) -> Option<Self> {
-        Self::named(spec.provider.vendor())
-    }
-
-    /// How the user knows it.
-    pub fn title(self) -> &'static str {
-        match self {
-            Self::ChatGpt => "ChatGPT",
-        }
-    }
-
-    /// The model a fresh sign-in switches to: the plan's latest frontier
-    /// model, first in Codex's own model list.
-    pub fn frontier_model(self) -> &'static str {
-        match self {
-            Self::ChatGpt => "chatgpt/gpt-6.1-sol",
-        }
-    }
-
-    /// Where its credential is kept.
-    pub fn auth_file(self) -> PathBuf {
-        Home::from_env().auth(self.name())
-    }
-
-    /// Whether it holds a credential.
-    pub fn signed_in(self) -> bool {
-        self.auth_file().is_file()
-    }
-
-    /// The process's one reader of the credential, so concurrent calls
-    /// refresh it once. It never starts a sign-in.
-    fn session(self) -> &'static Authenticator {
-        static CHATGPT: OnceLock<Authenticator> = OnceLock::new();
-        match self {
-            Self::ChatGpt => CHATGPT.get_or_init(|| {
-                Authenticator::new(
-                    AuthSource::OAuth,
-                    Some(self.auth_file()),
-                    DeviceCodeHandler::default(),
-                    false,
-                )
-            }),
-        }
-    }
-
-    /// `spec` as an effect handler that signs each request with this
-    /// provider's credential.
-    pub(crate) fn model_handler(self, spec: &'static ModelSpec) -> Result<SignedIn, ConnectError> {
+    fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
         // Built without a key only for the handler's description.
         let unsigned = Catalog::builtin().connect_with(spec, ConnectOptions::new().api_key(""))?;
         let descriptor = Serve::descriptor(&ModelAdapter::<Completion>::new(
             models::reference(spec),
             unsigned,
         ));
-        Ok(SignedIn {
-            provider: self,
-            spec,
-            descriptor,
-        })
+        Ok(ErasedHandler::new(SignedIn { spec, descriptor }))
     }
-}
 
-/// Sign in to `provider` (a [`LoginProvider`] name) for the agent, or
-/// cancel the sign-in already waiting for it. Refused while a turn runs.
-/// The sign-in is in the browser when one can be assumed, otherwise with a
-/// device code; `--device` after the name asks for the device code.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SignIn {
-    /// The agent whose notices show the sign-in.
-    pub entity: Entity,
-    /// The provider, optionally followed by `--device`.
-    pub provider: String,
-}
-
-/// Forget the credential of `provider` (a [`LoginProvider`] name).
-/// Refused while a turn runs.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SignOut {
-    /// The agent whose notices report it.
-    pub entity: Entity,
-    /// The provider.
-    pub provider: String,
+    fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
+        of_plan(spec).then_some(TITLE)
+    }
 }
 
 /// A sign-in waiting for the user, on an entity of its own whose
@@ -156,8 +133,6 @@ pub struct SignOut {
 pub struct PendingLogin {
     /// The agent that asked.
     pub agent: Entity,
-    /// The provider.
-    pub provider: LoginProvider,
     /// What the flow asks the user to do.
     prompts: Receiver<LoginPrompt>,
 }
@@ -207,47 +182,38 @@ fn graphical_session() -> bool {
 /// How a sign-in ended: `Err` says why it failed.
 pub struct SignedInResult(Result<(), String>);
 
-/// The name `text` gives, the only provider when it is empty, or a notice
-/// listing them.
-fn named_provider(
-    agent: Entity,
-    text: &str,
-    notices: &mut MessageWriter<Notice>,
-) -> Option<LoginProvider> {
+/// Whether `text` names [`PROVIDER`], or is empty; otherwise a notice
+/// says what it takes.
+fn named_provider(agent: Entity, text: &str, notices: &mut MessageWriter<Notice>) -> bool {
     let text = text.trim();
-    let found = match (text, LoginProvider::ALL.as_slice()) {
-        ("", [only]) => Some(*only),
-        (name, _) => LoginProvider::named(name),
-    };
-    if found.is_none() {
-        let names: Vec<&str> = LoginProvider::ALL
-            .iter()
-            .map(|provider| provider.name())
-            .collect();
+    let named = text.is_empty() || text == PROVIDER;
+    if !named {
         notices.write(Notice::error(
             agent,
-            format!("No sign-in for `{text}`. Sign in to: {}.", names.join(", ")),
+            format!("No sign-in for `{text}`. Sign in to: {PROVIDER}."),
         ));
     }
-    found
+    named
 }
 
-/// Starts a sign-in, or cancels the one already waiting for the provider.
-pub(crate) fn on_sign_in(
-    sign_in: On<SignIn>,
+/// `/login`: starts a sign-in for the agent, or cancels the one already
+/// waiting. Refused while a turn runs. `--device` after the name asks for
+/// the device code.
+fn on_login(
+    In(args): In<CommandArgs>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     pending: Query<(Entity, &PendingLogin)>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = sign_in.entity;
+    let agent = args.agent;
     let Ok(busy) = agents.get(agent) else {
         return;
     };
     let mut device_asked = false;
-    let words: Vec<&str> = sign_in
-        .provider
+    let words: Vec<&str> = args
+        .args
         .split_whitespace()
         .filter(|word| {
             let flag = *word == "--device";
@@ -255,15 +221,12 @@ pub(crate) fn on_sign_in(
             !flag
         })
         .collect();
-    let Some(provider) = named_provider(agent, &words.join(" "), &mut notices) else {
+    if !named_provider(agent, &words.join(" "), &mut notices) {
         return;
-    };
-    if let Some((login, _)) = pending.iter().find(|(_, login)| login.provider == provider) {
+    }
+    if let Some((login, _)) = pending.iter().next() {
         commands.entity(login).despawn();
-        notices.write(Notice::info(
-            agent,
-            format!("{} sign-in cancelled.", provider.title()),
-        ));
+        notices.write(Notice::info(agent, format!("{TITLE} sign-in cancelled.")));
         return;
     }
     if busy {
@@ -276,35 +239,23 @@ pub(crate) fn on_sign_in(
     let (sender, prompts) = crossbeam_channel::unbounded();
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
-        Name::new(format!("login:{}", provider.name())),
-        PendingLogin {
-            agent,
-            provider,
-            prompts,
-        },
+        Name::new(format!("login:{PROVIDER}")),
+        PendingLogin { agent, prompts },
         Running::spawn(
             pool,
             &wake,
-            sign_in_flow(provider, Method::choose(device_asked), sender, wake.clone()),
+            sign_in_flow(Method::choose(device_asked), sender, wake.clone()),
         ),
     ));
-    notices.write(Notice::info(
-        agent,
-        format!("Signing in to {}…", provider.title()),
-    ));
+    notices.write(Notice::info(agent, format!("Signing in to {TITLE}…")));
 }
 
-/// Runs `provider`'s sign-in by `method`, sending what the user must do
+/// Runs the sign-in by `method`, sending what the user must do
 /// through `prompts`, and keeps the credential readable by the owner alone.
 /// A browser sign-in whose callback ports are taken falls back to the
 /// device code.
-async fn sign_in_flow(
-    provider: LoginProvider,
-    method: Method,
-    prompts: Sender<LoginPrompt>,
-    wake: Wake,
-) -> SignedInResult {
-    let file = provider.auth_file();
+async fn sign_in_flow(method: Method, prompts: Sender<LoginPrompt>, wake: Wake) -> SignedInResult {
+    let file = auth_file();
     let prompt = move |prompt: LoginPrompt| {
         prompts.send(prompt).ok();
         wake.wake();
@@ -338,9 +289,9 @@ async fn sign_in_flow(
 }
 
 /// Shows what a sign-in asks the user to do.
-pub(crate) fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
+fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
+    let (title, name) = (TITLE, PROVIDER);
     for login in &logins {
-        let (title, name) = (login.provider.title(), login.provider.name());
         for prompt in login.prompts.try_iter() {
             let text = match prompt {
                 LoginPrompt::Browser(page) if page.browser_launched => format!(
@@ -369,7 +320,7 @@ pub(crate) fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: Mess
 
 /// Reports how a sign-in ended, and connects the agents whose chosen model
 /// it serves and could not connect before.
-pub(crate) fn on_signed_in(
+fn on_signed_in(
     done: On<Add<Done<SignedInResult>>>,
     logins: Query<(&PendingLogin, &Done<SignedInResult>)>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
@@ -379,35 +330,30 @@ pub(crate) fn on_signed_in(
     let Ok((login, Done(SignedInResult(result)))) = logins.get(done.entity) else {
         return;
     };
-    let title = login.provider.title();
     match result {
         Ok(()) => {
             notices.write(Notice::info(
                 login.agent,
                 format!(
-                    "Signed in to {title}; switching to {}. /model lists its other models; \
-                     the credential is in {}.",
-                    login.provider.frontier_model(),
-                    login.provider.auth_file().display()
+                    "Signed in to {TITLE}; switching to {FRONTIER_MODEL}. /model lists its \
+                     other models; the credential is in {}.",
+                    auth_file().display()
                 ),
             ));
             for (agent, choice) in &unconnected {
-                if agent != login.agent
-                    && models::resolve(&choice.0).and_then(LoginProvider::of)
-                        == Some(login.provider)
-                {
+                if agent != login.agent && models::resolve(&choice.0).is_some_and(of_plan) {
                     commands.entity(agent).insert(choice.clone());
                 }
             }
             commands.trigger(SetModel {
                 entity: login.agent,
-                model: login.provider.frontier_model().to_owned(),
+                model: FRONTIER_MODEL.to_owned(),
             });
         }
         Err(why) => {
             notices.write(Notice::error(
                 login.agent,
-                format!("{title} sign-in failed: {why}"),
+                format!("{TITLE} sign-in failed: {why}"),
             ));
         }
     }
@@ -415,7 +361,7 @@ pub(crate) fn on_signed_in(
 }
 
 /// Esc cancels the agent's waiting sign-ins.
-pub(crate) fn cancel_on_interrupt(
+fn cancel_on_interrupt(
     interrupt: On<Interrupt>,
     pending: Query<(Entity, &PendingLogin)>,
     mut commands: Commands,
@@ -426,26 +372,27 @@ pub(crate) fn cancel_on_interrupt(
             commands.entity(login).despawn();
             notices.write(Notice::info(
                 pending.agent,
-                format!("{} sign-in cancelled.", pending.provider.title()),
+                format!("{TITLE} sign-in cancelled."),
             ));
         }
     }
 }
 
-/// Deletes the provider's credential and forgets its connected models.
-pub(crate) fn on_sign_out(
-    sign_out: On<SignOut>,
+/// `/logout`: deletes the credential and forgets the plan's connected
+/// models. Refused while a turn runs.
+fn on_logout(
+    In(args): In<CommandArgs>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     mut effects: ResMut<Effects>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = sign_out.entity;
+    let agent = args.agent;
     let Ok(busy) = agents.get(agent) else {
         return;
     };
-    let Some(provider) = named_provider(agent, &sign_out.provider, &mut notices) else {
+    if !named_provider(agent, &args.args, &mut notices) {
         return;
-    };
+    }
     if busy {
         notices.write(Notice::info(
             agent,
@@ -453,18 +400,15 @@ pub(crate) fn on_sign_out(
         ));
         return;
     }
-    effects.forget_vendor(provider.name());
-    let notice = match fs::remove_file(provider.auth_file()) {
-        Ok(()) => Notice::info(agent, format!("Signed out of {}.", provider.title())),
+    effects.forget_vendor(PROVIDER);
+    let notice = match fs::remove_file(auth_file()) {
+        Ok(()) => Notice::info(agent, format!("Signed out of {TITLE}.")),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
-            Notice::info(agent, format!("Not signed in to {}.", provider.title()))
+            Notice::info(agent, format!("Not signed in to {TITLE}."))
         }
         Err(error) => Notice::error(
             agent,
-            format!(
-                "Could not delete {}: {error}.",
-                provider.auth_file().display()
-            ),
+            format!("Could not delete {}: {error}.", auth_file().display()),
         ),
     };
     notices.write(notice);
@@ -473,8 +417,7 @@ pub(crate) fn on_sign_out(
 /// A catalog model whose requests carry the signed-in credential. Each
 /// request reads the credential, refreshing it when it has expired, and
 /// connects the model with it, so a long session outlives its token.
-pub(crate) struct SignedIn {
-    provider: LoginProvider,
+struct SignedIn {
     spec: &'static ModelSpec,
     descriptor: HandlerDescriptor,
 }
@@ -483,23 +426,16 @@ impl SignedIn {
     /// The model, connected with the current credential.
     async fn connect(&self) -> Result<DynModel<Completion>, ErrorReport> {
         let http = rig_reqwest::shared();
-        let context = self
-            .provider
-            .session()
-            .auth_context(&http)
-            .await
-            .map_err(|error| {
-                ErrorReport::new(
-                    ErrorKind::Provider,
-                    format!(
-                        "the {} sign-in did not give a credential ({error}); /login {} signs \
-                         in again",
-                        self.provider.title(),
-                        self.provider.name()
-                    ),
-                )
-                .with_retryable(false)
-            })?;
+        let context = session().auth_context(&http).await.map_err(|error| {
+            ErrorReport::new(
+                ErrorKind::Provider,
+                format!(
+                    "the {TITLE} sign-in did not give a credential ({error}); /login \
+                         {PROVIDER} signs in again"
+                ),
+            )
+            .with_retryable(false)
+        })?;
         let mut options = ConnectOptions::new()
             .api_key(context.access_token)
             .http(http);

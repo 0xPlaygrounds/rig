@@ -14,14 +14,13 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
-use super::view::{Overlay, PickValue, Picker, TuiView};
-use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetModel};
+use super::view::{Overlay, Picker, TuiView};
+use crate::core::agent::{ActiveTurn, Interrupt};
 use crate::core::calls::Wake;
-use crate::core::commands::{SlashCommand, send_input};
+use crate::core::commands::{RunCommand, SlashCommand, send_input};
 use crate::core::inbox::DeliveryMode;
 use crate::core::journal::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
-use crate::host::sessions::SwitchSession;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -322,19 +321,13 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
             picker.selected = (picker.selected + PAGE).min(last);
         }
         KeyCode::Enter => {
-            let entity = picker.agent;
-            match picker.chosen() {
-                Some(PickValue::Model(model)) => commands.trigger(SetModel { entity, model }),
-                Some(PickValue::Effort(effort)) => commands.trigger(SetEffort {
-                    entity,
-                    effort: Effort(effort),
-                }),
-                Some(PickValue::Session(session)) => commands.trigger(SwitchSession {
-                    session: Some(session),
-                }),
-                Some(PickValue::Agent(entity)) => commands.trigger(Focus { entity }),
-                None => return false,
-            }
+            let Some(line) = picker.chosen() else {
+                return false;
+            };
+            commands.trigger(RunCommand {
+                entity: picker.agent,
+                line,
+            });
             return true;
         }
         _ => {}

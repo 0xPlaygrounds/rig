@@ -13,14 +13,14 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use super::RunMode;
+use crate::builtin::login::PendingLogin;
 use crate::core::agent::{
     ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
     SetModel, answer_text, primary,
 };
 use crate::core::commands::send_input;
 use crate::core::inbox::DeliveryMode;
-use crate::core::login::PendingLogin;
-use crate::core::models;
+use crate::core::models::{self, ModelConnector};
 
 /// Frames to wait for a model to connect before giving up.
 const CONNECT_FRAMES: u32 = 3;
@@ -91,6 +91,7 @@ fn drive(
     working: Query<(), (With<Agent>, With<ActiveTurn>)>,
     conversations: Query<&Conversation>,
     logins: Query<(), With<PendingLogin>>,
+    connector: Res<ModelConnector>,
     mut commands: Commands,
     mut exits: MessageWriter<AppExit>,
 ) {
@@ -108,7 +109,7 @@ fn drive(
                 (Some(model), _) => Some(model.clone()),
                 (None, Some(_)) if connected => None,
                 (None, Some(chosen)) => Some(chosen.0.clone()),
-                (None, None) => match models::available_models().first() {
+                (None, None) => match connector.available().first() {
                     Some(spec) => Some(models::reference(spec)),
                     None if command => None,
                     None => {

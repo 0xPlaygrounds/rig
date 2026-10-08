@@ -45,7 +45,7 @@ use super::compaction::{
 use super::effects::Effects;
 use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
-use super::models;
+use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
@@ -376,6 +376,7 @@ pub(crate) fn on_model_chosen(
     chosen: On<Insert<ModelChoice>>,
     agents: Query<(&ModelChoice, &Effort)>,
     mut effects: ResMut<Effects>,
+    connector: Res<ModelConnector>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -387,7 +388,7 @@ pub(crate) fn on_model_chosen(
         .ok_or_else(|| format!("the catalog has no model `{}`", choice.0))
         .and_then(|spec| {
             effects
-                .model_handler(spec)
+                .model_handler(spec, &connector)
                 .map(|handler| Connection { spec, handler })
                 .map_err(|error| error.to_string())
         });

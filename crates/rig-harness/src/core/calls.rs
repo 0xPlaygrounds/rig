@@ -70,7 +70,7 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 /// Replaces each finished [`Running<T>`] task with its output as the
 /// component `C`: [`Done<T>`] for most calls, a
 /// [`ToolOutput`](super::tools::ToolOutput) for tool calls.
-pub(crate) fn poll_calls<T: Send + Sync + 'static, C: Component + From<T>>(
+pub fn poll_calls<T: Send + Sync + 'static, C: Component + From<T>>(
     mut calls: Query<(Entity, &mut Running<T>)>,
     mut commands: Commands,
 ) {

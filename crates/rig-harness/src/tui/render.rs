@@ -495,7 +495,7 @@ fn draw_picker(frame: &mut Frame, picker: &Picker) {
     let items: Vec<String> = picker
         .visible()
         .into_iter()
-        .map(|(label, _)| label.clone())
+        .map(|item| item.label.clone())
         .collect();
     let mut state = ListState::default().with_selected(Some(picker.selected));
     frame.render_stateful_widget(

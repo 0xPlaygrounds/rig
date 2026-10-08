@@ -492,104 +492,27 @@ pub struct TurnEnded {
     pub request: Option<RequestId>,
 }
 
-/// What a view should let the user pick from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PickKind {
-    /// A model from [`available_models`](crate::core::models::available_models).
-    Model,
-    /// A reasoning setting from [`effort_options`](crate::core::models::effort_options).
-    Effort,
-    /// An earlier session to resume; the view answers with the host's
-    /// `SwitchSession`.
-    Session,
-    /// An agent to show, from [`roster`];
-    /// the view answers with [`Focus`].
-    Agent,
+/// One choice of a [`PickRequest`]: what it shows, and the command line,
+/// without its `/`, that choosing it runs for the agent, such as
+/// `model openai/gpt-5`.
+#[derive(Clone, Debug)]
+pub struct PickItem {
+    /// What it shows.
+    pub label: String,
+    /// The command line it runs.
+    pub command: String,
 }
 
-/// Asks a view to open a picker for the agent. The view answers with
-/// what the [`PickKind`] names.
-#[derive(Message, Clone, Copy, Debug)]
+/// Asks a view to let the user pick one of `items` for the agent; the
+/// view runs the chosen item's command with [`RunCommand`](super::commands::RunCommand).
+#[derive(Message, Clone, Debug)]
 pub struct PickRequest {
     /// The agent.
     pub agent: Entity,
-    /// What to pick.
-    pub kind: PickKind,
-}
-
-/// One agent in [`roster`]: how deep it is and a line describing it.
-#[derive(Clone, Debug)]
-pub struct RosterEntry {
-    /// The agent.
-    pub agent: Entity,
-    /// 0 for an agent nothing spawned, 1 for the agents it spawned, and so
-    /// on.
-    pub depth: usize,
-    /// Its title, model, state and cost, indented by depth.
-    pub label: String,
-}
-
-/// What [`roster`] reads of each agent.
-pub type RosterQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static AgentId,
-        Option<&'static Name>,
-        Option<&'static SpawnedBy>,
-        Option<&'static Spawned>,
-        Option<&'static ModelChoice>,
-        Has<ActiveTurn>,
-        &'static Spending,
-    ),
-    With<Agent>,
->;
-
-/// Every agent as a tree: the agents nothing spawned, by id, each followed
-/// by the agents it spawned in the order it spawned them. A spawned agent
-/// is titled by its [`Name`].
-pub fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
-    let mut roots: Vec<(Entity, &AgentId)> = agents
-        .iter()
-        .filter(|(_, _, _, of, ..)| of.is_none_or(|of| !agents.contains(of.0)))
-        .map(|(entity, id, ..)| (entity, id))
-        .collect();
-    roots.sort_by(|a, b| a.1.0.cmp(&b.1.0));
-    let several = roots.len() > 1;
-    let total = agents.iter().count();
-    let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|(root, _)| (*root, 0)).collect();
-    let mut entries = Vec::new();
-    while let Some((agent, depth)) = stack.pop() {
-        // A relationship loop cannot happen, but a bound costs nothing.
-        if entries.len() >= total {
-            break;
-        }
-        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
-            continue;
-        };
-        let title = match (name, of) {
-            (Some(name), Some(_)) => name.as_str().to_owned(),
-            _ if several => format!("agent {}", id.short()),
-            _ => "main agent".to_owned(),
-        };
-        let mut label = format!(
-            "{}{title} · {} · {}",
-            "  ".repeat(depth),
-            model.map_or("no model", |model| model.0.as_str()),
-            if busy { "working" } else { "idle" }
-        );
-        if let Some(cost) = spent.cost_label() {
-            label.push_str(&format!(" · {cost}"));
-        }
-        entries.push(RosterEntry {
-            agent,
-            depth,
-            label,
-        });
-        for child in spawned.into_iter().flat_map(|spawned| spawned.iter().rev()) {
-            stack.push((child, depth + 1));
-        }
-    }
-    entries
+    /// What is picked.
+    pub title: String,
+    /// The choices.
+    pub items: Vec<PickItem>,
+    /// The position of the choice selected at first.
+    pub selected: usize,
 }
