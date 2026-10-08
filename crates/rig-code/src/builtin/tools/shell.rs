@@ -2,7 +2,7 @@
 
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -58,23 +58,44 @@ impl PortableTool for Shell {
     }
 
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
-        let stop = StopOnDrop(Arc::new(AtomicBool::new(false)));
-        let stopped = Arc::clone(&stop.0);
-        blocking(move || run(args, &stopped)).await
+        let stop = StopOnDrop {
+            stopped: Arc::new(AtomicBool::new(false)),
+            leader: Arc::new(AtomicU32::new(0)),
+        };
+        let stopped = Arc::clone(&stop.stopped);
+        let leader = Arc::clone(&stop.leader);
+        blocking(move || run(args, &stopped, &leader)).await
     }
 }
 
-/// Tells the running command to stop when the call is dropped, which is how
-/// an interrupted turn cancels it.
-struct StopOnDrop(Arc<AtomicBool>);
+/// Stops the running command when the call is dropped, which is how an
+/// interrupted turn, or quitting, cancels it. On unix the process group is
+/// killed right away, because the app may exit before the command's thread
+/// sees the flag.
+struct StopOnDrop {
+    stopped: Arc<AtomicBool>,
+    /// The running command's pid while it is not reaped, else 0.
+    leader: Arc<AtomicU32>,
+}
 
 impl Drop for StopOnDrop {
     fn drop(&mut self) {
-        self.0.store(true, Ordering::Relaxed);
+        self.stopped.store(true, Ordering::Relaxed);
+        let leader = self.leader.swap(0, Ordering::SeqCst);
+        #[cfg(unix)]
+        if leader != 0 {
+            crate::process::kill_group_of(leader);
+        }
+        #[cfg(not(unix))]
+        let _ = leader;
     }
 }
 
-fn run(args: ShellArgs, stopped: &AtomicBool) -> Result<String, ToolExecutionError> {
+fn run(
+    args: ShellArgs,
+    stopped: &AtomicBool,
+    leader: &AtomicU32,
+) -> Result<String, ToolExecutionError> {
     let timeout = Duration::from_secs(
         args.timeout_secs
             .unwrap_or(DEFAULT_TIMEOUT)
@@ -92,11 +113,17 @@ fn run(args: ShellArgs, stopped: &AtomicBool) -> Result<String, ToolExecutionErr
     let mut child = command
         .spawn()
         .map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))?;
+    leader.store(child.id(), Ordering::SeqCst);
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
     let deadline = Instant::now() + timeout;
     let status = loop {
-        match child.try_wait() {
+        let exited = child.try_wait();
+        if !matches!(exited, Ok(None)) {
+            // Reaped, or about to be: its pid may be reused.
+            leader.store(0, Ordering::SeqCst);
+        }
+        match exited {
             Ok(Some(status)) => break Some(status),
             Ok(None) if stopped.load(Ordering::Relaxed) || Instant::now() >= deadline => {
                 break None;
@@ -110,6 +137,7 @@ fn run(args: ShellArgs, stopped: &AtomicBool) -> Result<String, ToolExecutionErr
             }
         }
     };
+    leader.store(0, Ordering::SeqCst);
     // After a normal exit, something the command left running in the
     // background may still hold the output pipes open. Only then is the
     // group killed: a member is alive, so the group id is still its own and
