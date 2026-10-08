@@ -24,7 +24,7 @@ use super::agent::{
     TurnFinished,
 };
 use super::effects::Effects;
-use super::turn::stopped_results;
+use super::turn::{STOPPED, stopped_results};
 
 /// Type data marking a component as part of the saved session. Derive it
 /// with `#[reflect(Component, Saved)]`.
@@ -119,13 +119,14 @@ pub fn save_session(world: &mut World) {
         .map(|(entity, id)| (entity, id.0.clone()))
         .collect();
     agents.sort_by(|a, b| a.1.cmp(&b.1));
+    let mut runs = world.query::<&ToolCallRun>();
     let state = SavedState {
         format: 1,
         session: paths.id.clone(),
         agents: agents
             .into_iter()
             .map(|(entity, id)| {
-                let settled = settled_conversation(world, entity);
+                let settled = settled_conversation(world, entity, &mut runs);
                 SavedAgent {
                     id,
                     components: saved_components(world, entity, &registry, settled.as_ref()),
@@ -149,17 +150,20 @@ pub fn save_session(world: &mut World) {
 
 /// The conversation of `agent` with results for its running tool calls,
 /// when it runs tools.
-fn settled_conversation(world: &mut World, agent: Entity) -> Option<Conversation> {
+fn settled_conversation(
+    world: &World,
+    agent: Entity,
+    runs: &mut QueryState<&ToolCallRun>,
+) -> Option<Conversation> {
     let entity = world.get_entity(agent).ok()?;
     if entity.get::<AgentStatus>() != Some(&AgentStatus::RunningTools) {
         return None;
     }
     let mut conversation = entity.get::<Conversation>()?.clone();
     let calls: Vec<Entity> = entity.get::<Calls>()?.iter().collect();
-    let mut runs = world.query::<&ToolCallRun>();
     conversation.0.extend(stopped_results(
         runs.iter_many(world, calls).flatten(),
-        "the session stopped before this call finished",
+        STOPPED,
     ));
     Some(conversation)
 }
@@ -178,6 +182,8 @@ fn saved_components(
     registry
         .iter_with_data::<ReflectSaved>()
         .filter_map(|(registration, _)| {
+            // The settled conversation stands in for the agent's own; the
+            // running turn as an entity of its own will make this go away.
             let value: &dyn PartialReflect = match conversation {
                 Some(conversation) if registration.type_id() == TypeId::of::<Conversation>() => {
                     conversation

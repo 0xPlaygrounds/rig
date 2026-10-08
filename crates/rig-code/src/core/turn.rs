@@ -3,12 +3,15 @@
 //! run one at a time, in order; rig-core's turn-failure rule decides when a
 //! reply ends the turn instead.
 
+use std::pin::Pin;
+use std::time::{Duration, Instant};
+
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
 use bevy_log::info_span;
 use bevy_log::tracing::Instrument;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool, block_on};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
@@ -175,12 +178,21 @@ pub(crate) fn stopped_results<'a>(
     })
 }
 
+/// The result of a tool call the session stopped before it finished.
+pub(crate) const STOPPED: &str = "the session stopped before this call finished";
+
+/// How long exit waits for running calls to be cancelled. A cancellation
+/// waits for a pool thread to drop the call's future, which records its
+/// effect as cancelled before the last flush; a plugin tool that blocks in
+/// `poll` must not stall the exit, so whatever misses this is dropped.
+const EXIT_GRACE: Duration = Duration::from_secs(1);
+
 /// On exit, stops every running turn before the session is saved, so the
-/// saved conversation never ends in unanswered tool calls. Each running
-/// call is cancelled and waited for first: dropping a task only schedules
-/// its cancellation on a pool thread, which could record the effect as
-/// cancelled after the last flush.
+/// saved conversation never ends in unanswered tool calls. Running calls
+/// are cancelled and waited for, within [`EXIT_GRACE`] for all of them;
+/// every unfinished tool call is answered with [`STOPPED`].
 pub fn stop_turns_on_exit(world: &mut World) {
+    let mut cancelling: Vec<Pin<Box<dyn Future<Output = ()>>>> = Vec::new();
     let calls: Vec<Entity> = world
         .query_filtered::<Entity, With<ModelCall>>()
         .iter(world)
@@ -189,14 +201,27 @@ pub fn stop_turns_on_exit(world: &mut World) {
         if let Ok(mut call) = world.get_entity_mut(call)
             && let Some(call) = call.take::<ModelCall>()
         {
-            block_on(call.task.cancel());
+            cancelling.push(Box::pin(async move {
+                call.task.cancel().await;
+            }));
         }
     }
     let mut runs = world.query::<&mut ToolCallRun>();
     for mut run in runs.iter_mut(world) {
-        if let ToolState::Running(task) = std::mem::replace(&mut run.state, ToolState::Queued) {
-            block_on(task.cancel());
+        if matches!(run.state, ToolState::Done(_)) {
+            continue;
         }
+        let stopped = ToolState::Done(failed(&run.call, STOPPED.to_owned()));
+        if let ToolState::Running(task) = std::mem::replace(&mut run.state, stopped) {
+            cancelling.push(Box::pin(async move {
+                task.cancel().await;
+            }));
+        }
+    }
+    let deadline = Instant::now() + EXIT_GRACE;
+    while !cancelling.is_empty() && Instant::now() < deadline {
+        cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
+        std::thread::sleep(Duration::from_millis(2));
     }
     let busy: Vec<Entity> = world
         .query_filtered::<(Entity, &AgentStatus), With<Agent>>()
