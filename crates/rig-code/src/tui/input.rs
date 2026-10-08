@@ -21,6 +21,7 @@ use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetMod
 use crate::core::calls::Wake;
 use crate::core::commands::SlashCommand;
 use crate::core::inbox::FollowUp;
+use crate::core::rewind::{Fork, Rewind};
 use crate::core::save::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::sessions::SwitchSession;
@@ -377,6 +378,10 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
                     session: Some(session),
                 }),
                 Some(PickValue::Agent(entity)) => commands.trigger(Focus { entity }),
+                Some(PickValue::Rewind { to, files }) => {
+                    commands.trigger(Rewind { entity, to, files });
+                }
+                Some(PickValue::Fork(at)) => commands.trigger(Fork { entity, at }),
                 None => return false,
             }
             return true;

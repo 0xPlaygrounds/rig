@@ -11,3 +11,4 @@ pub mod runner;
 pub mod session;
 pub mod sessions;
 pub mod signals;
+pub mod snapshots;

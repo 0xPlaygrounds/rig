@@ -14,6 +14,7 @@ pub mod inbox;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
+pub mod rewind;
 pub mod save;
 pub mod subagents;
 pub mod tools;
@@ -62,6 +63,7 @@ impl Plugin for AgentPlugin {
                     poll_calls::<ToolResult>,
                     poll_calls::<RetryDue>,
                     poll_calls::<Summary>,
+                    poll_calls::<rewind::FilesRestored>,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),
@@ -85,6 +87,10 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_summarize)
             .add_observer(turn::on_summary_done)
             .add_observer(turn::on_retry)
+            .add_observer(rewind::on_rewind)
+            .add_observer(rewind::on_undo_rewind)
+            .add_observer(rewind::on_files_restored)
+            .add_observer(rewind::on_fork)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_end)
             .add_observer(inbox::on_follow_up)

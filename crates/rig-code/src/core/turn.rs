@@ -49,6 +49,7 @@ use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
+use super::rewind::{Checkpoint, History, Snapshots};
 use super::subagents::{self, Assignment, Delegates, SubagentOf};
 use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
@@ -66,6 +67,11 @@ pub type ModelReply = Result<CompletionResponse, ErrorReport>;
 pub struct ModelCall {
     effect: EffectId,
     feed: Receiver<Delta>,
+    /// Where the agent was when the call was made, kept once it answers.
+    checkpoint: Checkpoint,
+    /// The working tree's snapshot for the checkpoint, sent before the
+    /// call's task ends; `None` when the app keeps none.
+    snapshot: Receiver<Option<Result<String, String>>>,
 }
 
 /// A streamed fragment for [`Partial`].
@@ -152,7 +158,15 @@ pub(crate) fn on_submit(
     for note in notes {
         notices.write(Notice::info(agent, note));
     }
-    conversation.0.push(message);
+    // After a rewind into a turn, or a failure that kept the user's
+    // message, the conversation ends with the user's: the new text joins
+    // it, so user and model keep taking turns.
+    match (conversation.0.last_mut(), message) {
+        (Some(Message::User { content }), Message::User { content: added }) => {
+            content.extend(added);
+        }
+        (_, message) => conversation.0.push(message),
+    }
     let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
     commands.trigger(CallModel { entity: turn });
 }
@@ -426,7 +440,7 @@ pub(crate) fn on_call_model(
     mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox, Option<&Assignment>),
-        &Compacted,
+        (&Compacted, &mut History),
         &mut Spending,
         Option<&Connection>,
         &Effort,
@@ -436,6 +450,7 @@ pub(crate) fn on_call_model(
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
     effects: Res<Effects>,
+    snapshots: Option<Res<Snapshots>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -446,7 +461,7 @@ pub(crate) fn on_call_model(
     };
     let Ok((
         (id, mut conversation, mut inbox, assignment),
-        compacted,
+        (compacted, mut history),
         mut spent,
         connection,
         effort,
@@ -520,12 +535,34 @@ pub(crate) fn on_call_model(
         effect = %effect,
         model = %models::reference(spec)
     );
-    let work = effects
+    let reply = effects
         .caught(effect, stream_reply(reply, sender, wake.clone()))
         .instrument(span);
+    // The files are snapshotted beside the call, and the call ends only
+    // once the snapshot is taken, so no tool of its reply changes a file
+    // before the snapshot sees it.
+    let checkpoint = history.checkpoint(effect, conversation.0.len(), compacted);
+    let take = snapshots.map(|snapshots| snapshots.take());
+    let (taken, snapshot) = crossbeam_channel::bounded(1);
+    let work = async move {
+        let files = async move {
+            match take {
+                Some(take) => Some(take.await),
+                None => None,
+            }
+        };
+        let (reply, files) = futures::future::join(reply, files).await;
+        taken.send(files).ok();
+        reply
+    };
     commands.spawn((
         Name::new("model call"),
-        ModelCall { effect, feed },
+        ModelCall {
+            effect,
+            feed,
+            checkpoint,
+            snapshot,
+        },
         Running::spawn(model_pool(), &wake, work),
         Partial::default(),
         CallOf(turn),
@@ -663,12 +700,13 @@ pub(crate) fn on_model_done(
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(
-        (&mut Conversation, &mut Inbox),
+        (&mut Conversation, &mut Inbox, &mut History),
         &Compacted,
         Option<&Connection>,
         &mut Spending,
     )>,
     starter: ToolStarter,
+    snapshots: Option<Res<Snapshots>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -681,13 +719,28 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((mut conversation, mut inbox), compacted, connection, mut spent)) =
+    let Ok(((mut conversation, mut inbox, mut history), compacted, connection, mut spent)) =
         agents.get_mut(agent)
     else {
         return;
     };
     let response = match reply {
         Ok(response) => {
+            let mut checkpoint = model_call.checkpoint.clone();
+            match model_call.snapshot.try_recv() {
+                Ok(Some(Ok(files))) => checkpoint.files = Some(files),
+                Ok(Some(Err(why))) if snapshots.is_some_and(|s| s.first_failure()) => {
+                    notices.write(Notice::error(
+                        agent,
+                        format!(
+                            "Could not snapshot the files ({why}); rewinding will leave them \
+                             as they are."
+                        ),
+                    ));
+                }
+                _ => {}
+            }
+            history.record(checkpoint);
             // A reply the turn-failure rule rejects was still billed.
             spent.record(&response.usage);
             turn_spent.0.record(&response.usage);

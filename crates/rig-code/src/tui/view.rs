@@ -12,6 +12,7 @@ use crate::core::agent::{
 };
 use crate::core::inbox::Recalled;
 use crate::core::models;
+use crate::core::rewind::{self, History};
 use crate::core::save::SessionPaths;
 use crate::core::subagents::{self, RosterQuery, SubagentOf};
 use crate::host::reload::ReloadFailed;
@@ -78,6 +79,15 @@ pub(crate) enum PickValue {
     Session(String),
     /// An agent to show.
     Agent(Entity),
+    /// A checkpoint to go back to, and whether the files go back too.
+    Rewind {
+        /// The checkpoint's effect id.
+        to: u64,
+        /// Whether the files go back too.
+        files: bool,
+    },
+    /// A checkpoint to fork at, or `None` for now.
+    Fork(Option<u64>),
 }
 
 /// A filterable list to choose one item from.
@@ -148,6 +158,7 @@ pub(crate) fn on_focus(
 pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
+    histories: Query<(&Conversation, &History)>,
     roster: RosterQuery,
     paths: Option<Res<SessionPaths>>,
     mut view: ResMut<TuiView>,
@@ -230,6 +241,49 @@ pub(crate) fn open_pickers(
                     })
                     .collect();
                 ("Show an agent".to_owned(), items)
+            }
+            PickKind::Rewind { files } => {
+                let points = histories
+                    .get(request.agent)
+                    .map(|(conversation, history)| rewind::points(conversation, history))
+                    .unwrap_or_default();
+                let items = points
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, point)| {
+                        (
+                            format!("{}. {}", index + 1, point.label),
+                            PickValue::Rewind {
+                                to: point.effect,
+                                files,
+                            },
+                        )
+                    })
+                    .collect();
+                let title = if files {
+                    "Rewind to (conversation and files)"
+                } else {
+                    "Rewind the conversation to (files stay)"
+                };
+                (title.to_owned(), items)
+            }
+            PickKind::Fork => {
+                let points = histories
+                    .get(request.agent)
+                    .map(|(conversation, history)| rewind::points(conversation, history))
+                    .unwrap_or_default();
+                let items = std::iter::once((
+                    "now: the whole conversation".to_owned(),
+                    PickValue::Fork(None),
+                ))
+                .chain(points.into_iter().enumerate().map(|(index, point)| {
+                    (
+                        format!("{}. {}", index + 1, point.label),
+                        PickValue::Fork(Some(point.effect)),
+                    )
+                }))
+                .collect();
+                ("Fork a new agent at".to_owned(), items)
             }
         };
         view.overlay = Some(Overlay::Picker(Picker {

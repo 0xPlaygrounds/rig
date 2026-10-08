@@ -205,6 +205,13 @@ impl Home {
         self.root.join("resume").join(directory_key(directory))
     }
 
+    /// The object store of the working-tree snapshots taken in the git
+    /// work tree `directory`, shared by every session there, so a file
+    /// is stored once however many snapshots hold it.
+    pub fn snapshots(&self, directory: &Path) -> PathBuf {
+        self.root.join("snapshots").join(directory_key(directory))
+    }
+
     /// The file naming the last session run in `directory`, however it
     /// ended: the one `rig --continue` there resumes.
     pub fn last_marker(&self, directory: &Path) -> PathBuf {
@@ -292,6 +299,13 @@ impl SessionDir {
     /// by path.
     pub fn images(&self) -> PathBuf {
         self.0.join("images")
+    }
+
+    /// The session's own index into the snapshot store of
+    /// [`Home::snapshots`], so sessions in one work tree never wait on each
+    /// other's index lock.
+    pub fn snapshot_index(&self) -> PathBuf {
+        self.0.join("snapshot.index")
     }
 
     /// The session's working directory, when [`Self::directory`] names one

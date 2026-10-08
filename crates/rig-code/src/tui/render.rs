@@ -24,6 +24,7 @@ use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
+use crate::core::rewind::RestoringFiles;
 use crate::core::subagents::{Assignee, Delegated};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
@@ -48,6 +49,8 @@ enum Activity {
     Delegating(usize),
     /// Summarizing the older conversation.
     Compacting,
+    /// Putting the files back for a rewind.
+    RestoringFiles,
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
         attempt: u32,
@@ -106,10 +109,11 @@ pub(crate) fn render(
     changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
-    (tool_calls, summaries, assigned): (
+    (tool_calls, summaries, assigned, restoring): (
         Query<(), With<ToolCallRun>>,
         Query<(), With<Summarizing>>,
         Query<(), With<Assignee>>,
+        Query<(), With<RestoringFiles>>,
     ),
     waits: Query<&Backoff>,
     everyone: Query<(Entity, Has<ActiveTurn>, Option<&Delegated>), With<Agent>>,
@@ -140,6 +144,8 @@ pub(crate) fn render(
         }
     } else if calls.is_some_and(|calls| calls.iter().any(|call| summaries.contains(call))) {
         Activity::Compacting
+    } else if calls.is_some_and(|calls| calls.iter().any(|call| restoring.contains(call))) {
+        Activity::RestoringFiles
     } else if let Some(waiting) = calls
         .map(|calls| calls.iter().filter(|call| assigned.contains(*call)).count())
         .filter(|waiting| *waiting > 0)
@@ -372,6 +378,7 @@ fn status_line(
         ))
         .yellow(),
         Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
+        Activity::RestoringFiles => Span::from("restoring files…").yellow(),
         Activity::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"
         ))

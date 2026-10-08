@@ -10,7 +10,7 @@
 //! as a third-party plugin registers its own.
 //!
 //! [`RigCodePlugins`] is the agent app: the session, the agent core,
-//! saving, the project context, the launcher protocol, `/reload` and the
+//! saving, working-tree snapshots for rewinds, the project context, the launcher protocol, `/reload` and the
 //! session commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
 //! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead: the
@@ -70,6 +70,9 @@ pub mod prelude {
     pub use crate::core::inbox::{FollowUp, Inbox, Recalled};
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
+    pub use crate::core::rewind::{
+        FileSnapshots, Fork, Forked, History, Rewind, Snapshots, UndoRewind,
+    };
     pub use crate::core::save::ReflectSaved;
     pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
@@ -79,7 +82,8 @@ pub mod prelude {
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
 }
 
-/// What every rig-code app has: the session, the agent core and saving,
+/// What every rig-code app has: the session, snapshots of the working
+/// tree for rewinds, the agent core and saving,
 /// the project context in the system prompt (`AGENTS.md` and the
 /// environment, with `/context`), the launcher protocol, `/reload` and
 /// `/new`, `/resume` and `/name`. The tools, the commands other than
@@ -91,6 +95,7 @@ impl PluginGroup for RigCodePlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
+            .add(host::snapshots::SnapshotPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
             .add(host::context::ProjectContextPlugin)

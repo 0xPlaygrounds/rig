@@ -227,6 +227,18 @@ then goes to it. A subagent can start subagents of its own, one level deep.
 In the effect log, a subagent's model calls name the `task` call as their
 parent.
 
+Every model call leaves a checkpoint, named by the call's effect id. In a git
+work tree it also snapshots the files, into a git store under
+`RIG_HOME/snapshots` that leaves the project's own repository alone and
+skips what its `.gitignore` skips. `/rewind` lists the checkpoints, newest
+first, and goes back to the one picked: the conversation as that call found
+it and the files as they were then. Going back to the start of a turn puts
+your message back in the input to edit. `/rewind <n> chat` leaves the files
+alone, and `/rewind undo` undoes the last rewind, files included. `/fork`
+clones the agent at a checkpoint, or as it is with `/fork now`, into a new
+agent with the same model and tools; `/agents` switches between them. A fork
+shares the files.
+
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,
