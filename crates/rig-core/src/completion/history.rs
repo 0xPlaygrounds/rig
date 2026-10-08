@@ -64,13 +64,12 @@ use base64::prelude::{BASE64_STANDARD, BASE64_STANDARD_NO_PAD};
 
 use crate::message::{
     Api, AssistantContent, AssistantMessage, CallId, DocumentData, DocumentMediaType,
-    DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolCall, ToolResult,
-    ToolResultContent, UserContent,
+    DocumentSourceKind, ImageMediaType, Message, Origin, Text, ToolResult, ToolResultContent,
+    UserContent,
 };
 use crate::wasm_compat::WasmCompatSync;
 
-/// The text of the result rig sends for a tool call nothing answered.
-pub const NO_RESULT_PROVIDED: &str = "No result provided";
+pub use crate::transcript::NO_RESULT_PROVIDED;
 
 /// What replaces a user image for a model without image input.
 pub const USER_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
@@ -452,11 +451,8 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Every call left unanswered when a user message with more than results
-///   or the next assistant message arrives, or when the history ends, gets a
-///   [`NO_RESULT_PROVIDED`] error result; a result no preceding call asked
-///   for is dropped. A system message that arrives while calls wait is held
-///   until they are answered.
+/// - Calls and results pair by [`crate::transcript::pair`]: an unanswered
+///   call gets a [`NO_RESULT_PROVIDED`] result and an orphan result is dropped.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -579,6 +575,12 @@ pub(crate) fn adapt_for(
                 };
                 shaped.extend(user(content, &mut ids, &form).into_iter().map(Some));
             }
+            // A failed turn is skipped, with the results answering it.
+            Message::Assistant(turn)
+                if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) =>
+            {
+                shaped.push(None);
+            }
             Message::Assistant(turn) => {
                 // A use can still be running only in the last turn, and only
                 // while nothing new follows it or the turn awaits a client call.
@@ -631,7 +633,11 @@ pub(crate) fn adapt_for(
     // Calls and results pair first, so an orphan result goes whether or not
     // the request declares tools; only then does a request without tools
     // get them as text, with no result made up for an unanswered call.
-    let shaped = merge_users(answer_calls(shaped, stored, accepts.tools));
+    let pairing = crate::transcript::Pairing {
+        stored,
+        answers: accepts.tools,
+    };
+    let shaped = merge_users(crate::transcript::pair(shaped, pairing).messages);
     let shaped = if accepts.tools {
         shaped
     } else {
@@ -907,10 +913,6 @@ fn assistant(
         .origin
         .as_ref()
         .is_some_and(|origin| same_model.is(origin));
-    // A failed turn is skipped, so it claims no ids a later turn may use.
-    if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
-        return turn.clone();
-    }
     ids.turn();
     let content: Vec<Option<AssistantContent>> = turn
         .content
@@ -1411,224 +1413,6 @@ fn merge_users(history: Vec<Message>) -> Vec<Message> {
         }
     }
     merged
-}
-
-/// pi's second pass over `history`, where `None` is a turn the first pass
-/// emptied: skip failed turns, answer every unanswered call, drop results no
-/// call waits for, and hold system messages that arrive while calls wait.
-/// A skipped turn's results go with it, and the user messages it separated
-/// become one, since a wire that requires alternating roles would otherwise
-/// reject the history.
-fn answer_calls(history: Vec<Option<Message>>, stored: bool, answers: bool) -> Vec<Message> {
-    // Results before the first turn of a stored conversation answer calls
-    // the provider holds.
-    let mut stored = stored;
-    let mut shaped = Vec::with_capacity(history.len());
-    let mut waiting: Vec<ToolCall> = Vec::new();
-    let mut held = Vec::new();
-    let mut gap = false;
-    // Results that answer some waiting calls while others still wait: a
-    // system message between them must not end the turn's results.
-    let mut pending: Vec<UserContent> = Vec::new();
-    let mut pending_gap = false;
-    for message in adjacent_users_merged(history) {
-        let Some(message) = message else {
-            close(
-                &mut shaped,
-                &mut waiting,
-                &mut held,
-                answers,
-                std::mem::take(&mut pending),
-                std::mem::take(&mut pending_gap),
-            );
-            stored = false;
-            gap = true;
-            continue;
-        };
-        match message {
-            Message::Assistant(turn) => {
-                close(
-                    &mut shaped,
-                    &mut waiting,
-                    &mut held,
-                    answers,
-                    std::mem::take(&mut pending),
-                    std::mem::take(&mut pending_gap),
-                );
-                stored = false;
-                if turn.stop.as_ref().is_some_and(|stop| stop.is_failure()) {
-                    gap = true;
-                    continue;
-                }
-                gap = false;
-                waiting = distinct(turn.tool_calls());
-                shaped.push(Message::Assistant(turn));
-            }
-            Message::User { mut content } => {
-                if content.is_empty() {
-                    close(
-                        &mut shaped,
-                        &mut waiting,
-                        &mut held,
-                        answers,
-                        std::mem::take(&mut pending),
-                        std::mem::take(&mut pending_gap),
-                    );
-                    shaped.push(Message::User { content });
-                    gap = false;
-                    continue;
-                }
-                // A result answers a call of the turn just before it, once.
-                let mut answered: HashSet<CallId> = pending
-                    .iter()
-                    .filter_map(|part| match part {
-                        UserContent::ToolResult(result) => Some(result.call.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                content.retain(|part| match part {
-                    UserContent::ToolResult(result) => {
-                        (stored || waiting.iter().any(|call| call.id == result.call))
-                            && answered.insert(result.call.clone())
-                    }
-                    UserContent::Text(_)
-                    | UserContent::Image(_)
-                    | UserContent::Audio(_)
-                    | UserContent::Video(_)
-                    | UserContent::Document(_) => true,
-                });
-                if content.is_empty() && waiting.is_empty() {
-                    // Only results nothing waits for: the gap stays open.
-                    continue;
-                }
-                let only_results = !content.is_empty()
-                    && content
-                        .iter()
-                        .all(|part| matches!(part, UserContent::ToolResult(_)));
-                if pending.is_empty() {
-                    pending_gap = gap;
-                }
-                pending.extend(content);
-                gap = false;
-                // pi holds a system message while calls wait, so results
-                // split around one still answer the turn.
-                if only_results && waiting.iter().any(|call| !answered.contains(&call.id)) {
-                    continue;
-                }
-                close(
-                    &mut shaped,
-                    &mut waiting,
-                    &mut held,
-                    answers,
-                    std::mem::take(&mut pending),
-                    std::mem::take(&mut pending_gap),
-                );
-            }
-            Message::System { .. } if !waiting.is_empty() => held.push(message),
-            system => {
-                gap = false;
-                shaped.push(system);
-            }
-        }
-    }
-    close(
-        &mut shaped,
-        &mut waiting,
-        &mut held,
-        answers,
-        pending,
-        pending_gap,
-    );
-    shaped
-}
-
-/// `history` with each run of adjacent non-empty user messages made one, so
-/// results split over several messages answer the turn before them.
-fn adjacent_users_merged(history: Vec<Option<Message>>) -> Vec<Option<Message>> {
-    let mut merged: Vec<Option<Message>> = Vec::with_capacity(history.len());
-    for message in history {
-        match (merged.last_mut(), message) {
-            (Some(Some(Message::User { content: previous })), Some(Message::User { content }))
-                if !previous.is_empty() && !content.is_empty() =>
-            {
-                previous.extend(content)
-            }
-            (_, message) => merged.push(message),
-        }
-    }
-    merged
-}
-
-/// Push the user message `content` with a result added for each `waiting`
-/// call it does not answer, then the held system messages. The results go
-/// before its first non-result part, in call order. Nothing is pushed for
-/// an empty message, and `merge` appends `content` to a user message that
-/// ends `shaped`.
-fn close(
-    shaped: &mut Vec<Message>,
-    waiting: &mut Vec<ToolCall>,
-    held: &mut Vec<Message>,
-    answers: bool,
-    mut content: Vec<UserContent>,
-    merge: bool,
-) {
-    if !answers {
-        waiting.clear();
-    }
-    let missing: Vec<UserContent> = waiting
-        .drain(..)
-        .filter(|call| {
-            !content.iter().any(
-                |part| matches!(part, UserContent::ToolResult(result) if result.call == call.id),
-            )
-        })
-        .map(|call| {
-            UserContent::ToolResult(ToolResult {
-                call: call.id,
-                name: call.function.name,
-                content: vec![ToolResultContent::text(NO_RESULT_PROVIDED)],
-                is_error: true,
-            })
-        })
-        .collect();
-    let at = content
-        .iter()
-        .position(|part| !matches!(part, UserContent::ToolResult(_)))
-        .unwrap_or(content.len());
-    content.splice(at..at, missing);
-    // Results come first: Anthropic requires it, and Chat sends them as tool
-    // messages that must follow the turn directly.
-    content.sort_by_key(|part| !matches!(part, UserContent::ToolResult(_)));
-    // A held system message goes right after the results, before the user's
-    // own text, as pi places it.
-    let at = content
-        .iter()
-        .position(|part| !matches!(part, UserContent::ToolResult(_)))
-        .unwrap_or(content.len());
-    let text = if held.is_empty() {
-        Vec::new()
-    } else {
-        content.split_off(at)
-    };
-    if !content.is_empty() {
-        match shaped.last_mut() {
-            Some(Message::User { content: previous }) if merge => previous.extend(content),
-            _ => shaped.push(Message::User { content }),
-        }
-    }
-    shaped.append(held);
-    if !text.is_empty() {
-        shaped.push(Message::User { content: text });
-    }
-}
-
-/// `calls`, keeping the first of each id.
-fn distinct<'a>(calls: impl Iterator<Item = &'a ToolCall>) -> Vec<ToolCall> {
-    let mut seen = HashSet::new();
-    calls
-        .filter(|call| seen.insert(call.id.clone()))
-        .cloned()
-        .collect()
 }
 
 #[cfg(test)]

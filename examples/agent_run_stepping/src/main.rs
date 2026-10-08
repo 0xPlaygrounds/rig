@@ -20,10 +20,11 @@
 use std::collections::BTreeSet;
 
 use anyhow::Result;
-use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy};
+use rig::agent::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, TurnPolicy,
+};
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidToolCallAction};
 use rig::completion::CompletionRequest;
-use rig::message::UserContent;
 use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
@@ -156,26 +157,23 @@ async fn main() -> Result<()> {
                     anyhow::bail!("resumed run must re-emit the pending tool calls");
                 };
 
-                let mut results = Vec::new();
                 for call in calls {
-                    // Tool calls suppressed by invalid tool-call recovery come
-                    // with a pre-resolved result and must not be executed.
-                    if let Some(result) = call.preresolved_result {
-                        results.push(result);
-                        continue;
+                    match call {
+                        PendingToolCall::Execute(call) => {
+                            let args = call.arguments().to_string();
+                            println!("→ executing {}({args})", call.name());
+                            let mut context = rig::tool::ToolContext::new();
+                            let result = local_tools.execute(call.name(), args, &mut context).await;
+                            run_resumed.answer(call.answer(result))?;
+                        }
+                        // Arguments that are not a JSON object never run: the
+                        // run tells the model to call again.
+                        PendingToolCall::Malformed(call) => {
+                            run_resumed.answer(call.answer(None))?
+                        }
+                        other => anyhow::bail!("unsupported pending call {other:?}"),
                     }
-                    let name = &call.tool_call.function.name;
-                    let args = call.tool_call.function.arguments_value().to_string();
-                    println!("→ executing {name}({args})");
-                    let mut context = rig::tool::ToolContext::new();
-                    let result = local_tools.execute(name, args, &mut context).await;
-                    results.push(UserContent::tool_result(
-                        call.tool_call.id.clone(),
-                        name.clone(),
-                        result.output().clone().into_content(),
-                    ));
                 }
-                run_resumed.tool_results(results)?;
                 run = run_resumed;
             }
             AgentRunStep::Done(response) => {

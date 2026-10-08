@@ -1,3 +1,4 @@
+use crate::run::CanonicalHistory;
 use rig_core::error::ProviderError;
 use rig_core::{ProviderResponseError, http_client};
 
@@ -81,7 +82,8 @@ fn prompt_error_forwards_captured_response_headers() {
 #[test]
 fn prompt_error_reports_no_headers_for_unrelated_variants() {
     let error = PromptError::Cancelled {
-        chat_history: vec![Message::user("hi")],
+        chat_history: CanonicalHistory::validate(vec![Message::user("hi")])
+            .expect("a lone user message is canonical"),
         reason: "cancelled".to_string(),
     };
     assert!(error.provider_response_headers().is_none());
@@ -106,7 +108,8 @@ fn prompt_error_forwards_the_provider_request_id() {
 #[test]
 fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
     let error = PromptError::Cancelled {
-        chat_history: vec![Message::user("hi")],
+        chat_history: CanonicalHistory::validate(vec![Message::user("hi")])
+            .expect("a lone user message is canonical"),
         reason: "cancelled".to_string(),
     };
 

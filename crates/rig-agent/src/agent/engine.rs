@@ -17,7 +17,7 @@ use rig_core::{
     completion::ModelRef,
     effect::{EffectKind, Outcome},
     error::{ErrorKind, ErrorReport},
-    message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName, UserContent},
+    message::{AssistantContent, Message, ToolCall, ToolFunction, ToolName},
     telemetry::SpanCombinator,
     wasm_compat::{WasmBoxedFuture, WasmBoxedStream, WasmCompatSend, WasmCompatSync},
 };
@@ -27,21 +27,18 @@ use super::{
     completion::{PreparedCompletionRequest, build_prepared_completion_request},
     hook::{
         AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
-        InvalidToolCallAction, InvalidToolCallContext, ModelSelection, ModelSelectionAction,
-        ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta,
-        RequestPatch, RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind,
-        TextDelta, ToolCallDelta,
+        InvalidToolCallAction, ModelSelection, ModelSelectionAction, ModelTurnAction,
+        ModelTurnFinished, ObservationAction, OutcomeAction, ReasoningDelta, RequestPatch,
+        RunSettled, RunStart, RunStartAction, SettledOutcome, StepEventKind, TextDelta,
+        ToolCallDelta,
     },
     run::{
-        AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall,
+        AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer,
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
         response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
-        transcript::{
-            assistant_text_from_choice, is_empty_assistant_turn, tool_result_message,
-            tool_result_output,
-        },
+        transcript::{assistant_text_from_choice, is_empty_assistant_turn},
     },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
@@ -473,15 +470,21 @@ where
 /// that body ran (a [`ToolExecutionCommitted`](crate::agent::MultiTurnStreamItem::ToolExecutionCommitted)).
 ///
 /// - Every tool runs (sequentially at `tool_concurrency <= 1`, else
-///   concurrently bounded by it), with outcomes collected.
+///   concurrently bounded by it), with outcomes collected. A malformed call
+///   never runs: its invalid-call hook decides its answer.
+/// - Once the batch drains, each settled call is answered into the run in
+///   call order, so a stop cancels with the settled results kept (see below).
+///   A run a host drove to a part-answered batch itself resumes here with only
+///   the unanswered calls.
 /// - On the first hook termination / fail-closed error the batch fails fast: no
 ///   new tool starts, not-yet-started concurrent siblings are dropped,
 ///   already-started ones are drained, and the deterministic lowest call-index
-///   error is returned with **no** history commit.
-/// - Only if the whole batch settles are the results committed to run
-///   history, in call order. A preresolved (invalid-recovery) result is
-///   committed as is, and a hook-skipped call's result is committed with no
-///   execution.
+///   error is returned. A termination's history is
+///   [`AgentRun::canonical_history`]: the settled results, every other call
+///   closed by `transcript::close_pending`.
+/// - Only if the whole batch settles successfully does the run commit the
+///   results to history, in call order, with any results answered before
+///   (a preresolved invalid-recovery result, or one a host already fed).
 ///
 /// `chain_tool_span` lets the blocking surface chain spans into its linear
 /// `follows_from` sequence; `is_streaming` is reported to the invalid-call hook.
@@ -498,16 +501,31 @@ where
     F: Fn(tracing::Span) -> tracing::Span + WasmCompatSend + 'a,
 {
     Box::pin(async move {
-        let full_history_for_errors = run.full_history();
         let call_count = calls.len();
 
-        // Outcomes are collected in call order and nothing is committed until
+        // A malformed call carries the invalid-call context its hook is
+        // offered before the call is answered.
+        let prepared: Vec<_> = calls
+            .into_iter()
+            .map(|call| {
+                let call = match call {
+                    PendingToolCall::Execute(call) => Ok(call),
+                    PendingToolCall::Malformed(call) => {
+                        let context = run.malformed_context(&call, is_streaming);
+                        Err((call, context))
+                    }
+                };
+                (call, chain_tool_span(new_execute_tool_span()))
+            })
+            .collect();
+
+        // Answers are collected in call order and nothing is committed until
         // the whole batch settles. After the first termination or fail-closed
         // error no new tool starts, started ones are drained, and the lowest
         // call-index error wins.
-        let mut collected: Vec<Option<(UserContent, Option<ToolCall>)>> =
+        let mut collected: Vec<Option<(ToolAnswer, Option<ToolCall>)>> =
             (0..call_count).map(|_| None).collect();
-        let mut first_error: Option<(usize, PromptError)> = None;
+        let mut first_error: Option<(usize, ToolExit)> = None;
 
         {
             // Bounded by `tool_concurrency` (`0`/`1` poll strictly in call
@@ -515,44 +533,33 @@ where
             // flag makes a not-yet-started sibling skip (its side effect never
             // runs) once any sibling terminates, while in-flight siblings are
             // drained so the lowest call-index terminator wins and no task is left
-            // detached. A preresolved call never executes and has no span.
+            // detached.
             let terminating = Arc::new(std::sync::atomic::AtomicBool::new(false));
-            let prepared: Vec<_> = calls
-                .into_iter()
-                .map(|call| {
-                    let (span, malformed) = match call.preresolved_result {
-                        Some(_) => (tracing::Span::none(), None),
-                        None => (
-                            chain_tool_span(new_execute_tool_span()),
-                            run.malformed_tool_call_context(&call.tool_call, is_streaming),
-                        ),
-                    };
-                    (call, malformed, span)
-                })
-                .collect();
             let unordered = stream::iter(prepared.into_iter().enumerate())
-                .map(|(index, (call, malformed, span))| {
+                .map(|(index, (call, span))| {
                     let tool_snapshot = &tool_snapshot;
-                    let full_history_for_errors = &full_history_for_errors;
                     let terminating = terminating.clone();
                     async move {
-                        if let Some(result) = call.preresolved_result {
-                            return (index, Some(Ok((result, None))));
-                        }
                         // `None` marks a dropped (never-started) sibling.
                         if terminating.load(std::sync::atomic::Ordering::SeqCst) {
                             return (index, None);
                         }
-                        let outcome = run_single_tool(
-                            runner,
-                            hook_ctx,
-                            tool_snapshot,
-                            &call.tool_call,
-                            malformed.as_ref(),
-                            full_history_for_errors,
-                        )
-                        .await;
-                        (index, Some(outcome.map(|o| (o.content, o.executed))))
+                        let outcome = match call {
+                            Ok(call) => {
+                                run_single_tool(runner, hook_ctx, tool_snapshot, call.tool_call())
+                                    .await
+                                    .map(|outcome| (call.answer(outcome.result), outcome.executed))
+                            }
+                            Err((call, context)) => {
+                                let action = runner
+                                    .config
+                                    .hooks
+                                    .on_invalid_tool_call(hook_ctx, &context)
+                                    .await;
+                                Ok((call.answer(action), None))
+                            }
+                        };
+                        (index, Some(outcome))
                     }
                     .instrument(span)
                 })
@@ -563,9 +570,13 @@ where
                 // A dropped sibling records nothing.
                 let Some(result) = outcome else { continue };
                 match result {
-                    Ok(collected_result) => {
+                    Ok(answered) => {
+                        // An answer that ends the run fails the batch when applied.
+                        if answered.0.ends_run() {
+                            terminating.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
                         if let Some(slot) = collected.get_mut(index) {
-                            *slot = Some(collected_result);
+                            *slot = Some(answered);
                         }
                     }
                     Err(err) => {
@@ -580,21 +591,46 @@ where
             }
         }
 
-        // On termination return only the deterministic error, with no
-        // history commit.
-        if let Some((_, err)) = first_error {
-            return Err(err);
+        // Answer the settled calls into the run, so a stop still cancels with
+        // them kept. The run applies a run-ending answer after the rest, and
+        // one after the lowest error is never applied.
+        let mut answers = Vec::with_capacity(call_count);
+        let mut ran = Vec::with_capacity(call_count);
+        for (index, slot) in collected.into_iter().enumerate() {
+            let Some((answer, executed)) = slot else {
+                continue;
+            };
+            if answer.ends_run() && first_error.as_ref().is_some_and(|(i, _)| *i < index) {
+                continue;
+            }
+            ran.push((answer.index, executed));
+            answers.push(answer);
+        }
+        if let Err(err) = run.answer_all(answers) {
+            first_error = Some((0, ToolExit::Fail(err)));
         }
 
-        // Every non-dropped slot is filled; a dropped slot only occurs after a
-        // termination, handled above.
-        let Some(settled) = collected.into_iter().collect::<Option<Vec<_>>>() else {
-            return Err(PromptError::Provider(ProviderError::Response(
-                "tool execution finished without producing every result".to_string(),
-            )));
+        // On termination return only the deterministic error.
+        if let Some((_, exit)) = first_error {
+            return Err(match exit {
+                ToolExit::Stop(reason) => run.cancel_error(reason),
+                ToolExit::Fail(err) => err,
+            });
+        }
+
+        // The batch is committed as one user message holding a result per
+        // call, in call order: a call answered here holds its effective call
+        // when its body ran, and any other slot (answered before) holds none.
+        let committed = match run.messages().last() {
+            Some(Message::User { content }) => content.len(),
+            _ => 0,
         };
-        let (committed, executed): (Vec<_>, Vec<_>) = settled.into_iter().unzip();
-        run.tool_results(committed)?;
+        let mut executed: Vec<Option<ToolCall>> = vec![None; committed];
+        for (index, call) in ran {
+            if let Some(slot) = executed.get_mut(index) {
+                *slot = call;
+            }
+        }
         Ok(executed)
     })
 }
@@ -1293,12 +1329,19 @@ pub(crate) fn wrong_outcome(expected: &str, outcome: &Outcome) -> ErrorReport {
     )
 }
 
-/// Outcome of [`run_single_tool`]: the tool-result content plus whether the
-/// tool's body ran (and the effective call) or a hook skipped it.
+/// Why a tool call ended the run instead of answering: a hook stopped it,
+/// cancelling with the run's own history, or a failure the run returns.
+pub(crate) enum ToolExit {
+    Stop(String),
+    Fail(PromptError),
+}
+
+/// Outcome of [`run_single_tool`]: the tool result plus whether the tool's
+/// body ran (and the effective call) or a hook skipped it.
 pub(crate) struct ToolCallOutcome {
     /// The tool result delivered to the model (a real output, a redacted
     /// replacement, or a hook skip reason).
-    pub content: UserContent,
+    pub result: ToolResult,
     /// The effective call when the tool's body ran: the model's call with any
     /// [`DispatchAction::Patch`] hook rewrite applied, reported as
     /// [`ToolExecutionCommitted`](crate::agent::streaming::MultiTurnStreamItem::ToolExecutionCommitted).
@@ -1310,30 +1353,18 @@ pub(crate) struct ToolCallOutcome {
 /// result. **Shared by the blocking and streaming drivers** so a tool call
 /// behaves identically in both: same hook events (`on_dispatch` before,
 /// `on_outcome` after), same fail-closed skip/terminate handling, and the
-/// same result shaping. A hook's skip becomes [`ToolResult::skipped`], and
-/// every result is converted directly into typed message content through
-/// [`tool_result_output`] without reparsing text. Records `gen_ai.tool.*` on
-/// the current span; `error_history` builds a cancellation error if a hook
-/// terminates the run. Returns whether the tool body executed via
+/// same result shaping. A hook's skip becomes [`ToolResult::skipped`].
+/// Records `gen_ai.tool.*` on the current span. A hook that terminates the
+/// run returns [`ToolExit::Stop`]. Returns whether the tool body executed via
 /// [`ToolCallOutcome::executed`].
-///
-/// A call whose arguments are not a JSON object never reaches the tool. Its
-/// `malformed` context goes to the invalid-call hook first; see
-/// [`answer_malformed_tool_call`].
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
-    malformed: Option<&InvalidToolCallContext>,
-    error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError> {
+) -> Result<ToolCallOutcome, ToolExit> {
     let record_content = runner.config.record_telemetry_content;
     let tool_name = tool_call.function.name.as_str();
-    if let Some(raw) = &tool_call.function.invalid_arguments {
-        return answer_malformed_tool_call(runner, ctx, tool_call, raw, malformed, error_history)
-            .await;
-    }
     let args = tool_call.function.arguments_value().to_string();
 
     let tool_span = tracing::Span::current();
@@ -1350,15 +1381,7 @@ pub(crate) async fn run_single_tool(
         result: exec,
         executed,
         args: effective_args,
-    } = dispatch_tool_call(
-        runner,
-        ctx,
-        tool_snapshot,
-        tool_call,
-        args.clone(),
-        error_history,
-    )
-    .await?;
+    } = dispatch_tool_call(runner, ctx, tool_snapshot, tool_call, args.clone()).await?;
 
     // A hook patched the arguments: re-record the span so the trace reflects
     // what the tool actually received rather than what the model emitted.
@@ -1388,57 +1411,9 @@ pub(crate) async fn run_single_tool(
     if record_content {
         tool_span.record("gen_ai.tool.call.result", exec.output().render());
     }
-    let content = tool_result_output(tool_call.id.clone(), tool_call.function.name.clone(), &exec);
-    Ok(ToolCallOutcome { content, executed })
-}
-
-/// Answer a call whose arguments `raw` are not a JSON object, after offering
-/// `context` to the invalid-call hook. No action answers with
-/// [`invalid_arguments_feedback`](rig_core::transcript::invalid_arguments_feedback)
-/// and `Retry` with its feedback, both as error results; `Skip` answers with a
-/// skipped result. `Stop` cancels the run, and `Fail` fails it naming the tool
-/// and the parse error. `Repair` fails the same way: renaming the tool cannot
-/// fix its arguments.
-async fn answer_malformed_tool_call(
-    runner: &AgentRunner,
-    ctx: &HookContext,
-    tool_call: &ToolCall,
-    raw: &str,
-    context: Option<&InvalidToolCallContext>,
-    error_history: &[Message],
-) -> Result<ToolCallOutcome, PromptError> {
-    let action = futures::future::OptionFuture::from(
-        context.map(|context| runner.config.hooks.on_invalid_tool_call(ctx, context)),
-    )
-    .await
-    .flatten();
-    let id = tool_call.id.clone();
-    let name = tool_call.function.name.clone();
-    let content = match action {
-        None => tool_result_message(
-            id,
-            name,
-            rig_core::transcript::invalid_arguments_feedback(tool_call.function.name.as_str(), raw),
-        ),
-        Some(InvalidToolCallAction::Retry { feedback }) => tool_result_message(id, name, feedback),
-        Some(InvalidToolCallAction::Skip { reason }) => {
-            tool_result_output(id, name, &ToolResult::skipped(reason))
-        }
-        Some(InvalidToolCallAction::Stop { reason }) => {
-            return Err(PromptError::cancelled(error_history.to_vec(), reason));
-        }
-        Some(InvalidToolCallAction::Fail | InvalidToolCallAction::Repair { .. }) => {
-            return Err(ProviderError::Response(format!(
-                "tool `{}` was called with arguments that are not a JSON object: {}",
-                tool_call.function.name,
-                crate::run::policy::arguments_parse_error(raw)
-            ))
-            .into());
-        }
-    };
     Ok(ToolCallOutcome {
-        content,
-        executed: None,
+        result: exec,
+        executed,
     })
 }
 
@@ -1648,18 +1623,16 @@ pub(crate) struct ToolCallDispatch {
 /// Dispatch a tool call through the agent's bus at the dispatch boundary:
 /// `on_dispatch` before (patch the arguments, skip with a reason, or stop),
 /// the bus, `on_outcome` after (replace what the run sees, or stop). A stop
-/// cancels the run with `error_history`, and a bus that cannot serve the call
-/// fails it; every other failure is the tool result the model sees.
+/// is [`ToolExit::Stop`], and a bus that cannot serve the call fails the run;
+/// every other failure is the tool result the model sees.
 pub(crate) async fn dispatch_tool_call(
     runner: &AgentRunner,
     ctx: &HookContext,
     tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
     args: String,
-    error_history: &[Message],
-) -> Result<ToolCallDispatch, PromptError> {
+) -> Result<ToolCallDispatch, ToolExit> {
     let (tool_name, call_id) = (tool_call.function.name.as_str(), &tool_call.id);
-    let cancel = |reason| PromptError::cancelled(error_history.to_vec(), reason);
     let kind = EffectKind::ToolCall {
         name: tool_name.to_owned(),
         args,
@@ -1673,7 +1646,7 @@ pub(crate) async fn dispatch_tool_call(
     {
         Ok(scope) => (scope, None),
         Err((_, report)) if report.kind == ErrorKind::Cancelled => {
-            return Err(cancel(report.message));
+            return Err(ToolExit::Stop(report.message));
         }
         Err((scope, report)) => {
             tracing::info!(tool_name = tool_name, reason = %report.message, "Tool call rejected");
@@ -1729,7 +1702,9 @@ pub(crate) async fn dispatch_tool_call(
             other.family()
         ))),
         // A hook that observed the result stopped the run.
-        Err(report) if report.kind == ErrorKind::Cancelled => return Err(cancel(report.message)),
+        Err(report) if report.kind == ErrorKind::Cancelled => {
+            return Err(ToolExit::Stop(report.message));
+        }
         // A layer on the tool's key denied the call: the model sees the
         // skipped result, as it does for a hook's denial.
         Err(report) if report.kind == ErrorKind::Denied => {
@@ -1746,7 +1721,7 @@ pub(crate) async fn dispatch_tool_call(
                 ErrorKind::BusClosed | ErrorKind::HandlerUnavailable | ErrorKind::Divergence
             ) =>
         {
-            return Err(PromptError::Report(report));
+            return Err(ToolExit::Fail(PromptError::Report(report)));
         }
         Err(report) => ToolResult::failed(report.into()),
     };

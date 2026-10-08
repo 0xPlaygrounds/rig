@@ -6,12 +6,12 @@
 use std::collections::BTreeSet;
 
 use rig::agent::CompletionCall;
-use rig::agent::run::{ModelTurn, PendingToolCall, TurnPolicy};
+use rig::agent::run::{ModelTurn, PendingToolCall, ToolAnswer, TurnPolicy};
 use rig::completion::{CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Model;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
-use rig::tool::Tool;
+use rig::tool::{Tool, ToolOutput, ToolResult};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -209,25 +209,20 @@ pub(crate) fn execute_arithmetic(name: &str, arguments: &serde_json::Value) -> i
     }
 }
 
-/// Answer every pending call: preresolved results pass through unexecuted,
-/// the rest run the arithmetic tools.
-pub(crate) fn execute_pending_calls(calls: &[PendingToolCall]) -> Vec<UserContent> {
+/// Answer every pending call: the arithmetic tools run the executable ones,
+/// and a malformed one gets the run's default feedback.
+pub(crate) fn execute_pending_calls(calls: Vec<PendingToolCall>) -> Vec<ToolAnswer> {
     calls
-        .iter()
-        .map(|call| {
-            if let Some(result) = call.preresolved_result.clone() {
-                return result;
+        .into_iter()
+        .map(|call| match call {
+            PendingToolCall::Execute(call) => {
+                let output = execute_arithmetic(call.name(), &call.arguments());
+                call.answer(ToolResult::success(ToolOutput::json(serde_json::json!(
+                    output
+                ))))
             }
-            let output = execute_arithmetic(
-                &call.tool_call.function.name,
-                &call.tool_call.function.arguments_value(),
-            );
-            let content = vec![ToolResultContent::json(serde_json::json!(output))];
-            UserContent::tool_result(
-                call.tool_call.id.clone(),
-                call.tool_call.function.name.clone(),
-                content,
-            )
+            PendingToolCall::Malformed(call) => call.answer(None),
+            other => panic!("unsupported pending call {other:?}"),
         })
         .collect()
 }

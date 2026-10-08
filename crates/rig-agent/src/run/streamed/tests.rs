@@ -1,11 +1,21 @@
 use super::super::policy::InvalidToolCallAction;
 use super::super::response::PromptError;
-use super::super::{AgentRun, AgentRunStep};
+use super::super::{AgentRun, AgentRunStep, PendingToolCall, ToolAnswer};
 use super::*;
 use rig_core::completion::{CompletionResponse, Usage};
-use rig_core::message::{ToolFunction, ToolResultContent, UserContent};
+use rig_core::message::ToolFunction;
 use rig_core::streaming::Transcript;
 use serde_json::json;
+
+/// Answer an executable call with the success `2`.
+fn answer_two(call: PendingToolCall) -> ToolAnswer {
+    let PendingToolCall::Execute(call) = call else {
+        panic!("expected an executable call, got {call:?}");
+    };
+    call.answer(rig_core::tool::ToolResult::success(
+        rig_core::tool::ToolOutput::text("2"),
+    ))
+}
 
 fn add_policy() -> TurnPolicy {
     TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy")
@@ -335,13 +345,9 @@ fn streamed_run_completes_a_tool_roundtrip() {
         panic!("expected CallTools");
     };
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].tool_call.id, add.id);
-    run.tool_results(vec![UserContent::tool_result(
-        CallId::from_wire("tc_1"),
-        ToolName::new("add").expect("tool name"),
-        vec![ToolResultContent::text("2")],
-    )])
-    .expect("tool_results should succeed");
+    assert!(matches!(&calls[0], PendingToolCall::Execute(call) if *call.id() == add.id));
+    run.answer_all(calls.into_iter().map(answer_two))
+        .expect("the answer should be accepted");
 
     // Turn 2: plain text finishes the run.
     let AgentRunStep::CallModel { .. } = run.next_step().expect("next_step") else {
@@ -528,13 +534,12 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
 
     let serialized = serde_json::to_string(&run).expect("serialize mid-run");
     let mut restored: AgentRun = serde_json::from_str(&serialized).expect("deserialize mid-run");
+    let AgentRunStep::CallTools { calls } = restored.next_step().expect("CallTools step") else {
+        panic!("expected CallTools");
+    };
     restored
-        .tool_results(vec![UserContent::tool_result(
-            CallId::from_wire("tc_1"),
-            ToolName::new("add").expect("tool name"),
-            vec![ToolResultContent::text("2")],
-        )])
-        .expect("tool_results should succeed");
+        .answer_all(calls.into_iter().map(answer_two))
+        .expect("the answer should be accepted");
     assert!(matches!(
         restored.next_step().expect("next turn"),
         AgentRunStep::CallModel { turn: 2, .. }
@@ -577,25 +582,21 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                 else {
                     panic!("pending tools");
                 };
-                run.next_step().unwrap();
+                let AgentRunStep::CallTools { calls: run_calls } = run.next_step().unwrap() else {
+                    panic!("pending tools");
+                };
                 for (index, call) in restored_calls.iter().enumerate() {
-                    assert_eq!(call.tool_call, calls[index]);
+                    assert!(
+                        matches!(call, PendingToolCall::Execute(call) if *call.tool_call() == calls[index])
+                    );
                 }
-                let results = calls
-                    .iter()
-                    .rev()
-                    .map(|call| {
-                        UserContent::tool_result(
-                            call.id.clone(),
-                            ToolName::new("add").expect("tool name"),
-                            vec![ToolResultContent::text("2")],
-                        )
-                    })
-                    .collect::<Vec<_>>();
                 let before = serde_json::to_value(&restored).unwrap();
                 assert!(
                     restored
-                        .tool_results(vec![results[0].clone(), results[0].clone()])
+                        .answer_all([
+                            answer_two(restored_calls[0].clone()),
+                            answer_two(restored_calls[0].clone()),
+                        ])
                         .is_err()
                 );
                 assert_eq!(
@@ -603,8 +604,11 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     serde_json::to_value(&restored).unwrap(),
                     "duplicate namespace answer must not consume state"
                 );
-                restored.tool_results(results.clone()).unwrap();
-                run.tool_results(results).unwrap();
+                restored
+                    .answer_all(restored_calls.into_iter().rev().map(answer_two))
+                    .unwrap();
+                run.answer_all(run_calls.into_iter().rev().map(answer_two))
+                    .unwrap();
                 assert!(
                     matches!(restored.next_step().unwrap(), AgentRunStep::CallModel { turn: next, .. } if next == turn + 2)
                 );

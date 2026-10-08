@@ -754,9 +754,10 @@ impl Agent {
     /// loaded nor appended: the history is already in the run, and the driver
     /// that persisted it owns memory persistence and appends the finished run's
     /// `messages` itself, since a suspended run never reached the `Done`
-    /// append, so the response's `memory_append` is `None`. Pending tool
-    /// calls re-execute on resume: a tool that ran before the suspension and
-    /// answered nothing runs again. Drive it like any runner: `.await`,
+    /// append, so the response's `memory_append` is `None`. Unanswered tool
+    /// calls re-execute on resume: a tool that ran before the suspension but
+    /// whose result was not fed to the run runs again (at least once), while
+    /// answered calls keep their results. Drive it like any runner: `.await`,
     /// [`stream`](AgentRunner::stream) or
     /// [`run_channel`](AgentRunner::run_channel). The run must have been
     /// suspended by the same rig version.

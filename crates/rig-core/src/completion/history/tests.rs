@@ -900,3 +900,51 @@ fn a_call_renamed_for_a_reused_id_keeps_its_item_where_the_item_holds_its_id() {
         "without a slot the item would name the old id"
     );
 }
+
+#[test]
+fn a_leading_turn_goes_with_its_results_and_its_user_message_stays() {
+    let call = crate::message::ToolCall::from_wire(
+        "c1",
+        crate::message::ToolFunction::new(
+            crate::message::ToolName::new("add").expect("tool name"),
+            json!({}),
+        ),
+    );
+    let result = UserContent::ToolResult(call.result(vec![ToolResultContent::text("3")]));
+    let answered = vec![
+        Message::system("s"),
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call.clone(),
+        )])),
+        Message::User {
+            content: vec![result.clone()],
+        },
+        Message::user("q"),
+    ];
+    assert_eq!(
+        from_first_user(answered),
+        vec![Message::system("s"), Message::user("q")]
+    );
+    let mixed = vec![
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call.clone(),
+        )])),
+        Message::User {
+            content: vec![result, UserContent::text("q")],
+        },
+    ];
+    assert_eq!(from_first_user(mixed), vec![Message::user("q")]);
+    let other = crate::message::ToolCall::from_wire("c2", call.function.clone());
+    let unrelated = Message::User {
+        content: vec![UserContent::ToolResult(
+            other.result(vec![ToolResultContent::text("4")]),
+        )],
+    };
+    let foreign = vec![
+        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+            call,
+        )])),
+        unrelated.clone(),
+    ];
+    assert_eq!(from_first_user(foreign), vec![unrelated]);
+}

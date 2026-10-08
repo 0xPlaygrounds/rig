@@ -9,7 +9,9 @@
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
-use rig_core::transcript::assistant_text_from_choice;
+use rig_core::transcript::{
+    TranscriptError, assistant_text_from_choice, repair, validate_canonical,
+};
 use serde::{Deserialize, Serialize};
 
 /// One completion call of a run: what was asked and what came back.
@@ -319,8 +321,8 @@ pub enum PromptError {
     /// The run was cancelled.
     #[error("the run was cancelled: {reason}")]
     Cancelled {
-        /// Canonical history available at cancellation.
-        chat_history: Vec<Message>,
+        /// The run's history at cancellation, every tool call answered.
+        chat_history: CanonicalHistory,
         /// Human-readable cancellation reason.
         reason: String,
     },
@@ -412,15 +414,79 @@ pub(crate) use forward_provider_response_helpers;
 forward_provider_response_helpers!(PromptError, Provider, "completion error", report = Report);
 
 impl PromptError {
-    /// Build a [`PromptError::Cancelled`] from the history available at
-    /// cancellation and a reason.
-    pub fn cancelled(
-        chat_history: impl IntoIterator<Item = Message>,
-        reason: impl Into<String>,
-    ) -> Self {
+    /// Build a [`PromptError::Cancelled`]. A driver gets the history from
+    /// [`AgentRun::cancel_error`](super::AgentRun::cancel_error) or
+    /// [`CanonicalHistory::validate`].
+    pub fn cancelled(chat_history: CanonicalHistory, reason: impl Into<String>) -> Self {
         Self::Cancelled {
-            chat_history: chat_history.into_iter().collect(),
+            chat_history,
             reason: reason.into(),
         }
+    }
+}
+
+/// A history in which every assistant tool call is answered by the next
+/// message, as [`validate_canonical`] defines it. Only [`close`](Self::close)
+/// and [`validate`](Self::validate) build one, so every value round-trips
+/// through serde, whose deserializing validates.
+///
+/// ```compile_fail,E0423
+/// use rig_agent::run::response::CanonicalHistory;
+/// let history = CanonicalHistory(Vec::new());
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "Vec<Message>", into = "Vec<Message>")]
+pub struct CanonicalHistory(Vec<Message>);
+
+impl CanonicalHistory {
+    /// Accept `messages` when they form a canonical transcript.
+    pub fn validate(messages: Vec<Message>) -> Result<Self, TranscriptError> {
+        validate_canonical(&messages)?;
+        Ok(Self(messages))
+    }
+
+    /// Close `messages` with [`repair`]: every open call is answered with
+    /// [`NO_RESULT_PROVIDED`](rig_core::transcript::NO_RESULT_PROVIDED), so
+    /// any history a run holds becomes one.
+    pub fn close(messages: Vec<Message>) -> Self {
+        let messages = repair(messages).messages;
+        debug_assert_eq!(validate_canonical(&messages), Ok(()));
+        Self(messages)
+    }
+
+    /// The messages, in order.
+    pub fn into_vec(self) -> Vec<Message> {
+        self.0
+    }
+}
+
+impl TryFrom<Vec<Message>> for CanonicalHistory {
+    type Error = TranscriptError;
+
+    fn try_from(messages: Vec<Message>) -> Result<Self, Self::Error> {
+        Self::validate(messages)
+    }
+}
+
+impl From<CanonicalHistory> for Vec<Message> {
+    fn from(history: CanonicalHistory) -> Self {
+        history.0
+    }
+}
+
+impl std::ops::Deref for CanonicalHistory {
+    type Target = [Message];
+
+    fn deref(&self) -> &[Message] {
+        &self.0
+    }
+}
+
+impl IntoIterator for CanonicalHistory {
+    type Item = Message;
+    type IntoIter = std::vec::IntoIter<Message>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }

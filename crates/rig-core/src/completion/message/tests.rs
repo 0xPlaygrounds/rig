@@ -318,3 +318,23 @@ fn document_data_keeps_its_json_and_reads_the_string_spelling() {
         DocumentData::File(DocumentSourceKind::Unknown)
     );
 }
+
+#[test]
+fn a_call_answers_with_its_own_id_and_name_as_a_success_or_an_error() {
+    let call = super::ToolCall::from_wire(
+        "c1",
+        super::ToolFunction::new(
+            super::ToolName::new("add").expect("tool name"),
+            serde_json::json!({}),
+        ),
+    );
+    let ok = call.result(vec![ToolResultContent::text("3")]);
+    let failed = call.error_result(vec![ToolResultContent::text("boom")]);
+    assert!(!ok.is_error);
+    assert!(failed.is_error);
+    assert_eq!(
+        (&failed.call, &failed.name),
+        (&call.id, &call.function.name)
+    );
+    assert_eq!(failed.content, vec![ToolResultContent::text("boom")]);
+}

@@ -421,7 +421,9 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
     };
     // Corrupt only the driver's copy so execution settles successfully but
     // `AgentRun` rejects the result before any commit-labelled item escapes.
-    calls[0].tool_call.id = rig_core::message::CallId::from_wire("mismatched_call");
+    let mut forged = serde_json::to_value(&calls[0]).expect("a pending call serializes");
+    forged["Execute"]["tool_call"]["id"] = serde_json::json!({"provider": "mismatched_call"});
+    calls[0] = serde_json::from_value(forged).expect("a forged call deserializes");
 
     let hook_context = HookContext::new(true, None, None);
     hook_context.set_turn(1);
@@ -3998,10 +4000,9 @@ async fn a_preresolved_result_streams_exactly_once() {
     ));
     run.resolve_invalid_tool_call(InvalidToolCallAction::skip("default_api was skipped"))
         .expect("the skip is accepted");
-    let AgentRunStep::CallTools { calls } = run.next_step().expect("the tool step") else {
-        panic!("expected the tool step");
-    };
-    assert!(calls.iter().all(|call| call.preresolved_result.is_some()));
+    // Every call is answered, so the next step commits the batch at once and
+    // never offers it as `CallTools`: the host persists before taking it.
+    assert_eq!(run.projection_start(), run.messages().len());
     run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
     let saved = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&saved).expect("run restores");
@@ -4072,7 +4073,11 @@ async fn a_run_resumed_mid_batch_announces_the_calls_it_answers() {
     let AgentRunStep::CallTools { calls } = run.next_step().expect("the tool step") else {
         panic!("expected the tool step");
     };
-    assert!(calls.iter().all(|call| call.preresolved_result.is_none()));
+    assert!(
+        calls
+            .iter()
+            .all(|call| matches!(call, crate::run::PendingToolCall::Execute(_)))
+    );
     assert_eq!(run.projection_start(), run.messages().len() - 1);
     run.advertise_tools(1, vec![arithmetic_tool_definition("add", "Add")]);
     let saved = serde_json::to_string(&run).expect("run serializes");

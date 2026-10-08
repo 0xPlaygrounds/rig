@@ -1,5 +1,7 @@
 use super::*;
-use crate::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, TurnPolicy};
+use crate::run::{
+    AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome, PendingToolCall, ToolAnswer, TurnPolicy,
+};
 use rig_core::completion::Usage;
 use rig_core::message::{
     AssistantMessage, CallId, Reasoning, ToolFunction, ToolName, ToolResultContent,
@@ -19,6 +21,16 @@ fn result(id: &str) -> UserContent {
         ToolName::new("add").expect("tool name"),
         vec![ToolResultContent::text("3")],
     )
+}
+
+/// Answer an executable call with the result `result` builds.
+fn answer(call: PendingToolCall) -> ToolAnswer {
+    match call {
+        PendingToolCall::Execute(call) => call.answer(rig_core::tool::ToolResult::success(
+            rig_core::tool::ToolOutput::text("3"),
+        )),
+        other => panic!("expected an executable call, got {other:?}"),
+    }
 }
 
 fn turn(choice: Vec<AssistantContent>, output_tool: Option<&str>) -> ModelTurn {
@@ -90,11 +102,11 @@ fn a_resume_cursor_projects_only_what_is_committed_after_it() {
         vec![AssistantContent::ToolCall(call("a", "add", json!({})))],
         None,
     );
-    assert!(matches!(
-        run.next_step(),
-        Ok(AgentRunStep::CallTools { .. })
-    ));
-    run.tool_results(vec![result("a")]).expect("results commit");
+    let Ok(AgentRunStep::CallTools { calls }) = run.next_step() else {
+        panic!("expected the tool step");
+    };
+    run.answer_all(calls.into_iter().map(answer))
+        .expect("results commit");
 
     // The process restarts: the restored run starts its cursor at its end.
     let saved = serde_json::to_string(&run).expect("run serializes");
@@ -111,11 +123,11 @@ fn a_resume_cursor_projects_only_what_is_committed_after_it() {
         vec![AssistantContent::ToolCall(call("b", "add", json!({})))],
         None,
     );
-    assert!(matches!(
-        run.next_step(),
-        Ok(AgentRunStep::CallTools { .. })
-    ));
-    run.tool_results(vec![result("b")]).expect("results commit");
+    let Ok(AgentRunStep::CallTools { calls }) = run.next_step() else {
+        panic!("expected the tool step");
+    };
+    run.answer_all(calls.into_iter().map(answer))
+        .expect("results commit");
 
     assert_eq!(projected(&run.messages()[cursor..]), ["call:b", "result:b"]);
 }

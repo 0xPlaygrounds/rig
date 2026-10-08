@@ -8,8 +8,8 @@ use std::collections::VecDeque;
 
 use futures::StreamExt;
 use rig::agent::run::{
-    AgentRun, AgentRunStep, CommittedItem, StreamedInvalidToolCall, StreamedResolution,
-    StreamedTurnAssembler, StreamedTurnEvent, TurnPolicy, project,
+    AgentRun, AgentRunStep, CommittedItem, PendingToolCall, StreamedInvalidToolCall,
+    StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent, TurnPolicy, project,
 };
 use rig::agent::{
     AgentHook, DispatchAction, DispatchEvent, InvalidToolCallAction, MultiTurnStreamItem,
@@ -168,13 +168,13 @@ async fn streamed_repair_continues_the_same_stream() {
                     }
                     AgentRunStep::CallTools { calls } => {
                         for call in &calls {
-                            assert_eq!(
-                                call.tool_call.function.name, "sum",
+                            assert!(
+                                matches!(call, PendingToolCall::Execute(call) if call.name() == "sum"),
                                 "the repaired name must reach the driver"
                             );
                             repaired = true;
                         }
-                        run.tool_results(execute_pending_calls(&calls))
+                        run.answer_all(execute_pending_calls(calls))
                             .expect("tool results should be accepted");
                     }
                     AgentRunStep::Done(response) => break response,
@@ -283,7 +283,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
                         }
                     }
                     AgentRunStep::CallTools { calls } => {
-                        run.tool_results(execute_pending_calls(&calls))
+                        run.answer_all(execute_pending_calls(calls))
                             .expect("tool results should be accepted");
                     }
                     AgentRunStep::Done(response) => break response,
