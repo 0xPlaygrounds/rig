@@ -13,7 +13,7 @@ use super::terminal::Tui;
 use super::view::TuiView;
 use crate::core::agent::{AgentStatus, CallOf, Conversation, Effort, ModelChoice, Partial};
 use crate::core::models;
-use crate::reload::ReloadBuild;
+use crate::host::reload::ReloadBuild;
 
 /// Lines of a tool result shown in the transcript.
 const RESULT_LINES: usize = 4;

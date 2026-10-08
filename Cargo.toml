@@ -222,7 +222,7 @@ opt-level = "s"
 version = "0.44.0"
 edition = "2024"
 # The toolchain in rust-toolchain.toml, the only one CI builds with.
-rust-version = "1.95.0"
+rust-version = "1.96.0"
 
 [workspace.dependencies]
 # Every requirement below is a FLOOR, not a pin: `tokio = "1"` means `^1`,

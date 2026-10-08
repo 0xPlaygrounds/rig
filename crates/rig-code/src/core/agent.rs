@@ -7,7 +7,7 @@ use rig_core::completion::{Message, Reasoning};
 use rig_core::message::ToolCall;
 use serde::{Deserialize, Serialize};
 
-use super::session::ReflectSaved;
+use super::save::ReflectSaved;
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`].

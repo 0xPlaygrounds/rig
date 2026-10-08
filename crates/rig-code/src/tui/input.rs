@@ -9,7 +9,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 
 use super::view::{PickValue, TuiView};
 use crate::core::agent::{AgentStatus, Interrupt, SetEffort, SetModel, Submit};
-use crate::reload::{CancelReload, ReloadBuild};
+use crate::host::reload::{CancelReload, ReloadBuild};
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;

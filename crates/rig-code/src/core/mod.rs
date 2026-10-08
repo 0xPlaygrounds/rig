@@ -1,13 +1,14 @@
 //! The agent core: agents as entities, the turn loop, the one effect
-//! dispatch path, the tool and command registries, and session saving. It
-//! does not depend on any view.
+//! dispatch path, the tool and command registries, models, and session
+//! saving. It depends on neither the host nor any view: the host fills in
+//! what the core needs, such as [`save::SessionPaths`].
 
 pub mod agent;
 pub mod blocking;
 pub mod commands;
 pub mod effects;
 pub mod models;
-pub mod session;
+pub mod save;
 pub mod tools;
 pub mod turn;
 
@@ -18,7 +19,7 @@ use bevy_log::info;
 
 use agent::{Agent, AgentId, Notice, PickRequest, TurnFinished};
 use effects::Effects;
-use session::SessionPaths;
+use save::SessionPaths;
 use turn::AgentSystems;
 
 /// Agents, their turn loop, effects, and the tool and command registries.
@@ -65,7 +66,7 @@ impl Plugin for AgentPlugin {
                     log_notices,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)
-                        .before(session::save_session)
+                        .before(save::save_session)
                         .run_if(on_message::<AppExit>),
                 ),
             )

@@ -1,20 +1,17 @@
-//! The session on disk: where it lives, the log file, and saving and
-//! restoring agents through reflection. A component is saved when its type
-//! is reflected with `#[reflect(Component, Saved)]`; a saved component whose
-//! type is gone is skipped on restore.
+//! Saving and restoring agents through reflection, under the session
+//! directory the host names in [`SessionPaths`]. A component is saved when
+//! its type is reflected with `#[reflect(Component, Saved)]`; a saved
+//! component whose type is gone is skipped on restore.
 
 use std::collections::BTreeMap;
 use std::error::Error;
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::tracing_subscriber::fmt;
-use bevy_log::{BoxedFmtLayer, error};
+use bevy_log::error;
 use bevy_reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
 use bevy_reflect::{CreateTypeData, ReflectFromReflect, TypeRegistry};
 use serde::de::DeserializeSeed;
@@ -35,7 +32,8 @@ impl<T> CreateTypeData<T> for ReflectSaved {
     }
 }
 
-/// Where the session's files live: `$RIG_HOME/sessions/$RIG_SESSION/`.
+/// The session's directory, the only place the core writes. The host
+/// inserts it before the agent plugins are built.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths {
     /// The session id.
@@ -45,28 +43,6 @@ pub struct SessionPaths {
 }
 
 impl SessionPaths {
-    /// The paths from `RIG_HOME` (default `$HOME/.rig`) and `RIG_SESSION`
-    /// (default a new id), with the directory created.
-    pub fn from_env() -> Self {
-        let home = std::env::var_os("RIG_HOME")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rig")))
-            .unwrap_or_else(|| PathBuf::from(".rig"));
-        // The launcher's own default and id format (`src/launcher` in the
-        // `rig` crate); these apply when the agent runs without it.
-        let id = std::env::var("RIG_SESSION").unwrap_or_else(|_| {
-            let seconds = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|elapsed| elapsed.as_secs())
-                .unwrap_or_default();
-            format!("{seconds}-{}", std::process::id())
-        });
-        let dir = home.join("sessions").join(&id);
-        // A directory that cannot be created shows up as a failed save.
-        fs::create_dir_all(&dir).ok();
-        Self { id, dir }
-    }
-
     /// The saved agents.
     pub fn state(&self) -> PathBuf {
         self.dir.join("state.json")
@@ -76,51 +52,21 @@ impl SessionPaths {
     pub fn effects(&self) -> PathBuf {
         self.dir.join("effects.jsonl")
     }
-
-    /// The text log.
-    pub fn log(&self) -> PathBuf {
-        self.dir.join("agent.log")
-    }
 }
 
-/// Owns the session paths, restore at startup, autosave after each turn and
-/// save on exit, and routes panics to the log.
-pub struct SessionPlugin;
+/// Restores the session at startup, and saves it after each turn and on
+/// exit.
+pub struct SavePlugin;
 
-impl Plugin for SessionPlugin {
+impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
-        std::panic::set_hook(Box::new(|info| {
-            error!("{info}\n{}", std::backtrace::Backtrace::capture());
-        }));
-        app.insert_resource(SessionPaths::from_env())
-            .add_systems(PreStartup, restore_session)
-            .add_systems(
-                Last,
-                save_session
-                    .in_set(OnAppExitSystems)
-                    .run_if(on_message::<TurnFinished>.or_eager(on_message::<AppExit>)),
-            );
+        app.add_systems(PreStartup, restore_session).add_systems(
+            Last,
+            save_session
+                .in_set(OnAppExitSystems)
+                .run_if(on_message::<TurnFinished>.or_eager(on_message::<AppExit>)),
+        );
     }
-}
-
-/// The `LogPlugin` formatter: plain text appended to the session's log, so
-/// nothing is written to stderr.
-pub fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
-    let file = app
-        .world()
-        .get_resource::<SessionPaths>()
-        .and_then(|paths| {
-            OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(paths.log())
-                .ok()
-        });
-    let layer = fmt::Layer::default().with_ansi(false);
-    Some(match file {
-        Some(file) => Box::new(layer.with_writer(Mutex::new(file))),
-        None => Box::new(layer.with_writer(std::io::sink)),
-    })
 }
 
 #[derive(Serialize, Deserialize)]

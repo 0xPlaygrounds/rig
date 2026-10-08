@@ -12,7 +12,7 @@ use serde_json::json;
 
 use super::{MAX_BYTES, MAX_LINES};
 use crate::core::blocking::blocking;
-use crate::process::{detach, kill_group};
+use crate::host::process::{detach, kill_group};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
@@ -84,7 +84,7 @@ impl Drop for StopOnDrop {
         let leader = self.leader.swap(0, Ordering::SeqCst);
         #[cfg(unix)]
         if leader != 0 {
-            crate::process::kill_group_of(leader);
+            crate::host::process::kill_group_of(leader);
         }
         #[cfg(not(unix))]
         let _ = leader;

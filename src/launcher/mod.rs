@@ -18,6 +18,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const BEVY_VERSION: &str = "0.20.0-rc.2";
 
 /// The exit code with which the agent asks to be restarted on the staged
-/// build: `rig_code::reload::RELOAD_EXIT_CODE`, which this std-only
+/// build: `rig_code::host::launcher::RELOAD_EXIT_CODE`, which this std-only
 /// launcher cannot import.
 pub const RELOAD_EXIT_CODE: i32 = 75;

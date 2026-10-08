@@ -16,8 +16,9 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use crate::core::session::SessionPaths;
-use crate::reload::RELOAD_EXIT_CODE;
+use crate::core::save::SessionPaths;
+use crate::host::launcher::RELOAD_EXIT_CODE;
+use crate::host::session::log_path;
 
 /// The terminal, drawn to through a private copy of stdout. Dropping it
 /// restores the terminal, keeping the alternate screen for a reload so the
@@ -73,7 +74,7 @@ pub fn open_terminal(
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
-    match Tui::open(paths.map(|paths| paths.log()).as_deref()) {
+    match Tui::open(paths.map(|paths| log_path(&paths)).as_deref()) {
         Ok(tui) => commands.insert_resource(tui),
         Err(failure) => {
             error!("could not open the terminal: {failure}");

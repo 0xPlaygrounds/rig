@@ -1,8 +1,7 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
 //! the new build. The build runs as a child process whose stderr a std
 //! thread forwards line by line; cargo's own `done/total` counter is the
-//! progress. Also the launcher's side of startup: its notice and the ready
-//! file that tells it this build started.
+//! progress.
 
 use std::collections::VecDeque;
 use std::io::{BufReader, Read};
@@ -10,25 +9,20 @@ use std::process::{Child, ChildStderr, Command, Stdio};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::error;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
+use super::launcher::{self, RELOAD_EXIT_CODE};
+use super::process::{detach, kill_group};
 use crate::core::agent::{Agent, AgentStatus, Notice};
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::turn::AgentSystems;
-use crate::process::{detach, kill_group};
-
-/// The exit code that asks the launcher to restart on the staged build. The
-/// launcher (`src/launcher/mod.rs` in the `rig` crate) repeats it.
-pub const RELOAD_EXIT_CODE: u8 = 75;
 
 /// Lines of a failed build shown, from its first error.
 const ERROR_LINES: usize = 60;
 /// Lines of build output kept while it runs.
 const KEPT_LINES: usize = 2000;
 
-/// `/reload`, the rebuild in flight, the restart, the launcher's startup
-/// notice and the ready file.
+/// `/reload`, the rebuild in flight and the restart.
 pub struct ReloadPlugin;
 
 impl Plugin for ReloadPlugin {
@@ -39,14 +33,12 @@ impl Plugin for ReloadPlugin {
             reload,
         )
         .add_observer(on_cancel_reload)
-        .add_systems(Startup, launcher_notice)
         .add_systems(
             Update,
             (drain_reload, finish_reload)
                 .chain()
                 .after(AgentSystems::Settle),
-        )
-        .add_systems(Last, signal_ready);
+        );
     }
 }
 
@@ -195,7 +187,7 @@ fn reload(
         "A turn is running. Press Esc to stop it, then /reload.".to_owned()
     } else if build.is_some() {
         "A rebuild is already running; Esc cancels it.".to_owned()
-    } else if let Some(launcher) = std::env::var_os("RIG_LAUNCHER") {
+    } else if let Some(launcher) = launcher::executable() {
         match ReloadBuild::start(&launcher) {
             Ok(build) => {
                 commands.insert_resource(build);
@@ -274,28 +266,5 @@ fn on_cancel_reload(
     if build.is_some_and(|build| !build.ready) {
         commands.remove_resource::<ReloadBuild>();
         notices.write(Notice::new("Rebuild cancelled.".to_owned()));
-    }
-}
-
-/// Shows the launcher's notice, such as a rollback, at startup.
-fn launcher_notice(mut notices: MessageWriter<Notice>) {
-    if let Ok(notice) = std::env::var("RIG_NOTICE")
-        && !notice.is_empty()
-    {
-        notices.write(Notice::new(notice));
-    }
-}
-
-/// Tells the launcher this build started: every plugin built, the session
-/// restored and the first frame drawn without an exit request.
-fn signal_ready(mut signalled: Local<bool>, exits: MessageReader<AppExit>) {
-    if *signalled || !exits.is_empty() {
-        return;
-    }
-    *signalled = true;
-    if let Some(path) = std::env::var_os("RIG_READY_FILE")
-        && let Err(failure) = std::fs::write(&path, b"")
-    {
-        error!("could not write the ready file: {failure}");
     }
 }

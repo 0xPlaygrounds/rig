@@ -17,8 +17,7 @@
 
 pub mod builtin;
 pub mod core;
-mod process;
-pub mod reload;
+pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
 
@@ -43,7 +42,7 @@ pub mod prelude {
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
-    pub use crate::core::session::ReflectSaved;
+    pub use crate::core::save::ReflectSaved;
     pub use crate::core::tools::AppToolsExt;
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
 }
@@ -56,17 +55,19 @@ pub struct RigCodePlugins;
 impl PluginGroup for RigCodePlugins {
     fn build(self) -> PluginGroupBuilder {
         let group = PluginGroupBuilder::start::<Self>()
-            .add(core::session::SessionPlugin)
+            .add(host::session::SessionPlugin)
             .add(LogPlugin {
-                fmt_layer: core::session::log_layer,
+                fmt_layer: host::session::log_layer,
                 ..LogPlugin::default()
             })
             .add(TaskPoolPlugin::default())
             .add(ScheduleRunnerPlugin::run_loop(Duration::from_millis(16)))
             .add(core::AgentPlugin)
+            .add(core::save::SavePlugin)
             .add(builtin::BuiltinToolsPlugin)
             .add(builtin::BuiltinCommandsPlugin)
-            .add(reload::ReloadPlugin);
+            .add(host::launcher::LauncherPlugin)
+            .add(host::reload::ReloadPlugin);
         #[cfg(feature = "tui")]
         let group = group.add(tui::TuiPlugin);
         group

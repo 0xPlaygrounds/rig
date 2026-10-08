@@ -31,8 +31,9 @@ impl Plugin for TuiPlugin {
                 PostUpdate,
                 render::render.run_if(
                     resource_exists::<Tui>.and_then(
-                        render::needs_redraw
-                            .or_eager(resource_changed_or_removed::<crate::reload::ReloadBuild>),
+                        render::needs_redraw.or_eager(
+                            resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
+                        ),
                     ),
                 ),
             )
