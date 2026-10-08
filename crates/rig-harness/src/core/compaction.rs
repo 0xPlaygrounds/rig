@@ -103,7 +103,7 @@ impl Compacted {
         let summary = if self.summary.is_empty() {
             0
         } else {
-            estimate_text(&self.message())
+            estimate_content(&UserContent::text(self.message()))
         };
         summary + estimate(self.live(messages))
     }
@@ -183,8 +183,10 @@ pub fn estimate(messages: &[Message]) -> u64 {
     messages.iter().map(count).sum()
 }
 
-fn estimate_text(text: &str) -> u64 {
-    (text.len() as u64).div_ceil(4)
+/// The estimated tokens of one item of a user message, by the same
+/// heuristic.
+pub(crate) fn estimate_content(content: &UserContent) -> u64 {
+    HeuristicTokenCounter::default().count_user(content) as u64
 }
 
 /// Whether a request of `tokens` leaves less than [`RESERVE`] of `spec`'s

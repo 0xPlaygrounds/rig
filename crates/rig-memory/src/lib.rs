@@ -301,7 +301,9 @@ impl HeuristicTokenCounter {
         tokens.ceil() as usize
     }
 
-    fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
+    /// Approximate the tokens of one item of a user message, without the
+    /// per-message overhead.
+    pub fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
         use rig_core::message::UserContent;
         match content {
             UserContent::Text(text) => self.bytes_to_tokens(text.text.len()),
@@ -325,7 +327,9 @@ impl HeuristicTokenCounter {
         }
     }
 
-    fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
+    /// Approximate the tokens of one item of an assistant message, without
+    /// the per-message overhead.
+    pub fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
         use rig_core::message::AssistantContent;
         match content {
             AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),

@@ -8,8 +8,8 @@
 
 use std::any::Any;
 use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::io::{self, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
@@ -44,19 +44,7 @@ impl Effects {
     /// A recorder whose ids continue after the highest id already in the
     /// effect log at `log`, if any, so ids keep increasing across restarts.
     pub(crate) fn continuing(log: Option<&Path>) -> Self {
-        /// A record line's id; header lines have none.
-        #[derive(Deserialize)]
-        struct IdOnly {
-            id: u64,
-        }
-        let last = log
-            .and_then(|log| std::fs::read_to_string(log).ok())
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| serde_json::from_str::<IdOnly>(line).ok())
-            .map(|record| record.id)
-            .max()
-            .unwrap_or(0);
+        let last = log.and_then(|log| last_id(log).ok()).unwrap_or(0);
         Self {
             recorder: EffectLogRecorder::new(),
             next: AtomicU64::new(last + 1),
@@ -219,6 +207,43 @@ impl Effects {
     }
 }
 
+/// How many of the log's last lines [`last_id`] reads.
+const TAIL_LINES: usize = 64;
+
+/// The highest effect id among the last [`TAIL_LINES`] lines of the log at
+/// `log`. Ids are taken in order and records are appended as they resolve,
+/// so the highest id is among the last few records; reading backwards from
+/// the end keeps startup independent of the log's length.
+fn last_id(log: &Path) -> io::Result<u64> {
+    /// A record line's id; header lines have none.
+    #[derive(Deserialize)]
+    struct IdOnly {
+        id: u64,
+    }
+    let mut file = File::open(log)?;
+    let mut start = file.metadata()?.len();
+    let mut tail = Vec::new();
+    let mut chunk: u64 = 64 * 1024;
+    while start > 0 && tail.iter().filter(|byte| **byte == b'\n').count() <= TAIL_LINES {
+        let from = start.saturating_sub(chunk);
+        let mut read = vec![0; usize::try_from(start - from).map_err(io::Error::other)?];
+        file.seek(SeekFrom::Start(from))?;
+        file.read_exact(&mut read)?;
+        read.append(&mut tail);
+        tail = read;
+        start = from;
+        chunk = chunk.saturating_mul(2);
+    }
+    // Unless the whole file was read, the first piece may be part of a line.
+    Ok(tail
+        .split(|byte| *byte == b'\n')
+        .skip(usize::from(start > 0))
+        .filter_map(|line| serde_json::from_slice::<IdOnly>(line).ok())
+        .map(|record| record.id)
+        .max()
+        .unwrap_or(0))
+}
+
 /// The record of an open tool call, begun when the call opens. Settling
 /// it records the call's outcome; dropping it unsettled, as despawning the
 /// call does, records the call as cancelled.
@@ -289,16 +314,11 @@ impl Observe for Recorded {
         self.recorder.origin(self.id, origin);
     }
 
-    /// A layer refused the dispatch before any handler saw it: recorded
-    /// as denied by that layer rather than forgotten.
-    fn discard(&mut self, layer: &str) {
-        self.recorder.resolve(
-            self.id,
-            Err(
-                ErrorReport::new(ErrorKind::Denied, format!("{layer}: refused before it ran"))
-                    .with_retryable(false),
-            ),
-        );
+    /// A layer decided the dispatch before any handler saw it: the record
+    /// is dropped, as rig-agent's bus does. Replay reruns the layers, so a
+    /// recorded refusal would be replayed as if a handler had answered it.
+    fn discard(&mut self, _: &str) {
+        self.recorder.discard(self.id);
     }
 
     fn patch(&mut self, kind: &EffectKind) {

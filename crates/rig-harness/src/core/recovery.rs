@@ -15,6 +15,8 @@ use rig_core::completion::Message;
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolResultContent, UserContent};
 
+use super::compaction::estimate_content;
+
 /// Retries of failed model calls in a row, per turn. A reply resets it.
 pub const MAX_RETRIES: u32 = 4;
 /// The first wait; each retry doubles it, up to [`MAX_BACKOFF`].
@@ -248,13 +250,13 @@ pub fn clear_tool_outputs(messages: &mut [Message], keep: u64) -> Cleared {
             continue;
         };
         for item in content.iter_mut().rev() {
+            let tokens = estimate_content(item);
             let UserContent::ToolResult(result) = item else {
                 continue;
             };
             if result.is_error || is_cleared(&result.content) {
                 continue;
             }
-            let tokens = estimate(&result.content);
             kept += tokens;
             if kept <= keep {
                 continue;
@@ -279,18 +281,4 @@ pub fn keep_for(clearing: u32) -> u64 {
 
 fn is_cleared(content: &[ToolResultContent]) -> bool {
     matches!(content, [only] if only.as_text() == Some(CLEARED))
-}
-
-/// A rough token count: four characters a token, a flat figure for an
-/// image.
-fn estimate(content: &[ToolResultContent]) -> u64 {
-    const IMAGE: u64 = 1_200;
-    content
-        .iter()
-        .map(|item| match item {
-            ToolResultContent::Text(text) => (text.text.len() as u64).div_ceil(4),
-            ToolResultContent::Image(_) => IMAGE,
-            ToolResultContent::Json { value } => (value.to_string().len() as u64).div_ceil(4),
-        })
-        .sum()
 }
