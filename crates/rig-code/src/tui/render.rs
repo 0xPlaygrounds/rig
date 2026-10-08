@@ -1,0 +1,223 @@
+//! Draws the focused agent: transcript, status line, input line and picker.
+
+use bevy_ecs::prelude::*;
+use ratatui::Frame;
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Clear, List, ListState, Paragraph, Wrap};
+use rig_core::completion::{AssistantContent, Message};
+use rig_core::message::{ToolResult, UserContent};
+
+use super::terminal::Tui;
+use super::view::TuiView;
+use crate::core::agent::{AgentStatus, CallOf, Conversation, Effort, ModelChoice, Partial};
+use crate::core::models;
+
+/// Lines of a tool result shown in the transcript.
+const RESULT_LINES: usize = 4;
+/// Characters of tool call arguments shown in the transcript.
+const ARGUMENT_CHARS: usize = 160;
+
+/// Draws one frame.
+pub fn render(
+    mut tui: ResMut<Tui>,
+    mut view: ResMut<TuiView>,
+    agents: Query<(&Conversation, &ModelChoice, &Effort, &AgentStatus)>,
+    partials: Query<(&CallOf, &Partial)>,
+) -> Result {
+    let view = &mut *view;
+    let shown = view.agent.and_then(|agent| agents.get(agent).ok());
+    let partial = view.agent.and_then(|agent| {
+        partials
+            .iter()
+            .find(|(call_of, _)| call_of.0 == agent)
+            .map(|(_, partial)| partial)
+    });
+    tui.terminal.draw(|frame| {
+        let [transcript, status, input] = Layout::vertical([
+            Constraint::Min(1),
+            Constraint::Length(1),
+            Constraint::Length(3),
+        ])
+        .areas(frame.area());
+        let mut lines = Vec::new();
+        if let Some((conversation, _, _, _)) = shown {
+            for message in &conversation.0 {
+                message_lines(message, &mut lines);
+            }
+        }
+        if let Some(partial) = partial {
+            text_lines(&partial.reasoning, Style::new().dim().italic(), &mut lines);
+            text_lines(&partial.text, Style::new(), &mut lines);
+        }
+        for notice in &view.notices {
+            text_lines(notice, Style::new().fg(Color::Magenta), &mut lines);
+        }
+        draw_transcript(frame, transcript, lines, &mut view.scroll);
+        frame.render_widget(
+            status_line(shown.map(|(_, model, effort, status)| (model, effort, status))),
+            status,
+        );
+        frame.render_widget(
+            Paragraph::new(format!("> {}▏", view.input))
+                .wrap(Wrap { trim: false })
+                .block(Block::bordered()),
+            input,
+        );
+        if let Some(picker) = &view.picker {
+            draw_picker(frame, picker);
+        }
+    })?;
+    Ok(())
+}
+
+fn draw_transcript(frame: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scroll: &mut usize) {
+    let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false });
+    let total = paragraph.line_count(area.width);
+    let bottom = total.saturating_sub(usize::from(area.height));
+    *scroll = (*scroll).min(bottom);
+    let top = u16::try_from(bottom - *scroll).unwrap_or(u16::MAX);
+    frame.render_widget(paragraph.scroll((top, 0)), area);
+}
+
+fn status_line(shown: Option<(&ModelChoice, &Effort, &AgentStatus)>) -> Line<'static> {
+    let Some((model, effort, status)) = shown else {
+        return Line::from("no agent").dim();
+    };
+    let model = model
+        .0
+        .clone()
+        .unwrap_or_else(|| "no model: /model picks one".to_owned());
+    let status = match status {
+        AgentStatus::Idle => Span::from("idle").green(),
+        AgentStatus::Thinking => Span::from("thinking… (Esc stops)").yellow(),
+        AgentStatus::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+    };
+    Line::from(vec![
+        Span::from(model).bold(),
+        Span::from(format!("  reasoning {}  ", models::effort_label(effort.0))).dim(),
+        status,
+    ])
+}
+
+fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
+    let area = frame.area();
+    let width = area.width.saturating_mul(4) / 5;
+    let height = area.height.saturating_mul(3) / 4;
+    let popup = Rect::new(
+        area.x + (area.width - width) / 2,
+        area.y + (area.height - height) / 2,
+        width,
+        height,
+    );
+    frame.render_widget(Clear, popup);
+    let block = Block::bordered().title(format!(
+        " {} · type to filter, Enter picks, Esc closes ",
+        picker.title
+    ));
+    let inner = block.inner(popup);
+    frame.render_widget(block, popup);
+    let [filter, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
+    frame.render_widget(Line::from(format!("filter: {}▏", picker.filter)), filter);
+    let items: Vec<String> = picker
+        .visible()
+        .into_iter()
+        .map(|(label, _)| label.clone())
+        .collect();
+    let mut state = ListState::default().with_selected(Some(picker.selected));
+    frame.render_stateful_widget(
+        List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        list,
+        &mut state,
+    );
+}
+
+fn message_lines(message: &Message, lines: &mut Vec<Line<'static>>) {
+    match message {
+        Message::System { .. } => {}
+        Message::User { content } => {
+            for item in content {
+                match item {
+                    UserContent::Text(text) => {
+                        lines.push(Line::default());
+                        text_lines(
+                            &format!("› {}", text.text),
+                            Style::new().cyan().bold(),
+                            lines,
+                        );
+                    }
+                    UserContent::ToolResult(result) => result_lines(result, lines),
+                    _ => {}
+                }
+            }
+        }
+        Message::Assistant(assistant) => {
+            for item in &assistant.content {
+                match item {
+                    AssistantContent::Text(text) => {
+                        lines.push(Line::default());
+                        text_lines(&text.text, Style::new(), lines);
+                    }
+                    AssistantContent::Reasoning(reasoning) => {
+                        text_lines(&reasoning.text, Style::new().dim().italic(), lines);
+                    }
+                    AssistantContent::ToolCall(call) => {
+                        let arguments =
+                            serde_json::Value::Object(call.function.arguments.clone()).to_string();
+                        lines.push(Line::from(vec![
+                            Span::from("● ").yellow(),
+                            Span::from(call.function.name.as_str().to_owned())
+                                .yellow()
+                                .bold(),
+                            Span::from(format!(" {}", clip(&arguments, ARGUMENT_CHARS))).dim(),
+                        ]));
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn result_lines(result: &ToolResult, lines: &mut Vec<Line<'static>>) {
+    let text: String = result
+        .content
+        .iter()
+        .filter_map(|content| content.as_text())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let style = if result.is_error {
+        Style::new().red()
+    } else {
+        Style::new().dim()
+    };
+    let total = text.lines().count();
+    for (index, line) in text.lines().take(RESULT_LINES).enumerate() {
+        let prefix = if index == 0 { "  ⎿ " } else { "    " };
+        lines.push(Line::styled(
+            format!("{prefix}{}", line.replace('\t', "    ")),
+            style,
+        ));
+    }
+    if total > RESULT_LINES {
+        lines.push(Line::styled(
+            format!("    … {} more lines", total - RESULT_LINES),
+            style,
+        ));
+    }
+}
+
+fn text_lines(text: &str, style: Style, lines: &mut Vec<Line<'static>>) {
+    lines.extend(
+        text.lines()
+            .map(|line| Line::styled(line.replace('\t', "    "), style)),
+    );
+}
+
+fn clip(text: &str, limit: usize) -> String {
+    match text.char_indices().nth(limit) {
+        Some((end, _)) => format!("{}…", text.get(..end).unwrap_or(text)),
+        None => text.to_owned(),
+    }
+}
