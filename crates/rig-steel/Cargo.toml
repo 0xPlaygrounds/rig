@@ -15,6 +15,8 @@ workspace = true
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_tasks = { workspace = true }
+# The channel `Harness` calls come in on.
+crossbeam-channel = { workspace = true }
 futures = { workspace = true }
 # The watchdog that enforces the execution time limit.
 futures-timer = { workspace = true }
@@ -23,3 +25,5 @@ rig-harness = { path = "../rig-harness", version = "0.44.0", default-features = 
 serde_json = { workspace = true }
 # The Scheme interpreter, in process.
 steel-core = { workspace = true }
+# The ids of requests a program sends.
+uuid = { workspace = true, features = ["v4"] }

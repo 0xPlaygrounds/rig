@@ -11,7 +11,6 @@ use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_core::completion::{AssistantContent, Message};
 use rig_harness::core::agent::{AgentId, TurnOutcome};
-use rig_harness::core::harness::{AgentSpec, Harness};
 use rig_harness::core::inbox::{Origin, RequestId};
 use serde_json::{Map, Value};
 use steel::SteelVal;
@@ -21,7 +20,7 @@ use steel::rerrs::{ErrorKind, SteelErr};
 use steel::steel_vm::builtin::BuiltInModule;
 use steel::steel_vm::engine::Engine;
 
-use crate::{Control, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
+use crate::{AgentSpec, Control, Harness, MAX_OUTPUT_BYTES, RUN_STEEL, capped, wait};
 
 /// How many host function calls a program may make.
 const MAX_HOST_CALLS: u32 = 1000;

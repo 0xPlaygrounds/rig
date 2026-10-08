@@ -269,27 +269,15 @@ fn settle(call: &ToolCall, parent: &Parent<'_>, tools: &[&str]) -> Result<Settle
     if task.is_empty() || instructions.is_empty() {
         return Err("`description` and `prompt` must not be empty".to_owned());
     }
-    let model = match args.model.as_deref().map(str::trim) {
-        Some(reference) if !reference.is_empty() => {
-            let spec = models::resolve(reference).ok_or_else(|| {
-                format!("The catalog has no model `{reference}`; use vendor/model")
-            })?;
-            if !spec.tools {
-                return Err(format!("{reference} cannot call tools"));
-            }
-            ModelChoice(models::reference(spec))
-        }
-        _ => parent
-            .model
-            .cloned()
-            .ok_or("You have no model to give the subagent; name one in `model`")?,
-    };
-    let spec = models::resolve(&model.0)
-        .ok_or_else(|| format!("The catalog has no model `{}`", model.0))?;
+    let (model, effort) = models::child_model(parent.model, parent.effort, args.model.as_deref())?;
+    let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
     let effort = match args.effort.as_deref().map(str::trim) {
-        Some(name) if !name.is_empty() => Effort(models::effort_named(spec, name)?),
-        _ if parent.model == Some(&model) => parent.effort,
-        _ => Effort(None),
+        Some(name) if !name.is_empty() => {
+            let spec = models::resolve(&model.0)
+                .ok_or_else(|| format!("The catalog has no model `{}`", model.0))?;
+            Effort(models::effort_named(spec, name)?)
+        }
+        _ => effort,
     };
     let may_delegate = parent.depth + 1 < MAX_DEPTH;
     let delegates = |name: &str| name == TASK || name == MESSAGE;

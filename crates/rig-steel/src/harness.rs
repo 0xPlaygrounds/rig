@@ -1,38 +1,44 @@
-//! Driving the agents from plain async Rust. [`Harness`] is a cloneable
-//! resource: a tool's future or a plugin's task keeps a clone and spawns
-//! agents, sends them requests, awaits their replies and calls their tools.
-//! Each call is a job sent into the world, which runs it in the next frame
-//! (the call asks for one through [`Wake`]) and answers on a oneshot
-//! channel. Tool calls made through it go through the one recorded dispatch
-//! path, like the model's own.
-//!
-//! ```ignore
-//! let harness = harness.within(open_call.0.id());
-//! let child = harness.spawn_agent(AgentSpec::named("reviewer"), Some(me.clone())).await?;
-//! let request = harness.send(child, "Review src/lib.rs.".into(), Origin::agent(me, None)).await?;
-//! let outcome = harness.reply(request).await?;
-//! ```
+//! Driving the agents from a program's thread. [`Harness`] is a cloneable
+//! resource: the `run_steel` task keeps a clone and spawns agents, sends
+//! them requests, awaits their replies and calls their tools. Each call is a
+//! job sent into the world, which runs it in the next frame (the call asks
+//! for one through [`Wake`]) and answers on a oneshot channel. Tool calls
+//! made through it go through the one recorded dispatch path
+//! ([`ToolStarter`]), like the model's own.
 
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
+use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::warn;
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName, ToolResult};
-
-use super::agent::{
+use rig_harness::core::agent::{
     Agent, AgentId, EffectParent, Effort, ModelChoice, SpawnedBy, SystemPrompt, ToolAccess,
-    ToolCallRun, TurnEnded, TurnOutcome,
+    TurnEnded, TurnOutcome,
 };
-use super::calls::Wake;
-use super::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use super::models;
-use super::tools::ToolOutput;
-use super::turn::{ToolStarter, tool_name};
+use rig_harness::core::calls::Wake;
+use rig_harness::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use rig_harness::core::models;
+use rig_harness::core::tools::ToolOutput;
+use rig_harness::core::turn::{PollCalls, ToolStarter, tool_name};
+
+/// The [`Harness`] resource and the jobs, replies and tool calls behind it.
+pub(crate) struct HarnessPlugin;
+
+impl Plugin for HarnessPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Jobs>()
+            .init_resource::<Replies>()
+            .add_systems(PreStartup, insert_harness)
+            .add_systems(Update, run_jobs.before(PollCalls))
+            .add_observer(end_replies)
+            .add_observer(answer_call);
+    }
+}
 
 /// A job the world runs for a [`Harness`] call.
 type Job = Box<dyn FnOnce(&mut World) + Send>;
@@ -192,7 +198,7 @@ impl Harness {
 
 /// The channel [`Harness`] calls come in on.
 #[derive(Resource)]
-pub(crate) struct Jobs {
+struct Jobs {
     sender: Sender<Job>,
     receiver: Receiver<Job>,
 }
@@ -205,7 +211,7 @@ impl Default for Jobs {
 }
 
 /// Inserts the [`Harness`], once the loop's [`Wake`] is set.
-pub(crate) fn insert_harness(jobs: Res<Jobs>, wake: Res<Wake>, mut commands: Commands) {
+fn insert_harness(jobs: Res<Jobs>, wake: Res<Wake>, mut commands: Commands) {
     commands.insert_resource(Harness {
         jobs: jobs.sender.clone(),
         wake: wake.clone(),
@@ -214,7 +220,7 @@ pub(crate) fn insert_harness(jobs: Res<Jobs>, wake: Res<Wake>, mut commands: Com
 }
 
 /// Runs the jobs [`Harness`] calls sent since the last frame.
-pub(crate) fn run_jobs(world: &mut World) {
+fn run_jobs(world: &mut World) {
     let Some(jobs) = world
         .get_resource::<Jobs>()
         .map(|jobs| jobs.receiver.clone())
@@ -243,39 +249,18 @@ fn spawn_agent(
     effect: Option<EffectId>,
 ) -> Result<AgentId, HarnessError> {
     let parent = parent.map(|parent| find(world, &parent)).transpose()?;
-    let inherited = |world: &World| {
-        parent.map(|parent| {
-            (
-                world.get::<ModelChoice>(parent).cloned(),
-                world.get::<Effort>(parent).copied().unwrap_or_default(),
-                world.get::<SystemPrompt>(parent).cloned(),
-                world.get::<ToolAccess>(parent).cloned(),
-            )
-        })
-    };
-    let (parent_model, parent_effort, parent_prompt, parent_access) =
-        inherited(world).unwrap_or_default();
-    let model = match spec.model.as_deref().map(str::trim) {
-        Some(reference) if !reference.is_empty() => {
-            let found = models::resolve(reference).ok_or_else(|| {
-                HarnessError::Invalid(format!(
-                    "the catalog has no model `{reference}`; use vendor/model"
-                ))
-            })?;
-            if !found.tools {
-                return Err(HarnessError::Invalid(format!(
-                    "{reference} cannot call tools"
-                )));
-            }
-            Some(ModelChoice(models::reference(found)))
-        }
-        _ => parent_model.clone(),
-    };
-    let effort = if model.is_some() && model == parent_model {
-        parent_effort
-    } else {
-        Effort::default()
-    };
+    let inherited = parent.map(|parent| {
+        (
+            world.get::<ModelChoice>(parent).cloned(),
+            world.get::<Effort>(parent).copied().unwrap_or_default(),
+            world.get::<SystemPrompt>(parent).cloned(),
+            world.get::<ToolAccess>(parent).cloned(),
+        )
+    });
+    let (parent_model, parent_effort, parent_prompt, parent_access) = inherited.unwrap_or_default();
+    let (model, effort) =
+        models::child_model(parent_model.as_ref(), parent_effort, spec.model.as_deref())
+            .map_err(HarnessError::Invalid)?;
     let prompt = spec
         .system_prompt
         .map(SystemPrompt)
@@ -305,7 +290,7 @@ fn spawn_agent(
 
 /// The [`Harness::reply`] of each request, by id.
 #[derive(Resource, Default)]
-pub(crate) struct Replies(HashMap<RequestId, Reply>);
+struct Replies(HashMap<RequestId, Reply>);
 
 /// A request sent through a [`Harness`].
 struct Reply {
@@ -381,7 +366,7 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
 /// Ends every request waiting on the agent whose turn ended with that
 /// turn's outcome: a turn reads every message queued for it before it
 /// ends, so it answers them all.
-pub(crate) fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
+fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
     if end.entity != end.original_event_target() {
         return;
     }
@@ -400,7 +385,7 @@ pub(crate) fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
 
 /// On a tool call made through a [`Harness`]: where its result goes.
 #[derive(Component)]
-pub(crate) struct HarnessCall(Option<Answer<ToolResult>>);
+struct HarnessCall(Option<Answer<ToolResult>>);
 
 fn call_tool(
     world: &mut World,
@@ -427,9 +412,10 @@ fn call_tool(
         }
     };
     let call = ToolCall::from_wire("", ToolFunction::new(name, args));
-    if let Err(error) = world.run_system_cached_with(start_call, (agent, call, effect, answer)) {
-        warn!("a harness tool call did not start: {error}");
-    }
+    // A failure drops `answer`, which the caller reads as closed.
+    world
+        .run_system_cached_with(start_call, (agent, call, effect, answer))
+        .ok();
 }
 
 /// Starts a [`Harness`] tool call as an entity of its own, outside any
@@ -439,11 +425,7 @@ fn start_call(
     starter: ToolStarter,
     mut commands: Commands,
 ) {
-    let run = ToolCallRun {
-        footprint: starter.footprint(call.function.name.as_str()),
-        call,
-        parent,
-    };
+    let run = starter.run(call, parent);
     let entity = commands
         .spawn((tool_name(&run), run.clone(), HarnessCall(Some(answer))))
         .id();
@@ -451,7 +433,7 @@ fn start_call(
 }
 
 /// Answers a [`Harness`] tool call with its output, then despawns it.
-pub(crate) fn answer_call(
+fn answer_call(
     done: On<Add<ToolOutput>>,
     mut calls: Query<(&ToolOutput, &mut HarnessCall)>,
     mut commands: Commands,

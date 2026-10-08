@@ -16,7 +16,36 @@ use rig_core::providers::{chatgpt, mistral, openai, venice};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
+use super::agent::{Effort, ModelChoice};
 use super::login::LoginProvider;
+
+/// The model and reasoning setting of an agent spawned by an agent with
+/// `parent`'s: `model`, a catalog reference of a model that calls tools,
+/// when given, else the parent's; the parent's reasoning only with the
+/// parent's model.
+pub fn child_model(
+    parent: Option<&ModelChoice>,
+    parent_effort: Effort,
+    model: Option<&str>,
+) -> Result<(Option<ModelChoice>, Effort), String> {
+    let model = match model.map(str::trim) {
+        Some(asked) if !asked.is_empty() => {
+            let spec = resolve(asked)
+                .ok_or_else(|| format!("The catalog has no model `{asked}`; use vendor/model"))?;
+            if !spec.tools {
+                return Err(format!("{asked} cannot call tools"));
+            }
+            Some(ModelChoice(reference(spec)))
+        }
+        _ => parent.cloned(),
+    };
+    let effort = if model.is_some() && model.as_ref() == parent {
+        parent_effort
+    } else {
+        Effort::default()
+    };
+    Ok((model, effort))
+}
 
 /// Token budgets for the named levels on models that take a budget instead
 /// of levels, clamped into the model's range.

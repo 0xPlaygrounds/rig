@@ -466,11 +466,7 @@ fn settle(
         let runs: Vec<(Entity, ToolCallRun)> = reruns
             .into_iter()
             .map(|call| {
-                let run = ToolCallRun {
-                    footprint: starter.footprint(call.function.name.as_str()),
-                    call,
-                    parent: None,
-                };
+                let run = starter.run(call, None);
                 let entity = commands
                     .spawn((tool_name(&run), CallOf(turn), run.clone()))
                     .id();

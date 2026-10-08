@@ -27,9 +27,10 @@
 //!
 //! The plugin is written only against rig-harness's public primitives: an
 //! open tool ([`AppToolsExt::add_open_tool`]) whose call is completed by a
-//! [`Running`] task, and the [`Harness`] handle, so the calls a program
-//! makes go through the one recorded dispatch and are recorded under its
-//! `run_steel` call. It is not in the default `plugins.toml`; add it with
+//! [`Running`] task, and its own [`Harness`] handle over the core's
+//! [`ToolStarter`](rig_harness::core::turn::ToolStarter), so the calls a
+//! program makes go through the one recorded dispatch and are recorded
+//! under its `run_steel` call. It is not in the default `plugins.toml`; add it with
 //!
 //! ```toml
 //! [[plugin]]
@@ -38,6 +39,7 @@
 //! plugin = "rig_steel::SteelPlugin"
 //! ```
 
+mod harness;
 mod program;
 
 use std::pin::pin;
@@ -53,13 +55,13 @@ use futures_timer::Delay;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use rig_harness::core::agent::{AgentId, ToolCallRun};
 use rig_harness::core::calls::{Running, Wake};
-use rig_harness::core::harness::Harness;
 use rig_harness::core::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolOptions, ToolOutput, failed,
 };
 use serde_json::Value;
 use steel::steel_vm::ThreadStateController;
 
+pub use harness::{AgentSpec, Harness, HarnessError};
 use program::{Ended, Host};
 
 /// The tool that runs a program.
@@ -140,7 +142,7 @@ pub struct SteelPlugin;
 
 impl Plugin for SteelPlugin {
     fn build(&self, app: &mut App) {
-        app.add_open_tool(
+        app.add_plugins(harness::HarnessPlugin).add_open_tool(
             RUN_STEEL,
             DESCRIPTION,
             serde_json::json!({

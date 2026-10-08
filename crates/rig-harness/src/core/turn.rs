@@ -849,11 +849,7 @@ pub(crate) fn on_model_done(
     let mut earlier: Vec<Footprint> = Vec::with_capacity(tool_calls.len());
     let mut ready = Vec::new();
     for call in tool_calls {
-        let run = ToolCallRun {
-            footprint: starter.footprint(call.function.name.as_str()),
-            call,
-            parent: Some(model_call.effect),
-        };
+        let run = starter.run(call, Some(model_call.effect));
         let waits = earlier
             .iter()
             .any(|&before| run.footprint.waits_for(before));
@@ -1090,10 +1086,13 @@ pub(crate) fn on_tool_done(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// What starting a tool call reads: the registered tools and the calling
-/// agent.
+/// Starts tool calls on the one dispatch path: what that reads, the
+/// registered tools and the calling agent. A plugin that calls a tool
+/// outside a turn spawns the call's entity with a [`ToolCallRun`] from
+/// [`run`](Self::run) and [`start`](Self::start)s it; it ends with a
+/// [`ToolOutput`] like a model's call.
 #[derive(SystemParam)]
-pub(crate) struct ToolStarter<'w, 's> {
+pub struct ToolStarter<'w, 's> {
     tools: Query<
         'w,
         's,
@@ -1113,11 +1112,20 @@ pub(crate) struct ToolStarter<'w, 's> {
 impl ToolStarter<'_, '_> {
     /// The footprint of the tool `name`; a tool that is not registered
     /// runs on its own.
-    pub(crate) fn footprint(&self, name: &str) -> Footprint {
+    pub fn footprint(&self, name: &str) -> Footprint {
         self.tools
             .iter()
             .find(|(_, def, ..)| def.0.name.as_str() == name)
             .map_or_else(Footprint::default, |(.., &footprint)| footprint)
+    }
+
+    /// The run of `call`, asked for by the effect `parent`.
+    pub fn run(&self, call: ToolCall, parent: Option<EffectId>) -> ToolCallRun {
+        ToolCallRun {
+            footprint: self.footprint(call.function.name.as_str()),
+            call,
+            parent,
+        }
     }
 
     /// Whether a call of the tool `name` left without a result by a restart
@@ -1138,13 +1146,7 @@ impl ToolStarter<'_, '_> {
     /// and answered with an error. Before a call that may change something, the
     /// session log is written, so the reply that asked for it is on disk
     /// first.
-    pub(crate) fn start(
-        &self,
-        commands: &mut Commands,
-        call: Entity,
-        agent: Entity,
-        run: &ToolCallRun,
-    ) {
+    pub fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
         let Ok((id, access)) = self.agents.get(agent) else {
             return;
         };
@@ -1193,7 +1195,8 @@ impl ToolStarter<'_, '_> {
     }
 }
 
-pub(crate) fn tool_name(run: &ToolCallRun) -> Name {
+/// The [`Name`] of a tool call's entity.
+pub fn tool_name(run: &ToolCallRun) -> Name {
     Name::new(format!("tool call {}", run.call.function.name.as_str()))
 }
 

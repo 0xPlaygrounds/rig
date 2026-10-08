@@ -11424,12 +11424,14 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_tasks",
+ "crossbeam-channel",
  "futures",
  "futures-timer",
  "rig-core",
  "rig-harness",
  "serde_json",
  "steel-core",
+ "uuid",
 ]
 
 [[package]]

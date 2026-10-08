@@ -9,10 +9,8 @@
 //! entities of the turn that run on Bevy's task pools; every one goes
 //! through the one recorded dispatch path. Tools and
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
-//! as a third-party plugin registers its own. Plain async code, such as a
-//! tool's future, drives agents through the [`Harness`](core::harness::Harness)
-//! handle, and a plugin re-arms its saved obligations after a restart on
-//! [`Restored`](core::restore::Restored).
+//! as a third-party plugin registers its own, and a plugin re-arms its saved
+//! obligations after a restart on [`Restored`](core::restore::Restored).
 //!
 //! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
 //! terminal view, or `--print` without one), the agent core, the session
@@ -74,7 +72,6 @@ pub mod prelude {
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand, send_input};
     pub use crate::core::compaction::Compacted;
-    pub use crate::core::harness::{AgentSpec, Harness, HarnessError};
     pub use crate::core::inbox::{
         Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
