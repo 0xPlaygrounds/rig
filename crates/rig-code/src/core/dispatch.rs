@@ -19,7 +19,7 @@ use rig_core::streaming::{Item, StreamEvent};
 use rig_core::{ErrorKind, ErrorReport};
 
 use super::agent::AgentId;
-use super::session::{Session, append};
+use super::{SessionDir, append};
 
 /// The session's effect recorder and the next effect id.
 #[derive(Resource, Default)]
@@ -127,7 +127,7 @@ impl Observe for Recorded {
 /// write drops the records and is logged once until a write succeeds.
 pub(crate) fn flush_effects(
     effects: Res<Effects>,
-    session: Res<Session>,
+    session: Res<SessionDir>,
     mut failing: Local<bool>,
 ) {
     let log = effects.recorder.take();

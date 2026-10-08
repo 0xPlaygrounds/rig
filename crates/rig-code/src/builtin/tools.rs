@@ -5,7 +5,7 @@
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Command, ExitStatus};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -19,8 +19,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use crate::core::process::{kill, new_group};
 use crate::core::registry::AppExt;
+use crate::host::process::Group;
 
 /// The most text a tool returns to the model.
 const MAX_BYTES: usize = 50 * 1024;
@@ -291,23 +291,16 @@ impl PortableTool for ShellTool {
     }
 
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
-        let mut command = shell(&args.command);
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        new_group(&mut command);
-        let child = command
-            .spawn()
+        let mut child = Group::spawn(&mut shell(&args.command))
             .map_err(|error| failure(format!("cannot start the shell: {error}")))?;
-        let mut child = Supervised(Some(child));
         let seconds = args.timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT);
         let timeout = Duration::from_secs(seconds);
         let cancel = Cancel(Arc::new(AtomicBool::new(false)));
         let cancelled = Arc::clone(&cancel.0);
         let (sender, receiver) = oneshot::channel();
-        let stdout = read_on_thread(child.0.as_mut().and_then(|child| child.stdout.take()));
-        let stderr = read_on_thread(child.0.as_mut().and_then(|child| child.stderr.take()));
+        let (stdout, stderr) = child.take_output();
+        let stdout = read_on_thread(stdout);
+        let stderr = read_on_thread(stderr);
         let (stdout, stderr) = stdout
             .and_then(|stdout| Ok((stdout, stderr?)))
             .map_err(|error| failure(format!("cannot read the shell's output: {error}")))?;
@@ -351,36 +344,19 @@ impl Drop for Cancel {
     }
 }
 
-/// A shell process that is killed when dropped before it was reaped.
-struct Supervised(Option<Child>);
-
-impl Drop for Supervised {
-    fn drop(&mut self) {
-        if let Some(child) = &mut self.0 {
-            kill(child);
-        }
-    }
-}
-
 /// Waits for `child` and collects its output, killing it on timeout or
 /// cancellation.
 fn supervise(
-    mut supervised: Supervised,
+    mut child: Group,
     timeout: Duration,
     cancelled: &AtomicBool,
     stdout: thread::JoinHandle<String>,
     stderr: thread::JoinHandle<String>,
 ) -> Result<String, ToolExecutionError> {
-    let Some(child) = &mut supervised.0 else {
-        return Err(failure("the shell command was lost"));
-    };
     let deadline = Instant::now().checked_add(timeout);
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => {
-                supervised.0 = None;
-                break Ok(status);
-            }
+            Ok(Some(status)) => break Ok(status),
             Ok(None) if cancelled.load(Ordering::Relaxed) => {
                 break Err(ToolExecutionError::cancelled("the command was cancelled"));
             }
@@ -395,7 +371,7 @@ fn supervise(
         }
     };
     // Kills the process group unless it exited, so the pipes close.
-    drop(supervised);
+    drop(child);
     let output = output(
         stdout.join().unwrap_or_default(),
         stderr.join().unwrap_or_default(),

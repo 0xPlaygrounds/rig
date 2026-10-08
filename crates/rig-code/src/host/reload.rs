@@ -8,7 +8,7 @@
 use std::ffi::OsString;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
-use std::process::{Child, Command, Stdio};
+use std::process::Command;
 
 use async_channel::{Receiver, Sender, TryRecvError};
 use bevy_app::prelude::*;
@@ -16,11 +16,12 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use serde::Deserialize;
 
-use super::agent::{Agent, Status};
-use super::process::{kill, new_group};
-use super::registry::{AppExt, CommandInput, Notice};
-use super::session::{Dirs, Session};
+use super::process::Group;
+use super::session::Dirs;
 use crate::RELOAD_EXIT_CODE;
+use crate::core::SessionDir;
+use crate::core::agent::{Agent, Status};
+use crate::core::registry::{AppExt, CommandInput, Notice};
 
 /// How many lines of build errors a notice shows. The log has all of them.
 const ERROR_LINES: usize = 40;
@@ -59,7 +60,7 @@ pub struct Progress {
 #[derive(Component)]
 pub struct BuildJob {
     agent: Entity,
-    child: Option<Child>,
+    child: Group,
     output: Receiver<Output>,
     /// The latest progress cargo reported.
     pub progress: Option<Progress>,
@@ -81,24 +82,15 @@ enum Output {
 impl BuildJob {
     /// Starts `<launcher> build` with its output read on two threads.
     fn start(agent: Entity, launcher: OsString) -> std::io::Result<Self> {
-        let mut command = Command::new(launcher);
-        command
-            .arg("build")
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        new_group(&mut command);
-        let mut child = command.spawn()?;
+        let mut child = Group::spawn(Command::new(launcher).arg("build"))?;
+        let (stdout, stderr) = child.take_output();
         let (sender, output) = async_channel::unbounded();
-        let readers = read_stdout(child.stdout.take(), sender.clone())
-            .and_then(|()| read_stderr(child.stderr.take(), sender));
-        if let Err(error) = readers {
-            kill(&mut child);
-            return Err(error);
-        }
+        // On an error, dropping `child` kills the build.
+        read_stdout(stdout, sender.clone())?;
+        read_stderr(stderr, sender)?;
         Ok(Self {
             agent,
-            child: Some(child),
+            child,
             output,
             progress: None,
             built: false,
@@ -158,14 +150,6 @@ struct CargoMessage {
 struct Diagnostic {
     level: String,
     rendered: Option<String>,
-}
-
-impl Drop for BuildJob {
-    fn drop(&mut self) {
-        if let Some(child) = &mut self.child {
-            kill(child);
-        }
-    }
 }
 
 /// Sends each line of the build's stdout.
@@ -294,12 +278,11 @@ fn poll_build(mut jobs: Query<(Entity, &mut BuildJob)>, mut commands: Commands) 
         if !closed {
             continue;
         }
-        let status = match job.child.as_mut().map(Child::try_wait) {
-            Some(Ok(None)) => continue,
-            Some(Ok(Some(status))) => status.success(),
-            Some(Err(_)) | None => false,
+        let status = match job.child.try_wait() {
+            Ok(None) => continue,
+            Ok(Some(status)) => status.success(),
+            Err(_) => false,
         };
-        job.child = None;
         if status {
             job.built = true;
             commands.trigger(Notice::info(
@@ -329,7 +312,7 @@ fn finish_reload(
     jobs: Query<(Entity, &BuildJob)>,
     statuses: Query<&Status>,
     dirs: Res<Dirs>,
-    session: Res<Session>,
+    session: Res<SessionDir>,
     mut exit: MessageWriter<AppExit>,
     mut commands: Commands,
 ) {

@@ -16,6 +16,7 @@
 
 pub mod builtin;
 pub mod core;
+pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
 
@@ -54,7 +55,7 @@ plugin_group! {
         builtin::tools:::BuiltinToolsPlugin,
         builtin::commands:::BuiltinCommandsPlugin,
         core::save:::SavePlugin,
-        core::reload:::ReloadPlugin,
+        host::reload:::ReloadPlugin,
         #[cfg(feature = "tui")]
         tui:::TuiPlugin,
     }
@@ -65,12 +66,12 @@ plugin_group! {
 /// [`RigCodePlugins`]. Add plugins to it, then call `run`.
 pub fn app() -> App {
     let mut app = App::new();
-    core::session::open(&mut app);
+    host::session::open(&mut app);
     app.add_plugins((
         TaskPoolPlugin::default(),
         ScheduleRunnerPlugin::run_loop(Duration::from_millis(16)),
         LogPlugin {
-            fmt_layer: core::session::log_layer,
+            fmt_layer: host::session::log_layer,
             ..Default::default()
         },
     ))

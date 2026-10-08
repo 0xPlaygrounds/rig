@@ -35,10 +35,10 @@ use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use super::SessionDir;
 use super::agent::{Agent, Model};
 use super::dispatch::Effects;
 use super::registry::Notice;
-use super::session::Session;
 use super::turn::TurnEnded;
 
 /// Marks a component type as part of an agent's saved state. Register it
@@ -198,9 +198,9 @@ fn effects(world: &World) -> Result<&Effects> {
         .ok_or("the app has no effect recorder")?)
 }
 
-fn session(world: &World) -> Result<&Session> {
+fn session(world: &World) -> Result<&SessionDir> {
     Ok(world
-        .get_resource::<Session>()
+        .get_resource::<SessionDir>()
         .ok_or("the app has no session")?)
 }
 

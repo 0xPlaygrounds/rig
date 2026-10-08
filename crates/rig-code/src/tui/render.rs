@@ -14,8 +14,8 @@ use super::view::{Picker, View};
 use crate::core::agent::{Calls, Conversation, Effort, Model, Status};
 use crate::core::models::effort_label;
 use crate::core::registry::NoticeLevel;
-use crate::core::reload::BuildJob;
 use crate::core::turn::{ModelCall, ToolCall, ToolState};
+use crate::host::reload::BuildJob;
 
 /// How many lines of a tool result the transcript shows.
 const RESULT_LINES: usize = 4;

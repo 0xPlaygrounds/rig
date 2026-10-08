@@ -33,7 +33,7 @@ pub struct AgentId(pub Arc<str>);
 impl Default for AgentId {
     /// A new random id, `a-` and 16 hex digits.
     fn default() -> Self {
-        Self(format!("a-{:016x}", super::session::random()).into())
+        Self(format!("a-{:016x}", super::random()).into())
     }
 }
 
