@@ -84,6 +84,144 @@ pub(crate) fn needs_redraw(
         || !waits.is_empty()
 }
 
+/// What the shown agent's turn is doing, from its calls.
+fn activity(
+    calls: Option<&Calls>,
+    waits: &Query<&Backoff>,
+    summaries: &Query<(), With<Summarizing>>,
+    tool_calls: &Query<(), With<ToolCallRun>>,
+) -> Activity {
+    let Some(calls) = calls else {
+        return Activity::Thinking;
+    };
+    if let Some(wait) = calls.iter().find_map(|call| waits.get(call).ok()) {
+        Activity::Retrying {
+            attempt: wait.attempt,
+            seconds: wait.seconds_left(),
+        }
+    } else if calls.iter().any(|call| summaries.contains(call)) {
+        Activity::Compacting
+    } else if calls.iter().any(|call| tool_calls.contains(call)) {
+        Activity::RunningTools
+    } else {
+        Activity::Thinking
+    }
+}
+
+/// The agents the status line counts: each with whether it works, its
+/// name, whether another spawned it and the agents it spawned.
+type Everyone<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        Has<ActiveTurn>,
+        Option<&'static Name>,
+        Has<SpawnedBy>,
+        Option<&'static Spawned>,
+    ),
+    With<Agent>,
+>;
+
+/// The transcript's parts after the shown agent's messages are laid out:
+/// each message, after the notices that came before it and the
+/// compaction's summary; then the notices after the last message, the
+/// reply streaming in and what waits in the inbox. Without an agent, the
+/// app's notices.
+fn transcript_parts(
+    view: &TuiView,
+    shown: Option<(&Conversation, &Compacted, &Inbox)>,
+    partial: Option<&Partial>,
+    width: usize,
+) -> Vec<Part> {
+    let mut parts = Vec::new();
+    let Some((conversation, compacted, inbox)) = shown else {
+        let mut extra = Vec::new();
+        for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
+            notice_lines(notice, &mut extra);
+        }
+        parts.push(Part::Rows(wrap_all(&extra, width)));
+        return parts;
+    };
+    let mut notices = view
+        .notices
+        .iter()
+        .filter(|notice| notice.is_for(view.agent))
+        .peekable();
+    for index in 0..conversation.messages().len() {
+        let mut extra = Vec::new();
+        while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
+            notice_lines(notice, &mut extra);
+        }
+        if compacted.upto == index && !compacted.summary.is_empty() {
+            summary_lines(compacted, &mut extra);
+        }
+        if !extra.is_empty() {
+            parts.push(Part::Rows(wrap_all(&extra, width)));
+        }
+        parts.push(Part::Message(index));
+    }
+    let mut extra = Vec::new();
+    for notice in notices {
+        notice_lines(notice, &mut extra);
+    }
+    if let Some(partial) = partial {
+        extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
+        if !partial.text.is_empty() {
+            extra.push(Line::default());
+            extra.extend(markdown::render(&partial.text));
+        }
+    }
+    inbox_lines(inbox, &mut extra);
+    parts.push(Part::Rows(wrap_all(&extra, width)));
+    parts
+}
+
+/// The agent counts after the status line: which agent this is when
+/// another spawned it, how many of the agents it spawned are at work, and
+/// how many others.
+fn agent_spans(line: &mut Line<'static>, focused: Option<Entity>, everyone: &Everyone, hint: &str) {
+    let focused_agent = focused.and_then(|agent| everyone.get(agent).ok());
+    if let Some((_, _, Some(title), true, _)) = focused_agent {
+        line.spans
+            .insert(0, Span::from(format!("⤷ {title}  ")).magenta());
+    }
+    let mine: Vec<Entity> = focused_agent
+        .and_then(|(.., spawned)| spawned)
+        .map(|spawned| {
+            spawned
+                .iter()
+                .filter(|child| everyone.get(*child).is_ok_and(|(_, busy, ..)| busy))
+                .collect()
+        })
+        .unwrap_or_default();
+    match mine.len() {
+        0 => {}
+        1 => line.push_span(Span::from(format!("  an agent it spawned works{hint}")).magenta()),
+        count => {
+            line.push_span(Span::from(format!("  {count} agents it spawned work{hint}")).magenta());
+        }
+    }
+    let working = everyone
+        .iter()
+        .filter(|(agent, busy, ..)| *busy && Some(*agent) != focused && !mine.contains(agent))
+        .count();
+    if working > 0 {
+        line.push_span(Span::from(format!("  +{working} more working{hint}")).magenta());
+    }
+}
+
+/// The hint under the input box.
+fn input_hint(turn_running: bool, empty: bool) -> &'static str {
+    match (turn_running, empty) {
+        (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, true) => {
+            " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
+        }
+        (false, false) => "",
+    }
+}
+
 /// Draws one frame. The transcript's rows are kept between frames in a
 /// [`Transcript`], so only changed messages are laid out again.
 pub(crate) fn render(
@@ -105,16 +243,7 @@ pub(crate) fn render(
     partials: Query<&Partial>,
     (tool_calls, summaries): (Query<(), With<ToolCallRun>>, Query<(), With<Summarizing>>),
     waits: Query<&Backoff>,
-    everyone: Query<
-        (
-            Entity,
-            Has<ActiveTurn>,
-            Option<&Name>,
-            Has<SpawnedBy>,
-            Option<&Spawned>,
-        ),
-        With<Agent>,
-    >,
+    everyone: Everyone,
     slash: Query<&SlashCommand>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
@@ -132,24 +261,13 @@ pub(crate) fn render(
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
-    let wait = calls.and_then(|calls| calls.iter().find_map(|call| waits.get(call).ok()));
-    let activity = if turn.is_none() {
-        Activity::Idle
-    } else if let Some(wait) = wait {
-        Activity::Retrying {
-            attempt: wait.attempt,
-            seconds: wait.seconds_left(),
-        }
-    } else if calls.is_some_and(|calls| calls.iter().any(|call| summaries.contains(call))) {
-        Activity::Compacting
-    } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
-        Activity::RunningTools
-    } else {
-        Activity::Thinking
+    let activity = match turn {
+        None => Activity::Idle,
+        Some(_) => activity(calls, &waits, &summaries, &tool_calls),
     };
-    let renderers_changed = removed_renderers.read().count() > 0
-        || renderers.iter().any(|renderer| renderer.is_changed());
-    if renderers_changed {
+    if removed_renderers.read().count() > 0
+        || renderers.iter().any(|renderer| renderer.is_changed())
+    {
         transcript.clear();
     }
     let by_tool: Renderers<'_> = renderers
@@ -159,6 +277,10 @@ pub(crate) fn render(
             (renderer.tool.as_str(), &renderer.render)
         })
         .collect();
+    // /model and /agents come from plugins, so point at them only when
+    // loaded.
+    let loaded = |name: &str| slash.iter().any(|command| command.name == name);
+    let agents_hint = if loaded("agents") { " (/agents)" } else { "" };
     tui.terminal.draw(|frame| {
         let width = frame.area().width;
         // The input box grows with the input, up to a limit, and scrolls
@@ -172,11 +294,7 @@ pub(crate) fn render(
             Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
         ])
         .areas(frame.area());
-        // Notices go between the messages, where they arrived; the ones
-        // after the last message go before the reply streaming in.
-        let rows_width = usize::from(transcript_area.width.max(1));
-        let mut parts = Vec::new();
-        if let Some((agent, (conversation, compacted, ..))) = shown {
+        if let Some((agent, (conversation, ..))) = shown {
             transcript.update(
                 agent,
                 conversation,
@@ -184,100 +302,27 @@ pub(crate) fn render(
                 &by_tool,
                 transcript_area.width,
             );
-            let mut notices = view
-                .notices
-                .iter()
-                .filter(|notice| notice.is_for(view.agent))
-                .peekable();
-            for index in 0..conversation.messages().len() {
-                let mut extra = Vec::new();
-                while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
-                    notice_lines(notice, &mut extra);
-                }
-                if compacted.upto == index && !compacted.summary.is_empty() {
-                    summary_lines(compacted, &mut extra);
-                }
-                if !extra.is_empty() {
-                    parts.push(Part::Rows(wrap_all(&extra, rows_width)));
-                }
-                parts.push(Part::Message(index));
-            }
-            let mut extra = Vec::new();
-            for notice in notices {
-                notice_lines(notice, &mut extra);
-            }
-            if let Some(partial) = partial {
-                extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
-                if !partial.text.is_empty() {
-                    extra.push(Line::default());
-                    extra.extend(markdown::render(&partial.text));
-                }
-            }
-            if let Some((.., inbox)) = shown.map(|(_, shown)| shown) {
-                inbox_lines(inbox, &mut extra);
-            }
-            parts.push(Part::Rows(wrap_all(&extra, rows_width)));
-        } else {
-            let mut extra = Vec::new();
-            for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
-                notice_lines(notice, &mut extra);
-            }
-            parts.push(Part::Rows(wrap_all(&extra, rows_width)));
         }
+        let parts = transcript_parts(
+            view,
+            shown.map(|(_, (conversation, compacted, .., inbox))| (conversation, compacted, inbox)),
+            partial,
+            usize::from(transcript_area.width.max(1)),
+        );
         let rows = transcript.visible(
             &parts,
             usize::from(transcript_area.height),
             &mut view.scroll,
         );
         frame.render_widget(Paragraph::new(rows), transcript_area);
-        // /model comes from a plugin, so point at it only when loaded.
-        let model_hint = slash.iter().any(|command| command.name == "model");
         let shown = shown.map(|(_, shown)| shown);
         let mut line = status_line(
             shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
-            model_hint,
+            loaded("model"),
         );
-        // Which agent this is, when another spawned it, how many of the
-        // agents it spawned are at work, and how many others.
-        let focused = view.agent;
-        let focused_agent = focused.and_then(|agent| everyone.get(agent).ok());
-        if let Some((_, _, Some(title), true, _)) = focused_agent {
-            line.spans
-                .insert(0, Span::from(format!("⤷ {title}  ")).magenta());
-        }
+        agent_spans(&mut line, view.agent, &everyone, agents_hint);
         if let Some(name) = &name.0 {
             line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
-        }
-        let mine: Vec<Entity> = focused_agent
-            .and_then(|(.., spawned)| spawned)
-            .map(|spawned| {
-                spawned
-                    .iter()
-                    .filter(|child| everyone.get(*child).is_ok_and(|(_, busy, ..)| busy))
-                    .collect()
-            })
-            .unwrap_or_default();
-        // /agents comes from a plugin, so point at it only when loaded.
-        let agents_hint = if slash.iter().any(|command| command.name == "agents") {
-            " (/agents)"
-        } else {
-            ""
-        };
-        match mine.len() {
-            0 => {}
-            1 => line.push_span(
-                Span::from(format!("  an agent it spawned works{agents_hint}")).magenta(),
-            ),
-            count => line.push_span(
-                Span::from(format!("  {count} agents it spawned work{agents_hint}")).magenta(),
-            ),
-        }
-        let working = everyone
-            .iter()
-            .filter(|(agent, busy, ..)| *busy && Some(*agent) != focused && !mine.contains(agent))
-            .count();
-        if working > 0 {
-            line.push_span(Span::from(format!("  +{working} more working{agents_hint}")).magenta());
         }
         if let Some((_, spent)) = turn
             && let Some(cost) = spent.0.cost_label()
@@ -296,14 +341,7 @@ pub(crate) fn render(
                 .areas(status_area);
         frame.render_widget(line, status);
         frame.render_widget(usage, meter);
-        let hint = match (turn.is_some(), view.editor.is_empty()) {
-            (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-            (false, true) => {
-                " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image \
-                 · / commands · @ files "
-            }
-            (false, false) => "",
-        };
+        let hint = input_hint(turn.is_some(), view.editor.is_empty());
         frame.render_widget(
             Paragraph::new(layout.rows)
                 .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))

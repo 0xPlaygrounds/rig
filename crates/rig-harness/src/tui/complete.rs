@@ -1,9 +1,8 @@
 //! Completion in the input: `/` at the start completes a command name and
 //! `@` completes a path of the project. Paths come from a walk of the
 //! working directory that honours `.gitignore`, done on a thread of its own
-//! and kept for a while. Matching is pi's fuzzy match: the query's
-//! characters in order, rewarding runs and word starts
-//! (`references/pi/packages/tui/src/fuzzy.ts:12-67`).
+//! and kept for a while. An item matches when it contains the query,
+//! ignoring case; the earlier the match, the higher it ranks.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -194,21 +193,18 @@ pub(crate) fn update(
     }
     let items = match kind {
         Kind::Command => {
-            let mut scored: Vec<(f64, Item)> = commands
+            let mut ranked: Vec<(usize, &SlashCommand)> = commands
                 .iter()
-                .filter_map(|command| {
-                    let score = fuzzy_score(query, &command.name)?;
-                    Some((
-                        score,
-                        Item {
-                            text: command.name.clone(),
-                            detail: command.help.clone(),
-                        },
-                    ))
-                })
+                .filter_map(|command| Some((match_at(query, &command.name)?, command)))
                 .collect();
-            scored.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.text.cmp(&b.1.text)));
-            scored.into_iter().map(|(_, item)| item).collect()
+            ranked.sort_by(|a, b| (a.0, &a.1.name).cmp(&(b.0, &b.1.name)));
+            ranked
+                .into_iter()
+                .map(|(_, command)| Item {
+                    text: command.name.clone(),
+                    detail: command.help.clone(),
+                })
+                .collect()
         }
         Kind::Path => path_items(&index.paths, query),
     };
@@ -223,28 +219,24 @@ pub(crate) fn update(
     });
 }
 
-/// The best [`SHOWN`] paths for `query`, a match in the file name
-/// counting more than one in its directories.
+/// The best [`SHOWN`] paths for `query`: those whose file name matches
+/// before those where only a directory does, then by where it matches,
+/// shallower paths first.
 fn path_items(paths: &[String], query: &str) -> Vec<Item> {
-    let mut scored: Vec<(f64, &String)> = paths
+    let mut ranked: Vec<((bool, usize, usize), &String)> = paths
         .iter()
         .filter_map(|path| {
-            let name = path
-                .trim_end_matches('/')
-                .rsplit('/')
-                .next()
-                .unwrap_or(path);
-            let score = match fuzzy_score(query, name) {
-                Some(score) => score - 20.0,
-                None => fuzzy_score(query, path)?,
+            let trimmed = path.trim_end_matches('/');
+            let name = trimmed.rsplit('/').next().unwrap_or(trimmed);
+            let (in_directory, at) = match match_at(query, name) {
+                Some(at) => (false, at),
+                None => (true, match_at(query, path)?),
             };
-            // Shallower paths first among equals.
-            let depth = path.trim_end_matches('/').matches('/').count() as f64;
-            Some((score + depth, path))
+            Some(((in_directory, at, trimmed.matches('/').count()), path))
         })
         .collect();
-    scored.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(b.1)));
-    scored
+    ranked.sort();
+    ranked
         .into_iter()
         .take(SHOWN)
         .map(|(_, path)| Item {
@@ -267,49 +259,7 @@ pub(crate) fn receive_paths(
     update(&mut view, &mut index, &commands, &wake);
 }
 
-/// How well `query` matches `text`, lower is better, or `None`: every
-/// character of the query must appear in order, ignoring case.
-fn fuzzy_score(query: &str, text: &str) -> Option<f64> {
-    if query.is_empty() {
-        return Some(0.0);
-    }
-    let query: Vec<char> = query.to_lowercase().chars().collect();
-    let text: Vec<char> = text.to_lowercase().chars().collect();
-    if query.len() > text.len() {
-        return None;
-    }
-    let mut score = 0.0;
-    let mut last: Option<usize> = None;
-    let mut run = 0.0;
-    let mut from = 0;
-    for wanted in &query {
-        let found = text
-            .get(from..)?
-            .iter()
-            .position(|character| character == wanted)?
-            + from;
-        let boundary = found == 0
-            || text
-                .get(found - 1)
-                .is_some_and(|before| matches!(before, ' ' | '-' | '_' | '.' | '/' | ':'));
-        if last.is_some_and(|last| last + 1 == found) {
-            run += 1.0;
-            score -= run * 5.0;
-        } else {
-            run = 0.0;
-            if let Some(last) = last {
-                score += (found - last - 1) as f64 * 2.0;
-            }
-        }
-        if boundary {
-            score -= 10.0;
-        }
-        score += found as f64 * 0.1;
-        last = Some(found);
-        from = found + 1;
-    }
-    if query == text {
-        score -= 100.0;
-    }
-    Some(score)
+/// Where `query` first appears in `text`, ignoring case, or `None`.
+fn match_at(query: &str, text: &str) -> Option<usize> {
+    text.to_lowercase().find(&query.to_lowercase())
 }
