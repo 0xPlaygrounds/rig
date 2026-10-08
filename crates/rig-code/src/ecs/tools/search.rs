@@ -1,8 +1,9 @@
 //! The `search` tool: a regular expression over the text files of a
 //! directory tree.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use bevy::tasks::futures_lite::future::yield_now;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::json;
@@ -64,7 +65,20 @@ impl Tool for Search {
         let root = resolve(context, args.path.as_deref().unwrap_or("."));
         std::fs::metadata(&root).map_err(|error| io_error(&root, error))?;
         let mut matches = Vec::new();
-        walk(&root, &root, &pattern, &mut matches).map_err(|error| io_error(&root, error))?;
+        if root.is_dir() {
+            std::fs::read_dir(&root).map_err(|error| io_error(&root, error))?;
+            let mut pending = vec![root.clone()];
+            while let Some(dir) = pending.pop() {
+                if matches.len() >= MAX_MATCHES {
+                    break;
+                }
+                pending.extend(search_dir(&root, &dir, &pattern, &mut matches));
+                // Stopping the turn drops this call at its next await.
+                yield_now().await;
+            }
+        } else {
+            search_file(&root, &root, &pattern, &mut matches);
+        }
         if matches.is_empty() {
             return Ok("no matches".to_owned());
         }
@@ -78,41 +92,38 @@ impl Tool for Search {
     }
 }
 
-/// Collect matches under `path` into `matches`, named relative to `root`.
-/// Symbolic links to directories are not followed, so link loops cannot
-/// recurse.
-fn walk(
-    root: &Path,
-    path: &Path,
-    pattern: &Regex,
-    matches: &mut Vec<String>,
-) -> std::io::Result<()> {
-    if path.is_dir() {
-        let mut entries = std::fs::read_dir(path)?
-            .filter_map(Result::ok)
-            .filter_map(|entry| Some((entry.path(), entry.file_type().ok()?)))
-            .collect::<Vec<_>>();
-        entries.sort_by(|(left, _), (right, _)| left.cmp(right));
-        for (entry, kind) in entries {
-            if matches.len() >= MAX_MATCHES {
-                break;
-            }
-            let name = entry.file_name().and_then(|name| name.to_str());
-            if name.is_some_and(|name| name.starts_with('.')) {
-                continue;
-            }
-            if kind.is_dir() {
-                if !name.is_some_and(|name| SKIPPED_DIRS.contains(&name)) {
-                    walk(root, &entry, pattern, matches)?;
-                }
-            } else if kind.is_file() || (kind.is_symlink() && entry.is_file()) {
-                search_file(root, &entry, pattern, matches);
-            }
+/// Collect matches in the files of `dir` into `matches`, named relative to
+/// `root`, and return its subdirectories still to search, last first.
+/// Unreadable directories are skipped. Symbolic links to directories are not
+/// followed, so link loops cannot recurse.
+fn search_dir(root: &Path, dir: &Path, pattern: &Regex, matches: &mut Vec<String>) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut entries = entries
+        .filter_map(Result::ok)
+        .filter_map(|entry| Some((entry.path(), entry.file_type().ok()?)))
+        .collect::<Vec<_>>();
+    entries.sort_by(|(left, _), (right, _)| left.cmp(right));
+    let mut subdirs = Vec::new();
+    for (entry, kind) in entries {
+        if matches.len() >= MAX_MATCHES {
+            break;
         }
-        return Ok(());
+        let name = entry.file_name().and_then(|name| name.to_str());
+        if name.is_some_and(|name| name.starts_with('.')) {
+            continue;
+        }
+        if kind.is_dir() {
+            if !name.is_some_and(|name| SKIPPED_DIRS.contains(&name)) {
+                subdirs.push(entry);
+            }
+        } else if kind.is_file() || (kind.is_symlink() && entry.is_file()) {
+            search_file(root, &entry, pattern, matches);
+        }
     }
-    search_file(root, path, pattern, matches);
-    Ok(())
+    subdirs.reverse();
+    subdirs
 }
 
 /// Collect matches in the file `path`. Unreadable, large and non-UTF-8

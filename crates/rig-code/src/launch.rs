@@ -10,9 +10,9 @@
 
 use std::{
     collections::VecDeque,
-    ffi::OsString,
     io::Read,
-    process::{Command, Stdio},
+    process::{Child, ChildStderr, Command, Stdio},
+    sync::{Arc, Mutex},
 };
 
 use bevy::{
@@ -58,6 +58,30 @@ struct Rebuild {
     agent: Entity,
     task: Task<Built>,
     counts: Receiver<Count>,
+    child: Arc<Mutex<Child>>,
+}
+
+/// Quitting while the build runs stops it, so no cargo is left holding the
+/// agent project's build lock. On unix the launcher leads its own process
+/// group, which is killed whole, cargo and rustc included. The lock is busy
+/// only while the task waits for a build that already closed its output.
+impl Drop for Rebuild {
+    fn drop(&mut self) {
+        let Ok(mut child) = self.child.try_lock() else {
+            return;
+        };
+        if !matches!(child.try_wait(), Ok(None)) {
+            return;
+        }
+        #[cfg(unix)]
+        if let Ok(group) = libc::pid_t::try_from(child.id()) {
+            // SAFETY: `kill` takes plain numbers; a negative pid names the
+            // process group the launcher leads.
+            unsafe { libc::kill(-group, libc::SIGKILL) };
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 /// How the build ended: success, and the output lines that are not
@@ -118,38 +142,46 @@ fn reload(
         ));
         return;
     };
-    let (sender, counts) = crossbeam_channel::unbounded();
-    let task = IoTaskPool::get().spawn(async move { build(launcher, &sender) });
-    commands.insert_resource(Rebuild {
-        agent,
-        task,
-        counts,
-    });
-    commands.init_resource::<BuildProgress>();
-    notices.write(Notice::info(agent, "Rebuilding the agent..."));
-}
-
-/// Run `launcher build`, sending each progress reading and keeping the last
-/// other lines. This blocks the IO pool thread it runs on until cargo exits.
-fn build(launcher: OsString, counts: &Sender<Count>) -> Built {
-    let child = Command::new(launcher)
+    let mut command = Command::new(launcher);
+    command
         .arg("build")
         .env("CARGO_TERM_PROGRESS_WHEN", "always")
         .env("CARGO_TERM_PROGRESS_WIDTH", "120")
         .env("CARGO_TERM_COLOR", "never")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn();
-    let mut child = match child {
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = match command.spawn() {
         Ok(child) => child,
         Err(error) => {
-            return Built {
-                success: false,
-                output: vec![format!("cannot start the launcher: {error}")],
-            };
+            notices.write(Notice::error(
+                agent,
+                format!("Cannot start the launcher: {error}"),
+            ));
+            return;
         }
     };
+    let stderr = child.stderr.take();
+    let child = Arc::new(Mutex::new(child));
+    let (sender, counts) = crossbeam_channel::unbounded();
+    let waited = child.clone();
+    let task = IoTaskPool::get().spawn(async move { build(stderr, &waited, &sender) });
+    commands.insert_resource(Rebuild {
+        agent,
+        task,
+        counts,
+        child,
+    });
+    commands.init_resource::<BuildProgress>();
+    notices.write(Notice::info(agent, "Rebuilding the agent..."));
+}
+
+/// Follow `launcher build` through its `stderr`, sending each progress
+/// reading and keeping the last other lines. This blocks the IO pool thread
+/// it runs on until the build exits.
+fn build(stderr: Option<ChildStderr>, child: &Mutex<Child>, counts: &Sender<Count>) -> Built {
     let mut output = VecDeque::new();
     let mut segment = Vec::new();
     let mut keep = |segment: &[u8]| {
@@ -168,7 +200,7 @@ fn build(launcher: OsString, counts: &Sender<Count>) -> Built {
         }
         output.push_back(line.to_owned());
     };
-    if let Some(mut stderr) = child.stderr.take() {
+    if let Some(mut stderr) = stderr {
         let mut buffer = [0; 4096];
         while let Ok(read) = stderr.read(&mut buffer) {
             if read == 0 {
@@ -185,7 +217,9 @@ fn build(launcher: OsString, counts: &Sender<Count>) -> Built {
         }
         keep(&segment);
     }
-    let success = child.wait().is_ok_and(|status| status.success());
+    let success = child
+        .lock()
+        .is_ok_and(|mut child| child.wait().is_ok_and(|status| status.success()));
     Built {
         success,
         output: output.into(),

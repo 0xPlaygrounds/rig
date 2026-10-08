@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Clear, Paragraph},
 };
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::{
     Tui,
@@ -261,16 +262,24 @@ fn result_text(content: &ToolResultContent) -> String {
     }
 }
 
-/// Hard-wrap `text` at `width` characters.
+/// Hard-wrap `text` at `width` terminal cells. Wide characters, such as
+/// CJK and emoji, take two.
 fn wrap(text: &str, width: usize) -> Vec<String> {
-    let chars = text.chars().collect::<Vec<_>>();
-    if chars.is_empty() {
-        return vec![String::new()];
+    let width = width.max(1);
+    let mut lines = vec![String::new()];
+    let mut used = 0;
+    for character in text.chars() {
+        let cells = character.width().unwrap_or(0);
+        if used > 0 && used + cells > width {
+            lines.push(String::new());
+            used = 0;
+        }
+        if let Some(line) = lines.last_mut() {
+            line.push(character);
+        }
+        used += cells;
     }
-    chars
-        .chunks(width.max(1))
-        .map(|chunk| chunk.iter().collect())
-        .collect()
+    lines
 }
 
 /// Draw the bottom of the transcript, `scroll` lines up, clamped to the
@@ -323,8 +332,8 @@ fn draw_status(
     );
 }
 
-/// The composer text as shown: line breaks as a visible mark, so each
-/// character takes one cell and the cursor maps directly.
+/// The composer text as shown: line breaks as a visible mark, so the text
+/// wraps as one line.
 fn composer_text(composer: &Composer) -> String {
     composer.text.replace('\n', "\u{21b5}")
 }
@@ -333,8 +342,17 @@ fn draw_composer(frame: &mut Frame, area: Rect, composer: &Composer, show_cursor
     let block = Block::bordered().title(" message ");
     let inner = block.inner(area);
     let width = inner.width.max(1) as usize;
-    let lines = wrap(&composer_text(composer), width);
-    let row = composer.cursor / width;
+    let text = composer_text(composer);
+    let lines = wrap(&text, width);
+    // The cursor sits after the wrapped text before it.
+    let before = text.chars().take(composer.cursor).collect::<String>();
+    let before = wrap(&before, width);
+    let mut row = before.len().saturating_sub(1);
+    let mut column = before.last().map_or(0, |line| line.width());
+    if column >= width {
+        row += 1;
+        column = 0;
+    }
     let first = (row + 1).saturating_sub(inner.height as usize);
     let visible = lines
         .into_iter()
@@ -343,7 +361,7 @@ fn draw_composer(frame: &mut Frame, area: Rect, composer: &Composer, show_cursor
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(visible).block(block), area);
     if show_cursor && inner.height > 0 {
-        let x = inner.x + (composer.cursor % width) as u16;
+        let x = inner.x + column as u16;
         let y = inner.y + row.saturating_sub(first) as u16;
         frame.set_cursor_position(Position { x, y });
     }

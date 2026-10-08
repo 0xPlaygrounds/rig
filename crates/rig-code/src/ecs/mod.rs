@@ -16,7 +16,7 @@ pub mod session;
 pub mod tools;
 mod turn;
 
-use agent::Agent;
+use agent::{Agent, AgentId};
 use catalog::Providers;
 use command::CommandInput;
 use dispatch::Effects;
@@ -190,13 +190,14 @@ impl Plugin for AgentPlugin {
                         .in_set(AgentSystems::Collect),
                 ),
             )
+            .add_systems(PostUpdate, log_errors)
             .add_systems(
                 Last,
                 flush_effects
                     .in_set(bevy::app::OnAppExitSystems)
                     .run_if(on_message::<AppExit>),
             )
-            .add_observer(|_: On<TurnEnded>, effects: ResMut<Effects>| flush_effects(effects));
+            .add_observer(end_turn);
     }
 }
 
@@ -205,6 +206,23 @@ fn spawn_first_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
     if agents.is_empty() {
         commands.spawn(Agent);
     }
+}
+
+/// Log a failure the user is told about, under the agent's stable id.
+fn log_errors(mut notices: MessageReader<Notice>, ids: Query<&AgentId>) {
+    for notice in notices.read() {
+        if notice.level == NoticeLevel::Error {
+            let id = ids.get(notice.agent).map_or("none", |id| &id.0);
+            error!(agent = %id, "{}", notice.text);
+        }
+    }
+}
+
+/// Log the end of a turn and write its effects.
+fn end_turn(ended: On<TurnEnded>, ids: Query<&AgentId>, effects: ResMut<Effects>) {
+    let id = ids.get(ended.entity).map_or("none", |id| &id.0);
+    info!(agent = %id, "turn ended");
+    flush_effects(effects);
 }
 
 /// Append resolved effects to the log: after every turn, and on exit.

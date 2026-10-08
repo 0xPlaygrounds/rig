@@ -23,8 +23,9 @@ use bevy::{
     app::OnAppExitSystems,
     prelude::*,
     reflect::{
-        ApplyError, CreateTypeData, PartialReflect, TypeRegistry,
+        CreateTypeData, TypeRegistry,
         serde::{TypedReflectDeserializer, TypedReflectSerializer},
+        std_traits::ReflectDefault,
     },
 };
 use serde::de::DeserializeSeed;
@@ -39,28 +40,16 @@ use super::{
 /// The version of the `state.json` layout.
 const FORMAT: u64 = 1;
 
-/// Type data marking a component as part of the saved session. A load
-/// starts from the type's default and applies the saved value onto it, so
+/// Type data marking a component as part of the saved session. Saving and
+/// loading go through the type's [`ReflectComponent`] and [`ReflectDefault`]:
+/// a load starts from the default and applies the saved value onto it, so
 /// fields added since the save keep their default.
 #[derive(Clone)]
-pub struct ReflectSave {
-    get: fn(&World, Entity) -> Option<&dyn Reflect>,
-    insert: fn(&mut World, Entity, &dyn PartialReflect) -> Result<(), ApplyError>,
-}
+pub struct ReflectSave;
 
 impl<T: Component + Reflect + Default> CreateTypeData<T> for ReflectSave {
     fn create_type_data(_input: ()) -> Self {
-        Self {
-            get: |world, entity| world.get::<T>(entity).map(|value| value as &dyn Reflect),
-            insert: |world, entity, saved| {
-                let mut value = T::default();
-                value.try_apply(saved)?;
-                if let Ok(mut entity) = world.get_entity_mut(entity) {
-                    entity.insert(value);
-                }
-                Ok(())
-            },
-        }
+        Self
     }
 }
 
@@ -100,8 +89,9 @@ fn state(world: &mut World, registry: &TypeRegistry) -> Value {
     let saved = registry
         .iter()
         .filter_map(|registration| {
-            let save = registration.data::<ReflectSave>()?;
-            Some((registration.type_info().type_path(), save))
+            registration.data::<ReflectSave>()?;
+            let component = registration.data::<ReflectComponent>()?;
+            Some((registration.type_info().type_path(), component))
         })
         .collect::<Vec<_>>();
     let mut agents = world.query_filtered::<(Entity, &AgentId), With<Agent>>();
@@ -111,8 +101,8 @@ fn state(world: &mut World, registry: &TypeRegistry) -> Value {
         .map(|(entity, id)| {
             let components = saved
                 .iter()
-                .filter_map(|(path, save)| {
-                    let value = (save.get)(world, entity)?;
+                .filter_map(|(path, component)| {
+                    let value = component.reflect(world.get_entity(entity).ok()?)?;
                     let serializer =
                         TypedReflectSerializer::new(value.as_partial_reflect(), registry);
                     match serde_json::to_value(serializer) {
@@ -177,11 +167,25 @@ fn load(
     let registration = registry
         .get_with_type_path(path)
         .ok_or("its plugin is not loaded")?;
-    let save = registration
+    registration
         .data::<ReflectSave>()
         .ok_or("it is no longer saved")?;
+    let (Some(component), Some(default)) = (
+        registration.data::<ReflectComponent>(),
+        registration.data::<ReflectDefault>(),
+    ) else {
+        return Err("it is not a component with a default".to_owned());
+    };
     let value = TypedReflectDeserializer::new(registration, registry)
         .deserialize(value)
         .map_err(|error| error.to_string())?;
-    (save.insert)(world, entity, value.as_ref()).map_err(|error| error.to_string())
+    let mut loaded = default.default();
+    loaded
+        .try_apply(value.as_ref())
+        .map_err(|error| error.to_string())?;
+    let mut entity = world
+        .get_entity_mut(entity)
+        .map_err(|error| error.to_string())?;
+    component.insert(&mut entity, loaded.as_partial_reflect(), registry);
+    Ok(())
 }

@@ -76,7 +76,7 @@ pub(super) fn read_terminal(
                     state.filter.push_str(&text);
                     state.selected = 0;
                 } else {
-                    composer.insert(&text.replace('\r', "\n"));
+                    composer.insert(&text.replace("\r\n", "\n").replace('\r', "\n"));
                 }
             }
             _ => {}

@@ -12053,6 +12053,7 @@ dependencies = [
  "rig-core",
  "serde",
  "serde_json",
+ "unicode-width",
 ]
 
 [[package]]

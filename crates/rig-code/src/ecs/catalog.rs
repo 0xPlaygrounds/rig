@@ -19,9 +19,9 @@ pub struct Providers(HashMap<ProviderId, bool>);
 
 impl Providers {
     /// Check every provider in the catalog. Building a model reads the
-    /// provider's variables and does no network IO. A provider whose key is
-    /// optional counts only when its key variable is set, so a picker lists
-    /// what the user configured.
+    /// provider's variables and does no network IO, and fails without a
+    /// required key. A provider that needs no key, such as a local server,
+    /// always counts.
     pub fn from_env() -> Self {
         let mut available = HashMap::new();
         for spec in Catalog::builtin().iter() {
@@ -47,15 +47,9 @@ impl Providers {
 }
 
 fn credential_available(spec: &ModelSpec) -> bool {
-    let configured = spec.provider.requires_credential()
-        || spec
-            .provider
-            .api_key_env()
-            .is_some_and(|name| std::env::var_os(name).is_some());
-    configured
-        && ModelSelector::from(spec)
-            .provider_ref()
-            .is_ok_and(|reference| reference.completion_model().is_ok())
+    ModelSelector::from(spec)
+        .provider_ref()
+        .is_ok_and(|reference| reference.completion_model().is_ok())
 }
 
 /// The catalog reference `/model` takes for `spec`: `vendor/id`.

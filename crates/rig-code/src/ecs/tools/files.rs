@@ -1,5 +1,7 @@
 //! The `read`, `write` and `edit` tools.
 
+use std::io::{BufRead, BufReader};
+
 use serde::Deserialize;
 use serde_json::json;
 
@@ -54,19 +56,29 @@ impl Tool for Read {
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
         let path = resolve(context, &args.path);
-        let text = std::fs::read_to_string(&path).map_err(|error| io_error(&path, error))?;
+        let file = std::fs::File::open(&path).map_err(|error| io_error(&path, error))?;
         let first = args.offset.unwrap_or(1).max(1);
         let limit = args.limit.unwrap_or(READ_LINES).min(READ_LINES);
-        let total = text.lines().count();
+        let end = first.saturating_add(limit);
+        let mut total = 0;
         let mut out = String::new();
-        let mut last = first.saturating_sub(1);
-        for (number, line) in text.lines().enumerate().skip(first - 1).take(limit) {
-            let numbered = format!("{:>6}\t{line}\n", number + 1);
+        let mut last = first - 1;
+        let mut full = false;
+        // Stream the file, keeping only the lines returned and counting the rest.
+        for (index, line) in BufReader::new(file).lines().enumerate() {
+            let line = line.map_err(|error| io_error(&path, error))?;
+            let number = index + 1;
+            total = number;
+            if full || number < first || number >= end {
+                continue;
+            }
+            let numbered = format!("{number:>6}\t{line}\n");
             if out.len() + numbered.len() > READ_BYTES {
-                break;
+                full = true;
+                continue;
             }
             out.push_str(&numbered);
-            last = number + 1;
+            last = number;
         }
         if last < total {
             out.push_str(&format!(

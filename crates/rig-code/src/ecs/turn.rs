@@ -48,12 +48,17 @@ pub(super) struct ModelCall {
     events: Receiver<StreamEvent>,
 }
 
-/// One tool call of a reply: its position, its task, and its result once
-/// the task is done.
+/// One tool call of a reply: its position, the call while it waits for the
+/// calls before it, its task while it runs, and its result once done.
+///
+/// The calls of one reply run one at a time, in order: two edits of one
+/// file in a reply would otherwise both read the original text, and one
+/// would be lost.
 #[derive(Component)]
 pub(super) struct ToolCallRun {
     index: usize,
-    task: Task<ToolResult>,
+    waiting: Option<(ToolCall, ErasedHandler)>,
+    task: Option<Task<ToolResult>>,
     done: Option<ToolResult>,
 }
 
@@ -310,15 +315,8 @@ pub(super) fn drain_streams(calls: Query<(&CallOf, &ModelCall)>, mut drafts: Que
 /// Append each finished reply, then start its tool calls or end the turn.
 pub(super) fn finish_model_calls(
     mut calls: Query<(Entity, &CallOf, &mut ModelCall)>,
-    mut agents: Query<(
-        &AgentId,
-        &Workdir,
-        &ToolAccess,
-        &mut Conversation,
-        &mut AgentStatus,
-    )>,
+    mut agents: Query<(&ToolAccess, &mut Conversation, &mut AgentStatus)>,
     tools: Query<&RegisteredTool>,
-    mut effects: ResMut<Effects>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -329,7 +327,7 @@ pub(super) fn finish_model_calls(
         let agent = call_of.0;
         commands.entity(call_entity).despawn();
         commands.entity(agent).remove::<Draft>();
-        let Ok((id, workdir, access, mut conversation, mut status)) = agents.get_mut(agent) else {
+        let Ok((access, mut conversation, mut status)) = agents.get_mut(agent) else {
             continue;
         };
         let response = match result {
@@ -352,8 +350,7 @@ pub(super) fn finish_model_calls(
         if failure.is_none() && !stop.is_failure() && !tool_calls.is_empty() {
             *status = AgentStatus::Tools;
             for (index, call) in tool_calls.into_iter().enumerate() {
-                let run = start_tool_call(index, call, id, workdir, access, &tools, &mut effects);
-                commands.spawn((CallOf(agent), run));
+                commands.spawn((CallOf(agent), queue_tool_call(index, call, access, &tools)));
             }
             continue;
         }
@@ -368,23 +365,37 @@ pub(super) fn finish_model_calls(
     }
 }
 
-/// Dispatch one tool call on the IO pool. A call to a tool the agent does
-/// not have is dispatched to a handler that refuses it, so the effect log
-/// shows it too.
-fn start_tool_call(
+/// A tool call waiting for its turn, with the handler that will serve it.
+/// A call to a tool the agent does not have goes to a handler that refuses
+/// it, so the effect log shows it too.
+fn queue_tool_call(
     index: usize,
     call: ToolCall,
-    agent: &AgentId,
-    workdir: &Workdir,
     access: &ToolAccess,
     tools: &Query<&RegisteredTool>,
-    effects: &mut Effects,
 ) -> ToolCallRun {
     let name = call.function.name.as_str();
     let handler = tools
         .iter()
         .find(|tool| tool.definition.name.as_str() == name && access.allows(name))
         .map_or_else(|| missing_tool(name), |tool| tool.handler.clone());
+    ToolCallRun {
+        index,
+        waiting: Some((call, handler)),
+        task: None,
+        done: None,
+    }
+}
+
+/// Dispatch one tool call on the IO pool.
+fn start_tool_call(
+    call: ToolCall,
+    handler: ErasedHandler,
+    agent: &AgentId,
+    workdir: &Workdir,
+    effects: &mut Effects,
+) -> Task<ToolResult> {
+    let name = call.function.name.as_str();
     let args =
         call.function.invalid_arguments.clone().unwrap_or_else(|| {
             serde_json::Value::Object(call.function.arguments.clone()).to_string()
@@ -399,7 +410,7 @@ fn start_tool_call(
         vec![Arc::new(workdir.clone())],
     );
     let answered = call;
-    let task = IoTaskPool::get().spawn(async move {
+    IoTaskPool::get().spawn(async move {
         match reply.await.into_outcome().await {
             Ok(Outcome::ToolResult { result }) => {
                 let content = result.output().as_content().to_vec();
@@ -414,12 +425,7 @@ fn start_tool_call(
             )]),
             Err(report) => answered.error_result(vec![ToolResultContent::text(report.to_string())]),
         }
-    });
-    ToolCallRun {
-        index,
-        task,
-        done: None,
-    }
+    })
 }
 
 /// A handler for a call to `name`, which the agent has no tool for.
@@ -442,39 +448,54 @@ fn missing_tool(name: &str) -> ErasedHandler {
     ))
 }
 
-/// Collect finished tool calls. Once every call of an agent is done, the
-/// results are appended in call order and the conversation goes back to the
-/// model.
+/// Collect finished tool calls and start each agent's next waiting one.
+/// Once every call of an agent is done, the results are appended in call
+/// order and the conversation goes back to the model.
 pub(super) fn finish_tool_calls(
     mut runs: Query<(Entity, &CallOf, &mut ToolCallRun)>,
-    mut agents: Query<(&mut Conversation, &mut AgentStatus)>,
+    mut agents: Query<(&AgentId, &Workdir, &mut Conversation, &mut AgentStatus)>,
+    mut effects: ResMut<Effects>,
     mut commands: Commands,
 ) {
-    let mut by_agent: HashMap<Entity, Vec<(usize, Entity, Option<ToolResult>)>> = HashMap::new();
+    let mut by_agent: HashMap<Entity, Vec<(usize, Entity)>> = HashMap::new();
     for (entity, call_of, mut run) in &mut runs {
-        if run.done.is_none()
-            && let Some(result) = check_ready(&mut run.task)
+        if let Some(task) = &mut run.task
+            && let Some(result) = check_ready(task)
         {
+            run.task = None;
             run.done = Some(result);
         }
         by_agent
             .entry(call_of.0)
             .or_default()
-            .push((run.index, entity, run.done.clone()));
+            .push((run.index, entity));
     }
-    for (agent, mut runs) in by_agent {
-        if runs.iter().any(|(_, _, done)| done.is_none()) {
-            continue;
-        }
-        runs.sort_by_key(|(index, _, _)| *index);
-        let mut results = Vec::with_capacity(runs.len());
-        for (_, entity, done) in runs {
-            commands.entity(entity).despawn();
-            results.extend(done);
-        }
-        let Ok((mut conversation, mut status)) = agents.get_mut(agent) else {
+    for (agent, mut entities) in by_agent {
+        let Ok((id, workdir, mut conversation, mut status)) = agents.get_mut(agent) else {
             continue;
         };
+        entities.sort_by_key(|(index, _)| *index);
+        let mut results = Vec::with_capacity(entities.len());
+        let mut running = false;
+        for (_, entity) in &entities {
+            let Ok((_, _, mut run)) = runs.get_mut(*entity) else {
+                continue;
+            };
+            if let Some(done) = &run.done {
+                results.push(done.clone());
+                continue;
+            }
+            if !running && let Some((call, handler)) = run.waiting.take() {
+                run.task = Some(start_tool_call(call, handler, id, workdir, &mut effects));
+            }
+            running = true;
+        }
+        if running {
+            continue;
+        }
+        for (_, entity) in entities {
+            commands.entity(entity).despawn();
+        }
         conversation.0.push(Message::tool_results(results));
         *status = AgentStatus::Thinking;
         commands.entity(agent).insert(NeedsReply);

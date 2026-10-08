@@ -21,6 +21,7 @@ ratatui = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+unicode-width = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

@@ -91,16 +91,19 @@ impl Effects {
                 recorder: self.recorder.clone(),
                 id,
             }));
+        let recorder = self.recorder.clone();
         async move {
-            AssertUnwindSafe(handler.handle(kind, dispatch))
+            // The panicked handler, and with it the dispatch's observer, is
+            // dropped by the end of this statement. The observer records a
+            // cancellation then, which the panic below overwrites.
+            let caught = AssertUnwindSafe(handler.handle(kind, dispatch))
                 .catch_unwind()
-                .await
-                .unwrap_or_else(|_| {
-                    Reply::Outcome(Err(ErrorReport::new(
-                        ErrorKind::Internal,
-                        "the handler panicked",
-                    )))
-                })
+                .await;
+            caught.unwrap_or_else(|_| {
+                let report = ErrorReport::new(ErrorKind::Internal, "the handler panicked");
+                recorder.resolve(id, Err(report.clone()));
+                Reply::Outcome(Err(report))
+            })
         }
     }
 

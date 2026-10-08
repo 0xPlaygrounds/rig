@@ -171,7 +171,15 @@ pub(super) fn read_core_messages(
                     .models()
                     .map(|spec| {
                         let reference = catalog::reference(spec);
-                        (format!("{}  {reference}", spec.display_name), reference)
+                        let keyless = if spec.provider.requires_credential() {
+                            ""
+                        } else {
+                            "  (no key needed)"
+                        };
+                        (
+                            format!("{}  {reference}{keyless}", spec.display_name),
+                            reference,
+                        )
                     })
                     .collect(),
                 filter: String::new(),
