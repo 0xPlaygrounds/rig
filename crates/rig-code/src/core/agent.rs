@@ -10,6 +10,7 @@ use rig_core::message::ToolCall;
 use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
+use super::compaction::Compacted;
 use super::recovery::Recovery;
 use super::save::ReflectSaved;
 use super::usage::{Spending, TurnSpending};
@@ -19,7 +20,15 @@ use super::usage::{Spending, TurnSpending};
 /// until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
-#[require(AgentId, Conversation, Effort, Spending, SystemPrompt, ToolAccess)]
+#[require(
+    AgentId,
+    Compacted,
+    Conversation,
+    Effort,
+    Spending,
+    SystemPrompt,
+    ToolAccess
+)]
 pub struct Agent;
 
 /// The agent's stable id, used in saved state, effect scopes and logs.
@@ -37,6 +46,8 @@ impl Default for AgentId {
 }
 
 /// The conversation: every message sent to and received from the model.
+/// Requests leave out the ones its agent's
+/// [`Compacted`] replaced with a summary.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize, Saved)]
 pub struct Conversation(pub Vec<Message>);
@@ -213,6 +224,18 @@ pub struct Submit {
 pub struct Retry {
     /// The agent.
     pub entity: Entity,
+}
+
+/// Compact the agent's conversation now: its older messages are replaced
+/// in requests by a summary the model writes, focused on `focus` when it is
+/// not empty. Refused while a turn runs.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Compact {
+    /// The agent.
+    pub entity: Entity,
+    /// What the summary should keep above all; may be empty.
+    pub focus: String,
 }
 
 /// Stop the agent's running turn.

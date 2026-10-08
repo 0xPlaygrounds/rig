@@ -68,6 +68,14 @@ impl Spending {
         }
     }
 
+    /// Adds the `usage` of a call that did not send the conversation, such
+    /// as a summary's: it costs, but says nothing about the context.
+    pub fn record_aside(&mut self, usage: &Usage) {
+        let context = self.context;
+        self.record(usage);
+        self.context = context;
+    }
+
     /// Input tokens neither read from nor written to a cache.
     pub fn uncached_input(&self) -> u64 {
         self.tokens

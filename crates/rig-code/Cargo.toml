@@ -36,6 +36,8 @@ regex = { workspace = true }
 rig = { path = "../..", version = "0.44.0", default-features = false }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["reqwest"] }
+# The token estimate compaction decides by.
+rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

@@ -10854,6 +10854,7 @@ dependencies = [
  "rig",
  "rig-cassette",
  "rig-core",
+ "rig-memory",
  "serde",
  "serde_json",
  "uuid",

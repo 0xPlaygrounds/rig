@@ -16,6 +16,7 @@ use crate::core::agent::{
     ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
+use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
 use crate::core::usage::{self, Spending, TurnSpending};
@@ -27,6 +28,8 @@ const RESULT_LINES: usize = 4;
 const ARGUMENT_CHARS: usize = 160;
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 8;
+/// Lines of a compaction's summary shown in the transcript.
+const SUMMARY_LINES: usize = 12;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
 
@@ -36,6 +39,8 @@ enum Activity {
     Idle,
     Thinking,
     RunningTools,
+    /// Summarizing the older conversation.
+    Compacting,
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
         attempt: u32,
@@ -58,6 +63,7 @@ pub(crate) fn needs_redraw(
             Changed<Effort>,
             Changed<ActiveTurn>,
             Changed<Spending>,
+            Changed<Compacted>,
         )>,
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
@@ -77,6 +83,7 @@ pub(crate) fn render(
     mut view: ResMut<TuiView>,
     agents: Query<(
         &Conversation,
+        &Compacted,
         Option<&ModelChoice>,
         &Effort,
         Option<&ActiveTurn>,
@@ -86,6 +93,7 @@ pub(crate) fn render(
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
     tool_calls: Query<(), With<ToolCallRun>>,
+    summaries: Query<(), With<Summarizing>>,
     waits: Query<&Backoff>,
     slash: Query<&SlashCommand>,
     build: Option<Res<ReloadBuild>>,
@@ -95,7 +103,7 @@ pub(crate) fn render(
     let view = view.bypass_change_detection();
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
     let turn = shown
-        .and_then(|(_, _, _, turn, ..)| turn)
+        .and_then(|(_, _, _, _, turn, ..)| turn)
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
@@ -107,6 +115,8 @@ pub(crate) fn render(
             attempt: wait.attempt,
             seconds: wait.seconds_left(),
         }
+    } else if calls.is_some_and(|calls| calls.iter().any(|call| summaries.contains(call))) {
+        Activity::Compacting
     } else if calls.is_some_and(|calls| calls.iter().any(|call| tool_calls.contains(call))) {
         Activity::RunningTools
     } else {
@@ -131,6 +141,7 @@ pub(crate) fn render(
         let messages = shown
             .map(|(conversation, ..)| conversation.0.as_slice())
             .unwrap_or_default();
+        let compacted = shown.map(|(_, compacted, ..)| compacted);
         let mut notices = view
             .notices
             .iter()
@@ -140,6 +151,12 @@ pub(crate) fn render(
         for (index, message) in messages.iter().enumerate() {
             while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
                 notice_lines(notice, &mut lines);
+            }
+            if let Some(compacted) = compacted
+                && compacted.upto == index
+                && !compacted.summary.is_empty()
+            {
+                summary_lines(compacted, &mut lines);
             }
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             message_lines(message, previous, messages.get(index + 1), &mut lines);
@@ -155,7 +172,7 @@ pub(crate) fn render(
         // /model comes from a plugin, so point at it only when loaded.
         let model_hint = slash.iter().any(|command| command.name == "model");
         let mut line = status_line(
-            shown.map(|(_, model, effort, ..)| (model, effort, activity)),
+            shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
             model_hint,
         );
         if let Some((_, spent)) = turn
@@ -214,6 +231,7 @@ fn status_line(
         Activity::Idle => Span::from("idle").green(),
         Activity::Thinking => Span::from("thinking… (Esc stops)").yellow(),
         Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+        Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
         Activity::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"
         ))
@@ -446,6 +464,30 @@ fn result_lines(result: &ToolResult, lines: &mut Vec<Line<'static>>) {
         lines.push(Line::styled(
             format!("    … {} more lines", total - RESULT_LINES),
             style,
+        ));
+    }
+}
+
+/// Draws where a compaction cut the conversation: the messages above are
+/// sent to the model as the summary under the line.
+fn summary_lines(compacted: &Compacted, lines: &mut Vec<Line<'static>>) {
+    let style = Style::new().fg(Color::Magenta);
+    lines.push(Line::default());
+    lines.push(Line::styled(
+        format!(
+            "── {} earlier messages are sent as this summary ──",
+            compacted.upto
+        ),
+        style.bold(),
+    ));
+    let total = compacted.summary.lines().count();
+    for line in compacted.summary.lines().take(SUMMARY_LINES) {
+        lines.push(Line::styled(line.replace('\t', "    "), style.dim()));
+    }
+    if total > SUMMARY_LINES {
+        lines.push(Line::styled(
+            format!("  … {} more lines", total - SUMMARY_LINES),
+            style.dim(),
         ));
     }
 }

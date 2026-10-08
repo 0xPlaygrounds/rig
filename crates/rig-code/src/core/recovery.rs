@@ -29,19 +29,22 @@ const MAX_ASKED_WAIT: Duration = Duration::from_secs(60);
 pub const MAX_CLEARINGS: u32 = 2;
 /// Tokens of the newest tool outputs a first clearing keeps (opencode's
 /// `PRUNE_PROTECT`).
-const KEEP_RECENT_OUTPUTS: u64 = 40_000;
+pub const KEEP_RECENT_OUTPUTS: u64 = 40_000;
 /// What a cleared tool output says instead.
 pub const CLEARED: &str =
     "[output cleared to fit the context window; run the tool again if needed]";
 
 /// A turn's recovery so far: the failed calls retried since its last
-/// reply and how often it cleared tool outputs.
+/// reply, how often it cleared tool outputs and how often it compacted
+/// the conversation.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Recovery {
     /// Retries since the last reply.
     pub retries: u32,
     /// Clearings in this turn.
     pub clearings: u32,
+    /// Compactions in this turn.
+    pub compactions: u32,
 }
 
 /// A wait before the turn's next model call, on a call entity of the turn;
@@ -77,7 +80,8 @@ pub(crate) async fn wait(delay: Duration) -> RetryDue {
 /// What to do about a failed model call.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// The conversation does not fit the model's window: clear and retry.
+    /// The conversation does not fit the model's window: clear or compact,
+    /// and retry.
     Overflow,
     /// Wait this long, then send the same request again.
     Retry(Duration),

@@ -190,7 +190,14 @@ your message stays in the conversation and `/retry` sends it again. When the
 conversation outgrows the model's context window, older tool outputs are
 cleared and the call is sent again. Models whose catalog entry lists a prompt
 cache get it, with the agent's id as the cache key where the provider takes
-one. `/reload` rebuilds the agent
+one. When the conversation comes within 16k tokens of the model's window,
+older tool outputs are cleared and, if that is not enough, the older messages
+are summarized by the model into a structured checkpoint (goal, progress,
+decisions, next steps, files read and changed) that requests send in their
+place; the newest 20k tokens stay as they are. `/compact` does it now, and
+`/compact <focus>` says what the summary should keep. The summarized messages
+stay in the transcript and the saved session, under a line that shows the
+summary. `/reload` rebuilds the agent
 and restarts it on the same session; it shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
