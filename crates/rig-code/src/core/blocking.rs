@@ -1,11 +1,12 @@
-//! Runs blocking tool work on its own thread.
+//! Runs blocking tool work on its own thread, so no task pool thread
+//! blocks. Plugin tools that do file, process or long CPU work use it too.
 
 use futures::channel::oneshot;
 use rig_core::tool::ToolExecutionError;
 
 /// Run `work` on a new thread and await its answer. A panic in `work`
 /// becomes an error.
-pub(super) async fn blocking<T: Send + 'static>(
+pub async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, ToolExecutionError> + Send + 'static,
 ) -> Result<T, ToolExecutionError> {
     let (sender, receiver) = oneshot::channel();

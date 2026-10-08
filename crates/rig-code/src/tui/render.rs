@@ -75,18 +75,29 @@ pub fn render(
             Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
         ])
         .areas(frame.area());
+        // Notices go between the messages, where they arrived; the ones
+        // after the last message go before the reply streaming in.
+        let messages = shown
+            .map(|(conversation, ..)| conversation.0.as_slice())
+            .unwrap_or_default();
+        let mut notices = view
+            .notices
+            .iter()
+            .filter(|notice| notice.is_for(view.agent))
+            .peekable();
         let mut lines = Vec::new();
-        if let Some((conversation, _, _, _)) = shown {
-            for message in &conversation.0 {
-                message_lines(message, &mut lines);
+        for (index, message) in messages.iter().enumerate() {
+            while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
+                notice_lines(&notice.text, &mut lines);
             }
+            message_lines(message, &mut lines);
+        }
+        for notice in notices {
+            notice_lines(&notice.text, &mut lines);
         }
         if let Some(partial) = partial {
             text_lines(&partial.reasoning, Style::new().dim().italic(), &mut lines);
             text_lines(&partial.text, Style::new(), &mut lines);
-        }
-        for notice in &view.notices {
-            text_lines(notice, Style::new().fg(Color::Magenta), &mut lines);
         }
         draw_transcript(frame, transcript, lines, &mut view.scroll);
         let mut line = status_line(shown.map(|(_, model, effort, status)| (model, effort, status)));
@@ -260,6 +271,10 @@ fn result_lines(result: &ToolResult, lines: &mut Vec<Line<'static>>) {
             style,
         ));
     }
+}
+
+fn notice_lines(text: &str, lines: &mut Vec<Line<'static>>) {
+    text_lines(text, Style::new().fg(Color::Magenta), lines);
 }
 
 fn text_lines(text: &str, style: Style, lines: &mut Vec<Line<'static>>) {

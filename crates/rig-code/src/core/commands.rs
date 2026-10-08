@@ -5,6 +5,7 @@
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
+use bevy_log::warn;
 
 /// What a command system receives: the agent the command was typed for and
 /// the text after the command name.
@@ -31,7 +32,8 @@ pub struct SlashCommand {
 /// Registers slash commands on an [`App`].
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
-    /// [`CommandArgs`] of each use.
+    /// [`CommandArgs`] of each use. A name already registered is refused
+    /// with a warning.
     fn add_command<M>(
         &mut self,
         name: &str,
@@ -47,6 +49,15 @@ impl AppCommandsExt for App {
         help: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self {
+        let world = self.world_mut();
+        if world
+            .query::<&SlashCommand>()
+            .iter(world)
+            .any(|command| command.name == name)
+        {
+            warn!("command not registered: /{name} already exists");
+            return self;
+        }
         let system = self.register_system(system);
         self.world_mut().spawn((
             Name::new(format!("command:/{name}")),

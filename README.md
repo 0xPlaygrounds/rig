@@ -211,12 +211,13 @@ pub struct HelloPlugin;
 impl Plugin for HelloPlugin {
     fn build(&self, app: &mut App) {
         app.add_command("hello", "Say hello", hello);
-        // app.add_tool(MyTool) adds any rig_core::tool::Tool.
+        // app.add_tool(MyTool) adds any rig_core::tool::Tool. A tool that
+        // blocks wraps that work in `blocking(|| ...)`.
     }
 }
 
-fn hello(In(_): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
-    notices.write(Notice("Hello!".to_owned()));
+fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
+    notices.write(Notice::to(args.agent, "Hello!"));
 }
 ```
 
@@ -232,10 +233,13 @@ plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```
 
-Bevy features turn on the `bevy` crate itself, which needs Rust 1.96 or
-newer; `rig` says so before building when the toolchain is older.
+The `bevy` crate itself, which a plugin may depend on or turn on with Bevy
+features, needs Rust 1.96 or newer; `rig` says so before building when the
+toolchain is older.
 
 `rig build` regenerates and builds the agent without starting it.
+
+The agent runs on Linux and macOS; Windows is not supported yet.
 
 ## Supported Integrations
 

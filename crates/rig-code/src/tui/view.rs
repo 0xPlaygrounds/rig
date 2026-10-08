@@ -4,7 +4,9 @@
 use bevy_ecs::prelude::*;
 use rig_core::completion::Reasoning;
 
-use crate::core::agent::{Agent, AgentId, ModelChoice, Notice, PickKind, PickRequest};
+use crate::core::agent::{
+    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest,
+};
 use crate::core::models;
 
 /// Notices kept for display.
@@ -22,7 +24,25 @@ pub struct TuiView {
     /// The open picker.
     pub picker: Option<Picker>,
     /// Recent notices, oldest first.
-    pub notices: Vec<String>,
+    pub notices: Vec<ShownNotice>,
+}
+
+/// A notice placed in a transcript.
+pub struct ShownNotice {
+    /// The agent it is about, or `None` for every agent.
+    pub agent: Option<Entity>,
+    /// The length of that agent's conversation (the focused one's, for an
+    /// app notice) when it arrived; it is drawn after that many messages.
+    pub after: usize,
+    /// The text.
+    pub text: String,
+}
+
+impl ShownNotice {
+    /// Whether it belongs in `agent`'s transcript.
+    pub fn is_for(&self, agent: Option<Entity>) -> bool {
+        self.agent.is_none() || self.agent == agent
+    }
 }
 
 /// What choosing a picker item sets.
@@ -84,6 +104,7 @@ pub fn focus_agent(mut view: ResMut<TuiView>, agents: Query<(Entity, &AgentId), 
 pub fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&ModelChoice>,
+    conversations: Query<&Conversation>,
     mut view: ResMut<TuiView>,
 ) {
     for request in requests.read() {
@@ -104,11 +125,18 @@ pub fn open_pickers(
                     })
                     .collect();
                 if items.is_empty() {
-                    view.notices.push(
-                        "No provider has a credential in the environment, such as \
-                         OPENAI_API_KEY."
+                    let after = conversations
+                        .get(request.agent)
+                        .map_or(0, |conversation| conversation.0.len());
+                    view.notices.push(ShownNotice {
+                        agent: Some(request.agent),
+                        after,
+                        text: "No provider with tool-calling models has a credential in the \
+                               environment, such as OPENAI_API_KEY. Providers that need none, \
+                               such as a local Ollama, are not listed: type /model \
+                               vendor/model to use one."
                             .to_owned(),
-                    );
+                    });
                     continue;
                 }
                 ("Model".to_owned(), items)
@@ -134,13 +162,27 @@ pub fn open_pickers(
     }
 }
 
-/// Keeps the latest notices for display.
-pub fn collect_notices(mut notices: MessageReader<Notice>, mut view: ResMut<TuiView>) {
+/// Keeps the latest notices for display, each placed after the messages
+/// its agent had when it arrived.
+pub fn collect_notices(
+    mut notices: MessageReader<Notice>,
+    conversations: Query<&Conversation>,
+    mut view: ResMut<TuiView>,
+) {
     if notices.is_empty() {
         return;
     }
     for notice in notices.read() {
-        view.notices.push(notice.0.clone());
+        let after = notice
+            .agent
+            .or(view.agent)
+            .and_then(|agent| conversations.get(agent).ok())
+            .map_or(0, |conversation| conversation.0.len());
+        view.notices.push(ShownNotice {
+            agent: notice.agent,
+            after,
+            text: notice.text.clone(),
+        });
     }
     let excess = view.notices.len().saturating_sub(KEPT_NOTICES);
     view.notices.drain(..excess);

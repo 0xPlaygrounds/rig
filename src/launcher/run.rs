@@ -2,8 +2,8 @@
 //! it on the staged build. A new build runs as this launcher's own trial
 //! and becomes the good build once it signals ready; one that exits before
 //! that is rolled back to the last good build. Several launchers can share
-//! one `RIG_HOME`: building and staging take the root's lock, and trials
-//! and ready files are per session.
+//! one `RIG_HOME`: building and staging take the root's lock, and a
+//! `/reload` build, its trial and the ready file are per session.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -20,22 +20,23 @@ const POLL: Duration = Duration::from_millis(100);
 /// Runs the agent until it exits with anything but the reload code, and
 /// returns its exit code.
 pub fn run(home: &Home) -> Result<ExitCode> {
-    let mut notice = {
-        let _lock = home.lock()?;
-        rebuild(home)?
-    };
-    let launcher = std::env::current_exe()?;
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| elapsed.as_secs())
         .unwrap_or_default();
     // The agent makes the same id when it runs without the launcher.
     let session = format!("{seconds}-{}", std::process::id());
-    let trial = home.bin(&format!("trial-{session}"));
+    let _running = home.hold_session(&session)?;
+    let mut notice = {
+        let _lock = home.lock()?;
+        home.sweep()?;
+        rebuild(home, &session)?
+    };
+    let launcher = std::env::current_exe()?;
+    let trial = home.trial_for(&session);
     let ready = home.session(&session).join("ready");
-    fs::create_dir_all(home.session(&session))?;
     loop {
-        let (binary, is_trial) = pick(home, &trial)?;
+        let (binary, is_trial) = pick(home, &session, &trial)?;
         remove_if_present(&ready)?;
         let mut command = Command::new(&binary);
         command
@@ -66,29 +67,32 @@ pub fn run(home: &Home) -> Result<ExitCode> {
             }
         };
         promoted?;
+        let rejected = is_trial && !started;
+        if rejected {
+            fs::remove_file(&trial)?;
+        }
         if status.code() == Some(RELOAD_EXIT_CODE) {
             continue;
         }
-        if !is_trial || started {
+        if !rejected {
             return Ok(exit_code(status));
         }
-        fs::remove_file(&trial)?;
         let log = home.session(&session).join("agent.log");
         let fallback = home.bin("good").exists();
         let message = if fallback {
             format!(
-                "The new build crashed during startup ({status}); rolled back to the previous \
-                 build. Log: {}",
+                "The new build stopped during startup ({status}); rolled back to the previous \
+                 build. `rig build` tries it again. Log: {}",
                 log.display()
             )
         } else {
             format!(
-                "The new build crashed during startup ({status}) and there is no previous build \
-                 to roll back to. Log: {}",
+                "The new build stopped during startup ({status}) and there is no previous \
+                 build to roll back to; the next `rig` tries it again. Log: {}",
                 log.display()
             )
         };
-        // Leave the alternate screen the crashed build may have left behind.
+        // Leave the alternate screen the stopped build may have left behind.
         eprintln!("\x1b[?1049l{message}");
         if !fallback {
             return Ok(exit_code(status));
@@ -105,10 +109,11 @@ fn remove_if_present(path: &Path) -> Result<()> {
 }
 
 /// Builds before the first start when there is no binary yet, when the
-/// generated project changed, and always from a local checkout. A failed
-/// build with an older binary at hand becomes the notice that binary
-/// starts with.
-fn rebuild(home: &Home) -> Result<Option<String>> {
+/// generated project changed, and always from a local checkout, staging for
+/// this launcher. With no good build yet, the build is staged even if it
+/// was rejected before, so each start retries it. A failed build with an
+/// older binary at hand becomes the notice that binary starts with.
+fn rebuild(home: &Home, session: &str) -> Result<Option<String>> {
     let first_run = !["staged", "good"]
         .into_iter()
         .any(|name| home.bin(name).exists());
@@ -118,7 +123,7 @@ fn rebuild(home: &Home) -> Result<Option<String>> {
                 "Building the rig agent{}…",
                 if first_run { " (first run)" } else { "" }
             );
-            build::compile(home, &project)?;
+            build::compile(home, &project, &home.staged_for(session), first_run)?;
         }
         Ok(())
     });
@@ -134,14 +139,16 @@ fn rebuild(home: &Home) -> Result<Option<String>> {
     }
 }
 
-/// The binary to start: a newly staged build, claimed as this launcher's
-/// `trial`, or else the last good one. The flag says it is a trial.
-fn pick(home: &Home, trial: &Path) -> Result<(PathBuf, bool)> {
-    // The rename claims the staged build for this launcher alone.
-    match fs::rename(home.bin("staged"), trial) {
-        Ok(()) => return Ok((trial.to_path_buf(), true)),
-        Err(failure) if failure.kind() != ErrorKind::NotFound => return Err(failure.into()),
-        Err(_) => {}
+/// The binary to start: a build staged for this launcher or for any, claimed
+/// as its `trial`, or else the last good one. The flag says it is a trial.
+fn pick(home: &Home, session: &str, trial: &Path) -> Result<(PathBuf, bool)> {
+    for staged in [home.staged_for(session), home.bin("staged")] {
+        // The rename claims the staged build for this launcher alone.
+        match fs::rename(staged, trial) {
+            Ok(()) => return Ok((trial.to_path_buf(), true)),
+            Err(failure) if failure.kind() != ErrorKind::NotFound => return Err(failure.into()),
+            Err(_) => {}
+        }
     }
     let good = home.bin("good");
     if good.exists() {

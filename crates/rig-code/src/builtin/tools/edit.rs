@@ -4,8 +4,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::blocking::blocking;
 use super::io_error;
+use crate::core::blocking::blocking;
 
 /// Replaces exact text in a file.
 pub struct Edit;

@@ -2,6 +2,7 @@
 //! under this one root.
 
 use std::fs::{self, File, TryLockError};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::Result;
@@ -45,15 +46,62 @@ impl Home {
     }
 
     /// A file in `bin/`: `staged`, `good`, `built`, `lock`, or a
-    /// launcher's own `trial-<session>`.
+    /// launcher's own `staged-<session>` and `trial-<session>`.
     pub fn bin(&self, name: &str) -> PathBuf {
         self.root.join("bin").join(name)
+    }
+
+    /// The build staged for the launcher of `session` alone.
+    pub fn staged_for(&self, session: &str) -> PathBuf {
+        self.bin(&format!("staged-{session}"))
+    }
+
+    /// The build the launcher of `session` runs until it is ready.
+    pub fn trial_for(&self, session: &str) -> PathBuf {
+        self.bin(&format!("trial-{session}"))
     }
 
     /// A session's directory. The agent keeps its state, effect log and
     /// text log there, and writes `ready` once it started.
     pub fn session(&self, session: &str) -> PathBuf {
         self.root.join("sessions").join(session)
+    }
+
+    /// Holds the lock that marks the launcher of `session` as running; it is
+    /// released when the returned file is dropped or the launcher dies.
+    pub fn hold_session(&self, session: &str) -> Result<File> {
+        let file = session_lock(&self.session(session))?;
+        file.lock()?;
+        Ok(file)
+    }
+
+    /// Removes the staged and trial builds of launchers that are gone,
+    /// such as one killed with its terminal. Call it holding [`Home::lock`].
+    pub fn sweep(&self) -> Result<()> {
+        let Ok(entries) = fs::read_dir(self.root.join("bin")) else {
+            return Ok(());
+        };
+        for entry in entries {
+            let entry = entry?;
+            let name = entry.file_name();
+            let Some(session) = name.to_str().and_then(|name| {
+                name.strip_prefix("trial-")
+                    .or_else(|| name.strip_prefix("staged-"))
+            }) else {
+                continue;
+            };
+            let lock = File::options()
+                .write(true)
+                .open(self.session(session).join("launcher.lock"));
+            let gone = match lock {
+                Ok(lock) => lock.try_lock().is_ok(),
+                Err(failure) => failure.kind() == ErrorKind::NotFound,
+            };
+            if gone {
+                fs::remove_file(entry.path())?;
+            }
+        }
+        Ok(())
     }
 
     /// Waits for, then holds, the lock on generating, building and staging
@@ -79,4 +127,13 @@ impl Home {
         }
         Ok(file)
     }
+}
+
+fn session_lock(session: &Path) -> std::io::Result<File> {
+    fs::create_dir_all(session)?;
+    File::options()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(session.join("launcher.lock"))
 }

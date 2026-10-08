@@ -30,7 +30,12 @@ pub struct ToolHandler(pub ErasedHandler);
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
     /// Make `tool` available to every agent whose
-    /// [`ToolAccess`](crate::core::agent::ToolAccess) allows its name.
+    /// [`ToolAccess`](crate::core::agent::ToolAccess) allows its name. A
+    /// name already registered is refused with a warning.
+    ///
+    /// Tool futures run on Bevy's async compute pool, which model calls
+    /// share, so a tool that blocks (file or process work, long
+    /// computation) wraps that work in [`blocking`](crate::core::blocking::blocking).
     fn add_tool<T: Tool + 'static>(&mut self, tool: T) -> &mut Self;
 }
 
@@ -43,8 +48,17 @@ impl AppToolsExt for App {
                 return self;
             }
         };
+        let world = self.world_mut();
+        if world
+            .query::<&ToolDef>()
+            .iter(world)
+            .any(|def| def.0.name == name)
+        {
+            warn!("tool not registered: a tool named `{name}` already exists");
+            return self;
+        }
         let definition = ToolDefinition::new(name, tool.description(), tool.parameters());
-        self.world_mut().spawn((
+        world.spawn((
             Name::new(format!("tool:{}", T::NAME)),
             ToolDef(definition),
             ToolHandler(ErasedHandler::new(ToolAdapter::new(tool))),

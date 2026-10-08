@@ -9,8 +9,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::blocking::blocking;
 use super::clip;
+use crate::core::blocking::blocking;
 
 const MAX_MATCHES: usize = 200;
 const MAX_LINE: usize = 300;

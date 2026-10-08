@@ -54,7 +54,10 @@ fn effort(
         .and_then(|choice| choice.0.as_deref())
         .and_then(models::resolve)
     else {
-        notices.write(Notice("Pick a model with /model first.".to_owned()));
+        notices.write(Notice::to(
+            args.agent,
+            "Pick a model with /model first.".to_owned(),
+        ));
         return;
     };
     if args.args.is_empty() {
@@ -80,17 +83,16 @@ fn effort(
                 .iter()
                 .filter_map(|(label, _)| label.split_whitespace().next())
                 .collect();
-            notices.write(Notice(format!(
-                "{} takes: {}.",
-                spec.display_name,
-                labels.join(", ")
-            )));
+            notices.write(Notice::to(
+                args.agent,
+                format!("{} takes: {}.", spec.display_name, labels.join(", ")),
+            ));
         }
     }
 }
 
 fn help(
-    In(_): In<CommandArgs>,
+    In(args): In<CommandArgs>,
     commands: Query<&SlashCommand>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -100,7 +102,7 @@ fn help(
         .collect();
     lines.sort();
     lines.push("Esc stops a running turn. Ctrl+C clears the input or quits.".to_owned());
-    notices.write(Notice(lines.join("\n")));
+    notices.write(Notice::to(args.agent, lines.join("\n")));
 }
 
 fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {

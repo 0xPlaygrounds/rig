@@ -14,6 +14,10 @@ use super::{BEVY_VERSION, Result, VERSION};
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-code-agent";
 
+/// The lock of the workspace this launcher was built in, packaged with the
+/// `rig` crate.
+const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
+
 /// Where the agent project gets the `rig-code` crate from.
 pub enum RigSource {
     /// A rig checkout, by path.
@@ -67,11 +71,15 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool
         &project.join(".cargo/config.toml"),
         &cargo_config(home, config),
     )?;
-    if let RigSource::Local(checkout) = source {
-        let lock = project.join("Cargo.lock");
-        if !lock.exists() {
-            // The checkout's lock seeds the versions CI tested.
-            fs::copy(checkout.join("Cargo.lock"), lock)?;
+    // A lock seeds the versions CI tested: the checkout's, or the one this
+    // launcher was built with.
+    let lock = project.join("Cargo.lock");
+    if !lock.exists() {
+        match source {
+            RigSource::Local(checkout) => {
+                fs::copy(checkout.join("Cargo.lock"), lock)?;
+            }
+            RigSource::Registry => fs::write(lock, LOCK)?,
         }
     }
     Ok(changed)

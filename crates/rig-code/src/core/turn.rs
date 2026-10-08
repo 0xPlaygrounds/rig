@@ -9,7 +9,7 @@ use futures::StreamExt;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
-use rig_core::message::{ToolCall, ToolResult};
+use rig_core::message::{ToolCall, ToolResult, UserContent};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ModelSelector;
 use rig_core::serve::adapters::ModelAdapter;
@@ -83,9 +83,10 @@ pub fn on_submit(
                 },
             ),
             None => {
-                notices.write(Notice(format!(
-                    "Unknown command /{name}. /help lists the commands."
-                )));
+                notices.write(Notice::to(
+                    agent,
+                    format!("Unknown command /{name}. /help lists the commands."),
+                ));
             }
         }
         return;
@@ -94,7 +95,8 @@ pub fn on_submit(
         return;
     };
     if *status != AgentStatus::Idle {
-        notices.write(Notice(
+        notices.write(Notice::to(
+            agent,
             "The agent is busy. Press Esc to stop the turn.".to_owned(),
         ));
         return;
@@ -144,7 +146,7 @@ pub fn on_interrupt(
         .remove::<NeedsCompletion>()
         .despawn_related::<Calls>();
     *status = AgentStatus::Idle;
-    notices.write(Notice("Interrupted.".to_owned()));
+    notices.write(Notice::to(agent, "Interrupted.".to_owned()));
     finished.write(TurnFinished { agent });
 }
 
@@ -173,21 +175,27 @@ pub fn on_set_model(
         return;
     };
     let Some(spec) = models::resolve(&set.model) else {
-        notices.write(Notice(format!(
-            "No catalog model `{}`. Use vendor/model.",
-            set.model
-        )));
+        notices.write(Notice::to(
+            set.entity,
+            format!("No catalog model `{}`. Use vendor/model.", set.model),
+        ));
         return;
     };
     choice.0 = Some(models::reference(spec));
-    notices.write(Notice(format!(
-        "Model: {} ({}).",
-        spec.display_name,
-        models::reference(spec)
-    )));
+    notices.write(Notice::to(
+        set.entity,
+        format!(
+            "Model: {} ({}).",
+            spec.display_name,
+            models::reference(spec)
+        ),
+    ));
     if let Err(refusal) = models::check_effort(spec, effort.0) {
         effort.0 = None;
-        notices.write(Notice(format!("Reasoning reset to default: {refusal}.")));
+        notices.write(Notice::to(
+            set.entity,
+            format!("Reasoning reset to default: {refusal}."),
+        ));
     }
 }
 
@@ -201,19 +209,22 @@ pub fn on_set_effort(
         return;
     };
     let Some(spec) = choice.0.as_deref().and_then(models::resolve) else {
-        notices.write(Notice("Pick a model with /model first.".to_owned()));
+        notices.write(Notice::to(
+            set.entity,
+            "Pick a model with /model first.".to_owned(),
+        ));
         return;
     };
     match models::check_effort(spec, set.effort) {
         Ok(()) => {
             effort.0 = set.effort;
-            notices.write(Notice(format!(
-                "Reasoning: {}.",
-                models::effort_label(set.effort)
-            )));
+            notices.write(Notice::to(
+                set.entity,
+                format!("Reasoning: {}.", models::effort_label(set.effort)),
+            ));
         }
         Err(refusal) => {
-            notices.write(Notice(format!("{refusal}.")));
+            notices.write(Notice::to(set.entity, format!("{refusal}.")));
         }
     }
 }
@@ -224,7 +235,7 @@ pub fn start_completions(
         (
             Entity,
             &AgentId,
-            &Conversation,
+            &mut Conversation,
             &ModelChoice,
             &Effort,
             &SystemPrompt,
@@ -239,14 +250,14 @@ pub fn start_completions(
     mut notices: MessageWriter<Notice>,
     mut finished: MessageWriter<TurnFinished>,
 ) {
-    for (agent, id, conversation, choice, effort, prompt, access, mut status) in &mut agents {
+    for (agent, id, mut conversation, choice, effort, prompt, access, mut status) in &mut agents {
         commands.entity(agent).remove::<NeedsCompletion>();
         let definitions = tools
             .iter()
             .filter(|tool| access.allows(tool.0.name.as_str()))
             .map(|tool| tool.0.clone())
             .collect();
-        match prepare(conversation, choice, effort, prompt, definitions) {
+        match prepare(&conversation, choice, effort, prompt, definitions) {
             Ok((handler, request)) => {
                 let (effect, reply) = effects.dispatch(
                     &id.0,
@@ -267,11 +278,33 @@ pub fn start_completions(
                 ));
             }
             Err(why) => {
-                notices.write(Notice(why));
+                notices.write(Notice::to(agent, why));
+                drop_unanswered(agent, &mut conversation, &mut notices);
                 *status = AgentStatus::Idle;
                 finished.write(TurnFinished { agent });
             }
         }
+    }
+}
+
+/// Removes the user's last message when no model answered it, so the next
+/// message does not follow an unanswered one. Tool results stay: the model
+/// asked for them.
+fn drop_unanswered(
+    agent: Entity,
+    conversation: &mut Conversation,
+    notices: &mut MessageWriter<Notice>,
+) {
+    let unanswered = conversation.0.last().is_some_and(|message| {
+        matches!(message, Message::User { content }
+            if content.iter().all(|item| matches!(item, UserContent::Text(_))))
+    });
+    if unanswered {
+        conversation.0.pop();
+        notices.write(Notice::to(
+            agent,
+            "Your last message was taken out of the conversation; send it again.",
+        ));
     }
 }
 
@@ -363,7 +396,11 @@ pub fn poll_model_calls(
         let response = match result {
             Ok(response) => response,
             Err(report) => {
-                notices.write(Notice(format!("The model call failed: {report}")));
+                notices.write(Notice::to(
+                    agent,
+                    format!("The model call failed: {report}"),
+                ));
+                drop_unanswered(agent, &mut conversation, &mut notices);
                 *status = AgentStatus::Idle;
                 finished.write(TurnFinished { agent });
                 continue;

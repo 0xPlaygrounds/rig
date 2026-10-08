@@ -3,6 +3,7 @@
 //! does not depend on any view.
 
 pub mod agent;
+pub mod blocking;
 pub mod commands;
 pub mod effects;
 pub mod models;
@@ -15,7 +16,7 @@ use bevy_ecs::error::warn;
 use bevy_ecs::prelude::*;
 use bevy_log::info;
 
-use agent::{Agent, Notice, PickRequest, TurnFinished};
+use agent::{Agent, AgentId, Notice, PickRequest, TurnFinished};
 use effects::Effects;
 use session::SessionPaths;
 use turn::AgentSystems;
@@ -81,8 +82,12 @@ fn spawn_first_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
     }
 }
 
-fn log_notices(mut notices: MessageReader<Notice>) {
+/// Logs each notice with the stable id of the agent it is about.
+fn log_notices(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
     for notice in notices.read() {
-        info!("notice: {}", notice.0);
+        match notice.agent.and_then(|agent| agents.get(agent).ok()) {
+            Some(id) => info!(agent = %id.0, "notice: {}", notice.text),
+            None => info!("notice: {}", notice.text),
+        }
     }
 }
