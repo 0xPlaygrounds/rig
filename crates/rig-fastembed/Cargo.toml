@@ -36,3 +36,7 @@ required-features = ["rig-core/derive"]
 [[example]]
 name = "vector_search_fastembed_local"
 required-features = ["rig-core/derive"]
+
+[[example]]
+name = "image_embeddings_fastembed"
+required-features = ["hf-hub"]
