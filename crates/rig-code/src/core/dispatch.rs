@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy::prelude::*;
-use rig_cassette::effect_log::EffectLogRecorder;
+use rig_cassette::effect_log::{EffectLogRecorder, LogHeader};
 use rig_core::ErrorReport;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
 use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply};
@@ -128,6 +128,33 @@ fn write_log(session: &Session, log: &rig_cassette::effect_log::EffectLog) -> st
         lines.push(b'\n');
     }
     file.write_all(&lines)?;
-    let header = serde_json::to_vec_pretty(&log.header)?;
-    super::session::write_atomic(&session.dir.join("effects-header.json"), &header)
+    let path = session.dir.join("effects-header.json");
+    let mut header = log.header.clone();
+    if let Ok(bytes) = std::fs::read(&path) {
+        match serde_json::from_slice::<LogHeader>(&bytes) {
+            Ok(previous) => keep_previous(&mut header, previous),
+            Err(error) => warn!("replacing the unreadable {}: {error}", path.display()),
+        }
+    }
+    super::session::write_atomic(&path, &serde_json::to_vec_pretty(&header)?)
+}
+
+/// The recorder's header covers only this process's dispatches since the
+/// last flush; keep what earlier flushes and earlier builds (before a
+/// `/reload`) wrote, so the header describes the whole `effects.jsonl`.
+fn keep_previous(header: &mut LogHeader, previous: LogHeader) {
+    let mut handlers = previous.handlers;
+    for handler in std::mem::take(&mut header.handlers) {
+        match handlers.iter_mut().find(|known| known.key == handler.key) {
+            Some(known) => *known = handler,
+            None => handlers.push(handler),
+        }
+    }
+    header.handlers = handlers;
+    for (key, family) in previous.signature {
+        header.signature.insert_if_absent(key, family);
+    }
+    for (id, errors) in previous.stream_errors {
+        header.stream_errors.entry(id).or_insert(errors);
+    }
 }
