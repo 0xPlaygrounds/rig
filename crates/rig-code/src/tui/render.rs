@@ -14,6 +14,7 @@ use super::view::{ShownNotice, TuiView};
 use crate::core::agent::{
     AgentStatus, CallOf, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
 };
+use crate::core::commands::SlashCommand;
 use crate::core::models;
 use crate::host::reload::ReloadBuild;
 
@@ -51,6 +52,7 @@ pub fn render(
     mut view: ResMut<TuiView>,
     agents: Query<(&Conversation, Option<&ModelChoice>, &Effort, &AgentStatus)>,
     partials: Query<(&CallOf, &Partial)>,
+    slash: Query<&SlashCommand>,
     build: Option<Res<ReloadBuild>>,
 ) -> Result {
     // Clamping the scroll is drawing's own bookkeeping, not a change to
@@ -92,7 +94,8 @@ pub fn render(
             while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
                 notice_lines(notice, &mut lines);
             }
-            message_lines(message, &mut lines);
+            let previous = index.checked_sub(1).and_then(|before| messages.get(before));
+            message_lines(message, previous, messages.get(index + 1), &mut lines);
         }
         for notice in notices {
             notice_lines(notice, &mut lines);
@@ -102,7 +105,12 @@ pub fn render(
             text_lines(&partial.text, Style::new(), &mut lines);
         }
         draw_transcript(frame, transcript, lines, &mut view.scroll);
-        let mut line = status_line(shown.map(|(_, model, effort, status)| (model, effort, status)));
+        // /model comes from a plugin, so point at it only when loaded.
+        let model_hint = slash.iter().any(|command| command.name == "model");
+        let mut line = status_line(
+            shown.map(|(_, model, effort, status)| (model, effort, status)),
+            model_hint,
+        );
         if let Some(build) = &build {
             line.push_span(reload_span(build));
         }
@@ -132,14 +140,18 @@ fn draw_transcript(frame: &mut Frame, area: Rect, lines: Vec<Line<'static>>, scr
     frame.render_widget(paragraph.scroll((top, 0)), area);
 }
 
-fn status_line(shown: Option<(Option<&ModelChoice>, &Effort, &AgentStatus)>) -> Line<'static> {
+fn status_line(
+    shown: Option<(Option<&ModelChoice>, &Effort, &AgentStatus)>,
+    model_hint: bool,
+) -> Line<'static> {
     let Some((model, effort, status)) = shown else {
         return Line::from("no agent").dim();
     };
-    let model = model.map_or_else(
-        || "no model: /model picks one".to_owned(),
-        |model| model.0.clone(),
-    );
+    let model = match model {
+        Some(model) => model.0.clone(),
+        None if model_hint => "no model: /model picks one".to_owned(),
+        None => "no model".to_owned(),
+    };
     let status = match status {
         AgentStatus::Idle => Span::from("idle").green(),
         AgentStatus::Thinking => Span::from("thinking… (Esc stops)").yellow(),
@@ -232,7 +244,27 @@ fn draw_picker(frame: &mut Frame, picker: &super::view::Picker) {
     );
 }
 
-fn message_lines(message: &Message, lines: &mut Vec<Line<'static>>) {
+/// The tool results a message carries.
+fn tool_results(message: Option<&Message>) -> impl Iterator<Item = &ToolResult> {
+    let content = match message {
+        Some(Message::User { content }) => Some(content.iter()),
+        _ => None,
+    };
+    content.into_iter().flatten().filter_map(|item| match item {
+        UserContent::ToolResult(result) => Some(result),
+        _ => None,
+    })
+}
+
+/// Draws `message`. A tool call's result, which comes in the `next`
+/// message, is drawn right under the call, so the results of a reply's
+/// calls are not drawn after all of its calls.
+fn message_lines(
+    message: &Message,
+    previous: Option<&Message>,
+    next: Option<&Message>,
+    lines: &mut Vec<Line<'static>>,
+) {
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
@@ -246,6 +278,8 @@ fn message_lines(message: &Message, lines: &mut Vec<Line<'static>>) {
                             lines,
                         );
                     }
+                    // Drawn under its call already.
+                    UserContent::ToolResult(result) if answers(previous, result) => {}
                     UserContent::ToolResult(result) => result_lines(result, lines),
                     _ => {}
                 }
@@ -271,11 +305,27 @@ fn message_lines(message: &Message, lines: &mut Vec<Line<'static>>) {
                                 .bold(),
                             Span::from(format!(" {}", clip(&arguments, ARGUMENT_CHARS))).dim(),
                         ]));
+                        if let Some(result) =
+                            tool_results(next).find(|result| result.call == call.id)
+                        {
+                            result_lines(result, lines);
+                        }
                     }
                     _ => {}
                 }
             }
         }
+    }
+}
+
+/// Whether `message` is a reply holding the call `result` answers.
+fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
+    match message {
+        Some(Message::Assistant(assistant)) => assistant
+            .content
+            .iter()
+            .any(|item| matches!(item, AssistantContent::ToolCall(call) if call.id == result.call)),
+        _ => false,
     }
 }
 

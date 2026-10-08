@@ -18,7 +18,7 @@ use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::agent::{Agent, AgentId, Notice, TurnFinished};
+use super::agent::{Agent, AgentId, AgentStatus, Effort, ModelChoice, Notice, TurnFinished};
 use super::effects::Effects;
 
 /// Type data marking a component as part of the saved session. Derive it
@@ -54,19 +54,33 @@ impl SessionPaths {
     }
 }
 
-/// Restores the session at startup, and saves it after each turn and on
-/// exit.
+/// Restores the session at startup, and saves it after each turn, after a
+/// model or reasoning change, and on exit.
 pub struct SavePlugin;
 
 impl Plugin for SavePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, restore_session).add_systems(
             Last,
-            save_session
-                .in_set(OnAppExitSystems)
-                .run_if(on_message::<TurnFinished>.or_eager(on_message::<AppExit>)),
+            save_session.in_set(OnAppExitSystems).run_if(
+                on_message::<TurnFinished>
+                    .or_eager(on_message::<AppExit>)
+                    .or_eager(settings_changed),
+            ),
         );
     }
+}
+
+/// Whether an idle agent's model or reasoning setting changed, so a crash
+/// before the next turn ends does not lose it. Both are refused while a
+/// turn runs. The first frame's restored or new agents are not a change.
+fn settings_changed(
+    agents: Query<&AgentStatus, (With<Agent>, Or<(Changed<ModelChoice>, Changed<Effort>)>)>,
+    mut started: Local<bool>,
+) -> bool {
+    let changed = *started && agents.iter().any(|status| *status == AgentStatus::Idle);
+    *started = true;
+    changed
 }
 
 #[derive(Serialize, Deserialize)]

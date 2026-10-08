@@ -103,43 +103,6 @@ fn stage(home: &Home, staged: &Path, again: bool) -> Result<()> {
     Ok(())
 }
 
-/// The oldest Rust the `bevy` crate builds with.
-const BEVY_RUST: (u32, u32) = (1, 96);
-
-/// Fails, in plain words, when the project uses the `bevy` crate and the
-/// Rust toolchain that builds it is older than [`BEVY_RUST`]. rustup picks
-/// the toolchain from the project directory, as it does for cargo.
-fn check_rustc(home: &Home) -> Result<()> {
-    let output = Command::new("rustc")
-        .arg("--version")
-        .current_dir(home.project())
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    // `rustc 1.95.0 (59807616e 2026-04-14)`
-    let mut numbers = text
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or_default()
-        .split('.')
-        .map(|number| number.parse::<u32>().ok());
-    let (Some(Some(major)), Some(Some(minor))) = (numbers.next(), numbers.next()) else {
-        return Ok(());
-    };
-    if (major, minor) >= BEVY_RUST {
-        return Ok(());
-    }
-    let (want_major, want_minor) = BEVY_RUST;
-    Err(format!(
-        "a plugin in plugins.toml uses the `bevy` crate (directly, or through bevy_features), and \
-         Bevy {BEVY_VERSION} needs Rust {want_major}.{want_minor} or newer, but the toolchain \
-         for {} is Rust {major}.{minor}. Update it (`rustup update`), or remove the plugin.",
-        home.project().display()
-    )
-    .into())
-}
-
 /// One `[[package]]` of `Cargo.lock`.
 struct Locked {
     name: String,
@@ -150,8 +113,7 @@ struct Locked {
 }
 
 /// Resolves the project (writing `Cargo.lock`) and fails, in plain words,
-/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`], or the `bevy`
-/// crate with a Rust too old for it.
+/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`].
 fn check_bevy(home: &Home, config: &Config) -> Result<()> {
     let status = cargo(home)
         .args(["metadata", "--format-version", "1"])
@@ -160,9 +122,6 @@ fn check_bevy(home: &Home, config: &Config) -> Result<()> {
         return Err("cargo could not resolve the agent project's dependencies".into());
     }
     let lock = locked(&fs::read_to_string(home.project().join("Cargo.lock"))?);
-    if lock.iter().any(|package| package.name == "bevy") {
-        check_rustc(home)?;
-    }
     let Some(foreign) = lock.iter().position(|package| {
         ["bevy_app", "bevy_ecs"].contains(&package.name.as_str()) && package.version != BEVY_VERSION
     }) else {

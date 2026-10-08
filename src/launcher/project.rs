@@ -14,8 +14,8 @@ use super::{BEVY_VERSION, Result, VERSION};
 /// The generated package's name, and so its binary's.
 pub const PACKAGE: &str = "rig-code-agent";
 
-/// The lock of the workspace this launcher was built in, packaged with the
-/// `rig` crate.
+/// The lock this launcher was built with: the workspace's in a checkout,
+/// the `rig` crate's own when installed from crates.io.
 const LOCK: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.lock"));
 
 /// Where the agent project gets the `rig-code` crate from.
@@ -71,8 +71,9 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool
         &project.join(".cargo/config.toml"),
         &cargo_config(home, config),
     )?;
-    // A lock seeds the versions CI tested: the checkout's, or the one this
-    // launcher was built with.
+    // A lock seeds the versions CI tested: the checkout's, or the one
+    // packaged with this launcher. The packaged one covers the `rig` crate's
+    // own dependencies only; cargo resolves rig-code's and Bevy's fresh.
     let lock = project.join("Cargo.lock");
     if !lock.exists() {
         match source {
@@ -86,8 +87,8 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool
 }
 
 /// Whether a plugin asks for Bevy features. Only then does the project
-/// depend on the `bevy` crate, which carries them and needs a newer Rust
-/// than the `bevy_*` crates rig-code uses.
+/// depend on the `bevy` crate, which carries them; rig-code itself uses
+/// the `bevy_*` crates, which compile faster.
 pub fn needs_bevy_umbrella(config: &Config) -> bool {
     config
         .plugins

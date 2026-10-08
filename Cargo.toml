@@ -262,19 +262,6 @@ aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
 base64 = "0.22"
-bytes = "1"
-candle-core = "0.11"
-candle-nn = "0.11"
-candle-transformers = "0.11"
-chrono = "0.4"
-convert_case = "0.11"
-dotenvy = "0.15"
-epub = "2"
-ethers = "2"
-# 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
-fastembed = { version = "4.5", default-features = false }
-fastrand = "2"
-futures = "0.3"
 # Bevy is pinned exactly: a Bevy plugin only links against the one Bevy
 # version of its app, and rig-code is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
@@ -284,11 +271,23 @@ bevy_ecs = { version = "=0.20.0-rc.2", default-features = false, features = ["st
 bevy_log = "=0.20.0-rc.2"
 bevy_reflect = { version = "=0.20.0-rc.2", default-features = false, features = ["std", "auto_register_inventory"] }
 bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
+bytes = "1"
+candle-core = "0.11"
+candle-nn = "0.11"
+candle-transformers = "0.11"
+chrono = "0.4"
+convert_case = "0.11"
 crossbeam-channel = "0.5.15"
 crossterm = "0.29"
+dotenvy = "0.15"
+epub = "2"
+ethers = "2"
+# 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
+fastembed = { version = "4.5", default-features = false }
+fastrand = "2"
+futures = "0.3"
 futures-timer = "3"
 glob = "0.3"
-ignore = "0.4.25"
 google-cloud-auth = "1"
 google-cloud-gax = "1"
 # 1.7: `ThinkingLevel`, `ImageConfig`, `FunctionResponse{Blob,FileData}`.
@@ -303,12 +302,13 @@ httpdate = "1"
 httpmock = "0.8.2"
 # 0.1.2: the `service` feature.
 hyper-util = "0.1.2"
+ignore = "0.4.25"
 # Decodes the JPEG frames of rig-candle's pose test and example.
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
-libc = "0.2.186"
 lancedb = { version = "0.30", default-features = false }
+libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 mime = "0.3"

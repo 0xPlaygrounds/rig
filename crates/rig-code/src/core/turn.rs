@@ -182,11 +182,14 @@ pub fn stop_turns_on_exit(
 /// [`ModelChoice`], and [`on_model_chosen`] connects it.
 pub fn on_set_model(
     set: On<SetModel>,
-    agents: Query<(), With<Agent>>,
+    agents: Query<&AgentStatus, With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if !agents.contains(set.entity) {
+    let Ok(status) = agents.get(set.entity) else {
+        return;
+    };
+    if refused_mid_turn(set.entity, *status, "model", &mut notices) {
         return;
     }
     match models::resolve(&set.model) {
@@ -255,12 +258,15 @@ pub fn on_model_chosen(
 /// Sets the agent's reasoning setting after checking it against the model.
 pub fn on_set_effort(
     set: On<SetEffort>,
-    mut agents: Query<(Option<&Connection>, &mut Effort), With<Agent>>,
+    mut agents: Query<(Option<&Connection>, &mut Effort, &AgentStatus), With<Agent>>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((connection, mut effort)) = agents.get_mut(set.entity) else {
+    let Ok((connection, mut effort, status)) = agents.get_mut(set.entity) else {
         return;
     };
+    if refused_mid_turn(set.entity, *status, "effort", &mut notices) {
+        return;
+    }
     let Some(connection) = connection else {
         notices.write(Notice::info(
             set.entity,
@@ -280,6 +286,26 @@ pub fn on_set_effort(
             notices.write(Notice::error(set.entity, format!("{refusal}.")));
         }
     }
+}
+
+/// Refuses a model or reasoning change while the agent's turn runs, with a
+/// notice naming `/command`: the rest of the turn would go to a model, or
+/// use a setting, it did not start with. Every sender of [`SetModel`] and
+/// [`SetEffort`] gets the same refusal.
+fn refused_mid_turn(
+    agent: Entity,
+    status: AgentStatus,
+    command: &str,
+    notices: &mut MessageWriter<Notice>,
+) -> bool {
+    let running = status != AgentStatus::Idle;
+    if running {
+        notices.write(Notice::info(
+            agent,
+            format!("A turn is running. Press Esc to stop it, then /{command}."),
+        ));
+    }
+    running
 }
 
 /// Sends the conversation of every agent that needs a model call.

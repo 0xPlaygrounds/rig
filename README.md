@@ -248,9 +248,7 @@ plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```
 
-The `bevy` crate itself, which a plugin may depend on or turn on with Bevy
-features, needs Rust 1.96 or newer; `rig` says so before building when the
-toolchain is older.
+The agent, like the rest of the workspace, needs Rust 1.96 or newer.
 
 `rig build` regenerates and builds the agent without starting it.
 
