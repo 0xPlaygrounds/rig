@@ -1818,15 +1818,22 @@ mod citations_and_cost {
             cost.output
                 .is_some_and(|part| close(part, output as f64 * per_token(pricing.output)))
         );
-        assert!(cost.cache_read.is_some_and(|part| close(
-            part,
-            read as f64 * per_token(pricing.cache_read.unwrap_or(pricing.input))
-        )));
+        assert!(cost.cache_read.is_some_and(|part| {
+            close(
+                part,
+                read as f64
+                    * per_token(
+                        pricing
+                            .cache_read
+                            .expect("DeepSeek lists a cache-read price"),
+                    ),
+            )
+        }));
         let parts = [cost.input, cost.output, cost.cache_read, cost.cache_write];
         assert!(close(cost.total, parts.into_iter().flatten().sum::<f64>()));
         assert!(
-            parts.iter().all(Option::is_some),
-            "a catalog cost knows every part"
+            parts.iter().all(Option::is_some) && cost.is_complete(),
+            "a catalog cost knows every part the usage has tokens for"
         );
 
         // A model the catalog does not list has no cost.

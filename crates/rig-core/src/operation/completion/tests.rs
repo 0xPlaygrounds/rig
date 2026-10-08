@@ -1048,7 +1048,8 @@ fn an_unreported_cost_comes_from_the_catalog() {
             .is_some_and(|cost| close(cost.total, 3.0))
     );
 
-    // A cache read with no price of its own is charged as input.
+    // A cache read is charged at its listed price; a cache write with no
+    // price of its own is unknown, and the total is a lower bound.
     let end = Finish {
         usage: tokens(1_000_000, 0).cached_input_tokens(1_000_000),
         ..Finish::default()
@@ -1065,10 +1066,8 @@ fn an_unreported_cost_comes_from_the_catalog() {
     };
     let response = write_from(origin("deepseek", "deepseek-v4-flash"), end, |_| Ok(()));
     let cost = response.usage.cost.expect("the catalog prices the model");
-    assert!(
-        cost.cache_write.is_some_and(|part| close(part, 0.15)),
-        "{cost:?}"
-    );
+    assert_eq!(cost.cache_write, None, "{cost:?}");
+    assert!(!cost.is_complete() && close(cost.total, 0.0), "{cost:?}");
 }
 
 /// The fold prices a reply by the facts of the wire that answers: the spec

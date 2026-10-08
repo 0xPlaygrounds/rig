@@ -638,17 +638,19 @@ impl Usage {
     }
 }
 
-/// What one or more turns cost, in USD. `total` is what was charged.
+/// What one or more turns cost, in USD. `total` is what was charged, or
+/// when [`Self::is_complete`] is `false`, a lower bound of it.
 ///
 /// A part is `None` when its source does not give it: a provider that
 /// reports only a total leaves every part `None`, and one that reports
 /// input and output leaves the cache parts `None`. A cost computed from
-/// the catalog ([`Pricing::cost`](crate::catalog::Pricing::cost)) has every
-/// part `Some`, and it prices a cache rate the catalog does not list at the
-/// input rate, so a `Some` cache part may be that estimate rather than a
-/// listed price. A part is never filled with a placeholder `0.0`. Summing
-/// costs keeps a part only when every side has it. A `None` part is left
-/// out when serialized, and an absent one reads back as `None`.
+/// the catalog ([`Pricing::cost`](crate::catalog::Pricing::cost)) leaves a
+/// cache part `None` when the catalog lists no rate for it and the usage
+/// has such tokens; its `total` then sums the known parts only, and it is
+/// not complete. A part is never filled with a placeholder `0.0`. Summing
+/// costs keeps a part only when every side has it, and is complete only
+/// when every side is. A `None` part is left out when serialized, and an
+/// absent one reads back as `None`.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cost {
@@ -664,11 +666,41 @@ pub struct Cost {
     /// Input tokens written to a cache.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_write: Option<f64>,
-    /// The whole charge.
+    /// The whole charge, or a lower bound of it when the cost is not
+    /// complete.
     pub total: f64,
+    /// Whether a part with tokens had no price, so `total` leaves it out.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    incomplete: bool,
 }
 
 impl Cost {
+    /// Whether [`Self::total`](field@Self::total) is the whole charge.
+    /// `false` when a part the usage has tokens for had no known price, so
+    /// `total` is a lower bound.
+    pub fn is_complete(&self) -> bool {
+        !self.incomplete
+    }
+
+    /// A cost from the catalog's prices, where `None` marks a part whose
+    /// tokens had no price: `total` sums the known parts, and the cost is
+    /// complete only when no part is `None`.
+    pub(crate) fn priced(
+        input: f64,
+        output: f64,
+        cache_read: Option<f64>,
+        cache_write: Option<f64>,
+    ) -> Self {
+        Self {
+            input: Some(input),
+            output: Some(output),
+            cache_read,
+            cache_write,
+            total: input + output + cache_read.unwrap_or(0.0) + cache_write.unwrap_or(0.0),
+            incomplete: cache_read.is_none() || cache_write.is_none(),
+        }
+    }
+
     /// A cost split into its parts, each known; `total` is their sum.
     pub fn from_parts(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Self {
         Self {
@@ -677,6 +709,7 @@ impl Cost {
             cache_read: Some(cache_read),
             cache_write: Some(cache_write),
             total: input + output + cache_read + cache_write,
+            incomplete: false,
         }
     }
 
@@ -688,6 +721,7 @@ impl Cost {
             cache_read: None,
             cache_write: None,
             total,
+            incomplete: false,
         }
     }
 
@@ -727,7 +761,8 @@ fn add_part(lhs: Option<f64>, rhs: Option<f64>) -> Option<f64> {
 }
 
 /// `total` always sums. Each part sums only when both sides know it, and is
-/// `None` otherwise, so a summed part never understates what it covers.
+/// `None` otherwise, so a summed part never understates what it covers. The
+/// sum is complete only when both sides are.
 impl Add for Cost {
     type Output = Self;
 
@@ -738,6 +773,7 @@ impl Add for Cost {
             cache_read: add_part(self.cache_read, other.cache_read),
             cache_write: add_part(self.cache_write, other.cache_write),
             total: self.total + other.total,
+            incomplete: self.incomplete || other.incomplete,
         }
     }
 }

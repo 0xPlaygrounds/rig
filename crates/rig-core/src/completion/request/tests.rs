@@ -571,6 +571,38 @@ mod empty_new_fields_are_not_serialized {
         assert_eq!(partial.total, 4.75);
     }
 
+    /// A cost is complete unless a part with tokens had no price, and a sum
+    /// is complete only when both sides are; the mark survives serde.
+    #[test]
+    fn an_incomplete_cost_stays_incomplete() {
+        let usage = Usage::new()
+            .input_tokens(1_000_000)
+            .output_tokens(0)
+            .cache_creation_input_tokens(1_000_000);
+        let lower_bound = crate::catalog::Pricing::new(1.0, 1.0)
+            .cost(&usage)
+            .expect("priced");
+        assert!(!lower_bound.is_complete());
+        assert!(Cost::from_total(1.0).is_complete());
+        assert!(Cost::from_parts(1.0, 1.0, 0.0, 0.0).is_complete());
+        assert!(Cost::default().is_complete());
+
+        let sum = lower_bound + Cost::from_parts(1.0, 1.0, 0.0, 0.0);
+        assert!(!sum.is_complete());
+        assert_eq!(sum.cache_write, None);
+        assert_eq!(sum.total, 2.0);
+
+        let value = serde_json::to_value(lower_bound).expect("serializes");
+        assert_eq!(
+            value,
+            json!({ "input": 0.0, "output": 0.0, "cache_read": 0.0, "total": 0.0, "incomplete": true })
+        );
+        assert_eq!(
+            serde_json::from_value::<Cost>(value).expect("deserializes"),
+            lower_bound
+        );
+    }
+
     #[test]
     fn unknown_cost_parts_are_absent_on_the_wire() {
         let total = serde_json::to_value(Cost::from_total(0.5)).expect("serializes");

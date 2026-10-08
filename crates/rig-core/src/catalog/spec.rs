@@ -192,8 +192,9 @@ impl Pricing {
 
     /// What `usage` costs at these prices, or `None` unless it reports both
     /// its input and output tokens. Uncached input is the input tokens less
-    /// those read from and written to the cache; cache reads and writes
-    /// with no price of their own are charged at [`Self::input`]. Every
+    /// those read from and written to the cache. A cache part with tokens
+    /// but no listed price is `None`, and the cost is then not
+    /// [complete](Cost::is_complete): its `total` leaves that part out. Every
     /// cache write is charged at one price, so a provider that bills longer
     /// retention higher costs more than this says. It is the standard-tier
     /// list price of the tokens: the service tier, long-context price tiers
@@ -206,11 +207,16 @@ impl Pricing {
         let uncached = input.saturating_sub(read).saturating_sub(written);
         // Token counts stay far below 2^53, so the conversion is exact.
         let price = |tokens: u64, per_million: f64| tokens as f64 * per_million / 1_000_000.0;
-        Some(Cost::from_parts(
+        // No tokens cost nothing, whether or not the rate is listed.
+        let cache = |tokens: u64, rate: Option<f64>| match (tokens, rate) {
+            (0, _) => Some(0.0),
+            (tokens, rate) => rate.map(|rate| price(tokens, rate)),
+        };
+        Some(Cost::priced(
             price(uncached, self.input),
             price(output, self.output),
-            price(read, self.cache_read.unwrap_or(self.input)),
-            price(written, self.cache_write.unwrap_or(self.input)),
+            cache(read, self.cache_read),
+            cache(written, self.cache_write),
         ))
     }
 }

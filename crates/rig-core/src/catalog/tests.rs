@@ -1078,3 +1078,34 @@ fn the_generation_time_is_an_rfc_3339_utc_time() {
     );
     assert!(generated <= SystemTime::now(), "not in the future");
 }
+
+/// A cache part with tokens and no listed rate is unknown, not priced at
+/// the input rate: `total` sums the known parts and says it is a lower
+/// bound. No tokens cost nothing whether or not the rate is listed.
+#[test]
+fn an_unlisted_cache_rate_leaves_its_part_unknown() {
+    use crate::completion::Usage;
+    let usage = Usage::new()
+        .input_tokens(1_000_000)
+        .output_tokens(1_000_000)
+        .cached_input_tokens(500_000);
+
+    let listed = Pricing::new(2.0, 8.0).with_cache_read(0.5);
+    let cost = listed.cost(&usage).expect("input and output reported");
+    assert_eq!(cost.cache_read, Some(0.25));
+    assert_eq!(cost.cache_write, Some(0.0), "no cache writes");
+    assert_eq!(cost.total, 1.0 + 8.0 + 0.25);
+    assert!(cost.is_complete());
+
+    let unlisted = Pricing::new(2.0, 8.0);
+    let cost = unlisted.cost(&usage).expect("input and output reported");
+    assert_eq!((cost.input, cost.output), (Some(1.0), Some(8.0)));
+    assert_eq!(cost.cache_read, None, "not the input rate");
+    assert_eq!(cost.total, 9.0, "the known parts");
+    assert!(!cost.is_complete());
+
+    let uncached = Usage::new().input_tokens(1_000).output_tokens(1_000);
+    let cost = unlisted.cost(&uncached).expect("input and output reported");
+    assert_eq!((cost.cache_read, cost.cache_write), (Some(0.0), Some(0.0)));
+    assert!(cost.is_complete());
+}
