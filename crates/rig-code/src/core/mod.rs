@@ -70,7 +70,7 @@ impl Plugin for AgentPlugin {
                     poll_calls::<Summary>,
                     poll_calls::<rewind::FilesRestored>,
                     poll_calls::<login::SignedInResult>,
-                    login::show_device_codes,
+                    login::show_login_prompts,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),

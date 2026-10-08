@@ -210,8 +210,14 @@ directory, cost, age) and resumes the one picked, in its own directory;
 `rig --resume <id>` a given one.
 
 A ChatGPT subscription can pay for the model
-calls instead of an API key: `/login chatgpt` shows a code to enter at
-`https://auth.openai.com/codex/device`, and once you have, `/model` lists the
+calls instead of an API key: `/login chatgpt` opens your browser on the
+ChatGPT sign-in page and shows its URL in case the browser does not open; the
+page returns to a one-shot listener on `127.0.0.1` port 1455 (1457 when 1455
+is taken). Without a graphical session (no `DISPLAY` or `WAYLAND_DISPLAY` on
+Linux and the BSDs), over SSH, or when both ports are taken, it shows a code
+to enter at `https://auth.openai.com/codex/device` instead, as
+`/login chatgpt --device` does. The same applies in the headless modes, which
+print the URL or code. Once signed in, `/model` lists the
 plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
 `gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
 `gpt-5.6-luna` and `gpt-5.5`, besides the older `gpt-5.4` and `gpt-5.3` rows.

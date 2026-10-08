@@ -35,8 +35,8 @@ impl Plugin for BuiltinCommandsPlugin {
         )
         .add_command(
             "login",
-            "Sign in with your ChatGPT plan: /login chatgpt shows a code to enter in the browser; \
-             /login again or Esc cancels",
+            "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows a \
+             code to enter instead); /login again or Esc cancels",
             login,
         )
         .add_command(

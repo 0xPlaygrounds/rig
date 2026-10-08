@@ -1,9 +1,12 @@
 //! Signing in to a provider's subscription from the agent. [`SignIn`] runs
-//! the provider's device-code flow on the IO pool and shows the code to
-//! enter as a notice; [`SignOut`] forgets the credential. The credential is
-//! kept in `RIG_HOME/auth/<provider>.json`, and every model call of that
-//! provider reads it, refreshed when it has expired, before its request.
-//! ChatGPT is the one provider so far.
+//! the provider's sign-in on the IO pool: in the browser, which it opens on
+//! the sign-in page and whose URL it shows as a notice, or with a device
+//! code shown as a notice when no browser can be assumed (no graphical
+//! session, or an SSH login), when the browser's callback ports are taken,
+//! or when asked with `--device`. [`SignOut`] forgets the credential. The
+//! credential is kept in `RIG_HOME/auth/<provider>.json`, and every model
+//! call of that provider reads it, refreshed when it has expired, before
+//! its request. ChatGPT is the one provider so far.
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -21,7 +24,10 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::operation::Completion;
 use rig_core::providers::chatgpt::{
     self,
-    auth::{AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt},
+    auth::{
+        AuthError, AuthSource, Authenticator, BrowserSignInPrompt, DeviceCodeHandler,
+        DeviceCodePrompt,
+    },
 };
 use rig_core::providers::registry::{ConnectError, ConnectOptions};
 use rig_core::serve::adapters::ModelAdapter;
@@ -114,12 +120,14 @@ impl LoginProvider {
 
 /// Sign in to `provider` (a [`LoginProvider`] name) for the agent, or
 /// cancel the sign-in already waiting for it. Refused while a turn runs.
+/// The sign-in is in the browser when one can be assumed, otherwise with a
+/// device code; `--device` after the name asks for the device code.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct SignIn {
     /// The agent whose notices show the sign-in.
     pub entity: Entity,
-    /// The provider.
+    /// The provider, optionally followed by `--device`.
     pub provider: String,
 }
 
@@ -142,8 +150,50 @@ pub struct PendingLogin {
     pub agent: Entity,
     /// The provider.
     pub provider: LoginProvider,
-    /// The codes the flow asks the user to enter.
-    prompts: Receiver<DeviceCodePrompt>,
+    /// What the flow asks the user to do.
+    prompts: Receiver<LoginPrompt>,
+}
+
+/// What a sign-in asks the user to do.
+enum LoginPrompt {
+    /// Sign in on the page the browser was asked to open.
+    Browser(BrowserSignInPrompt),
+    /// Enter a code at a URL.
+    DeviceCode(DeviceCodePrompt),
+    /// The browser sign-in could not listen for its callback, so a device
+    /// code follows.
+    BrowserUnavailable(String),
+}
+
+/// How a sign-in asks the user to authorize.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Method {
+    Browser,
+    DeviceCode,
+}
+
+impl Method {
+    /// The browser when one can be assumed and `--device` was not asked for.
+    fn choose(device_asked: bool) -> Self {
+        if device_asked || !graphical_session() {
+            Self::DeviceCode
+        } else {
+            Self::Browser
+        }
+    }
+}
+
+/// Whether a browser opened here would reach the user: not over SSH, and on
+/// Linux and the BSDs, inside an X11 or Wayland session.
+fn graphical_session() -> bool {
+    let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+    if set("SSH_CONNECTION") || set("SSH_TTY") {
+        return false;
+    }
+    if cfg!(any(target_os = "macos", windows)) {
+        return true;
+    }
+    set("DISPLAY") || set("WAYLAND_DISPLAY")
 }
 
 /// How a sign-in ended: `Err` says why it failed.
@@ -187,7 +237,17 @@ pub(crate) fn on_sign_in(
     let Ok(busy) = agents.get(agent) else {
         return;
     };
-    let Some(provider) = named_provider(agent, &sign_in.provider, &mut notices) else {
+    let mut device_asked = false;
+    let words: Vec<&str> = sign_in
+        .provider
+        .split_whitespace()
+        .filter(|word| {
+            let flag = *word == "--device";
+            device_asked |= flag;
+            !flag
+        })
+        .collect();
+    let Some(provider) = named_provider(agent, &words.join(" "), &mut notices) else {
         return;
     };
     if let Some((login, _)) = pending.iter().find(|(_, login)| login.provider == provider) {
@@ -214,7 +274,11 @@ pub(crate) fn on_sign_in(
             provider,
             prompts,
         },
-        Running::spawn(pool, &wake, sign_in_flow(provider, sender, wake.clone())),
+        Running::spawn(
+            pool,
+            &wake,
+            sign_in_flow(provider, Method::choose(device_asked), sender, wake.clone()),
+        ),
     ));
     notices.write(Notice::info(
         agent,
@@ -222,24 +286,45 @@ pub(crate) fn on_sign_in(
     ));
 }
 
-/// Runs `provider`'s device-code flow, sending the code to enter through
-/// `prompts`, and keeps the credential readable by the owner alone.
+/// Runs `provider`'s sign-in by `method`, sending what the user must do
+/// through `prompts`, and keeps the credential readable by the owner alone.
+/// A browser sign-in whose callback ports are taken falls back to the
+/// device code.
 async fn sign_in_flow(
     provider: LoginProvider,
-    prompts: Sender<DeviceCodePrompt>,
+    method: Method,
+    prompts: Sender<LoginPrompt>,
     wake: Wake,
 ) -> SignedInResult {
     let file = provider.auth_file();
-    let handler = DeviceCodeHandler::new(move |prompt| {
+    let prompt = move |prompt: LoginPrompt| {
         prompts.send(prompt).ok();
         wake.wake();
-    });
+    };
+    let device_prompt = prompt.clone();
+    let handler = DeviceCodeHandler::new(move |code| device_prompt(LoginPrompt::DeviceCode(code)));
     let flow = async {
         private_dir(&file).map_err(|error| error.to_string())?;
-        Authenticator::new(AuthSource::OAuth, Some(file.clone()), handler, true)
-            .auth_context(&rig_reqwest::shared())
-            .await
-            .map_err(|error| error.to_string())?;
+        let auth = Authenticator::new(AuthSource::OAuth, Some(file.clone()), handler, true);
+        let http = rig_reqwest::shared();
+        let browser = match method {
+            Method::Browser => {
+                let prompt = prompt.clone();
+                auth.sign_in_with_browser(&http, move |page| prompt(LoginPrompt::Browser(page)))
+                    .await
+            }
+            Method::DeviceCode => auth.sign_in_with_device_code(&http).await,
+        };
+        match browser {
+            Err(AuthError::Io(error))
+                if method == Method::Browser && error.kind() == io::ErrorKind::AddrInUse =>
+            {
+                prompt(LoginPrompt::BrowserUnavailable(error.to_string()));
+                auth.sign_in_with_device_code(&http).await
+            }
+            other => other,
+        }
+        .map_err(|error| error.to_string())?;
         private_file(&file).map_err(|error| error.to_string())
     };
     SignedInResult(flow.await)
@@ -269,21 +354,32 @@ fn private_file(file: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// Shows each code a sign-in asks the user to enter.
-pub(crate) fn show_device_codes(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
+/// Shows what a sign-in asks the user to do.
+pub(crate) fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
     for login in &logins {
+        let (title, name) = (login.provider.title(), login.provider.name());
         for prompt in login.prompts.try_iter() {
-            notices.write(Notice::info(
-                login.agent,
-                format!(
-                    "Sign in to {}: open {} and enter the code {}\n\
-                     Waiting for it; Esc or /login {} cancels.",
-                    login.provider.title(),
-                    prompt.verification_uri,
-                    prompt.user_code,
-                    login.provider.name(),
+            let text = match prompt {
+                LoginPrompt::Browser(page) if page.browser_launched => format!(
+                    "Opening your browser to sign in to {title}. If it doesn't open, visit {}\n\
+                     Waiting for it; Esc or /login {name} cancels.",
+                    page.authorize_url,
                 ),
-            ));
+                LoginPrompt::Browser(page) => format!(
+                    "Sign in to {title}: open {}\n\
+                     Waiting for it; Esc or /login {name} cancels.",
+                    page.authorize_url,
+                ),
+                LoginPrompt::DeviceCode(code) => format!(
+                    "Sign in to {title}: open {} and enter the code {}\n\
+                     Waiting for it; Esc or /login {name} cancels.",
+                    code.verification_uri, code.user_code,
+                ),
+                LoginPrompt::BrowserUnavailable(why) => {
+                    format!("Cannot sign in through the browser ({why}); using a device code.")
+                }
+            };
+            notices.write(Notice::info(login.agent, text));
         }
     }
 }
