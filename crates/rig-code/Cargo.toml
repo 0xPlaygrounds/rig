@@ -1,0 +1,37 @@
+[package]
+name = "rig-code"
+version.workspace = true
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = "MIT"
+description = "A minimal, self-recompiling coding agent built on Rig and Bevy."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The terminal view. Without it the crate is the separable core: agents,
+# the loop, tools, commands and effects.
+tui = ["dep:ratatui", "dep:crossterm"]
+
+[dependencies]
+rig-core = { workspace = true, features = ["reqwest"] }
+rig-cassette = { workspace = true }
+bevy_app = { workspace = true, features = ["std"] }
+bevy_ecs = { workspace = true, features = ["std", "multi_threaded", "async_executor"] }
+bevy_log = { workspace = true }
+bevy_tasks = { workspace = true, features = ["async_executor"] }
+async-channel = { workspace = true }
+futures = { workspace = true }
+ignore = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }
+crossterm = { workspace = true, optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

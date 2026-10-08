@@ -243,6 +243,7 @@ rig-rmcp = { path = "crates/rig-rmcp", version = "0.44.0" }
 rig-core = { path = "crates/rig-core", version = "0.44.0" }
 rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-features = false }
 anyhow = "1"
+async-channel = "2"
 arrow-array = "58"
 assert_fs = "1"
 async-stream = "0.3"
@@ -261,6 +262,7 @@ candle-nn = "0.11"
 candle-transformers = "0.11"
 chrono = "0.4"
 convert_case = "0.11"
+crossterm = "0.29"
 dotenvy = "0.15"
 epub = "2"
 ethers = "2"
@@ -268,10 +270,16 @@ ethers = "2"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example. Bevy
-# 0.19.1: crates.io, never git; the tooling check verifies Bevy sources and
-# declared release floors. Default features off.
-bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
+# Bevy is the one exception to the floors above: the workspace has exactly
+# one Bevy, pinned to this release candidate. crates.io, never git; the
+# tooling check (`xtask/src/bevy.rs`) verifies Bevy sources and this
+# requirement. Default features off. `bevy_tasks` is also the
+# runtime-agnostic executor of the `agent_no_tokio` example. `rig-code` uses
+# the parts, not the `bevy` umbrella, whose 0.20.0-rc.2 needs Rust 1.96.
+bevy_app = { version = "=0.20.0-rc.2", default-features = false }
+bevy_ecs = { version = "=0.20.0-rc.2", default-features = false }
+bevy_log = { version = "=0.20.0-rc.2", default-features = false }
+bevy_tasks = { version = "=0.20.0-rc.2", default-features = false, features = ["multi_threaded"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -283,6 +291,7 @@ google-cloud-aiplatform-v1 = { version = "1.8", default-features = false, featur
 ] }
 http = "1"
 http-body = "1"
+ignore = "0.4"
 httpdate = "1"
 # 0.8.2: `Recording::export_async` (cassette harness).
 httpmock = "0.8.2"
@@ -293,6 +302,7 @@ image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
 lancedb = { version = "0.30", default-features = false }
+libc = "0.2"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 mime = "0.3"
@@ -314,7 +324,9 @@ qdrant-client = { version = "1.10", default-features = false, features = [
 ] }
 quick-xml = "0.41"
 quote = "1"
+ratatui = "0.30"
 redis = "1"
+regex = "1"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
