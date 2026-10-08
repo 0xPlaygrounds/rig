@@ -44,6 +44,9 @@ pub fn run(home: &Home) -> Result<ExitCode> {
     let ready = home.session(session).join("ready");
     loop {
         let (binary, is_trial) = pick(home, session, &trial)?;
+        if is_trial {
+            build::tried(home, &binary)?;
+        }
         remove_if_present(&ready)?;
         let mut command = Command::new(&binary);
         command
@@ -219,26 +222,19 @@ fn remove_if_present(path: &Path) -> Result<()> {
     }
 }
 
-/// Builds before the first start when there is no binary yet, when the
-/// generated project changed, and always from a local checkout, staging for
-/// this launcher. With no good build yet, the build is staged even if it
-/// was rejected before, so each start retries it. A failed build with an
-/// older binary at hand becomes the notice that binary starts with.
+/// Builds before every start, staging for this launcher; cargo does no
+/// work when nothing changed. With no good build yet, the build is staged
+/// even if it was tried before, so each start retries it. A failed build
+/// with an older binary at hand becomes the notice that binary starts with.
 fn rebuild(home: &Home, session: &str) -> Result<Option<String>> {
     let first_run = !["staged", "good"]
         .into_iter()
         .any(|name| home.bin(name).exists());
-    let built = build::prepare(home).and_then(|project| {
-        if first_run || project.changed || project.local {
-            eprintln!(
-                "Building the rig agent{}…",
-                if first_run { " (first run)" } else { "" }
-            );
-            build::compile(home, &project, &home.staged_for(session), first_run)?;
-        }
-        Ok(())
-    });
-    match built {
+    eprintln!(
+        "Building the rig agent{}…",
+        if first_run { " (first run)" } else { "" }
+    );
+    match build::compile(home, &home.staged_for(session), first_run) {
         Ok(()) => Ok(None),
         Err(failure) if first_run => Err(failure),
         Err(failure) => {

@@ -3,7 +3,7 @@
 //! stage the new binary for the next start.
 
 use std::collections::BTreeSet;
-use std::fs;
+use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::UNIX_EPOCH;
@@ -13,36 +13,17 @@ use super::home::Home;
 use super::project::{self, PACKAGE, RigSource};
 use super::{BEVY_VERSION, Result};
 
-/// The agent project, generated.
-pub struct Project {
-    config: Config,
-    /// Whether generation changed a file.
-    pub changed: bool,
-    /// Whether `rig-code` comes from a local checkout.
-    pub local: bool,
-}
-
-/// Reads `plugins.toml` and writes the agent project.
-pub fn prepare(home: &Home) -> Result<Project> {
+/// Reads `plugins.toml`, writes the agent project, checks its Bevy version,
+/// builds it, and copies the binary to `staged`. Unless `again`, a build
+/// already tried once is not staged again: at startup, that keeps a build
+/// rolled back for crashing from being retried until something changes.
+pub fn compile(home: &Home, staged: &Path, again: bool) -> Result<()> {
     let config = Config::load(&home.config())?;
-    let source = RigSource::detect()?;
-    let changed = project::generate(home, &config, &source)?;
-    Ok(Project {
-        config,
-        changed,
-        local: matches!(source, RigSource::Local(_)),
-    })
-}
-
-/// Checks the Rust and Bevy versions, builds, and copies the binary to
-/// `staged`. Unless `again`, a build already staged once is not staged
-/// again: at startup, that keeps a build rolled back for crashing from
-/// being retried until something changes.
-pub fn compile(home: &Home, project: &Project, staged: &Path, again: bool) -> Result<()> {
+    project::generate(home, &config, &RigSource::detect()?)?;
     // `/reload` shows these lines, and cargo's, until cargo's counter
     // appears.
     eprintln!("Resolving dependencies…");
-    check_bevy(home, &project.config)?;
+    check_bevy(home, &config)?;
     eprintln!("Compiling the agent…");
     let status = cargo(home).args(["build", "--package", PACKAGE]).status()?;
     if !status.success() {
@@ -60,7 +41,7 @@ pub fn build(home: &Home) -> Result<()> {
         Ok(session) if !session.is_empty() => home.staged_for(&session),
         _ => home.bin("staged"),
     };
-    compile(home, &prepare(home)?, &staged, true)
+    compile(home, &staged, true)
 }
 
 /// cargo in the agent project, with stdout discarded and stderr passed
@@ -77,30 +58,47 @@ fn cargo(home: &Home) -> Command {
     command
 }
 
-/// Copies the built binary to `staged`. `built` records the build last
-/// staged; unless `again`, that build is not staged a second time.
+/// Copies the built binary to `staged`, keeping its modification time so
+/// the copy carries its [`stamp`]. Unless `again`, the build last tried, or
+/// one `rig build` already staged for any launcher, is not staged again.
 fn stage(home: &Home, staged: &Path, again: bool) -> Result<()> {
     let artifact = home
         .target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
-    let metadata = fs::metadata(&artifact)?;
-    let modified = metadata
-        .modified()?
-        .duration_since(UNIX_EPOCH)
-        .map(|since| since.as_nanos())
-        .unwrap_or_default();
-    let stamp = format!("{modified} {}\n", metadata.len());
-    let record = home.bin("built");
-    if !again && fs::read_to_string(&record).is_ok_and(|built| built == stamp) {
+    let built = stamp(&artifact)?;
+    let tried = fs::read_to_string(home.bin("tried")).is_ok_and(|tried| tried == built);
+    let pending = stamp(&home.bin("staged")).is_ok_and(|staged| staged == built);
+    if !again && (tried || pending) {
         return Ok(());
     }
     let staging = home.bin("staged.tmp");
     fs::create_dir_all(home.root().join("bin"))?;
     fs::copy(&artifact, &staging)?;
+    File::options()
+        .write(true)
+        .open(&staging)?
+        .set_modified(fs::metadata(&artifact)?.modified()?)?;
     fs::rename(&staging, staged)?;
-    fs::write(record, stamp)?;
     Ok(())
+}
+
+/// Records `binary`, a staged build about to run as a trial, as the build
+/// last tried.
+pub fn tried(home: &Home, binary: &Path) -> Result<()> {
+    fs::write(home.bin("tried"), stamp(binary)?)?;
+    Ok(())
+}
+
+/// What tells builds apart: the binary's modification time and size.
+fn stamp(binary: &Path) -> Result<String> {
+    let metadata = fs::metadata(binary)?;
+    let modified = metadata
+        .modified()?
+        .duration_since(UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    Ok(format!("{modified} {}\n", metadata.len()))
 }
 
 /// One `[[package]]` of `Cargo.lock`.

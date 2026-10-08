@@ -174,7 +174,7 @@ it generates a small Cargo project for the agent, builds it, and runs it.
 ```bash
 cargo install rig
 export OPENAI_API_KEY=...   # or any other provider key in the model catalog
-rig                         # builds the agent on first run, then opens it
+rig                         # builds the agent (later starts rebuild what changed), then opens it
 ```
 
 In the agent, `/model` picks a model (providers that need no key, such as a

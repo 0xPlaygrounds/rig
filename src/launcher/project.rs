@@ -61,13 +61,12 @@ fn is_checkout(path: &Path) -> bool {
     path.join("crates/rig-code/Cargo.toml").is_file()
 }
 
-/// Writes the agent project for `config`. Returns whether any file changed.
-pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool> {
+/// Writes the agent project for `config`.
+pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<()> {
     let project = home.project();
-    let mut changed =
-        write_if_changed(&project.join("Cargo.toml"), &manifest(home, config, source))?;
-    changed |= write_if_changed(&project.join("src/main.rs"), &main_rs(home, config))?;
-    changed |= write_if_changed(
+    write_if_changed(&project.join("Cargo.toml"), &manifest(home, config, source))?;
+    write_if_changed(&project.join("src/main.rs"), &main_rs(home, config))?;
+    write_if_changed(
         &project.join(".cargo/config.toml"),
         &cargo_config(home, config),
     )?;
@@ -83,7 +82,7 @@ pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<bool
             RigSource::Registry => fs::write(lock, LOCK)?,
         }
     }
-    Ok(changed)
+    Ok(())
 }
 
 /// Whether a plugin asks for Bevy features. Only then does the project
@@ -201,17 +200,16 @@ fn cargo_config(home: &Home, config: &Config) -> String {
     text
 }
 
-/// Writes `contents` to `path` unless it already holds them. Returns
-/// whether it wrote.
-fn write_if_changed(path: &Path, contents: &str) -> Result<bool> {
+/// Writes `contents` to `path` unless it already holds them.
+fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     if fs::read_to_string(path).is_ok_and(|current| current == contents) {
-        return Ok(false);
+        return Ok(());
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     fs::write(path, contents)?;
-    Ok(true)
+    Ok(())
 }
 
 fn quoted_path(path: &Path) -> String {
