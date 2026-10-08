@@ -786,6 +786,26 @@ impl ModelSpec {
   catalog row), and `tests/core/request_bodies.rs` pins what every wire
   sends. The hand-entered facts live under each row's `rig` object,
   reviewed in `xtask/src/catalog/review.json`.
+- **After the catalog API fixes.** The API above was reshaped, and the
+  rustdoc of `rig_core::catalog` is the reference. `Catalog` clones by
+  sharing its rows. `get` and `resolve` follow one rule (the id as listed,
+  else a dated snapshot of it) and return `Resolved`; a miss is `NotFound`
+  with suggestions; `get_exact` takes the listed id only; `find`, the crate's
+  `lookup` and `lookup_snapshot` are gone. `from_json` became the strict
+  `from_overrides(json, base)` and the lenient `from_models_dev(json)`;
+  `merge(self, ..)` became `with_overrides(&self, ..)`; `insert` and
+  `ModelSpec::new(..).with_*` build entries in code; `generated_at` says
+  when the built-in data was read. `ReasoningSupport` is an enum (`None`,
+  `Unknown`, `Listed`), so a reasoning row with no listed options refuses
+  nothing. `Compat` is public and documented. `Catalog::connect(reference)`
+  reads the key from the environment and takes the family from the row
+  (`ConnectOptions` sets a key, client, family or base URL); references are
+  `vendor/model`, and the older `vendor/format:model` is still read. A
+  connected model carries its spec (`DynModel::spec`), and its encoders and
+  cost read that spec and its catalog, so an override reaches them;
+  `ModelSpec::refusals` is the rule set `validate`, every wire and
+  `DynModel::check` share, and rig-agent's `AgentBuilder::model_spec` and
+  pre-send check are gone.
 
 ### 2.3 Cost
 
@@ -829,8 +849,9 @@ pub struct Cost {
 - Uncached input is `input_tokens - cached_input_tokens -
   cache_creation_input_tokens`, because `Usage::input_tokens` counts cache
   reads and writes (`crates/rig-core/src/completion/request.rs:470-485`).
-  Cache reads without a `cache_read` price are charged at `input`; cache
-  writes without a `cache_write` price likewise.
+  Cache reads without a `cache_read` price, and cache writes without a
+  `cache_write` price, leave that part `None` when there are such tokens;
+  `total` then sums the known parts and `Cost::is_complete` is `false`.
 
 Summing usage (`Add` and `AddAssign`, `crates/rig-core/src/completion/request.rs:527-549`,
 which sum only the token counters today). P1 extends them to `cost`:
@@ -2047,8 +2068,9 @@ the whole section, including fields set before it.
 ## 8. Catalog schema and the models.dev mapping
 
 The data file is models.dev-shaped JSON: an object of provider keys, each with
-a `models` object keyed by model id. `Catalog::from_json` reads the same shape
-for overrides, and `merge` lets the override's rows win field by field.
+a `models` object keyed by model id. `Catalog::from_models_dev` reads the same
+shape leniently, and `Catalog::from_overrides` strictly for a user's
+overrides; `with_overrides` lets the override's rows win field by field.
 
 | models.dev field | `ModelSpec` field | rule |
 |---|---|---|
