@@ -27,7 +27,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{info, warn};
 
-use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest, TurnFinished};
+use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest};
 use calls::{Wake, poll_calls};
 use compaction::Summary;
 use effects::Effects;
@@ -51,7 +51,6 @@ impl Plugin for AgentPlugin {
             .insert_resource(SessionLog::new(paths.map(|paths| paths.0)))
             .init_resource::<Wake>()
             .add_message::<Notice>()
-            .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
             .add_systems(Startup, (spawn_first_agent, describe_tools))
@@ -77,7 +76,8 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
-            .add_observer(turn::on_submit)
+            .add_observer(inbox::on_deliver)
+            .add_observer(commands::on_run_command)
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
             .add_observer(turn::on_tool_done)
@@ -91,9 +91,7 @@ impl Plugin for AgentPlugin {
             .add_observer(login::on_signed_in)
             .add_observer(login::on_sign_out)
             .add_observer(login::cancel_on_interrupt)
-            .add_observer(turn::on_turn_end)
-            .add_observer(inbox::on_follow_up)
-            .add_observer(inbox::on_report)
+            .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
             .add_observer(subagents::answer_on_turn_end)
             .add_observer(turn::on_set_model)
@@ -109,13 +107,9 @@ fn spawn_first_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
     }
 }
 
-/// Logs each notice, at its level, and each finished turn, with the stable
-/// id of the agent they are about.
-fn log_agents(
-    mut notices: MessageReader<Notice>,
-    mut finished: MessageReader<TurnFinished>,
-    agents: Query<&AgentId>,
-) {
+/// Logs each notice, at its level, with the stable id of the agent it is
+/// about.
+fn log_agents(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
     for notice in notices.read() {
         let agent = notice
             .agent
@@ -124,11 +118,6 @@ fn log_agents(
         match notice.level {
             NoticeLevel::Info => info!(agent, "notice: {}", notice.text),
             NoticeLevel::Error => warn!(agent, "notice: {}", notice.text),
-        }
-    }
-    for turn in finished.read() {
-        if let Ok(id) = agents.get(turn.agent) {
-            info!(agent = %id.0, "turn finished");
         }
     }
 }

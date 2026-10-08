@@ -15,8 +15,10 @@ use rig_core::completion::{AssistantContent, Message};
 
 use super::{PrimaryQuery, RunMode, primary};
 use crate::core::agent::{
-    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel, Submit,
+    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, SetModel,
 };
+use crate::core::commands::send_input;
+use crate::core::inbox::DeliveryMode;
 use crate::core::login::PendingLogin;
 use crate::core::models;
 
@@ -155,10 +157,7 @@ fn drive(
             let before = conversations
                 .get(agent)
                 .map_or(0, |conversation| conversation.messages().len());
-            commands.trigger(Submit {
-                entity: agent,
-                text,
-            });
+            send_input(&mut commands, agent, text, DeliveryMode::Steer);
             run.step = Step::Sent { agent, before };
         }
         Step::Sent { agent, before } => {

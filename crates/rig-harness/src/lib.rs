@@ -61,18 +61,20 @@ pub mod prelude {
 
     pub use crate::core::agent::{
         ActiveTurn, Agent, AgentId, Compact, Connection, Conversation, Effort, Focus, Interrupt,
-        ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Submit, SystemPrompt,
-        ToolAccess, TurnFinished, TurnOf,
+        ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Spawned, SpawnedBy,
+        SystemPrompt, ToolAccess, TurnEnded, TurnOf, TurnOutcome, TurnRequest,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
-    pub use crate::core::commands::{AppCommandsExt, CommandArgs};
+    pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand, send_input};
     pub use crate::core::compaction::Compacted;
-    pub use crate::core::inbox::{FollowUp, Inbox, Recalled};
+    pub use crate::core::inbox::{
+        Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
+    };
     pub use crate::core::journal::ReflectSaved;
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
-    pub use crate::core::subagents::{Delegated, SubagentOf, Subagents};
+    pub use crate::core::subagents::Delegated;
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;

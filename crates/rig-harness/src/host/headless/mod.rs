@@ -13,8 +13,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Invocation, Mode};
 
-use crate::core::agent::{Agent, AgentId};
-use crate::core::subagents::SubagentOf;
+use crate::core::agent::{Agent, AgentId, SpawnedBy};
 
 /// How this process runs: its [`Invocation`], read from its arguments
 /// unless the app inserted one before adding [`ModePlugin`]. Views check
@@ -72,7 +71,7 @@ pub fn primary_agent<'a>(
 
 /// The agents for [`primary_agent`]: each with whether it is a subagent.
 pub type PrimaryQuery<'w, 's> =
-    Query<'w, 's, (Entity, &'static AgentId, Has<SubagentOf>), With<Agent>>;
+    Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
 
 /// [`primary_agent`] of a [`PrimaryQuery`].
 pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {

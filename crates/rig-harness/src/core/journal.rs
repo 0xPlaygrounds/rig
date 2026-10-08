@@ -41,6 +41,7 @@ use super::agent::{
 };
 use super::compaction::Compacted;
 use super::effects::Effects;
+use super::inbox::Origin;
 use super::usage::Spending;
 
 /// Type data marking a plugin component as part of the session: each
@@ -80,15 +81,6 @@ pub(crate) const COMPONENT_VERSION: u32 = 1;
 /// message, in place of its data: `blob:<sha256>.<ext>`.
 pub(crate) const BLOB: &str = "blob:";
 
-/// A message of an agent log: the agent and the record's `seq`.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct MessageRef {
-    /// The agent's id.
-    pub agent: String,
-    /// The record's `seq` in that agent's log.
-    pub seq: u64,
-}
-
 /// The `task` call a subagent works on.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ParentRef {
@@ -116,9 +108,6 @@ pub(crate) struct Header {
     /// For a subagent, its task's title.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) task: Option<String>,
-    /// For a fork, the message it was forked after.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) forked_from: Option<MessageRef>,
 }
 
 /// An agent's model, reasoning setting, system prompt when it is not the
@@ -219,9 +208,10 @@ pub(crate) enum Record {
     /// message goes into it.
     Message {
         message: Message,
-        /// The subagent answer it delivers.
+        /// Where it came from, when it was not the user's own text, the
+        /// model's reply or tool results.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        origin: Option<MessageRef>,
+        origin: Option<Origin>,
     },
     /// The last message was taken out, such as a user message no model
     /// could answer.
@@ -355,7 +345,6 @@ fn header(agent: &str, parent: Option<ParentRef>, task: Option<String>) -> Heade
         created: now_ms(),
         parent,
         task,
-        forked_from: None,
     }
 }
 
@@ -455,17 +444,18 @@ impl SessionLog {
     }
 
     /// Adds `message` to the conversation of `agent` and logs it, with its
-    /// images stored in [`SessionDir::blobs`]. `origin` names the subagent
-    /// answer it delivers. The one way messages are added.
+    /// images stored in [`SessionDir::blobs`]. `origin` says where it came
+    /// from, when not from the user, the model or a tool. The one way
+    /// messages are added.
     pub(crate) fn commit(
         &self,
         agent: &AgentId,
         conversation: &mut Conversation,
         message: Message,
-        origin: Option<MessageRef>,
+        origin: Option<Origin>,
     ) {
-        let logged = self.log_message(agent, &message, origin);
-        let merged = conversation.append(message);
+        let logged = self.log_message(agent, &message, origin.clone());
+        let merged = conversation.append(message, origin);
         if let Some(seq) = logged {
             let mut book = self.book();
             if let Some(log) = book.agents.get_mut(&agent.0) {
@@ -482,7 +472,7 @@ impl SessionLog {
         &self,
         agent: &AgentId,
         message: &Message,
-        origin: Option<MessageRef>,
+        origin: Option<Origin>,
     ) -> Option<u64> {
         let mut book = self.book();
         if !book.live || book.failure.is_some() {
@@ -640,15 +630,6 @@ impl SessionLog {
                 None => log.components.remove(component),
             };
         }
-    }
-
-    /// The `seq` of the newest message of `agent`'s log, or 0.
-    pub(crate) fn last_message(&self, agent: &AgentId) -> u64 {
-        self.book()
-            .agents
-            .get(&agent.0)
-            .and_then(|log| log.message_seqs.last().copied())
-            .unwrap_or(0)
     }
 
     /// Writes every queued record: each started log's records with one

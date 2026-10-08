@@ -7,17 +7,16 @@
 //! rule decides when a reply ends the turn instead. A failed model call is
 //! retried or recovered from as [`recovery`] decides. A conversation near
 //! the model's window is [`compaction`]-ed before the next call. Despawning
-//! the turn ends it, and the agent's [`ActiveTurn`] going away reports it
-//! finished.
+//! the turn ends it, and announces its [`TurnEnded`] on the agent.
 
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::{SystemId, SystemParam};
-use bevy_log::info_span;
+use bevy_ecs::system::SystemParam;
 use bevy_log::tracing::Instrument;
+use bevy_log::{info, info_span};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
@@ -33,25 +32,23 @@ use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, Effort,
-    Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, Submit,
-    SystemPrompt, ToolAccess, ToolCallRun, TurnFinished, TurnOf,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, Effort, Ending,
+    Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, SpawnedBy,
+    SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome, TurnRequest,
 };
-use super::attach;
 use super::calls::{Done, Running, Wake};
-use super::commands::{CommandArgs, SlashCommand};
 use super::compaction::{
     self, CompactReason, Compacted, MAX_COMPACTIONS, Summarize, Summarizing, Summary,
 };
 use super::effects::Effects;
-use super::inbox::{Delivery, Inbox, deliver_follow_up, deliver_steering};
+use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models;
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
-use super::subagents::{self, Assignment, Delegates, SubagentOf};
+use super::subagents::{self, Assignment, Delegates};
 use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
 use super::usage::{self, Spending, TurnSpending};
 
@@ -102,73 +99,6 @@ fn tool_pool() -> &'static AsyncComputeTaskPool {
     AsyncComputeTaskPool::get_or_init(TaskPool::default)
 }
 
-/// Runs a slash command, starts a turn, or steers the running one.
-pub(crate) fn on_submit(
-    submit: On<Submit>,
-    mut agents: Query<
-        (
-            &AgentId,
-            &mut Conversation,
-            &mut Inbox,
-            Option<&Connection>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    slash: Query<(Entity, &SlashCommand)>,
-    log: Res<SessionLog>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = submit.entity;
-    let text = submit.text.trim();
-    if text.is_empty() {
-        return;
-    }
-    if let Some(line) = text.strip_prefix('/') {
-        let (name, args) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
-        match slash.iter().find(|(_, command)| command.name == name) {
-            // The command sits on its system's own entity.
-            Some((system, _)) => commands.run_system_with(
-                SystemId::<In<CommandArgs>>::from_entity(system),
-                CommandArgs {
-                    agent,
-                    args: args.trim().to_owned(),
-                },
-            ),
-            None => {
-                // /help comes from a plugin, so point at it only when loaded.
-                let hint = if slash.iter().any(|(_, command)| command.name == "help") {
-                    " /help lists the commands."
-                } else {
-                    ""
-                };
-                notices.write(Notice::error(
-                    agent,
-                    format!("Unknown command /{name}.{hint}"),
-                ));
-            }
-        }
-        return;
-    }
-    let Ok((id, mut conversation, mut inbox, connection, busy)) = agents.get_mut(agent) else {
-        return;
-    };
-    // A message to a busy agent steers its turn.
-    if busy {
-        inbox.steering.push(text.to_owned());
-        return;
-    }
-    let (message, notes) = attach::user_message(text, connection.map(|connection| connection.spec));
-    for note in notes {
-        notices.write(Notice::info(agent, note));
-    }
-    // After a failure that kept the user's message, the new text joins it.
-    log.commit(id, &mut conversation, message, None);
-    let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
-    commands.trigger(CallModel { entity: turn });
-}
-
 /// Sends the conversation to the model again as it stands, when it ends
 /// in a message the model has not answered.
 pub(crate) fn on_retry(
@@ -196,9 +126,38 @@ pub(crate) fn on_retry(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// Reports a finished turn, however its entity went away.
-pub(crate) fn on_turn_end(end: On<Remove<ActiveTurn>>, mut finished: MessageWriter<TurnFinished>) {
-    finished.write(TurnFinished { agent: end.entity });
+/// Announces a turn's end with [`TurnEnded`], however its entity went
+/// away: with the [`Ending`] it was given, or as stopped. The event goes
+/// once the agent is idle, after the relationship dropped its
+/// [`ActiveTurn`].
+pub(crate) fn on_turn_despawn(
+    end: On<Remove<TurnOf>>,
+    turns: Query<(&TurnOf, &TurnRequest, Option<&Ending>)>,
+    agents: Query<&AgentId>,
+    mut commands: Commands,
+) {
+    let Ok((&TurnOf(agent), request, ending)) = turns.get(end.entity) else {
+        return;
+    };
+    let outcome = ending.map_or(TurnOutcome::Stopped, |ending| ending.0.clone());
+    if let Ok(id) = agents.get(agent) {
+        let how = match &outcome {
+            TurnOutcome::Answered(_) => "answered",
+            TurnOutcome::Failed(_) => "failed",
+            TurnOutcome::Stopped => "stopped",
+        };
+        info!(agent = %id.0, "turn ended: {how}");
+    }
+    commands.trigger(TurnEnded {
+        entity: agent,
+        outcome,
+        request: request.0.clone(),
+    });
+}
+
+/// Ends `turn` as `outcome` says.
+fn end_turn(commands: &mut Commands, turn: Entity, outcome: TurnOutcome) {
+    commands.entity(turn).insert(Ending(outcome)).despawn();
 }
 
 /// Stops a running turn. The text a streaming reply had sent is kept as
@@ -509,7 +468,7 @@ fn refused_mid_turn(
 /// cannot be done the turn ends.
 pub(crate) fn on_call_model(
     call: On<CallModel>,
-    mut turns: Query<(&TurnOf, &mut Recovery)>,
+    mut turns: Query<(&TurnOf, &mut Recovery, &mut TurnRequest)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox, Option<&Assignment>),
         &Compacted,
@@ -528,7 +487,7 @@ pub(crate) fn on_call_model(
     mut notices: MessageWriter<Notice>,
 ) {
     let turn = call.entity;
-    let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut recovery, mut request)) = turns.get_mut(turn) else {
         return;
     };
     let Ok((
@@ -567,7 +526,13 @@ pub(crate) fn on_call_model(
         spec: connection.map(|connection| connection.spec),
         log: &log,
     };
-    deliver_steering(&to, &mut inbox, &mut conversation, &mut notices);
+    deliver_steering(
+        &to,
+        &mut inbox,
+        &mut conversation,
+        &mut request.0,
+        &mut notices,
+    );
     let request = connection
         .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
         .and_then(|connection| {
@@ -589,9 +554,9 @@ pub(crate) fn on_call_model(
     let (handler, spec, request) = match request {
         Ok(request) => request,
         Err(why) => {
-            notices.write(Notice::error(agent, why));
+            notices.write(Notice::error(agent, why.clone()));
             drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
-            commands.entity(turn).despawn();
+            end_turn(&mut commands, turn, TurnOutcome::Failed(why));
             return;
         }
     };
@@ -765,7 +730,7 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
+    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery, &mut TurnRequest)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox),
         &Compacted,
@@ -783,7 +748,8 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut turn_spent, mut recovery, mut request)) = turns.get_mut(turn)
+    else {
         return;
     };
     let Ok(((id, mut conversation, mut inbox), compacted, connection, mut spent)) =
@@ -841,25 +807,34 @@ pub(crate) fn on_model_done(
         }
         notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
         drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
-        commands.entity(turn).despawn();
+        end_turn(
+            &mut commands,
+            turn,
+            TurnOutcome::Failed(failure.to_string()),
+        );
         return;
     }
     if tool_calls.is_empty() {
-        // What was typed meanwhile carries the turn on: steering first,
-        // then one follow-up.
+        // What was sent meanwhile carries the turn on: steering first,
+        // then one queued message.
         let to = Delivery {
             agent,
             id,
             spec,
             log: &log,
         };
-        let carried = deliver_steering(&to, &mut inbox, &mut conversation, &mut notices)
-            || deliver_follow_up(&to, &mut inbox, &mut conversation, &mut notices);
+        let request = &mut request.0;
+        let carried = deliver_steering(&to, &mut inbox, &mut conversation, request, &mut notices)
+            || deliver_queued(&to, &mut inbox, &mut conversation, request, &mut notices);
         if carried {
             commands.trigger(CallModel { entity: turn });
-        } else {
-            commands.entity(turn).despawn();
+            return;
         }
+        let outcome = match conversation.messages().last() {
+            Some(answer @ Message::Assistant(_)) => TurnOutcome::Answered(answer.clone()),
+            _ => TurnOutcome::Failed("the model ended the turn without a message".to_owned()),
+        };
+        end_turn(&mut commands, turn, outcome);
         return;
     }
     // Every call is waited on by the later calls of the reply until it
@@ -966,14 +941,12 @@ impl Failed<'_> {
                         return;
                     }
                 }
-                notices.write(Notice::error(
-                    agent,
-                    format!(
-                        "The conversation does not fit the model's context window, even \
-                         compacted and with old tool outputs cleared: {report}"
-                    ),
-                ));
-                self.fail(conversation, commands, notices);
+                let why = format!(
+                    "The conversation does not fit the model's context window, even \
+                     compacted and with old tool outputs cleared: {report}"
+                );
+                notices.write(Notice::error(agent, why.clone()));
+                self.fail(why, conversation, commands, notices);
             }
             Verdict::GaveUp(why) => {
                 notices.write(Notice::error(
@@ -983,14 +956,12 @@ impl Failed<'_> {
                          kept; /retry sends it again."
                     ),
                 ));
-                commands.entity(self.turn).despawn();
+                end_turn(commands, self.turn, TurnOutcome::Failed(report.to_string()));
             }
             Verdict::Final => {
-                notices.write(Notice::error(
-                    agent,
-                    format!("The model call failed: {report}"),
-                ));
-                self.fail(conversation, commands, notices);
+                let why = format!("The model call failed: {report}");
+                notices.write(Notice::error(agent, why.clone()));
+                self.fail(why, conversation, commands, notices);
             }
         }
     }
@@ -1022,16 +993,17 @@ impl Failed<'_> {
         cleared.results > 0
     }
 
-    /// Ends the turn, taking out the user's message: the same request
-    /// would fail again.
+    /// Ends the turn as failed for `why`, taking out the user's message:
+    /// the same request would fail again.
     fn fail(
         &self,
+        why: String,
         conversation: &mut Conversation,
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) {
         drop_unanswered(self.agent, self.id, conversation, self.log, notices);
-        commands.entity(self.turn).despawn();
+        end_turn(commands, self.turn, TurnOutcome::Failed(why));
     }
 }
 
@@ -1121,7 +1093,7 @@ pub(crate) struct ToolStarter<'w, 's> {
             &'static SystemPrompt,
         ),
     >,
-    lineage: Query<'w, 's, &'static SubagentOf>,
+    lineage: Query<'w, 's, &'static SpawnedBy>,
     effects: Res<'w, Effects>,
     log: Res<'w, SessionLog>,
     wake: Res<'w, Wake>,
@@ -1167,7 +1139,7 @@ impl ToolStarter<'_, '_> {
                     model,
                     effort,
                     prompt,
-                    depth: self.lineage.iter_ancestors::<SubagentOf>(agent).count(),
+                    depth: self.lineage.iter_ancestors::<SpawnedBy>(agent).count(),
                 };
                 let mine: Vec<(&str, bool)> = self
                     .tools

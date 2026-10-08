@@ -1,17 +1,18 @@
 //! Subagents. A `task` tool call spawns a child agent entity, in process,
 //! with its own model, reasoning setting and tools; the child is
-//! [`SubagentOf`] the agent that called and works through turns like any
+//! [`SpawnedBy`] the agent that called and works through turns like any
 //! agent, in the background: the call answers at once that it started. The
 //! call is dispatched and recorded like every tool call, and the child's
 //! model calls are recorded with that call's effect as their parent, so the
 //! effect log nests a subagent's work under the call that asked for it.
 //!
-//! When the child's turn ends, with none of its own subagents still at
-//! work, its final message, or why it has none, goes to the parent as a message marked with [`REPORT_PREFIX`],
-//! through the parent's [`Inbox`](super::inbox::Inbox) like a follow-up:
-//! it starts a turn of an idle parent, and waits for the end of a busy
-//! one's. So nothing waits for a subagent, and the user can talk to any
-//! agent meanwhile.
+//! The task goes to the child, and its answer back to the parent, with
+//! [`Deliver`]: each carries an [`Origin`] naming the agent it came from
+//! and the `task` call as its request. When the child's
+//! [`TurnEnded`], with none of its own subagents still at work, its final
+//! message, or why it has none, is queued for the parent: it starts a turn
+//! of an idle parent, and waits for the end of a busy one's. So nothing
+//! waits for a subagent, and the user can talk to any agent meanwhile.
 //!
 //! Stopping an agent's turn stops only that agent. Despawning an agent
 //! despawns its subagents (`linked_spawn`). A finished subagent stays, so
@@ -33,13 +34,13 @@ use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolOutput, ToolResult};
 use serde::Deserialize;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, Conversation, Effort, ModelChoice, SystemPrompt, ToolAccess, TurnOf,
+    ActiveTurn, Agent, AgentId, Conversation, Effort, ModelChoice, Spawned, SpawnedBy,
+    SystemPrompt, ToolAccess, TurnEnded,
 };
-use super::inbox::{Answer, Report};
-use super::journal::{MessageRef, SessionLog};
+use super::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use super::journal::SessionLog;
 use super::models;
 use super::tools::{Footprint, ToolOptions, register_tool};
-use super::turn::CallModel;
 use super::usage::Spending;
 
 /// The name of the tool that starts a subagent.
@@ -52,14 +53,10 @@ pub const MAX_DEPTH: usize = 2;
 /// The most bytes of a subagent's answer that go back to its parent.
 const MAX_ANSWER_BYTES: usize = 50 * 1024;
 
-/// How a subagent's answer starts, in the message that brings it to its
-/// parent.
-pub const REPORT_PREFIX: &str = "[subagent ";
-
 const DESCRIPTION: &str = "Hand a self-contained task to a subagent: a new agent with a \
     conversation of its own, which works with its tools until it can answer. The call \
     returns at once and the subagent works in the background; its final message arrives \
-    later as a message starting with `[subagent <id> ...]`. It sees nothing of this \
+    later as a message headed as that subagent's output. It sees nothing of this \
     conversation, only `prompt`. Several `task` calls run side by side.";
 
 const RULES: &[&str] = &[
@@ -86,19 +83,6 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Delegates;
 
-/// The agent that started this one with a `task` call. Despawning that
-/// agent despawns this one.
-#[derive(Component, Reflect, Debug)]
-#[reflect(Component)]
-#[relationship(relationship_target = Subagents)]
-pub struct SubagentOf(pub Entity);
-
-/// The subagents an agent started, in the order it started them.
-#[derive(Component, Reflect, Debug)]
-#[reflect(Component)]
-#[relationship_target(relationship = SubagentOf, linked_spawn)]
-pub struct Subagents(Vec<Entity>);
-
 /// On a subagent: the task's title, as its log's header holds it.
 #[derive(Component, Reflect, Clone, Debug)]
 #[reflect(Component, Clone, Debug)]
@@ -108,13 +92,16 @@ pub struct Delegated {
 }
 
 /// On a subagent while it works on its task: the `task` call's effect,
-/// which the subagent's model calls are recorded under. The turn end that
-/// sends its answer to the parent takes it. A restored subagent whose
-/// answer did not arrive gets one again, with no effect.
+/// which the subagent's model calls are recorded under, and the request
+/// its answer names. The turn end that sends its answer to the parent
+/// takes it. A restored subagent whose answer did not arrive gets one
+/// again, with no effect.
 #[derive(Component, Debug)]
 pub struct Assignment {
     /// The `task` call's effect, unknown after a restart.
     pub effect: Option<EffectId>,
+    /// The `task` call's id.
+    pub request: RequestId,
 }
 
 /// Registers the `task` tool, which runs beside the reply's other calls
@@ -345,13 +332,8 @@ pub(crate) fn started(id: &AgentId, task: &str) -> String {
     format!(
         "Started subagent `{}` on \"{task}\". It works in the background; its answer \
          will arrive as a message when it finishes. Use /agents to watch it.",
-        short(id)
+        id.short()
     )
-}
-
-/// The first characters of an agent's id, enough to tell agents apart.
-fn short(id: &AgentId) -> &str {
-    id.0.get(..8).unwrap_or(&id.0)
 }
 
 /// Spawns the subagent of `plan` for the `task` call `call` of `parent`
@@ -374,27 +356,30 @@ pub(crate) fn spawn(
         prompt,
     } = plan;
     log.open_subagent(&id, parent.1, call, &task);
-    let mut conversation = Conversation::default();
-    log.commit(&id, &mut conversation, Message::user(instructions), None);
+    let request = RequestId(call.to_string());
     let child = commands
         .spawn((
             Name::new(format!("subagent: {task}")),
             Agent,
             id,
-            SubagentOf(parent.0),
+            SpawnedBy(parent.0),
             Delegated { task },
             Assignment {
                 effect: Some(effect),
+                request: request.clone(),
             },
             model,
             effort,
             ToolAccess::Only(tools),
             SystemPrompt(prompt),
-            conversation,
         ))
         .id();
-    let turn = commands.spawn((Name::new("turn"), TurnOf(child))).id();
-    commands.trigger(CallModel { entity: turn });
+    commands.trigger(Deliver {
+        entity: child,
+        text: instructions,
+        origin: Origin::agent(parent.1.clone(), Some(request)),
+        mode: DeliveryMode::Queue,
+    });
 }
 
 /// Sends a subagent's answer to the agent that started it once a turn of
@@ -403,62 +388,56 @@ pub(crate) fn spawn(
 /// while its own subagents work answers after their answers carried it on.
 /// Nothing is sent while the app exits: the restart carries the turn on.
 pub(crate) fn answer_on_turn_end(
-    end: On<Remove<ActiveTurn>>,
+    end: On<TurnEnded>,
     agents: Query<
         (
             &AgentId,
             &Conversation,
             &Delegated,
-            &SubagentOf,
-            Option<&Subagents>,
+            &SpawnedBy,
+            &Assignment,
+            Option<&Spawned>,
         ),
-        With<Assignment>,
+        Without<ActiveTurn>,
     >,
     assigned: Query<(), With<Assignment>>,
     log: Res<SessionLog>,
     mut commands: Commands,
 ) {
     let agent = end.entity;
-    let Ok((id, conversation, delegated, parent, subagents)) = agents.get(agent) else {
+    // Only the agent whose turn ended, not the agents it propagates to.
+    if agent != end.original_event_target() {
+        return;
+    }
+    let Ok((id, conversation, delegated, parent, assignment, children)) = agents.get(agent) else {
         return;
     };
     if log.is_exiting()
-        || subagents.is_some_and(|subagents| subagents.iter().any(|child| assigned.contains(child)))
+        || children.is_some_and(|children| children.iter().any(|child| assigned.contains(child)))
     {
         return;
     }
     commands.entity(agent).try_remove::<Assignment>();
-    commands.trigger(Report {
+    commands.trigger(Deliver {
         entity: parent.0,
-        answer: answer(id, &delegated.task, conversation, &log),
+        text: answer(&delegated.task, final_answer(conversation.messages())),
+        origin: Origin::agent(id.clone(), Some(assignment.request.clone())),
+        mode: DeliveryMode::Queue,
     });
 }
 
-/// The answer of the subagent `id` on `task` to the agent that started
-/// it: its final message, or why it has none.
-pub(crate) fn answer(
-    id: &AgentId,
-    task: &str,
-    conversation: &Conversation,
-    log: &SessionLog,
-) -> Answer {
-    let head = format!("{REPORT_PREFIX}{} \"{task}\"", short(id));
-    let text = match final_answer(conversation.messages()) {
-        Ok(answer) => format!("{head} finished]\n{answer}"),
-        Err(why) => format!("{head} stopped without an answer]\n{why}"),
-    };
-    Answer {
-        text,
-        origin: MessageRef {
-            agent: id.0.clone(),
-            seq: log.last_message(id),
-        },
+/// The text a subagent sends the agent that started it on `task`: its
+/// final message, or why it has none.
+pub(crate) fn answer(task: &str, answer: Result<String, String>) -> String {
+    match answer {
+        Ok(answer) => format!("Task \"{task}\" finished:\n{answer}"),
+        Err(why) => format!("Task \"{task}\" stopped without an answer:\n{why}"),
     }
 }
 
 /// The text of the subagent's last message when it is the model's, cut to
 /// [`MAX_ANSWER_BYTES`]; otherwise why the subagent has no answer.
-fn final_answer(conversation: &[Message]) -> Result<String, String> {
+pub(crate) fn final_answer(conversation: &[Message]) -> Result<String, String> {
     let Some(Message::Assistant(reply)) = conversation.last() else {
         return Err(
             "The subagent stopped before it answered: it was interrupted, or its model \
@@ -563,8 +542,8 @@ pub type RosterQuery<'w, 's> = Query<
         Entity,
         &'static AgentId,
         Option<&'static Delegated>,
-        Option<&'static SubagentOf>,
-        Option<&'static Subagents>,
+        Option<&'static SpawnedBy>,
+        Option<&'static Spawned>,
         Option<&'static ModelChoice>,
         Has<ActiveTurn>,
         &'static Spending,
@@ -595,7 +574,7 @@ pub fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
         };
         let title = match delegated {
             Some(delegated) => delegated.task.clone(),
-            None if several => format!("agent {}", short(id)),
+            None if several => format!("agent {}", id.short()),
             None => "main agent".to_owned(),
         };
         let mut label = format!(

@@ -15,10 +15,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::view::{Overlay, PickValue, Picker, TuiView};
-use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetModel, Submit};
+use crate::core::agent::{ActiveTurn, Effort, Focus, Interrupt, SetEffort, SetModel};
 use crate::core::calls::Wake;
-use crate::core::commands::SlashCommand;
-use crate::core::inbox::FollowUp;
+use crate::core::commands::{SlashCommand, send_input};
+use crate::core::inbox::DeliveryMode;
 use crate::core::journal::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::sessions::SwitchSession;
@@ -265,9 +265,10 @@ fn input_key(
     }
 }
 
-/// Sends the input to the focused agent: as a follow-up for after its
-/// turn, or as a message that starts a turn or steers the running one.
-fn send(view: &mut TuiView, commands: &mut Commands, follow_up: bool) {
+/// Sends the input to the focused agent: a slash command, or a message
+/// that starts a turn, or steers the running one, or is queued for after
+/// it with `queue`.
+fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     let Some(entity) = view.agent else {
         return;
     };
@@ -277,11 +278,12 @@ fn send(view: &mut TuiView, commands: &mut Commands, follow_up: bool) {
     let text = view.editor.take();
     view.editor.remember(&text);
     view.scroll = 0;
-    if follow_up {
-        commands.trigger(FollowUp { entity, text });
+    let mode = if queue {
+        DeliveryMode::Queue
     } else {
-        commands.trigger(Submit { entity, text });
-    }
+        DeliveryMode::Steer
+    };
+    send_input(commands, entity, text, mode);
 }
 
 /// Puts the selected completion in place of the token being completed.

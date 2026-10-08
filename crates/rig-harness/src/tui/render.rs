@@ -17,14 +17,14 @@ use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::core::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    ToolCallRun,
+    Spawned, ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
 use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
-use crate::core::subagents::{Delegated, Subagents};
+use crate::core::subagents::Delegated;
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 use crate::host::sessions::SessionName;
@@ -111,7 +111,7 @@ pub(crate) fn render(
             Entity,
             Has<ActiveTurn>,
             Option<&Delegated>,
-            Option<&Subagents>,
+            Option<&Spawned>,
         ),
         With<Agent>,
     >,
@@ -179,7 +179,7 @@ pub(crate) fn render(
         if let Some((agent, (conversation, compacted, ..))) = shown {
             transcript.update(
                 agent,
-                conversation.messages(),
+                conversation,
                 changed.contains(agent),
                 &by_tool,
                 transcript_area.width,
@@ -527,13 +527,16 @@ fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
         return;
     }
     lines.push(Line::default());
-    let waiting = inbox.steering.iter().map(|text| ("steering", text)).chain(
-        inbox
-            .follow_ups
-            .iter()
-            .chain(inbox.reports.iter().map(|answer| &answer.text))
-            .map(|text| ("after this turn", text)),
-    );
+    let waiting = inbox
+        .steering
+        .iter()
+        .map(|pending| ("steering", &pending.text))
+        .chain(
+            inbox
+                .queued
+                .iter()
+                .map(|pending| ("after this turn", &pending.text)),
+        );
     for (when, text) in waiting {
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {

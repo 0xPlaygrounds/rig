@@ -11,7 +11,7 @@ use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
 use super::compaction::Compacted;
-use super::inbox::Inbox;
+use super::inbox::{Inbox, Origin, RequestId};
 use super::recovery::Recovery;
 use super::tools::Touch;
 use super::usage::{Spending, TurnSpending};
@@ -36,9 +36,10 @@ pub struct Agent;
 /// The agent's stable id, used in its log's name, effect scopes and logs.
 /// `Entity` ids are not stable across a restart; this one is. It never
 /// changes after spawn.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[component(immutable)]
 #[reflect(Component)]
+#[serde(transparent)]
 pub struct AgentId(pub String);
 
 impl Default for AgentId {
@@ -47,37 +48,90 @@ impl Default for AgentId {
     }
 }
 
-/// The conversation: every message sent to and received from the model.
-/// Requests leave out the ones its agent's
-/// [`Compacted`] replaced with a summary. Messages are added only through
-/// the [`SessionLog`](super::journal::SessionLog), which logs each one.
+impl AgentId {
+    /// The first characters of the id, enough to tell agents apart.
+    pub fn short(&self) -> &str {
+        self.0.get(..8).unwrap_or(&self.0)
+    }
+}
+
+/// The agent that spawned this one, such as the agent whose tool call
+/// started it. Despawning that agent despawns this one. The core gives it
+/// no other meaning: a restore links the agents again by their logs'
+/// headers, views list agents by it, and [`TurnEnded`] travels up it.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship(relationship_target = Spawned)]
+pub struct SpawnedBy(pub Entity);
+
+/// The agents this one spawned, in the order it spawned them.
+#[derive(Component, Reflect, Debug)]
+#[reflect(Component)]
+#[relationship_target(relationship = SpawnedBy, linked_spawn)]
+pub struct Spawned(Vec<Entity>);
+
+/// The conversation: every message sent to and received from the model,
+/// and where each delivered text came from when it is not the user's own.
+/// Requests leave out the messages its agent's [`Compacted`] replaced with
+/// a summary. Messages are added only through the
+/// [`SessionLog`](super::journal::SessionLog), which logs each one.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
-pub struct Conversation(Vec<Message>);
+pub struct Conversation {
+    messages: Vec<Message>,
+    /// The origin of each content item that is not the user's own or the
+    /// model's, by message and item index, in the order they were added.
+    origins: Vec<(usize, usize, Origin)>,
+}
 
 impl Conversation {
     /// The messages, oldest first.
     pub fn messages(&self) -> &[Message] {
-        &self.0
+        &self.messages
+    }
+
+    /// Where content item `item` of message `message` came from, when it
+    /// was delivered by an agent or a plugin; `None` for the user's own
+    /// text, the model's messages and tool results.
+    pub fn origin(&self, message: usize, item: usize) -> Option<&Origin> {
+        self.origins
+            .iter()
+            .find(|(at, index, _)| *at == message && *index == item)
+            .map(|(.., origin)| origin)
     }
 
     /// The messages, to change in place, such as clearing old tool outputs.
     /// Nothing can be added or taken out through it.
     pub(crate) fn messages_mut(&mut self) -> &mut [Message] {
-        &mut self.0
+        &mut self.messages
     }
 
-    /// Adds `message`: a user message goes into the last message when that
-    /// is the user's too, such as the tool results the model waits for, so
-    /// user and model keep taking turns. Whether it went into the last one.
-    pub(in crate::core) fn append(&mut self, message: Message) -> bool {
-        match (self.0.last_mut(), message) {
+    /// Adds `message`, whose content came from `origin`: a user message
+    /// goes into the last message when that is the user's too, such as the
+    /// tool results the model waits for, so user and model keep taking
+    /// turns. Whether it went into the last one.
+    pub(in crate::core) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
+        let (at, first) = match (self.messages.last(), &message) {
+            (Some(Message::User { content }), Message::User { .. }) => {
+                (self.messages.len().saturating_sub(1), content.len())
+            }
+            _ => (self.messages.len(), 0),
+        };
+        let items = match &message {
+            Message::User { content } => content.len(),
+            _ => 0,
+        };
+        if let Some(origin) = origin {
+            self.origins
+                .extend((first..first + items).map(|item| (at, item, origin.clone())));
+        }
+        match (self.messages.last_mut(), message) {
             (Some(Message::User { content }), Message::User { content: added }) => {
                 content.extend(added);
                 true
             }
             (_, message) => {
-                self.0.push(message);
+                self.messages.push(message);
                 false
             }
         }
@@ -85,7 +139,10 @@ impl Conversation {
 
     /// Takes out the last message.
     pub(in crate::core) fn retract(&mut self) -> Option<Message> {
-        self.0.pop()
+        let message = self.messages.pop()?;
+        let len = self.messages.len();
+        self.origins.retain(|(at, ..)| *at < len);
+        Some(message)
     }
 }
 
@@ -179,8 +236,18 @@ impl ToolAccess {
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(TurnSpending, Recovery)]
+#[require(TurnSpending, Recovery, TurnRequest)]
 pub struct TurnOf(pub Entity);
+
+/// On a turn: the request of the latest message delivered to it that
+/// carried one, which its [`TurnEnded`] names.
+#[derive(Component, Clone, Debug, Default)]
+pub struct TurnRequest(pub Option<RequestId>);
+
+/// On a turn about to be despawned: how it ended. A turn despawned without
+/// one, such as by [`Interrupt`] or on exit, ended [`TurnOutcome::Stopped`].
+#[derive(Component, Clone, Debug)]
+pub(crate) struct Ending(pub(crate) TurnOutcome);
 
 /// The agent's running turn. An agent with it is busy.
 #[derive(Component, Reflect, Debug)]
@@ -240,19 +307,6 @@ pub struct ToolCallRun {
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
 pub struct Queued;
-
-/// Send `text` to the agent: a slash command when it starts with `/`,
-/// otherwise a user message that starts a turn, or that steers the running
-/// one (see [`Inbox`]). An image named as `@path` goes with it when the
-/// model reads images.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Submit {
-    /// The agent.
-    pub entity: Entity,
-    /// The text typed.
-    pub text: String,
-}
 
 /// Send the agent's conversation to its model again as it stands: after a
 /// turn that failed on a transient error and kept the user's message, or
@@ -355,12 +409,30 @@ impl Notice {
     }
 }
 
-/// An agent's turn ended: answered, failed or interrupted. Written when its
-/// [`ActiveTurn`] goes away, however the turn entity was despawned.
-#[derive(Message, Clone, Copy, Debug)]
-pub struct TurnFinished {
-    /// The agent.
-    pub agent: Entity,
+/// How a turn ended.
+#[derive(Clone, Debug)]
+pub enum TurnOutcome {
+    /// The model answered: its last message, which ended the turn.
+    Answered(Message),
+    /// The turn failed, for the reason given.
+    Failed(String),
+    /// The turn was stopped before an answer, by the user or on exit.
+    Stopped,
+}
+
+/// An agent's turn ended, however its turn entity went away. Triggered on
+/// the agent once it is idle, then on each agent it was
+/// [`SpawnedBy`] up the chain: an observer's `entity` is the agent seeing
+/// it and `original_event_target()` the agent whose turn ended.
+#[derive(EntityEvent, Clone, Debug)]
+#[entity_event(propagate = &'static SpawnedBy, auto_propagate)]
+pub struct TurnEnded {
+    /// The agent seeing the event.
+    pub entity: Entity,
+    /// How the turn ended.
+    pub outcome: TurnOutcome,
+    /// The request the turn answered, if a delivered message carried one.
+    pub request: Option<RequestId>,
 }
 
 /// What a view should let the user pick from.

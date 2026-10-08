@@ -21,16 +21,16 @@ use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
 
 use super::agent::{
-    Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, SystemPrompt, ToolAccess,
-    ToolCallRun, TurnOf,
+    Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, Spawned, SpawnedBy, SystemPrompt,
+    ToolAccess, ToolCallRun, TurnOf,
 };
 use super::compaction::Compacted;
-use super::inbox::Report;
+use super::inbox::{Deliver, DeliveryMode, Origin, OriginKind, RequestId};
 use super::journal::{
-    AgentLog, COMPONENT_VERSION, Header, Line, MessageRef, ParentRef, Record, ReflectSaved,
-    SavedValue, SessionLog, SessionPaths, Settings, UsageRecord, load_blobs,
+    AgentLog, COMPONENT_VERSION, Header, Line, ParentRef, Record, ReflectSaved, SavedValue,
+    SessionLog, SessionPaths, Settings, UsageRecord, load_blobs,
 };
-use super::subagents::{self, Assignment, Delegated, SubagentOf, Subagents, TASK};
+use super::subagents::{self, Assignment, Delegated, TASK};
 use super::tools::{Footprint, failed};
 use super::turn::{CallModel, ToolStarter, tool_name};
 
@@ -46,7 +46,7 @@ struct Envelope {
     #[serde(rename = "type")]
     kind: String,
     #[serde(default)]
-    origin: Option<MessageRef>,
+    origin: Option<Origin>,
 }
 
 /// An agent log folded into the agent's state.
@@ -61,7 +61,7 @@ struct Folded {
     components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
     next_seq: u64,
-    /// The subagents whose answer a message of this log delivered.
+    /// The agents whose output a message of this log delivered.
     delivered: BTreeSet<String>,
 }
 
@@ -208,7 +208,7 @@ pub(crate) fn restore_session(world: &mut World) {
             .and_then(|parent| entities.get(&parent.agent))
             && let Ok(mut child) = world.get_entity_mut(agent.entity)
         {
-            child.insert(SubagentOf(*parent));
+            child.insert(SpawnedBy(*parent));
         }
     }
     // What restoring set off, such as connecting each model, is not logged.
@@ -299,7 +299,9 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
             .iter()
             .flatten()
             .filter_map(|envelope| envelope.origin.as_ref())
-            .map(|origin| origin.agent.clone())
+            .filter(|origin| origin.kind == OriginKind::Agent)
+            .filter_map(|origin| origin.from.as_ref())
+            .map(|from| from.0.clone())
             .collect(),
     };
     // Messages are read from the first one the newest compaction kept, the
@@ -344,9 +346,12 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
         };
         let superseded = index < from_rest;
         match line.record {
-            Record::Message { mut message, .. } => {
+            Record::Message {
+                mut message,
+                origin,
+            } => {
                 load_blobs(&mut message, blobs);
-                if !folded.conversation.append(message) {
+                if !folded.conversation.append(message, origin) {
                     folded.message_seqs.push(line.seq);
                 }
                 folded.halted = false;
@@ -417,7 +422,7 @@ fn restore_component(
 pub(crate) fn reconcile(
     restored: Option<Res<Restored>>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
-    children: Query<&Subagents>,
+    children: Query<&Spawned>,
     starter: ToolStarter,
     log: Res<SessionLog>,
     mut commands: Commands,
@@ -508,20 +513,25 @@ pub(crate) fn reconcile(
             || children
                 .get(agent.entity)
                 .is_ok_and(|children| children.iter().any(|child| assigned.contains(&child)));
+        let Some(call) = agent.parent.as_ref().map(|parent| parent.call.to_string()) else {
+            continue;
+        };
+        let request = RequestId(call);
         if waits {
-            commands
-                .entity(agent.entity)
-                .insert(Assignment { effect: None });
+            commands.entity(agent.entity).insert(Assignment {
+                effect: None,
+                request,
+            });
             assigned.insert(agent.entity);
         } else if let Ok((id, conversation)) = agents.get(agent.entity) {
-            commands.trigger(Report {
+            commands.trigger(Deliver {
                 entity: parent.entity,
-                answer: subagents::answer(
-                    id,
+                text: subagents::answer(
                     agent.task.as_deref().unwrap_or_default(),
-                    conversation,
-                    &log,
+                    subagents::final_answer(conversation.messages()),
                 ),
+                origin: Origin::agent(id.clone(), Some(request)),
+                mode: DeliveryMode::Queue,
             });
         }
     }

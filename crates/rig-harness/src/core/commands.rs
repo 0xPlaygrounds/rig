@@ -1,11 +1,17 @@
 //! The slash command registry. A command is a registered one-shot system
 //! whose own entity carries its [`SlashCommand`], so despawning that entity
 //! unregisters the command and its system together. Plugins add commands
-//! with [`AppCommandsExt::add_command`].
+//! with [`AppCommandsExt::add_command`]. [`RunCommand`] runs one, and
+//! [`send_input`] sends what a view's user typed: a command or a message.
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemId;
 use bevy_log::warn;
+use bevy_reflect::prelude::*;
+
+use super::agent::Notice;
+use super::inbox::{Deliver, DeliveryMode};
 
 /// What a command system receives: the agent the command was typed for and
 /// the text after the command name.
@@ -65,5 +71,63 @@ impl AppCommandsExt for App {
             },
         ));
         self
+    }
+}
+
+/// Run the slash command `line` (without its `/`) for the agent: its name,
+/// then its arguments.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct RunCommand {
+    /// The agent.
+    pub entity: Entity,
+    /// The command line after the `/`.
+    pub line: String,
+}
+
+/// Sends what the user typed to `agent`: a slash command when it starts
+/// with `/`, which runs now, otherwise the user's message, delivered as
+/// `mode` says.
+pub fn send_input(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
+    match text.trim_start().strip_prefix('/') {
+        Some(line) => commands.trigger(RunCommand {
+            entity: agent,
+            line: line.to_owned(),
+        }),
+        None => commands.trigger(Deliver::user(agent, text, mode)),
+    }
+}
+
+/// Runs the command a [`RunCommand`] names, or says it does not exist.
+pub(crate) fn on_run_command(
+    run: On<RunCommand>,
+    slash: Query<(Entity, &SlashCommand)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = run.entity;
+    let line = run.line.trim();
+    let (name, args) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
+    match slash.iter().find(|(_, command)| command.name == name) {
+        // The command sits on its system's own entity.
+        Some((system, _)) => commands.run_system_with(
+            SystemId::<In<CommandArgs>>::from_entity(system),
+            CommandArgs {
+                agent,
+                args: args.trim().to_owned(),
+            },
+        ),
+        None => {
+            // /help comes from a plugin, so point at it only when loaded.
+            let hint = if slash.iter().any(|(_, command)| command.name == "help") {
+                " /help lists the commands."
+            } else {
+                ""
+            };
+            notices.write(Notice::error(
+                agent,
+                format!("Unknown command /{name}.{hint}"),
+            ));
+        }
     }
 }

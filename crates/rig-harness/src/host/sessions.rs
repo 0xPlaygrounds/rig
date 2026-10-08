@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher;
 use crate::core::agent::{
-    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, TurnFinished, TurnOf,
+    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, TurnEnded, TurnOf,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::journal::{SessionPaths, now_ms};
@@ -42,6 +42,8 @@ pub struct SessionsPlugin;
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionName>()
+            .init_resource::<TurnEndedMark>()
+            .add_observer(mark_turn_end)
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
@@ -62,7 +64,7 @@ impl Plugin for SessionsPlugin {
                     .in_set(OnAppExitSystems)
                     .after(crate::core::turn::stop_turns_on_exit)
                     .run_if(
-                        on_message::<TurnFinished>
+                        resource_changed::<TurnEndedMark>
                             .or_eager(on_message::<AppExit>)
                             .or_eager(resource_changed::<SessionName>),
                     ),
@@ -224,6 +226,16 @@ fn record_directory(paths: Option<Res<SessionPaths>>) {
         && let Err(failure) = fs::write(paths.directory(), here.to_string_lossy().as_bytes())
     {
         error!("could not record the session's directory: {failure}");
+    }
+}
+
+/// Changed whenever a turn ends, so the listing cache is rewritten.
+#[derive(Resource, Default)]
+struct TurnEndedMark;
+
+fn mark_turn_end(ended: On<TurnEnded>, mut mark: ResMut<TurnEndedMark>) {
+    if ended.entity == ended.original_event_target() {
+        mark.set_changed();
     }
 }
 

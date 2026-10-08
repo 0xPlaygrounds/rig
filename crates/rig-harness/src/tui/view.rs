@@ -9,12 +9,13 @@ use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
     Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
+    SpawnedBy,
 };
 use crate::core::inbox::Recalled;
 use crate::core::journal::SessionPaths;
 use crate::core::login::LoginProvider;
 use crate::core::models;
-use crate::core::subagents::{self, RosterQuery, SubagentOf};
+use crate::core::subagents::{self, RosterQuery};
 use crate::host::reload::ReloadFailed;
 use crate::host::sessions;
 
@@ -120,7 +121,7 @@ impl Picker {
 /// user started before any subagent.
 pub(crate) fn focus_agent(
     mut view: ResMut<TuiView>,
-    agents: Query<(Entity, &AgentId, Has<SubagentOf>), With<Agent>>,
+    agents: Query<(Entity, &AgentId, Has<SpawnedBy>), With<Agent>>,
 ) {
     if view.agent.is_some_and(|agent| agents.contains(agent)) {
         return;

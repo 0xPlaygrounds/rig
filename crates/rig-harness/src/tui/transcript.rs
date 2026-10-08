@@ -19,7 +19,8 @@ use rig_core::message::{ToolResult, UserContent};
 use super::markdown;
 use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
-use crate::core::subagents::REPORT_PREFIX;
+use crate::core::agent::Conversation;
+use crate::core::inbox::Origin;
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
@@ -47,14 +48,15 @@ pub(crate) enum Part {
 }
 
 impl Transcript {
-    /// Brings the rows up to date with `messages` of `agent` at `width`.
+    /// Brings the rows up to date with the conversation of `agent` at
+    /// `width`.
     /// `changed` says whether the messages or the renderers may have
     /// changed since the last call; when they did not, only a new agent or
     /// width costs anything.
     pub(crate) fn update(
         &mut self,
         agent: Entity,
-        messages: &[Message],
+        conversation: &Conversation,
         changed: bool,
         renderers: &Renderers<'_>,
         width: u16,
@@ -70,6 +72,7 @@ impl Transcript {
                 entry.rows = wrap_all(&entry.lines, usable);
             }
         }
+        let messages = conversation.messages();
         if !changed && self.entries.len() == messages.len() {
             return;
         }
@@ -85,7 +88,7 @@ impl Transcript {
             {
                 continue;
             }
-            let lines = message_lines(message, previous, next, renderers);
+            let lines = message_lines(message, (conversation, index), previous, next, renderers);
             let entry = Entry {
                 fingerprint,
                 rows: wrap_all(&lines, usable),
@@ -202,11 +205,13 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
     }
 }
 
-/// Draws `message`. A tool call's result, which comes in the `next`
-/// message, is drawn with the call, so the results of a reply's calls are
-/// not drawn after all of its calls.
+/// Draws `message`, the `at`-th of `conversation`. A tool
+/// call's result, which comes in the `next` message, is drawn with the
+/// call, so the results of a reply's calls are not drawn after all of its
+/// calls.
 fn message_lines(
     message: &Message,
+    (conversation, at): (&Conversation, usize),
     previous: Option<&Message>,
     next: Option<&Message>,
     renderers: &Renderers<'_>,
@@ -215,14 +220,13 @@ fn message_lines(
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
-            for item in content {
+            for (item_at, item) in content.iter().enumerate() {
                 match item {
                     UserContent::Text(text) => {
                         lines.push(Line::default());
-                        if text.text.starts_with(REPORT_PREFIX) {
-                            report_lines(&text.text, &mut lines);
-                        } else {
-                            user_lines(&text.text, &mut lines);
+                        match conversation.origin(at, item_at) {
+                            Some(origin) => delivered_lines(origin, &text.text, &mut lines),
+                            None => user_lines(&text.text, &mut lines),
                         }
                     }
                     // Drawn under its call already.
@@ -285,15 +289,19 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
     }
 }
 
-/// A subagent's answer: its header, then the start of the answer.
-/// `/agents` shows the subagent's whole transcript.
-fn report_lines(text: &str, lines: &mut Vec<Line<'static>>) {
-    let (head, answer) = text.split_once('\n').unwrap_or((text, ""));
+/// Text an agent or a plugin sent: where it came from, then its start
+/// without the header the model reads. `/agents` shows an agent's whole
+/// transcript.
+fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
+    let body = origin
+        .header()
+        .and_then(|header| text.strip_prefix(&header))
+        .map_or(text, |body| body.trim_start_matches('\n'));
     lines.push(Line::styled(
-        format!("⤶ {head}"),
+        format!("⤶ {}", origin.label()),
         Style::new().magenta().bold(),
     ));
-    lines.extend(excerpt(answer, RESULT_LINES, Style::new().dim()));
+    lines.extend(excerpt(body, RESULT_LINES, Style::new().dim()));
 }
 
 /// `text`'s lines in one style.
