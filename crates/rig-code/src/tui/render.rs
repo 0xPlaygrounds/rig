@@ -14,6 +14,7 @@ use super::view::{Picker, View};
 use crate::core::agent::{Calls, Conversation, Effort, Model, Status};
 use crate::core::models::effort_label;
 use crate::core::registry::NoticeLevel;
+use crate::core::reload::BuildJob;
 use crate::core::turn::{ModelCall, ToolCall, ToolState};
 
 /// How many lines of a tool result the transcript shows.
@@ -46,17 +47,29 @@ pub(crate) fn render(
         )>,
     >,
     changed_calls: Query<(), Or<(Changed<ModelCall>, Changed<ToolCall>)>>,
+    builds: Query<Ref<BuildJob>>,
+    mut removed_builds: RemovedComponents<BuildJob>,
 ) -> Result {
     let changed = tui.is_added()
         || view.is_changed()
         || !changed_agents.is_empty()
-        || !changed_calls.is_empty();
+        || !changed_calls.is_empty()
+        || builds.iter().any(|build| build.is_changed())
+        || removed_builds.read().next().is_some();
     if !changed {
         return Ok(());
     }
     let shown = view.agent.and_then(|agent| agents.get(agent).ok());
+    let build = builds.iter().next();
     tui.terminal.draw(|frame| {
-        draw(frame, &view, shown.as_ref(), &model_calls, &tool_calls);
+        draw(
+            frame,
+            &view,
+            shown.as_ref(),
+            build.as_deref(),
+            &model_calls,
+            &tool_calls,
+        );
     })?;
     Ok(())
 }
@@ -65,6 +78,7 @@ fn draw(
     frame: &mut Frame,
     view: &View,
     shown: Option<&ShownItem>,
+    build: Option<&BuildJob>,
     model_calls: &Query<&ModelCall>,
     tool_calls: &Query<&ToolCall>,
 ) {
@@ -85,7 +99,7 @@ fn draw(
             paragraph.scroll((u16::try_from(top).unwrap_or(u16::MAX), 0)),
             transcript,
         );
-        frame.render_widget(status_line(shown, view.scroll > 0), status);
+        frame.render_widget(status_line(shown, build, view.scroll > 0), status);
     }
     let input = Paragraph::new(format!("> {}", view.composer))
         .wrap(Wrap { trim: false })
@@ -255,7 +269,7 @@ fn assistant_lines(content: &[AssistantContent], lines: &mut Vec<Line<'static>>)
     }
 }
 
-fn status_line(shown: &ShownItem, scrolled: bool) -> Line<'static> {
+fn status_line(shown: &ShownItem, build: Option<&BuildJob>, scrolled: bool) -> Line<'static> {
     let model = shown
         .model
         .map_or_else(|| "no model (/model)".to_owned(), |model| model.0.clone());
@@ -270,6 +284,17 @@ fn status_line(shown: &ShownItem, scrolled: bool) -> Line<'static> {
         Span::from(format!("  effort {}", effort_label(shown.effort.0))),
         Span::from(format!("  {status}")).green(),
     ];
+    if let Some(build) = build {
+        let text = match &build.progress {
+            _ if build.built => "  built; reloading when idle".to_owned(),
+            Some(progress) => format!(
+                "  Compiling {}/{} crates ({})",
+                progress.done, progress.total, progress.building
+            ),
+            None => "  building…".to_owned(),
+        };
+        spans.push(Span::from(text).yellow());
+    }
     if scrolled {
         spans.push(Span::from("  scrolled (Down to return)").dim());
     }

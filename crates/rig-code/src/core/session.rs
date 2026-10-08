@@ -49,16 +49,24 @@ impl Dirs {
             data: base("XDG_DATA_HOME", ".local/share"),
         }
     }
+
+    /// The file naming the session the next start restores. It is written
+    /// before a reload exit and deleted once the restarted agent is ready.
+    pub fn resume_path(&self) -> PathBuf {
+        self.data.join("resume")
+    }
 }
 
-/// This run's session: `<data>/sessions/<id>/`, holding `agent.log` and
-/// `effects.jsonl`.
+/// This run's session: `<data>/sessions/<id>/`, holding `agent.log`,
+/// `effects.jsonl` and `state.json`.
 #[derive(Resource, Clone, Debug)]
 pub struct Session {
-    /// The session id, unique per start.
+    /// The session id: new on a fresh start, kept across reloads.
     pub id: String,
     /// The session directory.
     pub dir: PathBuf,
+    /// Whether this run continues the session the resume file names.
+    pub resumed: bool,
 }
 
 impl Session {
@@ -71,6 +79,11 @@ impl Session {
     pub fn effects_path(&self) -> PathBuf {
         self.dir.join("effects.jsonl")
     }
+
+    /// The saved agents.
+    pub fn state_path(&self) -> PathBuf {
+        self.dir.join("state.json")
+    }
 }
 
 /// A random number, from the standard library's per-process hash seed.
@@ -78,18 +91,32 @@ pub(crate) fn random() -> u64 {
     RandomState::new().build_hasher().finish()
 }
 
-/// Inserts [`Dirs`] and a new [`Session`], creates the session directory
-/// and sends panic messages to the session log.
+/// Inserts [`Dirs`] and the [`Session`]: the one the resume file names,
+/// or a new one. Creates the session directory and sends panic messages to
+/// the session log.
 pub(crate) fn open(app: &mut App) {
     let dirs = Dirs::from_env();
-    let started = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let id = format!("{started}-{:04x}", random() & 0xffff);
+    let resume = fs::read_to_string(dirs.resume_path())
+        .ok()
+        .map(|id| id.trim().to_owned())
+        .filter(|id| {
+            !id.is_empty()
+                && id
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric() || character == '-')
+        });
+    let resumed = resume.is_some();
+    let id = resume.unwrap_or_else(|| {
+        let started = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        format!("{started}-{:04x}", random() & 0xffff)
+    });
     let session = Session {
         dir: dirs.data.join("sessions").join(&id),
         id,
+        resumed,
     };
     // A directory that cannot be created is reported in the view at startup.
     let _ = fs::create_dir_all(&session.dir);

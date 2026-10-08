@@ -4,7 +4,10 @@
 pub mod agent;
 pub mod dispatch;
 pub mod models;
+pub(crate) mod process;
 pub mod registry;
+pub mod reload;
+pub mod save;
 pub mod session;
 pub mod turn;
 
@@ -28,7 +31,13 @@ pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<dispatch::Effects>()
+        app.register_type::<agent::AgentId>()
+            .register_type::<agent::Conversation>()
+            .register_type::<agent::Model>()
+            .register_type::<agent::Effort>()
+            .register_type::<agent::SystemPrompt>()
+            .register_type::<agent::ToolAccess>()
+            .init_resource::<dispatch::Effects>()
             .configure_sets(Update, (AgentSet::Poll, AgentSet::Start).chain())
             .add_observer(agent::connect)
             .add_observer(turn::submit)

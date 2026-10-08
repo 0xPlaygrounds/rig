@@ -19,6 +19,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::core::process::{kill, new_group};
 use crate::core::registry::AppExt;
 
 /// The most text a tool returns to the model.
@@ -289,8 +290,7 @@ impl PortableTool for ShellTool {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        #[cfg(unix)]
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+        new_group(&mut command);
         let child = command
             .spawn()
             .map_err(|error| failure(format!("cannot start the shell: {error}")))?;
@@ -402,21 +402,6 @@ fn exit(status: ExitStatus) -> String {
         Some(code) => format!("[exit code {code}]"),
         None => format!("[{status}]"),
     }
-}
-
-/// Kills the command and everything it started.
-fn kill(child: &mut Child) {
-    #[cfg(unix)]
-    if let Ok(group) = i32::try_from(child.id()) {
-        // SAFETY: `kill` takes no pointers. The group id is the child's pid
-        // (it was started as a group leader) and the child is not reaped yet,
-        // so the id cannot have been reused.
-        unsafe {
-            libc::kill(-group, libc::SIGKILL);
-        }
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 /// Searches file contents with a regular expression, skipping what

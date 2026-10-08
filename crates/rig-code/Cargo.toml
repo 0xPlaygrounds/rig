@@ -19,15 +19,21 @@ tui = ["dep:ratatui", "dep:crossterm"]
 [dependencies]
 rig-core = { workspace = true, features = ["reqwest"] }
 rig-cassette = { workspace = true }
-bevy_app = { workspace = true, features = ["std"] }
-bevy_ecs = { workspace = true, features = ["std", "multi_threaded", "async_executor"] }
+bevy_app = { workspace = true, features = ["std", "bevy_reflect"] }
+bevy_ecs = { workspace = true, features = [
+    "std",
+    "multi_threaded",
+    "async_executor",
+    "bevy_reflect",
+] }
 bevy_log = { workspace = true }
+bevy_reflect = { workspace = true, features = ["std"] }
 bevy_tasks = { workspace = true, features = ["async_executor"] }
 async-channel = { workspace = true }
 futures = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive", "rc"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 ratatui = { workspace = true, optional = true, features = ["unstable-rendered-line-info"] }

@@ -41,6 +41,7 @@ pub mod prelude {
         AppExt, CommandInput, Notice, NoticeLevel, OpenPicker, PickerOption, RunCommand,
         SlashCommand, ToolSpec,
     };
+    pub use crate::core::save::ReflectSaved;
     pub use crate::core::turn::{Stop, Submit, TurnEnded};
     pub use crate::{RigCodePlugins, app};
 }
@@ -51,6 +52,8 @@ plugin_group! {
         core:::CorePlugin,
         builtin::tools:::BuiltinToolsPlugin,
         builtin::commands:::BuiltinCommandsPlugin,
+        core::save:::SavePlugin,
+        core::reload:::ReloadPlugin,
         #[cfg(feature = "tui")]
         tui:::TuiPlugin,
     }

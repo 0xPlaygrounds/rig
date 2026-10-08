@@ -3,14 +3,17 @@
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::completion::options::Reasoning;
 use rig_core::effect::HandlerKey;
 use rig_core::serve::ErasedHandler;
+use serde::{Deserialize, Serialize};
 
 use super::models;
 use super::registry::Notice;
+use super::save::ReflectSaved;
 
 /// Marks an agent. Spawning it alone gives a complete agent: every other
 /// agent component is required, with its default.
@@ -21,8 +24,10 @@ pub struct Agent;
 /// The agent's stable id, used in logs, saved state and effect records.
 /// Unlike `Entity`, it stays the same across restarts. It never changes
 /// after spawn.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
+#[reflect(opaque)]
+#[reflect(Component, Clone, Serialize, Deserialize, Saved)]
 pub struct AgentId(pub Arc<str>);
 
 impl Default for AgentId {
@@ -34,21 +39,27 @@ impl Default for AgentId {
 
 /// The messages of the agent's conversation, oldest first. The system
 /// prompt is not part of it.
-#[derive(Component, Default, Debug)]
+#[derive(Component, Reflect, Clone, Default, Debug, Serialize, Deserialize)]
+#[reflect(opaque)]
+#[reflect(Component, Clone, Default, Serialize, Deserialize, Saved)]
 pub struct Conversation(pub Vec<Message>);
 
 /// The catalog model the agent talks to, as `vendor/model`. Inserting it
 /// connects the agent ([`Connection`]); it never changes in place.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[component(immutable)]
+#[reflect(Component, Saved)]
 pub struct Model(pub String);
 
 /// How much the model reasons. `None` leaves it to the model's default.
-#[derive(Component, Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Component, Reflect, Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque)]
+#[reflect(Component, Clone, Default, Serialize, Deserialize, Saved)]
 pub struct Effort(pub Option<Reasoning>);
 
 /// The system prompt sent ahead of the conversation.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, Default, Saved)]
 pub struct SystemPrompt(pub String);
 
 impl Default for SystemPrompt {
@@ -64,7 +75,8 @@ impl Default for SystemPrompt {
 }
 
 /// Which registered tools the agent may call.
-#[derive(Component, Clone, Default, Debug)]
+#[derive(Component, Reflect, Clone, Default, Debug)]
+#[reflect(Component, Default, Saved)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]
