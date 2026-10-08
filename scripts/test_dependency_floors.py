@@ -24,6 +24,11 @@ class IsolationTests(unittest.TestCase):
         self.assertTrue(floors.satisfies("1.1.2+spec-1.1.0", "=1.1.2"))
         self.assertFalse(floors.satisfies("1.1.2-rc.1+build", "^1.1.2"))
 
+    def test_exact_prerelease_requirement_matches_only_that_prerelease(self):
+        self.assertTrue(floors.satisfies("0.20.0-rc.2", "=0.20.0-rc.2"))
+        self.assertFalse(floors.satisfies("0.20.0-rc.1", "=0.20.0-rc.2"))
+        self.assertFalse(floors.satisfies("0.20.0-rc.2", "0.20"))
+
     def test_success_failure_and_exception_preserve_later_caller_edit(self):
         for result in (0, 7, KeyboardInterrupt()):
             with self.subTest(result=result), tempfile.TemporaryDirectory() as tmp:
