@@ -1,9 +1,10 @@
 //! The agent core: agents as entities, the turn loop, subagents, the one
-//! effect dispatch path, the tool and command registries, models, and
-//! session saving. It depends on neither the host nor any view: the host fills in
+//! effect dispatch path with its approval gate, the tool and command
+//! registries, models, and session saving. It depends on neither the host nor any view: the host fills in
 //! what the core needs, such as [`save::SessionPaths`].
 
 pub mod agent;
+pub mod approval;
 pub mod attach;
 pub mod blocking;
 pub mod calls;
@@ -48,6 +49,7 @@ impl Plugin for AgentPlugin {
         let effects = Effects::continuing(log.as_deref());
         app.insert_resource(effects)
             .init_resource::<Wake>()
+            .init_resource::<approval::DefaultPolicy>()
             .add_message::<Notice>()
             .add_message::<TurnFinished>()
             .add_message::<PickRequest>()
@@ -78,6 +80,8 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
+            .add_observer(approval::give_policy)
+            .add_observer(approval::on_approve)
             .add_observer(turn::on_submit)
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)

@@ -127,6 +127,16 @@ impl Home {
         self.root.join("plugins.toml")
     }
 
+    /// `policy.json`, the approval policy every new agent starts with.
+    pub fn policy(&self) -> PathBuf {
+        self.root.join("policy.json")
+    }
+
+    /// `mcp.json`, the MCP servers whose tools the agents get.
+    pub fn mcp(&self) -> PathBuf {
+        self.root.join("mcp.json")
+    }
+
     /// The generated agent project.
     pub fn project(&self) -> PathBuf {
         self.root.join("project")

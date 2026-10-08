@@ -13,12 +13,13 @@ use super::markdown;
 use super::renderers::ToolRenderer;
 use super::terminal::Tui;
 use super::transcript::{Part, Renderers, Transcript, plain_lines};
-use super::view::{Overlay, Picker, ShownNotice, TuiView};
+use super::view::{ApprovalPrompt, Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::core::agent::{
-    ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    ToolCallRun,
+    ActiveTurn, Agent, CallOf, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel,
+    Partial, ToolCallRun, TurnOf,
 };
+use crate::core::approval::{ApprovalMode, AwaitingApproval, Policy};
 use crate::core::commands::SlashCommand;
 use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
@@ -51,6 +52,8 @@ enum Activity {
     Compacting,
     /// Putting the files back for a rewind.
     RestoringFiles,
+    /// A tool call waits for the user's answer.
+    Approving,
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
         attempt: u32,
@@ -75,9 +78,11 @@ pub(crate) fn needs_redraw(
             Changed<Spending>,
             Changed<Compacted>,
             Changed<Inbox>,
+            Changed<Policy>,
         )>,
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
+    approvals: Query<(), Added<AwaitingApproval>>,
     partials: Query<(), Changed<Partial>>,
     waits: Query<(), With<Backoff>>,
     name: Res<SessionName>,
@@ -88,6 +93,7 @@ pub(crate) fn needs_redraw(
         || !turns.is_empty()
         || !partials.is_empty()
         || !waits.is_empty()
+        || !approvals.is_empty()
 }
 
 /// Draws one frame. The transcript's rows are kept between frames in a
@@ -109,11 +115,14 @@ pub(crate) fn render(
     changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
     partials: Query<&Partial>,
-    (tool_calls, summaries, assigned, restoring): (
+    (tool_calls, summaries, assigned, restoring, waiting, turn_of, policies): (
         Query<(), With<ToolCallRun>>,
         Query<(), With<Summarizing>>,
         Query<(), With<Assignee>>,
         Query<(), With<RestoringFiles>>,
+        Query<&CallOf, With<AwaitingApproval>>,
+        Query<&TurnOf>,
+        Query<&Policy>,
     ),
     waits: Query<&Backoff>,
     everyone: Query<(Entity, Has<ActiveTurn>, Option<&Delegated>), With<Agent>>,
@@ -142,6 +151,8 @@ pub(crate) fn render(
             attempt: wait.attempt,
             seconds: wait.seconds_left(),
         }
+    } else if calls.is_some_and(|calls| calls.iter().any(|call| waiting.contains(call))) {
+        Activity::Approving
     } else if calls.is_some_and(|calls| calls.iter().any(|call| summaries.contains(call))) {
         Activity::Compacting
     } else if calls.is_some_and(|calls| calls.iter().any(|call| restoring.contains(call))) {
@@ -266,6 +277,27 @@ pub(crate) fn render(
         if working > 0 {
             line.push_span(Span::from(format!("  +{working} more working (/agents)")).magenta());
         }
+        // Calls of other agents that wait for an answer.
+        let asking = waiting
+            .iter()
+            .filter(|&&CallOf(turn)| {
+                turn_of
+                    .get(turn)
+                    .is_ok_and(|&TurnOf(agent)| Some(agent) != focused)
+            })
+            .count();
+        if asking > 0 {
+            line.push_span(
+                Span::from(format!("  {asking} waiting for approval (/agents)"))
+                    .red()
+                    .bold(),
+            );
+        }
+        if let Some(policy) = focused.and_then(|agent| policies.get(agent).ok())
+            && policy.mode != ApprovalMode::Auto
+        {
+            line.push_span(Span::from(format!("  approvals: {}", policy.mode.name())).cyan());
+        }
         if let Some((_, spent)) = turn
             && let Some(cost) = spent.0.cost_label()
         {
@@ -300,6 +332,7 @@ pub(crate) fn render(
         match &view.overlay {
             Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
             Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
+            Some(Overlay::Approval(prompt)) => draw_approval(frame, prompt),
             None => {
                 if let Some(completion) = &view.completion {
                     draw_completion(frame, completion, input);
@@ -379,6 +412,9 @@ fn status_line(
         .yellow(),
         Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
         Activity::RestoringFiles => Span::from("restoring files…").yellow(),
+        Activity::Approving => Span::from("waiting for your approval… (Esc stops)")
+            .red()
+            .bold(),
         Activity::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"
         ))
@@ -471,6 +507,56 @@ fn draw_reload_failure(frame: &mut Frame, output: &str) {
         .title(" The rebuild failed; this build keeps running · Esc closes ");
     frame.render_widget(
         Paragraph::new(plain_lines(output, Style::new()))
+            .wrap(Wrap { trim: false })
+            .block(block),
+        popup,
+    );
+}
+
+/// Lines of a call's subject an approval question shows.
+const APPROVAL_SUBJECT_LINES: usize = 12;
+
+/// The question about a tool call: what it is about, then the choices.
+fn draw_approval(frame: &mut Frame, prompt: &ApprovalPrompt) {
+    let popup = popup(frame, 4, 2);
+    let block = Block::bordered()
+        .border_style(Style::new().yellow())
+        .title(format!(
+            " Run `{}`? · y, a, n or ↑↓ Enter · type to say why not · Esc stops the turn ",
+            prompt.tool
+        ));
+    let mut lines: Vec<Line<'static>> = prompt
+        .subject
+        .lines()
+        .take(APPROVAL_SUBJECT_LINES)
+        .map(|line| Line::from(line.to_owned()).bold())
+        .collect();
+    if prompt.subject.lines().count() > APPROVAL_SUBJECT_LINES {
+        lines.push(Line::from("…").dim());
+    }
+    lines.push(Line::default());
+    let choices = [
+        "y  Yes".to_owned(),
+        format!(
+            "a  Yes, and run `{}` without asking from now on",
+            prompt.tool
+        ),
+        if prompt.reason.is_empty() {
+            "n  No (type to tell the agent what to do instead)".to_owned()
+        } else {
+            format!("n  No: {}▏", prompt.reason)
+        },
+    ];
+    for (index, choice) in choices.into_iter().enumerate() {
+        let line = Line::from(choice);
+        lines.push(if index == prompt.selected {
+            line.add_modifier(Modifier::REVERSED)
+        } else {
+            line
+        });
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
             .wrap(Wrap { trim: false })
             .block(block),
         popup,

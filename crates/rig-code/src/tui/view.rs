@@ -8,8 +8,10 @@ use rig_core::completion::Reasoning;
 use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
-    Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
+    Agent, AgentId, CallOf, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind,
+    PickRequest, TurnOf,
 };
+use crate::core::approval::AwaitingApproval;
 use crate::core::inbox::Recalled;
 use crate::core::models;
 use crate::core::rewind::{self, History};
@@ -46,6 +48,30 @@ pub(crate) enum Overlay {
     Picker(Picker),
     /// A failed rebuild's output, until Esc or Enter.
     ReloadFailure(String),
+    /// A tool call of the shown agent waiting for the user's answer.
+    Approval(ApprovalPrompt),
+}
+
+/// The choices of an [`ApprovalPrompt`], in order.
+pub(crate) const APPROVAL_CHOICES: usize = 3;
+/// The choice that refuses the call.
+pub(crate) const DENY_CHOICE: usize = 2;
+
+/// A tool call waiting for an answer: Yes, Yes and stop asking, or No
+/// with what to tell the model.
+pub(crate) struct ApprovalPrompt {
+    /// The call entity.
+    pub(crate) call: Entity,
+    /// Its agent.
+    pub(crate) agent: Entity,
+    /// The tool.
+    pub(crate) tool: String,
+    /// What the call is about.
+    pub(crate) subject: String,
+    /// The highlighted choice.
+    pub(crate) selected: usize,
+    /// What to tell the model when refusing.
+    pub(crate) reason: String,
 }
 
 /// A notice placed in a transcript.
@@ -292,6 +318,41 @@ pub(crate) fn open_pickers(
             items,
             filter: String::new(),
             selected,
+        }));
+    }
+}
+
+/// Asks about the shown agent's tool calls that wait for an answer, one at
+/// a time once nothing else is open, and closes the question when its
+/// call no longer waits: answered elsewhere, or stopped.
+pub(crate) fn open_approvals(
+    mut view: ResMut<TuiView>,
+    waiting: Query<(Entity, &AwaitingApproval, &CallOf)>,
+    turns: Query<&TurnOf>,
+) {
+    if let Some(Overlay::Approval(prompt)) = &view.overlay
+        && !waiting.contains(prompt.call)
+    {
+        view.overlay = None;
+    }
+    let Some(agent) = view.agent else {
+        return;
+    };
+    if view.overlay.is_some() {
+        return;
+    }
+    let first = waiting
+        .iter()
+        .filter(|&(_, _, &CallOf(turn))| turns.get(turn).is_ok_and(|&TurnOf(of)| of == agent))
+        .min_by_key(|(call, ..)| *call);
+    if let Some((call, waiting, _)) = first {
+        view.overlay = Some(Overlay::Approval(ApprovalPrompt {
+            call,
+            agent,
+            tool: waiting.tool.clone(),
+            subject: waiting.subject.clone(),
+            selected: 0,
+            reason: String::new(),
         }));
     }
 }

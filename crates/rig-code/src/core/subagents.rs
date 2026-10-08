@@ -142,7 +142,7 @@ pub fn add_task_tool(app: &mut App) {
     };
     let handler = ErasedHandler::new(TaskHandler::unbound());
     if let Some(tool) = register_tool(
-        app,
+        app.world_mut(),
         TASK,
         DESCRIPTION.to_owned(),
         parameters(),

@@ -239,6 +239,25 @@ clones the agent at a checkpoint, or as it is with `/fork now`, into a new
 agent with the same model and tools; `/agents` switches between them. A fork
 shares the files.
 
+By default every tool call runs. `/approvals ask` makes the agent ask before
+any call that changes something (edits, writes, shell commands, MCP tools):
+`y` runs it, `a` runs it and stops asking for that tool, `n` refuses it, and
+whatever you type before Enter is what the refusal tells the model to do
+instead; Esc stops the turn. `/approvals read-only` refuses those calls
+outright. Rules go on top: `/approvals allow shell git status*` lets matching
+calls run, `deny` refuses them, `ask` asks; the last rule that matches a call
+decides, and `/approvals` lists them. `RIG_HOME/policy.json` sets what new
+agents start with, as `{"mode": "ask", "rules": [{"tool": "shell", "subject":
+"git *", "permission": "allow"}]}`; subagents and forks inherit their agent's
+policy, and a refused call is recorded in the effect log as `denied`.
+
+MCP servers listed in `RIG_HOME/mcp.json`, in the usual `mcpServers` shape
+(`command`, `args`, `env`, `cwd`, or `url` and `headers`, plus `disabled`
+and a per-call `timeout` in seconds), start with the agent; their tools appear
+as `mcp__<server>__<tool>` and follow the server's list as it changes. `/mcp`
+lists the servers and their tools, and `/mcp restart <server>` starts one
+again. A server's standard error goes to the session log.
+
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,
@@ -258,7 +277,7 @@ tool's call in its own way; a plugin can draw its own tools' calls with
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
-`plugins.toml`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
+`plugins.toml`, the approval policy `policy.json`, the MCP servers `mcp.json`, the generated `project/`, cargo's `target/`, the builds in `bin/`,
 the prompt history `history.jsonl`, and `sessions/<id>/` with the saved state, the effect log `effects.jsonl` and
 the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

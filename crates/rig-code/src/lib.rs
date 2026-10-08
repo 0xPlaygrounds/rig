@@ -63,6 +63,10 @@ pub mod prelude {
         ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Submit, SystemPrompt,
         ToolAccess, TurnFinished, TurnOf,
     };
+    pub use crate::core::approval::{
+        ApprovalAnswer, ApprovalMode, Approve, AwaitingApproval, DefaultPolicy, Permission, Policy,
+        Rule,
+    };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs};
@@ -83,25 +87,31 @@ pub mod prelude {
 }
 
 /// What every rig-code app has: the session, snapshots of the working
-/// tree for rewinds, the agent core and saving,
+/// tree for rewinds, the agent core and saving, the approval policy new
+/// agents start with (`RIG_HOME/policy.json`),
 /// the project context in the system prompt (`AGENTS.md` and the
 /// environment, with `/context`), the launcher protocol, `/reload` and
-/// `/new`, `/resume` and `/name`. The tools, the commands other than
+/// `/new`, `/resume` and `/name`; with feature `mcp`, the tools of the MCP
+/// servers in `RIG_HOME/mcp.json`, with `/mcp`. The tools, the commands other than
 /// `/reload` and the views are plugins of their own, so `plugins.toml`
 /// lists the built-in ones like any other and can leave them out.
 pub struct RigCodePlugins;
 
 impl PluginGroup for RigCodePlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
+        let group = PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
             .add(host::snapshots::SnapshotPlugin)
             .add(core::AgentPlugin)
             .add(core::save::SavePlugin)
+            .add(host::policy::PolicyPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
-            .add(host::sessions::SessionsPlugin)
+            .add(host::sessions::SessionsPlugin);
+        #[cfg(feature = "mcp")]
+        let group = group.add(host::mcp::McpPlugin);
+        group
     }
 }
 

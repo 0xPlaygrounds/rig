@@ -174,7 +174,14 @@ impl AppToolsExt for App {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
         let (description, parameters) = (tool.description(), tool.parameters());
         let handler = ErasedHandler::new(ToolAdapter::new(tool));
-        register_tool(self, T::NAME, description, parameters, handler, options);
+        register_tool(
+            self.world_mut(),
+            T::NAME,
+            description,
+            parameters,
+            handler,
+            options,
+        );
         self
     }
 }
@@ -182,7 +189,7 @@ impl AppToolsExt for App {
 /// Spawns the entity of the tool `name`, served by `handler`, and returns
 /// it; `None`, with a warning, when the name is invalid or taken.
 pub(crate) fn register_tool(
-    app: &mut App,
+    world: &mut World,
     name: &str,
     description: String,
     parameters: serde_json::Value,
@@ -196,7 +203,6 @@ pub(crate) fn register_tool(
             return None;
         }
     };
-    let world = app.world_mut();
     if world
         .query::<&ToolDef>()
         .iter(world)

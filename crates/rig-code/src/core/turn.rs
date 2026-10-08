@@ -36,6 +36,7 @@ use super::agent::{
     Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, Submit,
     SystemPrompt, ToolAccess, ToolCallRun, TurnFinished, TurnOf,
 };
+use super::approval::{self, Policy};
 use super::attach;
 use super::calls::{Done, Running, Wake};
 use super::commands::{CommandArgs, SlashCommand};
@@ -1053,6 +1054,7 @@ pub(crate) struct ToolStarter<'w, 's> {
             Option<&'static ModelChoice>,
             &'static Effort,
             &'static SystemPrompt,
+            Option<&'static Policy>,
         ),
     >,
     lineage: Query<'w, 's, &'static SubagentOf>,
@@ -1073,9 +1075,13 @@ impl ToolStarter<'_, '_> {
     /// Starts `run`, the call entity `call` of `agent`, on the one dispatch
     /// path. A call to a tool that is not registered, or that the agent may
     /// not use, is dispatched and recorded like any other and answered with
-    /// an error. A `task` call also spawns the subagent that answers it.
+    /// an error. A call the agent's [`Policy`] refuses or leaves to the user
+    /// goes through the [approval](approval) layer; one that waits for the
+    /// user gets an [`AwaitingApproval`](approval::AwaitingApproval). A
+    /// `task` call also spawns the subagent that answers it, unless it is
+    /// refused.
     fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
-        let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
+        let Ok((id, access, model, &effort, prompt, policy)) = self.agents.get(agent) else {
             return;
         };
         let name = run.call.function.name.as_str();
@@ -1083,7 +1089,7 @@ impl ToolStarter<'_, '_> {
             .tools
             .iter()
             .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name));
-        let (handler, plan) = match tool {
+        let (handler, mut plan) = match tool {
             Some((.., true)) => {
                 let parent = subagents::Parent {
                     model,
@@ -1103,6 +1109,24 @@ impl ToolStarter<'_, '_> {
             Some((_, handler, ..)) => (Some(handler.0.clone()), None),
             None => (None, None),
         };
+        // A tool that is not available is answered as such; any other call
+        // passes the agent's approval gate first.
+        let handler = handler.map(|handler| {
+            let (footprint, delegates) = tool.map_or(
+                (Footprint::default(), false),
+                |(_, _, &footprint, delegates)| (footprint, delegates),
+            );
+            let (layer, waiting, refused) =
+                approval::gate(policy, run, footprint, delegates, self.effects.denials());
+            if let Some(waiting) = waiting {
+                commands.entity(call).insert(waiting);
+            }
+            if let Some(refused) = refused {
+                plan = None;
+                commands.write_message(Notice::info(agent, refused));
+            }
+            handler.layered(layer)
+        });
         let (effect, work) =
             run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = %run.parent);

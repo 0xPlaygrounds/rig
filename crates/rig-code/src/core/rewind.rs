@@ -32,6 +32,7 @@ use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Conversation, Effort, Focus, ModelChoice, Notice,
     SystemPrompt, ToolAccess, TurnOf,
 };
+use super::approval::Policy;
 use super::calls::{Done, Running, Wake};
 use super::compaction::Compacted;
 use super::inbox::Recalled;
@@ -655,6 +656,7 @@ type ForkQuery<'w, 's> = Query<
 pub(crate) fn on_fork(
     fork: On<Fork>,
     agents: ForkQuery,
+    policies: Query<&Policy>,
     mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
@@ -709,6 +711,9 @@ pub(crate) fn on_fork(
     ));
     if let Some(model) = model {
         forked.insert(model.clone());
+    }
+    if let Ok(policy) = policies.get(agent) {
+        forked.insert(policy.clone());
     }
     let forked = forked.id();
     commands.trigger(Focus { entity: forked });

@@ -3,7 +3,9 @@
 //! under the agent's stable id. The session's `effects.jsonl` holds one
 //! resolved record per line, with a `{"header": …}` line before them
 //! whenever the set of described handlers (the tools and the models used)
-//! grew.
+//! grew. A dispatch the approval layer refused is recorded too, as a
+//! `denied` error with the reason, so the log is also the audit of what
+//! was not allowed to run.
 
 use std::any::Any;
 use std::collections::HashMap;
@@ -11,8 +13,8 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use bevy_ecs::prelude::*;
 use futures::FutureExt;
@@ -37,6 +39,32 @@ pub struct Effects {
     models: HashMap<String, ErasedHandler>,
     /// How many handlers the last header written to the log described.
     described: AtomicUsize,
+    /// Why refused dispatches were refused, until their records take it.
+    denials: Denials,
+}
+
+/// Why the [approval layer](super::approval) refused dispatches, by effect
+/// id. The layer notes the reason before it denies; the dispatch's record
+/// takes it when rig-core reports the refusal, which it does without one.
+#[derive(Clone, Default)]
+pub(crate) struct Denials(Arc<Mutex<HashMap<EffectId, String>>>);
+
+impl Denials {
+    /// Notes why `id` is about to be refused.
+    pub(crate) fn note(&self, id: EffectId, why: String) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, why);
+    }
+
+    /// Takes why `id` was refused.
+    fn take(&self, id: EffectId) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&id)
+    }
 }
 
 impl Effects {
@@ -62,7 +90,13 @@ impl Effects {
             models: HashMap::new(),
             // No header written yet by this process.
             described: AtomicUsize::new(usize::MAX),
+            denials: Denials::default(),
         }
+    }
+
+    /// Where the approval layer notes why it refuses a dispatch.
+    pub(crate) fn denials(&self) -> Denials {
+        self.denials.clone()
     }
 
     /// The handler serving `spec`, built from the environment's credentials
@@ -111,6 +145,7 @@ impl Effects {
         let dispatch = Dispatch::new(id, streaming).with_observer(Box::new(Recorded {
             recorder: self.recorder.clone(),
             id,
+            denials: self.denials.clone(),
         }));
         (id, async move { handler.handle(kind, dispatch).await })
     }
@@ -194,6 +229,7 @@ fn panic_message(panic: &(dyn Any + Send)) -> &str {
 struct Recorded {
     recorder: EffectLogRecorder,
     id: EffectId,
+    denials: Denials,
 }
 
 impl Observe for Recorded {
@@ -217,8 +253,21 @@ impl Observe for Recorded {
         self.recorder.origin(self.id, origin);
     }
 
-    fn discard(&mut self, _layer: &str) {
-        self.recorder.discard(self.id);
+    /// A layer refused the dispatch before any handler saw it: recorded
+    /// as denied by that layer, with the reason it noted, rather than
+    /// forgotten.
+    fn discard(&mut self, layer: &str) {
+        let why = self
+            .denials
+            .take(self.id)
+            .unwrap_or_else(|| "refused before it ran".to_owned());
+        self.recorder.resolve(
+            self.id,
+            Err(
+                ErrorReport::new(ErrorKind::Denied, format!("{layer}: {why}"))
+                    .with_retryable(false),
+            ),
+        );
     }
 
     fn patch(&mut self, kind: &EffectKind) {

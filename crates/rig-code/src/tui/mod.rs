@@ -56,6 +56,7 @@ impl Plugin for TuiPlugin {
                 (
                     view::focus_agent,
                     view::show_reload_failures,
+                    view::open_approvals.after(view::open_pickers),
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
                     view::recall_messages,
