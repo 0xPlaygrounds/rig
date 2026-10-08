@@ -60,9 +60,10 @@ pub mod prelude {
     pub use bevy_reflect::prelude::*;
 
     pub use crate::core::agent::{
-        ActiveTurn, Agent, AgentId, Compact, Connection, Conversation, Effort, Focus, Interrupt,
-        ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Spawned, SpawnedBy,
-        SystemPrompt, ToolAccess, TurnEnded, TurnOf, TurnOutcome, TurnRequest,
+        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, Effort, Focus,
+        Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Spawned,
+        SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+        TurnRequest,
     };
     pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
@@ -75,7 +76,7 @@ pub mod prelude {
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
     pub use crate::core::subagents::Delegated;
-    pub use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
+    pub use crate::core::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};

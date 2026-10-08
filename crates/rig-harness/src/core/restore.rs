@@ -31,7 +31,7 @@ use super::journal::{
     SessionLog, SessionPaths, Settings, UsageRecord, load_blobs,
 };
 use super::subagents::{self, Assignment, Delegated, TASK};
-use super::tools::{Footprint, failed};
+use super::tools::failed;
 use super::turn::{CallModel, ToolStarter, tool_name};
 
 /// The result of a call that may change something and was running when
@@ -412,9 +412,10 @@ fn restore_component(
 }
 
 /// Settles what the restored agents left half done, by appending records:
-/// a tool call without a result runs again when it only reads, is answered
-/// as started when it is a `task` call whose subagent's log names it, and
-/// is answered as interrupted otherwise; an agent whose conversation ends
+/// a tool call without a result runs again when its tool is an ordinary
+/// one that only reads, is answered as started when it is a `task` call
+/// whose subagent's log names it, and is answered as interrupted
+/// otherwise, an open tool's call included; an agent whose conversation ends
 /// in the user's message, or in a full set of tool results, calls its
 /// model again; and a subagent's answer that no message of the agent that
 /// started it delivered goes to that agent now, or once the subagent is
@@ -456,7 +457,7 @@ pub(crate) fn reconcile(
                     ))]),
                     None => failed(&call, INTERRUPTED.to_owned()),
                 });
-            } else if matches!(starter.footprint(name), Footprint::Reads { .. }) {
+            } else if starter.reruns(name) {
                 reruns.push(call);
             } else {
                 results.push(failed(&call, INTERRUPTED.to_owned()));
@@ -469,17 +470,24 @@ pub(crate) fn reconcile(
             let turn = commands
                 .spawn((Name::new("turn"), TurnOf(agent.entity)))
                 .id();
-            for call in reruns {
-                let run = ToolCallRun {
-                    touch: starter
-                        .footprint(call.function.name.as_str())
-                        .of(&call.function.arguments),
-                    call,
-                    parent: None,
-                };
-                let entity = commands.spawn((tool_name(&run), CallOf(turn))).id();
+            let runs: Vec<(Entity, ToolCallRun)> = reruns
+                .into_iter()
+                .map(|call| {
+                    let run = ToolCallRun {
+                        touch: starter
+                            .footprint(call.function.name.as_str())
+                            .of(&call.function.arguments),
+                        call,
+                        parent: None,
+                    };
+                    let entity = commands
+                        .spawn((tool_name(&run), CallOf(turn), run.clone()))
+                        .id();
+                    (entity, run)
+                })
+                .collect();
+            for (entity, run) in runs {
                 starter.start(&mut commands, entity, agent.entity, &run);
-                commands.entity(entity).insert(run);
             }
             working.insert(agent.entity);
         } else if !agent.halted

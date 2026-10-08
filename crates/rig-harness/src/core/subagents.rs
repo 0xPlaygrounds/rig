@@ -117,7 +117,7 @@ pub fn add_task_tool(app: &mut App) {
         TASK,
         DESCRIPTION.to_owned(),
         parameters(),
-        handler,
+        Some(handler),
         options,
     ) {
         app.world_mut().entity_mut(tool).insert(Delegates);

@@ -1,6 +1,7 @@
 //! The one dispatch path. Every model call and tool call goes through
 //! [`Effects::dispatch`], which records it with rig-core's effect types
-//! under the agent's stable id. The session's `effects.jsonl` holds one
+//! under the agent's stable id; an open tool call, which no handler
+//! answers, is recorded the same way by [`Effects::open`]. The session's `effects.jsonl` holds one
 //! resolved record per line, with a `{"header": …}` line before them
 //! whenever the set of described handlers (the tools and the models used)
 //! grew.
@@ -18,10 +19,10 @@ use bevy_ecs::prelude::*;
 use futures::FutureExt;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::catalog::ModelSpec;
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome};
+use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome, tool_key};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::providers::registry::ConnectError;
-use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply};
+use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply, cancelled};
 use rig_core::streaming::{Item, StreamEvent};
 use serde::{Deserialize, Serialize};
 
@@ -106,22 +107,56 @@ impl Effects {
         handler: ErasedHandler,
         kind: EffectKind,
     ) -> (EffectId, impl Future<Output = Reply> + Send + 'static) {
-        let id = EffectId::from_raw(self.next.fetch_add(1, Ordering::Relaxed));
         let streaming = kind.streams();
-        self.recorder.begin(
-            id,
-            handler.descriptor().key,
-            kind.clone(),
-            Origin {
-                parent,
-                scope: Some(Arc::from(scope)),
-            },
-        );
+        let id = self.begin(scope, parent, handler.descriptor().key, kind.clone());
         let dispatch = Dispatch::new(id, streaming).with_observer(Box::new(Recorded {
             recorder: self.recorder.clone(),
             id,
         }));
         (id, async move { handler.handle(kind, dispatch).await })
+    }
+
+    /// Records the call of the tool `name` with `args`, under `scope` and
+    /// `parent` as [`dispatch`](Self::dispatch) does, for a call no handler
+    /// answers: its outcome is recorded when the returned [`OpenEffect`] is
+    /// settled, or as cancelled when it is dropped first.
+    pub(crate) fn open(
+        &self,
+        scope: &str,
+        parent: Option<EffectId>,
+        name: &str,
+        args: String,
+    ) -> OpenEffect {
+        let kind = EffectKind::ToolCall {
+            name: name.to_owned(),
+            args,
+        };
+        let id = self.begin(scope, parent, tool_key(name), kind);
+        OpenEffect {
+            recorder: Some(self.recorder.clone()),
+            id,
+        }
+    }
+
+    /// Takes the next effect id and records the effect's start.
+    fn begin(
+        &self,
+        scope: &str,
+        parent: Option<EffectId>,
+        key: HandlerKey,
+        kind: EffectKind,
+    ) -> EffectId {
+        let id = EffectId::from_raw(self.next.fetch_add(1, Ordering::Relaxed));
+        self.recorder.begin(
+            id,
+            key,
+            kind,
+            Origin {
+                parent,
+                scope: Some(Arc::from(scope)),
+            },
+        );
+        id
     }
 
     /// Run `work`, the task that drives the effect `id`. A panic in it, in
@@ -181,6 +216,34 @@ impl Effects {
             .write_all(&lines)?;
         self.described.store(handlers, Ordering::Relaxed);
         Ok(())
+    }
+}
+
+/// The record of an open tool call, begun by [`Effects::open`]. Settling
+/// it records the call's outcome; dropping it unsettled, as despawning the
+/// call does, records the call as cancelled.
+pub struct OpenEffect {
+    recorder: Option<EffectLogRecorder>,
+    id: EffectId,
+}
+
+impl OpenEffect {
+    /// The call's effect id, as `effects.jsonl` records it.
+    pub fn id(&self) -> EffectId {
+        self.id
+    }
+
+    /// Records `outcome` as the call's outcome; only the first counts.
+    pub(crate) fn settle(&mut self, outcome: Result<Outcome, ErrorReport>) {
+        if let Some(recorder) = self.recorder.take() {
+            recorder.resolve(self.id, outcome);
+        }
+    }
+}
+
+impl Drop for OpenEffect {
+    fn drop(&mut self) {
+        self.settle(Err(cancelled()));
     }
 }
 

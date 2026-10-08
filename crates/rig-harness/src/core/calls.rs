@@ -1,7 +1,8 @@
 //! Work that runs off the main thread: a [`Running`] task on a call entity
-//! becomes a [`Done`] component when it finishes, through one generic
-//! `poll_calls` system, so observers of `Add<Done<T>>` carry the turn
-//! on. Each finished task also calls [`Wake`], so a loop that sleeps while
+//! becomes a [`Done`] component when it finishes, or a tool call's
+//! [`ToolOutput`](super::tools::ToolOutput), through one generic
+//! `poll_calls` system, so observers of that component carry the turn on.
+//! Each finished task also calls [`Wake`], so a loop that sleeps while
 //! nothing happens runs a frame for it.
 
 use std::sync::Arc;
@@ -60,8 +61,16 @@ impl<T: Send + Sync + 'static> Running<T> {
 #[derive(Component)]
 pub struct Done<T: Send + Sync + 'static>(pub T);
 
-/// Replaces each finished [`Running`] task with its [`Done`] output.
-pub(crate) fn poll_calls<T: Send + Sync + 'static>(
+impl<T: Send + Sync + 'static> From<T> for Done<T> {
+    fn from(output: T) -> Self {
+        Self(output)
+    }
+}
+
+/// Replaces each finished [`Running<T>`] task with its output as the
+/// component `C`: [`Done<T>`] for most calls, a
+/// [`ToolOutput`](super::tools::ToolOutput) for tool calls.
+pub(crate) fn poll_calls<T: Send + Sync + 'static, C: Component + From<T>>(
     mut calls: Query<(Entity, &mut Running<T>)>,
     mut commands: Commands,
 ) {
@@ -70,7 +79,7 @@ pub(crate) fn poll_calls<T: Send + Sync + 'static>(
             commands
                 .entity(entity)
                 .remove::<Running<T>>()
-                .insert(Done(output));
+                .insert(C::from(output));
         }
     }
 }

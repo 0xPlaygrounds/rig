@@ -28,7 +28,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::{info, warn};
 
 use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest};
-use calls::{Wake, poll_calls};
+use calls::{Done, Wake, poll_calls};
 use compaction::Summary;
 use effects::Effects;
 use journal::{SessionLog, SessionPaths};
@@ -57,11 +57,11 @@ impl Plugin for AgentPlugin {
             .add_systems(
                 Update,
                 (
-                    poll_calls::<ModelReply>,
-                    poll_calls::<ToolResult>,
-                    poll_calls::<RetryDue>,
-                    poll_calls::<Summary>,
-                    poll_calls::<login::SignedInResult>,
+                    poll_calls::<ModelReply, Done<ModelReply>>,
+                    poll_calls::<ToolResult, tools::ToolOutput>,
+                    poll_calls::<RetryDue, Done<RetryDue>>,
+                    poll_calls::<Summary, Done<Summary>>,
+                    poll_calls::<login::SignedInResult, Done<login::SignedInResult>>,
                     login::show_login_prompts,
                     turn::stream_partials,
                 )
@@ -123,13 +123,8 @@ fn log_agents(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
 }
 
 /// Describes every registered tool in the effect log's header, by name.
-fn describe_tools(effects: Res<Effects>, tools: Query<(&tools::ToolDef, &tools::ToolHandler)>) {
+fn describe_tools(effects: Res<Effects>, tools: Query<&tools::ToolDef>) {
     let mut tools: Vec<_> = tools.iter().collect();
-    tools.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
-    effects.describe(
-        tools
-            .into_iter()
-            .map(|(_, tool)| tool.0.descriptor())
-            .collect(),
-    );
+    tools.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
+    effects.describe(tools.into_iter().map(tools::ToolDef::descriptor).collect());
 }

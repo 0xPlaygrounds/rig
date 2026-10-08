@@ -1,7 +1,7 @@
 //! The turn loop. A user message spawns a turn entity, [`TurnOf`] its
 //! agent; the turn's model call and tool calls are entities [`CallOf`] the
-//! turn, and observers of their [`Done`] outputs carry the turn on. A
-//! reply's tool calls run side by side where their tools'
+//! turn, and observers of their [`Done`] outputs and [`ToolOutput`]s carry
+//! the turn on. A reply's tool calls run side by side where their tools'
 //! [`Footprint`]s allow, and in order where they touch the same thing;
 //! their results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
@@ -28,8 +28,9 @@ use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::message::{ToolCall, ToolResult, UserContent};
-use rig_core::serve::{Reply, stream_truncated};
+use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_core::tool::ToolErrorKind;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, Effort, Ending,
@@ -49,7 +50,10 @@ use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
 use super::subagents::{self, Assignment, Delegates};
-use super::tools::{Footprint, ToolDef, ToolHandler, Touch, failed, run_tool_call};
+use super::tools::{
+    Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, Touch, failed,
+    outcome_of, recorded_args, refusal, run_tool_call,
+};
 use super::usage::{self, Spending, TurnSpending};
 
 /// The systems polling running calls, in `Update`.
@@ -169,7 +173,7 @@ pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
     turns: Query<&Calls>,
-    runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>)>,
+    runs: Query<(&ToolCallRun, Option<&ToolOutput>)>,
     partials: Query<&Partial, With<ModelCall>>,
     log: Res<SessionLog>,
     mut commands: Commands,
@@ -208,12 +212,12 @@ pub(crate) fn on_interrupt(
 /// finished call's result, and an error saying `why` for the others. `None`
 /// when the reply made no calls.
 fn stopped_results<'a>(
-    runs: impl Iterator<Item = (&'a ToolCallRun, Option<&'a Done<ToolResult>>)>,
+    runs: impl Iterator<Item = (&'a ToolCallRun, Option<&'a ToolOutput>)>,
     why: &str,
 ) -> Option<Message> {
     let results: Vec<ToolResult> = runs
         .map(|(run, done)| match done {
-            Some(Done(result)) => result.clone(),
+            Some(ToolOutput(result)) => result.clone(),
             None => failed(&run.call, why.to_owned()),
         })
         .collect();
@@ -295,7 +299,7 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         .iter(world)
         .map(|(turn, of)| (turn, of.0))
         .collect();
-    let mut runs = world.query::<(Entity, Option<&Done<ToolResult>>)>();
+    let mut runs = world.query::<(Entity, Option<&ToolOutput>)>();
     for (turn, agent) in turns {
         let calls: Vec<Entity> = world
             .get::<Calls>(turn)
@@ -305,7 +309,7 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
             .iter_many(world, calls)
             .flatten()
             .filter_map(|(call, done)| match done {
-                Some(Done(result)) => Some(result.clone()),
+                Some(ToolOutput(result)) => Some(result.clone()),
                 None => finished.get(&call).cloned(),
             })
             .collect();
@@ -839,8 +843,10 @@ pub(crate) fn on_model_done(
     }
     // Every call is waited on by the later calls of the reply until it
     // finishes, so a call starts now when no earlier one touches what it
-    // touches.
+    // touches. Every call exists before any starts: an open call may end
+    // at once.
     let mut earlier: Vec<Touch> = Vec::with_capacity(tool_calls.len());
+    let mut ready = Vec::new();
     for call in tool_calls {
         let run = ToolCallRun {
             touch: starter
@@ -849,15 +855,17 @@ pub(crate) fn on_model_done(
             call,
             parent: Some(model_call.effect),
         };
-        let ready = earlier.iter().all(|touch| !run.touch.waits_for(touch));
+        let waits = earlier.iter().any(|touch| run.touch.waits_for(touch));
         earlier.push(run.touch.clone());
-        let entity = commands.spawn((tool_name(&run), CallOf(turn))).id();
-        if ready {
-            starter.start(&mut commands, entity, agent, &run);
+        let mut entity = commands.spawn((tool_name(&run), CallOf(turn), run.clone()));
+        if waits {
+            entity.insert(Queued);
         } else {
-            commands.entity(entity).insert(Queued);
+            ready.push((entity.id(), run));
         }
-        commands.entity(entity).insert(run);
+    }
+    for (entity, run) in ready {
+        starter.start(&mut commands, entity, agent, &run);
     }
 }
 
@@ -1020,19 +1028,28 @@ pub(crate) fn on_retry_due(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// Takes a finished tool call: starts each queued call of the reply that
-/// no earlier unfinished call holds back, or, once every call finished,
-/// appends their results in call order and calls the model again.
+/// Takes a tool call's [`ToolOutput`], however it came: records it as an
+/// open call's outcome, and cancels the tool's own work if it still runs.
+/// Then starts each queued call of the reply that no earlier unfinished
+/// call holds back, or, once every call finished, appends their results in
+/// call order and calls the model again.
 pub(crate) fn on_tool_done(
-    done: On<Add<Done<ToolResult>>>,
+    done: On<Add<ToolOutput>>,
+    mut ended: Query<(&ToolOutput, Option<&mut OpenCall>)>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
-    runs: Query<(&ToolCallRun, Option<&Done<ToolResult>>, Has<Queued>)>,
+    runs: Query<(&ToolCallRun, Option<&ToolOutput>, Has<Queued>)>,
     starter: ToolStarter,
     log: Res<SessionLog>,
     mut commands: Commands,
 ) {
+    if let Ok((ToolOutput(result), Some(mut open))) = ended.get_mut(done.entity) {
+        open.0.settle(Ok(outcome_of(result)));
+    }
+    commands
+        .entity(done.entity)
+        .remove::<(OpenCall, Running<ToolResult>)>();
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
         return;
     };
@@ -1050,7 +1067,7 @@ pub(crate) fn on_tool_done(
         let Ok((run, output, queued)) = runs.get(call) else {
             continue;
         };
-        if let Some(Done(result)) = output {
+        if let Some(ToolOutput(result)) = output {
             results.push(result.clone());
             continue;
         }
@@ -1076,8 +1093,9 @@ pub(crate) struct ToolStarter<'w, 's> {
         'w,
         's,
         (
+            Entity,
             &'static ToolDef,
-            &'static ToolHandler,
+            Option<&'static ToolHandler>,
             &'static Footprint,
             Has<Delegates>,
         ),
@@ -1105,16 +1123,31 @@ impl ToolStarter<'_, '_> {
     pub(crate) fn footprint(&self, name: &str) -> Footprint {
         self.tools
             .iter()
-            .find(|(def, ..)| def.0.name.as_str() == name)
-            .map_or_else(Footprint::default, |(_, _, &footprint, _)| footprint)
+            .find(|(_, def, ..)| def.0.name.as_str() == name)
+            .map_or_else(Footprint::default, |(.., &footprint, _)| footprint)
     }
 
-    /// Starts `run`, the call entity `call` of `agent`, on the one dispatch
-    /// path. A call to a tool that is not registered, or that the agent may
-    /// not use, is dispatched and recorded like any other and answered with
-    /// an error. A `task` call also spawns the subagent that works on it.
-    /// Before a call that may change something, the session log is written,
-    /// so the reply that asked for it is on disk first.
+    /// Whether a call of the tool `name` left without a result by a restart
+    /// runs again: an ordinary tool that only reads. Any other such call is
+    /// answered as interrupted.
+    pub(crate) fn reruns(&self, name: &str) -> bool {
+        self.tools.iter().any(|(_, def, handler, footprint, _)| {
+            def.0.name.as_str() == name
+                && handler.is_some()
+                && matches!(footprint, Footprint::Reads { .. })
+        })
+    }
+
+    /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
+    /// call runs on the one dispatch path, and its [`ToolOutput`] is
+    /// inserted when it finishes. An open tool's call is recorded as
+    /// started and its tool's observer gets [`ToolCalled`]. A call to a
+    /// tool that is not registered, that the agent may not use, or with
+    /// arguments that do not fit, is dispatched and recorded like any other
+    /// and answered with an error. A `task` call also spawns the subagent
+    /// that works on it. Before a call that may change something, the
+    /// session log is written, so the reply that asked for it is on disk
+    /// first.
     pub(crate) fn start(
         &self,
         commands: &mut Commands,
@@ -1129,12 +1162,39 @@ impl ToolStarter<'_, '_> {
         let tool = self
             .tools
             .iter()
-            .find(|(def, ..)| def.0.name.as_str() == name && access.allows(name));
-        if !tool.is_some_and(|(_, _, footprint, _)| matches!(footprint, Footprint::Reads { .. })) {
+            .find(|(_, def, ..)| def.0.name.as_str() == name && access.allows(name));
+        if !tool.is_some_and(|(.., footprint, _)| matches!(footprint, Footprint::Reads { .. })) {
             self.log.flush();
         }
-        let (handler, plan) = match tool {
-            Some((.., true)) => {
+        let refused = |kind: ToolErrorKind, why: String| {
+            ErasedHandler::new(Refused {
+                name: name.to_owned(),
+                kind,
+                why,
+            })
+        };
+        let why = tool.and_then(|(_, def, ..)| refusal(&def.0.parameters, &run.call));
+        let (handler, plan) = match (tool, why) {
+            (None, _) => (
+                refused(
+                    ToolErrorKind::NotFound,
+                    format!("no tool named `{name}` is available"),
+                ),
+                None,
+            ),
+            (Some(_), Some(why)) => (refused(ToolErrorKind::InvalidArgs, why), None),
+            (Some((tool, _, None, ..)), None) => {
+                let args = recorded_args(&run.call);
+                let effect = self.effects.open(&id.0, run.parent, name, args);
+                commands.entity(call).insert(OpenCall(effect));
+                commands.trigger(ToolCalled {
+                    entity: tool,
+                    call,
+                    agent,
+                });
+                return;
+            }
+            (Some((.., true)), None) => {
                 let parent = subagents::Parent {
                     model,
                     effort,
@@ -1144,14 +1204,12 @@ impl ToolStarter<'_, '_> {
                 let mine: Vec<(&str, bool)> = self
                     .tools
                     .iter()
-                    .filter(|(def, ..)| access.allows(def.0.name.as_str()))
-                    .map(|(def, _, _, delegates)| (def.0.name.as_str(), delegates))
+                    .filter(|(_, def, ..)| access.allows(def.0.name.as_str()))
+                    .map(|(_, def, .., delegates)| (def.0.name.as_str(), delegates))
                     .collect();
-                let (handler, plan) = subagents::plan(&run.call, &parent, &mine);
-                (Some(handler), plan)
+                subagents::plan(&run.call, &parent, &mine)
             }
-            Some((_, handler, ..)) => (Some(handler.0.clone()), None),
-            None => (None, None),
+            (Some((_, _, Some(handler), ..)), None) => (handler.0.clone(), None),
         };
         let (effect, work) =
             run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
