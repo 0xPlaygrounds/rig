@@ -5,7 +5,10 @@
 //! an empty variable counts as unset.
 
 use rig::catalog::Catalog;
-use rig::providers::openai::{OpenAIConfig, wire::AZURE};
+use rig::providers::openai::{
+    OpenAIConfig,
+    wire::{AZURE, Auth},
+};
 use rig::providers::registry::{ConnectError, ProviderConfig, ProviderRef};
 
 /// Every reference built from the environment, in one test: the variables
@@ -38,6 +41,8 @@ async fn a_model_from_a_reference_reads_its_vendor_s_credential() -> anyhow::Res
         std::env::remove_var("AZURE_API_KEY");
         std::env::set_var("AZURE_TOKEN", "entra-token");
         std::env::set_var("DEEPSEEK_API_KEY", "");
+        std::env::set_var("AZURE_ENDPOINT", server.url("/azure"));
+        std::env::set_var("AZURE_API_VERSION", "2024-10-21");
     }
 
     // The replies are errors; what the servers matched is the evidence.
@@ -55,6 +60,10 @@ async fn a_model_from_a_reference_reads_its_vendor_s_credential() -> anyhow::Res
         matches!(&missing, ConnectError::MissingKey { tried, .. } if tried == &["DEEPSEEK_API_KEY"]),
         "{missing}"
     );
+
+    // Azure's own configuration from the environment takes the token too.
+    let from_env = OpenAIConfig::from_env_with(&AZURE)?;
+    anyhow::ensure!(from_env.auth == Auth::Bearer, "{:?}", from_env.auth);
 
     let configured = ProviderConfig::OpenAi(
         OpenAIConfig::with_key(&AZURE, "")

@@ -2142,3 +2142,21 @@ fn an_invalid_raw_top_level_cache_marker_is_refused() {
         );
     }
 }
+
+/// Claude forces one named tool at most: a choice of one names it, and a
+/// choice of several is an error rather than a silently narrowed choice.
+#[test]
+fn a_forced_choice_names_one_tool() {
+    let name = |name: &str| crate::message::ToolName::new(name).expect("tool name");
+    let one = tool_choice(message::ToolChoice::Specific {
+        function_names: vec![name("get_weather")],
+    })
+    .expect("one tool is forced");
+    assert_eq!(one, json!({ "type": "tool", "name": "get_weather" }));
+    assert!(
+        tool_choice(message::ToolChoice::Specific {
+            function_names: vec![name("get_weather"), name("get_time")],
+        })
+        .is_err()
+    );
+}

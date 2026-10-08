@@ -1652,3 +1652,27 @@ fn the_document_is_the_final_response_record() -> Result<(), Box<dyn std::error:
     assert_eq!(whole.finish(), record);
     Ok(())
 }
+
+/// The facts a local generation is given are the facts it answers with: its
+/// `ReplayTarget::facts`, which the shared option rules and the cost read,
+/// and its descriptor's spec, which `DynModel::spec` returns.
+#[test]
+fn the_wire_answers_from_the_facts_it_is_given() -> Result<(), Box<dyn std::error::Error>> {
+    use rig_core::catalog::{ModelFacts, ModelSpec};
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::wire::Wire as _;
+
+    let vendor =
+        rig_core::providers::registry::ProviderId::catalog("candle").ok_or("a catalog vendor")?;
+    let spec = ModelSpec::new(vendor, "qwen3-scripted").with_max_output_tokens(1_234);
+    let wire = scripted().with_facts(ModelFacts::new(spec));
+    let bound = wire.facts().and_then(ModelFacts::spec);
+    assert_eq!(bound.and_then(|spec| spec.max_output_tokens), Some(1_234));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+    Ok(())
+}

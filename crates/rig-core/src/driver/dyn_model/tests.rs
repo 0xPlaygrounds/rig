@@ -238,3 +238,30 @@ async fn check_lists_first_what_the_call_refuses() {
     assert_eq!(refused.first(), Some(&first));
     assert_eq!(refused.len(), 2, "{refused:?}");
 }
+
+/// A typed model checks as its type-erased form does, and the error names
+/// every refusal on one line.
+#[test]
+fn a_typed_model_checks_as_its_erased_form_does() {
+    use crate::completion::CheckError;
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let wire =
+        crate::providers::anthropic::AnthropicConfig::new("sk-test").completion("claude-fable-5");
+    let model = crate::driver::Model::new(wire, http.clone());
+    let request = CompletionRequest::new("hi").temperature(0.2).top_p(0.9);
+    let Err(error @ CheckError::Unsupported(_)) = model.check(&request) else {
+        panic!("Claude Fable 5 takes no sampling parameters");
+    };
+    let (erased, _) = connected("anthropic/claude-fable-5");
+    let Err(CheckError::Unsupported(refused)) = erased.check(&request) else {
+        panic!("the erased model refuses the same");
+    };
+    let line = refused
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ");
+    assert_eq!(error.to_string(), line);
+    assert_eq!(refused.len(), 2, "{refused:?}");
+    assert!(http.requests().is_empty(), "a check sends nothing");
+}

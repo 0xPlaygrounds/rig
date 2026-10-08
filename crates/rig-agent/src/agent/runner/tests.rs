@@ -818,6 +818,15 @@ async fn the_connected_model_checks_every_call_including_a_switched_one() {
         .run()
         .await
         .expect("Opus 4.8 by value takes `high`");
+    let (default, default_http) = connected(Catalog::builtin(), "anthropic/claude-opus-4-8");
+    agent
+        .clone()
+        .with_model(default)
+        .prompt("go")
+        .run()
+        .await
+        .expect("Opus 4.8 as the agent's new default takes `high`");
+    assert_eq!(default_http.requests().len(), 1);
     let hooked = AgentBuilder::new(haiku.clone())
         .model_route("opus", opus)
         .add_hook(SelectOpus)

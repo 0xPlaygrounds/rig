@@ -116,3 +116,23 @@ fn an_unlisted_model_reads_images_by_its_vendor_rule() {
     assert!(!facts.reads_images_or("minimax", "minimax-m2.5", |_| false));
     assert!(facts.reads_images_or("minimax", "minimax-m2.5", |_| true));
 }
+
+/// A descriptor given no facts answers from the built-in catalog, by the
+/// one lookup rule, and has no spec for a wire that addresses no model.
+#[test]
+fn a_descriptor_without_facts_reads_the_builtin_catalog() {
+    use crate::wire::Descriptor;
+
+    let spec = Descriptor::new("anthropic")
+        .model("claude-haiku-4-5-20990101")
+        .spec()
+        .expect("a snapshot of a listed model");
+    assert_eq!(spec.id, "claude-haiku-4-5");
+    assert!(Descriptor::new("anthropic").spec().is_none());
+    assert!(
+        Descriptor::new("anthropic")
+            .model("claude-unlisted")
+            .spec()
+            .is_none()
+    );
+}

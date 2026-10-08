@@ -415,3 +415,26 @@ fn a_raw_null_generation_config_keeps_the_typed_fields() {
     assert_eq!(config.temperature, Some(0.2));
     assert_eq!(config.max_output_tokens, Some(64));
 }
+
+/// The facts the gRPC wire is given are the facts it answers with: its
+/// `ReplayTarget::facts`, which the shared option rules and the cost read,
+/// and its descriptor's spec, which `DynModel::spec` returns.
+#[test]
+fn the_wire_answers_from_the_facts_it_is_given() {
+    use rig_core::catalog::{ModelFacts, ModelSpec};
+    use rig_core::completion::ReplayTarget as _;
+    use rig_core::wire::Wire as _;
+
+    let vendor =
+        rig_core::providers::registry::ProviderId::catalog("gemini-grpc").expect("a vendor");
+    let spec = ModelSpec::new(vendor, "gemini-2.5-flash").with_max_output_tokens(1_234);
+    let wire = GenerateContent::new("gemini-2.5-flash").with_facts(ModelFacts::new(spec));
+    let bound = wire.facts().and_then(ModelFacts::spec);
+    assert_eq!(bound.and_then(|spec| spec.max_output_tokens), Some(1_234));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+}

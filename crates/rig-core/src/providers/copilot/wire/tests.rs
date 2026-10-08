@@ -570,3 +570,23 @@ fn both_completion_envelopes_see_the_original_vision_and_assistant_history() {
         }
     }
 }
+
+/// The facts the Copilot wire is given are the facts its descriptor
+/// answers with, which `DynModel::spec` returns.
+#[test]
+fn the_wire_answers_from_the_facts_it_is_given() {
+    use crate::catalog::{ModelFacts, ModelSpec};
+    use crate::wire::Wire as _;
+
+    let vendor = crate::providers::registry::ProviderId::catalog("copilot").expect("a vendor");
+    let spec = ModelSpec::new(vendor, "gpt-4.1").with_max_output_tokens(1_234);
+    let wire = copilot()
+        .completion("gpt-4.1")
+        .with_facts(ModelFacts::new(spec));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+}

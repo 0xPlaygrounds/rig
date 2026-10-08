@@ -113,3 +113,28 @@ fn an_error_body_with_a_success_status_fails_the_turn() {
         assert!(error.to_string().contains("internal error"), "{error}");
     }
 }
+
+/// The facts the Cohere wire (both of its APIs) is given are the facts it answers with: its
+/// [`ReplayTarget::facts`](crate::completion::ReplayTarget::facts), which
+/// the shared option rules and the cost read, and its descriptor's spec,
+/// which `DynModel::spec` returns.
+#[test]
+fn the_wire_answers_from_the_facts_it_is_given() {
+    use crate::catalog::{ModelFacts, ModelSpec};
+    use crate::completion::ReplayTarget as _;
+    use crate::wire::Wire as _;
+
+    let vendor = crate::providers::registry::ProviderId::catalog("cohere").expect("a vendor");
+    let spec = ModelSpec::new(vendor, "command-a-03-2025").with_max_output_tokens(1_234);
+    let wire = cohere()
+        .completion("command-a-03-2025")
+        .with_facts(ModelFacts::new(spec));
+    let bound = wire.facts().and_then(ModelFacts::spec);
+    assert_eq!(bound.and_then(|spec| spec.max_output_tokens), Some(1_234));
+    assert_eq!(
+        wire.describe()
+            .spec()
+            .and_then(|spec| spec.max_output_tokens),
+        Some(1_234)
+    );
+}

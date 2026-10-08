@@ -181,6 +181,21 @@ fn an_unlisted_bedrock_claude_id_takes_its_base_models_row() {
     assert!(spec("anthropic.claude-unlisted-v1:0").is_none());
 }
 
+/// Only a lower-case region prefix is a profile, and only `-v` followed by
+/// digits is a revision: anything else is an id the catalog does not list.
+#[test]
+fn a_malformed_profile_or_revision_is_not_read_as_its_base() {
+    for model in [
+        ".anthropic.claude-opus-5-5",
+        "US.anthropic.claude-opus-5-5",
+        "anthropic.claude-opus-5-5-vnext",
+        "anthropic.claude-opus-5-5-v1:x",
+        "anthropic.claude-opus-5-5-v",
+    ] {
+        assert!(spec(model).is_none(), "{model}");
+    }
+}
+
 /// A region profile the catalog does not list reads images as its base
 /// model's Bedrock row says. A model listed under neither reads images
 /// unless its id names a text-only family, so an unlisted model of another
