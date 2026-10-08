@@ -1,7 +1,7 @@
 //! The one dispatch path. Every model call and tool call goes through
 //! [`Effects::dispatch`], which records it with rig-core's effect types
 //! under the agent's stable id; an open tool call, which no handler
-//! answers, is recorded the same way by [`Effects::open`]. The session's `effects.jsonl` holds one
+//! answers, is recorded the same way when it is opened. The session's `effects.jsonl` holds one
 //! resolved record per line, with a `{"header": …}` line before them
 //! whenever the set of described handlers (the tools and the models used)
 //! grew.
@@ -219,7 +219,7 @@ impl Effects {
     }
 }
 
-/// The record of an open tool call, begun by [`Effects::open`]. Settling
+/// The record of an open tool call, begun when the call opens. Settling
 /// it records the call's outcome; dropping it unsettled, as despawning the
 /// call does, records the call as cancelled.
 pub struct OpenEffect {
