@@ -122,7 +122,7 @@ pub struct SessionEntry {
 }
 
 impl SessionEntry {
-    /// One line: age, name or title, directory, cost.
+    /// One line: age, name or title, cost, directory.
     pub fn label(&self) -> String {
         let age = age(self.saved.elapsed().unwrap_or_default());
         let title = match (&self.meta.name, self.meta.title.as_str()) {
@@ -131,11 +131,13 @@ impl SessionEntry {
             (None, title) => title.to_owned(),
         };
         let mut label = format!("{age:>8}  {title}");
-        if let Some(directory) = &self.directory {
-            label.push_str(&format!("  · {}", tilde(directory)));
-        }
+        // The cost before the directory, which may be long enough to be
+        // cut off.
         if self.meta.cost > 0.0 {
             label.push_str(&format!("  · {}", usage::dollars(self.meta.cost)));
+        }
+        if let Some(directory) = &self.directory {
+            label.push_str(&format!("  · {}", tilde(directory)));
         }
         label
     }

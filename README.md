@@ -217,7 +217,7 @@ not arrived are delivered, and a turn that waited on the model carries on.
 If the agent crashes or the terminal closes, the next `rig` in the same
 directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
-directory, cost, age) and resumes the one picked, in its own directory;
+cost, directory, age) and resumes the one picked, in its own directory;
 `rig --continue` resumes the last session run in the working directory and
 `rig --resume <id>` a given one.
 
