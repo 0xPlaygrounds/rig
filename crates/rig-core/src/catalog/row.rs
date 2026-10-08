@@ -109,6 +109,44 @@ struct Facts {
     prompt_cache_options: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     chat_tools_need_reasoning_off: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pinned: Option<Vec<Pinned>>,
+}
+
+/// A row key that rig's review or the generator's joins set, written by
+/// `cargo xtask catalog sync` under `rig.pinned`.
+/// [`Catalog::with_models_dev`](super::Catalog::with_models_dev) leaves a
+/// pinned key as it is, so a refresh from models.dev keeps it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+pub(super) enum Pinned {
+    #[serde(rename = "name")]
+    Name,
+    #[serde(rename = "reasoning")]
+    Reasoning,
+    #[serde(rename = "reasoning_options")]
+    ReasoningOptions,
+    #[serde(rename = "tool_call")]
+    ToolCall,
+    #[serde(rename = "structured_output")]
+    StructuredOutput,
+    #[serde(rename = "temperature")]
+    Temperature,
+    #[serde(rename = "modalities")]
+    Modalities,
+    #[serde(rename = "limit.context")]
+    LimitContext,
+    #[serde(rename = "limit.output")]
+    LimitOutput,
+    #[serde(rename = "cost.input")]
+    CostInput,
+    #[serde(rename = "cost.output")]
+    CostOutput,
+    #[serde(rename = "cost.cache_read")]
+    CostCacheRead,
+    #[serde(rename = "cost.cache_write")]
+    CostCacheWrite,
+    #[serde(rename = "status")]
+    Status,
 }
 
 /// What a reasoning row that lists no `reasoning_options` means, entered by
@@ -221,6 +259,7 @@ impl Row {
                 binds_context: Some(compat.binds_context),
                 prompt_cache_options: Some(compat.prompt_cache_options),
                 chat_tools_need_reasoning_off: Some(compat.chat_tools_need_reasoning_off),
+                pinned: None,
             },
         }
     }
@@ -256,6 +295,35 @@ impl Row {
             status: over.status.or(self.status),
             rig: self.rig.overlay(over.rig),
         }
+    }
+
+    /// The keys the row's `rig` facts pin against a refresh.
+    pub(super) fn pinned(&self) -> &[Pinned] {
+        self.rig.pinned.as_deref().unwrap_or_default()
+    }
+
+    /// `self` without the keys in `pinned`, so laid over a row it leaves
+    /// that row's values of them.
+    pub(super) fn without(mut self, pinned: &[Pinned]) -> Row {
+        for key in pinned {
+            match key {
+                Pinned::Name => self.name = None,
+                Pinned::Reasoning => self.reasoning = None,
+                Pinned::ReasoningOptions => self.reasoning_options = None,
+                Pinned::ToolCall => self.tool_call = None,
+                Pinned::StructuredOutput => self.structured_output = None,
+                Pinned::Temperature => self.temperature = None,
+                Pinned::Modalities => self.modalities = None,
+                Pinned::LimitContext => self.limit.context = None,
+                Pinned::LimitOutput => self.limit.output = None,
+                Pinned::CostInput => self.cost.input = None,
+                Pinned::CostOutput => self.cost.output = None,
+                Pinned::CostCacheRead => self.cost.cache_read = None,
+                Pinned::CostCacheWrite => self.cost.cache_write = None,
+                Pinned::Status => self.status = None,
+            }
+        }
+        self
     }
 
     /// The protocol family the row's `rig` facts name, if any.
@@ -390,6 +458,7 @@ impl Facts {
             chat_tools_need_reasoning_off: over
                 .chat_tools_need_reasoning_off
                 .or(self.chat_tools_need_reasoning_off),
+            pinned: over.pinned.or(self.pinned),
         }
     }
 

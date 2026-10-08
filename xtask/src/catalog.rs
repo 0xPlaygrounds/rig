@@ -17,6 +17,9 @@
 //!    give each reasoning row of a gateway that translates reasoning
 //!    controls the controls it translates ([`REASONING_GATEWAYS`]), then lay
 //!    the reviewed rows over them again.
+//! 4. Pin under `rig.pinned` every key steps 2 and 3 set ([`pin`]), so that
+//!    rig-core's `Catalog::with_models_dev` keeps them when an application
+//!    lays a newer copy of models.dev over the built-in catalog.
 //!
 //! `--from <file>` reads a saved models.dev `api.json`; without it the
 //! command fetches <https://models.dev/api.json> with `curl`. Sync also
@@ -114,6 +117,26 @@ const RIG_KEYS: [&str; 13] = [
     "binds_context",
     "prompt_cache_options",
     "chat_tools_need_reasoning_off",
+];
+
+/// The row keys a row may pin, in the order `rig.pinned` lists them: the
+/// keys rig-core reads, with `limit` and `cost` by part, as a refresh
+/// replaces those part by part.
+const PINNABLE: [&str; 14] = [
+    "name",
+    "reasoning",
+    "reasoning_options",
+    "tool_call",
+    "structured_output",
+    "temperature",
+    "modalities",
+    "limit.context",
+    "limit.output",
+    "cost.input",
+    "cost.output",
+    "cost.cache_read",
+    "cost.cache_write",
+    "status",
 ];
 
 /// The vendors that serve another vendor's models, and the facts a row of
@@ -233,6 +256,13 @@ fn check(root: &Path) -> Result<(), String> {
         ));
     }
     let review = read_json(&root.join(REVIEW))?;
+    let mut pinned = catalog.clone();
+    pin(&mut pinned, &read_rows(&review)?);
+    if pinned != catalog {
+        return Err(format!(
+            "{OUTPUT} pins other keys than the review and joins set; run `cargo xtask catalog sync`"
+        ));
+    }
     let missing = missing_facts(&catalog, &review)?;
     match missing.is_empty() {
         true => Ok(()),
@@ -315,7 +345,102 @@ pub(crate) fn generate(models_dev: &Value, review: &Value) -> Result<Rows, Strin
     translate_reasoning(&mut rows);
     apply(&mut rows, &review)?;
     rows.retain(|_, models| !models.is_empty());
+    pin(&mut rows, &review);
     Ok(rows)
+}
+
+/// Write under each row's `rig.pinned` the [`PINNABLE`] keys the review or
+/// a join set: every key a reviewed row names, every key of a row copied
+/// with `from`, the non-`rig` keys a [`SERVERS`] row takes from its origin,
+/// and the reasoning options of a [`REASONING_GATEWAYS`] row that lists
+/// them. It reads only the finished rows and the review, so `catalog check`
+/// can tell offline whether the pins are current.
+fn pin(rows: &mut Rows, review: &Rows) {
+    let mut pins: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    let mut add = |vendor: &str, id: &str, key: String| {
+        pins.entry((vendor.to_owned(), id.to_owned()))
+            .or_default()
+            .push(key);
+    };
+    let paths = |row: &Map<String, Value>| -> Vec<String> {
+        row.iter()
+            .flat_map(|(key, value)| match (key.as_str(), value) {
+                ("limit" | "cost", Value::Object(parts)) => {
+                    parts.keys().map(|part| format!("{key}.{part}")).collect()
+                }
+                _ => vec![key.clone()],
+            })
+            .collect()
+    };
+    for (vendor, models) in review {
+        for (id, reviewed) in models {
+            let named = match reviewed.contains_key("from") {
+                true => rows.get(vendor).and_then(|models| models.get(id)),
+                false => Some(reviewed),
+            };
+            for key in named.map(paths).into_iter().flatten() {
+                add(vendor, id, key);
+            }
+        }
+    }
+    for (origin, vendor, keys) in SERVERS {
+        let (Some(origin_rows), Some(models)) = (rows.get(origin), rows.get(vendor)) else {
+            continue;
+        };
+        let prefix = format!("{origin}/");
+        for (id, row) in models {
+            let Some(source) = row
+                .get("canonical_model_id")
+                .and_then(Value::as_str)
+                .and_then(|canonical| canonical.strip_prefix(prefix.as_str()))
+                .and_then(|model| origin_row(origin_rows, model))
+            else {
+                continue;
+            };
+            for key in keys.iter().filter(|key| source.contains_key(**key)) {
+                add(vendor, id, (*key).to_owned());
+            }
+        }
+    }
+    for (vendor, _) in REASONING_GATEWAYS {
+        for (id, row) in rows.get(vendor).into_iter().flatten() {
+            let lists_options = row
+                .get("reasoning_options")
+                .and_then(Value::as_array)
+                .is_some_and(|options| !options.is_empty());
+            if row.get("reasoning") == Some(&Value::Bool(true)) && lists_options {
+                add(vendor, id, "reasoning_options".to_owned());
+            }
+        }
+    }
+    for (vendor, models) in rows.iter_mut() {
+        for (id, row) in models.iter_mut() {
+            let keys = pins
+                .remove(&(vendor.clone(), id.clone()))
+                .unwrap_or_default();
+            let pinned: Vec<Value> = PINNABLE
+                .iter()
+                .filter(|key| keys.iter().any(|pinned| pinned == *key))
+                .map(|&key| Value::from(key))
+                .collect();
+            let facts = row.get_mut("rig").and_then(Value::as_object_mut);
+            match (facts, pinned.is_empty()) {
+                (Some(facts), true) => {
+                    facts.shift_remove("pinned");
+                    if facts.is_empty() {
+                        row.shift_remove("rig");
+                    }
+                }
+                (None, true) => {}
+                (Some(facts), false) => {
+                    facts.insert("pinned".to_owned(), Value::Array(pinned));
+                }
+                (None, false) => {
+                    row.insert("rig".to_owned(), serde_json::json!({ "pinned": pinned }));
+                }
+            }
+        }
+    }
 }
 
 /// The rows of a models.dev-shaped document: provider keys, each with a

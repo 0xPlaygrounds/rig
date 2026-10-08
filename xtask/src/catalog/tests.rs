@@ -1,6 +1,15 @@
 use serde_json::json;
 
-use super::{generate, is_rfc3339_utc, read_rows, render, rfc3339};
+use super::{generate, is_rfc3339_utc, pin, read_rows, render, rfc3339};
+
+/// A row's `rig` facts without the keys it pins.
+fn facts(row: &serde_json::Map<String, serde_json::Value>) -> serde_json::Value {
+    let mut facts = row.get("rig").cloned().unwrap_or_default();
+    if let Some(facts) = facts.as_object_mut() {
+        facts.shift_remove("pinned");
+    }
+    facts
+}
 
 fn models_dev() -> serde_json::Value {
     json!({
@@ -126,10 +135,10 @@ fn rows_whose_canonical_id_is_an_anthropic_model_take_its_facts() {
         bedrock["reasoning_options"], claude["reasoning_options"],
         "a dated canonical id finds its model"
     );
-    assert_eq!(bedrock["rig"], claude["rig"]);
+    assert_eq!(facts(bedrock), facts(claude));
 
     let openrouter = &rows["openrouter"]["anthropic/claude-x.1"];
-    assert_eq!(openrouter["rig"], claude["rig"]);
+    assert_eq!(facts(openrouter), facts(claude));
     assert_eq!(
         openrouter["reasoning_options"],
         json!([
@@ -143,7 +152,7 @@ fn rows_whose_canonical_id_is_an_anthropic_model_take_its_facts() {
     let vertex = &rows["vertexai"]["claude-x-1@default"];
     assert_eq!(vertex["reasoning_options"], claude["reasoning_options"]);
     assert_eq!(
-        vertex["rig"],
+        facts(vertex),
         json!({"binds_context": false}),
         "a reviewed fact wins over the Anthropic one"
     );
@@ -192,7 +201,7 @@ fn a_reviewed_reasoning_control_reaches_the_row() {
     let rows = generate(&models_dev(), &review).expect("generates");
     let claude = &rows["anthropic"]["claude-x-1"];
     assert_eq!(claude["reasoning_options"], json!([]));
-    assert_eq!(claude["rig"], json!({"reasoning_control": "none"}));
+    assert_eq!(facts(claude), json!({"reasoning_control": "none"}));
 }
 
 #[test]
@@ -254,6 +263,73 @@ fn rows_whose_canonical_id_is_an_openai_model_take_its_sampling_rule() {
         json!({"cache": ["short"], "sampling": "reasoning_off", "reasoning_default": "medium"}),
         "the row's own facts stay, and only the sampling rule joins them"
     );
+}
+
+/// Every key the review or a join sets is pinned, so a refresh from
+/// models.dev keeps it, and nothing else is; `limit` and `cost` pin by part.
+/// Pinning again changes nothing, which is what `catalog check` relies on.
+#[test]
+fn the_keys_the_review_and_joins_set_are_pinned() {
+    let review = json!({
+        "anthropic": {"models": {
+            "claude-x-1": {
+                "source": "https://example.com/models",
+                "reasoning_options": [{"type": "toggle"}],
+                "limit": {"output": 128000},
+                "rig": {"adaptive_thinking": true}
+            },
+            "claude-x-0": {"from": "anthropic/claude-x-1", "name": "Claude X 0"}
+        }}
+    });
+    let rows = generate(&models_dev(), &review).expect("generates");
+    let pinned = |vendor: &str, id: &str| {
+        rows[vendor][id]
+            .get("rig")
+            .and_then(|facts| facts.get("pinned"))
+            .cloned()
+    };
+    assert_eq!(
+        pinned("anthropic", "claude-x-1"),
+        Some(json!(["reasoning_options", "limit.output"])),
+        "the reviewed keys, and not `source` or `rig`"
+    );
+    assert_eq!(
+        pinned("anthropic", "claude-x-0"),
+        Some(json!([
+            "name",
+            "reasoning",
+            "reasoning_options",
+            "modalities",
+            "limit.context",
+            "limit.output",
+            "cost.input",
+            "cost.output"
+        ])),
+        "a copy pins every key it holds"
+    );
+    assert_eq!(
+        pinned("aws_bedrock", "us.anthropic.claude-x-1-v1:0"),
+        Some(json!(["reasoning_options"])),
+        "a served row pins what it takes from its origin"
+    );
+    assert_eq!(
+        pinned("openrouter", "vendor/thinker"),
+        Some(json!(["reasoning_options"])),
+        "a gateway pins the controls it translates"
+    );
+    for (vendor, id) in [
+        ("openrouter", "vendor/unknown"),
+        ("openrouter", "vendor/plain"),
+        ("copilot", "gpt-x"),
+        ("aws_bedrock", "amazon.nova-pro-v1:0"),
+    ] {
+        assert_eq!(pinned(vendor, id), None, "{vendor}/{id}");
+    }
+    assert_eq!(rows["copilot"]["claude-x.1"].get("rig"), None);
+
+    let mut again = rows.clone();
+    pin(&mut again, &read_rows(&review).expect("rows"));
+    assert_eq!(again, rows);
 }
 
 /// Sync writes when its data was read in the one form rig-core reads, and

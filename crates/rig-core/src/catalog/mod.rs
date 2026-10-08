@@ -8,7 +8,8 @@
 //! [`Catalog::from_overrides`], which reports every mistake with a close
 //! alternative, or a fetched copy of models.dev with the lenient
 //! [`Catalog::from_models_dev`], and lays it over the built-in one with
-//! [`Catalog::with_overrides`]; [`Catalog::generated_at`] shows the layering,
+//! [`Catalog::with_overrides`] or, for models.dev data,
+//! [`Catalog::with_models_dev`]; [`Catalog::generated_at`] shows the layering,
 //! and says when the built-in data was read. [`ModelSpec::validate`] checks a request's
 //! [`GenerationOptions`](crate::completion::GenerationOptions) against what
 //! the model takes before anything is sent. [`Catalog::connect`] builds a
@@ -127,10 +128,12 @@ impl Catalog {
     /// an old cache never hides what a newer rig shipped.
     ///
     /// The layers go from the built-in data, to a fetched copy read with the
-    /// lenient [`Self::from_models_dev`], to the user's file read with the
-    /// strict [`Self::from_overrides`]. Each step shares every row it does
-    /// not change, and a model connected earlier keeps the facts it was
-    /// connected with.
+    /// lenient [`Self::from_models_dev`] and laid on with
+    /// [`Self::with_models_dev`], which keeps the facts rig reviewed by
+    /// hand, to the user's file read with the strict
+    /// [`Self::from_overrides`] and laid on with [`Self::with_overrides`].
+    /// Each step shares every row it does not change, and a model connected
+    /// earlier keeps the facts it was connected with.
     ///
     /// ```no_run
     /// use std::path::Path;
@@ -144,7 +147,7 @@ impl Catalog {
     ///         .is_ok_and(|fetched_at| fetched_at > Catalog::generated_at())
     ///     {
     ///         let (models_dev, _skipped) = Catalog::from_models_dev(&std::fs::read_to_string(&fetched)?)?;
-    ///         catalog = catalog.with_overrides(&models_dev);
+    ///         catalog = catalog.with_models_dev(&models_dev);
     ///     }
     ///     if let Ok(json) = std::fs::read_to_string(config.join("models.json")) {
     ///         catalog = catalog.with_overrides(&Catalog::from_overrides(&json, &catalog)?);
@@ -205,10 +208,39 @@ impl Catalog {
     /// both keeps every field the override leaves out; a model only in
     /// `overrides` is added. `self` is unchanged, and the result shares every
     /// row the override does not touch.
+    ///
+    /// Every field the override sets wins, including the facts rig reviewed
+    /// by hand, so lay a fetched copy of models.dev on with
+    /// [`Self::with_models_dev`] instead.
     pub fn with_overrides(&self, overrides: &Catalog) -> Catalog {
         let mut catalog = self.clone();
         for entry in overrides.entries.iter() {
             catalog.put(entry.spec.provider, &entry.spec.id, Row::clone(&entry.row));
+        }
+        catalog
+    }
+
+    /// This catalog with `fetched`, a newer copy of models.dev read with
+    /// [`Self::from_models_dev`], laid over it as [`Self::with_overrides`]
+    /// lays an override, except for the fields of a row that rig's own data
+    /// pins. The built-in data pins the fields rig reviewed by hand and the
+    /// ones its generator joins from another row (a gateway's Claude row
+    /// takes Anthropic's reasoning options), so a refresh updates prices and
+    /// limits models.dev changes but keeps those. A model only in `fetched`
+    /// is added as models.dev lists it.
+    pub fn with_models_dev(&self, fetched: &Catalog) -> Catalog {
+        let mut catalog = self.clone();
+        for entry in fetched.entries.iter() {
+            let (provider, id) = (entry.spec.provider, entry.spec.id.as_str());
+            let row = Row::clone(&entry.row);
+            let row = match catalog.position(provider.vendor(), id) {
+                Ok(index) => match catalog.entries.get(index) {
+                    Some(base) => row.without(base.row.pinned()),
+                    None => row,
+                },
+                Err(_) => row,
+            };
+            catalog.put(provider, id, row);
         }
         catalog
     }

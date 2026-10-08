@@ -1114,3 +1114,137 @@ fn an_unlisted_cache_rate_leaves_its_part_unknown() {
     assert_eq!((cost.cache_read, cost.cache_write), (Some(0.0), Some(0.0)));
     assert!(cost.is_complete());
 }
+
+/// A fetched models.dev copy that contradicts every key the built-in data
+/// pins: rig's facts gone, and each pinned value changed.
+fn contradicting_models_dev() -> String {
+    let mut document: serde_json::Value =
+        serde_json::from_str(BUILTIN).expect("the checked-in data parses");
+    let sections = document
+        .as_object_mut()
+        .into_iter()
+        .flat_map(|s| s.values_mut());
+    for row in sections.filter_map(|section| section.get_mut("models")?.as_object_mut()) {
+        for row in row
+            .values_mut()
+            .filter_map(serde_json::Value::as_object_mut)
+        {
+            let pinned: Vec<String> = row
+                .shift_remove("rig")
+                .and_then(|mut facts| facts.get_mut("pinned").map(serde_json::Value::take))
+                .and_then(|pinned| serde_json::from_value(pinned).ok())
+                .unwrap_or_default();
+            for key in pinned {
+                let flip = |value: Option<&serde_json::Value>| {
+                    serde_json::Value::Bool(
+                        !value.and_then(serde_json::Value::as_bool).unwrap_or(false),
+                    )
+                };
+                match key.split_once('.') {
+                    Some((outer, part)) => {
+                        let value = if outer == "cost" { 12345.0 } else { 1.0 };
+                        row.entry(outer)
+                            .or_insert_with(|| serde_json::json!({}))
+                            .as_object_mut()
+                            .map(|parts| parts.insert(part.to_owned(), value.into()));
+                    }
+                    None => {
+                        let value = match key.as_str() {
+                            "name" => "fetched".into(),
+                            "reasoning_options" => serde_json::json!([]),
+                            "modalities" => serde_json::json!({"input": ["video"]}),
+                            "status" => match row.get("status").and_then(|s| s.as_str()) {
+                                Some("deprecated") => "active".into(),
+                                _ => "deprecated".into(),
+                            },
+                            _ => flip(row.get(&key)),
+                        };
+                        row.insert(key, value);
+                    }
+                }
+            }
+        }
+    }
+    document.to_string()
+}
+
+/// A refresh from models.dev keeps every fact the built-in data pins: laid
+/// on with `with_models_dev`, a copy that contradicts each of them changes
+/// no model, while `with_overrides` would take them all.
+#[test]
+fn a_models_dev_refresh_keeps_the_facts_rig_pins() {
+    let builtin = Catalog::builtin();
+    let fetched = models_dev(&contradicting_models_dev()).expect("reads");
+    let refreshed = builtin.with_models_dev(&fetched);
+    let overridden = builtin.with_overrides(&fetched);
+    let mut changed_by_overrides = 0;
+    for spec in builtin.iter() {
+        let after = refreshed
+            .get_exact(spec.provider, &spec.id)
+            .expect("still listed");
+        assert_eq!(after, spec, "{}/{}", spec.provider.vendor(), spec.id);
+        let overridden = overridden.get_exact(spec.provider, &spec.id);
+        changed_by_overrides += usize::from(overridden != Some(spec));
+    }
+    assert!(changed_by_overrides > 500, "{changed_by_overrides}");
+
+    let claude = spec(&refreshed, "anthropic", "claude-sonnet-4-5");
+    assert_eq!(claude.reasoning.can_disable(), Some(true));
+    assert!(
+        spec(
+            &refreshed,
+            "aws_bedrock",
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+        )
+        .validate(&options(Reasoning::Off))
+        .is_ok(),
+        "a joined fact survives too"
+    );
+}
+
+/// What rig does not pin follows the fetched copy, and a model only the
+/// copy lists is added.
+#[test]
+fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
+    let builtin = Catalog::builtin();
+    let pinned = |vendor: &str, model: &str| {
+        let provider = ProviderId::catalog(vendor).expect("a known vendor");
+        let index = builtin.position(provider.vendor(), model).expect("listed");
+        builtin.entries[index].row.pinned().to_vec()
+    };
+    assert_eq!(pinned("deepseek", "deepseek-v4-flash"), []);
+    let fetched = models_dev(
+        r#"{
+          "deepseek": {"models": {
+            "deepseek-v4-flash": {"cost": {"input": 9, "output": 18}, "limit": {"context": 4096}},
+            "deepseek-x-rig-new": {"name": "New", "tool_call": true}
+          }},
+          "anthropic": {"models": {
+            "claude-sonnet-4-5": {"reasoning_options": [], "cost": {"input": 99, "output": 99}}
+          }}
+        }"#,
+    )
+    .expect("reads");
+    let refreshed = builtin.with_models_dev(&fetched);
+    let chat = spec(&refreshed, "deepseek", "deepseek-v4-flash");
+    assert_eq!(chat.pricing.map(|p| (p.input, p.output)), Some((9.0, 18.0)));
+    assert_eq!(chat.context_window, Some(4096));
+    assert_eq!(
+        chat.max_output_tokens,
+        spec(builtin, "deepseek", "deepseek-v4-flash").max_output_tokens
+    );
+    assert!(spec(&refreshed, "deepseek", "deepseek-x-rig-new").tools);
+
+    assert_eq!(
+        pinned("anthropic", "claude-sonnet-4-5"),
+        [row::Pinned::ReasoningOptions]
+    );
+    let before = spec(builtin, "anthropic", "claude-sonnet-4-5");
+    let after = spec(&refreshed, "anthropic", "claude-sonnet-4-5");
+    assert_eq!(after.reasoning, before.reasoning, "reviewed, so kept");
+    assert_eq!(
+        after.pricing.map(|p| p.input),
+        Some(99.0),
+        "not pinned, so updated"
+    );
+}
