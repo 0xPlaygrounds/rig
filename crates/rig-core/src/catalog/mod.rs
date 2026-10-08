@@ -245,6 +245,15 @@ impl Catalog {
         catalog
     }
 
+    /// `self` with `overrides` laid over it.
+    #[deprecated(
+        since = "0.45.0",
+        note = "use `with_overrides(&overrides)`, or `with_models_dev` for a fetched copy of models.dev"
+    )]
+    pub fn merge(self, overrides: Catalog) -> Catalog {
+        self.with_overrides(&overrides)
+    }
+
     /// Add `spec`, replacing any model of the same vendor and id whole. A
     /// later [`Self::with_overrides`] lays an override on it field by field,
     /// as on any other row.

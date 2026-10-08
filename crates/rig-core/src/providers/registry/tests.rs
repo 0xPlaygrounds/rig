@@ -1085,3 +1085,21 @@ fn connect_options_never_show_the_key() {
     assert!(!shown.contains("sk-do-not-leak"), "{shown}");
     assert!(shown.contains("OpenAi"), "{shown}");
 }
+
+/// The deprecated `api_key_env` names the first variable `api_key_envs`
+/// tries, and nothing for a catalog-only provider.
+#[test]
+#[allow(deprecated)]
+fn the_deprecated_key_variable_is_the_first_one_tried() {
+    for qualified in ["openai/openai", "azure.openai/openai", "llamacpp/openai"] {
+        let id = ProviderId::resolve(qualified).unwrap();
+        assert_eq!(
+            id.api_key_env(),
+            id.api_key_envs().first().copied(),
+            "{qualified}"
+        );
+        assert!(id.api_key_env().is_some(), "{qualified}");
+    }
+    let catalog_only = ProviderId::catalog("aws_bedrock").expect("a catalog vendor");
+    assert_eq!(catalog_only.api_key_env(), None);
+}

@@ -171,6 +171,21 @@ impl AutoCache {
         Self::priced(spec.pricing.as_ref())
     }
 
+    /// The default policy with the cached-read ratio of the Gemini API's
+    /// `model` from the built-in catalog's pricing. A model the catalog
+    /// does not price keeps the default ratio.
+    #[deprecated(
+        since = "0.45.0",
+        note = "use `for_spec` with the spec the model carries, so catalog overrides apply"
+    )]
+    pub fn for_model(model: &str) -> Self {
+        Self::priced(
+            crate::catalog::Catalog::builtin()
+                .get_vendor(super::PROVIDER_NAME, model)
+                .and_then(|resolved| resolved.spec.pricing.as_ref()),
+        )
+    }
+
     /// The default policy with the cached-read ratio of `pricing`. Without
     /// a cached-read price, with a negative one, or with no positive input
     /// price to divide by, the default ratio stays.
