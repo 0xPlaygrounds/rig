@@ -6,16 +6,18 @@
 use async_channel::{Receiver, Sender};
 use bevy_ecs::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{IoTaskPool, Task, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
 use futures::StreamExt;
 use rig_core::ErrorReport;
 use rig_core::completion::options::Reasoning;
 use rig_core::completion::{CompletionRequest, CompletionResponse};
-use rig_core::effect::{EffectKind, Outcome, tool_key};
+use rig_core::effect::{
+    EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
+};
 use rig_core::message::{
     self, AssistantContent, AssistantMessage, Message, StopReason, ToolResultContent,
 };
-use rig_core::serve::{Reply, stream_truncated};
+use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent, delivered};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 
@@ -327,8 +329,9 @@ pub(crate) fn poll_model_calls(
                 }
                 *status = Status::Tools;
             }
-            // Arguments cut off by the output limit are not run; the model
-            // is told and answers again.
+            // Arguments cut off by the output limit are not run. The model
+            // is told when the user continues; retrying at once could
+            // repeat paid calls that hit the limit every time.
             StopReason::Length if !tool_calls.is_empty() => {
                 conversation.0.push(Message::tool_results(
                     tool_calls
@@ -341,7 +344,11 @@ pub(crate) fn poll_model_calls(
                         })
                         .collect(),
                 ));
-                *status = Status::Queued;
+                commands.trigger(Notice::error(
+                    agent,
+                    "The reply hit the output token limit, so its tool calls were not run.",
+                ));
+                end_turn(&mut commands, agent, &mut status);
             }
             stop => {
                 if let StopReason::Error(reason) = stop {
@@ -390,8 +397,11 @@ pub(crate) fn start_tool_calls(
     }
 }
 
-/// Dispatches one tool call to its tool. A tool the agent may not call, or
-/// that does not exist, fails without running.
+/// Dispatches one tool call to its tool. A call to a tool the agent may not
+/// call, or that does not exist, is dispatched to [`missing_tool`], so it
+/// is recorded like any other. Tools run on the `AsyncComputeTaskPool`, as
+/// they may block, so they never hold up the model streams on the
+/// `IoTaskPool`.
 fn start_tool(
     effects: &Effects,
     agent: &AgentId,
@@ -400,14 +410,10 @@ fn start_tool(
     call: &message::ToolCall,
 ) -> ToolState {
     let name = call.function.name.as_str();
-    let Some(tool) = tools
+    let handler = tools
         .iter()
         .find(|tool| tool.definition.name.as_str() == name && access.allows(name))
-    else {
-        return ToolState::Done(ToolResult::failed(ToolExecutionError::not_found(format!(
-            "There is no tool named `{name}`."
-        ))));
-    };
+        .map_or_else(|| missing_tool(name), |tool| tool.handler.clone());
     let args = call
         .function
         .invalid_arguments
@@ -417,26 +423,63 @@ fn start_tool(
         effects,
         agent,
         tool_key(name),
-        tool.handler.clone(),
+        handler,
         EffectKind::ToolCall {
             name: name.to_owned(),
             args,
         },
     );
-    ToolState::Running(IoTaskPool::get_or_init(TaskPool::new).spawn(async move {
-        let outcome = match reply.await {
-            Ok(reply) => reply.into_outcome().await,
-            Err(panic) => Err(panic),
-        };
-        match outcome {
-            Ok(Outcome::ToolResult { result }) => result,
-            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-                "The tool answered with a {} outcome.",
-                other.family()
-            ))),
-            Err(error) => ToolResult::failed(ToolExecutionError::other(error.message)),
+    ToolState::Running(
+        AsyncComputeTaskPool::get_or_init(TaskPool::new).spawn(async move {
+            let outcome = match reply.await {
+                Ok(reply) => reply.into_outcome().await,
+                Err(panic) => Err(panic),
+            };
+            match outcome {
+                Ok(Outcome::ToolResult { result }) => result,
+                Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
+                    "The tool answered with a {} outcome.",
+                    other.family()
+                ))),
+                Err(error) => ToolResult::failed(ToolExecutionError::other(error.message)),
+            }
+        }),
+    )
+}
+
+/// The handler of a call to a tool that is not registered, or that the
+/// agent may not call: it answers with a not-found error.
+fn missing_tool(name: &str) -> ErasedHandler {
+    ErasedHandler::new(MissingTool(name.to_owned()))
+}
+
+/// See [`missing_tool`].
+struct MissingTool(String);
+
+impl Serve for MissingTool {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: tool_key(&self.0),
+            family: FamilyDescriptor::Tool {
+                name: self.0.clone(),
+                description: "A tool that is not registered.".to_owned(),
+                parameters: serde_json::json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
         }
-    }))
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Ok(Outcome::ToolResult {
+            result: ToolResult::failed(ToolExecutionError::not_found(format!(
+                "There is no tool named `{}`.",
+                self.0
+            ))),
+        }))
+    }
 }
 
 /// Collects finished tool calls. When every tool call of an agent has

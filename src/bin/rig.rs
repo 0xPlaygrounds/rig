@@ -253,7 +253,8 @@ impl Launcher {
                     let _ = fs::remove_file(&candidate);
                     let text = format!(
                         "The new build crashed during startup ({status}); rolled back to the \
-                         last working build."
+                         last working build. Its log is in {}.",
+                        self.data.join("sessions").display()
                     );
                     eprintln!("rig: {text}");
                     notice = Some(text);
@@ -271,7 +272,8 @@ impl Launcher {
     }
 
     /// Runs the agent to its exit. A candidate build that becomes ready is
-    /// promoted to the current build.
+    /// promoted to the current build. An agent that cannot be waited for is
+    /// killed, so the launcher never exits while it holds the terminal.
     fn supervise(
         &self,
         agent: &mut Command,
@@ -281,12 +283,20 @@ impl Launcher {
         let mut child = agent.spawn().map_err(io(|| "start the agent".to_owned()))?;
         let mut promoted = !trying;
         loop {
-            let exited = child
-                .try_wait()
-                .map_err(io(|| "wait for the agent".to_owned()))?;
+            let exited = match child.try_wait() {
+                Ok(exited) => exited,
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(Error::Io("wait for the agent".to_owned(), error));
+                }
+            };
             if !promoted && ready.exists() {
-                fs::rename(self.bin("candidate"), self.bin("current"))
-                    .map_err(io(|| "promote the new build".to_owned()))?;
+                // The candidate stays the build that runs; it is promoted
+                // again after the next successful start.
+                if let Err(error) = fs::rename(self.bin("candidate"), self.bin("current")) {
+                    eprintln!("rig: cannot promote the new build: {error}");
+                }
                 promoted = true;
             }
             if let Some(status) = exited {
@@ -439,7 +449,8 @@ impl Launcher {
                 top = name;
             }
             let version = version.trim_start_matches('v');
-            if name == "bevy_ecs" && version != BEVY {
+            let bevy = name == "bevy" || name.starts_with("bevy_");
+            if bevy && version != BEVY {
                 let plugin = plugins.iter().any(|plugin| plugin.krate == top);
                 return Err(Error::SecondBevy {
                     plugins: self.plugins_path(),

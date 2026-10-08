@@ -16,9 +16,11 @@
 //! }
 //! ```
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
+
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::SystemId;
+use bevy_ecs::system::{RegisteredSystemError, SystemId};
 use bevy_log::error;
 use rig_core::completion::ToolDefinition;
 use rig_core::serve::ErasedHandler;
@@ -191,25 +193,40 @@ pub struct OpenPicker {
     pub options: Vec<PickerOption>,
 }
 
-/// Finds the command a [`RunCommand`] names and runs its system.
+/// Finds the command a [`RunCommand`] names and runs its system. A command
+/// that panics is caught and reported. Bevy cannot put a panicked one-shot
+/// system back, so that command stays unavailable until the next reload.
 pub(crate) fn run_command(
     run: On<RunCommand>,
     registered: Query<(Entity, &SlashCommand)>,
     mut commands: Commands,
 ) {
+    let agent = run.entity;
     let line = run.line.trim().trim_start_matches('/');
     let (name, args) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
-    match registered.iter().find(|(_, command)| command.name == name) {
-        Some((system, _)) => commands.run_system_with(
-            SystemId::<In<CommandInput>>::from_entity(system),
-            CommandInput {
-                agent: run.entity,
-                args: args.trim().to_owned(),
-            },
-        ),
-        None => commands.trigger(Notice::error(
-            run.entity,
+    let Some((system, _)) = registered.iter().find(|(_, command)| command.name == name) else {
+        commands.trigger(Notice::error(
+            agent,
             format!("Unknown command /{name}. Type /help for the list."),
-        )),
-    }
+        ));
+        return;
+    };
+    let id = SystemId::<In<CommandInput>>::from_entity(system);
+    let input = CommandInput {
+        agent,
+        args: args.trim().to_owned(),
+    };
+    let name = name.to_owned();
+    commands.queue(move |world: &mut World| {
+        let ran = catch_unwind(AssertUnwindSafe(|| world.run_system_with(id, input)));
+        let text = match ran {
+            Ok(Ok(()) | Err(RegisteredSystemError::Skipped(_))) => return,
+            Ok(Err(RegisteredSystemError::SystemMissing(_))) => {
+                format!("/{name} panicked earlier and is unavailable until /reload.")
+            }
+            Ok(Err(error)) => format!("/{name} failed: {error}"),
+            Err(_) => format!("/{name} panicked; see agent.log. It is unavailable until /reload."),
+        };
+        world.trigger(Notice::error(agent, text));
+    });
 }

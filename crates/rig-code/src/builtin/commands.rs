@@ -36,7 +36,14 @@ fn model(input: In<CommandInput>, mut commands: Commands) {
             .into_iter()
             .map(|spec| PickerOption {
                 label: model_id(spec),
-                detail: spec.display_name.clone(),
+                // The catalog does not say what a model outputs, so image
+                // models are listed too; without tool calls a model can only
+                // talk.
+                detail: if spec.tools {
+                    spec.display_name.clone()
+                } else {
+                    format!("{} (no tool calls)", spec.display_name)
+                },
                 value: model_id(spec),
             })
             .collect();
@@ -95,11 +102,10 @@ fn effort(input: In<CommandInput>, agents: Query<Option<&Connection>>, mut comma
                 .into_iter()
                 .map(|(label, reasoning)| PickerOption {
                     detail: match reasoning {
-                        Reasoning::Off => "no reasoning",
-                        Reasoning::Budget { .. } => "reasoning tokens",
-                        _ => "effort level",
-                    }
-                    .to_owned(),
+                        Reasoning::Off => "no reasoning".to_owned(),
+                        Reasoning::Budget { tokens } => format!("{tokens} reasoning tokens"),
+                        _ => "effort level".to_owned(),
+                    },
                     value: label.clone(),
                     label,
                 })

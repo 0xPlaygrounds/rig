@@ -8,7 +8,7 @@ use bevy_log::error;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use super::view::View;
-use crate::core::agent::Agent;
+use crate::core::agent::{Agent, Status};
 use crate::core::registry::RunCommand;
 use crate::core::turn::{Stop, Submit};
 
@@ -42,6 +42,7 @@ pub(crate) fn read_input(
     input: Res<Input>,
     mut view: ResMut<View>,
     agents: Query<Entity, With<Agent>>,
+    statuses: Query<&Status>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -63,7 +64,10 @@ pub(crate) fn read_input(
                 } else if view.picker.is_some() {
                     picker_key(key, &mut view, &mut commands);
                 } else {
-                    composer_key(key, agent, &mut view, &mut commands);
+                    let busy = statuses
+                        .get(agent)
+                        .is_ok_and(|status| *status != Status::Idle);
+                    composer_key(key, agent, busy, &mut view, &mut commands);
                 }
             }
             Event::Paste(text) => match &mut view.picker {
@@ -107,18 +111,30 @@ fn picker_key(key: KeyEvent, view: &mut View, commands: &mut Commands) {
     }
 }
 
-fn composer_key(key: KeyEvent, agent: Entity, view: &mut View, commands: &mut Commands) {
+/// Applies a key to the composer. A message to a `busy` agent is refused
+/// with a notice and stays in the composer.
+fn composer_key(
+    key: KeyEvent,
+    agent: Entity,
+    busy: bool,
+    view: &mut View,
+    commands: &mut Commands,
+) {
     match key.code {
         KeyCode::Esc => commands.trigger(Stop { entity: agent }),
         KeyCode::Enter => {
-            let text = std::mem::take(&mut view.composer);
             view.scroll = 0;
-            if text.trim_start().starts_with('/') {
+            if view.composer.trim_start().starts_with('/') {
                 commands.trigger(RunCommand {
                     entity: agent,
-                    line: text,
+                    line: std::mem::take(&mut view.composer),
                 });
             } else {
+                let text = if busy {
+                    view.composer.clone()
+                } else {
+                    std::mem::take(&mut view.composer)
+                };
                 commands.trigger(Submit {
                     entity: agent,
                     text,

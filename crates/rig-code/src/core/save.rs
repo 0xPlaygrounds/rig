@@ -35,7 +35,7 @@ use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::agent::Agent;
+use super::agent::{Agent, Model};
 use super::dispatch::Effects;
 use super::registry::Notice;
 use super::session::Session;
@@ -161,7 +161,13 @@ fn restore(world: &mut World) -> Result {
     for saved in state.agents {
         let agent = world.spawn(Agent).id();
         let mut skipped = 0;
-        for (path, value) in &saved.components {
+        // `Model` goes last: inserting it connects the agent, which checks
+        // the restored `Effort` against the model.
+        let (models, others): (Vec<_>, Vec<_>) = saved
+            .components
+            .iter()
+            .partition(|(path, _)| path.as_str() == Model::type_path());
+        for (path, value) in others.into_iter().chain(models) {
             if let Err(reason) = restore_component(world, agent, &registry, path, value) {
                 warn!("skipped the saved component {path}: {reason}");
                 skipped += 1;

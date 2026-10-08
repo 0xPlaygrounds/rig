@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
+use bevy_log::error;
 use futures::FutureExt;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::effect::{EffectId, EffectKind, HandlerKey, Outcome};
@@ -120,18 +121,32 @@ impl Observe for Recorded {
     }
 }
 
-/// Appends the resolved effect records to the session's `effects.jsonl`,
-/// one JSON object per line, in dispatch order.
-pub(crate) fn flush_effects(effects: Res<Effects>, session: Res<Session>) -> Result {
+/// Appends the effect records resolved since the last frame to the
+/// session's `effects.jsonl`, one JSON object per line. Records are written
+/// as they resolve; their effect ids give the dispatch order. A failed
+/// write drops the records and is logged once until a write succeeds.
+pub(crate) fn flush_effects(
+    effects: Res<Effects>,
+    session: Res<Session>,
+    mut failing: Local<bool>,
+) {
     let log = effects.recorder.take();
     if log.records.is_empty() {
-        return Ok(());
+        return;
     }
-    let mut lines = String::new();
-    for record in &log.records {
-        lines.push_str(&serde_json::to_string(record)?);
-        lines.push('\n');
+    let written = log
+        .records
+        .iter()
+        .map(|record| serde_json::to_string(record).map(|line| line + "\n"))
+        .collect::<Result<String, _>>()
+        .map_err(std::io::Error::from)
+        .and_then(|lines| append(&session.effects_path())?.write_all(lines.as_bytes()));
+    match written {
+        Ok(()) => *failing = false,
+        Err(error) if !*failing => {
+            *failing = true;
+            error!("cannot write the effect log, so its records are dropped: {error}");
+        }
+        Err(_) => {}
     }
-    append(&session.effects_path())?.write_all(lines.as_bytes())?;
-    Ok(())
 }

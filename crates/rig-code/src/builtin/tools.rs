@@ -28,6 +28,10 @@ const MAX_BYTES: usize = 50 * 1024;
 const MAX_LINES: usize = 2000;
 /// The most matches `search` returns.
 const MAX_MATCHES: usize = 200;
+/// The shell timeout when the model gives none, in seconds.
+const DEFAULT_TIMEOUT: u64 = 120;
+/// The longest shell timeout the model may ask for, in seconds.
+const MAX_TIMEOUT: u64 = 3600;
 
 /// Registers [`ReadTool`], [`EditTool`], [`WriteTool`], [`ShellTool`] and
 /// [`SearchTool`].
@@ -268,9 +272,11 @@ impl PortableTool for ShellTool {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        "Run a shell command in the working directory and return its output and exit code. \
-         It gets no input. The default timeout is 120 seconds."
-            .to_owned()
+        format!(
+            "Run a shell command in the working directory and return its output and exit \
+             code. It gets no input. The default timeout is {DEFAULT_TIMEOUT} seconds, the \
+             longest {MAX_TIMEOUT}."
+        )
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -294,15 +300,26 @@ impl PortableTool for ShellTool {
         let child = command
             .spawn()
             .map_err(|error| failure(format!("cannot start the shell: {error}")))?;
-        let timeout = Duration::from_secs(args.timeout.unwrap_or(120));
+        let mut child = Supervised(Some(child));
+        let seconds = args.timeout.unwrap_or(DEFAULT_TIMEOUT).min(MAX_TIMEOUT);
+        let timeout = Duration::from_secs(seconds);
         let cancel = Cancel(Arc::new(AtomicBool::new(false)));
         let cancelled = Arc::clone(&cancel.0);
         let (sender, receiver) = oneshot::channel();
+        let stdout = read_on_thread(child.0.as_mut().and_then(|child| child.stdout.take()));
+        let stderr = read_on_thread(child.0.as_mut().and_then(|child| child.stderr.take()));
+        let (stdout, stderr) = stdout
+            .and_then(|stdout| Ok((stdout, stderr?)))
+            .map_err(|error| failure(format!("cannot read the shell's output: {error}")))?;
         // The process is waited for on its own thread, so the call can be
-        // dropped at any time; dropping `cancel` then kills the process.
-        thread::spawn(move || {
-            let _ = sender.send(supervise(child, timeout, &cancelled));
-        });
+        // dropped at any time; dropping `cancel` then kills the process. If
+        // the thread cannot start or panics, dropping `child` kills it.
+        thread::Builder::new()
+            .name("rig-code-shell".to_owned())
+            .spawn(move || {
+                let _ = sender.send(supervise(child, timeout, &cancelled, stdout, stderr));
+            })
+            .map_err(|error| failure(format!("cannot supervise the shell: {error}")))?;
         let result = receiver
             .await
             .map_err(|_| failure("the shell command's supervisor stopped"))?;
@@ -334,37 +351,51 @@ impl Drop for Cancel {
     }
 }
 
+/// A shell process that is killed when dropped before it was reaped.
+struct Supervised(Option<Child>);
+
+impl Drop for Supervised {
+    fn drop(&mut self) {
+        if let Some(child) = &mut self.0 {
+            kill(child);
+        }
+    }
+}
+
 /// Waits for `child` and collects its output, killing it on timeout or
 /// cancellation.
 fn supervise(
-    mut child: Child,
+    mut supervised: Supervised,
     timeout: Duration,
     cancelled: &AtomicBool,
+    stdout: thread::JoinHandle<String>,
+    stderr: thread::JoinHandle<String>,
 ) -> Result<String, ToolExecutionError> {
-    let stdout = read_on_thread(child.stdout.take());
-    let stderr = read_on_thread(child.stderr.take());
-    let deadline = Instant::now() + timeout;
+    let Some(child) = &mut supervised.0 else {
+        return Err(failure("the shell command was lost"));
+    };
+    let deadline = Instant::now().checked_add(timeout);
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Ok(status),
+            Ok(Some(status)) => {
+                supervised.0 = None;
+                break Ok(status);
+            }
             Ok(None) if cancelled.load(Ordering::Relaxed) => {
-                kill(&mut child);
                 break Err(ToolExecutionError::cancelled("the command was cancelled"));
             }
-            Ok(None) if Instant::now() >= deadline => {
-                kill(&mut child);
+            Ok(None) if deadline.is_none_or(|deadline| Instant::now() >= deadline) => {
                 break Err(ToolExecutionError::timeout(format!(
                     "the command timed out after {} seconds",
                     timeout.as_secs()
                 )));
             }
             Ok(None) => thread::sleep(Duration::from_millis(10)),
-            Err(error) => {
-                kill(&mut child);
-                break Err(failure(format!("cannot wait for the command: {error}")));
-            }
+            Err(error) => break Err(failure(format!("cannot wait for the command: {error}"))),
         }
     };
+    // Kills the process group unless it exited, so the pipes close.
+    drop(supervised);
     let output = output(
         stdout.join().unwrap_or_default(),
         stderr.join().unwrap_or_default(),
@@ -379,14 +410,18 @@ fn supervise(
     }
 }
 
-fn read_on_thread(pipe: Option<impl Read + Send + 'static>) -> thread::JoinHandle<String> {
-    thread::spawn(move || {
-        let mut bytes = Vec::new();
-        if let Some(mut pipe) = pipe {
-            let _ = pipe.read_to_end(&mut bytes);
-        }
-        String::from_utf8_lossy(&bytes).into_owned()
-    })
+fn read_on_thread(
+    pipe: Option<impl Read + Send + 'static>,
+) -> std::io::Result<thread::JoinHandle<String>> {
+    thread::Builder::new()
+        .name("rig-code-shell-output".to_owned())
+        .spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        })
 }
 
 fn output(stdout: String, stderr: String) -> String {

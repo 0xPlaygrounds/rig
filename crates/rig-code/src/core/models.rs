@@ -44,10 +44,20 @@ pub fn available_models() -> Vec<&'static ModelSpec> {
         .collect()
 }
 
-/// The reasoning settings a model takes, with their labels: `off` when it
-/// can stop reasoning, each effort level it lists, and for a model that
-/// takes a token budget the budgets 1024, 2048, 8192 and 16384 clamped into
-/// its range. A model that does not reason takes none.
+/// The named token budgets offered to a model that takes a budget instead
+/// of effort levels.
+const BUDGETS: [(&str, u32); 4] = [
+    ("minimal", 1024),
+    ("low", 2048),
+    ("medium", 8192),
+    ("high", 16384),
+];
+
+/// The reasoning settings a model takes, with the names they are picked
+/// by: `off` when it can stop reasoning, then each effort level it lists.
+/// A model that takes a token budget and lists no levels gets the
+/// [`BUDGETS`], clamped into its range. A model that does not reason takes
+/// none.
 pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Reasoning)> {
     let support = &spec.reasoning;
     if !support.supported {
@@ -55,33 +65,37 @@ pub fn effort_options(spec: &ModelSpec) -> Vec<(String, Reasoning)> {
     }
     let mut options = Vec::new();
     if support.can_disable {
-        options.push(Reasoning::Off);
+        options.push(("off".to_owned(), Reasoning::Off));
     }
-    options.extend(support.levels.iter().copied().map(Reasoning::Effort));
-    if let Some(range) = &support.budget {
-        for tokens in [1024, 2048, 8192, 16384] {
+    options.extend(
+        support
+            .levels
+            .iter()
+            .map(|level| (level.as_str().to_owned(), Reasoning::Effort(*level))),
+    );
+    if support.levels.is_empty()
+        && let Some(range) = &support.budget
+    {
+        for (name, tokens) in BUDGETS {
             let budget = Reasoning::Budget {
                 tokens: tokens.clamp(*range.start(), *range.end()),
             };
-            if !options.contains(&budget) {
-                options.push(budget);
+            if !options.iter().any(|(_, option)| *option == budget) {
+                options.push((name.to_owned(), budget));
             }
         }
     }
     options
-        .into_iter()
-        .map(|reasoning| (effort_label(Some(reasoning)), reasoning))
-        .collect()
 }
 
-/// How an effort setting is shown and typed: `default`, `off`, a level
-/// name, or a token budget as a number.
+/// How an effort setting is shown: `default`, `off`, a level name, or a
+/// token budget.
 pub fn effort_label(effort: Option<Reasoning>) -> String {
     match effort {
         None => "default".to_owned(),
         Some(Reasoning::Off) => "off".to_owned(),
         Some(Reasoning::Effort(effort)) => effort.as_str().to_owned(),
-        Some(Reasoning::Budget { tokens }) => tokens.to_string(),
+        Some(Reasoning::Budget { tokens }) => format!("{tokens} tokens"),
         Some(_) => "other".to_owned(),
     }
 }

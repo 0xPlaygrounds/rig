@@ -12,42 +12,33 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{BoxedFmtLayer, tracing_subscriber};
 
-/// The agent's directories. With `RIG_HOME` set, all of them live under
-/// it (`config`, `cache`, `data`); otherwise they follow the XDG base
-/// directory variables, each with a `rig` subdirectory.
+/// The agent's data directory, which holds its sessions: `$RIG_HOME/data`
+/// when `RIG_HOME` is set, else `$XDG_DATA_HOME/rig` or
+/// `~/.local/share/rig`. The launcher uses the same rules.
 #[derive(Resource, Clone, Debug)]
 pub struct Dirs {
-    /// User-edited configuration.
-    pub config: PathBuf,
-    /// Rebuildable files, such as build output.
-    pub cache: PathBuf,
-    /// Sessions.
+    /// Sessions and the resume file.
     pub data: PathBuf,
 }
 
 impl Dirs {
-    /// The directories the environment selects.
+    /// The directory the environment selects.
     pub fn from_env() -> Self {
-        if let Some(home) = std::env::var_os("RIG_HOME").filter(|home| !home.is_empty()) {
-            let home = PathBuf::from(home);
-            return Self {
-                config: home.join("config"),
-                cache: home.join("cache"),
-                data: home.join("data"),
-            };
-        }
-        let user = std::env::home_dir().unwrap_or_default();
-        let base = |variable: &str, default: &str| {
-            std::env::var_os(variable)
-                .filter(|value| !value.is_empty())
-                .map_or_else(|| user.join(default), PathBuf::from)
-                .join("rig")
+        let set = |variable: &str| std::env::var_os(variable).filter(|value| !value.is_empty());
+        let data = match set("RIG_HOME") {
+            Some(home) => PathBuf::from(home).join("data"),
+            None => set("XDG_DATA_HOME")
+                .map_or_else(
+                    || {
+                        std::env::home_dir()
+                            .unwrap_or_default()
+                            .join(".local/share")
+                    },
+                    PathBuf::from,
+                )
+                .join("rig"),
         };
-        Self {
-            config: base("XDG_CONFIG_HOME", ".config"),
-            cache: base("XDG_CACHE_HOME", ".cache"),
-            data: base("XDG_DATA_HOME", ".local/share"),
-        }
+        Self { data }
     }
 
     /// The file naming the session the next start restores. It is written
