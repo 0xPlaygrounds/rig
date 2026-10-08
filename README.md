@@ -352,51 +352,57 @@ plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```
 
-Code mode is an optional plugin crate, `rig-harness-codemode`, not in the
-default list. Its `CodeModePlugin` adds the `run_code` tool: the model writes
-one Python script, run in process by the [Pydantic Monty](https://github.com/pydantic/monty)
-sandbox, that spawns agents, sends them requests, awaits their replies and
-calls the model's own tools, and the value of its last expression is the
-tool's output. The script reaches the host only through four async functions,
-each one call of rig-harness's `Harness` handle: `spawn_agent(name, model=None,
-system_prompt=None, tools=None)`, `send(agent, text)`, `reply(request)` and
-`call_tool(name, args=None)`; it has no file system, network or environment.
-Its execution time, recursion, single allocations and host calls are limited,
-and Esc cancels it. A crash-level abort inside the interpreter takes the agent
-down, and the launcher resumes the session as after any crash. Monty 1.1
-needs a newer toolchain than the workspace's 1.96 (nightly at the time of
-writing), so the crate is its own workspace, outside CI. Enable it with:
+Code mode is an optional plugin crate, `rig-steel`, not in the default list.
+Its `SteelPlugin` adds the `run_steel` tool: the model writes one
+[Steel](https://github.com/mattwparas/steel) (Scheme) program that spawns
+agents, sends them requests, waits for their replies and calls the model's own
+tools, and the value of its last expression is the tool's output. The program
+reaches the host only through four functions, each one call of rig-harness's
+`Harness` handle: `(spawn-agent name [options])`, `(send agent text)`,
+`(reply request)` and `(call-tool name [args])`. It runs on a thread of its
+own, which each host function blocks until the harness answers; agents it has
+sent to work at the same time, so sending to several before waiting fans out.
+It runs in Steel's sandboxed engine with the host modules (process, git,
+network, foreign functions, threads) emptied, and programs that name module
+loading, `eval`, procedural macros or the engine's private functions are
+refused. Its execution time (not counting waits), host calls and output are
+limited, and Esc cancels it. Enable it with:
 
 ```toml
 [[plugin]]
-crate = "rig-harness-codemode"
-path = "/path/to/rig/crates/rig-harness-codemode"
-plugin = "rig_harness_codemode::CodeModePlugin"
+crate = "rig-steel"
+path = "/path/to/rig/crates/rig-steel"
+plugin = "rig_steel::SteelPlugin"
 ```
 
 Two agents writing a poem together, relayed four times, then summarised:
 
-```python
-a = await spawn_agent("poet-a")
-b = await spawn_agent("poet-b")
-line = await reply(await send(a, "Write the first stanza of a poem about the sea."))
-poem = [line]
-for turn in range(4):
-    other = b if turn % 2 == 0 else a
-    line = await reply(await send(other, "Continue this poem with one stanza:\n\n" + "\n\n".join(poem)))
-    poem.append(line)
-summary = await reply(await send(a, "Summarise the poem in one sentence:\n\n" + "\n\n".join(poem)))
-{"poem": poem, "summary": summary}
+```scheme
+(define a (spawn-agent "poet-a"))
+(define b (spawn-agent "poet-b"))
+(define (ask agent text) (reply (send agent text)))
+(define poem
+  (let loop ([turn 0] [stanzas (list (ask a "Write the first stanza of a poem about the sea."))])
+    (if (= turn 4)
+        stanzas
+        (loop (+ turn 1)
+              (append stanzas
+                      (list (ask (if (even? turn) b a)
+                                 (string-append "Continue this poem with one stanza:\n\n"
+                                                (string-join stanzas "\n\n")))))))))
+(hash 'poem poem
+      'summary (ask a (string-append "Summarise this poem in one sentence:\n\n"
+                                     (string-join poem "\n\n"))))
 ```
 
 A fan-out that asks three agents at once and keeps the shortest answer:
 
-```python
-import asyncio
-agents = await asyncio.gather(*[spawn_agent(f"solver-{i}") for i in range(3)])
-requests = [await send(agent, "How does src/lib.rs load plugins? Answer in three sentences.") for agent in agents]
-answers = await asyncio.gather(*[reply(request) for request in requests])
-min(answers, key=len)
+```scheme
+(define agents (map (lambda (i) (spawn-agent (string-append "solver-" (number->string i)))) (range 0 3)))
+(define requests (map (lambda (agent) (send agent "How does src/lib.rs load plugins? Three sentences.")) agents))
+(define answers (map reply requests))
+(foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))
+       (car answers) (cdr answers))
 ```
 
 The agent, like the rest of the workspace, needs Rust 1.96 or newer.

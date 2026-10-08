@@ -169,9 +169,6 @@ exclude = [
     # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
     # Excluding it keeps that subtree out of the workspace lockfile.
     "examples/discord_bot",
-    # Its own workspace: Monty, which it embeds, needs a newer toolchain than
-    # the one this workspace pins.
-    "crates/rig-harness-codemode",
     # Only the frozen release changelog of the removed rig-ecs crate remains;
     # the release PR deletes it.
     "crates/rig-ecs",
@@ -356,6 +353,8 @@ similar = "2.7"
 serde_path_to_error = "0.1"
 sqlite-vec = "0.1"
 sqlx = "0.9"
+# 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
+steel-core = "0.8.3"
 # 3.2: 3.0/3.1 no longer build against `surrealdb-core ^3` as published.
 surrealdb = "3.2"
 syn = "2"
