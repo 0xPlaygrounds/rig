@@ -96,15 +96,40 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "clippy",
-            vec![cargo(&[
-                "clippy",
-                "--locked",
-                "--all-features",
-                "--all-targets",
-                "--",
-                "-D",
-                "warnings",
-            ])],
+            vec![
+                cargo(&[
+                    "clippy",
+                    "--locked",
+                    "--all-features",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]),
+                // rig-code is not a default member, and its agent core must
+                // also build without the terminal view.
+                cargo(&[
+                    "clippy",
+                    "--locked",
+                    "-p",
+                    "rig-code",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]),
+                cargo(&[
+                    "clippy",
+                    "--locked",
+                    "-p",
+                    "rig-code",
+                    "--no-default-features",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]),
+            ],
         ),
         check(
             "default-check",
