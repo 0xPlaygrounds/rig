@@ -209,8 +209,9 @@ Every build, the one before each start and `/reload`'s, writes its whole
 output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
 message names its reason and first compiler error. The agent sees build
 failures too: the reason, the first errors and the paths of `build.log`,
-`plugins.toml` and the generated project go into its conversation as a note
-from the `build` plugin, which starts no turn and is saved with the session.
+`plugins.toml` and the generated project go into its conversation as a
+message from the `build` plugin, which starts no turn when the agent is idle
+and is saved with the session.
 Ask it why the build failed and it can read the log, fix the cause, and
 tell you to `/reload`.
 
@@ -277,14 +278,14 @@ Without the terminal view, `rig -p "fix the failing test"` answers one prompt
 and exits: the answer goes to stdout, failures to stderr, and the exit code is
 0 when the turn ended with an answer. Text piped in follows the prompt
 (`git diff | rig -p "review this"`), `-m vendor/model` picks the model (else
-the session's, else the first one with a key), and `-c` continues this
-directory's last session instead of starting a new one. A headless run
-never becomes the session its directory resumes.
+the session's, else the first one with a key), and `-r <id>` resumes a given
+session instead of starting a new one. A headless run never becomes the
+session its directory resumes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
 the most general to the most specific, at most 32 KB each and 64 KB together,
-along with the working directory, platform, date and git branch. They are
+along with the working directory, platform and date. They are
 re-read when a turn starts, so an edited `AGENTS.md` counts from the next
 message; `/context` re-reads them now and lists what the prompt holds.
 
