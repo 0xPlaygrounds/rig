@@ -8,7 +8,7 @@ use bevy_ecs::system::SystemId;
 use bevy_log::info_span;
 use bevy_log::tracing::Instrument;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, Task, TaskPool, block_on};
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
@@ -138,22 +138,11 @@ pub fn on_interrupt(
     if *status == AgentStatus::Idle {
         return;
     }
-    let mut stopped: Vec<&ToolCallRun> = calls
+    let runs = calls
         .into_iter()
-        .flat_map(|calls| runs.iter_many(calls.iter()).flatten())
-        .collect();
-    stopped.sort_by_key(|run| run.index);
-    if !stopped.is_empty() {
-        conversation.0.push(Message::tool_results(
-            stopped
-                .into_iter()
-                .map(|run| {
-                    run.result()
-                        .cloned()
-                        .unwrap_or_else(|| failed(&run.call, "interrupted by the user".to_owned()))
-                })
-                .collect(),
-        ));
+        .flat_map(|calls| runs.iter_many(calls.iter()).flatten());
+    if let Some(results) = stopped_results(runs, "interrupted by the user") {
+        conversation.0.push(results);
     }
     commands
         .entity(agent)
@@ -164,17 +153,59 @@ pub fn on_interrupt(
     finished.write(TurnFinished { agent });
 }
 
+/// The results of a stopped reply's tool calls, in call order: each
+/// finished call's result, and an error saying `why` for the others. `None`
+/// when the reply made no calls.
+pub(crate) fn stopped_results<'a>(
+    runs: impl Iterator<Item = &'a ToolCallRun>,
+    why: &str,
+) -> Option<Message> {
+    let mut runs: Vec<&ToolCallRun> = runs.collect();
+    runs.sort_by_key(|run| run.index);
+    (!runs.is_empty()).then(|| {
+        Message::tool_results(
+            runs.into_iter()
+                .map(|run| {
+                    run.result()
+                        .cloned()
+                        .unwrap_or_else(|| failed(&run.call, why.to_owned()))
+                })
+                .collect(),
+        )
+    })
+}
+
 /// On exit, stops every running turn before the session is saved, so the
-/// saved conversation never ends in unanswered tool calls and the stopped
-/// calls are recorded as cancelled before the last effect flush.
-pub fn stop_turns_on_exit(
-    agents: Query<(Entity, &AgentStatus), With<Agent>>,
-    mut commands: Commands,
-) {
-    for (entity, status) in &agents {
-        if *status != AgentStatus::Idle {
-            commands.trigger(Interrupt { entity });
+/// saved conversation never ends in unanswered tool calls. Each running
+/// call is cancelled and waited for first: dropping a task only schedules
+/// its cancellation on a pool thread, which could record the effect as
+/// cancelled after the last flush.
+pub fn stop_turns_on_exit(world: &mut World) {
+    let calls: Vec<Entity> = world
+        .query_filtered::<Entity, With<ModelCall>>()
+        .iter(world)
+        .collect();
+    for call in calls {
+        if let Ok(mut call) = world.get_entity_mut(call)
+            && let Some(call) = call.take::<ModelCall>()
+        {
+            block_on(call.task.cancel());
         }
+    }
+    let mut runs = world.query::<&mut ToolCallRun>();
+    for mut run in runs.iter_mut(world) {
+        if let ToolState::Running(task) = std::mem::replace(&mut run.state, ToolState::Queued) {
+            block_on(task.cancel());
+        }
+    }
+    let busy: Vec<Entity> = world
+        .query_filtered::<(Entity, &AgentStatus), With<Agent>>()
+        .iter(world)
+        .filter(|(_, status)| **status != AgentStatus::Idle)
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in busy {
+        world.trigger(Interrupt { entity });
     }
 }
 

@@ -3,6 +3,7 @@
 //! its type is reflected with `#[reflect(Component, Saved)]`; a saved
 //! component whose type is gone is skipped on restore.
 
+use std::any::TypeId;
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::fs;
@@ -13,13 +14,17 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::serde::{TypedReflectDeserializer, TypedReflectSerializer};
-use bevy_reflect::{CreateTypeData, ReflectFromReflect, TypeRegistry};
+use bevy_reflect::{CreateTypeData, PartialReflect, ReflectFromReflect, TypeRegistry};
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::agent::{Agent, AgentId, AgentStatus, Effort, ModelChoice, Notice, TurnFinished};
+use super::agent::{
+    Agent, AgentId, AgentStatus, Calls, Conversation, Effort, ModelChoice, Notice, ToolCallRun,
+    TurnFinished,
+};
 use super::effects::Effects;
+use super::turn::stopped_results;
 
 /// Type data marking a component as part of the saved session. Derive it
 /// with `#[reflect(Component, Saved)]`.
@@ -97,7 +102,9 @@ struct SavedAgent {
 }
 
 /// Writes every agent's saved components to `state.json` and appends the
-/// resolved effects to `effects.jsonl`.
+/// resolved effects to `effects.jsonl`. An agent running tools is saved as
+/// an interrupt would leave it, so a crash before its turn ends restores
+/// a conversation whose tool calls all have results.
 pub fn save_session(world: &mut World) {
     let (Some(paths), Some(registry)) = (
         world.get_resource::<SessionPaths>().cloned(),
@@ -117,9 +124,12 @@ pub fn save_session(world: &mut World) {
         session: paths.id.clone(),
         agents: agents
             .into_iter()
-            .map(|(entity, id)| SavedAgent {
-                id,
-                components: saved_components(world, entity, &registry),
+            .map(|(entity, id)| {
+                let settled = settled_conversation(world, entity);
+                SavedAgent {
+                    id,
+                    components: saved_components(world, entity, &registry, settled.as_ref()),
+                }
             })
             .collect(),
     };
@@ -137,10 +147,30 @@ pub fn save_session(world: &mut World) {
     }
 }
 
+/// The conversation of `agent` with results for its running tool calls,
+/// when it runs tools.
+fn settled_conversation(world: &mut World, agent: Entity) -> Option<Conversation> {
+    let entity = world.get_entity(agent).ok()?;
+    if entity.get::<AgentStatus>() != Some(&AgentStatus::RunningTools) {
+        return None;
+    }
+    let mut conversation = entity.get::<Conversation>()?.clone();
+    let calls: Vec<Entity> = entity.get::<Calls>()?.iter().collect();
+    let mut runs = world.query::<&ToolCallRun>();
+    conversation.0.extend(stopped_results(
+        runs.iter_many(world, calls).flatten(),
+        "the session stopped before this call finished",
+    ));
+    Some(conversation)
+}
+
+/// The saved components of `entity`, with `conversation` in place of its
+/// own when given.
 fn saved_components(
     world: &World,
     entity: Entity,
     registry: &TypeRegistry,
+    conversation: Option<&Conversation>,
 ) -> BTreeMap<String, Value> {
     let Ok(entity) = world.get_entity(entity) else {
         return BTreeMap::new();
@@ -148,12 +178,17 @@ fn saved_components(
     registry
         .iter_with_data::<ReflectSaved>()
         .filter_map(|(registration, _)| {
-            let value = registration.data::<ReflectComponent>()?.reflect(entity)?;
+            let value: &dyn PartialReflect = match conversation {
+                Some(conversation) if registration.type_id() == TypeId::of::<Conversation>() => {
+                    conversation
+                }
+                _ => registration
+                    .data::<ReflectComponent>()?
+                    .reflect(entity)?
+                    .as_partial_reflect(),
+            };
             let path = registration.type_info().type_path().to_owned();
-            match serde_json::to_value(TypedReflectSerializer::new(
-                value.as_partial_reflect(),
-                registry,
-            )) {
+            match serde_json::to_value(TypedReflectSerializer::new(value, registry)) {
                 Ok(value) => Some((path, value)),
                 Err(failure) => {
                     error!("not saving {path}: {failure}");
