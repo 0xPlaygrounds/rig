@@ -6,7 +6,7 @@
 //! request-build repair that answers any call still without a result stays
 //! as the backstop.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -15,22 +15,20 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{ReflectFromReflect, TypeRegistry};
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{CallId, ToolCall, ToolResult, ToolResultContent, UserContent};
+use rig_core::message::{CallId, ToolCall, ToolResult, UserContent};
 use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
 
 use super::agent::{
-    Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, Spawned, SpawnedBy, SystemPrompt,
-    ToolAccess, ToolCallRun, TurnOf,
+    Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, SpawnedBy, SystemPrompt, ToolAccess,
+    ToolCallRun, TurnOf,
 };
 use super::compaction::Compacted;
-use super::inbox::{Deliver, DeliveryMode, Origin, OriginKind, RequestId};
 use super::journal::{
-    AgentLog, COMPONENT_VERSION, Header, Line, ParentRef, Record, ReflectSaved, SavedValue,
-    SessionLog, SessionPaths, Settings, UsageRecord, load_blobs,
+    AgentLog, COMPONENT_VERSION, Header, Line, Record, ReflectSaved, SavedValue, SessionLog,
+    SessionPaths, Settings, UsageRecord, load_blobs,
 };
-use super::subagents::{self, Assignment, Delegated, TASK};
 use super::tools::failed;
 use super::turn::{CallModel, ToolStarter, tool_name};
 
@@ -39,14 +37,12 @@ use super::turn::{CallModel, ToolStarter, tool_name};
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
 /// The first fields of a line, read from every line to find the newest
-/// compaction and the subagent answers delivered.
+/// compaction.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
     #[serde(rename = "type")]
     kind: String,
-    #[serde(default)]
-    origin: Option<Origin>,
 }
 
 /// An agent log folded into the agent's state.
@@ -61,19 +57,13 @@ struct Folded {
     components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
     next_seq: u64,
-    /// The agents whose output a message of this log delivered.
-    delivered: BTreeSet<String>,
 }
 
 /// A restored agent, for the reconcile pass.
 struct RestoredAgent {
     entity: Entity,
-    id: AgentId,
-    parent: Option<ParentRef>,
-    task: Option<String>,
-    depth: usize,
+    parent: Option<String>,
     halted: bool,
-    delivered: BTreeSet<String>,
 }
 
 /// The agents [`restore_session`] spawned, until [`reconcile`] took them.
@@ -82,7 +72,7 @@ pub(crate) struct Restored(Vec<RestoredAgent>);
 
 /// Spawns the agents of the session's logs, with their conversations,
 /// settings, usage, compactions and saved plugin components, links each
-/// subagent to the agent that started it, and starts logging. Anything
+/// agent to the agent that spawned it, and starts logging. Anything
 /// that does not load is skipped with a notice.
 pub(crate) fn restore_session(world: &mut World) {
     let (Some(log), Some(paths)) = (
@@ -105,14 +95,7 @@ pub(crate) fn restore_session(world: &mut World) {
     }
     let parents: HashMap<String, Option<String>> = folded
         .iter()
-        .map(|agent| {
-            let parent = agent
-                .header
-                .parent
-                .as_ref()
-                .map(|parent| parent.agent.clone());
-            (agent.header.agent.clone(), parent)
-        })
+        .map(|agent| (agent.header.agent.clone(), agent.header.parent.clone()))
         .collect();
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let mut restored = Vec::new();
@@ -129,16 +112,11 @@ pub(crate) fn restore_session(world: &mut World) {
             components,
             compacted,
             next_seq,
-            delivered,
         } = agent;
         let id = AgentId(header.agent.clone());
         let applied = settings.clone().unwrap_or_default();
-        let name = match &header.task {
-            Some(task) => format!("subagent: {task}"),
-            None => "agent".to_owned(),
-        };
         let mut spawned = world.spawn((
-            Name::new(name),
+            Name::new("agent"),
             Agent,
             id.clone(),
             conversation,
@@ -150,9 +128,6 @@ pub(crate) fn restore_session(world: &mut World) {
                 .map_or_else(SystemPrompt::default, SystemPrompt),
             applied.tools.map_or(ToolAccess::All, ToolAccess::Only),
         ));
-        if let Some(task) = &header.task {
-            spawned.insert(Delegated { task: task.clone() });
-        }
         if let Some(model) = applied.model {
             spawned.insert(ModelChoice(model));
         }
@@ -173,12 +148,8 @@ pub(crate) fn restore_session(world: &mut World) {
         let depth = depth(&header.agent, &parents);
         restored.push(RestoredAgent {
             entity,
-            id: id.clone(),
             parent: header.parent.clone(),
-            task: header.task.clone(),
-            depth,
             halted,
-            delivered,
         });
         logs.push((
             id.0,
@@ -197,15 +168,16 @@ pub(crate) fn restore_session(world: &mut World) {
             },
         ));
     }
-    let entities: HashMap<String, Entity> = restored
+    let entities: HashMap<String, Entity> = logs
         .iter()
-        .map(|agent| (agent.id.0.clone(), agent.entity))
+        .zip(&restored)
+        .map(|((id, _), agent)| (id.clone(), agent.entity))
         .collect();
     for agent in &restored {
         if let Some(parent) = agent
             .parent
             .as_ref()
-            .and_then(|parent| entities.get(&parent.agent))
+            .and_then(|parent| entities.get(parent))
             && let Ok(mut child) = world.get_entity_mut(agent.entity)
         {
             child.insert(SpawnedBy(*parent));
@@ -295,14 +267,6 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
             .map(|envelope| envelope.seq + 1)
             .max()
             .unwrap_or(1),
-        delivered: envelopes
-            .iter()
-            .flatten()
-            .filter_map(|envelope| envelope.origin.as_ref())
-            .filter(|origin| origin.kind == OriginKind::Agent)
-            .filter_map(|origin| origin.from.as_ref())
-            .map(|from| from.0.clone())
-            .collect(),
     };
     // Messages are read from the first one the newest compaction kept, the
     // rest from the compaction on.
@@ -413,17 +377,13 @@ fn restore_component(
 
 /// Settles what the restored agents left half done, by appending records:
 /// a tool call without a result runs again when its tool is an ordinary
-/// one that only reads, is answered as started when it is a `task` call
-/// whose subagent's log names it, and is answered as interrupted
-/// otherwise, an open tool's call included; an agent whose conversation ends
-/// in the user's message, or in a full set of tool results, calls its
-/// model again; and a subagent's answer that no message of the agent that
-/// started it delivered goes to that agent now, or once the subagent is
-/// done.
+/// one that only reads, and is answered as interrupted otherwise, an open
+/// tool's call included; and an agent whose conversation ends in the
+/// user's message, or in a full set of tool results, calls its model
+/// again.
 pub(crate) fn reconcile(
     restored: Option<Res<Restored>>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
-    children: Query<&Spawned>,
     starter: ToolStarter,
     log: Res<SessionLog>,
     mut commands: Commands,
@@ -432,32 +392,14 @@ pub(crate) fn reconcile(
         return;
     };
     commands.remove_resource::<Restored>();
-    let restored = &restored.0;
-    // Agents whose turn starts now.
-    let mut working: HashSet<Entity> = HashSet::new();
-    for agent in restored {
+    for agent in &restored.0 {
         let Ok((id, mut conversation)) = agents.get_mut(agent.entity) else {
             continue;
         };
         let mut results: Vec<ToolResult> = Vec::new();
         let mut reruns: Vec<ToolCall> = Vec::new();
         for call in dangling(conversation.messages()) {
-            let name = call.function.name.as_str();
-            if name == TASK {
-                let child = restored.iter().find(|child| {
-                    child
-                        .parent
-                        .as_ref()
-                        .is_some_and(|parent| parent.agent == id.0 && parent.call == call.id)
-                });
-                results.push(match child {
-                    Some(child) => call.result(vec![ToolResultContent::text(subagents::started(
-                        &child.id,
-                        child.task.as_deref().unwrap_or_default(),
-                    ))]),
-                    None => failed(&call, INTERRUPTED.to_owned()),
-                });
-            } else if starter.reruns(name) {
+            if starter.reruns(call.function.name.as_str()) {
                 reruns.push(call);
             } else {
                 results.push(failed(&call, INTERRUPTED.to_owned()));
@@ -489,7 +431,6 @@ pub(crate) fn reconcile(
             for (entity, run) in runs {
                 starter.start(&mut commands, entity, agent.entity, &run);
             }
-            working.insert(agent.entity);
         } else if !agent.halted
             && matches!(conversation.messages().last(), Some(Message::User { .. }))
         {
@@ -497,50 +438,6 @@ pub(crate) fn reconcile(
                 .spawn((Name::new("turn"), TurnOf(agent.entity)))
                 .id();
             commands.trigger(CallModel { entity: turn });
-            working.insert(agent.entity);
-        }
-    }
-    // Deepest first, so a subagent knows whether its own subagents still
-    // work. The answers go after every turn above started, so a parent
-    // that works queues them.
-    let mut order: Vec<&RestoredAgent> = restored.iter().collect();
-    order.sort_by_key(|agent| std::cmp::Reverse(agent.depth));
-    let mut assigned: HashSet<Entity> = HashSet::new();
-    for agent in order {
-        let Some(parent) = agent.parent.as_ref().and_then(|parent| {
-            restored
-                .iter()
-                .find(|restored| restored.id.0 == parent.agent)
-        }) else {
-            continue;
-        };
-        if parent.delivered.contains(&agent.id.0) {
-            continue;
-        }
-        let waits = working.contains(&agent.entity)
-            || children
-                .get(agent.entity)
-                .is_ok_and(|children| children.iter().any(|child| assigned.contains(&child)));
-        let Some(call) = agent.parent.as_ref().map(|parent| parent.call.to_string()) else {
-            continue;
-        };
-        let request = RequestId(call);
-        if waits {
-            commands.entity(agent.entity).insert(Assignment {
-                effect: None,
-                request,
-            });
-            assigned.insert(agent.entity);
-        } else if let Ok((id, conversation)) = agents.get(agent.entity) {
-            commands.trigger(Deliver {
-                entity: parent.entity,
-                text: subagents::answer(
-                    agent.task.as_deref().unwrap_or_default(),
-                    subagents::final_answer(conversation.messages()),
-                ),
-                origin: Origin::agent(id.clone(), Some(request)),
-                mode: DeliveryMode::Queue,
-            });
         }
     }
 }

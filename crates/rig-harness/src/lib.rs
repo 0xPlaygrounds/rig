@@ -1,8 +1,10 @@
 //! rig-harness: a terminal coding agent built as a Bevy app on rig-core.
 //!
 //! An agent is an entity whose components hold its conversation, model,
-//! reasoning setting, system prompt and tool access; a subagent that the
-//! `task` tool starts is one more, related to the agent that started it. A running turn is an
+//! reasoning setting, system prompt and tool access; an agent a plugin
+//! spawns for another, such as a subagent of the built-in
+//! [`SubagentsPlugin`](builtin::SubagentsPlugin), is one more,
+//! [`SpawnedBy`](core::agent::SpawnedBy) that agent. A running turn is an
 //! entity of its agent, and the turn's model calls and tool calls are
 //! entities of the turn that run on Bevy's task pools; every one goes
 //! through the one recorded dispatch path. Tools and
@@ -22,7 +24,7 @@
 //! application's to set:
 //!
 //! ```no_run
-//! use rig_harness::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin};
+//! use rig_harness::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin, SubagentsPlugin};
 //! use rig_harness::prelude::*;
 //!
 //! fn main() -> AppExit {
@@ -30,7 +32,7 @@
 //!         .set_error_handler(rig_harness::error::warn)
 //!         .add_plugins((RigHarnessPlugins, HeadlessPlugins))
 //!         // With feature `tui`, `rig_harness::tui::TuiPlugin` adds the terminal view;
-//!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin))
+//!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin, SubagentsPlugin))
 //!         .run()
 //! }
 //! ```
@@ -60,9 +62,9 @@ pub mod prelude {
     pub use bevy_reflect::prelude::*;
 
     pub use crate::core::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, Effort, Focus,
-        Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel, Spawned,
-        SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
+        Effort, Focus, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
+        Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
         TurnRequest,
     };
     pub use crate::core::blocking::blocking;
@@ -75,7 +77,6 @@ pub mod prelude {
     pub use crate::core::journal::ReflectSaved;
     pub use crate::core::prompt::{PromptSection, ToolRules};
     pub use crate::core::recovery::{Backoff, Recovery};
-    pub use crate::core::subagents::Delegated;
     pub use crate::core::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;

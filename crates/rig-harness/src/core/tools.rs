@@ -122,7 +122,7 @@ pub enum Footprint {
     },
     /// Nothing the reply's other calls touch, as far as ordering goes: a
     /// call waits only for earlier [`Exclusive`](Self::Exclusive) calls.
-    /// Right for `task`, whose subagents run side by side.
+    /// Right for a tool that hands work to another agent.
     Independent,
 }
 

@@ -70,6 +70,13 @@ pub struct SpawnedBy(pub Entity);
 #[relationship_target(relationship = SpawnedBy, linked_spawn)]
 pub struct Spawned(Vec<Entity>);
 
+/// The effect the agent's model calls are recorded under, such as the
+/// tool call that asked it for the work it does now, so the effect log
+/// nests that work under the call. An agent without one records its model
+/// calls at the top level. Not saved: effect ids do not outlive a run.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct EffectParent(pub EffectId);
+
 /// The conversation: every message sent to and received from the model,
 /// and where each delivered text came from when it is not the user's own.
 /// Requests leave out the messages its agent's [`Compacted`] replaced with
@@ -425,6 +432,8 @@ pub enum TurnOutcome {
 /// the agent once it is idle, then on each agent it was
 /// [`SpawnedBy`] up the chain: an observer's `entity` is the agent seeing
 /// it and `original_event_target()` the agent whose turn ended.
+/// Not triggered for a turn the app's exit stops: the restart carries
+/// that one on.
 #[derive(EntityEvent, Clone, Debug)]
 #[entity_event(propagate = &'static SpawnedBy, auto_propagate)]
 pub struct TurnEnded {
@@ -446,7 +455,7 @@ pub enum PickKind {
     /// An earlier session to resume; the view answers with the host's
     /// `SwitchSession`.
     Session,
-    /// An agent to show, from [`roster`](crate::core::subagents::roster);
+    /// An agent to show, from [`roster`];
     /// the view answers with [`Focus`].
     Agent,
 }
@@ -459,4 +468,81 @@ pub struct PickRequest {
     pub agent: Entity,
     /// What to pick.
     pub kind: PickKind,
+}
+
+/// One agent in [`roster`]: how deep it is and a line describing it.
+#[derive(Clone, Debug)]
+pub struct RosterEntry {
+    /// The agent.
+    pub agent: Entity,
+    /// 0 for an agent nothing spawned, 1 for the agents it spawned, and so
+    /// on.
+    pub depth: usize,
+    /// Its title, model, state and cost, indented by depth.
+    pub label: String,
+}
+
+/// What [`roster`] reads of each agent.
+pub type RosterQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static AgentId,
+        Option<&'static Name>,
+        Option<&'static SpawnedBy>,
+        Option<&'static Spawned>,
+        Option<&'static ModelChoice>,
+        Has<ActiveTurn>,
+        &'static Spending,
+    ),
+    With<Agent>,
+>;
+
+/// Every agent as a tree: the agents nothing spawned, by id, each followed
+/// by the agents it spawned in the order it spawned them. A spawned agent
+/// is titled by its [`Name`].
+pub fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
+    let mut roots: Vec<(Entity, &AgentId)> = agents
+        .iter()
+        .filter(|(_, _, _, of, ..)| of.is_none_or(|of| !agents.contains(of.0)))
+        .map(|(entity, id, ..)| (entity, id))
+        .collect();
+    roots.sort_by(|a, b| a.1.0.cmp(&b.1.0));
+    let several = roots.len() > 1;
+    let total = agents.iter().count();
+    let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|(root, _)| (*root, 0)).collect();
+    let mut entries = Vec::new();
+    while let Some((agent, depth)) = stack.pop() {
+        // A relationship loop cannot happen, but a bound costs nothing.
+        if entries.len() >= total {
+            break;
+        }
+        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
+            continue;
+        };
+        let title = match (name, of) {
+            (Some(name), Some(_)) => name.as_str().to_owned(),
+            _ if several => format!("agent {}", id.short()),
+            _ => "main agent".to_owned(),
+        };
+        let mut label = format!(
+            "{}{title} · {} · {}",
+            "  ".repeat(depth),
+            model.map_or("no model", |model| model.0.as_str()),
+            if busy { "working" } else { "idle" }
+        );
+        if let Some(cost) = spent.cost_label() {
+            label.push_str(&format!(" · {cost}"));
+        }
+        entries.push(RosterEntry {
+            agent,
+            depth,
+            label,
+        });
+        for child in spawned.into_iter().flat_map(|spawned| spawned.iter().rev()) {
+            stack.push((child, depth + 1));
+        }
+    }
+    entries
 }

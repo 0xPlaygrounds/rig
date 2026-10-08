@@ -23,11 +23,11 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher;
 use crate::core::agent::{
-    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, TurnEnded, TurnOf,
+    Agent, AgentId, Conversation, ModelChoice, Notice, PickKind, PickRequest, SpawnedBy, TurnEnded,
+    TurnOf,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::journal::{SessionPaths, now_ms};
-use crate::core::subagents::Delegated;
 use crate::core::usage::{self, Spending};
 
 /// Most characters of a session's title.
@@ -250,7 +250,7 @@ fn write_meta(
             &Conversation,
             &Spending,
             Option<&ModelChoice>,
-            Has<Delegated>,
+            Has<SpawnedBy>,
         ),
         With<Agent>,
     >,
@@ -259,7 +259,7 @@ fn write_meta(
         return;
     };
     // The agents the user started come first: the title and model are
-    // theirs, not a subagent's.
+    // theirs, not a spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
     agents.sort_by(|a, b| (a.4, &a.0.0).cmp(&(b.4, &b.0.0)));
     let meta = Meta {

@@ -9,13 +9,12 @@ use super::complete::Completion;
 use super::editor::Editor;
 use crate::core::agent::{
     Agent, AgentId, Connection, Conversation, Focus, Notice, NoticeLevel, PickKind, PickRequest,
-    SpawnedBy,
+    RosterQuery, SpawnedBy, roster,
 };
 use crate::core::inbox::Recalled;
 use crate::core::journal::SessionPaths;
 use crate::core::login::LoginProvider;
 use crate::core::models;
-use crate::core::subagents::{self, RosterQuery};
 use crate::host::reload::ReloadFailed;
 use crate::host::sessions;
 
@@ -150,7 +149,7 @@ pub(crate) fn on_focus(
 pub(crate) fn open_pickers(
     mut requests: MessageReader<PickRequest>,
     agents: Query<&Connection>,
-    roster: RosterQuery,
+    agent_tree: RosterQuery,
     paths: Option<Res<SessionPaths>>,
     mut view: ResMut<TuiView>,
     mut notices: MessageWriter<Notice>,
@@ -216,7 +215,7 @@ pub(crate) fn open_pickers(
                 ("Resume a session".to_owned(), items)
             }
             PickKind::Agent => {
-                let entries = subagents::roster(&roster);
+                let entries = roster(&agent_tree);
                 selected = entries
                     .iter()
                     .position(|entry| Some(entry.agent) == view.agent)

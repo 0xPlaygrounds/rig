@@ -33,8 +33,8 @@ use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, Effort, Ending,
-    Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel, SpawnedBy,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
+    Effort, Ending, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel,
     SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome, TurnRequest,
 };
 use super::calls::{Done, Running, Wake};
@@ -49,7 +49,6 @@ use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{
     self, Backoff, KEEP_RECENT_OUTPUTS, MAX_CLEARINGS, MAX_RETRIES, Recovery, RetryDue, Verdict,
 };
-use super::subagents::{self, Assignment, Delegates};
 use super::tools::{
     Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, Touch, failed,
     outcome_of, recorded_args, refusal, run_tool_call,
@@ -133,16 +132,21 @@ pub(crate) fn on_retry(
 /// Announces a turn's end with [`TurnEnded`], however its entity went
 /// away: with the [`Ending`] it was given, or as stopped. The event goes
 /// once the agent is idle, after the relationship dropped its
-/// [`ActiveTurn`].
+/// [`ActiveTurn`]. A turn the exit stops is not ended: it is left for the
+/// restart to carry on, as after a crash.
 pub(crate) fn on_turn_despawn(
     end: On<Remove<TurnOf>>,
     turns: Query<(&TurnOf, &TurnRequest, Option<&Ending>)>,
     agents: Query<&AgentId>,
+    log: Res<SessionLog>,
     mut commands: Commands,
 ) {
     let Ok((&TurnOf(agent), request, ending)) = turns.get(end.entity) else {
         return;
     };
+    if log.is_exiting() {
+        return;
+    }
     let outcome = ending.map_or(TurnOutcome::Stopped, |ending| ending.0.clone());
     if let Ok(id) = agents.get(agent) {
         let how = match &outcome {
@@ -474,7 +478,12 @@ pub(crate) fn on_call_model(
     call: On<CallModel>,
     mut turns: Query<(&TurnOf, &mut Recovery, &mut TurnRequest)>,
     mut agents: Query<(
-        (&AgentId, &mut Conversation, &mut Inbox, Option<&Assignment>),
+        (
+            &AgentId,
+            &mut Conversation,
+            &mut Inbox,
+            Option<&EffectParent>,
+        ),
         &Compacted,
         &mut Spending,
         Option<&Connection>,
@@ -495,7 +504,7 @@ pub(crate) fn on_call_model(
         return;
     };
     let Ok((
-        (id, mut conversation, mut inbox, assignment),
+        (id, mut conversation, mut inbox, effect_parent),
         compacted,
         mut spent,
         connection,
@@ -564,10 +573,9 @@ pub(crate) fn on_call_model(
             return;
         }
     };
-    // A subagent's calls are recorded under the `task` call it works on.
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.and_then(|assignment| assignment.effect),
+        effect_parent.map(|parent| parent.0),
         handler,
         EffectKind::Completion {
             request,
@@ -1085,8 +1093,8 @@ pub(crate) fn on_tool_done(
     commands.trigger(CallModel { entity: turn });
 }
 
-/// What starting a tool call reads: the registered tools, the calling
-/// agent, and for a `task` call what its subagent starts from.
+/// What starting a tool call reads: the registered tools and the calling
+/// agent.
 #[derive(SystemParam)]
 pub(crate) struct ToolStarter<'w, 's> {
     tools: Query<
@@ -1097,21 +1105,9 @@ pub(crate) struct ToolStarter<'w, 's> {
             &'static ToolDef,
             Option<&'static ToolHandler>,
             &'static Footprint,
-            Has<Delegates>,
         ),
     >,
-    agents: Query<
-        'w,
-        's,
-        (
-            &'static AgentId,
-            &'static ToolAccess,
-            Option<&'static ModelChoice>,
-            &'static Effort,
-            &'static SystemPrompt,
-        ),
-    >,
-    lineage: Query<'w, 's, &'static SpawnedBy>,
+    agents: Query<'w, 's, (&'static AgentId, &'static ToolAccess)>,
     effects: Res<'w, Effects>,
     log: Res<'w, SessionLog>,
     wake: Res<'w, Wake>,
@@ -1124,14 +1120,14 @@ impl ToolStarter<'_, '_> {
         self.tools
             .iter()
             .find(|(_, def, ..)| def.0.name.as_str() == name)
-            .map_or_else(Footprint::default, |(.., &footprint, _)| footprint)
+            .map_or_else(Footprint::default, |(.., &footprint)| footprint)
     }
 
     /// Whether a call of the tool `name` left without a result by a restart
     /// runs again: an ordinary tool that only reads. Any other such call is
     /// answered as interrupted.
     pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tools.iter().any(|(_, def, handler, footprint, _)| {
+        self.tools.iter().any(|(_, def, handler, footprint)| {
             def.0.name.as_str() == name
                 && handler.is_some()
                 && matches!(footprint, Footprint::Reads { .. })
@@ -1144,8 +1140,7 @@ impl ToolStarter<'_, '_> {
     /// started and its tool's observer gets [`ToolCalled`]. A call to a
     /// tool that is not registered, that the agent may not use, or with
     /// arguments that do not fit, is dispatched and recorded like any other
-    /// and answered with an error. A `task` call also spawns the subagent
-    /// that works on it. Before a call that may change something, the
+    /// and answered with an error. Before a call that may change something, the
     /// session log is written, so the reply that asked for it is on disk
     /// first.
     pub(crate) fn start(
@@ -1155,7 +1150,7 @@ impl ToolStarter<'_, '_> {
         agent: Entity,
         run: &ToolCallRun,
     ) {
-        let Ok((id, access, model, &effort, prompt)) = self.agents.get(agent) else {
+        let Ok((id, access)) = self.agents.get(agent) else {
             return;
         };
         let name = run.call.function.name.as_str();
@@ -1163,7 +1158,7 @@ impl ToolStarter<'_, '_> {
             .tools
             .iter()
             .find(|(_, def, ..)| def.0.name.as_str() == name && access.allows(name));
-        if !tool.is_some_and(|(.., footprint, _)| matches!(footprint, Footprint::Reads { .. })) {
+        if !tool.is_some_and(|(.., footprint)| matches!(footprint, Footprint::Reads { .. })) {
             self.log.flush();
         }
         let refused = |kind: ToolErrorKind, why: String| {
@@ -1174,16 +1169,13 @@ impl ToolStarter<'_, '_> {
             })
         };
         let why = tool.and_then(|(_, def, ..)| refusal(&def.0.parameters, &run.call));
-        let (handler, plan) = match (tool, why) {
-            (None, _) => (
-                refused(
-                    ToolErrorKind::NotFound,
-                    format!("no tool named `{name}` is available"),
-                ),
-                None,
+        let handler = match (tool, why) {
+            (None, _) => refused(
+                ToolErrorKind::NotFound,
+                format!("no tool named `{name}` is available"),
             ),
-            (Some(_), Some(why)) => (refused(ToolErrorKind::InvalidArgs, why), None),
-            (Some((tool, _, None, ..)), None) => {
+            (Some(_), Some(why)) => refused(ToolErrorKind::InvalidArgs, why),
+            (Some((tool, _, None, _)), None) => {
                 let args = recorded_args(&run.call);
                 let effect = self.effects.open(&id.0, run.parent, name, args);
                 commands.entity(call).insert(OpenCall(effect));
@@ -1194,34 +1186,15 @@ impl ToolStarter<'_, '_> {
                 });
                 return;
             }
-            (Some((.., true)), None) => {
-                let parent = subagents::Parent {
-                    model,
-                    effort,
-                    prompt,
-                    depth: self.lineage.iter_ancestors::<SpawnedBy>(agent).count(),
-                };
-                let mine: Vec<(&str, bool)> = self
-                    .tools
-                    .iter()
-                    .filter(|(_, def, ..)| access.allows(def.0.name.as_str()))
-                    .map(|(_, def, .., delegates)| (def.0.name.as_str(), delegates))
-                    .collect();
-                subagents::plan(&run.call, &parent, &mine)
-            }
-            (Some((_, _, Some(handler), ..)), None) => (handler.0.clone(), None),
+            (Some((_, _, Some(handler), _)), None) => handler.0.clone(),
         };
-        let (effect, work) =
-            run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
+        let (_, work) = run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);
         commands.entity(call).insert(Running::spawn(
             tool_pool(),
             &self.wake,
             work.instrument(span),
         ));
-        if let Some(plan) = plan {
-            subagents::spawn(commands, &self.log, plan, (agent, id), &run.call.id, effect);
-        }
     }
 }
 
@@ -1285,7 +1258,7 @@ pub(crate) fn on_summarize(
         &Conversation,
         &Compacted,
         Option<&Connection>,
-        Option<&Assignment>,
+        Option<&EffectParent>,
     )>,
     effects: Res<Effects>,
     wake: Res<Wake>,
@@ -1296,7 +1269,7 @@ pub(crate) fn on_summarize(
     let Ok(&TurnOf(agent)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, conversation, compacted, connection, assignment)) = agents.get(agent) else {
+    let Ok((id, conversation, compacted, connection, effect_parent)) = agents.get(agent) else {
         return;
     };
     let reason = &summarize.reason;
@@ -1325,7 +1298,7 @@ pub(crate) fn on_summarize(
     };
     let (effect, reply) = effects.dispatch(
         &id.0,
-        assignment.and_then(|assignment| assignment.effect),
+        effect_parent.map(|parent| parent.0),
         handler,
         EffectKind::Completion {
             request,

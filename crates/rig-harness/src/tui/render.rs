@@ -17,14 +17,13 @@ use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::core::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    Spawned, ToolCallRun,
+    Spawned, SpawnedBy, ToolCallRun,
 };
 use crate::core::commands::SlashCommand;
 use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
 use crate::core::models;
 use crate::core::recovery::{Backoff, MAX_RETRIES};
-use crate::core::subagents::Delegated;
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 use crate::host::sessions::SessionName;
@@ -110,7 +109,8 @@ pub(crate) fn render(
         (
             Entity,
             Has<ActiveTurn>,
-            Option<&Delegated>,
+            Option<&Name>,
+            Has<SpawnedBy>,
             Option<&Spawned>,
         ),
         With<Agent>,
@@ -237,39 +237,47 @@ pub(crate) fn render(
             shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
             model_hint,
         );
-        // Which agent this is, when it is a subagent, how many of its
-        // subagents are at work, and how many others.
+        // Which agent this is, when another spawned it, how many of the
+        // agents it spawned are at work, and how many others.
         let focused = view.agent;
         let focused_agent = focused.and_then(|agent| everyone.get(agent).ok());
-        if let Some(task) = focused_agent.and_then(|(_, _, delegated, _)| delegated) {
+        if let Some((_, _, Some(title), true, _)) = focused_agent {
             line.spans
-                .insert(0, Span::from(format!("⤷ {}  ", task.task)).magenta());
+                .insert(0, Span::from(format!("⤷ {title}  ")).magenta());
         }
         if let Some(name) = &name.0 {
             line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
         }
         let mine: Vec<Entity> = focused_agent
-            .and_then(|(.., subagents)| subagents)
-            .map(|subagents| {
-                subagents
+            .and_then(|(.., spawned)| spawned)
+            .map(|spawned| {
+                spawned
                     .iter()
                     .filter(|child| everyone.get(*child).is_ok_and(|(_, busy, ..)| busy))
                     .collect()
             })
             .unwrap_or_default();
+        // /agents comes from a plugin, so point at it only when loaded.
+        let agents_hint = if slash.iter().any(|command| command.name == "agents") {
+            " (/agents)"
+        } else {
+            ""
+        };
         match mine.len() {
             0 => {}
-            1 => line.push_span(Span::from("  a subagent works (/agents)").magenta()),
-            count => {
-                line.push_span(Span::from(format!("  {count} subagents work (/agents)")).magenta())
-            }
+            1 => line.push_span(
+                Span::from(format!("  an agent it spawned works{agents_hint}")).magenta(),
+            ),
+            count => line.push_span(
+                Span::from(format!("  {count} agents it spawned work{agents_hint}")).magenta(),
+            ),
         }
         let working = everyone
             .iter()
             .filter(|(agent, busy, ..)| *busy && Some(*agent) != focused && !mine.contains(agent))
             .count();
         if working > 0 {
-            line.push_span(Span::from(format!("  +{working} more working (/agents)")).magenta());
+            line.push_span(Span::from(format!("  +{working} more working{agents_hint}")).magenta());
         }
         if let Some((_, spent)) = turn
             && let Some(cost) = spent.0.cost_label()

@@ -1,4 +1,4 @@
-//! The agent core: agents as entities, the turn loop, subagents, the one
+//! The agent core: agents as entities and the agents they spawn, the turn loop, the one
 //! effect dispatch path, the tool and command
 //! registries, models and `/login` sign-ins, and the session logs. It
 //! depends on neither the host nor any view: the host fills in what the core
@@ -18,7 +18,6 @@ pub mod models;
 pub mod prompt;
 pub mod recovery;
 pub mod restore;
-pub mod subagents;
 pub mod tools;
 pub mod turn;
 pub mod usage;
@@ -93,7 +92,6 @@ impl Plugin for AgentPlugin {
             .add_observer(login::cancel_on_interrupt)
             .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
-            .add_observer(subagents::answer_on_turn_end)
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort)

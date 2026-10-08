@@ -212,8 +212,8 @@ caches what `/resume` lists. A tool call that may change something starts
 only once the reply that asked for it is on disk. After a crash, a closed
 terminal or a `/quit` mid-turn, the next start reads the logs back and settles what
 was left half done: read-only tool calls run again, other unfinished tool
-calls are answered as interrupted by the restart, subagent answers that had
-not arrived are delivered, and a turn that waited on the model carries on.
+calls are answered as interrupted by the restart, and a turn that waited on
+the model carries on.
 If the agent crashes or the terminal closes, the next `rig` in the same
 directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
@@ -249,19 +249,21 @@ wait under the transcript; Esc stops the turn and puts them back in the input.
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
 
-The model can hand work to subagents with the `task` tool: each is a new
-agent in the same process, with its own conversation and, if the call asks,
-another model, reasoning setting or a subset of the tools. Subagents work in
-the background: the call returns at once, and each one's final message
-arrives later as a message to the agent that started it, which starts a turn
-of an idle agent or follows the running one. Nothing waits for them, so you
-can keep talking to the main agent, or steer it, meanwhile. Esc stops only
-the shown agent's turn, not its subagents. `/agents` lists every agent with
-its model, state and cost, and shows the one picked: its transcript, and what
-you type then goes to it. A subagent can start subagents of its own, one
-level deep.
-In the effect log, a subagent's model calls name the `task` call as their
-parent.
+With the built-in `SubagentsPlugin`, the model can hand work to subagents
+with the `task` tool: each is a new agent in the same process, with its own
+conversation and, if the call asks, another model, reasoning setting or a
+subset of the tools. `task` returns the subagent's id at once, and `message`
+sends one of the model's own subagents a follow-up, which it reads with its
+conversation kept. Each `task` or `message` call is a request, and exactly one
+report for it (done, failed or interrupted) arrives later as a message to the
+agent that sent it, which starts a turn of an idle agent or follows the
+running one. Nothing waits for them, so you can keep talking to the main
+agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
+subagents. `/agents` lists every agent with its model, state and cost, and
+shows the one picked: its transcript, and what you type then goes to it. A
+subagent can start subagents of its own, one level deep.
+In the effect log, a subagent's model calls name the call that gave it its
+work as their parent.
 
 Without the terminal view, `rig -p "fix the failing test"` answers one prompt
 and exits: the answer goes to stdout, failures to stderr, and the exit code is
@@ -327,8 +329,8 @@ fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
 ```
 
 List it in `$RIG_HOME/plugins.toml` and run `/reload`. The built-in tools,
-the built-in commands and the terminal view are entries in the same list, so
-any of them can be removed or replaced:
+the built-in commands, the subagents and the terminal view are entries in the
+same list, so any of them can be removed or replaced:
 
 ```toml
 [[plugin]]
@@ -336,6 +338,9 @@ plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 
 [[plugin]]
 plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
+
+[[plugin]]
+plugin = "rig_harness::builtin::SubagentsPlugin"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"

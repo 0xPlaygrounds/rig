@@ -30,14 +30,14 @@ use bevy_reflect::serde::TypedReflectSerializer;
 use rig::harness_protocol::SessionDir;
 use rig_core::completion::{Message, Usage};
 use rig_core::message::{
-    CallId, DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
+    DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::agent::{
-    Agent, AgentId, Conversation, Effort, ModelChoice, Notice, SystemPrompt, ToolAccess,
+    Agent, AgentId, Conversation, Effort, ModelChoice, Notice, SpawnedBy, SystemPrompt, ToolAccess,
 };
 use super::compaction::Compacted;
 use super::effects::Effects;
@@ -81,15 +81,6 @@ pub(crate) const COMPONENT_VERSION: u32 = 1;
 /// message, in place of its data: `blob:<sha256>.<ext>`.
 pub(crate) const BLOB: &str = "blob:";
 
-/// The `task` call a subagent works on.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub(crate) struct ParentRef {
-    /// The id of the agent that made the call.
-    pub(crate) agent: String,
-    /// The call.
-    pub(crate) call: CallId,
-}
-
 /// The first record of an agent log.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Header {
@@ -102,12 +93,10 @@ pub(crate) struct Header {
     pub(crate) cwd: Option<PathBuf>,
     /// When the log was started, in milliseconds since the Unix epoch.
     pub(crate) created: u64,
-    /// For a subagent, the call that started it.
+    /// The id of the agent it was [`SpawnedBy`](super::agent::SpawnedBy),
+    /// if any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) parent: Option<ParentRef>,
-    /// For a subagent, its task's title.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) task: Option<String>,
+    pub(crate) parent: Option<String>,
 }
 
 /// An agent's model, reasoning setting, system prompt when it is not the
@@ -313,7 +302,7 @@ impl Book {
         let dir = self.dir.as_ref()?;
         if !self.agents.contains_key(agent) {
             let mut log = AgentLog::new(dir.agent_log(agent), 0);
-            let header = header(agent, None, None);
+            let header = header(agent, None);
             if let Err(failure) = enqueue(&mut log, Record::Header(header)) {
                 self.failure = Some(failure.to_string());
                 return None;
@@ -337,14 +326,13 @@ impl Book {
     }
 }
 
-fn header(agent: &str, parent: Option<ParentRef>, task: Option<String>) -> Header {
+fn header(agent: &str, parent: Option<String>) -> Header {
     Header {
         v: LOG_VERSION,
         agent: agent.to_owned(),
         cwd: std::env::current_dir().ok(),
         created: now_ms(),
         parent,
-        task,
     }
 }
 
@@ -409,17 +397,11 @@ impl SessionLog {
         self.book().exiting
     }
 
-    /// Starts the log of the subagent `child`, which works on the `task`
-    /// call `call` of `parent`.
-    pub(crate) fn open_subagent(
-        &self,
-        child: &AgentId,
-        parent: &AgentId,
-        call: &CallId,
-        task: &str,
-    ) {
+    /// Starts the log of `child`, which `parent` spawned, unless it has
+    /// one.
+    pub(crate) fn open_child(&self, child: &AgentId, parent: &AgentId) {
         let mut book = self.book();
-        if !book.live || book.failure.is_some() {
+        if !book.live || book.failure.is_some() || book.agents.contains_key(&child.0) {
             return;
         }
         let Some(dir) = book.dir.as_ref() else {
@@ -427,14 +409,7 @@ impl SessionLog {
         };
         let depth = book.agents.get(&parent.0).map_or(0, |log| log.depth) + 1;
         let mut log = AgentLog::new(dir.agent_log(&child.0), depth);
-        let header = header(
-            &child.0,
-            Some(ParentRef {
-                agent: parent.0.clone(),
-                call: call.clone(),
-            }),
-            Some(task.to_owned()),
-        );
+        let header = header(&child.0, Some(parent.0.clone()));
         match enqueue(&mut log, Record::Header(header)) {
             Ok(_) => {
                 book.agents.insert(child.0.clone(), log);
@@ -807,7 +782,23 @@ impl Plugin for JournalPlugin {
                     .in_set(OnAppExitSystems)
                     .after(super::turn::stop_turns_on_exit),
             )
-            .add_observer(log_settings);
+            .add_observer(log_settings)
+            .add_observer(open_child_log);
+    }
+}
+
+/// Starts the log of an agent spawned by another, so its header names
+/// that agent and a restore links them again.
+fn open_child_log(
+    spawned: On<Add<SpawnedBy>>,
+    agents: Query<(&AgentId, &SpawnedBy)>,
+    ids: Query<&AgentId>,
+    log: Res<SessionLog>,
+) {
+    if let Ok((child, parent)) = agents.get(spawned.entity)
+        && let Ok(parent) = ids.get(parent.0)
+    {
+        log.open_child(child, parent);
     }
 }
 

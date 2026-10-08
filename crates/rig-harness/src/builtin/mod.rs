@@ -1,8 +1,11 @@
-//! The built-in tools and slash commands, registered through the same
-//! `App` extension methods a third-party plugin uses.
+//! The built-in tools, slash commands and subagents, registered through
+//! the same `App` extension methods and core primitives a third-party
+//! plugin uses.
 
 pub mod commands;
+pub mod subagents;
 pub mod tools;
 
 pub use commands::BuiltinCommandsPlugin;
+pub use subagents::SubagentsPlugin;
 pub use tools::BuiltinToolsPlugin;

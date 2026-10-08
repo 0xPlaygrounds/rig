@@ -175,15 +175,13 @@ impl AppToolRenderersExt for App {
 
 /// The looks of the built-in tools: `read` and `search` summarize what
 /// they found, `edit` shows its change as a diff, `write` the start of the
-/// new file, `shell` the command and the end of its output, and `task` the
-/// subagent's title and whether it started.
+/// new file, and `shell` the command and the end of its output.
 pub(crate) fn add_builtin_renderers(app: &mut App) {
     app.add_tool_renderer("read", read)
         .add_tool_renderer("edit", edit)
         .add_tool_renderer("write", write)
         .add_tool_renderer("shell", shell)
-        .add_tool_renderer("search", search)
-        .add_tool_renderer("task", task);
+        .add_tool_renderer("search", search);
 }
 
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
@@ -324,27 +322,6 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     }
     let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
     lines.extend(view.result_lines(RESULT_LINES));
-    lines
-}
-
-fn task(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let title = view.argument("description").unwrap_or("task").to_owned();
-    let detail = view
-        .argument("model")
-        .map(|model| format!("on {model}"))
-        .unwrap_or_default();
-    let mut lines = vec![view.header(format!("task {title}"), detail)];
-    match view.result_text() {
-        Some(text) => {
-            let style = if view.failed() {
-                Style::new().red()
-            } else {
-                Style::new().dim()
-            };
-            lines.extend(excerpt(&text, RESULT_LINES, style));
-        }
-        None => lines.push(Line::from("  ⎿ a subagent works on it; /agents shows it").dim()),
-    }
     lines
 }
 
