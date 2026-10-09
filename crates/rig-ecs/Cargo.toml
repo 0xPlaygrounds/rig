@@ -55,3 +55,8 @@ web-time = { workspace = true }
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 futures-timer = { workspace = true, features = ["wasm-bindgen"] }
 uuid = { workspace = true, features = ["js"] }
+
+[dev-dependencies]
+# The scripted model (`test_utils::MockCompletionModel`) the kernel-only
+# test runs a turn on.
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false, features = ["test-utils"] }
