@@ -59,10 +59,10 @@ fn remove_deletes_only_a_crate_directly_in_rig_home_plugins() {
     let nested = stats.join("inner");
     let outside = root.join("elsewhere");
     for crate_dir in [&stats, &nested, &outside] {
-        fs::create_dir_all(crate_dir).unwrap();
-        fs::write(crate_dir.join("Cargo.toml"), "[package]\n").unwrap();
+        assert!(fs::create_dir_all(crate_dir).is_ok());
+        assert!(fs::write(crate_dir.join("Cargo.toml"), "[package]\n").is_ok());
     }
-    fs::create_dir_all(plugins.join("empty")).unwrap();
+    assert!(fs::create_dir_all(plugins.join("empty")).is_ok());
     assert_eq!(
         deletable(&plugins, &nested.join("../..").join("stats")),
         fs::canonicalize(&stats).ok()
@@ -72,5 +72,5 @@ fn remove_deletes_only_a_crate_directly_in_rig_home_plugins() {
     assert_eq!(deletable(&plugins, &plugins), None);
     assert_eq!(deletable(&plugins, &plugins.join("empty")), None);
     assert_eq!(deletable(&plugins, &plugins.join("missing")), None);
-    fs::remove_dir_all(&root).unwrap();
+    assert!(fs::remove_dir_all(&root).is_ok());
 }

@@ -12,15 +12,17 @@ fn a_text_file_is_attached_as_numbered_lines() {
     let (attached, notes) = attachments(&format!("look at @{path}, please"));
     assert!(notes.is_empty(), "{notes:?}");
     assert_eq!(attached.len(), 1);
-    let UserContent::Text(text) = &attached[0].content else {
-        panic!("not text: {:?}", attached[0].content);
+    let text = match attached.first().map(|message| &message.content) {
+        Some(UserContent::Text(text)) => text.text.as_str(),
+        _ => "",
     };
-    assert!(text.text.contains("     1\t[package]"), "{}", text.text);
-    let (label, lines) = attached_file(&text.text).expect("an attached file");
-    assert_eq!(label, path);
+    assert!(text.contains("     1\t[package]"), "{text}");
+    let lines = std::fs::read_to_string(&path)
+        .ok()
+        .map(|manifest| manifest.lines().count());
     assert_eq!(
-        lines,
-        std::fs::read_to_string(&path).unwrap().lines().count()
+        attached_file(text).map(|(label, lines)| (label.to_owned(), Some(lines))),
+        Some((path, lines))
     );
 }
 

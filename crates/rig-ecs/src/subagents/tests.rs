@@ -42,19 +42,19 @@ fn report_header_names_the_subagent_and_task_not_the_request() {
 
 #[test]
 fn tasks_report_together_unless_asked_alone() {
-    let args: TaskArgs = serde_json::from_value(serde_json::json!({
-        "description": "d",
-        "prompt": "p",
-    }))
-    .expect("parses");
-    assert_eq!(args.report, Report::Together);
-    let args: TaskArgs = serde_json::from_value(serde_json::json!({
-        "description": "d",
-        "prompt": "p",
-        "report": "alone",
-    }))
-    .expect("parses");
-    assert_eq!(args.report, Report::Alone);
+    let report = |args: serde_json::Value| {
+        serde_json::from_value::<TaskArgs>(args)
+            .ok()
+            .map(|args| args.report)
+    };
+    assert_eq!(
+        report(serde_json::json!({ "description": "d", "prompt": "p" })),
+        Some(Report::Together)
+    );
+    assert_eq!(
+        report(serde_json::json!({ "description": "d", "prompt": "p", "report": "alone" })),
+        Some(Report::Alone)
+    );
 }
 
 #[test]

@@ -4,9 +4,15 @@ use rig_core::providers::registry::ProviderId;
 
 use super::{CompactReason, Compacted, CompactionPolicy, KEEP_RECENT};
 
-fn spec(window: u32) -> ModelSpec {
-    let vendor = ProviderId::catalog("ollama").expect("a catalog vendor");
-    ModelSpec::new(vendor, "test").with_context_window(window)
+fn spec(window: u32) -> Option<ModelSpec> {
+    ProviderId::catalog("ollama")
+        .map(|vendor| ModelSpec::new(vendor, "test").with_context_window(window))
+}
+
+/// Where `reason` cuts `messages` for a model with `window` tokens.
+fn cut(messages: &[Message], window: u32, reason: &CompactReason) -> Option<usize> {
+    let policy = CompactionPolicy::default();
+    spec(window).and_then(|spec| Compacted::default().cut(messages, &policy, &spec, reason))
 }
 
 /// A conversation of turns, each a question and a long answer.
@@ -24,45 +30,34 @@ fn turns(count: usize) -> Vec<Message> {
 
 #[test]
 fn an_asked_compaction_summarizes_all_but_the_newest_reply() {
-    let policy = CompactionPolicy::default();
     let messages = turns(4);
     let asked = CompactReason::Asked {
         focus: String::new(),
     };
-    let cut = Compacted::default().cut(&messages, &policy, &spec(200_000), &asked);
-    assert_eq!(cut, Some(messages.len() - 1));
+    assert_eq!(cut(&messages, 200_000, &asked), Some(messages.len() - 1));
 }
 
 #[test]
 fn an_automatic_compaction_keeps_the_recent_work() {
     let policy = CompactionPolicy::default();
     let messages = turns(20);
-    let cut = Compacted::default()
-        .cut(&messages, &policy, &spec(200_000), &CompactReason::Overflow)
-        .expect("a cut");
-    assert!(cut < messages.len() - 2, "{cut}");
-    assert_eq!(
-        policy.keep(&CompactReason::Threshold, &spec(200_000)),
-        KEEP_RECENT
+    let overflow = cut(&messages, 200_000, &CompactReason::Overflow);
+    assert!(
+        overflow.is_some_and(|at| at < messages.len() - 2),
+        "{overflow:?}"
     );
-    assert_eq!(
-        policy.keep(&CompactReason::Threshold, &spec(40_000)),
-        10_000
-    );
+    let keep = |window| spec(window).map(|spec| policy.keep(&CompactReason::Threshold, &spec));
+    assert_eq!(keep(200_000), Some(KEEP_RECENT));
+    assert_eq!(keep(40_000), Some(10_000));
 }
 
 #[test]
 fn a_short_conversation_is_compacted_only_when_it_must_be() {
-    let policy = CompactionPolicy::default();
     let messages = turns(2);
-    let compacted = Compacted::default();
-    let threshold = compacted.cut(
-        &messages,
-        &policy,
-        &spec(200_000),
-        &CompactReason::Threshold,
+    assert!(spec(200_000).is_some());
+    assert_eq!(cut(&messages, 200_000, &CompactReason::Threshold), None);
+    assert_eq!(
+        cut(&messages, 200_000, &CompactReason::Overflow),
+        Some(messages.len() - 1)
     );
-    assert_eq!(threshold, None);
-    let overflow = compacted.cut(&messages, &policy, &spec(200_000), &CompactReason::Overflow);
-    assert_eq!(overflow, Some(messages.len() - 1));
 }
