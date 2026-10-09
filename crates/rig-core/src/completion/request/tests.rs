@@ -744,3 +744,40 @@ mod generation_option_shortcuts {
         assert!(GenerationOptions::new().is_default());
     }
 }
+
+mod usage_totals {
+    use crate::completion::{Usage, UsageTotals};
+
+    #[test]
+    fn calls_tokens_and_context_are_summed_and_an_aside_keeps_the_context() {
+        let mut totals = UsageTotals::default();
+        totals.record(
+            &Usage::new()
+                .input_tokens(100)
+                .output_tokens(20)
+                .cached_input_tokens(30)
+                .cache_creation_input_tokens(10),
+        );
+        assert_eq!(totals.context, Some(120));
+        totals.record_aside(&Usage::new().input_tokens(50).output_tokens(5));
+        assert_eq!(totals.context, Some(120));
+        assert_eq!((totals.calls, totals.unpriced), (2, 2));
+        assert_eq!(totals.tokens.input_tokens, Some(150));
+        assert_eq!(totals.uncached_input(), 110);
+
+        let mut sum = UsageTotals::default();
+        sum.add(&totals);
+        sum.add(&totals);
+        assert_eq!((sum.calls, sum.unpriced, sum.context), (4, 4, None));
+        assert_eq!(sum.tokens.output_tokens, Some(50));
+    }
+
+    #[test]
+    fn a_call_without_token_counts_leaves_the_context() {
+        let mut totals = UsageTotals::default();
+        totals.record(&Usage::new().total_tokens(40));
+        totals.record(&Usage::new());
+        assert_eq!(totals.context, Some(40));
+        assert_eq!(totals.uncached_input(), 0);
+    }
+}
