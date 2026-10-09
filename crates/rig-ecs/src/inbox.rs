@@ -131,7 +131,8 @@ impl Origin {
 /// When a message goes to the agent's model, and whether it asks for an
 /// answer. An idle agent starts a turn with a [`Steer`](Self::Steer) or
 /// [`Queue`](Self::Queue) message either way.
-#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DeliveryMode {
     /// With the running turn's next model call.
     #[default]
