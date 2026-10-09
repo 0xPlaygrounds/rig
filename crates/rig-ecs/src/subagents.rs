@@ -520,11 +520,14 @@ fn reaches<T: Copy + PartialEq>(edges: &[(T, T)], from: T, to: T) -> bool {
     let mut stack = vec![from];
     while let Some(node) = stack.pop() {
         for &(start, end) in edges {
-            if start != node || seen.contains(&end) {
+            if start != node {
                 continue;
             }
             if end == to {
                 return true;
+            }
+            if seen.contains(&end) {
+                continue;
             }
             seen.push(end);
             stack.push(end);
