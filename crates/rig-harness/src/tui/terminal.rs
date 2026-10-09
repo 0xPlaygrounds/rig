@@ -15,9 +15,11 @@ use crossterm::terminal::{
 };
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::layout::Rect;
 
 use super::editor::Editor;
 use super::input::TerminalInput;
+use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
 use rig_ecs::calls::Wake;
@@ -78,6 +80,7 @@ pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
     mut view: ResMut<TuiView>,
+    mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
     mut exit: MessageWriter<AppExit>,
 ) {
@@ -85,6 +88,9 @@ pub(crate) fn open_terminal(
         .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
     match opened {
         Ok((tui, input)) => {
+            if let Ok(size) = tui.terminal.size() {
+                screen.0 = Rect::new(0, 0, size.width, size.height);
+            }
             view.editor = Editor::with_history(Home::from_env().history());
             commands.insert_resource(tui);
             commands.insert_resource(input);

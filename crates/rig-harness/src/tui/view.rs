@@ -6,6 +6,7 @@ use bevy_ecs::prelude::*;
 
 use super::complete::Completion;
 use super::editor::Editor;
+use super::panel::Focused;
 use crate::host::reload::ReloadFailed;
 use crate::view::{Focus, PickItem, PickRequest};
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
@@ -103,6 +104,27 @@ pub(crate) fn focus_agent(mut view: ResMut<TuiView>, agents: PrimaryQuery) {
         return;
     }
     view.agent = primary(&agents);
+}
+
+/// Keeps [`Focused`] on the agent shown, and on no other.
+pub(crate) fn mark_focused(
+    view: Res<TuiView>,
+    marked: Query<Entity, With<Focused>>,
+    mut commands: Commands,
+) {
+    if !view.is_changed() {
+        return;
+    }
+    for agent in &marked {
+        if Some(agent) != view.agent {
+            commands.entity(agent).try_remove::<Focused>();
+        }
+    }
+    if let Some(agent) = view.agent
+        && !marked.contains(agent)
+    {
+        commands.entity(agent).try_insert(Focused);
+    }
 }
 
 /// Shows the agent a [`Focus`] names.

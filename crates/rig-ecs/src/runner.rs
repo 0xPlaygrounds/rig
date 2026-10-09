@@ -1,9 +1,8 @@
 //! The app's loop without a window. It runs a frame, then sleeps until a
-//! [`Wake`] or a second passes. A wake keeps frames coming every 16 ms
-//! for a few more, since a woken frame often leaves work for
-//! the next: a command's notice, a task that finished just after it woke
-//! the loop. Frames never come faster than that, however often a
-//! streaming reply wakes the loop.
+//! [`Wake`] or a second passes. Frames never come faster than every 16 ms,
+//! however often a streaming reply wakes the loop; the frames after a wake
+//! come from [`settle`](crate::calls::settle), which works the same under
+//! any loop.
 
 use std::time::{Duration, Instant};
 
@@ -14,8 +13,6 @@ use crate::calls::Wake;
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);
-/// Frames run at [`FRAME`] after a wake.
-const SETTLE_FRAMES: u32 = 4;
 /// The longest sleep without a wake.
 const IDLE: Duration = Duration::from_secs(1);
 
@@ -39,23 +36,14 @@ impl Plugin for RunnerPlugin {
                 app.finish();
                 app.cleanup();
             }
-            let mut settling = SETTLE_FRAMES;
             loop {
                 let started = Instant::now();
                 app.update();
                 if let Some(exit) = app.should_exit() {
                     return exit;
                 }
-                let wait = if settling > 0 {
-                    settling -= 1;
-                    FRAME
-                } else {
-                    IDLE
-                };
-                // With its wake replaced, the loop runs at FRAME.
-                if wakes.recv_timeout(wait).is_ok() {
-                    settling = SETTLE_FRAMES;
-                }
+                // With its wake replaced, the loop runs every IDLE.
+                wakes.recv_timeout(IDLE).ok();
                 if let Some(rest) = FRAME.checked_sub(started.elapsed()) {
                     std::thread::sleep(rest);
                 }

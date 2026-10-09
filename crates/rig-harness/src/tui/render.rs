@@ -9,7 +9,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph, Wrap};
 
 use super::complete::{Completion, Kind as CompletionKind};
+use super::editor::Layout as InputLayout;
 use super::markdown;
+use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::renderers::ToolRenderer;
 use super::terminal::Tui;
 use super::transcript::{Part, Renderers, Transcript, plain_lines};
@@ -17,15 +19,16 @@ use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::host::reload::ReloadBuild;
 use crate::host::sessions::SessionName;
+use rig_ecs::activity::{Activity, Status};
 use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    Spawned, SpawnedBy, ToolCallRun,
+    Spawned, SpawnedBy,
 };
 use rig_ecs::commands::SlashCommand;
-use rig_ecs::compaction::{Compacted, Summarizing};
+use rig_ecs::compaction::Compacted;
 use rig_ecs::inbox::Inbox;
 use rig_ecs::models;
-use rig_ecs::recovery::{Backoff, RETRY};
+use rig_ecs::recovery::RETRY;
 use rig_ecs::usage::{self, Spending, TurnSpending};
 
 /// Most lines the input box shows.
@@ -37,26 +40,12 @@ const SUMMARY_LINES: usize = 12;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
 
-/// What the shown agent is doing.
-#[derive(Clone, Copy)]
-enum Activity {
-    Idle,
-    Thinking,
-    RunningTools,
-    /// Summarizing the older conversation.
-    Compacting,
-    /// Waiting `seconds` before retry `attempt` of a failed model call.
-    Retrying {
-        attempt: u32,
-        seconds: u64,
-    },
-}
-
 /// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize), an agent's drawn components, a turn's calls,
-/// or a streaming reply. A turn's end changes its conversation or comes
-/// with a notice. A retry's countdown redraws every frame while it waits.
-/// The rebuild's progress is checked separately.
+/// key, a notice, a resize), an agent's drawn components (its
+/// [`Activity`] too, which counts a retry's wait down), a turn's calls, a
+/// streaming reply, a panel, or a plugin's [`RequestRedraw`]. A turn's end
+/// changes its conversation or comes with a notice. The rebuild's progress
+/// is checked separately.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -69,43 +58,86 @@ pub(crate) fn needs_redraw(
             Changed<Spending>,
             Changed<Compacted>,
             Changed<Inbox>,
+            Changed<Activity>,
         )>,
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
-    waits: Query<(), With<Backoff>>,
     name: Res<SessionName>,
+    mut requests: MessageReader<RequestRedraw>,
+    panels: Query<(), Changed<TuiPanel>>,
+    mut removed_panels: RemovedComponents<TuiPanel>,
 ) -> bool {
-    view.is_changed()
+    // Every reader is drained, so none redraws again for the same change.
+    let requested = requests.read().count() > 0;
+    let removed = removed_panels.read().count() > 0;
+    requested
+        || removed
+        || view.is_changed()
         || name.is_changed()
         || !agents.is_empty()
         || !turns.is_empty()
         || !partials.is_empty()
-        || !waits.is_empty()
+        || !panels.is_empty()
 }
 
-/// What the shown agent's turn is doing, from its calls.
-fn activity(
-    calls: Option<&Calls>,
-    waits: &Query<&Backoff>,
-    summaries: &Query<(), With<Summarizing>>,
-    tool_calls: &Query<(), With<ToolCallRun>>,
-) -> Activity {
-    let Some(calls) = calls else {
-        return Activity::Thinking;
+/// The frame [`layout`] laid out for [`render`]; `due` while one is to be
+/// drawn.
+#[derive(Resource, Default)]
+pub(crate) struct FrameLayout {
+    due: bool,
+    input_rows: Option<InputLayout>,
+    input_height: usize,
+    transcript: Rect,
+    status: Rect,
+    input: Rect,
+}
+
+/// Whether [`layout`] laid out a frame that is not drawn yet: the
+/// condition of [`TuiSystems::Draw`](super::TuiSystems::Draw) and
+/// [`render`].
+pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
+    frame.due
+}
+
+/// Lays out a frame: the input box grows with the input, up to a limit;
+/// the status line sits above it; the panels take their sides of the rest,
+/// in entity order, and the transcript what they leave.
+pub(crate) fn layout(
+    tui: Res<Tui>,
+    view: Res<TuiView>,
+    mut frame: ResMut<FrameLayout>,
+    mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
+) {
+    let Ok(size) = tui.terminal.size() else {
+        return;
     };
-    if let Some(wait) = calls.iter().find_map(|call| waits.get(call).ok()) {
-        Activity::Retrying {
-            attempt: wait.attempt,
-            seconds: wait.seconds_left(),
-        }
-    } else if calls.iter().any(|call| summaries.contains(call)) {
-        Activity::Compacting
-    } else if calls.iter().any(|call| tool_calls.contains(call)) {
-        Activity::RunningTools
-    } else {
-        Activity::Thinking
-    }
+    let screen = Rect::new(0, 0, size.width, size.height);
+    let rows = view
+        .editor
+        .layout(size.width.saturating_sub(2), Style::new());
+    let input_height = rows.rows.len().clamp(1, INPUT_LINES);
+    let [above, status, input] = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(1),
+        Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
+    ])
+    .areas(screen);
+    let mut panels: Vec<_> = panels.iter_mut().collect();
+    panels.sort_by_key(|(entity, ..)| *entity);
+    let transcript = panel::lay_out(
+        panels.into_iter().map(|(_, panel, canvas)| (panel, canvas)),
+        above,
+        screen,
+    );
+    *frame = FrameLayout {
+        due: true,
+        input_rows: Some(rows),
+        input_height,
+        transcript,
+        status,
+        input,
+    };
 }
 
 /// The agents the status line counts: each with whether it works, its
@@ -222,27 +254,28 @@ fn input_hint(turn_running: bool, empty: bool) -> &'static str {
     }
 }
 
-/// Draws one frame. The transcript's rows are kept between frames in a
+/// Draws the frame [`layout`] laid out, with what the plugins drew in
+/// their panels. The transcript's rows are kept between frames in a
 /// [`Transcript`], so only changed messages are laid out again.
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
+    mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
     agents: Query<(
         &Conversation,
         &Compacted,
         Option<&ModelChoice>,
         &Effort,
-        Option<&ActiveTurn>,
+        &Activity,
         &Spending,
         Option<&Connection>,
         &Inbox,
     )>,
     changed: Query<(), Changed<Conversation>>,
     turns: Query<(Option<&Calls>, &TurnSpending)>,
-    partials: Query<&Partial>,
-    (tool_calls, summaries): (Query<(), With<ToolCallRun>>, Query<(), With<Summarizing>>),
-    waits: Query<&Backoff>,
+    (partials, active): (Query<&Partial>, Query<&ActiveTurn>),
+    panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     everyone: Everyone,
     slash: Query<&SlashCommand>,
     renderers: Query<Ref<ToolRenderer>>,
@@ -250,21 +283,24 @@ pub(crate) fn render(
     build: Option<Res<ReloadBuild>>,
     name: Res<SessionName>,
 ) -> Result {
+    let frame_layout = std::mem::take(&mut *frame_layout);
+    let Some(input_rows) = frame_layout.input_rows else {
+        return Ok(());
+    };
     // Clamping the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
     let view = view.bypass_change_detection();
     let shown = view
         .agent
         .and_then(|agent| Some((agent, agents.get(agent).ok()?)));
-    let turn = shown
-        .and_then(|(_, (_, _, _, _, turn, ..))| turn)
+    let turn = view
+        .agent
+        .and_then(|agent| active.get(agent).ok())
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
-    let activity = match turn {
-        None => Activity::Idle,
-        Some(_) => activity(calls, &waits, &summaries, &tool_calls),
-    };
+    let mut panels: Vec<_> = panels.iter().collect();
+    panels.sort_by_key(|(entity, ..)| *entity);
     if removed_renderers.read().count() > 0
         || renderers.iter().any(|renderer| renderer.is_changed())
     {
@@ -282,18 +318,14 @@ pub(crate) fn render(
     let loaded = |name: &str| slash.iter().any(|command| command.name == name);
     let agents_hint = if loaded("agents") { " (/agents)" } else { "" };
     tui.terminal.draw(|frame| {
-        let width = frame.area().width;
-        // The input box grows with the input, up to a limit, and scrolls
-        // to keep the cursor in sight.
-        let layout = view.editor.layout(width.saturating_sub(2), Style::new());
-        let input_height = layout.rows.len().clamp(1, INPUT_LINES);
-        let input_top = (layout.cursor_row + 1).saturating_sub(input_height);
-        let [transcript_area, status_area, input] = Layout::vertical([
-            Constraint::Min(1),
-            Constraint::Length(1),
-            Constraint::Length(u16::try_from(input_height + 2).unwrap_or(3)),
-        ])
-        .areas(frame.area());
+        // A resize since the layout leaves nothing outside the screen.
+        let screen = frame.area();
+        let transcript_area = frame_layout.transcript.intersection(screen);
+        let status_area = frame_layout.status.intersection(screen);
+        let input = frame_layout.input.intersection(screen);
+        let layout = input_rows;
+        // The input box scrolls to keep the cursor in sight.
+        let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
         if let Some((agent, (conversation, ..))) = shown {
             transcript.update(
                 agent,
@@ -317,7 +349,7 @@ pub(crate) fn render(
         frame.render_widget(Paragraph::new(rows), transcript_area);
         let shown = shown.map(|(_, shown)| shown);
         let mut line = status_line(
-            shown.map(|(_, _, model, effort, ..)| (model, effort, activity)),
+            shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
             loaded("model"),
         );
         agent_spans(&mut line, view.agent, &everyone, agents_hint);
@@ -348,6 +380,15 @@ pub(crate) fn render(
                 .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
             input,
         );
+        // The panels at the sides, then the boxes over the screen.
+        let over = |panel: &TuiPanel| matches!(panel.placement, Placement::Over { .. });
+        for top in [false, true] {
+            for (_, panel, canvas) in &panels {
+                if over(panel) == top {
+                    canvas.copy_to(frame.buffer_mut());
+                }
+            }
+        }
         match &view.overlay {
             Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
             Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
@@ -406,7 +447,7 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
 }
 
 fn status_line(
-    shown: Option<(Option<&ModelChoice>, &Effort, Activity)>,
+    shown: Option<(Option<&ModelChoice>, &Effort, Status)>,
     model_hint: bool,
 ) -> Line<'static> {
     let Some((model, effort, status)) = shown else {
@@ -418,11 +459,11 @@ fn status_line(
         None => "no model".to_owned(),
     };
     let status = match status {
-        Activity::Idle => Span::from("idle").green(),
-        Activity::Thinking => Span::from("thinking… (Esc stops)").yellow(),
-        Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
-        Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
-        Activity::Retrying { attempt, seconds } => Span::from(format!(
+        Status::Idle => Span::from("idle").green(),
+        Status::Thinking => Span::from("thinking… (Esc stops)").yellow(),
+        Status::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
+        Status::Compacting => Span::from("compacting… (Esc stops)").yellow(),
+        Status::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{} in {seconds}s… (Esc stops)",
             RETRY.max_retries
         ))

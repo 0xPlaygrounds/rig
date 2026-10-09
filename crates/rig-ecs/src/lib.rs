@@ -4,7 +4,9 @@
 //! its model and tool calls are entities of the turn that run on Bevy's
 //! task pools. Every call goes through one recorded effect dispatch path.
 //! Tools and commands are registered by plugins, and the session journal
-//! is kept in the [`store::SessionStore`] the app inserts.
+//! is kept in the [`store::SessionStore`] the app inserts. Views read what
+//! the agents do from [`activity`], and plugins that animate or poll run
+//! on [`timer::every`] instead of threads of their own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store and the [`models::ModelConnector`].
@@ -22,6 +24,7 @@
 //!     .add_plugins((AgentPlugin, JournalPlugin));
 //! ```
 
+pub mod activity;
 pub mod agent;
 pub mod calls;
 pub mod commands;
@@ -40,6 +43,7 @@ pub mod runner;
 pub mod store;
 #[cfg(feature = "subagents")]
 pub mod subagents;
+pub mod timer;
 pub mod tools;
 pub mod turn;
 pub mod usage;
@@ -52,6 +56,7 @@ pub mod prelude {
     pub use bevy_reflect::prelude::*;
 
     pub use crate::AgentPlugin;
+    pub use crate::activity::{Activity, ActivitySystems, MessageFeed};
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
         Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
@@ -68,6 +73,7 @@ pub mod prelude {
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::recovery::{Backoff, Recovery};
     pub use crate::restore::Restored;
+    pub use crate::timer::every;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
     pub use crate::usage::{Spending, TurnSpending};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
@@ -78,7 +84,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::{info, warn};
 
 use agent::{Agent, AgentId, Notice, NoticeLevel};
-use calls::{Done, Wake, poll_calls};
+use calls::{Done, Wake, poll_calls, settle};
 use compaction::{CompactionPolicy, Summary};
 use effects::Effects;
 use journal::SessionLog;
@@ -110,7 +116,8 @@ impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
         let store = app.world().get_resource::<SessionStore>().cloned();
         let effects = Effects::continuing(store.as_ref().map(|store| &*store.0));
-        app.insert_resource(effects)
+        app.add_plugins(activity::ActivityPlugin)
+            .insert_resource(effects)
             .insert_resource(SessionLog::new(store.map(|store| store.0)))
             .init_resource::<Wake>()
             .init_resource::<models::ModelConnector>()
@@ -133,6 +140,7 @@ impl Plugin for AgentPlugin {
                 Last,
                 (
                     log_agents,
+                    settle,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)
                         .in_set(StopTurns)

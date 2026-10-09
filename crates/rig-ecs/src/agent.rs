@@ -11,6 +11,7 @@ use rig_core::effect::EffectId;
 use rig_core::message::ToolCall;
 use serde::{Deserialize, Serialize};
 
+use super::activity::Activity;
 use super::compaction::Compacted;
 use super::effects::Handler;
 use super::inbox::{Inbox, Origin, RequestId};
@@ -24,6 +25,7 @@ use super::usage::{Spending, TurnSpending};
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 #[require(
+    Activity,
     AgentId,
     Compacted,
     Conversation,

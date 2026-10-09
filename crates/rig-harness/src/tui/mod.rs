@@ -8,6 +8,13 @@
 //! completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
+//!
+//! A plugin adds to the view without touching it: a [`TuiPanel`] beside
+//! the transcript or over the screen, drawn by the plugin's own system in
+//! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
+//! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. What the
+//! agents do is rig-ecs's [`activity`](rig_ecs::activity), and
+//! [`ratatui`] is re-exported so a plugin draws with the same version.
 
 mod clipboard;
 mod complete;
@@ -15,6 +22,7 @@ pub mod diff;
 mod editor;
 mod input;
 pub mod markdown;
+pub mod panel;
 mod render;
 mod renderers;
 mod terminal;
@@ -24,7 +32,10 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use rig_ecs::activity::ActivitySystems;
 
+pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
+pub use ratatui;
 pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
@@ -45,6 +56,9 @@ impl Plugin for TuiPlugin {
         }
         renderers::add_builtin_renderers(app);
         app.init_resource::<view::TuiView>()
+            .init_resource::<render::FrameLayout>()
+            .init_resource::<TuiScreen>()
+            .add_message::<RequestRedraw>()
             .init_resource::<complete::FileIndex>()
             .init_resource::<clipboard::Clipboard>()
             .init_resource::<crate::host::sessions::SessionName>()
@@ -61,21 +75,35 @@ impl Plugin for TuiPlugin {
             .add_systems(
                 Update,
                 (
-                    view::focus_agent,
+                    (view::focus_agent, view::mark_focused).chain(),
                     view::show_reload_failures,
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
                     view::recall_messages,
                 ),
             )
+            .configure_sets(
+                PostUpdate,
+                (
+                    TuiSystems::Prepare,
+                    TuiSystems::Layout,
+                    TuiSystems::Draw.run_if(render::frame_due),
+                    TuiSystems::Render.run_if(render::frame_due),
+                )
+                    .chain()
+                    .after(ActivitySystems),
+            )
             .add_systems(
                 PostUpdate,
-                render::render.run_if(
-                    resource_exists::<terminal::Tui>.and_then(
-                        render::needs_redraw.or_eager(
+                (
+                    render::layout.in_set(TuiSystems::Layout).run_if(
+                        resource_exists::<terminal::Tui>.and_then(render::needs_redraw.or_eager(
                             resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
-                        ),
+                        )),
                     ),
+                    render::render
+                        .in_set(TuiSystems::Render)
+                        .run_if(resource_exists::<terminal::Tui>),
                 ),
             )
             .add_systems(Last, terminal::keep_screen_on_reload)

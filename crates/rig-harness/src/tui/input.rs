@@ -11,9 +11,11 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossbeam_channel::Receiver;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use ratatui::layout::Rect;
 
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
+use super::panel::TuiScreen;
 use super::view::{Overlay, Picker, TuiView};
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::session::SessionPaths;
@@ -94,6 +96,7 @@ pub(crate) fn read_input(
     clipboard: Res<Clipboard>,
     paths: Option<Res<SessionPaths>>,
     wake: Res<Wake>,
+    mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
 ) {
     let busy = view
@@ -163,7 +166,10 @@ pub(crate) fn read_input(
                     }
                 }
             },
-            Event::Resize(..) => view.set_changed(),
+            Event::Resize(width, height) => {
+                view.set_changed();
+                screen.set_if_neq(TuiScreen(Rect::new(0, 0, width, height)));
+            }
             _ => {}
         }
     }
