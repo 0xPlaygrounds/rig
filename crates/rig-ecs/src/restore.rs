@@ -59,7 +59,6 @@ struct Folded {
     header: Header,
     conversation: Conversation,
     message_seqs: Vec<u64>,
-    halted: bool,
     components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
     next_seq: u64,
@@ -70,7 +69,6 @@ struct RestoredAgent {
     entity: Entity,
     parent: Option<String>,
     depth: usize,
-    halted: bool,
 }
 
 /// The agents [`restore_session`] spawned, until [`reconcile`] took them.
@@ -134,7 +132,6 @@ pub(crate) fn restore_session(world: &mut World) {
             header,
             conversation,
             message_seqs,
-            halted,
             components,
             compacted,
             next_seq,
@@ -181,7 +178,6 @@ pub(crate) fn restore_session(world: &mut World) {
             entity,
             parent: header.parent.clone(),
             depth,
-            halted,
         });
         logs.push((
             id.0,
@@ -191,7 +187,6 @@ pub(crate) fn restore_session(world: &mut World) {
                 started: true,
                 pending: Vec::new(),
                 message_seqs,
-                halted,
                 components,
             },
         ));
@@ -280,7 +275,6 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         header,
         conversation: Conversation::default(),
         message_seqs: Vec::new(),
-        halted: false,
         components: BTreeMap::new(),
         compacted: Compacted::default(),
         next_seq: envelopes
@@ -351,15 +345,18 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 if !folded.conversation.append(message, origin) {
                     folded.message_seqs.push(line.seq);
                 }
-                folded.halted = false;
             }
             Record::Retract => {
                 if folded.conversation.retract().is_some() {
                     folded.message_seqs.pop();
                 }
-                folded.halted = false;
             }
-            Record::Halt => folded.halted = true,
+            // Only a conversation waiting for its model is halted, so a
+            // halt after a halt means it was asked again, as by a retry.
+            Record::Halt { reason } => {
+                folded.conversation.resume();
+                folded.conversation.halt(reason);
+            }
             _ if superseded => {}
             Record::Component {
                 component,
@@ -383,9 +380,9 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
 /// agents they spawned. Each agent first gets [`Restored`]; then, by
 /// appending records, a tool call without a result starts again when its
 /// tool is an ordinary read-only one, and is answered as interrupted
-/// otherwise; and an agent whose conversation ends
-/// in the user's message, or in a full set of tool results, calls its
-/// model again. An agent an observer kept idle only gets the interrupted
+/// otherwise; and an agent whose conversation ends in the user's message
+/// that was not halted, or in a full set of tool results, calls its model
+/// again. An agent an observer kept idle only gets the interrupted
 /// results.
 pub(crate) fn reconcile(world: &mut World) {
     let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
@@ -398,7 +395,7 @@ pub(crate) fn reconcile(world: &mut World) {
             resume: true,
         };
         world.trigger_ref(&mut restored);
-        let carry = (agent.entity, restored.resume, !agent.halted);
+        let carry = (agent.entity, restored.resume);
         if let Err(error) = world.run_system_cached_with(settle, carry) {
             warn!("could not reconcile a restored agent: {error}");
         }
@@ -406,10 +403,9 @@ pub(crate) fn reconcile(world: &mut World) {
 }
 
 /// Settles one restored agent, as [`reconcile`] says: `resume` is what its
-/// [`Restored`] observers left, and `answer` whether a conversation ending
-/// in a message the model has not answered goes to the model.
+/// [`Restored`] observers left.
 fn settle(
-    In((agent, resume, answer)): In<(Entity, bool, bool)>,
+    In((agent, resume)): In<(Entity, bool)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     starter: ToolStarter,
     log: Res<SessionLog>,
@@ -448,7 +444,7 @@ fn settle(
         for (entity, run) in runs {
             starter.start(&mut commands, entity, agent, &run);
         }
-    } else if answer && matches!(conversation.messages().last(), Some(Message::User { .. })) {
+    } else if conversation.awaits_model() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
         commands.trigger(CallModel { entity: turn });
     }

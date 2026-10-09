@@ -33,7 +33,8 @@ use sha2::{Digest, Sha256};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{
-    Agent, AgentId, Conversation, Effort, ModelChoice, Notice, SpawnedBy, SystemPrompt, ToolAccess,
+    Agent, AgentId, Conversation, Effort, Halt, ModelChoice, Notice, SpawnedBy, SystemPrompt,
+    ToolAccess,
 };
 use super::compaction::Compacted;
 use super::effects::Effects;
@@ -180,9 +181,12 @@ pub(crate) enum Record {
     /// The last message was taken out, such as a user message no model
     /// could answer.
     Retract,
-    /// The turn ended without an answer to the last message, which a
-    /// restore leaves unanswered.
-    Halt,
+    /// The user's last message was left unanswered, which a restore keeps;
+    /// an older log's halt is [`Halt::Kept`].
+    Halt {
+        #[serde(default)]
+        reason: Halt,
+    },
     /// A saved component, by type path; `value: null` when it was
     /// removed. The latest per type wins.
     Component {
@@ -224,8 +228,6 @@ pub(crate) struct AgentLog {
     pub(crate) pending: Vec<u8>,
     /// The `seq` of the record that began each message of the conversation.
     pub(crate) message_seqs: Vec<u64>,
-    /// Whether the last conversation record is a [`Record::Halt`].
-    pub(crate) halted: bool,
     pub(crate) components: BTreeMap<String, SavedValue>,
 }
 
@@ -237,7 +239,6 @@ impl AgentLog {
             started: false,
             pending: Vec::new(),
             message_seqs: Vec::new(),
-            halted: false,
             components: BTreeMap::new(),
         }
     }
@@ -385,7 +386,6 @@ impl SessionLog {
             let mut book = self.book();
             if let Some(log) = book.agents.get_mut(&agent.0) {
                 log.started = true;
-                log.halted = false;
                 if !merged {
                     log.message_seqs.push(seq);
                 }
@@ -426,31 +426,18 @@ impl SessionLog {
             && let Some(log) = book.agents.get_mut(&agent.0)
         {
             log.message_seqs.pop();
-            log.halted = false;
         }
         Some(message)
     }
 
-    /// Logs that the turn of `agent` ended without answering the last
-    /// message of `conversation`, when it is the user's, so a restore does
-    /// not send it to the model. Not for a turn the app's exit stops (see
-    /// [`Exiting`](super::turn::Exiting)): the restart carries that one on.
-    pub fn halt(&self, agent: &AgentId, conversation: &Conversation) {
-        if !matches!(conversation.messages().last(), Some(Message::User { .. })) {
-            return;
-        }
-        let mut book = self.book();
-        if book
-            .agents
-            .get(&agent.0)
-            .is_none_or(|log| log.halted || !log.started)
-        {
-            return;
-        }
-        if book.record(&agent.0, Record::Halt).is_some()
-            && let Some(log) = book.agents.get_mut(&agent.0)
-        {
-            log.halted = true;
+    /// Halts the conversation of `agent` for `reason` when the model owes
+    /// an answer to its last message, the user's, and logs that, so a
+    /// restore does not send it to the model. Not for a turn the app's exit
+    /// stops (see [`Exiting`](super::turn::Exiting)): the restart carries
+    /// that one on.
+    pub fn halt(&self, agent: &AgentId, conversation: &mut Conversation, reason: Halt) {
+        if conversation.halt(reason) {
+            self.book().record(&agent.0, Record::Halt { reason });
         }
     }
 

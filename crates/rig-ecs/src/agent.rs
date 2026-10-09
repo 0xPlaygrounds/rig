@@ -93,6 +93,22 @@ pub struct Conversation {
     /// The origin of each content item that is not the user's own or the
     /// model's, by message and item index, in the order they were added.
     origins: Vec<(usize, usize, Origin)>,
+    /// Why the user's last message was left unanswered, until a message
+    /// is added or taken out.
+    #[serde(default)]
+    halted: Option<Halt>,
+}
+
+/// Why the user's last message is left without an answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Halt {
+    /// The user stopped the turn answering it.
+    Stopped,
+    /// It was left for the next turn, such as a note to an idle agent or
+    /// a request whose turn failed: the next message joins it.
+    #[default]
+    Kept,
 }
 
 impl Conversation {
@@ -117,11 +133,36 @@ impl Conversation {
         &mut self.messages
     }
 
+    /// Whether the model owes an answer: the last message is the user's,
+    /// and it was not halted.
+    pub(crate) fn awaits_model(&self) -> bool {
+        self.halted.is_none() && matches!(self.messages.last(), Some(Message::User { .. }))
+    }
+
+    /// Leaves the user's last message unanswered, for `reason`. Whether it
+    /// was halted now: not when the model owes no answer.
+    pub(crate) fn halt(&mut self, reason: Halt) -> bool {
+        let halts = self.awaits_model();
+        if halts {
+            self.halted = Some(reason);
+        }
+        halts
+    }
+
+    /// Asks the model again for an answer to the user's last message, also
+    /// a halted one; whether the last message is the user's. Not logged: a
+    /// restore reads a halt after a halt as asked again in between.
+    pub(crate) fn resume(&mut self) -> bool {
+        self.halted = None;
+        self.awaits_model()
+    }
+
     /// Adds `message`, whose content came from `origin`: a user message
     /// goes into the last message when that is the user's too, such as the
     /// tool results the model waits for, so user and model keep taking
     /// turns. Whether it went into the last one.
     pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
+        self.halted = None;
         let (at, first) = match (self.messages.last(), &message) {
             (Some(Message::User { content }), Message::User { .. }) => {
                 (self.messages.len().saturating_sub(1), content.len())
@@ -151,6 +192,7 @@ impl Conversation {
     /// Takes out the last message.
     pub(crate) fn retract(&mut self) -> Option<Message> {
         let message = self.messages.pop()?;
+        self.halted = None;
         let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
         Some(message)
