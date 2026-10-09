@@ -281,8 +281,7 @@ fn spawn_agent(
         .unwrap_or_default();
     let id = AgentId::default();
     let mut agent = world.spawn((Agent, id.clone(), Name::new(spec.name), prompt, access));
-    // The parent first, so the agent's log is open when its settings are
-    // logged.
+    // The parent first, so the agent's log opens naming it.
     if let Some(parent) = parent {
         agent.insert(SpawnedBy(parent));
     }

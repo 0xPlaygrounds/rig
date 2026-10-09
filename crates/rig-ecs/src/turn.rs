@@ -632,11 +632,6 @@ fn drop_unanswered(
     }
 }
 
-/// The catalog reference of `spec`, under which the log keeps its usage.
-fn model_name(spec: Option<&ModelSpec>) -> String {
-    spec.map_or_else(|| "unknown".to_owned(), ModelSpec::reference)
-}
-
 /// The request for the agent's next model call, checked against the
 /// model's spec, or what the user must fix first. It asks for the
 /// provider's prompt cache where the model has one; the preamble and tools
@@ -744,7 +739,6 @@ pub(crate) fn on_model_done(
             // A reply the turn-failure rule rejects was still billed.
             spent.record(&response.usage);
             turn_spent.0.record(&response.usage);
-            log.usage(id, &model_name(spec), &response.usage, spent.context);
             recovery.retries = 0;
             response
         }
@@ -1304,13 +1298,7 @@ pub(crate) fn on_summary_done(
     done: On<Add<Done<Summary>>>,
     calls: Query<(&CallOf, &Summarizing, &Done<Summary>)>,
     mut turns: Query<(&TurnOf, &mut TurnSpending)>,
-    mut agents: Query<(
-        &AgentId,
-        &Conversation,
-        &mut Compacted,
-        &mut Spending,
-        Option<&Connection>,
-    )>,
+    mut agents: Query<(&AgentId, &Conversation, &mut Compacted, &mut Spending)>,
     log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -1323,7 +1311,7 @@ pub(crate) fn on_summary_done(
     let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((id, conversation, mut compacted, mut spent, connection)) = agents.get_mut(agent) else {
+    let Ok((id, conversation, mut compacted, mut spent)) = agents.get_mut(agent) else {
         return;
     };
     let summary = reply
@@ -1332,8 +1320,6 @@ pub(crate) fn on_summary_done(
         .and_then(|response| {
             spent.record_aside(&response.usage);
             turn_spent.0.record_aside(&response.usage);
-            let model = model_name(connection.map(|connection| &*connection.spec));
-            log.usage(id, &model, &response.usage, spent.context);
             Summarizer::summary_text(response).map_err(|why| why.to_string())
         });
     match summary {

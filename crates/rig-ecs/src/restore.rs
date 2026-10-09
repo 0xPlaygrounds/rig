@@ -30,14 +30,11 @@ use rig_memory::SummaryState;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
-use super::agent::{
-    Agent, AgentId, CallOf, Conversation, ModelChoice, Notice, SpawnedBy, SystemPrompt, ToolAccess,
-    ToolCallRun, TurnOf,
-};
+use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf};
 use super::compaction::Compacted;
 use super::journal::{
     AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
-    Settings, UsageRecord, load_blobs,
+    load_blobs,
 };
 use super::store::{JournalStore, SessionStore};
 use super::tools::failed;
@@ -48,12 +45,13 @@ use super::turn::{CallModel, ToolStarter, tool_name};
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
 /// The first fields of a line, read from every line to find the newest
-/// compaction.
+/// compaction and the newest record of each saved component.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
     #[serde(rename = "type")]
     kind: String,
+    component: Option<String>,
 }
 
 /// An agent log folded into the agent's state.
@@ -62,8 +60,6 @@ struct Folded {
     conversation: Conversation,
     message_seqs: Vec<u64>,
     halted: bool,
-    settings: Option<Settings>,
-    usage: UsageRecord,
     components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
     next_seq: u64,
@@ -99,9 +95,9 @@ pub struct Restored {
 }
 
 /// Spawns the agents of the session's logs, with their conversations,
-/// settings, usage, compactions and saved plugin components, links each
-/// agent to the agent that spawned it, and starts logging. Anything
-/// that does not load is skipped with a notice.
+/// compactions and saved components, links each agent to the agent that
+/// spawned it, and starts logging. Anything that does not load is skipped
+/// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
     let (Some(log), Some(SessionStore(store))) = (
         world.get_resource::<SessionLog>().cloned(),
@@ -139,44 +135,46 @@ pub(crate) fn restore_session(world: &mut World) {
             conversation,
             message_seqs,
             halted,
-            settings,
-            usage,
             components,
             compacted,
             next_seq,
         } = agent;
         let id = AgentId(header.agent.clone());
-        let applied = settings.clone().unwrap_or_default();
-        let mut spawned = world.spawn((
-            Name::new("agent"),
-            Agent,
-            id.clone(),
-            conversation,
-            compacted,
-            usage.total(),
-            applied.effort,
-            applied
-                .prompt
-                .map_or_else(SystemPrompt::default, SystemPrompt),
-            applied.tools.map_or(ToolAccess::All, ToolAccess::Only),
-        ));
-        if let Some(model) = applied.model {
-            spawned.insert(ModelChoice(model));
-        }
-        let entity = spawned.id();
-        for (path, saved) in &components {
-            let outcome = match saved_components.get(path.as_str()) {
-                _ if saved.v > COMPONENT_VERSION => Err(format!(
+        let entity = world
+            .spawn((
+                Name::new("agent"),
+                Agent,
+                id.clone(),
+                conversation,
+                compacted,
+            ))
+            .id();
+        // In the order registered, which inserts the reasoning setting
+        // before the model that checks it.
+        for (path, insert) in &saved_components {
+            let Some(saved) = components.get(*path) else {
+                continue;
+            };
+            let inserted = if saved.v > COMPONENT_VERSION {
+                Err(format!(
                     "it was saved by a newer build (version {})",
                     saved.v
-                )),
-                None => Err("no plugin saves it any more".to_owned()),
-                Some(insert) => insert(&mut world.entity_mut(entity), saved.value.clone())
-                    .map_err(|failure| format!("its saved value no longer fits: {failure}")),
+                ))
+            } else {
+                insert(&mut world.entity_mut(entity), saved.value.clone())
+                    .map_err(|failure| format!("its saved value no longer fits: {failure}"))
             };
-            if let Err(failure) = outcome {
+            if let Err(failure) = inserted {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
+        }
+        for path in components
+            .keys()
+            .filter(|path| saved_components.iter().all(|(name, _)| name != path))
+        {
+            notices.push(format!(
+                "Skipped saved component `{path}`: no plugin saves it any more."
+            ));
         }
         let depth = depth(&header.agent, &parents);
         restored.push(RestoredAgent {
@@ -194,8 +192,6 @@ pub(crate) fn restore_session(world: &mut World) {
                 pending: Vec::new(),
                 message_seqs,
                 halted,
-                settings,
-                usage,
                 components,
             },
         ));
@@ -285,8 +281,6 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         conversation: Conversation::default(),
         message_seqs: Vec::new(),
         halted: false,
-        settings: None,
-        usage: UsageRecord::default(),
         components: BTreeMap::new(),
         compacted: Compacted::default(),
         next_seq: envelopes
@@ -318,8 +312,6 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                     matches!(envelope, Some(envelope) if envelope.seq >= record.first_kept)
                 })
                 .map_or(at, |(index, _)| index.min(at));
-            folded.settings = record.snapshot.settings;
-            folded.usage = record.snapshot.usage;
             folded.components = record.snapshot.components;
             folded.compacted = Compacted(SummaryState {
                 upto: 0,
@@ -330,7 +322,21 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         }
         None => (1, 1),
     };
+    // Only the newest record of a saved component is read.
+    let newest: HashMap<&str, usize> = envelopes
+        .iter()
+        .enumerate()
+        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
+        .collect();
     for (index, line) in lines.iter().enumerate().skip(from_messages) {
+        if let Some(Some(Envelope {
+            component: Some(component),
+            ..
+        })) = envelopes.get(index)
+            && newest.get(component.as_str()) != Some(&index)
+        {
+            continue;
+        }
         // Unknown record types are skipped and left on disk.
         let Ok(line) = serde_json::from_slice::<Line>(line) else {
             continue;
@@ -355,8 +361,6 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
             }
             Record::Halt => folded.halted = true,
             _ if superseded => {}
-            Record::Settings(settings) => folded.settings = Some(settings),
-            Record::Usage(usage) => folded.usage = usage,
             Record::Component {
                 component,
                 v,
@@ -449,3 +453,6 @@ fn settle(
         commands.trigger(CallModel { entity: turn });
     }
 }
+
+#[cfg(test)]
+mod tests;

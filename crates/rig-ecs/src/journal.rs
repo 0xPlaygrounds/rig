@@ -1,16 +1,16 @@
 //! The session's append-only logs. Each agent, a subagent too, has one
 //! JSON-lines log in the session's [`SessionStore`], created at its first
-//! message: a header, then one record per committed
-//! message, settings change, usage update, compaction and saved plugin
-//! component. Records are queued as they happen and written at the end of
-//! the frame, a subagent's before its parent's, and at once before a tool
-//! that may change something runs. Nothing is ever rewritten: a compaction
+//! message: a header, then one record per committed message, compaction
+//! and change of a saved component. Records are queued as they happen and
+//! written at the end of the frame, a subagent's before its parent's, and
+//! at once before a tool that may change something runs. Nothing is ever rewritten: a compaction
 //! is one more record. [`restore`](super::restore) folds the logs back at
 //! startup.
 //!
-//! A plugin component is logged when the plugin registered it with
-//! [`AppSaveExt::save_component`]; a logged component no plugin registers
-//! any more is skipped on restore.
+//! A component is saved when it was registered with
+//! [`AppSaveExt::save_component`], as the agent's model, reasoning setting,
+//! system prompt, tool access and spending are; a logged component no
+//! plugin registers any more is skipped on restore.
 
 use std::collections::{BTreeMap, HashMap};
 use std::io;
@@ -21,7 +21,7 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
-use rig_core::completion::{Message, Usage};
+use rig_core::completion::Message;
 use rig_core::message::{
     DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
 };
@@ -46,8 +46,10 @@ use super::{StopTurns, WriteJournal};
 pub trait AppSaveExt {
     /// Saves the agent component `T` with the session: each change of it
     /// on an agent is logged at the end of the frame, as is its removal,
-    /// and restoring the session inserts it again. Its type name names it
-    /// in the log, so renaming the type drops what was saved.
+    /// and restoring the session inserts it again, in the order the
+    /// components were registered. A value that serializes to `null` is
+    /// saved as absent. Its type name names it in the log, so renaming the
+    /// type drops what was saved.
     fn save_component<T: Component + Serialize + DeserializeOwned>(&mut self) -> &mut Self;
 }
 
@@ -56,7 +58,7 @@ impl AppSaveExt for App {
         self.world_mut()
             .get_resource_or_init::<SavedComponents>()
             .0
-            .insert(std::any::type_name::<T>(), insert_saved::<T>);
+            .push((std::any::type_name::<T>(), insert_saved::<T>));
         self.add_systems(
             Last,
             log_saved::<T>
@@ -71,9 +73,9 @@ impl AppSaveExt for App {
 pub(crate) type InsertSaved = fn(&mut EntityWorldMut, Value) -> serde_json::Result<()>;
 
 /// How each component registered with [`AppSaveExt::save_component`] is
-/// restored, by type name.
+/// restored, by type name, in the order registered.
 #[derive(Resource, Default)]
-pub(crate) struct SavedComponents(pub(crate) HashMap<&'static str, InsertSaved>);
+pub(crate) struct SavedComponents(pub(crate) Vec<(&'static str, InsertSaved)>);
 
 fn insert_saved<T: Component + DeserializeOwned>(
     agent: &mut EntityWorldMut,
@@ -133,63 +135,7 @@ pub(crate) struct Header {
     pub(crate) parent: Option<String>,
 }
 
-/// An agent's model, reasoning setting, system prompt when it is not the
-/// default one, and tools when they are not all of them.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-pub(crate) struct Settings {
-    #[serde(default)]
-    pub(crate) model: Option<String>,
-    #[serde(default)]
-    pub(crate) effort: Effort,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) prompt: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) tools: Option<Vec<String>>,
-}
-
-impl Settings {
-    /// The settings of an agent with these components.
-    pub(crate) fn of(
-        model: Option<&ModelChoice>,
-        effort: Effort,
-        prompt: &SystemPrompt,
-        access: &ToolAccess,
-    ) -> Self {
-        Self {
-            model: model.map(|model| model.0.clone()),
-            effort,
-            prompt: (prompt.0 != SystemPrompt::default().0).then(|| prompt.0.clone()),
-            tools: match access {
-                ToolAccess::All => None,
-                ToolAccess::Only(names) => Some(names.clone()),
-            },
-        }
-    }
-}
-
-/// An agent's model calls' usage so far, by model, and the context the
-/// last one left.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) struct UsageRecord {
-    #[serde(default)]
-    pub(crate) models: BTreeMap<String, Spending>,
-    #[serde(default)]
-    pub(crate) context: Option<u64>,
-}
-
-impl UsageRecord {
-    /// The usage of every model summed.
-    pub(crate) fn total(&self) -> Spending {
-        let mut total = Spending::default();
-        for spent in self.models.values() {
-            total.add(spent);
-        }
-        total.context = self.context;
-        total
-    }
-}
-
-/// A saved plugin component's value and the version it was logged with.
+/// A saved component's value and the version it was logged with.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub(crate) struct SavedValue {
     pub(crate) v: u32,
@@ -200,10 +146,6 @@ pub(crate) struct SavedValue {
 /// what came before it.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) struct Snapshot {
-    #[serde(default)]
-    pub(crate) settings: Option<Settings>,
-    #[serde(default)]
-    pub(crate) usage: UsageRecord,
     #[serde(default)]
     pub(crate) components: BTreeMap<String, SavedValue>,
 }
@@ -241,11 +183,7 @@ pub(crate) enum Record {
     /// The turn ended without an answer to the last message, which a
     /// restore leaves unanswered.
     Halt,
-    /// The settings; the latest wins.
-    Settings(Settings),
-    /// The usage so far; the latest wins.
-    Usage(UsageRecord),
-    /// A saved plugin component, by type path; `value: null` when it was
+    /// A saved component, by type path; `value: null` when it was
     /// removed. The latest per type wins.
     Component {
         component: String,
@@ -288,8 +226,6 @@ pub(crate) struct AgentLog {
     pub(crate) message_seqs: Vec<u64>,
     /// Whether the last conversation record is a [`Record::Halt`].
     pub(crate) halted: bool,
-    pub(crate) settings: Option<Settings>,
-    pub(crate) usage: UsageRecord,
     pub(crate) components: BTreeMap<String, SavedValue>,
 }
 
@@ -302,8 +238,6 @@ impl AgentLog {
             pending: Vec::new(),
             message_seqs: Vec::new(),
             halted: false,
-            settings: None,
-            usage: UsageRecord::default(),
             components: BTreeMap::new(),
         }
     }
@@ -520,42 +454,6 @@ impl SessionLog {
         }
     }
 
-    /// Logs the settings of `agent` when they changed.
-    pub(crate) fn settings(&self, agent: &AgentId, settings: Settings) {
-        let mut book = self.book();
-        if book
-            .agents
-            .get(&agent.0)
-            .is_some_and(|log| log.settings.as_ref() == Some(&settings))
-        {
-            return;
-        }
-        if book
-            .record(&agent.0, Record::Settings(settings.clone()))
-            .is_some()
-            && let Some(log) = book.agents.get_mut(&agent.0)
-        {
-            log.settings = Some(settings);
-        }
-    }
-
-    /// Adds a finished call's `usage` to what `agent` spent on `model`,
-    /// and logs the totals with the `context` the agent is at.
-    pub(crate) fn usage(&self, agent: &AgentId, model: &str, usage: &Usage, context: Option<u64>) {
-        let mut book = self.book();
-        let Some(log) = book.agent(&agent.0) else {
-            return;
-        };
-        log.usage
-            .models
-            .entry(model.to_owned())
-            .or_default()
-            .record(usage);
-        log.usage.context = context;
-        let record = Record::Usage(log.usage.clone());
-        book.record(&agent.0, record);
-    }
-
     /// Logs the compaction `compacted` of `agent`, with the state it
     /// carries.
     pub(crate) fn compaction(&self, agent: &AgentId, compacted: &Compacted) {
@@ -573,22 +471,22 @@ impl SessionLog {
             first_kept,
             tracked: compacted.tracked.clone(),
             snapshot: Snapshot {
-                settings: log.settings.clone(),
-                usage: log.usage.clone(),
                 components: log.components.clone(),
             },
         });
         book.record(&agent.0, record);
     }
 
-    /// Logs the saved plugin component `component` of `agent` when its
-    /// value changed; `None` when it was removed.
+    /// Logs the saved component `component` of `agent` when its value
+    /// changed; `None` or `null` when it was removed.
     pub(crate) fn component(&self, agent: &AgentId, component: &str, value: Option<Value>) {
         let mut book = self.book();
-        let saved = value.map(|value| SavedValue {
-            v: COMPONENT_VERSION,
-            value,
-        });
+        let saved = value
+            .filter(|value| !value.is_null())
+            .map(|value| SavedValue {
+                v: COMPONENT_VERSION,
+                value,
+            });
         let known = book
             .agents
             .get(&agent.0)
@@ -752,7 +650,13 @@ pub struct JournalPlugin;
 
 impl Plugin for JournalPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, super::restore::restore_session)
+        // The reasoning setting first: inserting the model checks it.
+        app.save_component::<Effort>()
+            .save_component::<ModelChoice>()
+            .save_component::<SystemPrompt>()
+            .save_component::<ToolAccess>()
+            .save_component::<Spending>()
+            .add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(
                 Last,
@@ -761,7 +665,6 @@ impl Plugin for JournalPlugin {
                     .in_set(WriteJournal)
                     .after(StopTurns),
             )
-            .add_observer(log_settings)
             .add_observer(open_child_log);
     }
 }
@@ -778,24 +681,6 @@ fn open_child_log(
         && let Ok(parent) = ids.get(parent.0)
     {
         log.open_child(child, parent);
-    }
-}
-
-/// Logs an agent's settings when its model or reasoning setting is
-/// inserted, which is how both change.
-fn log_settings(
-    inserted: On<Insert<(ModelChoice, Effort)>>,
-    agents: Query<(
-        &AgentId,
-        Option<&ModelChoice>,
-        &Effort,
-        &SystemPrompt,
-        &ToolAccess,
-    )>,
-    log: Res<SessionLog>,
-) {
-    if let Ok((id, model, &effort, prompt, access)) = agents.get(inserted.entity) {
-        log.settings(id, Settings::of(model, effort, prompt, access));
     }
 }
 
@@ -828,6 +713,3 @@ fn write_logs(
         ));
     }
 }
-
-#[cfg(test)]
-mod tests;

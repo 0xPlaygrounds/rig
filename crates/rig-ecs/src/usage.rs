@@ -1,6 +1,6 @@
 //! What each agent's model calls used and cost, and how full its context is.
 //! Every finished model call adds the usage its provider reported to its
-//! agent's [`Spending`], which its log keeps by model, and to its turn's
+//! agent's [`Spending`], which its log saves, and to its turn's
 //! [`TurnSpending`]. rig-core prices a reply its provider did not price at
 //! the model's catalog [`Pricing`](rig_core::catalog::Pricing), so the cost
 //! here is the provider's figure or the catalog's list price.
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentId, TurnOf};
 
 /// An agent's model calls' usage summed, as rig-core's [`UsageTotals`]
-/// sums it; the session logs it by model. A turn's is a [`TurnSpending`].
+/// sums it, saved with the session. A turn's is a [`TurnSpending`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Spending(pub UsageTotals);
