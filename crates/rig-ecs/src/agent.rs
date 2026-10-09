@@ -8,7 +8,7 @@ use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{AssistantContent, Message, Reasoning};
 use rig_core::effect::EffectId;
-use rig_core::message::ToolCall;
+use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
 use super::activity::Activity;
@@ -103,6 +103,11 @@ pub struct Conversation {
     seqs: Vec<u64>,
 }
 
+/// The text that goes between a request the user stopped and the next
+/// message, which joins it, so the model does not carry the request out.
+pub const STOPPED: &str = "[The request above was stopped by the user before it was answered. \
+                           Do not carry it out unless asked again.]";
+
 /// Why the user's last message is left without an answer.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -170,13 +175,15 @@ impl Conversation {
     /// Adds `message`, whose content came from `origin` and which the log
     /// recorded as `seq`: a user message goes into the last message when
     /// that is the user's too, such as the tool results the model waits
-    /// for, so user and model keep taking turns.
+    /// for, so user and model keep taking turns. After [`STOPPED`] when
+    /// that is a request the user stopped.
     pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>, seq: Option<u64>) {
-        self.halted = None;
+        let stopped = self.halted.take() == Some(Halt::Stopped);
         let (at, first) = match (self.messages.last(), &message) {
-            (Some(Message::User { content }), Message::User { .. }) => {
-                (self.messages.len().saturating_sub(1), content.len())
-            }
+            (Some(Message::User { content }), Message::User { .. }) => (
+                self.messages.len().saturating_sub(1),
+                content.len() + usize::from(stopped),
+            ),
             _ => (self.messages.len(), 0),
         };
         let items = match &message {
@@ -189,6 +196,9 @@ impl Conversation {
         }
         match (self.messages.last_mut(), message) {
             (Some(Message::User { content }), Message::User { content: added }) => {
+                if stopped {
+                    content.push(UserContent::text(STOPPED));
+                }
                 content.extend(added);
             }
             (_, message) => {

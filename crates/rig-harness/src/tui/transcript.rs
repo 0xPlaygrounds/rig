@@ -21,7 +21,7 @@ use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
 use crate::attach;
 use crate::host::launcher::BUILD_ORIGIN;
-use rig_ecs::agent::Conversation;
+use rig_ecs::agent::{Conversation, STOPPED};
 use rig_ecs::inbox::{Origin, OriginKind};
 
 /// The renderers by tool name.
@@ -326,6 +326,10 @@ fn message_lines(
                     UserContent::Text(text) => {
                         if let Some((label, count)) = attach::attached_file(&text.text) {
                             lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
+                            continue;
+                        }
+                        if text.text == STOPPED {
+                            lines.push(Line::from("  [stopped before it was answered]").dim());
                             continue;
                         }
                         lines.push(Line::default());
