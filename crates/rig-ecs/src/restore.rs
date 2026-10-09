@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
@@ -54,28 +54,18 @@ struct Envelope {
     component: Option<String>,
 }
 
-/// An agent log folded into the agent's state.
+/// An agent log folded into the agent's state, and the log to carry on.
 struct Folded {
     header: Header,
     conversation: Conversation,
-    message_seqs: Vec<u64>,
-    halted: bool,
-    components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
-    next_seq: u64,
+    log: AgentLog,
 }
 
-/// A restored agent, for the reconcile pass.
-struct RestoredAgent {
-    entity: Entity,
-    parent: Option<String>,
-    depth: usize,
-    halted: bool,
-}
-
-/// The agents [`restore_session`] spawned, until [`reconcile`] took them.
+/// The agents [`restore_session`] spawned, each with its depth, until
+/// [`reconcile`] took them.
 #[derive(Resource)]
-pub(crate) struct RestoredAgents(Vec<RestoredAgent>);
+pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
 /// An agent was restored: its conversation with its origins, its settings,
 /// its saved components and the agent that spawned it are back, and the
@@ -128,16 +118,15 @@ pub(crate) fn restore_session(world: &mut World) {
         .map(|saved| saved.0.clone())
         .unwrap_or_default();
     let mut restored = Vec::new();
+    let mut entities = HashMap::new();
+    let mut links = Vec::new();
     let mut logs = Vec::new();
     for agent in folded {
         let Folded {
             header,
             conversation,
-            message_seqs,
-            halted,
-            components,
             compacted,
-            next_seq,
+            mut log,
         } = agent;
         let id = AgentId(header.agent.clone());
         let entity = world
@@ -152,7 +141,7 @@ pub(crate) fn restore_session(world: &mut World) {
         // In the order registered, which inserts the reasoning setting
         // before the model that checks it.
         for (path, insert) in &saved_components {
-            let Some(saved) = components.get(*path) else {
+            let Some(saved) = log.components.get(*path) else {
                 continue;
             };
             let inserted = if saved.v > COMPONENT_VERSION {
@@ -168,7 +157,8 @@ pub(crate) fn restore_session(world: &mut World) {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
-        for path in components
+        for path in log
+            .components
             .keys()
             .filter(|path| saved_components.iter().all(|(name, _)| name != path))
         {
@@ -176,39 +166,17 @@ pub(crate) fn restore_session(world: &mut World) {
                 "Skipped saved component `{path}`: no plugin saves it any more."
             ));
         }
-        let depth = depth(&header.agent, &parents);
-        restored.push(RestoredAgent {
-            entity,
-            parent: header.parent.clone(),
-            depth,
-            halted,
-        });
-        logs.push((
-            id.0,
-            AgentLog {
-                depth,
-                next_seq,
-                started: true,
-                pending: Vec::new(),
-                message_seqs,
-                halted,
-                components,
-            },
-        ));
+        log.depth = depth(&header.agent, &parents);
+        restored.push((log.depth, entity));
+        entities.insert(id.0.clone(), entity);
+        links.push((entity, header.parent));
+        logs.push((id.0, log));
     }
-    let entities: HashMap<String, Entity> = logs
-        .iter()
-        .zip(&restored)
-        .map(|((id, _), agent)| (id.clone(), agent.entity))
-        .collect();
-    for agent in &restored {
-        if let Some(parent) = agent
-            .parent
-            .as_ref()
-            .and_then(|parent| entities.get(parent))
-            && let Ok(mut child) = world.get_entity_mut(agent.entity)
+    for (child, parent) in links {
+        if let Some(&parent) = parent.and_then(|parent| entities.get(&parent))
+            && let Ok(mut child) = world.get_entity_mut(child)
         {
-            child.insert(SpawnedBy(*parent));
+            child.insert(SpawnedBy(parent));
         }
     }
     // What restoring set off, such as connecting each model, is not logged.
@@ -276,19 +244,16 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         .iter()
         .map(|line| serde_json::from_slice(line).ok())
         .collect();
+    let next_seq = envelopes.iter().flatten().map(|envelope| envelope.seq + 1);
     let mut folded = Folded {
         header,
         conversation: Conversation::default(),
-        message_seqs: Vec::new(),
-        halted: false,
-        components: BTreeMap::new(),
         compacted: Compacted::default(),
-        next_seq: envelopes
-            .iter()
-            .flatten()
-            .map(|envelope| envelope.seq + 1)
-            .max()
-            .unwrap_or(1),
+        log: AgentLog {
+            next_seq: next_seq.max().unwrap_or(1),
+            started: true,
+            ..AgentLog::new(0)
+        },
     };
     // Messages are read from the first one the newest compaction kept, the
     // rest from the compaction on.
@@ -312,7 +277,7 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                     matches!(envelope, Some(envelope) if envelope.seq >= record.first_kept)
                 })
                 .map_or(at, |(index, _)| index.min(at));
-            folded.components = record.snapshot.components;
+            folded.log.components = record.snapshot.components;
             folded.compacted = Compacted(SummaryState {
                 upto: 0,
                 summary: record.summary,
@@ -348,18 +313,17 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 origin,
             } => {
                 load_blobs(&mut message, store);
-                if !folded.conversation.append(message, origin) {
-                    folded.message_seqs.push(line.seq);
-                }
-                folded.halted = false;
+                folded.conversation.append(message, origin, Some(line.seq));
             }
             Record::Retract => {
-                if folded.conversation.retract().is_some() {
-                    folded.message_seqs.pop();
-                }
-                folded.halted = false;
+                folded.conversation.retract();
             }
-            Record::Halt => folded.halted = true,
+            // Only a conversation waiting for its model is halted, so a
+            // halt after a halt means it was asked again, as by a retry.
+            Record::Halt { reason } => {
+                folded.conversation.resume();
+                folded.conversation.halt(reason);
+            }
             _ if superseded => {}
             Record::Component {
                 component,
@@ -367,10 +331,13 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 value,
             } => match value {
                 Some(value) => {
-                    folded.components.insert(component, SavedValue { v, value });
+                    folded
+                        .log
+                        .components
+                        .insert(component, SavedValue { v, value });
                 }
                 None => {
-                    folded.components.remove(&component);
+                    folded.log.components.remove(&component);
                 }
             },
             Record::Header(_) | Record::Compaction(_) => {}
@@ -383,22 +350,22 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
 /// agents they spawned. Each agent first gets [`Restored`]; then, by
 /// appending records, a tool call without a result starts again when its
 /// tool is an ordinary read-only one, and is answered as interrupted
-/// otherwise; and an agent whose conversation ends
-/// in the user's message, or in a full set of tool results, calls its
-/// model again. An agent an observer kept idle only gets the interrupted
+/// otherwise; and an agent whose conversation ends in the user's message
+/// that was not halted, or in a full set of tool results, calls its model
+/// again. An agent an observer kept idle only gets the interrupted
 /// results.
 pub(crate) fn reconcile(world: &mut World) {
     let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
         return;
     };
-    agents.sort_by_key(|agent| agent.depth);
-    for agent in agents {
+    agents.sort_by_key(|&(depth, _)| depth);
+    for (_, agent) in agents {
         let mut restored = Restored {
-            entity: agent.entity,
+            entity: agent,
             resume: true,
         };
         world.trigger_ref(&mut restored);
-        let carry = (agent.entity, restored.resume, !agent.halted);
+        let carry = (agent, restored.resume);
         if let Err(error) = world.run_system_cached_with(settle, carry) {
             warn!("could not reconcile a restored agent: {error}");
         }
@@ -406,10 +373,9 @@ pub(crate) fn reconcile(world: &mut World) {
 }
 
 /// Settles one restored agent, as [`reconcile`] says: `resume` is what its
-/// [`Restored`] observers left, and `answer` whether a conversation ending
-/// in a message the model has not answered goes to the model.
+/// [`Restored`] observers left.
 fn settle(
-    In((agent, resume, answer)): In<(Entity, bool, bool)>,
+    In((agent, resume)): In<(Entity, bool)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     starter: ToolStarter,
     log: Res<SessionLog>,
@@ -448,7 +414,7 @@ fn settle(
         for (entity, run) in runs {
             starter.start(&mut commands, entity, agent, &run);
         }
-    } else if answer && matches!(conversation.messages().last(), Some(Message::User { .. })) {
+    } else if conversation.awaits_model() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
         commands.trigger(CallModel { entity: turn });
     }

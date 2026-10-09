@@ -8,7 +8,7 @@ use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{AssistantContent, Message, Reasoning};
 use rig_core::effect::EffectId;
-use rig_core::message::ToolCall;
+use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
 use super::activity::Activity;
@@ -93,6 +93,31 @@ pub struct Conversation {
     /// The origin of each content item that is not the user's own or the
     /// model's, by message and item index, in the order they were added.
     origins: Vec<(usize, usize, Origin)>,
+    /// Why the user's last message was left unanswered, until a message
+    /// is added or taken out.
+    #[serde(default)]
+    halted: Option<Halt>,
+    /// The `seq` of the log record that began each message, while the
+    /// session is logged.
+    #[serde(skip)]
+    seqs: Vec<u64>,
+}
+
+/// The text that goes between a request the user stopped and the next
+/// message, which joins it, so the model does not carry the request out.
+pub const STOPPED: &str = "[The request above was stopped by the user before it was answered. \
+                           Do not carry it out unless asked again.]";
+
+/// Why the user's last message is left without an answer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Halt {
+    /// The user stopped the turn answering it.
+    Stopped,
+    /// It was left for the next turn, such as a note to an idle agent or
+    /// a request whose turn failed: the next message joins it.
+    #[default]
+    Kept,
 }
 
 impl Conversation {
@@ -117,15 +142,48 @@ impl Conversation {
         &mut self.messages
     }
 
-    /// Adds `message`, whose content came from `origin`: a user message
-    /// goes into the last message when that is the user's too, such as the
-    /// tool results the model waits for, so user and model keep taking
-    /// turns. Whether it went into the last one.
-    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
+    /// Whether the model owes an answer: the last message is the user's,
+    /// and it was not halted.
+    pub(crate) fn awaits_model(&self) -> bool {
+        self.halted.is_none() && matches!(self.messages.last(), Some(Message::User { .. }))
+    }
+
+    /// Leaves the user's last message unanswered, for `reason`. Whether it
+    /// was halted now: not when the model owes no answer.
+    pub(crate) fn halt(&mut self, reason: Halt) -> bool {
+        let halts = self.awaits_model();
+        if halts {
+            self.halted = Some(reason);
+        }
+        halts
+    }
+
+    /// Asks the model again for an answer to the user's last message, also
+    /// a halted one; whether the last message is the user's. Not logged: a
+    /// restore reads a halt after a halt as asked again in between.
+    pub(crate) fn resume(&mut self) -> bool {
+        self.halted = None;
+        self.awaits_model()
+    }
+
+    /// The `seq` of the log record that began message `message`, if it was
+    /// logged.
+    pub(crate) fn seq(&self, message: usize) -> Option<u64> {
+        self.seqs.get(message).copied()
+    }
+
+    /// Adds `message`, whose content came from `origin` and which the log
+    /// recorded as `seq`: a user message goes into the last message when
+    /// that is the user's too, such as the tool results the model waits
+    /// for, so user and model keep taking turns. After [`STOPPED`] when
+    /// that is a request the user stopped.
+    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>, seq: Option<u64>) {
+        let stopped = self.halted.take() == Some(Halt::Stopped);
         let (at, first) = match (self.messages.last(), &message) {
-            (Some(Message::User { content }), Message::User { .. }) => {
-                (self.messages.len().saturating_sub(1), content.len())
-            }
+            (Some(Message::User { content }), Message::User { .. }) => (
+                self.messages.len().saturating_sub(1),
+                content.len() + usize::from(stopped),
+            ),
             _ => (self.messages.len(), 0),
         };
         let items = match &message {
@@ -138,12 +196,14 @@ impl Conversation {
         }
         match (self.messages.last_mut(), message) {
             (Some(Message::User { content }), Message::User { content: added }) => {
+                if stopped {
+                    content.push(UserContent::text(STOPPED));
+                }
                 content.extend(added);
-                true
             }
             (_, message) => {
                 self.messages.push(message);
-                false
+                self.seqs.extend(seq);
             }
         }
     }
@@ -151,8 +211,10 @@ impl Conversation {
     /// Takes out the last message.
     pub(crate) fn retract(&mut self) -> Option<Message> {
         let message = self.messages.pop()?;
+        self.halted = None;
         let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
+        self.seqs.truncate(len);
         Some(message)
     }
 }

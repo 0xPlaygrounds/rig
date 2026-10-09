@@ -28,7 +28,7 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Notice, TurnOf};
+use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Halt, Notice, TurnOf};
 use super::calls::Wake;
 use super::journal::SessionLog;
 use super::turn::{CallModel, Exiting};
@@ -309,7 +309,7 @@ pub(crate) fn on_deliver(
     // After a failure that kept the user's message, the new text joins it.
     commit(&to, pending, &mut conversation, &mut notices);
     if deliver.mode == DeliveryMode::Note {
-        log.halt(id, &conversation);
+        log.halt(id, &mut conversation, Halt::Kept);
         return;
     }
     commands.spawn((Name::new("turn"), TurnOf(agent), Starting));
@@ -365,7 +365,7 @@ pub(crate) fn recall_on_turn_end(
         }
     }
     if exiting.is_none() {
-        log.halt(id, &conversation);
+        log.halt(id, &mut conversation, Halt::Kept);
     }
     if !typed.is_empty() {
         recalled.write(Recalled {

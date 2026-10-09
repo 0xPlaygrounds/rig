@@ -37,8 +37,9 @@ use web_time::Instant;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
-    Effort, Ending, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel,
-    SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+    Effort, Ending, Halt, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort,
+    SetModel, SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf,
+    TurnOutcome,
 };
 use super::calls::{Done, Running, Wake};
 use super::compaction::{
@@ -101,22 +102,22 @@ fn tool_pool() -> &'static AsyncComputeTaskPool {
 }
 
 /// Sends the conversation to the model again as it stands, when it ends
-/// in a message the model has not answered.
+/// in a message the model has not answered, also a halted one.
 pub(crate) fn on_retry(
     retry: On<Retry>,
-    agents: Query<(&Conversation, Has<ActiveTurn>), With<Agent>>,
+    mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = retry.entity;
-    let Ok((conversation, busy)) = agents.get(agent) else {
+    let Ok((mut conversation, busy)) = agents.get_mut(agent) else {
         return;
     };
     if busy {
         notices.write(Notice::info(agent, "A turn is running."));
         return;
     }
-    if !matches!(conversation.messages().last(), Some(Message::User { .. })) {
+    if !conversation.resume() {
         notices.write(Notice::info(
             agent,
             "Nothing to retry: the model answered the last message.",
@@ -203,7 +204,7 @@ pub(crate) fn on_interrupt(
     ) {
         log.commit(id, &mut conversation, results, None);
     }
-    log.halt(id, &conversation);
+    log.halt(id, &mut conversation, Halt::Stopped);
     log.flush();
     commands.entity(turn).despawn();
     notices.write(Notice::info(agent, "Interrupted."));
@@ -1341,7 +1342,7 @@ pub(crate) fn on_summary_done(
                 summary,
                 tracked: summarizing.tracked.clone(),
             });
-            log.compaction(id, &compacted);
+            log.compaction(id, conversation, &compacted);
             let left = compacted.estimate(conversation.messages());
             spent.context = Some(left);
             notices.write(Notice::info(

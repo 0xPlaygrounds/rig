@@ -1,13 +1,17 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_core::completion::{AssistantContent, CompletionResponse, Message, Usage};
-use rig_core::message::Origin;
+use rig_core::message::{Origin, UserContent};
 
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CallOf, Conversation, ToolAccess, TurnOf};
+use crate::agent::{
+    Agent, AgentId, CallOf, Conversation, Halt, Interrupt, STOPPED, ToolAccess, TurnOf,
+};
 use crate::calls::Done;
 use crate::compaction::{CompactReason, Summarizing, Summary};
+use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{JournalPlugin, SessionLog};
+use crate::restore::Restored;
 use crate::store::{MemoryStore, SessionStore};
 use crate::usage::Spending;
 
@@ -106,4 +110,59 @@ fn a_restored_agent_keeps_the_tools_a_plugin_narrowed_it_to() {
             ToolAccess::Only(names) => Some(names.clone()),
         });
     assert_eq!(tools, Some(vec!["read".to_owned()]));
+}
+
+/// The messages of the one agent of the session in `store`, restored and
+/// kept idle, after `act` ran on it.
+fn session(store: &MemoryStore, act: impl FnOnce(&mut World, Entity)) -> Vec<Message> {
+    let mut app = App::new();
+    app.insert_resource(SessionStore::new(store.clone()))
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .add_observer(|mut restored: On<Restored>| restored.event_mut().resume = false);
+    app.update();
+    let world = app.world_mut();
+    let Ok(agent) = world.query_filtered::<Entity, With<Agent>>().single(world) else {
+        return Vec::new();
+    };
+    act(world, agent);
+    world.resource::<SessionLog>().flush();
+    let conversation = world.get::<Conversation>(agent);
+    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+}
+
+#[test]
+fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried() {
+    let store = MemoryStore::default();
+    let texts = [
+        "run sleep 120 && echo finished",
+        "what is 2 + 2?",
+        "and 3 + 3?",
+    ];
+    let live = session(&store, |world, agent| {
+        let log = world.resource::<SessionLog>().clone();
+        let id = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+        for (at, text) in texts.into_iter().enumerate() {
+            world.trigger(Deliver::user(agent, text, DeliveryMode::Steer, Vec::new()));
+            // The observers' commands start the turn, and end it.
+            world.flush();
+            world.trigger(Interrupt { entity: agent });
+            world.flush();
+            // The second is asked for again, and that turn fails and keeps it.
+            if let Some(mut conversation) = world.get_mut::<Conversation>(agent)
+                && at == 1
+            {
+                assert!(conversation.resume());
+                log.halt(&id, &mut conversation, Halt::Kept);
+            }
+        }
+    });
+    let [first, second, third] = texts;
+    let content = [first, STOPPED, second, third].map(UserContent::text);
+    assert_eq!(
+        live,
+        [Message::User {
+            content: content.into()
+        }]
+    );
+    assert_eq!(session(&store, |_, _| {}), live);
 }
