@@ -35,6 +35,7 @@ pub struct EditArgs {
 
 /// One replacement of an [`Edit`] call.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Replacement {
     old_text: String,
     new_text: String,
