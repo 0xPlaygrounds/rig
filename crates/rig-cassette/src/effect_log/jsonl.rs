@@ -28,8 +28,8 @@
 //!   record's outcome and a tool's result in its call's; the next request's
 //!   copies are `reply` and `results` pieces.
 //! - **Across restarts.** A [`Writer`] on a file that already has lines
-//!   reads it once, on its first append, and continues its header and
-//!   requests.
+//!   reads it once, on its first append or [`Writer::last_id`], and
+//!   continues its header, requests and ids.
 //!
 //! The writer also leaves out the parts of a completion's raw provider
 //! document that echo the request (`instructions`, `tools`) and the
@@ -43,14 +43,14 @@
 //! let recorder = EffectLogRecorder::new();
 //! let mut writer = jsonl::Writer::new("effects.jsonl");
 //! writer.append(&recorder.take())?;
+//! let next = writer.last_id()?.map_or(0, |id| id.as_u64() + 1);
 //! let log = jsonl::read("effects.jsonl")?;
-//! let next = jsonl::last_id("effects.jsonl")?.map_or(0, |id| id.as_u64() + 1);
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
-use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -67,15 +67,12 @@ use super::{EffectLog, LogHeader};
 #[derive(Debug)]
 pub struct Writer {
     path: PathBuf,
-    /// Whether the file's earlier lines were read, which the first append
-    /// does.
-    resumed: bool,
-    /// Whether the file has a line.
-    started: bool,
     /// The header last appended, to tell whether the next one changed.
     given: Option<LogHeader>,
-    /// What a reader knows after the lines written so far.
-    known: Known,
+    /// What a reader knows after the file's lines: `None` until they are
+    /// read and after a failed append, so it never holds what the file
+    /// lacks.
+    known: Option<Known>,
 }
 
 impl Writer {
@@ -85,10 +82,8 @@ impl Writer {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
-            resumed: false,
-            started: false,
             given: None,
-            known: Known::default(),
+            known: None,
         }
     }
 
@@ -102,88 +97,74 @@ impl Writer {
     /// Writes nothing when it has no records: a header alone waits for the
     /// first record it describes, so a session that never made one leaves
     /// no file.
+    ///
+    /// # Errors
+    ///
+    /// When the file cannot be read or written. The next append reads it
+    /// again, so nothing of a failed append is referred to.
     pub fn append(&mut self, log: &EffectLog) -> io::Result<()> {
         if log.records.is_empty() {
             return Ok(());
         }
-        if !self.resumed {
-            self.resume();
-        }
+        let mut known = self.fold()?;
         let header_due = self.given.as_ref() != Some(&log.header);
         let mut lines = Vec::new();
-        let mut header = None;
         if header_due {
-            let delta = delta(&self.known.header, &log.header);
-            if !self.started || delta != LogHeader::default() {
+            let delta = delta(&known.header, &log.header);
+            if !known.has_lines || delta != LogHeader::default() {
                 serde_json::to_writer(&mut lines, &HeaderLine { header: &delta })?;
                 lines.push(b'\n');
-                header = Some(delta);
+                merge(&mut known.header, delta);
             }
         }
         for record in &log.records {
-            if let Err(failure) = self.encode(record, &mut lines) {
-                self.known.chains.clear();
-                self.known.results.clear();
-                return Err(failure);
-            }
+            Self::encode(&mut known, record, &mut lines)?;
+            known.highest = known.highest.max(Some(record.id));
             lines.push(b'\n');
         }
-        if !lines.is_empty() {
-            let written = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.path)
-                .and_then(|mut file| file.write_all(&lines));
-            if let Err(failure) = written {
-                // The chains and results may name records that never
-                // reached the file.
-                self.known.chains.clear();
-                self.known.results.clear();
-                return Err(failure);
-            }
-            self.started = true;
-        }
-        if let Some(delta) = header {
-            merge(&mut self.known.header, delta);
-        }
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)?
+            .write_all(&lines)?;
+        known.has_lines = true;
+        self.known = Some(known);
         if header_due {
             self.given = Some(log.header.clone());
         }
         Ok(())
     }
 
-    /// Reads the lines the file already has, so this writer continues its
-    /// header and requests. A file that is missing has none; one that
-    /// cannot be read back is continued as if it had none, with whole
-    /// records and a whole header.
-    fn resume(&mut self) {
-        self.resumed = true;
-        let Ok(file) = File::open(&self.path) else {
-            return;
-        };
-        let mut known = Known::default();
-        for line in BufReader::new(file).lines() {
-            let folded = line.and_then(|line| {
-                self.started |= !line.trim().is_empty();
-                known.line(&line)
-            });
-            if folded.is_err() {
-                self.started = true;
-                return;
-            }
-        }
-        self.known = known;
+    /// The highest effect id in the file, `None` when it has no record.
+    /// Reads the file unless an append or an earlier call did, and the
+    /// first append then continues from that reading.
+    ///
+    /// # Errors
+    ///
+    /// When the file exists but cannot be read.
+    pub fn last_id(&mut self) -> io::Result<Option<EffectId>> {
+        let known = self.fold()?;
+        Ok(self.known.insert(known).highest)
     }
 
-    /// Writes `record` to `out`: a completion as a continuation of the
-    /// recent request it shares the most with, when it shares any, any
-    /// other record as it is.
-    fn encode(&mut self, record: &EffectRecord, out: &mut Vec<u8>) -> io::Result<()> {
+    /// What a reader knows after the file's lines, taken from this writer
+    /// or read from the file.
+    fn fold(&mut self) -> io::Result<Known> {
+        match self.known.take() {
+            Some(known) => Ok(known),
+            None => Known::of(&self.path),
+        }
+    }
+
+    /// Writes `record` to `out` and notes it in `known`: a completion as a
+    /// continuation of the recent request it shares the most with, when it
+    /// shares any, any other record as it is.
+    fn encode(known: &mut Known, record: &EffectRecord, out: &mut Vec<u8>) -> io::Result<()> {
         match record.kind {
             EffectKind::Completion { .. } => {}
             EffectKind::ToolCall { .. } => {
                 let value = serde_json::to_value(record)?;
-                self.known.note(&value, None)?;
+                known.note(&value, None)?;
                 return Ok(serde_json::to_writer(out, &value)?);
             }
             _ => return Ok(serde_json::to_writer(out, record)?),
@@ -206,15 +187,13 @@ impl Writer {
         let texts: Vec<String> = history.iter().map(Value::to_string).collect();
         let tools = request.get("tools").map(Value::to_string);
         let chain = chain_of(&value);
-        let plan = self
-            .known
+        let plan = known
             .bases(&chain)
-            .filter_map(|base| Plan::of(base, history, &texts, tools.as_deref(), &self.known))
+            .filter_map(|base| Plan::of(base, history, &texts, tools.as_deref(), known))
             .min_by_key(|plan| plan.cost);
         // A reader restores the record before noting it, so the requests
         // the plan refers to are still known to it.
-        self.known
-            .note(&value, plan.as_ref().map(|plan| plan.after))?;
+        known.note(&value, plan.as_ref().map(|plan| plan.after))?;
         let Some(plan) = plan else {
             return Ok(serde_json::to_writer(out, &value)?);
         };
@@ -255,13 +234,16 @@ const RECENT_RESULTS: usize = 64;
 
 /// What the lines so far establish for the lines after them: the header
 /// they merge to, the recent completion requests of each chain (handler
-/// key and scope), and the recent tool results.
+/// key and scope), the recent tool results, and the highest id.
 #[derive(Debug, Default)]
 struct Known {
     header: LogHeader,
     chains: BTreeMap<String, VecDeque<Head>>,
     /// Tool-call records' successful results as JSON text, latest last.
     results: VecDeque<(EffectId, String)>,
+    highest: Option<EffectId>,
+    /// Whether there is a line that is not blank.
+    has_lines: bool,
 }
 
 /// A completion request as written or read: each message and the tools as
@@ -304,12 +286,54 @@ impl Reply {
 }
 
 impl Known {
+    /// What the lines of the file at `path` establish; nothing when it is
+    /// missing. From a line that cannot be read back on, only ids are read,
+    /// so a writer continues with whole records and a whole header and
+    /// with ids above every id a line states.
+    fn of(path: &Path) -> io::Result<Self> {
+        /// A record line's id.
+        #[derive(Deserialize)]
+        struct IdOnly {
+            id: EffectId,
+        }
+        let file = match File::open(path) {
+            Ok(file) => file,
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
+                return Ok(Self::default());
+            }
+            Err(failure) => return Err(failure),
+        };
+        let mut known = Self::default();
+        let mut whole = true;
+        for line in BufReader::new(file).split(b'\n') {
+            let line = line?;
+            whole = whole
+                && std::str::from_utf8(&line)
+                    .map_err(io::Error::other)
+                    .and_then(|line| known.line(line))
+                    .is_ok();
+            if !whole {
+                known = Self {
+                    highest: known.highest.max(
+                        serde_json::from_slice::<IdOnly>(&line)
+                            .ok()
+                            .map(|record| record.id),
+                    ),
+                    has_lines: true,
+                    ..Self::default()
+                };
+            }
+        }
+        Ok(known)
+    }
+
     /// Folds one line in: a header merges into the header, a record comes
     /// back whole. A blank line is neither.
     fn line(&mut self, line: &str) -> io::Result<Option<Value>> {
         if line.trim().is_empty() {
             return Ok(None);
         }
+        self.has_lines = true;
         let value: Value = serde_json::from_str(line)?;
         if value.get("header").is_some() {
             let HeaderLine { header } = serde_json::from_value::<HeaderLine<LogHeader>>(value)?;
@@ -327,20 +351,18 @@ impl Known {
         Ok(Some(value))
     }
 
-    /// Notes a whole record: a completion becomes its chain's latest
-    /// request, sharing message texts with `base`, the request it was
-    /// written against; a tool call's result becomes the latest.
+    /// Notes a whole record: its id may be the highest; a completion
+    /// becomes its chain's latest request, sharing message texts with
+    /// `base`, the request it was written against; a tool call's result
+    /// becomes the latest.
     fn note(&mut self, record: &Value, base: Option<EffectId>) -> io::Result<()> {
-        let id = || -> io::Result<EffectId> {
-            Ok(serde_json::from_value(
-                record.get("id").cloned().unwrap_or_default(),
-            )?)
-        };
+        let id: EffectId = serde_json::from_value(record.get("id").cloned().unwrap_or_default())?;
+        self.highest = self.highest.max(Some(id));
         match record.pointer("/kind/effect").and_then(Value::as_str) {
             Some("completion") => {}
             Some("tool_call") => {
                 if let Some(value) = record.pointer("/outcome/Ok/result/value") {
-                    self.results.push_back((id()?, value.to_string()));
+                    self.results.push_back((id, value.to_string()));
                     while self.results.len() > RECENT_RESULTS {
                         self.results.pop_front();
                     }
@@ -349,7 +371,6 @@ impl Known {
             }
             _ => return Ok(()),
         }
-        let id = id()?;
         let request = record.pointer("/kind/request");
         let field = |name: &str| request.and_then(|request| request.get(name));
         let base = base.and_then(|base| self.head(base));
@@ -760,96 +781,6 @@ pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
         header: known.header,
         records,
     })
-}
-
-/// How many of the log's last lines [`last_id`] reads.
-const TAIL_LINES: usize = 64;
-
-/// How many bytes [`last_id`] reads at a time, from the end backwards.
-const TAIL_CHUNK: u64 = 64 * 1024;
-
-/// The highest effect id among the last lines of the log at `path`, `None`
-/// when it has no record there. Ids are taken in order and records are
-/// appended as they resolve, so the highest id is among the last few
-/// records; reading backwards from the end keeps a restarting host's
-/// startup independent of the log's length. A line's id is read off its
-/// start, so a long record is not parsed.
-pub fn last_id(path: impl AsRef<Path>) -> io::Result<Option<EffectId>> {
-    let mut file = File::open(path)?;
-    let mut end = file.metadata()?.len();
-    // The bytes after the last newline seen, as read: last chunk first.
-    let mut partial: Vec<Vec<u8>> = Vec::new();
-    let mut lines = 0;
-    let mut highest: Option<EffectId> = None;
-    while end > 0 && lines < TAIL_LINES {
-        let from = end.saturating_sub(TAIL_CHUNK);
-        let mut chunk = vec![0; usize::try_from(end - from).map_err(io::Error::other)?];
-        file.seek(SeekFrom::Start(from))?;
-        file.read_exact(&mut chunk)?;
-        end = from;
-        let mut pieces = chunk.rsplit(|byte| *byte == b'\n').peekable();
-        while let Some(piece) = pieces.next() {
-            if pieces.peek().is_none() {
-                // Before the chunk's first newline: the line goes on in an
-                // earlier chunk, unless this is the file's start.
-                partial.push(piece.to_vec());
-                break;
-            }
-            let mut line = piece.to_vec();
-            for later in partial.drain(..).rev() {
-                line.extend(later);
-            }
-            take(&line, &mut lines, &mut highest);
-            if lines >= TAIL_LINES {
-                break;
-            }
-        }
-    }
-    if end == 0 && lines < TAIL_LINES {
-        let line: Vec<u8> = partial.drain(..).rev().flatten().collect();
-        take(&line, &mut lines, &mut highest);
-    }
-    Ok(highest)
-}
-
-/// Counts a non-blank `line` among those read and keeps its id when it is
-/// the highest yet.
-fn take(line: &[u8], lines: &mut usize, highest: &mut Option<EffectId>) {
-    if line.iter().all(u8::is_ascii_whitespace) {
-        return;
-    }
-    *lines += 1;
-    if let Some(id) = line_id(line) {
-        *highest = (*highest).max(Some(id));
-    }
-}
-
-/// A record line's id, read off its start when it begins with it (a
-/// continuation always does, and a whole record does after a `null`
-/// tool output), else by parsing the line. Header lines have none.
-fn line_id(line: &[u8]) -> Option<EffectId> {
-    /// A record line's id.
-    #[derive(Deserialize)]
-    struct IdOnly {
-        id: EffectId,
-    }
-    if line.starts_with(b"{\"header\":") {
-        return None;
-    }
-    let leading = line.strip_prefix(b"{").and_then(|rest| {
-        let rest = rest.strip_prefix(b"\"tool_output\":null,").unwrap_or(rest);
-        let rest = rest.strip_prefix(b"\"id\":")?;
-        let digits = rest.iter().take_while(|byte| byte.is_ascii_digit()).count();
-        let (digits, after) = rest.split_at_checked(digits)?;
-        matches!(after.first(), Some(b',' | b'}')).then_some(())?;
-        std::str::from_utf8(digits).ok()?.parse::<u64>().ok()
-    });
-    match leading {
-        Some(id) => Some(EffectId::from_raw(id)),
-        None => serde_json::from_slice::<IdOnly>(line)
-            .ok()
-            .map(|record| record.id),
-    }
 }
 
 /// Folds a later header into the merged one.
