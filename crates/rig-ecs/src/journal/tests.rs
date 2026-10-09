@@ -1,7 +1,7 @@
 use super::UsageRecord;
 
 #[test]
-fn a_logged_usage_record_restores_the_whole_totals() {
+fn a_logged_usage_record_restores_the_whole_totals() -> Result<(), serde_json::Error> {
     // A usage record as a session logged it, summed over two models.
     let logged = r#"{
         "models": {
@@ -17,11 +17,12 @@ fn a_logged_usage_record_restores_the_whole_totals() {
         },
         "context": 47924
     }"#;
-    let usage: UsageRecord = serde_json::from_str(logged).expect("a usage record");
+    let usage: UsageRecord = serde_json::from_str(logged)?;
     let total = usage.total();
     assert_eq!(total.calls, 50);
     assert_eq!(total.unpriced, 2);
     assert_eq!(total.context, Some(47924));
     assert_eq!(total.tokens.output_tokens, Some(20211));
     assert_eq!(total.cost_label().as_deref(), Some("$0.020+"));
+    Ok(())
 }
