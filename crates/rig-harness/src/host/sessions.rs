@@ -8,6 +8,7 @@
 
 use std::cmp::Reverse;
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -171,10 +172,16 @@ pub fn list(home: &Home, current: &Path) -> Vec<SessionEntry> {
                 Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
                 None => fs::metadata(dir.path()).ok()?.modified().ok()?,
             };
+            let mut meta = meta.unwrap_or_default();
+            // No title, or one an older version took from delivered text:
+            // the agent logs have the user's first words.
+            if meta.name.is_none() && (meta.title.is_empty() || delivered(&meta.title)) {
+                meta.title = logged_title(&dir).unwrap_or_default();
+            }
             Some(SessionEntry {
                 directory: dir.working_directory(),
                 id,
-                meta: meta.unwrap_or_default(),
+                meta,
                 saved,
             })
         })
@@ -273,22 +280,75 @@ fn write_meta(
 fn first_typed(conversation: &Conversation) -> Option<String> {
     let mut messages = conversation.messages().iter().enumerate();
     messages.find_map(|(at, message)| match message {
-        Message::User { content } => {
-            content
-                .iter()
-                .enumerate()
-                .find_map(|(index, item)| match item {
-                    UserContent::Text(text)
-                        if !text.text.trim().is_empty()
-                            && conversation.origin(at, index).is_none()
-                            && attach::attached_file(&text.text).is_none() =>
-                    {
-                        Some(text.text.clone())
-                    }
-                    _ => None,
-                })
+        Message::User { content } => typed(content.iter(), |index| {
+            conversation.origin(at, index).is_some()
+        }),
+        _ => None,
+    })
+}
+
+/// The first item of a user message's `content` that the user typed: text
+/// that is neither `from_elsewhere` (by its index) nor headed as delivered
+/// text, and is not an attached file.
+fn typed<'a>(
+    content: impl Iterator<Item = &'a UserContent>,
+    from_elsewhere: impl Fn(usize) -> bool,
+) -> Option<String> {
+    content.enumerate().find_map(|(index, item)| match item {
+        UserContent::Text(text)
+            if !text.text.trim().is_empty()
+                && !from_elsewhere(index)
+                && !delivered(&text.text)
+                && attach::attached_file(&text.text).is_none() =>
+        {
+            Some(text.text.clone())
         }
         _ => None,
+    })
+}
+
+/// Whether `text` starts with the header the model reads on text an agent
+/// or a plugin delivered (rig-ecs's `Origin::header`), which also marks
+/// such text an older version logged without its origin.
+fn delivered(text: &str) -> bool {
+    text.starts_with("[Output of ")
+}
+
+/// The title of the session in `dir` from its agent logs: the first text
+/// the user typed to an agent they started, the agents in
+/// [`primary_order`]. Read for a session whose listing cache has no
+/// usable title.
+fn logged_title(dir: &SessionDir) -> Option<String> {
+    let mut logs = dir.agent_logs();
+    logs.sort();
+    logs.iter()
+        .find_map(|log| first_typed_in_log(log))
+        .map(|text| title(&text))
+}
+
+/// The first text the user typed in the agent log at `path`, read up to
+/// it; `None` for a spawned agent's log.
+fn first_typed_in_log(path: &Path) -> Option<String> {
+    let file = fs::File::open(path).ok()?;
+    first_typed_in_lines(BufReader::new(file).lines().map_while(Result::ok))
+}
+
+/// [`first_typed_in_log`] over the log's `lines`.
+fn first_typed_in_lines(mut lines: impl Iterator<Item = String>) -> Option<String> {
+    let header: serde_json::Value = serde_json::from_str(&lines.next()?).ok()?;
+    if header.get("parent").is_some_and(|parent| !parent.is_null()) {
+        return None;
+    }
+    lines.find_map(|line| {
+        let mut record: serde_json::Value = serde_json::from_str(&line).ok()?;
+        let delivered = record.get("origin").is_some_and(|origin| !origin.is_null());
+        if record.get("type")?.as_str()? != "message" || delivered {
+            return None;
+        }
+        match serde_json::from_value(record.get_mut("message")?.take()).ok()? {
+            Message::User { content } => typed(content.iter(), |_| false),
+            _ => None,
+        }
     })
 }
 
@@ -430,3 +490,6 @@ fn checked(id: &str, current: &SessionDir) -> Result<SessionId, String> {
     }
     Ok(id)
 }
+
+#[cfg(test)]
+mod tests;
