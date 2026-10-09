@@ -64,20 +64,37 @@ pub use bevy_app::{App, AppExit};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
+/// The rig-core this app is built on, for the conversation's messages
+/// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
+pub use rig_core;
 /// The agent runtime this app is built on; `plugins.toml` names its
 /// plugins through it, such as `rig_harness::rig_ecs::subagents::SubagentsPlugin`.
 pub use rig_ecs;
 
-/// What a plugin needs: rig-ecs's prelude (Bevy's app and ECS preludes,
-/// the agent components and requests, and the tool and command
-/// registries) and the app's session, views and plugin groups.
+/// What a plugin needs, so a typical one imports only this: rig-ecs's
+/// prelude (Bevy's app and ECS preludes, the agent components and
+/// requests, and the tool and command registries), what agents do and
+/// say, the app's session, views and plugin groups, and with feature
+/// `tui` the terminal view's panels and tool renderers. ratatui itself is
+/// [`tui::ratatui`].
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
+    pub use std::time::Duration;
+
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
+    #[cfg(feature = "tui")]
+    pub use crate::tui::ratatui::layout::Constraint;
+    #[cfg(feature = "tui")]
+    pub use crate::tui::{
+        AppToolRenderersExt, Focused, PanelCanvas, Placement, RESULT_LINES, RequestRedraw,
+        TuiPanel, TuiScreen, TuiSystems,
+    };
     pub use crate::view::{Focus, PickItem, PickRequest, send_input};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
+    pub use rig_ecs::activity::{FedMessage, Preview, PreviewKind, Status, ToolActivity};
+    pub use rig_ecs::agent::{PrimaryQuery, answer_text, primary};
     pub use rig_tools::blocking;
 }
 

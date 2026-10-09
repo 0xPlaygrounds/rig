@@ -1,4 +1,15 @@
-Writing a plugin for the rig agent.
+Writing a plugin for the rig agent: a cookbook of short, copy-ready
+examples, one per extension point, and the names they use. Every name here
+comes from `use rig_harness::prelude::*;`, so a typical plugin needs no
+other import and no reading of rig's source.
+
+- [Making one](#making-one): `rig plugin new`, plugins.toml, `/reload`
+- [Names](#names): what the common types hold
+- [A slash command](#a-slash-command), [a tool](#a-tool) and how its calls look
+- [Reading what agents do and say](#reading-what-agents-do-and-say)
+- [Turns, state and time](#turns-state-and-time): `TurnEnded`, saved
+  components, timers
+- [A terminal panel](#a-terminal-panel), [a window](#a-window)
 
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a
 crate that depends on `rig-harness`. The agent is a Bevy app; its built-in
@@ -18,7 +29,8 @@ rig plugin list         # the plugins, in the order they are added
 ```
 
 `rig plugin new` writes a crate with one plugin, `hello::HelloPlugin`,
-that adds `/hello`, and this entry:
+whose `src/lib.rs` is a working, commented example: `/hello` counts the
+words of the agent's last answer. It adds this entry:
 
 ```toml
 [[plugin]]
@@ -50,8 +62,40 @@ startup is rolled back.
 
 What a plugin uses comes from `rig_harness::prelude::*`: Bevy's app and
 ECS preludes, the agent runtime's components, events and registries
-(`rig_harness::rig_ecs`), and `blocking`. The terminal view is
-`rig_harness::tui`, with `rig_harness::tui::ratatui` to draw with.
+(`rig_harness::rig_ecs`), `blocking`, `Duration`, and the terminal view's
+panels and tool renderers. ratatui's widgets are
+`rig_harness::tui::ratatui`, and rig-core (such as its `message::Message`)
+is `rig_harness::rig_core`.
+
+# Names
+
+- `CommandArgs { agent: Entity, args: String }`: what a slash command's
+  system receives, `In<CommandArgs>`; `args` is the text after the name,
+  trimmed.
+- `Notice::info(agent, text)`, `Notice::error(agent, text)`: a line for the
+  user, written with `MessageWriter<Notice>`. `write` returns an id, so
+  end it with `;` in a `match` arm.
+- `Conversation` (on each agent): `messages()`, oldest first, of rig-core's
+  `Message`. `answer_text(&message)` is the text of a final answer, `None`
+  for any other message.
+- `Activity` (on each agent): `status: Status` (`Idle`, `Thinking`,
+  `RunningTools`, `Compacting`, `Retrying { attempt, seconds }`; it
+  implements `Display`), `tools: Vec<ToolActivity>` (`name`, `queued`) and
+  `preview: Option<Preview>` (`kind: PreviewKind` of `Text`, `Reasoning` or
+  `LastReply`, and `text`, the last 2000 characters); `is_busy()`.
+- `MessageFeed` (a resource): `iter()` of the last 64 deliveries, oldest
+  first, each a `FedMessage { to: Entity, from: Option<Entity>, origin:
+  Origin, text: String }`.
+- `Agent` marks an agent, `AgentId(String)` names it, `SpawnedBy(Entity)`
+  is on a subagent and `Spawned` lists an agent's subagents. A system
+  taking `agents: PrimaryQuery` finds the user's agent with
+  `primary(&agents)`; `Focused` marks the one the terminal shows.
+- `Deliver { entity, text, origin, mode, attachments }`: triggered, puts a
+  message in an agent's conversation (see [a slash command](#a-slash-command)).
+- `TurnEnded { entity, outcome, request }`: an agent's turn ended;
+  `outcome` is a `TurnOutcome`: `Answered(Message)`, `Failed(String)` or
+  `Stopped`.
+- `RunMode::is_headless`: a `--print` run, without the terminal view.
 
 # A tool
 
@@ -124,7 +168,6 @@ triggers `ToolCalled` on the tool's entity, and the call ends when a
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::tui::{AppToolRenderersExt, RESULT_LINES};
 
 fn build(app: &mut App) {
     app.add_tool_renderer("word_count", |call| {
@@ -171,6 +214,44 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
         mode: DeliveryMode::Queue,
         attachments: Vec::new(),
     });
+}
+```
+
+# Reading what agents do and say
+
+An ordinary system reads the agents' components and the `MessageFeed`;
+this one is a slash command, and a panel or an observer reads them the
+same way.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct RecentPlugin;
+
+impl Plugin for RecentPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_command("recent", "Each agent's status and the last messages", recent);
+    }
+}
+
+fn recent(
+    In(args): In<CommandArgs>,
+    agents: Query<(&AgentId, &Activity, &Conversation)>,
+    feed: Res<MessageFeed>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let mut lines = Vec::new();
+    for (id, activity, conversation) in &agents {
+        let answer = conversation.messages().iter().rev().find_map(answer_text);
+        let words = answer.map_or(0, |answer| answer.split_whitespace().count());
+        lines.push(format!("{}: {}, last answer {words} words", id.0, activity.status));
+    }
+    for message in feed.iter().rev().take(3) {
+        let to = agents.get(message.to).map_or("?", |(id, ..)| id.0.as_str());
+        lines.push(format!("to {to}: {}", message.text));
+    }
+    notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 ```
 
@@ -231,12 +312,8 @@ delivered messages, and the tree through `SpawnedBy` and `Spawned`.
 `TuiScreen` is the terminal's size and `Focused` marks the agent shown.
 
 ```rust,no_run
-use std::time::Duration;
-
 use rig_harness::prelude::*;
-use rig_harness::tui::ratatui::layout::Constraint;
 use rig_harness::tui::ratatui::widgets::{Block, Paragraph};
-use rig_harness::tui::{PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiSystems};
 
 #[derive(Default)]
 pub struct AgentsPanelPlugin;

@@ -307,7 +307,7 @@ keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
-`rig_harness::tui::AppToolRenderersExt::add_tool_renderer`. PageUp, PageDown and
+`app.add_tool_renderer` (`rig_harness::tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
@@ -361,7 +361,9 @@ staging it. A plugin crate depends on
 `rig-harness` alone and registers tools, slash commands, tool renderers,
 terminal panels or a window the way the built-in ones do, never by editing
 rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
-shows each kind with an example. An agent started by the launcher knows all
+is a cookbook with a copy-ready example of each kind, every name it uses from
+`rig_harness::prelude`, and the `src/lib.rs` that `rig plugin new` writes is a
+working, commented slash command. An agent started by the launcher knows all
 this from its system prompt, so it can write and add its own plugins.
 
 Code mode is an optional plugin crate, `rig-steel`, not in the default list.

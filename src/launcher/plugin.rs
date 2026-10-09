@@ -17,6 +17,11 @@ use super::project::{
     PACKAGE, RIG_CRATES, RigSource, manifest_string, quoted, quoted_path, rig_patch, rig_version,
 };
 
+/// The `src/lib.rs` of a new plugin crate, with `ScaffoldPlugin` and
+/// `__name__` for the plugin type and the crate name. rig-harness's
+/// `tests/scaffold.rs` builds it, so it stays a working plugin.
+const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
+
 /// `rig plugin`'s usage.
 pub const USAGE: &str = "\
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
@@ -341,30 +346,12 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
     text
 }
 
-/// The plugin crate's `src/lib.rs`: a plugin that adds `/<name>`.
+/// The plugin crate's `src/lib.rs`, from [`SCAFFOLD`]: a plugin that adds
+/// `/<name>`, with comments that name the other extension points.
 fn lib_rs(name: &str, type_name: &str) -> String {
-    format!(
-        "//! The `{name}` plugin of the rig agent. rig-harness's `plugin_guide` docs\n\
-         //! (its PLUGINS.md) show each kind of extension: tools, slash commands,\n\
-         //! terminal panels and windows.\n\
-         \n\
-         use rig_harness::prelude::*;\n\
-         \n\
-         /// Listed in plugins.toml; the agent adds it with `Default`.\n\
-         #[derive(Default)]\n\
-         pub struct {type_name};\n\
-         \n\
-         impl Plugin for {type_name} {{\n    \
-             fn build(&self, app: &mut App) {{\n        \
-                 app.add_command(\"{name}\", \"Say that {name} is loaded\", hello);\n    \
-             }}\n\
-         }}\n\
-         \n\
-         /// `/{name}`: a notice for the agent it was typed for.\n\
-         fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {{\n    \
-             notices.write(Notice::info(args.agent, \"{name} is loaded.\"));\n\
-         }}\n"
-    )
+    SCAFFOLD
+        .replace("ScaffoldPlugin", type_name)
+        .replace("__name__", name)
 }
 
 /// `rig plugin list`: each plugin, with the crate it comes from.

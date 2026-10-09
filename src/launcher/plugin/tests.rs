@@ -8,6 +8,16 @@ fn type_names_come_from_the_crate_name() {
 }
 
 #[test]
+fn the_scaffold_names_the_plugin_and_its_command() {
+    let lib = lib_rs("word-count", "WordCountPlugin");
+    assert!(lib.contains("pub struct WordCountPlugin;"));
+    assert!(lib.contains("impl Plugin for WordCountPlugin {"));
+    assert!(lib.contains("\"word-count\",\n"));
+    assert!(!lib.contains("__name__"));
+    assert!(!lib.contains("Scaffold"));
+}
+
+#[test]
 fn names_are_lowercase_crate_names_not_the_agents_own() {
     assert!(validate_name("agent-viz").is_ok());
     assert!(validate_name("Viz").is_err());
