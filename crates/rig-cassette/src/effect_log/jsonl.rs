@@ -123,6 +123,7 @@ impl Writer {
         for record in &log.records {
             if let Err(failure) = self.encode(record, &mut lines) {
                 self.known.chains.clear();
+                self.known.results.clear();
                 return Err(failure);
             }
             lines.push(b'\n');
@@ -134,8 +135,10 @@ impl Writer {
                 .open(&self.path)
                 .and_then(|mut file| file.write_all(&lines));
             if let Err(failure) = written {
-                // The chains may name records that never reached the file.
+                // The chains and results may name records that never
+                // reached the file.
                 self.known.chains.clear();
+                self.known.results.clear();
                 return Err(failure);
             }
             self.started = true;

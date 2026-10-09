@@ -346,6 +346,46 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
 }
 
 #[test]
+fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
+    use rig_core::completion::Message;
+    use rig_core::message::{CallId, ProviderCallId, ToolName};
+    use rig_core::tool::{ToolOutput, ToolResult};
+    let dir = assert_fs::TempDir::new().expect("scratch directory");
+    let path = dir.path().join("effects.jsonl");
+    let listing = "Cargo.toml src target, the listing the shell tool returned";
+    let mut shell = record(10, "tool:shell");
+    shell.kind = EffectKind::ToolCall {
+        name: "shell".into(),
+        args: "{}".into(),
+    };
+    shell.outcome = Ok(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text(listing)),
+    });
+    let mut writer = Writer::new(&path);
+    // A directory in the file's place: the tool call never reaches the file.
+    std::fs::create_dir(&path).expect("directory in the way");
+    writer
+        .append(&EffectLog::from_records(vec![shell]))
+        .expect_err("the write fails");
+    std::fs::remove_dir(&path).expect("directory removed");
+
+    let task = Message::user("first task, with enough words to be worth referring to");
+    let result = Message::tool_result(
+        CallId::from(ProviderCallId::new("call_1").expect("call id")),
+        ToolName::new("shell").expect("tool name"),
+        listing,
+    );
+    writer
+        .append(&EffectLog::from_records(vec![
+            completion_of(1, "parent", vec![task.clone()]),
+            completion_of(2, "parent", vec![task, reply(), result]),
+        ]))
+        .expect("append");
+    let log = read(&path).expect("the log reads back");
+    assert_eq!(log.records.len(), 2);
+}
+
+#[test]
 fn a_continuation_of_an_unknown_request_is_an_error() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
