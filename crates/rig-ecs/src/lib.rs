@@ -61,7 +61,7 @@ pub mod prelude {
         ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
         Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
         SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
-        TurnOf, TurnOutcome, TurnRequest,
+        TurnOf, TurnOutcome,
     };
     pub use crate::calls::Wake;
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};

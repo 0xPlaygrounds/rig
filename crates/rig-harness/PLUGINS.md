@@ -92,7 +92,7 @@ is `rig_harness::rig_core`.
   `primary(&agents)`; `Focused` marks the one the terminal shows.
 - `Deliver { entity, text, origin, mode, attachments }`: triggered, puts a
   message in an agent's conversation (see [a slash command](#a-slash-command)).
-- `TurnEnded { entity, outcome, request }`: an agent's turn ended;
+- `TurnEnded { entity, outcome }`: an agent's turn ended;
   `outcome` is a `TurnOutcome`: `Answered(Message)`, `Failed(String)` or
   `Stopped`.
 - `RunMode::is_headless`: a `--print` run, without the terminal view.

@@ -28,9 +28,7 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{
-    ActiveTurn, Agent, AgentId, Connection, Conversation, Notice, TurnOf, TurnRequest,
-};
+use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Notice, TurnOf};
 use super::calls::Wake;
 use super::journal::SessionLog;
 use super::turn::{CallModel, Exiting};
@@ -307,19 +305,13 @@ pub(crate) fn on_deliver(
         spec: connection.map(|connection| &*connection.spec),
         log: &log,
     };
-    let mut request = None;
     // After a failure that kept the user's message, the new text joins it.
-    commit(&to, pending, &mut conversation, &mut request, &mut notices);
+    commit(&to, pending, &mut conversation, &mut notices);
     if deliver.mode == DeliveryMode::Note {
         log.halt(id, &conversation);
         return;
     }
-    commands.spawn((
-        Name::new("turn"),
-        TurnOf(agent),
-        TurnRequest(request),
-        Starting,
-    ));
+    commands.spawn((Name::new("turn"), TurnOf(agent), Starting));
     // The frame that starts it may have run its last systems already.
     wake.wake();
 }
@@ -368,7 +360,7 @@ pub(crate) fn recall_on_turn_end(
         if pending.origin.kind == OriginKind::User {
             typed.push(pending.text);
         } else {
-            commit(&to, pending, &mut conversation, &mut None, &mut notices);
+            commit(&to, pending, &mut conversation, &mut notices);
         }
     }
     if exiting.is_none() {
@@ -391,7 +383,7 @@ pub(crate) fn deliver_notes(
     notices: &mut MessageWriter<Notice>,
 ) {
     for pending in inbox.notes.drain(..) {
-        commit(to, pending, conversation, &mut None, notices);
+        commit(to, pending, conversation, notices);
     }
 }
 
@@ -399,12 +391,10 @@ pub(crate) fn deliver_notes(
 /// into its last message when that is the user's, such as the tool
 /// results the model waits for, so user and model keep taking turns.
 /// Whether there were steering messages; without them nothing moves.
-/// `request` becomes the latest request they carry.
 pub(crate) fn deliver_steering(
     to: &Delivery<'_>,
     inbox: &mut Inbox,
     conversation: &mut Conversation,
-    request: &mut Option<RequestId>,
     notices: &mut MessageWriter<Notice>,
 ) -> bool {
     if inbox.steering.is_empty() {
@@ -412,19 +402,18 @@ pub(crate) fn deliver_steering(
     }
     deliver_notes(to, inbox, conversation, notices);
     for pending in inbox.steering.drain(..) {
-        commit(to, pending, conversation, request, notices);
+        commit(to, pending, conversation, notices);
     }
     true
 }
 
 /// Moves the notes, then every queued message into the conversation, as
 /// one step. Whether there were queued messages; without them nothing
-/// moves. `request` becomes the latest request they carry.
+/// moves.
 pub(crate) fn deliver_queued(
     to: &Delivery<'_>,
     inbox: &mut Inbox,
     conversation: &mut Conversation,
-    request: &mut Option<RequestId>,
     notices: &mut MessageWriter<Notice>,
 ) -> bool {
     if inbox.queued.is_empty() {
@@ -432,7 +421,7 @@ pub(crate) fn deliver_queued(
     }
     deliver_notes(to, inbox, conversation, notices);
     for pending in inbox.queued.drain(..) {
-        commit(to, pending, conversation, request, notices);
+        commit(to, pending, conversation, notices);
     }
     true
 }
@@ -440,12 +429,11 @@ pub(crate) fn deliver_queued(
 /// Commits `pending` as a user message with its origin: its attachments
 /// the model takes, then its text, headed by its origin's line when it is
 /// not the user's own. It goes into the last message when that is the
-/// user's. Its request, if any, replaces `request`.
+/// user's.
 fn commit(
     to: &Delivery<'_>,
     pending: Pending,
     conversation: &mut Conversation,
-    request: &mut Option<RequestId>,
     notices: &mut MessageWriter<Notice>,
 ) {
     let Pending {
@@ -453,9 +441,6 @@ fn commit(
         origin,
         attachments,
     } = pending;
-    if let Some(carried) = &origin.request {
-        *request = Some(carried.clone());
-    }
     let mut content = Vec::with_capacity(attachments.len() + 1);
     for Attachment {
         label,
