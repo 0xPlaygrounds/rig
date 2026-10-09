@@ -140,6 +140,7 @@ impl Plugin for AgentPlugin {
                 Last,
                 (
                     log_agents,
+                    inbox::start_turns.before(settle).before(WriteJournal),
                     settle,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)

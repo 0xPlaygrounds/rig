@@ -12,7 +12,11 @@
 //! exactly one report back to the caller: a [`Deliver`] whose origin names
 //! the child and the request, with the status done, failed or interrupted.
 //! A busy child queues a request. Nothing waits for a child: its report
-//! starts a turn of an idle caller, or is queued for a busy one.
+//! starts a turn of an idle caller, or is queued for a busy one, and the
+//! reports that reach the caller together go to its model in one step. A
+//! report that only says its request was answered with another one needs
+//! no answer: it is a [`DeliveryMode::Note`], read with that other report
+//! and starting no turn of its own.
 //!
 //! A child's model calls are recorded under the call that gave it its work
 //! ([`EffectParent`]), so the effect log nests a subagent's work under the
@@ -583,11 +587,14 @@ fn report_on_turn_end(
         TurnOutcome::Failed(why) => Status::Failed(why.clone()),
         TurnOutcome::Stopped => Status::Interrupted,
     };
-    let mut reports: Vec<(RequestId, String)> = earlier
+    // The requests answered together with the last one: notes, read with
+    // its report, which comes last and asks for the turn.
+    let mut reports: Vec<(RequestId, DeliveryMode, String)> = earlier
         .iter()
         .map(|request| {
             (
                 request.clone(),
+                DeliveryMode::Note,
                 format!(
                     "Done: \"{title}\". This request was answered together with request {}; \
                      that report holds the answer.",
@@ -598,6 +605,7 @@ fn report_on_turn_end(
         .collect();
     reports.push((
         last.clone(),
+        DeliveryMode::Queue,
         match status {
             Status::Done(text) => format!("Done: \"{title}\".\n{text}"),
             Status::Failed(why) => format!(
@@ -611,12 +619,12 @@ fn report_on_turn_end(
         },
     ));
     commands.entity(agent).insert(Requests::default());
-    for (request, text) in reports {
+    for (request, mode, text) in reports {
         commands.trigger(Deliver {
             entity: parent.0,
             text,
             origin: Origin::agent(id.clone(), Some(request)),
-            mode: DeliveryMode::Queue,
+            mode,
             attachments: Vec::new(),
         });
     }

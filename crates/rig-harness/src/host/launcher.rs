@@ -17,10 +17,8 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use rig::harness_protocol::{Home, env};
 
-use rig_core::completion::Message;
-
 use super::session::SessionPaths;
-use rig_ecs::agent::{ActiveTurn, AgentId, Conversation, Notice, PrimaryQuery, primary};
+use rig_ecs::agent::{Notice, PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
 use rig_ecs::journal::SessionLog;
 
@@ -90,36 +88,17 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
 }
 
 /// Puts `note`, on a failed build, in `agent`'s conversation from
-/// [`build_origin`]. An idle agent gets it at once without a turn
-/// starting: it is logged as halted, so a restore does not answer it and
-/// the user's next message joins it. A busy agent's model reads it with
-/// the turn's next call.
+/// [`build_origin`], as a [`DeliveryMode::Note`]: an idle agent gets it at
+/// once without a turn starting (logged as halted, so a restore does not
+/// answer it and the user's next message joins it); a busy agent's model
+/// reads it with the turn's next call.
 pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
-    commands.queue(move |world: &mut World| {
-        if world.get::<ActiveTurn>(agent).is_some() {
-            world.trigger(Deliver {
-                entity: agent,
-                text: note,
-                origin: build_origin(),
-                mode: DeliveryMode::Steer,
-                attachments: Vec::new(),
-            });
-            return;
-        }
-        let (Some(log), Some(id)) = (
-            world.get_resource::<SessionLog>().cloned(),
-            world.get::<AgentId>(agent).cloned(),
-        ) else {
-            return;
-        };
-        let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
-            return;
-        };
-        let origin = build_origin();
-        let header = origin.header().unwrap_or_default();
-        let message = Message::user(format!("{header}\n{note}"));
-        log.commit(&id, &mut conversation, message, Some(origin));
-        log.halt(&id, &conversation);
+    commands.trigger(Deliver {
+        entity: agent,
+        text: note,
+        origin: build_origin(),
+        mode: DeliveryMode::Note,
+        attachments: Vec::new(),
     });
 }
 

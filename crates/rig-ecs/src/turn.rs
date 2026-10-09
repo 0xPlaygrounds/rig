@@ -47,7 +47,7 @@ use super::compaction::{
     Summary,
 };
 use super::effects::{Effects, Handler};
-use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
+use super::inbox::{Delivery, Inbox, deliver_notes, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
@@ -500,6 +500,7 @@ pub(crate) fn on_call_model(
         spec: connection.map(|connection| &*connection.spec),
         log: &log,
     };
+    deliver_notes(&to, &mut inbox, &mut conversation, &mut notices);
     deliver_steering(
         &to,
         &mut inbox,
@@ -794,7 +795,8 @@ pub(crate) fn on_model_done(
     }
     if tool_calls.is_empty() {
         // What was sent meanwhile carries the turn on: steering first,
-        // then one queued message.
+        // else everything queued, as one step. Notes go along but carry
+        // nothing on.
         let to = Delivery {
             agent,
             id,
