@@ -5,11 +5,12 @@
 //! wait is a call entity of the turn with a [`Backoff`], so interrupting
 //! the turn cancels it like any other call.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bevy_ecs::prelude::*;
 use rig_core::error::retry::RetryPolicy;
 use rig_memory::ClearToolOutputs;
+use web_time::Instant;
 
 /// How failed model calls are retried: rig-core's default, four retries in
 /// a row per turn (a reply resets the count).

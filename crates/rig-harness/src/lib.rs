@@ -1,16 +1,17 @@
-//! rig-harness: a terminal coding agent built as a Bevy app on rig-core.
+//! rig-harness: a terminal coding agent, a Bevy app on [`rig_ecs`]'s agent
+//! runtime and rig-core.
 //!
 //! An agent is an entity whose components hold its conversation, model,
 //! reasoning setting, system prompt and tool access; an agent a plugin
-//! spawns for another, such as a subagent of the built-in
-//! [`SubagentsPlugin`](builtin::SubagentsPlugin), is one more,
-//! [`SpawnedBy`](core::agent::SpawnedBy) that agent. A running turn is an
-//! entity of its agent, and the turn's model calls and tool calls are
-//! entities of the turn that run on Bevy's task pools; every one goes
-//! through the one recorded dispatch path. Tools and
+//! spawns for another, such as a subagent of rig-ecs's
+//! [`SubagentsPlugin`](rig_ecs::subagents::SubagentsPlugin), is one more,
+//! [`SpawnedBy`](rig_ecs::agent::SpawnedBy) that agent. Tools and
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
 //! as a third-party plugin registers its own, and a plugin re-arms its saved
-//! obligations after a restart on [`Restored`](core::restore::Restored).
+//! obligations after a restart on [`Restored`](rig_ecs::restore::Restored).
+//! This crate adds the terminal app around the runtime: the session
+//! directory, the terminal view, `--print`, the launcher protocol, sign-in,
+//! `@path` attachments and the built-in tools and commands.
 //!
 //! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
 //! terminal view, or `--print` without one), the agent core, the session
@@ -25,8 +26,9 @@
 //! application's to set:
 //!
 //! ```no_run
-//! use rig_harness::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin, SubagentsPlugin};
+//! use rig_harness::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin};
 //! use rig_harness::prelude::*;
+//! use rig_harness::rig_ecs::subagents::SubagentsPlugin;
 //!
 //! fn main() -> AppExit {
 //!     App::new()
@@ -40,7 +42,6 @@
 
 pub mod attach;
 pub mod builtin;
-pub mod core;
 pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
@@ -56,39 +57,20 @@ pub use bevy_app::{App, AppExit};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
+/// The agent runtime this app is built on; `plugins.toml` names its
+/// plugins through it, such as `rig_harness::rig_ecs::subagents::SubagentsPlugin`.
+pub use rig_ecs;
 
-/// What a plugin needs: Bevy's app and ECS preludes, the agent components
-/// and requests, and the tool and command registries.
+/// What a plugin needs: rig-ecs's prelude (Bevy's app and ECS preludes,
+/// the agent components and requests, and the tool and command
+/// registries) and the app's session, views and plugin groups.
 pub mod prelude {
-    pub use bevy_app::prelude::*;
-    pub use bevy_ecs::prelude::*;
-    pub use bevy_reflect::prelude::*;
+    pub use rig_ecs::prelude::*;
 
-    pub use crate::core::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
-        Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
-        SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
-        TurnOf, TurnOutcome, TurnRequest,
-    };
-    pub use crate::core::calls::Wake;
-    pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand};
-    pub use crate::core::compaction::Compacted;
-    pub use crate::core::inbox::{
-        Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
-    };
-    pub use crate::core::journal::AppSaveExt;
-    pub use crate::core::prompt::{PromptSection, ToolRules};
-    pub use crate::core::recovery::{Backoff, Recovery};
-    pub use crate::core::restore::Restored;
-    pub use crate::core::tools::{
-        AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed,
-    };
-    pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
     pub use crate::view::{Focus, PickItem, PickRequest, send_input};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
-    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
     pub use rig_tools::blocking;
 }
 
@@ -106,8 +88,8 @@ impl PluginGroup for RigHarnessPlugins {
             .add(host::session::SessionPlugin)
             .add(host::headless::ModePlugin)
             .add(view::ViewPlugin)
-            .add(core::AgentPlugin)
-            .add(core::journal::JournalPlugin)
+            .add(rig_ecs::AgentPlugin)
+            .add(rig_ecs::journal::JournalPlugin)
             .add(host::compaction::CodingCompactionPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::defaults::DefaultsPlugin)
@@ -120,7 +102,7 @@ impl PluginGroup for RigHarnessPlugins {
 /// What a terminal app takes from Bevy where a windowed one has
 /// `DefaultPlugins`: the log written to the session, task pools sized for
 /// an agent, a clean exit on SIGINT, SIGTERM and SIGHUP, and a loop that
-/// sleeps until [`Wake`](core::calls::Wake)d. Added after
+/// sleeps until [`Wake`](rig_ecs::calls::Wake)d. Added after
 /// [`RigHarnessPlugins`], whose session the log writes to; a windowing plugin
 /// added later sets its own runner in place of this loop.
 pub struct HeadlessPlugins;
@@ -136,7 +118,7 @@ impl PluginGroup for HeadlessPlugins {
                 task_pool_options: task_pools(),
             })
             .add(host::signals::ExitOnSignalPlugin)
-            .add(host::runner::RunnerPlugin)
+            .add(rig_ecs::runner::RunnerPlugin)
     }
 }
 

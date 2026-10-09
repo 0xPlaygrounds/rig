@@ -10,7 +10,7 @@
 //! the turn ends it, and announces its [`TurnEnded`] on the agent.
 
 use std::pin::Pin;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -33,6 +33,7 @@ use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
 use rig_core::transcript::arguments_refusal;
 use rig_memory::{Summarizer, SummaryState};
+use web_time::Instant;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
@@ -45,7 +46,7 @@ use super::compaction::{
     self, CompactReason, Compacted, CompactionPolicy, MAX_COMPACTIONS, Summarize, Summarizing,
     Summary,
 };
-use super::effects::Effects;
+use super::effects::{Effects, Handler};
 use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
@@ -252,8 +253,13 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     take_running::<Summary>(world, &mut cancelling);
     take_running::<ToolResult>(world, &mut cancelling);
     let deadline = Instant::now() + EXIT_GRACE;
-    while !cancelling.is_empty() && Instant::now() < deadline {
+    loop {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
+        // On the web the calls run on this thread: waiting cannot help them.
+        if cancelling.is_empty() || cfg!(target_family = "wasm") || Instant::now() >= deadline {
+            break;
+        }
+        #[cfg(not(target_family = "wasm"))]
         std::thread::sleep(Duration::from_millis(2));
     }
     let turns: Vec<(Entity, Entity)> = world
@@ -352,7 +358,10 @@ pub(crate) fn on_model_chosen(
         .and_then(|spec| {
             effects
                 .model_handler(&spec, &connector)
-                .map(|handler| Connection { spec, handler })
+                .map(|handler| Connection {
+                    spec,
+                    handler: Handler(handler),
+                })
                 .map_err(|error| error.to_string())
         });
     let connection = match connection {
@@ -512,8 +521,13 @@ pub(crate) fn on_call_model(
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
             let messages = compacted.request(conversation.messages());
-            prepare(messages, connection, effort, &id.0, preamble, definitions)
-                .map(|request| (connection.handler.clone(), connection.spec.clone(), request))
+            prepare(messages, connection, effort, &id.0, preamble, definitions).map(|request| {
+                (
+                    connection.handler.erased(),
+                    connection.spec.clone(),
+                    request,
+                )
+            })
         });
     let (handler, spec, request) = match request {
         Ok(request) => request,
@@ -848,7 +862,7 @@ impl Failed<'_> {
         notices: &mut MessageWriter<Notice>,
     ) {
         let (agent, report) = (self.agent, self.report);
-        match RETRY.verdict(report, recovery.retries, SystemTime::now()) {
+        match RETRY.verdict(report, recovery.retries, now()) {
             Verdict::Retry(delay) => {
                 recovery.retries += 1;
                 let backoff = Backoff {
@@ -1132,7 +1146,7 @@ impl ToolStarter<'_, '_> {
                 });
                 return;
             }
-            (Some((_, _, Some(handler), ..)), None) => handler.0.clone(),
+            (Some((_, _, Some(handler), ..)), None) => handler.0.erased(),
         };
         let (_, work) = run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);
@@ -1235,7 +1249,7 @@ pub(crate) fn on_summarize(
                 &connection.spec,
                 reason.clone(),
             )
-            .map(|(summarizing, request)| (connection.handler.clone(), summarizing, request))
+            .map(|(summarizing, request)| (connection.handler.erased(), summarizing, request))
         });
     let (handler, summarizing, request) = match planned {
         Ok(planned) => planned,
@@ -1346,4 +1360,11 @@ fn carry_on(turn: Entity, reason: &CompactReason, commands: &mut Commands) {
             commands.trigger(CallModel { entity: turn });
         }
     }
+}
+
+/// The wall clock as std's `SystemTime`, which rig-core's retry policy
+/// reads a `Retry-After` date against; read through `web_time` so it also
+/// works on the web.
+fn now() -> SystemTime {
+    UNIX_EPOCH + Duration::from_millis(super::journal::now_ms())
 }

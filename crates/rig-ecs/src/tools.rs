@@ -17,6 +17,7 @@ use bevy_app::App;
 use bevy_ecs::observer::IntoEntityObserver;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -25,7 +26,7 @@ use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve};
 use rig_core::tool::{Tool, ToolErrorKind, ToolExecutionError};
 
-use super::effects::Effects;
+use super::effects::{Effects, Handler};
 use super::prompt::ToolRules;
 
 /// What the model is told about a tool. Its parameters are strict: the
@@ -50,7 +51,7 @@ impl ToolDef {
 /// open: each call triggers [`ToolCalled`] on the tool's entity and ends
 /// when something inserts its [`ToolOutput`].
 #[derive(Component, Clone)]
-pub struct ToolHandler(pub ErasedHandler);
+pub struct ToolHandler(pub Handler);
 
 /// A tool call's result, inserted on the call entity: the one way a call
 /// ends. Insert it once, with [`EntityCommands::insert_if_new`] when
@@ -129,7 +130,7 @@ pub struct ToolOptions<'a> {
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
     /// Make `tool` available to every agent whose
-    /// [`ToolAccess`](crate::core::agent::ToolAccess) allows its name. A
+    /// [`ToolAccess`](crate::agent::ToolAccess) allows its name. A
     /// name already registered is refused with a warning.
     ///
     /// Tool futures run on Bevy's async compute pool, a few threads that
@@ -260,7 +261,7 @@ pub(crate) fn register_tool(
         options.footprint,
     ));
     if let Some(handler) = handler {
-        entity.insert(ToolHandler(handler));
+        entity.insert(ToolHandler(Handler(handler)));
     }
     Some(entity.id())
 }
@@ -329,7 +330,10 @@ pub(crate) fn run_tool_call(
     parent: Option<EffectId>,
     handler: ErasedHandler,
     call: ToolCall,
-) -> (EffectId, impl Future<Output = ToolResult> + Send + 'static) {
+) -> (
+    EffectId,
+    impl ConditionalSendFuture<Output = ToolResult> + 'static,
+) {
     let name = call.function.name.as_str().to_owned();
     let args = recorded_args(&call);
     let (id, reply) = effects.dispatch(scope, parent, handler, EffectKind::ToolCall { name, args });

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{Task, TaskPool};
+use bevy_tasks::{ConditionalSendFuture, Task, TaskPool};
 
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
@@ -46,7 +46,7 @@ impl<T: Send + Sync + 'static> Running<T> {
     pub fn spawn(
         pool: &TaskPool,
         wake: &Wake,
-        work: impl Future<Output = T> + Send + 'static,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
     ) -> Self {
         let wake = wake.clone();
         Self(pool.spawn(async move {

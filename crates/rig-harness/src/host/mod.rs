@@ -9,7 +9,6 @@ pub mod defaults;
 pub mod headless;
 pub mod launcher;
 pub mod reload;
-pub mod runner;
 pub mod session;
 pub mod sessions;
 pub mod signals;

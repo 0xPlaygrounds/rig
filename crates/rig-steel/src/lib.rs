@@ -1,4 +1,4 @@
-//! Code mode for the rig-harness agent on [Steel](https://github.com/mattwparas/steel),
+//! Code mode for rig-ecs agents on [Steel](https://github.com/mattwparas/steel),
 //! an embeddable Scheme. [`SteelPlugin`] adds the `run_steel` tool: the
 //! model writes one Scheme program that spawns agents, sends them requests,
 //! waits for their replies, calls the model's own tools, and loops and
@@ -25,10 +25,10 @@
 //! limited, host calls are counted, and Esc cancels it like any tool call.
 //! Steel has no memory limit.
 //!
-//! The plugin is written only against rig-harness's public primitives: an
+//! The plugin is written only against rig-ecs's public primitives: an
 //! open tool ([`AppToolsExt::add_open_tool`]) whose call is completed by a
 //! [`Running`] task, and its own [`Harness`] handle over the core's
-//! [`ToolStarter`](rig_harness::core::turn::ToolStarter), so the calls a
+//! [`ToolStarter`](rig_ecs::turn::ToolStarter), so the calls a
 //! program makes go through the one recorded dispatch and are recorded
 //! under its `run_steel` call. It is not in the default `plugins.toml`; add it with
 //!
@@ -53,9 +53,9 @@ use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
-use rig_harness::core::agent::{AgentId, ToolCallRun};
-use rig_harness::core::calls::{Running, Wake};
-use rig_harness::core::tools::{
+use rig_ecs::agent::{AgentId, ToolCallRun};
+use rig_ecs::calls::{Running, Wake};
+use rig_ecs::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolOptions, ToolOutput, failed,
 };
 use serde_json::Value;

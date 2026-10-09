@@ -15,9 +15,9 @@ use crossbeam_channel::{Receiver, Sender};
 
 use super::view::TuiView;
 use crate::attach;
-use crate::core::agent::Notice;
-use crate::core::calls::Wake;
 use rig_core::message::ImageMediaType;
+use rig_ecs::agent::Notice;
+use rig_ecs::calls::Wake;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
 /// there is none.

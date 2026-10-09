@@ -3,7 +3,7 @@
 use bevy_app::prelude::*;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 
-use crate::core::tools::{AppToolsExt, Footprint, ToolOptions};
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
 
 /// Registers the built-in tools, each with its rules on when to pick it,
 /// with [`AppToolsExt::add_tool_with`]: `read` and `search` run beside each

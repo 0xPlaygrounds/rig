@@ -28,12 +28,12 @@ use rig_core::providers::chatgpt::{
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 
-use crate::core::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
-use crate::core::calls::{Done, Running, Wake, poll_calls};
-use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::effects::Effects;
-use crate::core::models::{ModelConnector, SignIns};
-use crate::core::turn::PollCalls;
+use rig_ecs::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
+use rig_ecs::calls::{Done, Running, Wake, poll_calls};
+use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::effects::Effects;
+use rig_ecs::models::{ModelConnector, SignIns};
+use rig_ecs::turn::PollCalls;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` takes.

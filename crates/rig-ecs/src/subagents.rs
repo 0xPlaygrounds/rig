@@ -1,7 +1,7 @@
 //! The built-in subagents, written only against the core's public
 //! primitives: open tools ([`AppToolsExt::add_open_tool`]), spawned agents
 //! ([`SpawnedBy`]), [`Deliver`] with an [`Origin`], [`TurnEnded`] and saved
-//! components. Leave [`SubagentsPlugin`] out of `plugins.toml`, or replace
+//! components. Leave [`SubagentsPlugin`] out of the app, or replace
 //! it, and the core has no subagents.
 //!
 //! `task` spawns a child agent, in process, with its own model, reasoning
@@ -29,15 +29,15 @@ use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use serde::{Deserialize, Serialize};
 
-use crate::core::agent::{
+use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
     SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome, answer_text,
 };
-use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use crate::core::journal::AppSaveExt;
-use crate::core::models::{self, ModelConnector};
-use crate::core::restore::Restored;
-use crate::core::tools::{
+use crate::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use crate::journal::AppSaveExt;
+use crate::models::{self, ModelConnector};
+use crate::restore::Restored;
+use crate::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed,
 };
 

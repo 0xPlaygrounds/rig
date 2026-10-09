@@ -13,7 +13,7 @@ use rig::harness_protocol::Home;
 use rig_tools::fs::write_atomic;
 use serde::{Deserialize, Serialize};
 
-use crate::core::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
+use rig_ecs::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
 
 /// Remembers the last chosen model and reasoning setting and gives them to
 /// an agent that starts without a model.

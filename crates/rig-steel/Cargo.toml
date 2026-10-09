@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
-description = "Code mode for the rig-harness agent: a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
+description = "Code mode for rig-ecs agents (and the rig-harness app): a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
 repository = "https://github.com/0xPlaygrounds/rig"
 publish = false
 
@@ -21,7 +21,7 @@ futures = { workspace = true }
 # The watchdog that enforces the execution time limit.
 futures-timer = { workspace = true }
 rig-core = { workspace = true }
-rig-harness = { path = "../rig-harness", version = "0.44.0", default-features = false }
+rig-ecs = { path = "../rig-ecs", version = "0.44.0", default-features = false }
 serde_json = { workspace = true }
 # The Scheme interpreter, in process.
 steel-core = { workspace = true }

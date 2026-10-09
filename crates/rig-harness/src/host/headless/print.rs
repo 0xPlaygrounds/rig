@@ -14,13 +14,13 @@ use bevy_ecs::prelude::*;
 
 use super::RunMode;
 use crate::builtin::login::PendingLogin;
-use crate::core::agent::{
+use crate::view::send_input;
+use rig_ecs::agent::{
     ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
     SetModel, answer_text, primary,
 };
-use crate::core::inbox::DeliveryMode;
-use crate::core::models::ModelConnector;
-use crate::view::send_input;
+use rig_ecs::inbox::DeliveryMode;
+use rig_ecs::models::ModelConnector;
 
 /// Frames to wait for a model to connect before giving up.
 const CONNECT_FRAMES: u32 = 3;

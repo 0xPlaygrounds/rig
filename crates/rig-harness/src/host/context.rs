@@ -13,9 +13,9 @@ use bevy_ecs::prelude::*;
 use rig::harness_protocol::Home;
 use rig_tools::context::{FILE_NAMES, Instructions};
 
-use crate::core::agent::{Notice, TurnOf};
-use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::prompt::PromptSection;
+use rig_ecs::agent::{Notice, TurnOf};
+use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::prompt::PromptSection;
 
 /// Spawns the project and environment [`PromptSection`]s, re-reads them
 /// when a turn starts, and adds `/context`.

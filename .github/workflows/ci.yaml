@@ -276,6 +276,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-candle_wasm_chat
       - if: ${{ !cancelled() }}
+        run: cargo xtask verify --check wasm-rig-ecs
+      - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-tungstenite

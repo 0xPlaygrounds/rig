@@ -1,0 +1,55 @@
+[package]
+name = "rig-ecs"
+# Replaces the older, different rig-ecs (0.43-0.44, removed in #2761) on
+# crates.io: its first release must be versioned above 0.44.
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A Bevy agent runtime on rig-core: agents, turns and tool calls as entities, one recorded effect path, and session journals."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[lints]
+workspace = true
+
+[features]
+default = ["subagents"]
+# The `task` and `message` tools: agents that start and message agents.
+subagents = []
+# The session journal as JSON-lines files in a directory
+# (`fs_journal::JsonlDirStore`). Native file I/O.
+fs-journal = ["rig-cassette/jsonl"]
+# A windowless app loop that sleeps until there is work
+# (`runner::RunnerPlugin`). Native.
+runner = []
+
+[dependencies]
+base64 = { workspace = true }
+bevy_app = { workspace = true }
+# `serialize`: entities read from and written as JSON.
+bevy_ecs = { workspace = true, features = ["serialize"] }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+crossbeam-channel = { workspace = true }
+futures = { workspace = true }
+# The wait before a retried model call.
+futures-timer = { workspace = true }
+rig-cassette = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+# Compaction and the token estimate it decides by.
+rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The names of the images the session journal stores.
+sha2 = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+# `Instant` and the wall clock, also on the web.
+web-time = { workspace = true }
+
+# Browser wasm: futures-timer's setTimeout backend (its default timer thread
+# cannot run there) and Web Crypto for the agents' v4 ids.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+uuid = { workspace = true, features = ["js"] }

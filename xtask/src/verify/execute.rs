@@ -80,37 +80,65 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
-        "@core-imports" => {
-            // rig-harness's agent core must build without its host and its
-            // views: no path under `core/` names them, or the TUI's crates,
-            // the launcher protocol, the `rig` facade or the file system.
-            // Only the `fs-journal` store touches files.
-            const FORBIDDEN: [&str; 5] =
-                ["host", "tui", "ratatui", "crossterm", "harness_protocol"];
-            const FORBIDDEN_PATHS: [&str; 2] = ["rig::", "std::fs"];
-            const FS_STORE: &str = "crates/rig-harness/src/core/fs_journal.rs";
+        "@ecs-boundary" => {
+            // rig-ecs is a library runtime: with every feature on, nothing
+            // in its normal dependency tree is a view, the `rig` facade
+            // (and its launcher protocol), the app or an HTTP stack. Only
+            // its `fs-journal` store touches files.
+            const FORBIDDEN: [&str; 8] = [
+                "rig",
+                "rig-harness",
+                "rig-tools",
+                "rig-reqwest",
+                "reqwest",
+                "ratatui",
+                "crossterm",
+                "ignore",
+            ];
+            const FS_STORE: &str = "crates/rig-ecs/src/fs_journal.rs";
+            let tree = output(
+                root,
+                "cargo",
+                &[
+                    "tree",
+                    "--locked",
+                    "-p",
+                    "rig-ecs",
+                    "--all-features",
+                    "-e",
+                    "normal",
+                    "--prefix",
+                    "none",
+                    "--format",
+                    "{p}",
+                ],
+            )?;
+            if let Some(name) = tree
+                .lines()
+                .filter_map(|line| line.split_whitespace().next())
+                .find(|name| FORBIDDEN.contains(name))
+            {
+                return Err(invalid(format!(
+                    "rig-ecs depends on `{name}`; the runtime must not depend on a view, the \
+                     `rig` facade, the app or an HTTP stack"
+                )));
+            }
             for path in tracked_inputs(root)?
                 .into_iter()
                 .chain(untracked_inputs(root)?)
-                .filter(|p| p.starts_with("crates/rig-harness/src/core/") && p.ends_with(".rs"))
+                .filter(|p| {
+                    p.starts_with("crates/rig-ecs/src/") && p.ends_with(".rs") && p != FS_STORE
+                })
             {
                 let Ok(text) = fs::read_to_string(root.join(&path)) else {
                     continue;
                 };
                 for (number, line) in text.lines().enumerate() {
                     let code = line.split("//").next().unwrap_or_default();
-                    let named = code
-                        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-                        .find(|word| FORBIDDEN.contains(word));
-                    let pathed = FORBIDDEN_PATHS
-                        .into_iter()
-                        .filter(|forbidden| *forbidden != "std::fs" || path != FS_STORE)
-                        .find(|forbidden| names_path(code, forbidden));
-                    if let Some(word) = named.or(pathed) {
+                    if names_path(code, "std::fs") {
                         return Err(invalid(format!(
-                            "{path}:{}: the agent core names `{word}`; core/ must not \
-                             depend on host/, tui/, the launcher protocol, the `rig` facade \
-                             or the file system",
+                            "{path}:{}: rig-ecs names `std::fs`; only its `fs-journal` store \
+                             touches files",
                             number + 1
                         )));
                     }

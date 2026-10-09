@@ -171,7 +171,10 @@ dependency guarantees and migration paths.
 the [`rig-harness`](crates/rig-harness) crate, a Bevy app, and `rig` is its launcher:
 it generates a small Cargo project for the agent, builds it, and runs it. Its
 coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
-[`rig-tools`](crates/rig-tools) crate, usable by any rig agent.
+[`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its agent
+runtime (agents, turns and tool calls as Bevy entities, one recorded effect
+path, session journals) is the [`rig-ecs`](crates/rig-ecs) crate, for building
+your own harness.
 
 ```bash
 cargo install rig
@@ -316,7 +319,8 @@ cd rig && cargo install --path . --root /some/dir
 RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
-Plugins are Bevy plugins. A plugin crate depends on `rig-harness` and on Bevy
+Plugins are Bevy plugins. A plugin crate depends on `rig-harness` (or on
+`rig-ecs` alone, re-exported as `rig_harness::rig_ecs`) and on Bevy
 crates at exactly `=0.20.0`, and registers tools and slash commands the
 same way the built-in ones are registered:
 
@@ -351,7 +355,7 @@ plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
 [[plugin]]
-plugin = "rig_harness::builtin::SubagentsPlugin"
+plugin = "rig_harness::rig_ecs::subagents::SubagentsPlugin"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"
@@ -368,7 +372,7 @@ Its `SteelPlugin` adds the `run_steel` tool: the model writes one
 [Steel](https://github.com/mattwparas/steel) (Scheme) program that spawns
 agents, sends them requests, waits for their replies and calls the model's own
 tools, and the value of its last expression is the tool's output. The program
-reaches the host only through four functions, each one call of rig-harness's
+reaches the host only through four functions, each one call of rig-steel's
 `Harness` handle: `(spawn-agent name [options])`, `(send agent text)`,
 `(reply request)` and `(call-tool name [args])`. It runs on a thread of its
 own, which each host function blocks until the harness answers; agents it has

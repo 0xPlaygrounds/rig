@@ -16,15 +16,15 @@ use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName, ToolResult};
-use rig_harness::core::agent::{
+use rig_ecs::agent::{
     Agent, AgentId, EffectParent, Effort, ModelChoice, SpawnedBy, SystemPrompt, ToolAccess,
     TurnEnded, TurnOutcome,
 };
-use rig_harness::core::calls::Wake;
-use rig_harness::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use rig_harness::core::models::{self, ModelConnector};
-use rig_harness::core::tools::ToolOutput;
-use rig_harness::core::turn::{PollCalls, ToolStarter, tool_name};
+use rig_ecs::calls::Wake;
+use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use rig_ecs::models::{self, ModelConnector};
+use rig_ecs::tools::ToolOutput;
+use rig_ecs::turn::{PollCalls, ToolStarter, tool_name};
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;

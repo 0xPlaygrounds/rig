@@ -6,7 +6,7 @@ use std::sync::Arc;
 use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::completion::{Reasoning, UnsupportedOption};
 use rig_core::operation::Completion;
-use rig_core::providers::registry::{self, ConnectError, ProviderId};
+use rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
@@ -100,13 +100,14 @@ impl ModelConnector {
             .map(|resolved| Arc::new(resolved.spec.clone()))
     }
 
-    /// Builds `spec`'s provider client from the environment and wraps the
-    /// model as an effect handler. Without a key in the environment, a
+    /// Builds `spec`'s provider client from the environment, on rig-core's
+    /// shared HTTP client (its `reqwest` feature, which the app enables),
+    /// and wraps the model as an effect handler. Without a key in the environment, a
     /// model a sign-in serves signs each request with that credential
     /// instead. The [`Effects`](super::effects::Effects) keep one per
     /// model.
     pub fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
-        match registry::connect(spec) {
+        match self.catalog.connect_with(spec, ConnectOptions::new()) {
             Ok(model) => Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
                 spec.reference(),
                 model,
@@ -144,9 +145,12 @@ impl ModelConnector {
             .iter()
             .filter(|spec| spec.tools)
             .filter(|spec| {
-                *usable
-                    .entry(spec.provider)
-                    .or_insert_with(|| registry::connect(*spec).is_ok() || signed_in(spec))
+                *usable.entry(spec.provider).or_insert_with(|| {
+                    self.catalog
+                        .connect_with(*spec, ConnectOptions::new())
+                        .is_ok()
+                        || signed_in(spec)
+                })
             })
             .collect();
         // Stable: catalog order within each group.

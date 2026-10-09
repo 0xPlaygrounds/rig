@@ -12,8 +12,8 @@ use bevy_log::warn;
 use crossbeam_channel::Receiver;
 
 use super::view::TuiView;
-use crate::core::calls::Wake;
-use crate::core::commands::SlashCommand;
+use rig_ecs::calls::Wake;
+use rig_ecs::commands::SlashCommand;
 
 /// Items a completion lists.
 const SHOWN: usize = 50;

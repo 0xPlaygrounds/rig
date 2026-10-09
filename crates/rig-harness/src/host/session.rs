@@ -11,8 +11,8 @@ use bevy_log::tracing_subscriber::fmt;
 use bevy_log::{BoxedFmtLayer, error};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
-use crate::core::fs_journal::JsonlDirStore;
-use crate::core::store::SessionStore;
+use rig_ecs::fs_journal::JsonlDirStore;
+use rig_ecs::store::SessionStore;
 
 /// The session's directory: the agent logs and the effect log the core
 /// keeps there through its [`SessionStore`], and the launcher's files.

@@ -25,9 +25,9 @@ plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 [[plugin]]
 plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
-# Subagents: the task and message tools, and /agents.
+# Subagents (from rig-ecs): the task and message tools.
 [[plugin]]
-plugin = "rig_harness::builtin::SubagentsPlugin"
+plugin = "rig_harness::rig_ecs::subagents::SubagentsPlugin"
 
 # The terminal view. Without it the agent runs headless.
 [[plugin]]

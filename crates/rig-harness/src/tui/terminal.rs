@@ -19,8 +19,8 @@ use ratatui::backend::CrosstermBackend;
 use super::editor::Editor;
 use super::input::TerminalInput;
 use super::view::TuiView;
-use crate::core::calls::Wake;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
+use rig_ecs::calls::Wake;
 
 use crate::host::session::SessionPaths;
 

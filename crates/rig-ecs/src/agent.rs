@@ -9,10 +9,10 @@ use rig_core::catalog::ModelSpec;
 use rig_core::completion::{AssistantContent, Message, Reasoning};
 use rig_core::effect::EffectId;
 use rig_core::message::ToolCall;
-use rig_core::serve::ErasedHandler;
 use serde::{Deserialize, Serialize};
 
 use super::compaction::Compacted;
+use super::effects::Handler;
 use super::inbox::{Inbox, Origin, RequestId};
 use super::recovery::Recovery;
 use super::tools::Footprint;
@@ -119,7 +119,7 @@ impl Conversation {
     /// goes into the last message when that is the user's too, such as the
     /// tool results the model waits for, so user and model keep taking
     /// turns. Whether it went into the last one.
-    pub(in crate::core) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
+    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
         let (at, first) = match (self.messages.last(), &message) {
             (Some(Message::User { content }), Message::User { .. }) => {
                 (self.messages.len().saturating_sub(1), content.len())
@@ -147,7 +147,7 @@ impl Conversation {
     }
 
     /// Takes out the last message.
-    pub(in crate::core) fn retract(&mut self) -> Option<Message> {
+    pub(crate) fn retract(&mut self) -> Option<Message> {
         let message = self.messages.pop()?;
         let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
@@ -172,7 +172,7 @@ pub struct Connection {
     /// The model's catalog entry.
     pub spec: Arc<ModelSpec>,
     /// The model as an effect handler.
-    pub handler: ErasedHandler,
+    pub handler: Handler,
 }
 
 /// The reasoning setting sent with each request, or `None` for the

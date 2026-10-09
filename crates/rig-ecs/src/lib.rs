@@ -1,9 +1,26 @@
-//! The agent core: agents as entities and the agents they spawn, the turn loop, the one
-//! effect dispatch path, the tool and command registries, models, and the
-//! session logs. It
-//! depends on neither the host nor any view, nor on the file system: the
-//! app fills in what the core needs, such as the [`store::SessionStore`]
-//! the session is kept in and the [`models::ModelConnector`].
+//! rig-ecs: a Bevy agent runtime on rig-core. Agents are entities whose
+//! components hold their conversation, model, reasoning setting, system
+//! prompt and tool access; a running turn is an entity of its agent, and
+//! its model and tool calls are entities of the turn that run on Bevy's
+//! task pools. Every call goes through one recorded effect dispatch path.
+//! Tools and commands are registered by plugins, and the session journal
+//! is kept in the [`store::SessionStore`] the app inserts.
+//!
+//! The runtime depends on no view and no file system: the app fills in
+//! what it needs, such as the store and the [`models::ModelConnector`].
+//! Features: `subagents` (default) adds the [`subagents::SubagentsPlugin`]
+//! tools, `fs-journal` a JSON-lines [`fs_journal::JsonlDirStore`], and
+//! `runner` a windowless loop ([`runner::RunnerPlugin`]); the last two are
+//! native-only.
+//!
+//! ```no_run
+//! use rig_ecs::prelude::*;
+//! use rig_ecs::store::{MemoryStore, SessionStore};
+//!
+//! let mut app = App::new();
+//! app.insert_resource(SessionStore::new(MemoryStore::default()))
+//!     .add_plugins((AgentPlugin, JournalPlugin));
+//! ```
 
 pub mod agent;
 pub mod calls;
@@ -18,10 +35,43 @@ pub mod models;
 pub mod prompt;
 pub mod recovery;
 pub mod restore;
+#[cfg(feature = "runner")]
+pub mod runner;
 pub mod store;
+#[cfg(feature = "subagents")]
+pub mod subagents;
 pub mod tools;
 pub mod turn;
 pub mod usage;
+
+/// What a plugin needs: Bevy's app and ECS preludes, the agent components
+/// and requests, and the tool and command registries.
+pub mod prelude {
+    pub use bevy_app::prelude::*;
+    pub use bevy_ecs::prelude::*;
+    pub use bevy_reflect::prelude::*;
+
+    pub use crate::AgentPlugin;
+    pub use crate::agent::{
+        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
+        Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
+        SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
+        TurnOf, TurnOutcome, TurnRequest,
+    };
+    pub use crate::calls::Wake;
+    pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
+    pub use crate::compaction::Compacted;
+    pub use crate::inbox::{
+        Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
+    };
+    pub use crate::journal::{AppSaveExt, JournalPlugin};
+    pub use crate::prompt::{PromptSection, ToolRules};
+    pub use crate::recovery::{Backoff, Recovery};
+    pub use crate::restore::Restored;
+    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
+    pub use crate::usage::{Spending, TurnSpending};
+    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
+}
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;

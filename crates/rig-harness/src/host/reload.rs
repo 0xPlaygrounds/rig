@@ -26,10 +26,10 @@ use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, first_errors};
 use rig_tools::process::{detach, kill_group};
 
 use super::launcher;
-use crate::core::agent::{Notice, TurnOf};
-use crate::core::calls::Wake;
-use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::turn::PollCalls;
+use rig_ecs::agent::{Notice, TurnOf};
+use rig_ecs::calls::Wake;
+use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::turn::PollCalls;
 
 /// Lines of a failed build shown, from its first error.
 const ERROR_LINES: usize = 60;

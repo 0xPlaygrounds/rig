@@ -25,14 +25,14 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher;
 use super::session::SessionPaths;
-use crate::core::StopTurns;
-use crate::core::agent::{
+use crate::view::{PickItem, PickRequest};
+use rig_ecs::StopTurns;
+use rig_ecs::agent::{
     Agent, AgentId, Conversation, Notice, SpawnedBy, TurnEnded, TurnOf, primary_order,
 };
-use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::journal::now_ms;
-use crate::core::usage::{self, Spending};
-use crate::view::{PickItem, PickRequest};
+use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::journal::now_ms;
+use rig_ecs::usage::{self, Spending};
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;

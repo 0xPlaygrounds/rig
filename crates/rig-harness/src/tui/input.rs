@@ -15,13 +15,13 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifier
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::view::{Overlay, Picker, TuiView};
-use crate::core::agent::{ActiveTurn, Interrupt};
-use crate::core::calls::Wake;
-use crate::core::commands::{RunCommand, SlashCommand};
-use crate::core::inbox::DeliveryMode;
 use crate::host::reload::{CancelReload, ReloadBuild};
 use crate::host::session::SessionPaths;
 use crate::view::send_input;
+use rig_ecs::agent::{ActiveTurn, Interrupt};
+use rig_ecs::calls::Wake;
+use rig_ecs::commands::{RunCommand, SlashCommand};
+use rig_ecs::inbox::DeliveryMode;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;

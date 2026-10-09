@@ -15,18 +15,18 @@ use super::terminal::Tui;
 use super::transcript::{Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use crate::core::agent::{
+use crate::host::reload::ReloadBuild;
+use crate::host::sessions::SessionName;
+use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
     Spawned, SpawnedBy, ToolCallRun,
 };
-use crate::core::commands::SlashCommand;
-use crate::core::compaction::{Compacted, Summarizing};
-use crate::core::inbox::Inbox;
-use crate::core::models;
-use crate::core::recovery::{Backoff, RETRY};
-use crate::core::usage::{self, Spending, TurnSpending};
-use crate::host::reload::ReloadBuild;
-use crate::host::sessions::SessionName;
+use rig_ecs::commands::SlashCommand;
+use rig_ecs::compaction::{Compacted, Summarizing};
+use rig_ecs::inbox::Inbox;
+use rig_ecs::models;
+use rig_ecs::recovery::{Backoff, RETRY};
+use rig_ecs::usage::{self, Spending, TurnSpending};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;

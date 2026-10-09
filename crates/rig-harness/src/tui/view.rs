@@ -6,10 +6,10 @@ use bevy_ecs::prelude::*;
 
 use super::complete::Completion;
 use super::editor::Editor;
-use crate::core::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
-use crate::core::inbox::Recalled;
 use crate::host::reload::ReloadFailed;
 use crate::view::{Focus, PickItem, PickRequest};
+use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
+use rig_ecs::inbox::Recalled;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;

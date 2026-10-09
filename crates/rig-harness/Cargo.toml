@@ -4,19 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
-description = "A terminal coding agent on rig-core and Bevy: agents are entities, and tools and slash commands come from Bevy plugins."
+description = "A terminal coding agent on rig-ecs: agents are Bevy entities, and tools and slash commands come from Bevy plugins."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
 workspace = true
 
 [features]
-default = ["tui", "fs-journal"]
-# The session kept as JSON-lines files in its directory
-# (`core::fs_journal::JsonlDirStore`). The app's own session needs it.
-fs-journal = ["rig-cassette/jsonl"]
-# The ratatui view. Without it the crate is the agent core alone: the agent
-# loop, tools, effects and the session logs.
+default = ["tui"]
+# The ratatui view. Without it the app runs `--print` only.
 tui = [
     "dep:ratatui",
     "dep:crossterm",
@@ -30,8 +26,7 @@ tui = [
 [dependencies]
 base64 = { workspace = true }
 bevy_app = { workspace = true }
-# `serialize`: entities read from and written as JSON.
-bevy_ecs = { workspace = true, features = ["serialize"] }
+bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
@@ -40,25 +35,22 @@ chrono = { workspace = true, features = ["clock"] }
 crossbeam-channel = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
-futures = { workspace = true }
-# The wait before a retried model call.
-futures-timer = { workspace = true }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
 rig = { path = "../..", version = "0.44.0", default-features = false }
-rig-cassette = { workspace = true }
+# `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
 # The shared HTTP client `/login` and signed-in model calls read the
 # credential through.
 rig-reqwest = { workspace = true }
+# The agent runtime, with the session kept as JSON-lines files in its
+# directory and the windowless loop.
+rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["fs-journal", "runner"] }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 # The built-in tools and the instruction files and process helpers.
 rig-tools = { path = "../rig-tools", version = "0.44.0" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# The names of the images the session logs store.
-sha2 = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 # Markdown in replies and the width of wrapped text, for the terminal view.

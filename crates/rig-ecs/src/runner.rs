@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 
-use crate::core::calls::Wake;
+use crate::calls::Wake;
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);

@@ -20,6 +20,7 @@ use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Rep
 
 use super::models::ModelConnector;
 use super::store::JournalStore;
+use bevy_tasks::ConditionalSendFuture;
 
 /// The session's effect recorder, effect id counter and model handlers.
 #[derive(Resource)]
@@ -30,7 +31,7 @@ pub struct Effects {
     next: AtomicU64,
     /// One handler per catalog model, built on first use and shared by
     /// every agent that picks the model.
-    models: HashMap<String, ErasedHandler>,
+    models: HashMap<String, Handler>,
 }
 
 impl Effects {
@@ -61,11 +62,11 @@ impl Effects {
     ) -> Result<ErasedHandler, ConnectError> {
         let reference = spec.reference();
         if let Some(handler) = self.models.get(&reference) {
-            return Ok(handler.clone());
+            return Ok(handler.erased());
         }
         let handler = connector.handler(spec)?;
         self.describe(vec![handler.descriptor()]);
-        self.models.insert(reference, handler.clone());
+        self.models.insert(reference, Handler(handler.clone()));
         Ok(handler)
     }
 
@@ -91,7 +92,10 @@ impl Effects {
         parent: Option<EffectId>,
         handler: ErasedHandler,
         kind: EffectKind,
-    ) -> (EffectId, impl Future<Output = Reply> + Send + 'static) {
+    ) -> (
+        EffectId,
+        impl ConditionalSendFuture<Output = Reply> + 'static,
+    ) {
         let streaming = kind.streams();
         let id = self.begin(scope, parent, handler.descriptor().key, kind.clone());
         let dispatch = Dispatch::new(id, streaming).recorded_by(self.shared.clone());
@@ -146,8 +150,8 @@ impl Effects {
     pub(crate) fn caught<T: 'static>(
         &self,
         id: EffectId,
-        work: impl Future<Output = Result<T, ErrorReport>> + Send + 'static,
-    ) -> impl Future<Output = Result<T, ErrorReport>> + Send + 'static {
+        work: impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static,
+    ) -> impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static {
         catch_panics(self.shared.clone(), id, work)
     }
 
@@ -157,6 +161,36 @@ impl Effects {
         self.recorder.take()
     }
 }
+
+/// An effect handler as a component or resource keeps it. rig-core's
+/// [`ErasedHandler`] is `Send` and `Sync` except on browser wasm, where its
+/// provider clients hold JavaScript values, and Bevy asks for both on
+/// every target.
+#[derive(Clone)]
+pub struct Handler(pub ErasedHandler);
+
+impl Handler {
+    /// The handler, to dispatch to.
+    pub fn erased(&self) -> ErasedHandler {
+        self.0.clone()
+    }
+}
+
+// SAFETY: browser wasm without the `atomics` target feature runs one
+// thread, so a `Handler` is never sent to or shared with another one.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    not(target_feature = "atomics")
+))]
+unsafe impl Send for Handler {}
+// SAFETY: as for `Send`: there is no other thread.
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    not(target_feature = "atomics")
+))]
+unsafe impl Sync for Handler {}
 
 /// Where an effect of the agent `scope` comes from.
 fn origin(scope: &str, parent: Option<EffectId>) -> Origin {

@@ -6,14 +6,14 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use super::LoginPlugin;
-use crate::core::agent::{
+use crate::view::{Focus, PickItem, PickRequest};
+use rig_ecs::agent::{
     ActiveTurn, Agent, AgentId, Compact, Connection, Effort, ModelChoice, Notice, Retry, SetEffort,
     SetModel, Spawned, SpawnedBy,
 };
-use crate::core::commands::{AppCommandsExt, CommandArgs, SlashCommand};
-use crate::core::models::{self, ModelConnector};
-use crate::core::usage::{Spending, TurnSpending};
-use crate::view::{Focus, PickItem, PickRequest};
+use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_ecs::models::{self, ModelConnector};
+use rig_ecs::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
 #[derive(Default)]

@@ -18,7 +18,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 
-use crate::core::calls::Wake;
+use rig_ecs::calls::Wake;
 
 /// The exit code of a signalled exit, as a shell reports Ctrl+C.
 const SIGNAL_EXIT_CODE: u8 = 130;

@@ -152,9 +152,10 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push_str(&format!(
             "\n[patch.crates-io]\nrig = {{ path = {} }}\nrig-harness = {{ path = {} }}\n\
-             rig-core = {{ path = {} }}\nrig-tools = {{ path = {} }}\n",
+             rig-ecs = {{ path = {} }}\nrig-core = {{ path = {} }}\nrig-tools = {{ path = {} }}\n",
             quoted_path(checkout),
             quoted_path(&checkout.join("crates/rig-harness")),
+            quoted_path(&checkout.join("crates/rig-ecs")),
             quoted_path(&checkout.join("crates/rig-core")),
             quoted_path(&checkout.join("crates/rig-tools")),
         ));

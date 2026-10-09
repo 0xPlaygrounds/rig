@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use bevy_app::prelude::*;
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts, TrackArgument};
 
-use crate::core::compaction::CompactionPolicy;
+use rig_ecs::compaction::CompactionPolicy;
 
 /// Inserts the coding [`CompactionPolicy`].
 pub struct CodingCompactionPlugin;

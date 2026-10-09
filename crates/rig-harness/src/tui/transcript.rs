@@ -19,9 +19,9 @@ use rig_core::message::{ToolResult, UserContent};
 use super::markdown;
 use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
-use crate::core::agent::Conversation;
-use crate::core::inbox::{Origin, OriginKind};
 use crate::host::launcher::BUILD_ORIGIN;
+use rig_ecs::agent::Conversation;
+use rig_ecs::inbox::{Origin, OriginKind};
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;

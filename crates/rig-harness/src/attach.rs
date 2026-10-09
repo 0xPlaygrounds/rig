@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use base64::Engine;
 use rig_core::message::{ImageMediaType, UserContent};
 
-use crate::core::inbox::Attachment;
+use rig_ecs::inbox::Attachment;
 
 /// The largest image attached: providers refuse bigger ones (Anthropic
 /// takes 5 MB per image).

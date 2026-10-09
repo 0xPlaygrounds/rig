@@ -8,9 +8,9 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
 use crate::attach;
-use crate::core::agent::Notice;
-use crate::core::commands::RunCommand;
-use crate::core::inbox::{Deliver, DeliveryMode};
+use rig_ecs::agent::Notice;
+use rig_ecs::commands::RunCommand;
+use rig_ecs::inbox::{Deliver, DeliveryMode};
 
 /// Registers [`PickRequest`].
 pub struct ViewPlugin;

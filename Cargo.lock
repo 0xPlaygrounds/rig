@@ -11085,6 +11085,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-ecs"
+version = "0.44.0"
+dependencies = [
+ "base64 0.22.1",
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
+ "bevy_tasks",
+ "crossbeam-channel",
+ "futures",
+ "futures-timer",
+ "rig-cassette",
+ "rig-core",
+ "rig-memory",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "uuid",
+ "web-time",
+]
+
+[[package]]
 name = "rig-fastembed"
 version = "0.44.0"
 dependencies = [
@@ -11136,24 +11159,20 @@ dependencies = [
  "crossbeam-channel",
  "crossterm",
  "ctrlc",
- "futures",
- "futures-timer",
  "ignore",
  "libc",
  "pulldown-cmark",
  "ratatui",
  "rig",
- "rig-cassette",
  "rig-core",
+ "rig-ecs",
  "rig-memory",
  "rig-reqwest",
  "rig-tools",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "similar",
  "unicode-width 0.2.2",
- "uuid",
 ]
 
 [[package]]
@@ -11429,7 +11448,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "rig-core",
- "rig-harness",
+ "rig-ecs",
  "serde_json",
  "steel-core",
  "uuid",

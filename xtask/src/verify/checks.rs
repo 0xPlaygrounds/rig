@@ -50,7 +50,7 @@ pub(super) fn all() -> Vec<Check> {
                     &[".github/scripts/check-migrating-guide-preamble.sh"],
                 ),
                 Step::new("@fixture-paths", &[]),
-                Step::new("@core-imports", &[]),
+                Step::new("@ecs-boundary", &[]),
                 Step::new("@options-guards", &[]),
                 Step::new(
                     "node",
@@ -106,15 +106,17 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-harness, its rig-tools and its rig-steel plugin crate
-                // are not default members, and the agent core must also
-                // build without the terminal view (the app's session store,
-                // `fs-journal`, stays).
+                // rig-harness, rig-ecs, rig-tools and rig-steel are not
+                // default members; the app must also build without the
+                // terminal view, and rig-ecs with its default features
+                // and with all of them.
                 cargo(&[
                     "clippy",
                     "--locked",
                     "-p",
                     "rig-harness",
+                    "-p",
+                    "rig-ecs",
                     "-p",
                     "rig-tools",
                     "-p",
@@ -130,8 +132,17 @@ pub(super) fn all() -> Vec<Check> {
                     "-p",
                     "rig-harness",
                     "--no-default-features",
-                    "--features",
-                    "fs-journal",
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ]),
+                cargo(&[
+                    "clippy",
+                    "--locked",
+                    "-p",
+                    "rig-ecs",
+                    "--all-features",
                     "--all-targets",
                     "--",
                     "-D",
@@ -167,14 +178,16 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-harness, rig-tools and rig-steel are not default members,
-                // so the run above never reaches their tests.
+                // rig-harness, rig-ecs, rig-tools and rig-steel are not default
+                // members, so the run above never reaches their tests.
                 cargo(&[
                     "nextest",
                     "run",
                     "--locked",
                     "-p",
                     "rig-harness",
+                    "-p",
+                    "rig-ecs",
                     "-p",
                     "rig-tools",
                     "-p",
@@ -478,6 +491,33 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
+    // rig-ecs on the web: the runtime without its native features
+    // (`fs-journal`, `runner`), and with subagents.
+    checks.push(check(
+        "wasm-rig-ecs",
+        vec![
+            cargo(&[
+                "check",
+                "--locked",
+                "--package",
+                "rig-ecs",
+                "--no-default-features",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]),
+            cargo(&[
+                "check",
+                "--locked",
+                "--package",
+                "rig-ecs",
+                "--no-default-features",
+                "--features",
+                "subagents",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]),
+        ],
+    ));
     checks.push(check(
         "wasm-rig-agent-bus_wasm",
         vec![
