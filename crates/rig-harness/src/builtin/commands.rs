@@ -33,7 +33,7 @@ impl Plugin for BuiltinCommandsPlugin {
         )
         .add_command(
             "usage",
-            "Show the tokens, cost and context the session used",
+            "Show the tokens, cost and context this agent, its subagents and the session used",
             usage,
         )
         .add_command(
@@ -147,20 +147,36 @@ fn effort(
     }
 }
 
+/// `/usage`: the shown agent's tokens, cost and context, what each agent
+/// it spawned used, and the session's total over every agent.
 fn usage(
     In(args): In<CommandArgs>,
     agents: Query<(&Spending, Option<&Connection>, Option<&ActiveTurn>)>,
     turns: Query<&TurnSpending>,
+    everyone: Query<(&AgentId, Option<&Name>, &Spending), With<Agent>>,
+    families: Query<&Spawned>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((spent, connection, turn)) = agents.get(args.agent) else {
         return;
     };
-    if spent.calls == 0 {
+    let mut total = Spending::default();
+    let mut spenders = 0;
+    for (.., other) in &everyone {
+        if other.calls > 0 {
+            total.add(other);
+            spenders += 1;
+        }
+    }
+    if total.calls == 0 {
         notices.write(Notice::info(args.agent, "No model call yet."));
         return;
     }
-    let mut lines = vec![format!("Session: {}.", spent.summary())];
+    let mut lines = vec![if spent.calls == 0 {
+        "This agent: no model call yet.".to_owned()
+    } else {
+        format!("This agent: {}.", spent.summary())
+    }];
     if let Some(TurnSpending(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
         && turn.calls > 0
     {
@@ -177,13 +193,37 @@ fn usage(
                 ""
             }
         )),
-        None => lines.push("Context: not reported by the provider.".to_owned()),
+        None if spent.calls > 0 => {
+            lines.push("Context: not reported by the provider.".to_owned());
+        }
+        None => {}
     }
-    if spent.unpriced > 0 {
+    let subagents: Vec<String> = families
+        .iter_descendants_depth_first::<Spawned>(args.agent)
+        .filter_map(|child| everyone.get(child).ok())
+        .filter(|(.., spent)| spent.calls > 0)
+        .map(|(id, name, spent)| {
+            let title =
+                name.map_or_else(|| format!("agent {}", id.short()), |name| name.to_string());
+            let calls = match spent.calls {
+                1 => "1 call".to_owned(),
+                calls => format!("{calls} calls"),
+            };
+            format!("  {title}: {}, {calls}", spent.cost_or_tokens())
+        })
+        .collect();
+    if !subagents.is_empty() {
+        lines.push("Its subagents:".to_owned());
+        lines.extend(subagents);
+    }
+    if spenders > 1 {
+        lines.push(format!("Session, {spenders} agents: {}.", total.summary()));
+    }
+    if total.unpriced > 0 {
         lines.push(format!(
             "{} of {} calls had no price: their provider did not report one and the catalog \
              lists none, or the model is local or billed by subscription.",
-            spent.unpriced, spent.calls
+            total.unpriced, total.calls
         ));
     }
     notices.write(Notice::info(args.agent, lines.join("\n")));

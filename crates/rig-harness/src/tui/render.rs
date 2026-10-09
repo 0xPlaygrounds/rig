@@ -140,14 +140,14 @@ pub(crate) fn layout(
     };
 }
 
-/// The agents the status line counts: each with whether it works, its
+/// The agents the status line counts: each with its [`Activity`], its
 /// name, whether another spawned it and the agents it spawned.
 type Everyone<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
-        Has<ActiveTurn>,
+        &'static Activity,
         Option<&'static Name>,
         Has<SpawnedBy>,
         Option<&'static Spawned>,
@@ -209,37 +209,49 @@ fn transcript_parts(
     parts
 }
 
-/// The agent counts after the status line: which agent this is when
-/// another spawned it, how many of the agents it spawned are at work, and
-/// how many others.
-fn agent_spans(line: &mut Line<'static>, focused: Option<Entity>, everyone: &Everyone, hint: &str) {
-    let focused_agent = focused.and_then(|agent| everyone.get(agent).ok());
-    if let Some((_, _, Some(title), true, _)) = focused_agent {
-        line.spans
-            .insert(0, Span::from(format!("⤷ {title}  ")).magenta());
-    }
-    let mine: Vec<Entity> = focused_agent
+/// The focused agent's title, before its model, when another agent
+/// spawned it.
+fn spawned_title(focused: Option<Entity>, everyone: &Everyone) -> Option<Piece> {
+    let (_, _, title, spawned_by, _) = everyone.get(focused?).ok()?;
+    let title = title.filter(|_| spawned_by)?;
+    Some(Piece::new(
+        keep::TITLE,
+        Span::from(format!("⤷ {title}")).magenta(),
+    ))
+}
+
+/// The agent counts after the status: how many of the agents the focused
+/// one spawned are at work, idle or not, and how many others.
+fn agent_pieces(pieces: &mut Vec<Piece>, focused: Option<Entity>, everyone: &Everyone, hint: &str) {
+    let busy = |agent: Entity| {
+        everyone
+            .get(agent)
+            .is_ok_and(|(_, activity, ..)| activity.is_busy())
+    };
+    let mine: Vec<Entity> = focused
+        .and_then(|agent| everyone.get(agent).ok())
         .and_then(|(.., spawned)| spawned)
-        .map(|spawned| {
-            spawned
-                .iter()
-                .filter(|child| everyone.get(*child).is_ok_and(|(_, busy, ..)| busy))
-                .collect()
-        })
+        .map(|spawned| spawned.iter().filter(|child| busy(*child)).collect())
         .unwrap_or_default();
-    match mine.len() {
-        0 => {}
-        1 => line.push_span(Span::from(format!("  an agent it spawned works{hint}")).magenta()),
-        count => {
-            line.push_span(Span::from(format!("  {count} agents it spawned work{hint}")).magenta());
-        }
+    let text = match mine.len() {
+        0 => None,
+        1 => Some(format!("1 subagent working{hint}")),
+        count => Some(format!("{count} subagents working{hint}")),
+    };
+    if let Some(text) = text {
+        pieces.push(Piece::new(keep::SUBAGENTS, Span::from(text).magenta()));
     }
-    let working = everyone
+    let others = everyone
         .iter()
-        .filter(|(agent, busy, ..)| *busy && Some(*agent) != focused && !mine.contains(agent))
+        .filter(|(agent, activity, ..)| {
+            activity.is_busy() && Some(*agent) != focused && !mine.contains(agent)
+        })
         .count();
-    if working > 0 {
-        line.push_span(Span::from(format!("  +{working} more working{hint}")).magenta());
+    if others > 0 {
+        pieces.push(Piece::new(
+            keep::OTHERS,
+            Span::from(format!("+{others} other agents working{hint}")).magenta(),
+        ));
     }
 }
 
@@ -348,30 +360,38 @@ pub(crate) fn render(
         );
         frame.render_widget(Paragraph::new(rows), transcript_area);
         let shown = shown.map(|(_, shown)| shown);
-        let mut line = status_line(
+        let mut left = Vec::new();
+        if let Some(name) = &name.0 {
+            left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
+        }
+        left.extend(spawned_title(view.agent, &everyone));
+        left.extend(status_pieces(
             shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
             loaded("model"),
-        );
-        agent_spans(&mut line, view.agent, &everyone, agents_hint);
-        if let Some(name) = &name.0 {
-            line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
-        }
+        ));
+        agent_pieces(&mut left, view.agent, &everyone, agents_hint);
         if let Some((_, spent)) = turn
             && spent.0.calls > 0
         {
             let used = spent.0.cost_or_tokens();
-            line.push_span(Span::from(format!("  this turn {used}")).dim());
+            left.push(Piece::new(
+                keep::TURN,
+                Span::from(format!("this turn {used}")).dim(),
+            ));
         }
         if let Some(build) = &build {
-            line.push_span(reload_span(build));
+            left.push(Piece::new(keep::RELOAD, reload_span(build)));
         } else if queued.is_some() {
-            line.push_span(
-                Span::from("  Reload queued: once no turn runs (/reload cancel)").cyan(),
-            );
+            left.push(Piece::new(
+                keep::RELOAD,
+                Span::from("Reload queued: once no turn runs (/reload cancel)").cyan(),
+            ));
         }
-        let usage = shown
-            .map(|(.., spent, connection, _)| usage_line(spent, connection))
+        let mut right = shown
+            .map(|(.., spent, connection, _)| usage_pieces(spent, connection))
             .unwrap_or_default();
+        fit(&mut left, &mut right, usize::from(status_area.width));
+        let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
         let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
         let [status, meter] =
             Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
@@ -451,12 +471,105 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
     );
 }
 
-fn status_line(
+/// A piece of the status line. When the line does not fit, [`fit`] drops
+/// the pieces with the lowest `keep` first.
+struct Piece {
+    keep: u8,
+    span: Span<'static>,
+}
+
+impl Piece {
+    fn new(keep: u8, span: Span<'static>) -> Self {
+        Self { keep, span }
+    }
+
+    fn width(&self) -> usize {
+        self.span.width()
+    }
+}
+
+/// How long each [`Piece`] of the status line stays as it narrows: the
+/// usage meter on the right shrinks first, cache, then cost, then tokens,
+/// then context; then the left's extras. The model and the status always
+/// stay.
+mod keep {
+    pub(super) const CACHE: u8 = 1;
+    pub(super) const COST: u8 = 2;
+    pub(super) const TOKENS: u8 = 3;
+    pub(super) const CONTEXT: u8 = 4;
+    pub(super) const SESSION: u8 = 10;
+    pub(super) const TURN: u8 = 11;
+    pub(super) const REASONING: u8 = 12;
+    pub(super) const OTHERS: u8 = 13;
+    pub(super) const TITLE: u8 = 14;
+    pub(super) const SUBAGENTS: u8 = 15;
+    pub(super) const RELOAD: u8 = 16;
+    pub(super) const ALWAYS: u8 = u8::MAX;
+}
+
+/// The gap between the pieces on the left, and between the left and the
+/// meter.
+const LEFT_GAP: &str = "  ";
+/// The gap between the meter's pieces.
+const RIGHT_GAP: &str = " ";
+
+/// The width of `pieces` joined by `gap`.
+fn joined_width(pieces: &[Piece], gap: &str) -> usize {
+    let gaps = pieces.len().saturating_sub(1) * gap.len();
+    pieces.iter().map(Piece::width).sum::<usize>() + gaps
+}
+
+/// Drops the pieces of `left` and of the meter on the `right` with the
+/// lowest `keep` until both fit `width` with a gap between them. What
+/// [`keep::ALWAYS`] stays; past that the line is cut at the edge.
+fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
+    loop {
+        let separator = if right.is_empty() { 0 } else { LEFT_GAP.len() };
+        let used = joined_width(left, LEFT_GAP) + separator + joined_width(right, RIGHT_GAP);
+        if used <= width {
+            return;
+        }
+        let lowest = |pieces: &[Piece]| {
+            pieces
+                .iter()
+                .enumerate()
+                .filter(|(_, piece)| piece.keep < keep::ALWAYS)
+                .min_by_key(|(_, piece)| piece.keep)
+                .map(|(index, piece)| (piece.keep, index))
+        };
+        match (lowest(right.as_slice()), lowest(left.as_slice())) {
+            (Some((on_right, index)), on_left)
+                if on_left.is_none_or(|(on_left, _)| on_right <= on_left) =>
+            {
+                right.remove(index);
+            }
+            (_, Some((_, index))) => {
+                left.remove(index);
+            }
+            (_, None) => return,
+        }
+    }
+}
+
+/// `pieces` as one line, `gap` between them.
+fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
+    let mut spans = Vec::with_capacity(pieces.len() * 2);
+    for (index, piece) in pieces.into_iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::from(gap));
+        }
+        spans.push(piece.span);
+    }
+    Line::from(spans)
+}
+
+/// The focused agent's model, reasoning setting and status.
+fn status_pieces(
     shown: Option<(Option<&ModelChoice>, &Effort, Status)>,
     model_hint: bool,
-) -> Line<'static> {
+) -> Vec<Piece> {
     let Some((model, effort, status)) = shown else {
-        return Line::from("no agent").dim();
+        return vec![Piece::new(keep::ALWAYS, Span::from("no agent").dim())];
     };
     let model = match model {
         Some(model) => model.0.clone(),
@@ -474,53 +587,58 @@ fn status_line(
         ))
         .red(),
     };
-    Line::from(vec![
-        Span::from(model).bold(),
-        Span::from(format!("  reasoning {}  ", models::effort_label(effort.0))).dim(),
-        status,
-    ])
+    vec![
+        Piece::new(keep::ALWAYS, Span::from(model).bold()),
+        Piece::new(
+            keep::REASONING,
+            Span::from(format!("reasoning {}", models::effort_label(effort.0))).dim(),
+        ),
+        Piece::new(keep::ALWAYS, status),
+    ]
 }
 
-/// The agent's tokens, cost and context use: uncached input, output, cache
-/// reads and writes, then the context against the model's window, yellow
-/// past 70% and red past 90%.
-fn usage_line(spent: &Spending, connection: Option<&Connection>) -> Line<'static> {
+/// The meter: the agent's uncached input and output tokens, cache reads,
+/// cost, then the context against the model's window, yellow past 70% and
+/// red past 90%. `/usage` details the cache writes and reasoning.
+fn usage_pieces(spent: &Spending, connection: Option<&Connection>) -> Vec<Piece> {
     if spent.calls == 0 {
-        return Line::default();
+        return Vec::new();
     }
-    let mut parts = vec![
-        format!("↑{}", usage::tokens(spent.uncached_input())),
-        format!(
-            "↓{}",
+    let mut pieces = vec![Piece::new(
+        keep::TOKENS,
+        Span::from(format!(
+            "↑{} ↓{}",
+            usage::tokens(spent.uncached_input()),
             usage::tokens(spent.tokens.output_tokens.unwrap_or(0))
-        ),
-    ];
+        ))
+        .dim(),
+    )];
     if let Some(read) = spent.tokens.cached_input_tokens.filter(|read| *read > 0) {
-        parts.push(format!("R{}", usage::tokens(read)));
+        pieces.push(Piece::new(
+            keep::CACHE,
+            Span::from(format!("cache {}", usage::tokens(read))).dim(),
+        ));
     }
-    if let Some(written) = spent
-        .tokens
-        .cache_creation_input_tokens
-        .filter(|written| *written > 0)
-    {
-        parts.push(format!("W{}", usage::tokens(written)));
+    if let Some(cost) = spent.cost_label() {
+        pieces.push(Piece::new(keep::COST, Span::from(cost).dim()));
     }
-    parts.extend(spent.cost_label());
-    let mut spans = vec![Span::from(parts.join(" ")).dim()];
     if let Some(context) = spent.context_use(connection.map(|connection| &*connection.spec)) {
         let style = match context.percent() {
             Some(90..) => Style::new().red(),
             Some(70..) => Style::new().yellow(),
             _ => Style::new().dim(),
         };
-        spans.push(Span::styled(format!("  ctx {} ", context.label()), style));
+        pieces.push(Piece::new(
+            keep::CONTEXT,
+            Span::styled(format!("ctx {}", context.label()), style),
+        ));
     }
-    Line::from(spans)
+    pieces
 }
 
 fn reload_span(build: &ReloadBuild) -> Span<'static> {
     if build.is_ready() {
-        return Span::from("  Reloading: restarting…").cyan();
+        return Span::from("Reloading: restarting…").cyan();
     }
     match build.progress() {
         Some((done, total)) => {
@@ -529,14 +647,14 @@ fn reload_span(build: &ReloadBuild) -> Span<'static> {
                 .map(|cell| if cell < filled { '█' } else { '░' })
                 .collect();
             Span::from(format!(
-                "  Reloading: Compiling {done}/{total} {bar} (Esc cancels)"
+                "Reloading: Compiling {done}/{total} {bar} (Esc cancels)"
             ))
             .cyan()
         }
         // The launcher's phase, then cargo's own lines while it resolves
         // and downloads dependencies.
         None => Span::from(format!(
-            "  Reloading: {} (Esc cancels)",
+            "Reloading: {} (Esc cancels)",
             build.latest().unwrap_or("Resolving dependencies…")
         ))
         .cyan(),
@@ -652,3 +770,6 @@ fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
     };
     lines.extend(plain_lines(&notice.text, style));
 }
+
+#[cfg(test)]
+mod tests;
