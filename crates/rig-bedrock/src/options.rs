@@ -146,6 +146,7 @@ pub(crate) fn converse(
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let spec = (family == Family::Claude)
         .then(|| wire.spec(model))
@@ -201,6 +202,7 @@ pub(crate) fn converse(
         stop: Mapping::of_stop(stop, |stop| {
             Mapping::Send(json!({"inferenceConfig": {"stopSequences": stop}}))
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 

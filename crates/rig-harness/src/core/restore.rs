@@ -18,15 +18,16 @@
 //! }
 //! ```
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
-use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{CallId, ToolCall, ToolResult, UserContent};
+use rig_core::completion::Message;
+use rig_core::message::{ToolCall, ToolResult};
+use rig_core::transcript::pending_calls;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
@@ -422,7 +423,7 @@ fn settle(
     };
     let mut results: Vec<ToolResult> = Vec::new();
     let mut reruns: Vec<ToolCall> = Vec::new();
-    for call in dangling(conversation.messages()) {
+    for call in pending_calls(conversation.messages()) {
         if resume && starter.reruns(call.function.name.as_str()) {
             reruns.push(call);
         } else {
@@ -454,37 +455,4 @@ fn settle(
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
         commands.trigger(CallModel { entity: turn });
     }
-}
-
-/// The tool calls of the conversation's last reply that have no result.
-fn dangling(messages: &[Message]) -> Vec<ToolCall> {
-    let Some(at) = messages
-        .iter()
-        .rposition(|message| matches!(message, Message::Assistant(_)))
-    else {
-        return Vec::new();
-    };
-    let Some(Message::Assistant(reply)) = messages.get(at) else {
-        return Vec::new();
-    };
-    let answered: HashSet<&CallId> = messages
-        .iter()
-        .skip(at + 1)
-        .flat_map(|message| match message {
-            Message::User { content } => content.as_slice(),
-            _ => &[],
-        })
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => Some(&result.call),
-            _ => None,
-        })
-        .collect();
-    reply
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::ToolCall(call) if !answered.contains(&call.id) => Some(call.clone()),
-            _ => None,
-        })
-        .collect()
 }

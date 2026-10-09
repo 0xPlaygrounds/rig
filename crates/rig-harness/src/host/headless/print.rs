@@ -20,7 +20,7 @@ use crate::core::agent::{
 };
 use crate::core::commands::send_input;
 use crate::core::inbox::DeliveryMode;
-use crate::core::models::{self, ModelConnector};
+use crate::core::models::ModelConnector;
 
 /// Frames to wait for a model to connect before giving up.
 const CONNECT_FRAMES: u32 = 3;
@@ -110,7 +110,7 @@ fn drive(
                 (None, Some(_)) if connected => None,
                 (None, Some(chosen)) => Some(chosen.0.clone()),
                 (None, None) => match connector.available().first() {
-                    Some(spec) => Some(models::reference(spec)),
+                    Some(spec) => Some(spec.reference()),
                     None if command => None,
                     None => {
                         eprintln!(

@@ -602,6 +602,23 @@ pub struct HandlerDescriptor {
     pub layers: Vec<String>,
 }
 
+impl HandlerDescriptor {
+    /// A tool's handler, under [`tool_key`] of its `name`, with no layers
+    /// and no embedding.
+    pub fn tool(name: &str, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+        Self {
+            key: tool_key(name),
+            family: FamilyDescriptor::Tool {
+                name: name.to_owned(),
+                description: description.into(),
+                parameters,
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+}
+
 /// The family-keyed description of a handler. The variant *is* the family:
 /// binding a typed view compares [`Family::FAMILY`] against
 /// [`FamilyDescriptor::family`].

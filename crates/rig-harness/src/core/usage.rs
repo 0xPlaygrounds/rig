@@ -9,80 +9,38 @@
 //! sends all of it again. [`Spending::context_use`] measures it against the
 //! connected model's window.
 
+use std::ops::{Deref, DerefMut};
+
 use bevy_ecs::prelude::*;
 use bevy_log::info;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::Usage;
+use rig_core::completion::UsageTotals;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{AgentId, TurnOf};
 
-/// Model calls' usage summed: tokens by kind, cost and how many calls the
-/// sum holds. An agent's is logged with its session, by model; a turn's
-/// is a [`TurnSpending`].
+/// An agent's model calls' usage summed, as rig-core's [`UsageTotals`]
+/// sums it; the session logs it by model. A turn's is a [`TurnSpending`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Spending {
-    /// The token counters summed, with no cost: a call whose provider did
-    /// not report a counter adds nothing to it.
-    pub tokens: Usage,
-    /// The known costs summed, in USD.
-    pub cost: f64,
-    /// The calls whose cost is not known, or known only in part, so
-    /// [`Self::cost`](field@Self::cost) is a lower bound when any.
-    pub unpriced: u64,
-    /// The model calls summed.
-    pub calls: u64,
-    /// The tokens the last call that reported them read and wrote: what
-    /// the next request sends again. `None` before such a call.
-    pub context: Option<u64>,
+pub struct Spending(pub UsageTotals);
+
+impl Deref for Spending {
+    type Target = UsageTotals;
+
+    fn deref(&self) -> &UsageTotals {
+        &self.0
+    }
+}
+
+impl DerefMut for Spending {
+    fn deref_mut(&mut self) -> &mut UsageTotals {
+        &mut self.0
+    }
 }
 
 impl Spending {
-    /// Adds a finished call's `usage`.
-    pub fn record(&mut self, usage: &Usage) {
-        self.calls += 1;
-        match usage.cost {
-            Some(cost) => {
-                self.cost += cost.total;
-                if !cost.is_complete() {
-                    self.unpriced += 1;
-                }
-            }
-            None => self.unpriced += 1,
-        }
-        self.tokens += usage.cost(None);
-        if let Some(context) = context_tokens(usage) {
-            self.context = Some(context);
-        }
-    }
-
-    /// Adds what `other` summed, but not its context.
-    pub fn add(&mut self, other: &Spending) {
-        self.tokens += other.tokens;
-        self.cost += other.cost;
-        self.unpriced += other.unpriced;
-        self.calls += other.calls;
-    }
-
-    /// Adds the `usage` of a call that did not send the conversation, such
-    /// as a summary's: it costs, but says nothing about the context.
-    pub fn record_aside(&mut self, usage: &Usage) {
-        let context = self.context;
-        self.record(usage);
-        self.context = context;
-    }
-
-    /// Input tokens neither read from nor written to a cache.
-    pub fn uncached_input(&self) -> u64 {
-        self.tokens
-            .input_tokens
-            .unwrap_or(0)
-            .saturating_sub(self.tokens.cached_input_tokens.unwrap_or(0))
-            .saturating_sub(self.tokens.cache_creation_input_tokens.unwrap_or(0))
-    }
-
     /// The cost as `$0.123`, ending in `+` when some calls were not priced,
     /// or `None` when no call was.
     pub fn cost_label(&self) -> Option<String> {
@@ -134,13 +92,6 @@ impl Spending {
             .unwrap_or_else(|| "cost unknown".to_owned());
         format!("{calls}: {}; {cost}", parts.join(", "))
     }
-}
-
-/// The tokens a call read and wrote, which all go into the next request.
-fn context_tokens(usage: &Usage) -> Option<u64> {
-    usage
-        .total_tokens
-        .or_else(|| Some(usage.input_tokens? + usage.output_tokens.unwrap_or(0)))
 }
 
 /// What the running turn's model calls used so far, on the turn entity.

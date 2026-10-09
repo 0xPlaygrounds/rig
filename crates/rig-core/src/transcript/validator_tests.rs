@@ -284,3 +284,36 @@ fn stored_results_are_kept_once_per_id_and_an_empty_user_message_stands() {
         ]
     );
 }
+
+#[test]
+fn pending_calls_are_the_last_turns_unanswered_calls() {
+    let history = vec![
+        assistant(vec![call("old")]),
+        results(&["old"]),
+        assistant(vec![call("c1"), call("c2"), call("c3")]),
+        results(&["c2"]),
+    ];
+    let pending: Vec<CallId> = pending_calls(&history)
+        .into_iter()
+        .map(|call| call.id)
+        .collect();
+    assert_eq!(pending, vec![id("c1"), id("c3")]);
+    assert!(pending_calls(&[Message::user("hi")]).is_empty());
+}
+
+#[test]
+fn arguments_the_schema_does_not_declare_are_refused() {
+    let schema = serde_json::json!({"properties": {"a": {}, "b": {}}});
+    let mut extra = tool_call("c1");
+    extra.function = ToolFunction::new(
+        crate::message::ToolName::new("add").expect("tool name"),
+        serde_json::json!({"a": 1, "c": 2}),
+    );
+    assert_eq!(
+        arguments_refusal(&schema, &extra).as_deref(),
+        Some(
+            "`add` has no argument `c`. Its arguments are: `a`, `b`. Call it again with only those."
+        )
+    );
+    assert_eq!(arguments_refusal(&schema, &tool_call("c2")), None);
+}

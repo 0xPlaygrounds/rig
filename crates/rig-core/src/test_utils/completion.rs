@@ -330,6 +330,7 @@ impl crate::completion::ReplayTarget for MockScript {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         let taken = |set: bool| match set {
             true => Mapping::Omit("a scripted reply ignores options"),
@@ -344,6 +345,7 @@ impl crate::completion::ReplayTarget for MockScript {
             top_p: taken(top_p.is_some()),
             seed: taken(seed.is_some()),
             stop: taken(!stop.is_empty()),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 
@@ -572,6 +574,7 @@ pub fn refuse_options(
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let refused = |set: bool| match set {
         true => Mapping::unsupported("the test target takes no options"),
@@ -586,5 +589,6 @@ pub fn refuse_options(
         top_p: refused(top_p.is_some()),
         seed: refused(seed.is_some()),
         stop: refused(!stop.is_empty()),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }

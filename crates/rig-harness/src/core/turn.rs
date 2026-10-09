@@ -10,7 +10,7 @@
 //! the turn ends it, and announces its [`TurnEnded`] on the agent.
 
 use std::pin::Pin;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -26,10 +26,12 @@ use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
+use rig_core::error::retry::Verdict;
 use rig_core::message::{ToolCall, ToolResult, UserContent};
 use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
+use rig_core::transcript::arguments_refusal;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
@@ -46,12 +48,10 @@ use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
-use super::recovery::{
-    self, Backoff, KEEP_RECENT_OUTPUTS, MAX_RETRIES, Recovery, RetryDue, Verdict,
-};
+use super::recovery::{self, Backoff, KEEP_RECENT_OUTPUTS, RETRY, Recovery, RetryDue};
 use super::tools::{
     Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, failed, outcome_of,
-    recorded_args, refusal, run_tool_call,
+    recorded_args, run_tool_call,
 };
 use super::usage::{self, Spending, TurnSpending};
 
@@ -309,7 +309,7 @@ pub(crate) fn on_set_model(
         Some(spec) => {
             commands
                 .entity(set.entity)
-                .insert(ModelChoice(models::reference(spec)));
+                .insert(ModelChoice(spec.reference()));
             commands.trigger(SettingsChosen { entity: set.entity });
         }
         None => {
@@ -509,8 +509,7 @@ pub(crate) fn on_call_model(
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
             let messages = compacted.request(conversation.messages());
-            prepare(messages, connection, effort, preamble, definitions)
-                .map(|request| models::with_cache_key(connection.spec, request, &id.0))
+            prepare(messages, connection, effort, &id.0, preamble, definitions)
                 .map(|request| (connection.handler.clone(), connection.spec, request))
         });
     let (handler, spec, request) = match request {
@@ -536,7 +535,7 @@ pub(crate) fn on_call_model(
         "model_call",
         agent = %id.0,
         effect = %effect,
-        model = %models::reference(spec)
+        model = %spec.reference()
     );
     let reply = effects
         .caught(effect, stream_reply(reply, sender, wake.clone()))
@@ -618,7 +617,7 @@ fn drop_unanswered(
 
 /// The catalog reference of `spec`, under which the log keeps its usage.
 fn model_name(spec: Option<&ModelSpec>) -> String {
-    spec.map_or_else(|| "unknown".to_owned(), models::reference)
+    spec.map_or_else(|| "unknown".to_owned(), ModelSpec::reference)
 }
 
 /// The request for the agent's next model call, checked against the
@@ -630,10 +629,14 @@ fn prepare(
     mut messages: Vec<Message>,
     connection: &Connection,
     effort: &Effort,
+    cache_key: &str,
     preamble: String,
     tools: Vec<rig_core::completion::ToolDefinition>,
 ) -> Result<CompletionRequest, String> {
-    let options = models::request_options(connection.spec, effort.0);
+    let options = connection
+        .spec
+        .default_options(effort.0)
+        .cache_key(cache_key);
     connection
         .spec
         .validate(&options)
@@ -831,7 +834,7 @@ struct Failed<'a> {
 }
 
 impl Failed<'_> {
-    /// Carries the turn on after the failure, as [`recovery::verdict`]
+    /// Carries the turn on after the failure, as the [`RETRY`] policy
     /// decides: waits and calls again; clears old tool outputs, or else
     /// compacts, and calls again; or ends the turn, keeping the user's message when nothing is
     /// wrong with it.
@@ -845,7 +848,7 @@ impl Failed<'_> {
         notices: &mut MessageWriter<Notice>,
     ) {
         let (agent, report) = (self.agent, self.report);
-        match recovery::verdict(report, recovery.retries) {
+        match RETRY.verdict(report, recovery.retries, SystemTime::now()) {
             Verdict::Retry(delay) => {
                 recovery.retries += 1;
                 let backoff = Backoff {
@@ -856,9 +859,10 @@ impl Failed<'_> {
                 notices.write(Notice::info(
                     agent,
                     format!(
-                        "The model call failed: {report}. Retrying in {}s ({}/{MAX_RETRIES}).",
+                        "The model call failed: {report}. Retrying in {}s ({}/{}).",
                         backoff.seconds_left(),
-                        backoff.attempt
+                        backoff.attempt,
+                        RETRY.max_retries
                     ),
                 ));
                 commands.spawn((
@@ -1113,7 +1117,7 @@ impl ToolStarter<'_, '_> {
                 why,
             })
         };
-        let why = tool.and_then(|(_, def, ..)| refusal(&def.0.parameters, &run.call));
+        let why = tool.and_then(|(_, def, ..)| arguments_refusal(&def.0.parameters, &run.call));
         let handler = match (tool, why) {
             (None, _) => refused(
                 ToolErrorKind::NotFound,

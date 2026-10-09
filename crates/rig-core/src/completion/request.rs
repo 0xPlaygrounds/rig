@@ -828,6 +828,82 @@ impl AddAssign for Usage {
     }
 }
 
+/// Many calls' [`Usage`] summed for a running account: the token counters,
+/// the known cost, how many calls the sum holds and how many of them were
+/// not fully priced, and the context the last call used.
+///
+/// ```
+/// use rig_core::completion::{Usage, UsageTotals};
+///
+/// let mut totals = UsageTotals::default();
+/// totals.record(&Usage::new().input_tokens(100).output_tokens(20).total_tokens(120));
+/// assert_eq!((totals.calls, totals.unpriced, totals.context), (1, 1, Some(120)));
+/// ```
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UsageTotals {
+    /// The token counters summed, with no cost: a call that did not
+    /// report a counter adds nothing to it.
+    pub tokens: Usage,
+    /// The known costs summed, in USD.
+    pub cost: f64,
+    /// The calls whose cost is not known, or known only in part, so
+    /// [`Self::cost`](field@Self::cost) is a lower bound when any.
+    pub unpriced: u64,
+    /// The calls summed.
+    pub calls: u64,
+    /// The tokens the last call that reported them read and wrote: what a
+    /// conversation's next request sends again. `None` before such a call.
+    pub context: Option<u64>,
+}
+
+impl UsageTotals {
+    /// Adds a finished call's `usage`.
+    pub fn record(&mut self, usage: &Usage) {
+        self.calls += 1;
+        match usage.cost {
+            Some(cost) => {
+                self.cost += cost.total;
+                if !cost.is_complete() {
+                    self.unpriced += 1;
+                }
+            }
+            None => self.unpriced += 1,
+        }
+        self.tokens += usage.cost(None);
+        let context = usage
+            .total_tokens
+            .or_else(|| Some(usage.input_tokens? + usage.output_tokens.unwrap_or(0)));
+        if context.is_some() {
+            self.context = context;
+        }
+    }
+
+    /// Adds the `usage` of a call that did not send the conversation, such
+    /// as a summary's: it costs, but says nothing about the context.
+    pub fn record_aside(&mut self, usage: &Usage) {
+        let context = self.context;
+        self.record(usage);
+        self.context = context;
+    }
+
+    /// Adds what `other` summed, but not its context.
+    pub fn add(&mut self, other: &UsageTotals) {
+        self.tokens += other.tokens;
+        self.cost += other.cost;
+        self.unpriced += other.unpriced;
+        self.calls += other.calls;
+    }
+
+    /// Input tokens neither read from nor written to a cache.
+    pub fn uncached_input(&self) -> u64 {
+        self.tokens
+            .input_tokens
+            .unwrap_or(0)
+            .saturating_sub(self.tokens.cached_input_tokens.unwrap_or(0))
+            .saturating_sub(self.tokens.cache_creation_input_tokens.unwrap_or(0))
+    }
+}
+
 /// Model capabilities used by runtimes when preparing requests.
 /// Defaults are conservative; construct through [`Self::new`] and setters.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

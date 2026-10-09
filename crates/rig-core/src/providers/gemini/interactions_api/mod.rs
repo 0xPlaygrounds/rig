@@ -354,6 +354,7 @@ impl ReplayTarget for InteractionResume {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         let refuse = |set: bool| match set {
             true => Mapping::unsupported(
@@ -371,6 +372,7 @@ impl ReplayTarget for InteractionResume {
             top_p: refuse(top_p.is_some()),
             seed: refuse(seed.is_some()),
             stop: refuse(!stop.is_empty()),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 

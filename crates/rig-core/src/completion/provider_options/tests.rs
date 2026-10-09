@@ -127,6 +127,7 @@ impl ReplayTarget for Wire {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         OptionMap {
             reasoning: Mapping::of(reasoning, |_| no()),
@@ -137,6 +138,7 @@ impl ReplayTarget for Wire {
             top_p: Mapping::of(top_p, |p| Mapping::Send(json!({"sampling": {"top_p": p}}))),
             seed: Mapping::of(seed, |_| no()),
             stop: Mapping::of_stop(stop, |_| no()),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 }

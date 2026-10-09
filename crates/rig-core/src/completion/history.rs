@@ -35,6 +35,7 @@
 //!             top_p,
 //!             seed,
 //!             stop,
+//!             cache_key,
 //!         } = fields;
 //!         let none = |set: bool| match set {
 //!             true => Mapping::unsupported("the example takes no options"),
@@ -49,6 +50,7 @@
 //!             top_p: none(top_p.is_some()),
 //!             seed: none(seed.is_some()),
 //!             stop: none(!stop.is_empty()),
+//!             cache_key: Mapping::unrouted(cache_key),
 //!         }
 //!     }
 //! }
@@ -1381,27 +1383,7 @@ fn sniffed(data: &str) -> Option<ImageMediaType> {
         .decode(head.as_bytes())
         .or_else(|_| BASE64_STANDARD_NO_PAD.decode(head.as_bytes()))
         .ok()?;
-    match bytes.as_slice() {
-        [0x89, b'P', b'N', b'G', ..] => Some(ImageMediaType::PNG),
-        [0xFF, 0xD8, 0xFF, ..] => Some(ImageMediaType::JPEG),
-        [b'G', b'I', b'F', b'8', ..] => Some(ImageMediaType::GIF),
-        [
-            b'R',
-            b'I',
-            b'F',
-            b'F',
-            _,
-            _,
-            _,
-            _,
-            b'W',
-            b'E',
-            b'B',
-            b'P',
-            ..,
-        ] => Some(ImageMediaType::WEBP),
-        _ => None,
-    }
+    ImageMediaType::sniff(&bytes)
 }
 
 /// `history` with each run of adjacent user messages made one: a wire that

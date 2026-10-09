@@ -1,6 +1,9 @@
 //! Native ChatGPT OAuth and token cache implementation.
 
-use super::{AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt};
+use super::{
+    AuthContext, AuthError, Authenticator, BrowserSignInPrompt, DeviceCodePrompt, SignInMethod,
+    SignInPrompt,
+};
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::device::{
     emit_device_code_prompt, read_json_record, token_expired, write_json_record,
@@ -68,6 +71,25 @@ enum RefreshTokensError {
     Auth(AuthError),
 }
 
+impl SignInMethod {
+    /// The browser when one opened here would reach the user and
+    /// `device_asked` is false: not over SSH, and on Linux and the BSDs
+    /// only inside an X11 or Wayland session. Otherwise the device code.
+    /// Native only.
+    pub fn detect(device_asked: bool) -> Self {
+        let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
+        let graphical = !(set("SSH_CONNECTION") || set("SSH_TTY"))
+            && (cfg!(any(target_os = "macos", windows))
+                || set("DISPLAY")
+                || set("WAYLAND_DISPLAY"));
+        if device_asked || !graphical {
+            Self::DeviceCode
+        } else {
+            Self::Browser
+        }
+    }
+}
+
 impl Authenticator {
     pub(super) async fn auth_context_oauth<H>(&self, http: &H) -> Result<AuthContext, AuthError>
     where
@@ -117,6 +139,34 @@ impl Authenticator {
 
         let fresh = self.login_device_flow(http).await?;
         self.store(fresh)
+    }
+
+    /// Sign in again by `method`, whatever is cached, telling `prompt` what
+    /// the user must do. A browser sign-in whose callback ports are taken
+    /// says so and falls back to the device code. The credential is stored
+    /// in the auth file. Native only.
+    pub async fn sign_in<H, F>(
+        &self,
+        http: &H,
+        method: SignInMethod,
+        mut prompt: F,
+    ) -> Result<AuthContext, AuthError>
+    where
+        H: HttpClientExt,
+        F: FnMut(SignInPrompt) + WasmCompatSend,
+    {
+        if method == SignInMethod::Browser {
+            let browser = self
+                .sign_in_with_browser(http, |page| prompt(SignInPrompt::Browser(page)))
+                .await;
+            match browser {
+                Err(AuthError::Io(error)) if error.kind() == std::io::ErrorKind::AddrInUse => {
+                    prompt(SignInPrompt::BrowserUnavailable(error.to_string()));
+                }
+                other => return other,
+            }
+        }
+        self.sign_in_with_device_code(http).await
     }
 
     /// Sign in again with the device-code flow, whatever is cached: the

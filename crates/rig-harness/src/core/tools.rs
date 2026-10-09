@@ -18,16 +18,14 @@ use bevy_ecs::observer::IntoEntityObserver;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{
-    EffectId, EffectKind, FamilyDescriptor, HandlerDescriptor, Outcome, family, tool_key,
-};
+use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName, ToolResult, ToolResultContent};
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve};
 use rig_core::tool::{Tool, ToolErrorKind, ToolExecutionError};
 
-use super::effects::{Effects, OpenEffect};
+use super::effects::Effects;
 use super::prompt::ToolRules;
 
 /// What the model is told about a tool. Its parameters are strict: the
@@ -40,17 +38,11 @@ pub struct ToolDef(pub ToolDefinition);
 impl ToolDef {
     /// How the effect log describes the tool.
     pub fn descriptor(&self) -> HandlerDescriptor {
-        let name = self.0.name.as_str();
-        HandlerDescriptor {
-            key: tool_key(name),
-            family: FamilyDescriptor::Tool {
-                name: name.to_owned(),
-                description: self.0.description.clone(),
-                parameters: self.0.parameters.clone(),
-                embedding: None,
-            },
-            layers: Vec::new(),
-        }
+        HandlerDescriptor::tool(
+            self.0.name.as_str(),
+            &self.0.description,
+            self.0.parameters.clone(),
+        )
     }
 }
 
@@ -93,7 +85,7 @@ pub struct ToolCalled {
 /// The effect record of an open tool call, settled with the call's
 /// [`ToolOutput`].
 #[derive(Component)]
-pub struct OpenCall(pub OpenEffect);
+pub struct OpenCall(pub OpenRecord);
 
 /// Whether a tool's calls may run beside the other calls of one reply, on
 /// the tool's entity.
@@ -273,48 +265,6 @@ pub(crate) fn register_tool(
     Some(entity.id())
 }
 
-/// Why `call`'s arguments do not fit the tool's strict `parameters`: they
-/// are not a JSON object, or name an argument the schema does not declare.
-/// The model gets this as the call's error, with what to do instead.
-pub(crate) fn refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
-    let name = call.function.name.as_str();
-    if let Some(invalid) = &call.function.invalid_arguments {
-        return Some(format!(
-            "the arguments of `{name}` are not a JSON object: {invalid}. Call it again with a \
-             JSON object."
-        ));
-    }
-    let declared = parameters
-        .get("properties")
-        .and_then(serde_json::Value::as_object);
-    let unknown: Vec<&str> = call
-        .function
-        .arguments
-        .keys()
-        .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str())))
-        .map(String::as_str)
-        .collect();
-    if unknown.is_empty() {
-        return None;
-    }
-    let known: Vec<String> = declared
-        .map(|declared| declared.keys().map(|arg| format!("`{arg}`")).collect())
-        .unwrap_or_default();
-    let known = if known.is_empty() {
-        "none".to_owned()
-    } else {
-        known.join(", ")
-    };
-    Some(format!(
-        "`{name}` has no argument {}. Its arguments are: {known}. Call it again with only those.",
-        unknown
-            .iter()
-            .map(|arg| format!("`{arg}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    ))
-}
-
 /// The arguments of `call` as the effect log records them.
 pub(crate) fn recorded_args(call: &ToolCall) -> String {
     call.function
@@ -353,16 +303,11 @@ impl Serve for Refused {
     type Family = family::Tool;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: tool_key(&self.name),
-            family: FamilyDescriptor::Tool {
-                name: self.name.clone(),
-                description: "A tool call that could not run.".to_owned(),
-                parameters: serde_json::json!({"type": "object"}),
-                embedding: None,
-            },
-            layers: Vec::new(),
-        }
+        HandlerDescriptor::tool(
+            &self.name,
+            "A tool call that could not run.",
+            serde_json::json!({"type": "object"}),
+        )
     }
 
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {

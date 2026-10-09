@@ -63,7 +63,7 @@ fn model(
             .available()
             .into_iter()
             .map(|spec| {
-                let reference = models::reference(spec);
+                let reference = spec.reference();
                 let note = match connector.plan(spec) {
                     Some(plan) => format!("  ({plan} plan)"),
                     None if spec.provider.requires_credential() => String::new(),
@@ -115,11 +115,13 @@ fn effort(
         picks.write(PickRequest {
             agent: args.agent,
             title: format!("Reasoning for {}", spec.display_name),
-            items: models::effort_options(spec)
+            items: spec
+                .reasoning
+                .choices()
                 .into_iter()
-                .map(|option| PickItem {
-                    label: option.label(),
-                    command: format!("effort {}", option.0),
+                .map(|choice| PickItem {
+                    label: choice.label(),
+                    command: format!("effort {}", choice.name),
                 })
                 .collect(),
             selected: 0,

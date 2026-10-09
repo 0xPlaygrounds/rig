@@ -100,32 +100,8 @@ fn read_image(path: &Path) -> Result<UserContent, String> {
         ));
     }
     let bytes = fs::read(path).map_err(|failure| failure.to_string())?;
-    let media_type = sniff(&bytes).ok_or("it is not a PNG, JPEG, GIF or WebP image".to_owned())?;
+    let media_type = ImageMediaType::sniff(&bytes)
+        .ok_or("it is not a PNG, JPEG, GIF or WebP image".to_owned())?;
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
     Ok(UserContent::image_base64(data, Some(media_type), None))
-}
-
-/// The file extension of the image `bytes` hold, if they hold one.
-pub fn image_extension(bytes: &[u8]) -> Option<&'static str> {
-    Some(match sniff(bytes)? {
-        ImageMediaType::PNG => "png",
-        ImageMediaType::JPEG => "jpg",
-        ImageMediaType::GIF => "gif",
-        _ => "webp",
-    })
-}
-
-/// The image type `bytes` start with.
-fn sniff(bytes: &[u8]) -> Option<ImageMediaType> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        Some(ImageMediaType::PNG)
-    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        Some(ImageMediaType::JPEG)
-    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        Some(ImageMediaType::GIF)
-    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
-        Some(ImageMediaType::WEBP)
-    } else {
-        None
-    }
 }

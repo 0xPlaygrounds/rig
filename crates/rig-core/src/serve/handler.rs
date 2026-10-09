@@ -502,6 +502,20 @@ impl Dispatch {
         self
     }
 
+    /// This dispatch observed by `recorder` under its id, as a recording
+    /// driver installs it after [`begin`](super::Recorder::begin): its
+    /// outcome, stream, origin and layer decisions, and the tool output its
+    /// handler publishes into a [`PublishedContext`](crate::tool::PublishedContext)
+    /// scope. Add the scopes first.
+    pub fn recorded_by(self, recorder: Arc<dyn super::Recorder + Send + Sync>) -> Self {
+        let observer = super::recorder::RecordingObserver {
+            recorder,
+            id: self.id,
+            published: self.scope::<crate::tool::PublishedContext>(),
+        };
+        self.with_observer(Box::new(observer))
+    }
+
     /// Supply provider context for this invocation independently of request data.
     ///
     /// Explicit context takes precedence over context supplied by an observer,

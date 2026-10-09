@@ -7,6 +7,8 @@
 //! assert!(origin.parent.is_none());
 //! ```
 
+use std::sync::Arc;
+
 use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
@@ -78,4 +80,141 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);
+}
+
+/// The [`Observe`](super::Observe) a recording driver installs on each
+/// dispatch ([`Dispatch::recorded_by`](super::Dispatch::recorded_by)): it
+/// tells `recorder` everything about the dispatch `id`, and the tool output
+/// its handler published, if any, before the outcome.
+pub(crate) struct RecordingObserver {
+    pub(crate) recorder: Arc<dyn Recorder + Send + Sync>,
+    pub(crate) id: EffectId,
+    pub(crate) published: Option<Arc<crate::tool::PublishedContext>>,
+}
+
+impl super::Observe for RecordingObserver {
+    fn adapter_context(&self) -> Option<crate::observe::AdapterContext> {
+        self.recorder.adapter_context(self.id)
+    }
+
+    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
+        if let Some(output) = self
+            .published
+            .as_ref()
+            .and_then(|published| published.result_context())
+        {
+            self.recorder.tool_output(self.id, output);
+        }
+        self.recorder.resolve(self.id, outcome.clone());
+    }
+
+    fn keep_events(&self) -> bool {
+        self.recorder.keep_events()
+    }
+
+    fn event(&mut self, item: &Item<StreamEvent>) {
+        self.recorder.event(self.id, item);
+    }
+
+    fn stream_error(&mut self, error: &ErrorReport) {
+        self.recorder.stream_error(self.id, error);
+    }
+
+    fn origin(&mut self, origin: &crate::message::Origin) {
+        self.recorder.origin(self.id, origin);
+    }
+
+    /// A layer decided the dispatch before any handler saw it: the record
+    /// is dropped, since replay reruns the layers.
+    fn discard(&mut self, _layer: &str) {
+        self.recorder.discard(self.id);
+    }
+
+    fn patch(&mut self, kind: &EffectKind) {
+        self.recorder.patch(self.id, kind.clone());
+    }
+}
+
+/// The record of an effect no handler serves, such as a tool call a person
+/// or another program answers: begun when it opens, resolved by
+/// [`Self::settle`], and recorded as cancelled when dropped unsettled.
+///
+/// ```
+/// use std::sync::Arc;
+/// use rig_core::effect::{EffectId, EffectKind, tool_key};
+/// use rig_core::serve::{OpenRecord, Origin, Recorder};
+/// # fn demo(recorder: Arc<dyn Recorder + Send + Sync>) {
+/// let kind = EffectKind::ToolCall { name: "ask".into(), args: "{}".into() };
+/// let mut open = OpenRecord::begin(recorder, EffectId::from_raw(1), tool_key("ask"), kind, Origin::default());
+/// open.settle(Err(rig_core::serve::cancelled()));
+/// # }
+/// ```
+pub struct OpenRecord {
+    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
+    id: EffectId,
+}
+
+impl OpenRecord {
+    /// Records the start of the effect `id`, `kind` routed to `key`.
+    pub fn begin(
+        recorder: Arc<dyn Recorder + Send + Sync>,
+        id: EffectId,
+        key: HandlerKey,
+        kind: EffectKind,
+        origin: Origin,
+    ) -> Self {
+        recorder.begin(id, key, kind, origin);
+        Self {
+            recorder: Some(recorder),
+            id,
+        }
+    }
+
+    /// The effect's id.
+    pub fn id(&self) -> EffectId {
+        self.id
+    }
+
+    /// Records `outcome` as the effect's outcome; only the first counts.
+    pub fn settle(&mut self, outcome: Result<Outcome, ErrorReport>) {
+        if let Some(recorder) = self.recorder.take() {
+            recorder.resolve(self.id, outcome);
+        }
+    }
+}
+
+impl Drop for OpenRecord {
+    fn drop(&mut self) {
+        self.settle(Err(super::cancelled()));
+    }
+}
+
+/// `work`, the task that drives the dispatch `id`, with a panic in it (in
+/// the handler or in its reply's stream) turned into an internal error that
+/// `recorder` also records as the dispatch's outcome. Unwinding drops the
+/// dispatch's observer, which records a cancellation; this replaces it.
+pub fn catch_panics<T>(
+    recorder: Arc<dyn Recorder + Send + Sync>,
+    id: EffectId,
+    work: impl Future<Output = Result<T, ErrorReport>>,
+) -> impl Future<Output = Result<T, ErrorReport>> {
+    use futures::FutureExt;
+    async move {
+        std::panic::AssertUnwindSafe(work)
+            .catch_unwind()
+            .await
+            .unwrap_or_else(|panic| {
+                let message = panic
+                    .downcast_ref::<&str>()
+                    .copied()
+                    .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
+                    .unwrap_or("no message");
+                let report = ErrorReport::new(
+                    crate::error::ErrorKind::Internal,
+                    format!("panicked: {message}"),
+                );
+                recorder.resolve(id, Err(report.clone()));
+                Err(report)
+            })
+    }
 }

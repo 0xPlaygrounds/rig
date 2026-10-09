@@ -17,6 +17,7 @@ use super::view::TuiView;
 use crate::core::agent::Notice;
 use crate::core::attach;
 use crate::core::calls::Wake;
+use rig_core::message::ImageMediaType;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
 /// there is none.
@@ -141,7 +142,7 @@ fn save_clipboard_image(directory: &Path) -> Result<PathBuf, String> {
             .stderr(Stdio::null())
             .output()
             .ok()?;
-        let extension = attach::image_extension(&output.stdout)?;
+        let extension = ImageMediaType::sniff(&output.stdout)?.extension();
         output
             .status
             .success()

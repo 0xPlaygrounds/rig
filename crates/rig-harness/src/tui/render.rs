@@ -23,7 +23,7 @@ use crate::core::commands::SlashCommand;
 use crate::core::compaction::{Compacted, Summarizing};
 use crate::core::inbox::Inbox;
 use crate::core::models;
-use crate::core::recovery::{Backoff, MAX_RETRIES};
+use crate::core::recovery::{Backoff, RETRY};
 use crate::core::usage::{self, Spending, TurnSpending};
 use crate::host::reload::ReloadBuild;
 use crate::host::sessions::SessionName;
@@ -423,7 +423,8 @@ fn status_line(
         Activity::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
         Activity::Compacting => Span::from("compacting… (Esc stops)").yellow(),
         Activity::Retrying { attempt, seconds } => Span::from(format!(
-            "retry {attempt}/{MAX_RETRIES} in {seconds}s… (Esc stops)"
+            "retry {attempt}/{} in {seconds}s… (Esc stops)",
+            RETRY.max_retries
         ))
         .red(),
     };

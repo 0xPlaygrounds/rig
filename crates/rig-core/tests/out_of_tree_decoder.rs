@@ -116,6 +116,7 @@ impl ReplayTarget for Vendor {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         let refused = |set: bool| match set {
             true => Mapping::unsupported("the vendor takes no options"),
@@ -130,6 +131,7 @@ impl ReplayTarget for Vendor {
             top_p: refused(top_p.is_some()),
             seed: refused(seed.is_some()),
             stop: refused(!stop.is_empty()),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 }

@@ -836,6 +836,45 @@ pub enum DocumentMediaType {
     Python,
 }
 
+impl ImageMediaType {
+    /// The image type encoded `bytes` start with, by their magic bytes:
+    /// PNG, JPEG, GIF or WebP, the formats every image-taking provider
+    /// reads. `None` for anything else.
+    ///
+    /// ```
+    /// use rig_core::message::ImageMediaType;
+    ///
+    /// assert_eq!(ImageMediaType::sniff(b"GIF89a..."), Some(ImageMediaType::GIF));
+    /// assert_eq!(ImageMediaType::sniff(b"plain text"), None);
+    /// ```
+    pub fn sniff(bytes: &[u8]) -> Option<Self> {
+        if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+            Some(Self::PNG)
+        } else if bytes.starts_with(b"\xff\xd8\xff") {
+            Some(Self::JPEG)
+        } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+            Some(Self::GIF)
+        } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+            Some(Self::WEBP)
+        } else {
+            None
+        }
+    }
+
+    /// The usual file extension of the type, without the dot.
+    pub fn extension(&self) -> &'static str {
+        match self {
+            Self::JPEG => "jpg",
+            Self::PNG => "png",
+            Self::GIF => "gif",
+            Self::WEBP => "webp",
+            Self::HEIC => "heic",
+            Self::HEIF => "heif",
+            Self::SVG => "svg",
+        }
+    }
+}
+
 impl DocumentMediaType {
     pub fn is_code(&self) -> bool {
         matches!(self, Self::Javascript | Self::Python)

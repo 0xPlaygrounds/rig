@@ -29,8 +29,6 @@ use rig_core::serve::Reply;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 use serde::{Deserialize, Serialize};
 
-use super::models;
-
 /// Tokens left free below the model's window: past `window - RESERVE` the
 /// conversation is compacted before the next call (pi's `reserveTokens`).
 pub const RESERVE: u64 = 16_384;
@@ -338,7 +336,7 @@ fn summary_request(
         let _ = write!(prompt, "\n\nAdditional focus: {focus}");
     }
     prompt.push_str(FORMAT);
-    let options = models::request_options(spec, None);
+    let options = spec.default_options(None);
     spec.validate(&options)
         .map_err(|refusal| refusal.to_string())?;
     let max_tokens = spec

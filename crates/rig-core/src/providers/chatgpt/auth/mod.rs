@@ -27,6 +27,27 @@ pub struct BrowserSignInPrompt {
     pub browser_launched: bool,
 }
 
+/// How a sign-in asks the user to authorize: in the browser, or with a
+/// code entered on another device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SignInMethod {
+    /// A page opened in the browser, returning to a local listener.
+    Browser,
+    /// A code the user enters at a URL, on any device.
+    DeviceCode,
+}
+
+/// What [`Authenticator::sign_in`] asks the user to do, besides entering a
+/// device code, which goes to the authenticator's [`DeviceCodeHandler`].
+#[derive(Debug, Clone)]
+pub enum SignInPrompt {
+    /// Sign in on the page the browser was asked to open.
+    Browser(BrowserSignInPrompt),
+    /// The browser sign-in could not listen for its callback, for this
+    /// reason; a device code follows.
+    BrowserUnavailable(String),
+}
+
 #[derive(Clone)]
 pub enum AuthSource {
     AccessToken {

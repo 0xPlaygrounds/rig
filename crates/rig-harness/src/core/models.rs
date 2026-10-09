@@ -3,17 +3,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
-use rig_core::completion::{
-    CacheRetention, CompletionRequest, GenerationOptions, Reasoning, UnsupportedOption,
-};
+use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::completion::{Reasoning, UnsupportedOption};
 use rig_core::operation::Completion;
-use rig_core::providers::chatgpt::extension::ChatGptOptions;
-use rig_core::providers::mistral::extension::MistralOptions;
-use rig_core::providers::openai::extension::OpenAiOptions;
 use rig_core::providers::registry::{self, ConnectError, ProviderId};
-use rig_core::providers::venice::extension::VeniceOptions;
-use rig_core::providers::{chatgpt, mistral, openai, venice};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 
@@ -37,7 +30,7 @@ pub fn child_model(
             if !spec.tools {
                 return Err(format!("{asked} cannot call tools"));
             }
-            Some(ModelChoice(reference(spec)))
+            Some(ModelChoice(spec.reference()))
         }
         _ => parent.cloned(),
     };
@@ -49,21 +42,12 @@ pub fn child_model(
     Ok((model, effort))
 }
 
-/// Token budgets for the named levels on models that take a budget instead
-/// of levels, clamped into the model's range.
-const BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
-
 /// The catalog spec a `vendor/model` reference names.
 pub fn resolve(reference: &str) -> Option<&'static ModelSpec> {
     Catalog::builtin()
         .resolve(reference)
         .ok()
         .map(|resolved| resolved.spec)
-}
-
-/// The `vendor/model` reference of `spec`.
-pub fn reference(spec: &ModelSpec) -> String {
-    format!("{}/{}", spec.provider.vendor(), spec.id)
 }
 
 /// A way to reach catalog models the environment has no key for, such as
@@ -97,7 +81,7 @@ impl ModelConnector {
     pub fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
         match registry::connect(spec) {
             Ok(model) => Ok(ErasedHandler::new(ModelAdapter::<Completion>::new(
-                reference(spec),
+                spec.reference(),
                 model,
             ))),
             Err(error @ ConnectError::MissingKey { .. }) => match &self.0 {
@@ -141,65 +125,14 @@ impl ModelConnector {
     }
 }
 
-/// A reasoning setting a model takes: what `/effort` calls it (`default`,
-/// `off`, a level or a budget's name) and the setting, `None` for the
-/// provider default.
-#[derive(Clone, Copy, Debug)]
-pub struct EffortOption(pub &'static str, pub Option<Reasoning>);
-
-impl EffortOption {
-    /// The name, with a budget's tokens, for a picker.
-    pub fn label(&self) -> String {
-        match self.1 {
-            Some(Reasoning::Budget { tokens }) => format!("{} ({tokens} tokens)", self.0),
-            _ => self.0.to_owned(),
-        }
-    }
-}
-
-/// The reasoning settings `spec` takes: the provider default first, then
-/// `off` when reasoning can be disabled, then each effort level, or named
-/// budgets on a model that takes a budget. A model whose controls the
-/// catalog does not list offers only the default.
-pub fn effort_options(spec: &ModelSpec) -> Vec<EffortOption> {
-    let mut options = vec![EffortOption("default", None)];
-    let ReasoningSupport::Listed {
-        levels,
-        budget,
-        can_disable,
-        ..
-    } = &spec.reasoning
-    else {
-        return options;
-    };
-    if *can_disable {
-        options.push(EffortOption("off", Some(Reasoning::Off)));
-    }
-    options.extend(
-        levels
-            .iter()
-            .map(|level| EffortOption(level.as_str(), Some(Reasoning::Effort(*level)))),
-    );
-    if levels.is_empty()
-        && let Some(range) = budget
-    {
-        options.extend(BUDGETS.iter().map(|(name, tokens)| {
-            // Not `clamp`, which panics on an inverted range.
-            let tokens = (*tokens).max(*range.start()).min(*range.end());
-            EffortOption(name, Some(Reasoning::Budget { tokens }))
-        }));
-    }
-    options
-}
-
 /// The reasoning setting of `spec` that `/effort` calls `name`, or what
 /// the model takes instead.
 pub fn effort_named(spec: &ModelSpec, name: &str) -> Result<Option<Reasoning>, String> {
-    let options = effort_options(spec);
-    if let Some(option) = options.iter().find(|option| option.0 == name) {
-        return Ok(option.1);
+    let choices = spec.reasoning.choices();
+    if let Some(choice) = choices.iter().find(|choice| choice.name == name) {
+        return Ok(choice.reasoning);
     }
-    let names: Vec<&str> = options.iter().map(|option| option.0).collect();
+    let names: Vec<&str> = choices.iter().map(|choice| choice.name).collect();
     Err(format!(
         "{} takes the reasoning settings {}, not `{name}`",
         spec.display_name,
@@ -218,59 +151,10 @@ pub fn effort_label(effort: Option<Reasoning>) -> String {
     }
 }
 
-/// The generation options a request carries for `effort`.
-pub(crate) fn generation_options(effort: Option<Reasoning>) -> GenerationOptions {
-    match effort {
-        Some(reasoning) => GenerationOptions::new().reasoning(reasoning),
-        None => GenerationOptions::new(),
-    }
-}
-
 /// Whether `spec` takes `effort`, or why not.
 pub(crate) fn check_effort(
     spec: &ModelSpec,
     effort: Option<Reasoning>,
 ) -> Result<(), UnsupportedOption> {
-    spec.validate(&generation_options(effort))
-}
-
-/// The options of a request to `spec` with `effort`: the reasoning
-/// setting, and the provider's short prompt cache when the catalog lists it
-/// for the model. Anthropic-style providers then mark the prompt's prefix
-/// for caching; providers that cache on their own take it as is. A model
-/// whose caching the catalog does not know gets no cache option, which it
-/// could refuse.
-pub(crate) fn request_options(spec: &ModelSpec, effort: Option<Reasoning>) -> GenerationOptions {
-    let options = generation_options(effort);
-    if spec.caching.retention.contains(&CacheRetention::Short) {
-        options.cache(CacheRetention::Short)
-    } else {
-        options
-    }
-}
-
-/// `request` with `key` as its prompt-cache routing key, on the providers
-/// that route their cache by one (`prompt_cache_key`): the same key on
-/// every call of an agent sends its calls to the server that holds its
-/// prefix. Other providers get the request unchanged.
-pub(crate) fn with_cache_key(
-    spec: &ModelSpec,
-    request: CompletionRequest,
-    key: &str,
-) -> CompletionRequest {
-    match spec.provider.vendor() {
-        openai::PROVIDER_NAME => {
-            request.provider_option(OpenAiOptions::new().prompt_cache_key(key))
-        }
-        chatgpt::PROVIDER_NAME => {
-            request.provider_option(ChatGptOptions::default().prompt_cache_key(key))
-        }
-        mistral::PROVIDER_NAME => {
-            request.provider_option(MistralOptions::new().prompt_cache_key(key))
-        }
-        venice::PROVIDER_NAME => {
-            request.provider_option(VeniceOptions::new().prompt_cache_key(key))
-        }
-        _ => request,
-    }
+    spec.validate(&spec.default_options(effort))
 }

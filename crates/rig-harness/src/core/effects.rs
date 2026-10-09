@@ -6,32 +6,30 @@
 //! whenever the set of described handlers (the tools and the models used)
 //! grew.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
-use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use bevy_ecs::prelude::*;
-use futures::FutureExt;
 use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::catalog::ModelSpec;
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome, tool_key};
-use rig_core::error::{ErrorKind, ErrorReport};
+use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
+use rig_core::error::ErrorReport;
 use rig_core::providers::registry::ConnectError;
-use rig_core::serve::{Dispatch, ErasedHandler, Observe, Origin, Recorder, Reply, cancelled};
-use rig_core::streaming::{Item, StreamEvent};
+use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
 use serde::{Deserialize, Serialize};
 
-use super::models::{self, ModelConnector};
+use super::models::ModelConnector;
 
 /// The session's effect recorder, effect id counter and model handlers.
 #[derive(Resource)]
 pub struct Effects {
     recorder: EffectLogRecorder,
+    /// The same recorder, as dispatches and open records hold it.
+    shared: Arc<dyn Recorder + Send + Sync>,
     next: AtomicU64,
     /// One handler per catalog model, built on first use and shared by
     /// every agent that picks the model.
@@ -45,8 +43,10 @@ impl Effects {
     /// effect log at `log`, if any, so ids keep increasing across restarts.
     pub(crate) fn continuing(log: Option<&Path>) -> Self {
         let last = log.and_then(|log| last_id(log).ok()).unwrap_or(0);
+        let recorder = EffectLogRecorder::new();
         Self {
-            recorder: EffectLogRecorder::new(),
+            shared: Arc::new(recorder.clone()),
+            recorder,
             next: AtomicU64::new(last + 1),
             models: HashMap::new(),
             // No header written yet by this process.
@@ -63,7 +63,7 @@ impl Effects {
         spec: &'static ModelSpec,
         connector: &ModelConnector,
     ) -> Result<ErasedHandler, ConnectError> {
-        let reference = models::reference(spec);
+        let reference = spec.reference();
         if let Some(handler) = self.models.get(&reference) {
             return Ok(handler.clone());
         }
@@ -98,16 +98,13 @@ impl Effects {
     ) -> (EffectId, impl Future<Output = Reply> + Send + 'static) {
         let streaming = kind.streams();
         let id = self.begin(scope, parent, handler.descriptor().key, kind.clone());
-        let dispatch = Dispatch::new(id, streaming).with_observer(Box::new(Recorded {
-            recorder: self.recorder.clone(),
-            id,
-        }));
+        let dispatch = Dispatch::new(id, streaming).recorded_by(self.shared.clone());
         (id, async move { handler.handle(kind, dispatch).await })
     }
 
     /// Records the call of the tool `name` with `args`, under `scope` and
     /// `parent` as [`dispatch`](Self::dispatch) does, for a call no handler
-    /// answers: its outcome is recorded when the returned [`OpenEffect`] is
+    /// answers: its outcome is recorded when the returned [`OpenRecord`] is
     /// settled, or as cancelled when it is dropped first.
     pub(crate) fn open(
         &self,
@@ -115,16 +112,18 @@ impl Effects {
         parent: Option<EffectId>,
         name: &str,
         args: String,
-    ) -> OpenEffect {
+    ) -> OpenRecord {
         let kind = EffectKind::ToolCall {
             name: name.to_owned(),
             args,
         };
-        let id = self.begin(scope, parent, tool_key(name), kind);
-        OpenEffect {
-            recorder: Some(self.recorder.clone()),
-            id,
-        }
+        OpenRecord::begin(
+            self.shared.clone(),
+            self.next_id(),
+            tool_key(name),
+            kind,
+            origin(scope, parent),
+        )
     }
 
     /// Takes the next effect id and records the effect's start.
@@ -135,43 +134,25 @@ impl Effects {
         key: HandlerKey,
         kind: EffectKind,
     ) -> EffectId {
-        let id = EffectId::from_raw(self.next.fetch_add(1, Ordering::Relaxed));
-        self.recorder.begin(
-            id,
-            key,
-            kind,
-            Origin {
-                parent,
-                scope: Some(Arc::from(scope)),
-            },
-        );
+        let id = self.next_id();
+        self.recorder.begin(id, key, kind, origin(scope, parent));
         id
+    }
+
+    /// Takes the next effect id.
+    fn next_id(&self) -> EffectId {
+        EffectId::from_raw(self.next.fetch_add(1, Ordering::Relaxed))
     }
 
     /// Run `work`, the task that drives the effect `id`. A panic in it, in
     /// the handler or in the reply's stream, becomes an internal error that
     /// is also recorded as the effect's outcome.
-    pub(crate) fn caught<T>(
+    pub(crate) fn caught<T: 'static>(
         &self,
         id: EffectId,
         work: impl Future<Output = Result<T, ErrorReport>> + Send + 'static,
     ) -> impl Future<Output = Result<T, ErrorReport>> + Send + 'static {
-        let recorder = self.recorder.clone();
-        async move {
-            // Unwinding drops the dispatch's observer, which records a
-            // cancellation; the panic recorded here replaces it.
-            AssertUnwindSafe(work)
-                .catch_unwind()
-                .await
-                .unwrap_or_else(|panic| {
-                    let report = ErrorReport::new(
-                        ErrorKind::Internal,
-                        format!("panicked: {}", panic_message(panic.as_ref())),
-                    );
-                    recorder.resolve(id, Err(report.clone()));
-                    Err(report)
-                })
-        }
+        catch_panics(self.shared.clone(), id, work)
     }
 
     /// Append every resolved effect to the JSON-lines log at `path`, after
@@ -245,31 +226,11 @@ fn last_id(log: &Path) -> io::Result<u64> {
         .unwrap_or(0))
 }
 
-/// The record of an open tool call, begun when the call opens. Settling
-/// it records the call's outcome; dropping it unsettled, as despawning the
-/// call does, records the call as cancelled.
-pub struct OpenEffect {
-    recorder: Option<EffectLogRecorder>,
-    id: EffectId,
-}
-
-impl OpenEffect {
-    /// The call's effect id, as `effects.jsonl` records it.
-    pub fn id(&self) -> EffectId {
-        self.id
-    }
-
-    /// Records `outcome` as the call's outcome; only the first counts.
-    pub(crate) fn settle(&mut self, outcome: Result<Outcome, ErrorReport>) {
-        if let Some(recorder) = self.recorder.take() {
-            recorder.resolve(self.id, outcome);
-        }
-    }
-}
-
-impl Drop for OpenEffect {
-    fn drop(&mut self) {
-        self.settle(Err(cancelled()));
+/// Where an effect of the agent `scope` comes from.
+fn origin(scope: &str, parent: Option<EffectId>) -> Origin {
+    Origin {
+        parent,
+        scope: Some(Arc::from(scope)),
     }
 }
 
@@ -277,52 +238,4 @@ impl Drop for OpenEffect {
 #[derive(Serialize)]
 struct HeaderLine<'a> {
     header: &'a rig_cassette::effect_log::LogHeader,
-}
-
-/// The message a panic was raised with.
-fn panic_message(panic: &(dyn Any + Send)) -> &str {
-    panic
-        .downcast_ref::<&str>()
-        .copied()
-        .or_else(|| panic.downcast_ref::<String>().map(String::as_str))
-        .unwrap_or("no message")
-}
-
-/// The recorder's view of one dispatch.
-struct Recorded {
-    recorder: EffectLogRecorder,
-    id: EffectId,
-}
-
-impl Observe for Recorded {
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
-        self.recorder.resolve(self.id, outcome.clone());
-    }
-
-    fn keep_events(&self) -> bool {
-        self.recorder.keep_events()
-    }
-
-    fn event(&mut self, item: &Item<StreamEvent>) {
-        self.recorder.event(self.id, item);
-    }
-
-    fn stream_error(&mut self, error: &ErrorReport) {
-        self.recorder.stream_error(self.id, error);
-    }
-
-    fn origin(&mut self, origin: &rig_core::message::Origin) {
-        self.recorder.origin(self.id, origin);
-    }
-
-    /// A layer decided the dispatch before any handler saw it: the record
-    /// is dropped, as rig-agent's bus does. Replay reruns the layers, so a
-    /// recorded refusal would be replayed as if a handler had answered it.
-    fn discard(&mut self, _: &str) {
-        self.recorder.discard(self.id);
-    }
-
-    fn patch(&mut self, kind: &EffectKind) {
-        self.recorder.patch(self.id, kind.clone());
-    }
 }

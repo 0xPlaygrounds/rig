@@ -20,10 +20,9 @@ use futures::{
 use tracing::Instrument;
 
 use rig_core::{
-    effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
+    effect::{EffectId, HandlerDescriptor, HandlerKey},
     error::ErrorReport,
-    serve::{Dispatch, Observe, Origin, Recorder},
-    streaming::{Item, StreamEvent},
+    serve::{Dispatch, Origin, Recorder},
     wasm_compat::WasmBoxedFuture,
 };
 
@@ -43,65 +42,13 @@ type InFlightServing = Pin<Box<Serving>>;
 /// same recorder, independently of the agent value that installed it.
 pub(crate) struct Recording(Arc<dyn Recorder + Send + Sync>);
 
-/// The record's view of one dispatch: the recorder, told by id.
-struct Recorded {
-    published: Option<Arc<rig_core::tool::PublishedContext>>,
-    recorder: Arc<dyn Recorder + Send + Sync>,
-    id: EffectId,
-}
-
-impl Observe for Recorded {
-    fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
-        self.recorder.adapter_context(self.id)
-    }
-
-    fn outcome(&mut self, outcome: &Result<Outcome, ErrorReport>) {
-        if let Some(output) = self
-            .published
-            .as_ref()
-            .and_then(|published| published.result_context())
-        {
-            self.recorder.tool_output(self.id, output);
-        }
-        self.recorder.resolve(self.id, outcome.clone());
-    }
-
-    fn keep_events(&self) -> bool {
-        self.recorder.keep_events()
-    }
-
-    fn event(&mut self, item: &Item<StreamEvent>) {
-        self.recorder.event(self.id, item);
-    }
-
-    fn origin(&mut self, origin: &rig_core::message::Origin) {
-        self.recorder.origin(self.id, origin);
-    }
-    fn stream_error(&mut self, error: &ErrorReport) {
-        self.recorder.stream_error(self.id, error);
-    }
-
-    fn discard(&mut self, _: &str) {
-        self.recorder.discard(self.id);
-    }
-
-    fn patch(&mut self, kind: &EffectKind) {
-        self.recorder.patch(self.id, kind.clone());
-    }
-}
-
 impl Recording {
     pub(crate) fn new(recorder: impl Recorder + Send + Sync) -> Self {
         Self(Arc::new(recorder))
     }
 
-    fn observe(&self, dispatch: Dispatch, id: EffectId) -> Dispatch {
-        let published = dispatch.scope::<rig_core::tool::PublishedContext>();
-        dispatch.with_observer(Box::new(Recorded {
-            published,
-            recorder: Arc::clone(&self.0),
-            id,
-        }))
+    fn observe(&self, dispatch: Dispatch) -> Dispatch {
+        dispatch.recorded_by(Arc::clone(&self.0))
     }
 }
 
@@ -339,7 +286,7 @@ impl BusDriver {
                 recorder
                     .0
                     .begin(id, key.clone(), kind.clone(), Origin { parent, scope });
-                recorder.observe(dispatch, id)
+                recorder.observe(dispatch)
             }
             None => dispatch,
         };

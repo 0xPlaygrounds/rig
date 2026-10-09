@@ -168,6 +168,7 @@ pub fn generate_content_options(
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     let thinking = thinking(facts, model);
     OptionMap {
@@ -273,6 +274,7 @@ pub fn generate_content_options(
             0..=5 => config(json!({"stopSequences": stop})),
             _ => Mapping::unsupported("Gemini takes at most 5 stop sequences"),
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 
@@ -292,6 +294,7 @@ pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields
         top_p,
         seed,
         stop,
+        cache_key,
     } = fields;
     const NO_FIELD: &str = "the Interactions API has no such field";
     let thinking = thinking(facts, model);
@@ -346,6 +349,7 @@ pub(super) fn interactions(facts: &ModelFacts, model: &str, fields: OptionFields
             0..=5 => generation_config(json!({"stop_sequences": stop})),
             _ => Mapping::unsupported("Gemini takes at most 5 stop sequences"),
         }),
+        cache_key: Mapping::unrouted(cache_key),
     }
 }
 

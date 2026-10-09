@@ -503,5 +503,77 @@ pub fn assistant_text_from_choice(content: &[AssistantContent]) -> String {
         .collect()
 }
 
+/// Why `call`'s arguments do not fit a tool whose JSON schema is
+/// `parameters`, for the model to read as the call's error: they are not a
+/// JSON object ([`invalid_arguments_feedback`]), or name an argument the
+/// schema does not declare. `None` when they fit as far as that goes; the
+/// tool checks their values.
+pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
+    let name = call.function.name.as_str();
+    if let Some(raw) = &call.function.invalid_arguments {
+        return Some(invalid_arguments_feedback(name, raw));
+    }
+    let declared = parameters
+        .get("properties")
+        .and_then(serde_json::Value::as_object);
+    fn quoted<'a>(names: impl Iterator<Item = &'a String>) -> String {
+        names
+            .map(|arg| format!("`{arg}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+    let unknown = quoted(
+        call.function
+            .arguments
+            .keys()
+            .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str()))),
+    );
+    if unknown.is_empty() {
+        return None;
+    }
+    let known = declared
+        .map(|declared| quoted(declared.keys()))
+        .filter(|known| !known.is_empty())
+        .unwrap_or_else(|| "none".to_owned());
+    Some(format!(
+        "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with only \
+         those."
+    ))
+}
+
+/// The tool calls of the last assistant message in `messages` that no
+/// later tool result answers, in call order: what a conversation cut short
+/// still owes the model.
+pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
+    let Some(at) = messages
+        .iter()
+        .rposition(|message| matches!(message, Message::Assistant(_)))
+    else {
+        return Vec::new();
+    };
+    let mut later = messages.iter().skip(at);
+    let Some(Message::Assistant(reply)) = later.next() else {
+        return Vec::new();
+    };
+    let answered: Vec<&CallId> = later
+        .flat_map(|message| match message {
+            Message::User { content } => content.as_slice(),
+            _ => &[],
+        })
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(&result.call),
+            _ => None,
+        })
+        .collect();
+    reply
+        .content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) if !answered.contains(&&call.id) => Some(call.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod validator_tests;

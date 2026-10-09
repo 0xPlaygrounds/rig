@@ -736,7 +736,10 @@ fn store(image: &mut Image, blobs: &Path) -> io::Result<()> {
     let name = format!(
         "{:x}.{}",
         Sha256::digest(&bytes),
-        extension(image.media_type.as_ref())
+        image
+            .media_type
+            .as_ref()
+            .map_or("bin", ImageMediaType::extension)
     );
     let path = blobs.join(&name);
     if !path.exists() {
@@ -747,20 +750,6 @@ fn store(image: &mut Image, blobs: &Path) -> io::Result<()> {
     }
     image.data = DocumentSourceKind::Url(format!("{BLOB}{name}"));
     Ok(())
-}
-
-/// The file extension of an image of `media_type`.
-fn extension(media_type: Option<&ImageMediaType>) -> &'static str {
-    match media_type {
-        Some(ImageMediaType::JPEG) => "jpg",
-        Some(ImageMediaType::PNG) => "png",
-        Some(ImageMediaType::GIF) => "gif",
-        Some(ImageMediaType::WEBP) => "webp",
-        Some(ImageMediaType::HEIC) => "heic",
-        Some(ImageMediaType::HEIF) => "heif",
-        Some(ImageMediaType::SVG) => "svg",
-        None => "bin",
-    }
 }
 
 /// Puts the data of each image `message` names in `blobs` back in place;

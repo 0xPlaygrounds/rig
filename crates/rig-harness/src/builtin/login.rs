@@ -18,21 +18,15 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::Home;
-use rig_core::catalog::{Catalog, ModelSpec};
-use rig_core::driver::DynModel;
-use rig_core::effect::{EffectKind, HandlerDescriptor, family};
-use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::operation::Completion;
+use rig_core::catalog::ModelSpec;
 use rig_core::providers::chatgpt::{
-    self,
+    self, SignedInModel,
     auth::{
-        AuthError, AuthSource, Authenticator, BrowserSignInPrompt, DeviceCodeHandler,
-        DeviceCodePrompt,
+        AuthSource, Authenticator, DeviceCodeHandler, DeviceCodePrompt, SignInMethod, SignInPrompt,
     },
 };
-use rig_core::providers::registry::{ConnectError, ConnectOptions};
-use rig_core::serve::adapters::ModelAdapter;
-use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_core::providers::registry::ConnectError;
+use rig_core::serve::ErasedHandler;
 
 use crate::core::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
 use crate::core::calls::{Done, Running, Wake, poll_calls};
@@ -113,13 +107,8 @@ impl SignIns for ChatGptSignIn {
     }
 
     fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
-        // Built without a key only for the handler's description.
-        let unsigned = Catalog::builtin().connect_with(spec, ConnectOptions::new().api_key(""))?;
-        let descriptor = Serve::descriptor(&ModelAdapter::<Completion>::new(
-            models::reference(spec),
-            unsigned,
-        ));
-        Ok(ErasedHandler::new(SignedIn { spec, descriptor }))
+        SignedInModel::new(spec.clone(), session().clone(), rig_reqwest::shared())
+            .map(ErasedHandler::new)
     }
 
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
@@ -133,50 +122,8 @@ impl SignIns for ChatGptSignIn {
 pub struct PendingLogin {
     /// The agent that asked.
     pub agent: Entity,
-    /// What the flow asks the user to do.
-    prompts: Receiver<LoginPrompt>,
-}
-
-/// What a sign-in asks the user to do.
-enum LoginPrompt {
-    /// Sign in on the page the browser was asked to open.
-    Browser(BrowserSignInPrompt),
-    /// Enter a code at a URL.
-    DeviceCode(DeviceCodePrompt),
-    /// The browser sign-in could not listen for its callback, so a device
-    /// code follows.
-    BrowserUnavailable(String),
-}
-
-/// How a sign-in asks the user to authorize.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Method {
-    Browser,
-    DeviceCode,
-}
-
-impl Method {
-    /// The browser when one can be assumed and `--device` was not asked for.
-    fn choose(device_asked: bool) -> Self {
-        if device_asked || !graphical_session() {
-            Self::DeviceCode
-        } else {
-            Self::Browser
-        }
-    }
-}
-
-/// Whether a browser opened here would reach the user: not over SSH, and on
-/// Linux and the BSDs, inside an X11 or Wayland session.
-fn graphical_session() -> bool {
-    let set = |name: &str| std::env::var_os(name).is_some_and(|value| !value.is_empty());
-    if set("SSH_CONNECTION") || set("SSH_TTY") {
-        return false;
-    }
-    if cfg!(any(target_os = "macos", windows)) {
-        return true;
-    }
-    set("DISPLAY") || set("WAYLAND_DISPLAY")
+    /// What the flow asks the user to do, worded for a notice.
+    prompts: Receiver<String>,
 }
 
 /// How a sign-in ended: `Err` says why it failed.
@@ -244,75 +191,54 @@ fn on_login(
         Running::spawn(
             pool,
             &wake,
-            sign_in_flow(Method::choose(device_asked), sender, wake.clone()),
+            sign_in_flow(SignInMethod::detect(device_asked), sender, wake.clone()),
         ),
     ));
     notices.write(Notice::info(agent, format!("Signing in to {TITLE}…")));
 }
 
-/// Runs the sign-in by `method`, sending what the user must do
-/// through `prompts`, and keeps the credential readable by the owner alone.
-/// A browser sign-in whose callback ports are taken falls back to the
-/// device code.
-async fn sign_in_flow(method: Method, prompts: Sender<LoginPrompt>, wake: Wake) -> SignedInResult {
-    let file = auth_file();
-    let prompt = move |prompt: LoginPrompt| {
-        prompts.send(prompt).ok();
+/// Runs the sign-in by `method`, sending what the user must do through
+/// `prompts`. The credential file is written readable by the owner alone.
+async fn sign_in_flow(method: SignInMethod, prompts: Sender<String>, wake: Wake) -> SignedInResult {
+    let say = move |text: String| {
+        prompts.send(text).ok();
         wake.wake();
     };
-    let device_prompt = prompt.clone();
-    let handler = DeviceCodeHandler::new(move |code| device_prompt(LoginPrompt::DeviceCode(code)));
-    let flow = async {
-        let auth = Authenticator::new(AuthSource::OAuth, Some(file), handler, true);
-        let http = rig_reqwest::shared();
-        let browser = match method {
-            Method::Browser => {
-                let prompt = prompt.clone();
-                auth.sign_in_with_browser(&http, move |page| prompt(LoginPrompt::Browser(page)))
-                    .await
-            }
-            Method::DeviceCode => auth.sign_in_with_device_code(&http).await,
-        };
-        match browser {
-            Err(AuthError::Io(error))
-                if method == Method::Browser && error.kind() == io::ErrorKind::AddrInUse =>
-            {
-                prompt(LoginPrompt::BrowserUnavailable(error.to_string()));
-                auth.sign_in_with_device_code(&http).await
-            }
-            other => other,
-        }
-        .map(drop)
-        .map_err(|error| error.to_string())
-    };
-    SignedInResult(flow.await)
+    let device_say = say.clone();
+    let handler = DeviceCodeHandler::new(move |code: DeviceCodePrompt| {
+        device_say(format!(
+            "Sign in to {TITLE}: open {} and enter the code {}\n{WAITING}",
+            code.verification_uri, code.user_code,
+        ));
+    });
+    let auth = Authenticator::new(AuthSource::OAuth, Some(auth_file()), handler, true);
+    let signed_in = auth
+        .sign_in(&rig_reqwest::shared(), method, |prompt| {
+            say(match prompt {
+                SignInPrompt::Browser(page) if page.browser_launched => format!(
+                    "Opening your browser to sign in to {TITLE}. If it doesn't open, visit {}\n\
+                     {WAITING}",
+                    page.authorize_url,
+                ),
+                SignInPrompt::Browser(page) => {
+                    format!("Sign in to {TITLE}: open {}\n{WAITING}", page.authorize_url)
+                }
+                SignInPrompt::BrowserUnavailable(why) => {
+                    format!("Cannot sign in through the browser ({why}); using a device code.")
+                }
+            });
+        })
+        .await;
+    SignedInResult(signed_in.map(drop).map_err(|error| error.to_string()))
 }
+
+/// The line after a sign-in prompt.
+const WAITING: &str = "Waiting for it; Esc or /login chatgpt cancels.";
 
 /// Shows what a sign-in asks the user to do.
 fn show_login_prompts(logins: Query<&PendingLogin>, mut notices: MessageWriter<Notice>) {
-    let (title, name) = (TITLE, PROVIDER);
     for login in &logins {
-        for prompt in login.prompts.try_iter() {
-            let text = match prompt {
-                LoginPrompt::Browser(page) if page.browser_launched => format!(
-                    "Opening your browser to sign in to {title}. If it doesn't open, visit {}\n\
-                     Waiting for it; Esc or /login {name} cancels.",
-                    page.authorize_url,
-                ),
-                LoginPrompt::Browser(page) => format!(
-                    "Sign in to {title}: open {}\n\
-                     Waiting for it; Esc or /login {name} cancels.",
-                    page.authorize_url,
-                ),
-                LoginPrompt::DeviceCode(code) => format!(
-                    "Sign in to {title}: open {} and enter the code {}\n\
-                     Waiting for it; Esc or /login {name} cancels.",
-                    code.verification_uri, code.user_code,
-                ),
-                LoginPrompt::BrowserUnavailable(why) => {
-                    format!("Cannot sign in through the browser ({why}); using a device code.")
-                }
-            };
+        for text in login.prompts.try_iter() {
             notices.write(Notice::info(login.agent, text));
         }
     }
@@ -412,57 +338,4 @@ fn on_logout(
         ),
     };
     notices.write(notice);
-}
-
-/// A catalog model whose requests carry the signed-in credential. Each
-/// request reads the credential, refreshing it when it has expired, and
-/// connects the model with it, so a long session outlives its token.
-struct SignedIn {
-    spec: &'static ModelSpec,
-    descriptor: HandlerDescriptor,
-}
-
-impl SignedIn {
-    /// The model, connected with the current credential.
-    async fn connect(&self) -> Result<DynModel<Completion>, ErrorReport> {
-        let http = rig_reqwest::shared();
-        let context = session().auth_context(&http).await.map_err(|error| {
-            ErrorReport::new(
-                ErrorKind::Provider,
-                format!(
-                    "the {TITLE} sign-in did not give a credential ({error}); /login \
-                         {PROVIDER} signs in again"
-                ),
-            )
-            .with_retryable(false)
-        })?;
-        let mut options = ConnectOptions::new()
-            .api_key(context.access_token)
-            .http(http);
-        if let Some(account_id) = context.account_id {
-            options = options.account_id(account_id);
-        }
-        Catalog::builtin()
-            .connect_with(self.spec, options)
-            .map_err(|error| ErrorReport::new(ErrorKind::Internal, error.to_string()))
-    }
-}
-
-impl Serve for SignedIn {
-    type Family = family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match self.connect().await {
-            Ok(model) => {
-                ModelAdapter::<Completion>::new(models::reference(self.spec), model)
-                    .serve(kind, dispatch)
-                    .await
-            }
-            Err(report) => Reply::Outcome(Err(report)),
-        }
-    }
 }

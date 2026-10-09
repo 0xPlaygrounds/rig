@@ -203,6 +203,7 @@ pub struct GenerationOptions {
     pub top_p: Option<f64>,
     pub seed: Option<u64>,
     pub stop: Vec<String>,
+    pub cache_key: Option<String>, // a prompt-cache routing hint
     pub on_unsupported: Option<OnUnsupported>, // None: unset, acts as Error
 }
 #[non_exhaustive] pub enum Reasoning { Off, Effort(Effort), Budget { tokens: u32 } }
@@ -231,6 +232,7 @@ impl GenerationOptions {
     pub fn top_p(self, top_p: f64) -> Self;
     pub fn seed(self, seed: u64) -> Self;
     pub fn stop<S: Into<String>>(self, stop: impl IntoIterator<Item = S>) -> Self;
+    pub fn cache_key(self, key: impl Into<String>) -> Self;
     pub fn on_unsupported(self, policy: OnUnsupported) -> Self; // sets Some(policy)
     /// The policy in effect: the one set, or `Error`.
     pub fn unsupported_policy(&self) -> OnUnsupported;
@@ -321,6 +323,7 @@ pub struct OptionFields<'a> {
     pub top_p: Option<f64>,
     pub seed: Option<u64>,
     pub stop: &'a [String],
+    pub cache_key: Option<&'a str>,
 }
 
 /// What a wire does with one option.
@@ -352,6 +355,10 @@ pub struct OptionMap {
     pub top_p: Mapping,
     pub seed: Mapping,
     pub stop: Mapping,
+    /// `prompt_cache_key` on the OpenAI, ChatGPT, xAI, Mistral, Venice and
+    /// Moonshot dialects; elsewhere `Mapping::unrouted`, an `Omit`, since
+    /// the key is only a routing hint.
+    pub cache_key: Mapping,
 }
 
 /// The base builder's read-only view of the options and the raw params.

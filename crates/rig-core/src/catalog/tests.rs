@@ -1248,3 +1248,41 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
         "not pinned, so updated"
     );
 }
+
+#[test]
+fn reasoning_choices_and_default_options_follow_the_spec() {
+    let budgeted = ReasoningSupport::Listed {
+        levels: Vec::new(),
+        budget: Some(1024..=4096),
+        can_disable: true,
+        default: None,
+    };
+    let names: Vec<String> = budgeted
+        .choices()
+        .iter()
+        .map(ReasoningChoice::label)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "default",
+            "off",
+            "low (2048 tokens)",
+            "medium (4096 tokens)",
+            "high (4096 tokens)"
+        ]
+    );
+    assert_eq!(ReasoningSupport::None.choices().len(), 1);
+
+    let provider = ProviderId::catalog("anthropic").expect("a known vendor");
+    let cached = ModelSpec::new(provider, "claude-x")
+        .with_caching(CacheSupport::new([CacheRetention::Short]));
+    assert_eq!(cached.reference(), "anthropic/claude-x");
+    let options = cached.default_options(Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(options.cache, Some(CacheRetention::Short));
+    assert_eq!(options.reasoning, Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(
+        ModelSpec::new(provider, "unknown").default_options(None),
+        GenerationOptions::default()
+    );
+}
