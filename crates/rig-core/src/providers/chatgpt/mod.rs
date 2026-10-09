@@ -17,9 +17,8 @@
 
 pub mod auth;
 pub mod extension;
-mod signed_in;
 
-pub use signed_in::SignedInModel;
+pub use crate::client::chatgpt::SignedInModel;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{

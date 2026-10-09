@@ -137,7 +137,6 @@ async fn collect_concurrent_tool_observation(
                 observation.events.push("final_response");
             }
             Ok(MultiTurnStreamItem::StreamAssistantItem(Item::Event(StreamEvent::Text {
-                text: _,
                 ..
             }))) => {
                 observation.events.push("text");

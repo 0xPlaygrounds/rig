@@ -11,7 +11,7 @@ use crate::providers::registry::{ConnectError, ConnectOptions};
 use crate::serve::adapters::ModelAdapter;
 use crate::serve::{Dispatch, Reply, Serve};
 
-use super::auth::Authenticator;
+use crate::providers::chatgpt::auth::Authenticator;
 
 /// A catalog model of the ChatGPT plan as an effect handler whose every
 /// request carries the credential its [`Authenticator`] resolves at that

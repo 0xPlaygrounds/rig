@@ -38,7 +38,7 @@ fn missing_inventory_is_not_a_pass() {
 
 #[test]
 fn workspace_requirements_must_be_the_exact_bevy_pin() {
-    for requirement in ["*", "^0.19.1", "^0.20.0", "=0.20.0", "^0.20"] {
+    for requirement in ["*", "^0.19.1", "^0.20.0", "=0.20.0-rc.2", "^0.20"] {
         let mut declared = metadata("0.20.0");
         declared["packages"][0]["dependencies"][0]["req"] = json!(requirement);
         assert!(matches!(check(&declared), Err(Error::Requirement(..))));
