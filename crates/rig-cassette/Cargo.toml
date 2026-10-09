@@ -44,6 +44,8 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
+# Effect logs as JSON-lines files (native file I/O).
+jsonl = []
 http = [
     "dep:rig-reqwest",
     "dep:axum",

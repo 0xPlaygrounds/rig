@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
 
 [dev-dependencies]

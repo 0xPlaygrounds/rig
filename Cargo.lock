@@ -11218,6 +11218,7 @@ dependencies = [
  "anyhow",
  "rig-agent",
  "rig-core",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",

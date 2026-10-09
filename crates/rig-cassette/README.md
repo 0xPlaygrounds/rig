@@ -25,6 +25,7 @@ rig-cassette = { version = "0.42.0", default-features = false }
 | features | public modules | additional normal dependencies |
 |---|---|---|
 | none | `effect_log` | core contracts, futures and serialization only |
+| `jsonl` | `effect_log`, `effect_log::jsonl` (JSON-lines files, native) | none |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
 | `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |

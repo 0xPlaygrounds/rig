@@ -28,6 +28,7 @@ use bevy_log::warn;
 use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult};
 use rig_core::transcript::pending_calls;
+use rig_memory::SummaryState;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
@@ -327,12 +328,11 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
             folded.settings = record.snapshot.settings;
             folded.usage = record.snapshot.usage;
             folded.components = record.snapshot.components;
-            folded.compacted = Compacted {
+            folded.compacted = Compacted(SummaryState {
                 upto: 0,
                 summary: record.summary,
-                read: record.read,
-                modified: record.modified,
-            };
+                tracked: record.tracked,
+            });
             (first_kept, at + 1)
         }
         None => (1, 1),

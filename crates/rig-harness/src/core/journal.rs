@@ -12,7 +12,7 @@
 //! [`AppSaveExt::save_component`]; a logged component no plugin registers
 //! any more is skipped on restore.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::ops::Deref;
@@ -26,10 +26,12 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use rig::harness_protocol::SessionDir;
+use rig_cassette::effect_log::jsonl;
 use rig_core::completion::{Message, Usage};
 use rig_core::message::{
     DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
 };
+use rig_memory::TrackedSet;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -229,10 +231,9 @@ pub(crate) struct Snapshot {
 pub(crate) struct CompactionRecord {
     pub(crate) summary: String,
     pub(crate) first_kept: u64,
-    #[serde(default)]
-    pub(crate) read: BTreeSet<String>,
-    #[serde(default)]
-    pub(crate) modified: BTreeSet<String>,
+    /// The files the summarized messages read and changed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) tracked: Vec<TrackedSet>,
     pub(crate) snapshot: Snapshot,
 }
 
@@ -603,8 +604,7 @@ impl SessionLog {
         let record = Record::Compaction(CompactionRecord {
             summary: compacted.summary.clone(),
             first_kept,
-            read: compacted.read.clone(),
-            modified: compacted.modified.clone(),
+            tracked: compacted.tracked.clone(),
             snapshot: Snapshot {
                 settings: log.settings.clone(),
                 usage: log.usage.clone(),
@@ -851,6 +851,7 @@ fn write_logs(
     log: Res<SessionLog>,
     effects: Res<Effects>,
     paths: Option<Res<SessionPaths>>,
+    mut writer: Local<Option<jsonl::Writer>>,
     mut effects_failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -863,7 +864,9 @@ fn write_logs(
         ));
     }
     if let Some(paths) = paths
-        && let Err(failure) = effects.flush(&paths.effects())
+        && let Err(failure) = writer
+            .get_or_insert_with(|| jsonl::Writer::new(paths.effects()))
+            .append(&effects.take())
         && !*effects_failed
     {
         *effects_failed = true;

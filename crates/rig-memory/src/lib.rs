@@ -34,6 +34,13 @@ pub use rig_core::memory::{
 
 use rig_core::completion::Message;
 use rig_core::id::ConversationId;
+
+mod compaction;
+
+pub use compaction::{
+    ClearToolOutputs, Cleared, ModelCompactor, Summarizer, SummaryError, SummaryLimits,
+    SummaryPrompts, SummaryState, TrackArgument, TrackedSet, completion_of,
+};
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
@@ -223,6 +230,11 @@ fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<
 pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
     /// Approximate the number of tokens contributed by `message`.
     fn count(&self, message: &Message) -> usize;
+
+    /// Approximate the number of tokens contributed by `messages`.
+    fn count_all(&self, messages: &[Message]) -> usize {
+        messages.iter().map(|message| self.count(message)).sum()
+    }
 }
 
 impl<F> TokenCounter for F

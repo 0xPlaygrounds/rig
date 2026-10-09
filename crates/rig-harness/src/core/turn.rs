@@ -32,6 +32,7 @@ use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
 use rig_core::transcript::arguments_refusal;
+use rig_memory::{Summarizer, SummaryState};
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
@@ -48,7 +49,7 @@ use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
-use super::recovery::{self, Backoff, KEEP_RECENT_OUTPUTS, RETRY, Recovery, RetryDue};
+use super::recovery::{self, Backoff, RETRY, Recovery, RetryDue};
 use super::tools::{
     Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, failed, outcome_of,
     recorded_args, run_tool_call,
@@ -569,11 +570,8 @@ fn must_summarize(
     if !compaction::over_threshold(used, spec) {
         return false;
     }
-    let cleared = recovery::clear_tool_outputs(
-        compacted.live_mut(conversation.messages_mut()),
-        KEEP_RECENT_OUTPUTS,
-    );
-    let left = used.saturating_sub(cleared.tokens);
+    let cleared = recovery::clearing().clear(compacted.live_mut(conversation.messages_mut()));
+    let left = used.saturating_sub(cleared.tokens as u64);
     if cleared.results > 0 {
         spent.context = Some(left);
         notices.write(Notice::info(
@@ -582,7 +580,7 @@ fn must_summarize(
                 "The conversation nears the model's context window: cleared {} older tool \
                  outputs (about {} tokens).",
                 cleared.results,
-                usage::tokens(cleared.tokens)
+                usage::tokens(cleared.tokens as u64)
             ),
         ));
     }
@@ -932,10 +930,7 @@ impl Failed<'_> {
         compacted: &Compacted,
         notices: &mut MessageWriter<Notice>,
     ) -> bool {
-        let cleared = recovery::clear_tool_outputs(
-            compacted.live_mut(conversation.messages_mut()),
-            KEEP_RECENT_OUTPUTS,
-        );
+        let cleared = recovery::clearing().clear(compacted.live_mut(conversation.messages_mut()));
         if cleared.results > 0 {
             notices.write(Notice::info(
                 self.agent,
@@ -943,7 +938,7 @@ impl Failed<'_> {
                     "The conversation outgrew the model's context window: cleared {} older \
                      tool outputs (about {} tokens) and sending it again.",
                     cleared.results,
-                    usage::tokens(cleared.tokens)
+                    usage::tokens(cleared.tokens as u64)
                 ),
             ));
         }
@@ -1257,7 +1252,7 @@ pub(crate) fn on_summarize(
     );
     let span = info_span!("summary_call", agent = %id.0, effect = %effect);
     let work = effects
-        .caught(effect, compaction::summarize(reply))
+        .caught(effect, rig_memory::completion_of(reply))
         .map(Summary)
         .instrument(span);
     commands.spawn((
@@ -1306,16 +1301,15 @@ pub(crate) fn on_summary_done(
             turn_spent.0.record_aside(&response.usage);
             let model = model_name(connection.map(|connection| connection.spec));
             log.usage(id, &model, &response.usage, spent.context);
-            compaction::summary_text(response)
+            Summarizer::summary_text(response).map_err(|why| why.to_string())
         });
     match summary {
         Ok(summary) => {
-            *compacted = Compacted {
+            *compacted = Compacted(SummaryState {
                 upto: summarizing.upto,
                 summary,
-                read: summarizing.read.clone(),
-                modified: summarizing.modified.clone(),
-            };
+                tracked: summarizing.tracked.clone(),
+            });
             log.compaction(id, &compacted);
             let left = compacted.estimate(conversation.messages());
             spent.context = Some(left);

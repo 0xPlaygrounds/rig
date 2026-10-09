@@ -2,25 +2,23 @@
 //! [`Effects::dispatch`], which records it with rig-core's effect types
 //! under the agent's stable id; an open tool call, which no handler
 //! answers, is recorded the same way when it is opened. The session's `effects.jsonl` holds one
-//! resolved record per line, with a `{"header": …}` line before them
-//! whenever the set of described handlers (the tools and the models used)
-//! grew.
+//! resolved record per line, written by rig-cassette's
+//! [`jsonl::Writer`], with a `{"header": …}` line before them whenever the
+//! header (the tools and models described, the keys used) changed; it
+//! reads back with [`jsonl::read`] for rig-cassette's replayer.
 
 use std::collections::HashMap;
-use std::fs::{File, OpenOptions};
-use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
-use rig_cassette::effect_log::EffectLogRecorder;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, jsonl};
 use rig_core::catalog::ModelSpec;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
 use rig_core::error::ErrorReport;
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
-use serde::{Deserialize, Serialize};
 
 use super::models::ModelConnector;
 
@@ -34,23 +32,21 @@ pub struct Effects {
     /// One handler per catalog model, built on first use and shared by
     /// every agent that picks the model.
     models: HashMap<String, ErasedHandler>,
-    /// How many handlers the last header written to the log described.
-    described: AtomicUsize,
 }
 
 impl Effects {
     /// A recorder whose ids continue after the highest id already in the
     /// effect log at `log`, if any, so ids keep increasing across restarts.
     pub(crate) fn continuing(log: Option<&Path>) -> Self {
-        let last = log.and_then(|log| last_id(log).ok()).unwrap_or(0);
+        let last = log
+            .and_then(|log| jsonl::last_id(log).ok().flatten())
+            .map_or(0, EffectId::as_u64);
         let recorder = EffectLogRecorder::new();
         Self {
             shared: Arc::new(recorder.clone()),
             recorder,
             next: AtomicU64::new(last + 1),
             models: HashMap::new(),
-            // No header written yet by this process.
-            described: AtomicUsize::new(usize::MAX),
         }
     }
 
@@ -155,75 +151,11 @@ impl Effects {
         catch_panics(self.shared.clone(), id, work)
     }
 
-    /// Append every resolved effect to the JSON-lines log at `path`, after
-    /// a header line when the described handlers grew since the last one.
-    /// Effects still in flight stay for a later flush.
-    pub(crate) fn flush(&self, path: &Path) -> io::Result<()> {
-        let log = self.recorder.take();
-        let handlers = log.header.handlers.len();
-        let header_due = self.described.load(Ordering::Relaxed) != handlers;
-        if log.records.is_empty() && !header_due {
-            return Ok(());
-        }
-        let mut lines = Vec::new();
-        if header_due {
-            serde_json::to_writer(
-                &mut lines,
-                &HeaderLine {
-                    header: &log.header,
-                },
-            )?;
-            lines.push(b'\n');
-        }
-        for record in &log.records {
-            serde_json::to_writer(&mut lines, record)?;
-            lines.push(b'\n');
-        }
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?
-            .write_all(&lines)?;
-        self.described.store(handlers, Ordering::Relaxed);
-        Ok(())
+    /// Every resolved effect, taken out of the recorder; effects still in
+    /// flight stay for a later take.
+    pub(crate) fn take(&self) -> EffectLog {
+        self.recorder.take()
     }
-}
-
-/// How many of the log's last lines [`last_id`] reads.
-const TAIL_LINES: usize = 64;
-
-/// The highest effect id among the last [`TAIL_LINES`] lines of the log at
-/// `log`. Ids are taken in order and records are appended as they resolve,
-/// so the highest id is among the last few records; reading backwards from
-/// the end keeps startup independent of the log's length.
-fn last_id(log: &Path) -> io::Result<u64> {
-    /// A record line's id; header lines have none.
-    #[derive(Deserialize)]
-    struct IdOnly {
-        id: u64,
-    }
-    let mut file = File::open(log)?;
-    let mut start = file.metadata()?.len();
-    let mut tail = Vec::new();
-    let mut chunk: u64 = 64 * 1024;
-    while start > 0 && tail.iter().filter(|byte| **byte == b'\n').count() <= TAIL_LINES {
-        let from = start.saturating_sub(chunk);
-        let mut read = vec![0; usize::try_from(start - from).map_err(io::Error::other)?];
-        file.seek(SeekFrom::Start(from))?;
-        file.read_exact(&mut read)?;
-        read.append(&mut tail);
-        tail = read;
-        start = from;
-        chunk = chunk.saturating_mul(2);
-    }
-    // Unless the whole file was read, the first piece may be part of a line.
-    Ok(tail
-        .split(|byte| *byte == b'\n')
-        .skip(usize::from(start > 0))
-        .filter_map(|line| serde_json::from_slice::<IdOnly>(line).ok())
-        .map(|record| record.id)
-        .max()
-        .unwrap_or(0))
 }
 
 /// Where an effect of the agent `scope` comes from.
@@ -232,10 +164,4 @@ fn origin(scope: &str, parent: Option<EffectId>) -> Origin {
         parent,
         scope: Some(Arc::from(scope)),
     }
-}
-
-/// The log's header line, `{"header": …}`; record lines are bare records.
-#[derive(Serialize)]
-struct HeaderLine<'a> {
-    header: &'a rig_cassette::effect_log::LogHeader,
 }
