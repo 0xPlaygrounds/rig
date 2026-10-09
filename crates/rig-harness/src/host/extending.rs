@@ -31,8 +31,11 @@ built-in, such as `rig_harness::tui::TuiPlugin`.
 - New plugin: run `{launcher} plugin new <name>` in the shell. It makes the crate in \
 {home}/plugins/<name> and adds its entry. Keep plugin crates there, never in the rig repository \
 or the user's project, and never edit rig-harness, rig-ecs or rig-tools for a plugin. \
-`{launcher} plugin list` shows the entries; `{launcher} plugin check` validates plugins.toml \
-without a build. {home}/project is generated: do not edit it.
+Change plugins.toml only through the launcher, never by hand: `{launcher} plugin add <type> \
+[--path <dir> | --git <url> [--branch <b> | --rev <r>] | --version <req>] [--crate <name>] \
+[--bevy-features <a,b>]` adds an entry, `{launcher} plugin remove <type>` takes one out, \
+`{launcher} plugin list` shows them and `{launcher} plugin check` validates the file and the \
+crates it names by path without a build. {home}/project is generated: do not edit it.
 - Building blocks (guide with an example of each: {guide}):
   - tools: `app.add_tool(T)` or `add_tool_with(T, ToolOptions { rules, footprint })` for a \
 `rig_core::tool::PortableTool`, blocking work inside `blocking(|| ..)`; `add_open_tool` for a \
@@ -49,16 +52,19 @@ replying with a `Notice`;
 preview), the `MessageFeed` resource of delivered messages, and the agent tree through \
 `SpawnedBy`/`Spawned`;
   - conversations: trigger `Deliver { entity, text, origin, mode, attachments }` to put a message \
-in an agent's conversation (`DeliveryMode::Steer` or `Queue`); observe `TurnEnded`, which \
+in an agent's conversation (`DeliveryMode::Steer`, `Queue`, or `Note` for one that needs no \
+answer and starts no turn); observe `TurnEnded`, which \
 travels up `SpawnedBy`; spawn a `PromptSection` to add to every system prompt;
   - state kept with the session: `app.save_component::<T>()` for an agent component; re-arm \
 work on `Restored`;
   - time: `.run_if(every(Duration))` or `Wake::after(Duration)`, never a thread that sleeps;
   - a window: `rig_harness::windowed(DefaultPlugins)` and a `Wake` on winit's event loop, with \
 `bevy = { version = \"={bevy}\", default-features = false, features = [..] }` in the crate.
-- Applying a change: ask the user to type /reload (refused while a turn runs). It runs `rig build`, \
-then restarts on the new build in the same session. A failed build leaves the running build \
-and its first errors come to you as a message from the `build` plugin; the whole output is in \
+- Applying a change: once your edits are done and `{launcher} plugin check` passes, call the \
+`reload` tool and end your turn; the user can also type /reload. Either waits until no turn \
+runs, then runs `rig build` and restarts on the new build in the same session; the user sees \
+a notice and can cancel with /reload cancel. A failed build leaves the running build and its \
+first errors come to you as a note from the `build` plugin; the whole output is in \
 {home}/build.log. A build that crashes at startup is rolled back.";
 
 /// The section for an agent started by `launcher`.

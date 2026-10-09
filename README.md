@@ -203,9 +203,10 @@ place; the newest 20k tokens stay as they are. `/compact` does it now, and
 `/compact <focus>` says what the summary should keep. The summarized messages
 stay in the transcript, under a line that shows the summary; a resumed
 session starts from the messages the summary kept. `/reload` rebuilds the agent
-and restarts it on the same session; it is refused while a turn runs (Esc
-stops the turn first), and a turn started during the build delays the
-restart until it ends. It shows cargo's progress, keeps the
+and restarts it on the same session; typed while a turn runs, it waits until no
+turn runs (`/reload cancel` drops it), and a turn started during the build
+delays the restart until it ends. The agent can ask for a reload itself with
+its `reload` tool, which waits the same way and shows a notice. It shows cargo's progress, keeps the
 current build running if the new one does not compile (Esc closes the
 compiler output it shows), and rolls back to it if
 the new one crashes during startup.
@@ -218,7 +219,7 @@ failures too: the reason, the first errors and the paths of `build.log`,
 message from the `build` plugin, which starts no turn when the agent is idle
 and is saved with the session.
 Ask it why the build failed and it can read the log, fix the cause, and
-tell you to `/reload`.
+reload.
 
 The session is written as it happens. Each agent, subagents included, has an
 append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
@@ -271,7 +272,9 @@ sends one of the model's own subagents a follow-up, which it reads with its
 conversation kept. Each `task` or `message` call is a request, and exactly one
 report for it (done, failed or interrupted) arrives later as a message to the
 agent that sent it, which starts a turn of an idle agent or follows the
-running one. Nothing waits for them, so you can keep talking to the main
+running one; reports that arrive together go to the model in one step, and a
+report that only points at another (answered together with it) starts no turn
+of its own. Nothing waits for them, so you can keep talking to the main
 agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
 subagents. `/agents` lists every agent with its model, state and cost, and
 shows the one picked: its transcript, and what you type then goes to it. A
@@ -345,8 +348,11 @@ bevy_features = []                # optional extra Bevy features
 ```
 
 `rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
-any workspace, and adds its entry; `rig plugin list` shows the list and
-`rig plugin check` checks it without a build. A plugin crate depends on
+any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
+`--git`, `--version`) adds an entry for an existing crate and `rig plugin
+remove <type>` takes one out, each checked before plugins.toml is written;
+`rig plugin list` shows the list and `rig plugin check` checks it without a
+build. A plugin crate depends on
 `rig-harness` alone and registers tools, slash commands, tool renderers,
 terminal panels or a window the way the built-in ones do, never by editing
 rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)

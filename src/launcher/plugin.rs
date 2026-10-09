@@ -1,10 +1,12 @@
 //! `rig plugin`: make a plugin crate under `RIG_HOME/plugins` and list it
-//! in `plugins.toml` (`new`), show the list (`list`), and check it without
-//! a build (`check`). Plugin crates live outside every workspace, so making
-//! one never touches the rig repository or a project.
+//! in `plugins.toml` (`new`), add or remove an entry (`add`, `remove`),
+//! show the list (`list`), and check it without a build (`check`). Every
+//! change is checked before it is written, so nobody edits the file by
+//! hand. Plugin crates live outside every workspace, so making one never
+//! touches the rig repository or a project.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rig::harness_protocol::Home;
 
@@ -18,6 +20,14 @@ use super::project::{
 pub const USAGE: &str = "\
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to plugins.toml; /reload or `rig build` builds it.
+  rig plugin add <type> [--path <dir> | --git <url> [--branch <b> | --rev <r>]
+                 | --version <req>] [--crate <name>] [--bevy-features <a,b>]
+                         Add the plugin type <type> to plugins.toml, from the
+                         crate at that source (its name read from <dir> for
+                         --path), or one of rig-harness's own without a source.
+  rig plugin remove <type>
+                         Remove the plugin type <type> from plugins.toml; its
+                         crate stays where it is.
   rig plugin list        List the plugins in plugins.toml, in the order they
                          are added.
   rig plugin check       Check plugins.toml and the plugin crates it names by
@@ -28,6 +38,8 @@ pub const USAGE: &str = "\
 pub fn run(home: &Home, args: &[&str]) -> Result<()> {
     match args {
         ["new", name] => new(home, name),
+        ["add", type_path, options @ ..] => add(home, type_path, options),
+        ["remove", type_path] => remove(home, type_path),
         ["list"] => list(home),
         ["check"] => check(home),
         _ => Err(format!("usage:\n{USAGE}").into()),
@@ -85,7 +97,7 @@ fn new(home: &Home, name: &str) -> Result<()> {
         quoted(&format!("plugins/{name}")),
         quoted(&format!("{library}::{type_name}")),
     );
-    if let Err(failure) = config::append(&config_path, &entry) {
+    if let Err(failure) = config::append(&config_path, &entry, |_| Ok(())) {
         fs::remove_dir_all(&directory).ok();
         return Err(failure);
     }
@@ -97,6 +109,97 @@ fn new(home: &Home, name: &str) -> Result<()> {
         config_path.display()
     );
     Ok(())
+}
+
+/// `rig plugin add <type> [options]`: an entry for `type_path` at the end
+/// of `plugins.toml`, written only when the whole file still parses and,
+/// for a crate by path, the crate is there and provides the type's crate.
+fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
+    let mut keys: Vec<(&str, String)> = Vec::new();
+    let mut name: Option<String> = None;
+    let mut features: Option<Vec<String>> = None;
+    let mut rest = options.iter();
+    while let Some(&option) = rest.next() {
+        let value = rest
+            .next()
+            .ok_or_else(|| format!("`{option}` needs a value\nusage:\n{USAGE}"))?;
+        match option {
+            "--path" => {
+                let directory = std::path::absolute(value)?;
+                name = name.or_else(|| manifest_name(&directory));
+                keys.push(("path", relative_to(&directory, home.root())));
+            }
+            "--git" => keys.push(("git", (*value).to_owned())),
+            "--branch" => keys.push(("branch", (*value).to_owned())),
+            "--rev" => keys.push(("rev", (*value).to_owned())),
+            "--version" => keys.push(("version", (*value).to_owned())),
+            "--crate" => name = Some((*value).to_owned()),
+            "--bevy-features" => {
+                features = Some(
+                    value
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|feature| !feature.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                );
+            }
+            _ => return Err(format!("unknown option `{option}`\nusage:\n{USAGE}").into()),
+        }
+    }
+    let mut entry = String::from("# Added by `rig plugin add`.\n[[plugin]]\n");
+    if let Some(name) = &name {
+        entry.push_str(&format!("crate = {}\n", quoted(name)));
+    }
+    for (key, value) in &keys {
+        entry.push_str(&format!("{key} = {}\n", quoted(value)));
+    }
+    entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
+    if let Some(features) = &features {
+        let list: Vec<String> = features.iter().map(|feature| quoted(feature)).collect();
+        entry.push_str(&format!("bevy_features = [{}]\n", list.join(", ")));
+    }
+    let config_path = home.config();
+    config::append(&config_path, &entry, |config| {
+        match config.plugins.last().and_then(check_plugin) {
+            Some(problem) => Err(problem.into()),
+            None => Ok(()),
+        }
+    })?;
+    println!(
+        "Added `{type_path}` to {}.\n/reload in the agent, or `rig build`, builds it.",
+        config_path.display()
+    );
+    Ok(())
+}
+
+/// `rig plugin remove <type>`: the entry of `type_path`, with the comment
+/// lines right above it, taken out of `plugins.toml`.
+fn remove(home: &Home, type_path: &str) -> Result<()> {
+    let config_path = home.config();
+    config::remove(&config_path, type_path)?;
+    println!(
+        "Removed `{type_path}` from {}; its crate, if any, is left in place.\n\
+         /reload in the agent, or `rig build`, applies it.",
+        config_path.display()
+    );
+    Ok(())
+}
+
+/// The package name in `directory`'s `Cargo.toml`, if it can be read.
+fn manifest_name(directory: &Path) -> Option<String> {
+    let manifest = fs::read_to_string(directory.join("Cargo.toml")).ok()?;
+    manifest_string(&manifest, "package", "name")
+}
+
+/// `directory` as a `path` entry: relative to `RIG_HOME` (where
+/// `plugins.toml` is) when it is under it, so the entry moves with it;
+/// absolute otherwise.
+fn relative_to(directory: &Path, root: &Path) -> String {
+    let relative: PathBuf = directory
+        .strip_prefix(root)
+        .map_or_else(|_| directory.to_path_buf(), Path::to_path_buf);
+    relative.to_string_lossy().into_owned()
 }
 
 /// A name `rig plugin new` takes: a crate name in lowercase that is not

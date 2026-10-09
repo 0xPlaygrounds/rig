@@ -17,7 +17,7 @@ use super::terminal::Tui;
 use super::transcript::{Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use crate::host::reload::ReloadBuild;
+use crate::host::reload::{ReloadBuild, ReloadQueued};
 use crate::host::sessions::SessionName;
 use rig_ecs::activity::{Activity, Status};
 use rig_ecs::agent::{
@@ -280,7 +280,7 @@ pub(crate) fn render(
     slash: Query<&SlashCommand>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
-    build: Option<Res<ReloadBuild>>,
+    (build, queued): (Option<Res<ReloadBuild>>, Option<Res<ReloadQueued>>),
     name: Res<SessionName>,
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
@@ -363,6 +363,10 @@ pub(crate) fn render(
         }
         if let Some(build) = &build {
             line.push_span(reload_span(build));
+        } else if queued.is_some() {
+            line.push_span(
+                Span::from("  Reload queued: once no turn runs (/reload cancel)").cyan(),
+            );
         }
         let usage = shown
             .map(|(.., spent, connection, _)| usage_line(spent, connection))
@@ -624,7 +628,8 @@ fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
                 .queued
                 .iter()
                 .map(|pending| ("after this turn", &pending.text)),
-        );
+        )
+        .chain(inbox.notes.iter().map(|pending| ("noted", &pending.text)));
     for (when, text) in waiting {
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {

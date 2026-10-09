@@ -10,6 +10,8 @@ rig-harness, rig-ecs or rig-tools: it builds on what they export.
 
 ```sh
 rig plugin new hello    # RIG_HOME/plugins/hello, listed in plugins.toml
+rig plugin add viz::VizPlugin --path ~/viz   # an entry for an existing crate
+rig plugin remove viz::VizPlugin             # take an entry out
 rig plugin check        # plugins.toml and the crates it names, without a build
 rig plugin list         # the plugins, in the order they are added
 ```
@@ -36,8 +38,11 @@ checks on its own, and the build refuses a second copy of a rig crate or
 another Bevy than the agent's.
 
 `/reload` in the agent (or `rig build`) rebuilds and restarts in the same
-session; a build that fails leaves the running one, and one that crashes
-at startup is rolled back.
+session; typed during a turn, it waits until no turn runs (`/reload
+cancel` drops it). The agent's model can ask for the same with the
+`reload` tool, so it applies its own plugin changes once its turn ends.
+A build that fails leaves the running one, and one that crashes at
+startup is rolled back.
 
 What a plugin uses comes from `rig_harness::prelude::*`: Bevy's app and
 ECS preludes, the agent runtime's components, events and registries
@@ -149,8 +154,9 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
         return;
     }
     // A message in the agent's conversation: `Steer` goes with the running
-    // turn's next model call, `Queue` once that turn would end; an idle
-    // agent starts a turn.
+    // turn's next model call, `Queue` once that turn would end, together
+    // with everything else queued; an idle agent starts a turn. A `Note`
+    // needs no answer: it goes with the next call and starts no turn.
     commands.trigger(Deliver {
         entity: args.agent,
         text: format!("Reminder: {}", args.args),

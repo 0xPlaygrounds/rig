@@ -133,8 +133,13 @@ impl Config {
 
 /// Adds `entry`, the text of one `[[plugin]]` table, at the end of the
 /// plugin list at `path` (made from the template when missing), and
-/// checks the result; nothing is written when it is not valid.
-pub fn append(path: &Path, entry: &str) -> Result<Config> {
+/// checks the result, then with `check`; nothing is written when either
+/// fails.
+pub fn append(
+    path: &Path,
+    entry: &str,
+    check: impl FnOnce(&Config) -> Result<()>,
+) -> Result<Config> {
     Config::load(path)?;
     let mut text = fs::read_to_string(path)?;
     if !text.is_empty() && !text.ends_with('\n') {
@@ -144,8 +149,78 @@ pub fn append(path: &Path, entry: &str) -> Result<Config> {
     text.push_str(entry);
     let base = path.parent().unwrap_or(Path::new("."));
     let config = parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    check(&config).map_err(|failure| format!("{}: {failure}", path.display()))?;
     fs::write(path, text)?;
     Ok(config)
+}
+
+/// Takes the `[[plugin]]` table whose `plugin` is `type_path` out of the
+/// plugin list at `path`, with the comment lines right above it, and checks
+/// the result; nothing is written when it is not valid.
+pub fn remove(path: &Path, type_path: &str) -> Result<Config> {
+    let text =
+        fs::read_to_string(path).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let base = path.parent().unwrap_or(Path::new("."));
+    let kept = without_table(&text, type_path, base)
+        .map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let config = parse(&kept, base).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    fs::write(path, kept)?;
+    Ok(config)
+}
+
+/// `text` without the table of `type_path` and the comment lines right
+/// above it.
+fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
+    let config = parse(text, base)?;
+    let Some(index) = config
+        .plugins
+        .iter()
+        .position(|plugin| plugin.type_path == type_path)
+    else {
+        return Err(format!("`{type_path}` is not listed").into());
+    };
+    let lines: Vec<&str> = text.lines().collect();
+    let headers: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| without_comment(line).trim() == "[[plugin]]")
+        .map(|(number, _)| number)
+        .collect();
+    let start = headers
+        .get(index)
+        .copied()
+        .ok_or("the table is not found")?;
+    let mut end = headers.get(index + 1).copied().unwrap_or(lines.len());
+    // Comments right above the next table are that table's.
+    while end > start + 1
+        && lines
+            .get(end - 1)
+            .is_some_and(|line| without_comment(line).trim().is_empty())
+    {
+        end -= 1;
+    }
+    let mut from = start;
+    while from > 0
+        && lines
+            .get(from - 1)
+            .is_some_and(|line| line.trim_start().starts_with('#'))
+    {
+        from -= 1;
+    }
+    let mut kept: Vec<&str> = lines.get(..from).unwrap_or_default().to_vec();
+    kept.extend(lines.get(end..).unwrap_or_default());
+    // No run of blank lines where the table was.
+    if kept.get(from).is_some_and(|line| line.trim().is_empty())
+        && from
+            .checked_sub(1)
+            .and_then(|before| kept.get(before))
+            .is_some_and(|line| line.trim().is_empty())
+    {
+        kept.remove(from);
+    }
+    let mut kept = kept.join("\n");
+    kept.push('\n');
+    Ok(kept)
 }
 
 /// Parses `text`; relative plugin paths are relative to `base`.
@@ -354,3 +429,6 @@ fn parse_string(text: &str) -> Option<(String, &str)> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests;

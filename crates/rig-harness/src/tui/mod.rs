@@ -97,9 +97,15 @@ impl Plugin for TuiPlugin {
                 PostUpdate,
                 (
                     render::layout.in_set(TuiSystems::Layout).run_if(
-                        resource_exists::<terminal::Tui>.and_then(render::needs_redraw.or_eager(
-                            resource_changed_or_removed::<crate::host::reload::ReloadBuild>,
-                        )),
+                        resource_exists::<terminal::Tui>.and_then(
+                            render::needs_redraw
+                                .or_eager(resource_changed_or_removed::<
+                                    crate::host::reload::ReloadBuild,
+                                >)
+                                .or_eager(resource_changed_or_removed::<
+                                    crate::host::reload::ReloadQueued,
+                                >),
+                        ),
                     ),
                     render::render
                         .in_set(TuiSystems::Render)
