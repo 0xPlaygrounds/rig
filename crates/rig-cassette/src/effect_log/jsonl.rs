@@ -1,20 +1,41 @@
-//! Effect logs as JSON lines on disk: a `{"header": …}` line whenever the
-//! header changed since the last one written, then one resolved record per
-//! line. Appending keeps a long-running host's log durable as it goes;
-//! [`read`] folds the lines back into one [`EffectLog`] that
-//! [`EffectLogReplayer`](super::EffectLogReplayer) replays.
+//! Effect logs as JSON lines on disk: `{"header": …}` lines and one
+//! resolved record per line. Appending keeps a long-running host's log
+//! durable as it goes; [`read`] folds the lines back into one [`EffectLog`]
+//! that [`EffectLogReplayer`](super::EffectLogReplayer) replays.
 //!
-//! The file grows with what happened, not with the length of the
-//! conversation. A completion request mostly repeats the one before it on
-//! the same handler and scope (an agent's previous call) plus a few new
-//! messages, so [`Writer`] writes it as a continuation of that request:
-//! `{"id": …, "after": <the earlier record's id>, "keep": <messages kept>,
-//! "same_tools": true, "record": …}`, whose record holds only the appended
-//! messages, and no tools when they are the earlier request's. [`read`]
-//! restores the whole request, so a replayer sees what was dispatched. The
-//! writer also leaves out the parts of a completion's raw provider document
-//! that echo the request (`instructions`, `tools`) and the per-item usage
-//! attribution (`usage.attribution`); nothing reads them back.
+//! The file grows with what is new, not with the length of the
+//! conversation:
+//!
+//! - **Header deltas.** A header line states only what the lines before it
+//!   do not: a new handler, a newly touched key. [`read`] merges them.
+//! - **Requests as continuations.** A completion request mostly repeats an
+//!   earlier one: the agent's previous request plus its reply and a few new
+//!   messages, or after a compaction a summary and the messages kept. So
+//!   [`Writer`] writes it against a recent request, its base:
+//!   `{"id": …, "after": <base id>, "keep": <base messages it starts with>,
+//!   "then": [<pieces>], "same_tools": true, "record": …}`, whose record
+//!   holds only the messages no piece finds elsewhere, and no tools when
+//!   they are the base's. The pieces after the kept prefix are
+//!   `{"base": [from, to]}`, a run of the base's messages; `{"new": n}`, the
+//!   record's next `n` messages; and `{"reply": id}`, the record's next
+//!   message, written without the content and origin it repeats of
+//!   completion `id`'s reply; and `{"results": [id, …]}`, the record's next
+//!   message, whose tool results without content take those of tool calls
+//!   `id`, in order. Without `then`, all the record's messages follow the
+//!   prefix. A base is one of the last four requests on the same handler
+//!   and scope, or the latest on another.
+//! - **Each reply and tool result once.** The model's reply is in its
+//!   record's outcome and a tool's result in its call's; the next request's
+//!   copies are `reply` and `results` pieces.
+//! - **Across restarts.** A [`Writer`] on a file that already has lines
+//!   reads it once, on its first append, and continues its header and
+//!   requests.
+//!
+//! The writer also leaves out the parts of a completion's raw provider
+//! document that echo the request (`instructions`, `tools`) and the
+//! per-item usage attribution (`usage.attribution`); nothing reads them
+//! back. [`read`] restores every request whole, so a replayer sees what was
+//! dispatched.
 //!
 //! ```no_run
 //! use rig_cassette::effect_log::{EffectLogRecorder, jsonl};
@@ -27,12 +48,13 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use rig_core::effect::{EffectId, EffectKind, EffectRecord};
+use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -45,31 +67,28 @@ use super::{EffectLog, LogHeader};
 #[derive(Debug)]
 pub struct Writer {
     path: PathBuf,
-    /// The header last written by this writer.
-    written: Option<LogHeader>,
-    /// The completion request last written per chain, which the next one
-    /// on that chain is written against.
-    heads: HashMap<String, Head>,
-}
-
-/// A chain's latest completion request as written: each message and the
-/// tools as JSON text.
-#[derive(Debug)]
-struct Head {
-    id: EffectId,
-    history: Vec<String>,
-    tools: String,
+    /// Whether the file's earlier lines were read, which the first append
+    /// does.
+    resumed: bool,
+    /// Whether the file has a line.
+    started: bool,
+    /// The header last appended, to tell whether the next one changed.
+    given: Option<LogHeader>,
+    /// What a reader knows after the lines written so far.
+    known: Known,
 }
 
 impl Writer {
     /// A writer appending to the file at `path`, created on first write.
-    /// Its first completion request per handler and scope is written
-    /// whole, later ones as continuations.
+    /// When the file has lines, the first append reads them and continues
+    /// from them.
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self {
             path: path.into(),
-            written: None,
-            heads: HashMap::new(),
+            resumed: false,
+            started: false,
+            given: None,
+            known: Known::default(),
         }
     }
 
@@ -78,53 +97,91 @@ impl Writer {
         &self.path
     }
 
-    /// Appends `log`'s records, after its header when that differs from
-    /// the last one this writer wrote. Writes nothing when there is
-    /// neither.
+    /// Appends `log`'s records, after a header line with what its header
+    /// adds to the file's when it differs from the last one appended.
+    /// Writes nothing when there is neither.
     pub fn append(&mut self, log: &EffectLog) -> io::Result<()> {
-        let header_due = self.written.as_ref() != Some(&log.header);
+        if !self.resumed {
+            self.resume();
+        }
+        let header_due = self.given.as_ref() != Some(&log.header);
         if log.records.is_empty() && !header_due {
             return Ok(());
         }
         let mut lines = Vec::new();
+        let mut header = None;
         if header_due {
-            serde_json::to_writer(
-                &mut lines,
-                &HeaderLine {
-                    header: &log.header,
-                },
-            )?;
-            lines.push(b'\n');
+            let delta = delta(&self.known.header, &log.header);
+            if !self.started || delta != LogHeader::default() {
+                serde_json::to_writer(&mut lines, &HeaderLine { header: &delta })?;
+                lines.push(b'\n');
+                header = Some(delta);
+            }
         }
         for record in &log.records {
             if let Err(failure) = self.encode(record, &mut lines) {
-                self.heads.clear();
+                self.known.chains.clear();
                 return Err(failure);
             }
             lines.push(b'\n');
         }
-        let written = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .and_then(|mut file| file.write_all(&lines));
-        if let Err(failure) = written {
-            // The heads may name records that never reached the file.
-            self.heads.clear();
-            return Err(failure);
+        if !lines.is_empty() {
+            let written = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.path)
+                .and_then(|mut file| file.write_all(&lines));
+            if let Err(failure) = written {
+                // The chains may name records that never reached the file.
+                self.known.chains.clear();
+                return Err(failure);
+            }
+            self.started = true;
+        }
+        if let Some(delta) = header {
+            merge(&mut self.known.header, delta);
         }
         if header_due {
-            self.written = Some(log.header.clone());
+            self.given = Some(log.header.clone());
         }
         Ok(())
     }
 
-    /// Writes `record` to `out`: a completion as a continuation of its
-    /// chain's previous request when the two share a first message, any
+    /// Reads the lines the file already has, so this writer continues its
+    /// header and requests. A file that is missing has none; one that
+    /// cannot be read back is continued as if it had none, with whole
+    /// records and a whole header.
+    fn resume(&mut self) {
+        self.resumed = true;
+        let Ok(file) = File::open(&self.path) else {
+            return;
+        };
+        let mut known = Known::default();
+        for line in BufReader::new(file).lines() {
+            let folded = line.and_then(|line| {
+                self.started |= !line.trim().is_empty();
+                known.line(&line)
+            });
+            if folded.is_err() {
+                self.started = true;
+                return;
+            }
+        }
+        self.known = known;
+    }
+
+    /// Writes `record` to `out`: a completion as a continuation of the
+    /// recent request it shares the most with, when it shares any, any
     /// other record as it is.
     fn encode(&mut self, record: &EffectRecord, out: &mut Vec<u8>) -> io::Result<()> {
-        if !matches!(record.kind, EffectKind::Completion { .. }) {
-            return Ok(serde_json::to_writer(out, record)?);
+        match record.kind {
+            EffectKind::Completion { .. } => {}
+            EffectKind::ToolCall { .. } => {
+                let value = serde_json::to_value(record)?;
+                self.known.note(&value, None)?;
+                return Ok(serde_json::to_writer(out, &value)?);
+            }
+            _ => return Ok(serde_json::to_writer(out, record)?),
         }
         let mut value = serde_json::to_value(record)?;
         for (parent, key) in RAW_ECHOES {
@@ -132,61 +189,534 @@ impl Writer {
                 parent.shift_remove(key);
             }
         }
-        let chain = chain_of(&value);
         let request = value
+            .pointer("/kind/request")
+            .and_then(Value::as_object)
+            .ok_or_else(|| io::Error::other("a completion record without a request object"))?;
+        let history = request
+            .get("chat_history")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        let texts: Vec<String> = history.iter().map(Value::to_string).collect();
+        let tools = request.get("tools").map(Value::to_string);
+        let chain = chain_of(&value);
+        let plan = self
+            .known
+            .bases(&chain)
+            .filter_map(|base| Plan::of(base, history, &texts, tools.as_deref(), &self.known))
+            .min_by_key(|plan| plan.cost);
+        // A reader restores the record before noting it, so the requests
+        // the plan refers to are still known to it.
+        self.known
+            .note(&value, plan.as_ref().map(|plan| plan.after))?;
+        let Some(plan) = plan else {
+            return Ok(serde_json::to_writer(out, &value)?);
+        };
+        if let Some(request) = value
             .pointer_mut("/kind/request")
             .and_then(Value::as_object_mut)
-            .ok_or_else(|| io::Error::other("a completion record without a request object"))?;
-        let head = Head {
-            id: record.id,
-            history: request
-                .get("chat_history")
-                .and_then(Value::as_array)
-                .map(|messages| messages.iter().map(Value::to_string).collect())
-                .unwrap_or_default(),
-            tools: request
-                .get("tools")
-                .map(Value::to_string)
-                .unwrap_or_default(),
-        };
-        let continued = self.heads.get(&chain).and_then(|base| {
-            let keep = base
-                .history
-                .iter()
-                .zip(&head.history)
-                .take_while(|(kept, sent)| kept == sent)
-                .count();
-            (keep > 0).then_some((base.id, keep, base.tools == head.tools))
-        });
-        match continued {
-            None => serde_json::to_writer(&mut *out, &value)?,
-            Some((after, keep, same_tools)) => {
-                if let Some(history) = request
-                    .get_mut("chat_history")
-                    .and_then(Value::as_array_mut)
-                {
-                    history.drain(..keep.min(history.len()));
-                }
-                if same_tools {
-                    request.shift_remove("tools");
-                }
-                if let Some(fields) = value.as_object_mut() {
-                    fields.shift_remove("id");
-                }
-                serde_json::to_writer(
-                    &mut *out,
-                    &DeltaLine {
-                        id: record.id,
-                        after,
-                        keep,
-                        same_tools,
-                        record: value,
-                    },
-                )?;
+        {
+            request.insert("chat_history".to_owned(), Value::Array(plan.written));
+            if plan.same_tools {
+                request.shift_remove("tools");
             }
         }
-        self.heads.insert(chain, head);
+        if let Some(fields) = value.as_object_mut() {
+            fields.shift_remove("id");
+        }
+        Ok(serde_json::to_writer(
+            out,
+            &DeltaLine {
+                id: record.id,
+                after: plan.after,
+                keep: plan.keep,
+                then: plan.then,
+                same_tools: plan.same_tools,
+                record: value,
+            },
+        )?)
+    }
+}
+
+/// How many completion requests per handler and scope stay bases for the
+/// requests after them: an agent's latest, and those before it, such as
+/// its request before a compaction's summarizing one.
+const RECENT: usize = 4;
+
+/// How many tool results stay known for the requests after them to
+/// repeat: more than an agent's calls in one reply.
+const RECENT_RESULTS: usize = 64;
+
+/// What the lines so far establish for the lines after them: the header
+/// they merge to, the recent completion requests of each chain (handler
+/// key and scope), and the recent tool results.
+#[derive(Debug, Default)]
+struct Known {
+    header: LogHeader,
+    chains: BTreeMap<String, VecDeque<Head>>,
+    /// Tool-call records' successful results as JSON text, latest last.
+    results: VecDeque<(EffectId, String)>,
+}
+
+/// A completion request as written or read: each message and the tools as
+/// JSON text, and the reply it got.
+#[derive(Debug)]
+struct Head {
+    id: EffectId,
+    history: Vec<Arc<str>>,
+    tools: Option<Arc<str>>,
+    reply: Option<Reply>,
+}
+
+/// A completion's reply as JSON text: its choice and its origin, which the
+/// assistant message repeating it carries as `content` and `origin`.
+#[derive(Debug)]
+struct Reply {
+    content: String,
+    origin: String,
+}
+
+impl Reply {
+    /// `message`, written without this reply's content and origin, whole
+    /// again, its fields in a message's order.
+    fn restore(&self, message: Value) -> io::Result<Value> {
+        let Value::Object(mut rest) = message else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "a message repeating a reply is not an object",
+            ));
+        };
+        let mut whole = serde_json::Map::new();
+        if let Some(role) = rest.shift_remove("role") {
+            whole.insert("role".to_owned(), role);
+        }
+        whole.insert("content".to_owned(), serde_json::from_str(&self.content)?);
+        whole.insert("origin".to_owned(), serde_json::from_str(&self.origin)?);
+        whole.extend(rest);
+        Ok(Value::Object(whole))
+    }
+}
+
+impl Known {
+    /// Folds one line in: a header merges into the header, a record comes
+    /// back whole. A blank line is neither.
+    fn line(&mut self, line: &str) -> io::Result<Option<Value>> {
+        if line.trim().is_empty() {
+            return Ok(None);
+        }
+        let value: Value = serde_json::from_str(line)?;
+        if value.get("header").is_some() {
+            let HeaderLine { header } = serde_json::from_value::<HeaderLine<LogHeader>>(value)?;
+            merge(&mut self.header, header);
+            return Ok(None);
+        }
+        let (value, base) = if value.get("after").is_some() {
+            let line: DeltaLine<Value> = serde_json::from_value(value)?;
+            let after = line.after;
+            (self.restore(line)?, Some(after))
+        } else {
+            (value, None)
+        };
+        self.note(&value, base)?;
+        Ok(Some(value))
+    }
+
+    /// Notes a whole record: a completion becomes its chain's latest
+    /// request, sharing message texts with `base`, the request it was
+    /// written against; a tool call's result becomes the latest.
+    fn note(&mut self, record: &Value, base: Option<EffectId>) -> io::Result<()> {
+        let id = || -> io::Result<EffectId> {
+            Ok(serde_json::from_value(
+                record.get("id").cloned().unwrap_or_default(),
+            )?)
+        };
+        match record.pointer("/kind/effect").and_then(Value::as_str) {
+            Some("completion") => {}
+            Some("tool_call") => {
+                if let Some(value) = record.pointer("/outcome/Ok/result/value") {
+                    self.results.push_back((id()?, value.to_string()));
+                    while self.results.len() > RECENT_RESULTS {
+                        self.results.pop_front();
+                    }
+                }
+                return Ok(());
+            }
+            _ => return Ok(()),
+        }
+        let id = id()?;
+        let request = record.pointer("/kind/request");
+        let field = |name: &str| request.and_then(|request| request.get(name));
+        let base = base.and_then(|base| self.head(base));
+        let shared: HashMap<&str, &Arc<str>> = base
+            .map(|base| base.history.iter().map(|text| (&**text, text)).collect())
+            .unwrap_or_default();
+        let history = match field("chat_history") {
+            Some(Value::Array(messages)) => messages
+                .iter()
+                .map(|message| {
+                    let text = message.to_string();
+                    shared
+                        .get(text.as_str())
+                        .map_or_else(|| Arc::from(text.as_str()), |kept| Arc::clone(kept))
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let tools = field("tools").map(|tools| {
+            let text = tools.to_string();
+            base.and_then(|base| base.tools.as_ref())
+                .filter(|kept| ***kept == *text)
+                .map_or_else(|| Arc::from(text.as_str()), Arc::clone)
+        });
+        let reply = match (
+            record.pointer("/outcome/Ok/choice"),
+            record.pointer("/outcome/Ok/origin"),
+        ) {
+            (Some(content), Some(origin)) => Some(Reply {
+                content: content.to_string(),
+                origin: origin.to_string(),
+            }),
+            _ => None,
+        };
+        let chain = self.chains.entry(chain_of(record)).or_default();
+        chain.push_back(Head {
+            id,
+            history,
+            tools,
+            reply,
+        });
+        while chain.len() > RECENT {
+            chain.pop_front();
+        }
         Ok(())
+    }
+
+    /// The recent request `id`, on any chain.
+    fn head(&self, id: EffectId) -> Option<&Head> {
+        self.chains
+            .values()
+            .flat_map(VecDeque::iter)
+            .find(|head| head.id == id)
+    }
+
+    /// The requests a completion on `chain` may be written against: the
+    /// chain's recent ones, latest first, then every other chain's latest.
+    fn bases<'a>(&'a self, chain: &'a str) -> impl Iterator<Item = &'a Head> {
+        let own = self
+            .chains
+            .get(chain)
+            .into_iter()
+            .flat_map(|heads| heads.iter().rev());
+        let others = self
+            .chains
+            .iter()
+            .filter(move |(name, _)| name.as_str() != chain)
+            .filter_map(|(_, heads)| heads.back());
+        own.chain(others)
+    }
+
+    /// The recent completion whose reply `message` repeats, and `message`
+    /// without the content and origin it repeats.
+    fn reply_in(&self, message: &Value) -> Option<(EffectId, Value)> {
+        let fields = message.as_object()?;
+        let origin = fields.get("origin")?.to_string();
+        let content = fields.get("content")?.to_string();
+        let id = self
+            .chains
+            .values()
+            .flat_map(VecDeque::iter)
+            .find(|head| {
+                head.reply
+                    .as_ref()
+                    .is_some_and(|reply| reply.origin == origin && reply.content == content)
+            })?
+            .id;
+        let mut rest = fields.clone();
+        rest.shift_remove("content");
+        rest.shift_remove("origin");
+        Some((id, Value::Object(rest)))
+    }
+
+    /// The recent tool calls whose results `message`'s tool results repeat,
+    /// in order, and `message` with those results' content left out.
+    fn results_in(&self, message: &Value) -> Option<(Vec<EffectId>, Value)> {
+        let mut fields = message.as_object()?.clone();
+        let mut ids = Vec::new();
+        for item in fields.get_mut("content")?.as_array_mut()? {
+            let Some(item) = item
+                .as_object_mut()
+                .filter(|item| item.get("type").and_then(Value::as_str) == Some(TOOL_RESULT))
+            else {
+                continue;
+            };
+            let Some(content) = item.get("content").map(Value::to_string) else {
+                continue;
+            };
+            if let Some((id, _)) = self
+                .results
+                .iter()
+                .rev()
+                .find(|(_, result)| *result == content)
+            {
+                ids.push(*id);
+                item.shift_remove("content");
+            }
+        }
+        (!ids.is_empty()).then(|| (ids, Value::Object(fields)))
+    }
+
+    /// `message`, written without the content of its tool results that
+    /// repeat the results of tool calls `ids`, whole again.
+    fn restore_results(&self, mut message: Value, ids: Vec<EffectId>) -> io::Result<Value> {
+        let invalid = |what: String| io::Error::new(io::ErrorKind::InvalidData, what);
+        let mut ids = ids.into_iter();
+        let items = message
+            .get_mut("content")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| invalid("a message repeating tool results has no content".to_owned()))?;
+        for item in items {
+            let Some(fields) = item.as_object_mut().filter(|item| {
+                item.get("type").and_then(Value::as_str) == Some(TOOL_RESULT)
+                    && !item.contains_key("content")
+            }) else {
+                continue;
+            };
+            let id = ids.next().ok_or_else(|| {
+                invalid("a message leaves out more tool results than it names".to_owned())
+            })?;
+            let (_, result) = self
+                .results
+                .iter()
+                .find(|(known, _)| *known == id)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "a message repeats the result of tool call {id}, which is not recent"
+                    ))
+                })?;
+            // A tool result's content comes before its error flag.
+            let mut whole = serde_json::Map::new();
+            let mut content = Some(serde_json::from_str::<Value>(result)?);
+            for (key, value) in std::mem::take(fields) {
+                if key == "is_error"
+                    && let Some(content) = content.take()
+                {
+                    whole.insert("content".to_owned(), content);
+                }
+                whole.insert(key, value);
+            }
+            if let Some(content) = content {
+                whole.insert("content".to_owned(), content);
+            }
+            *fields = whole;
+        }
+        if ids.next().is_some() {
+            return Err(invalid(
+                "a message names more tool results than it leaves out".to_owned(),
+            ));
+        }
+        Ok(message)
+    }
+
+    /// The record a continuation line stands for, its request made whole
+    /// from its base and the replies it refers to.
+    fn restore(&self, line: DeltaLine<Value>) -> io::Result<Value> {
+        let invalid = |what: String| io::Error::new(io::ErrorKind::InvalidData, what);
+        let DeltaLine {
+            id,
+            after,
+            keep,
+            then,
+            same_tools,
+            mut record,
+        } = line;
+        let base = self.head(after).ok_or_else(|| {
+            invalid(format!(
+                "record {id} continues completion {after}, which is not a recent request"
+            ))
+        })?;
+        let messages = |from: usize, to: usize| -> io::Result<Vec<Value>> {
+            base.history
+                .get(from..to)
+                .ok_or_else(|| {
+                    invalid(format!(
+                        "record {id} takes messages {from}..{to} of completion {after}, which has {}",
+                        base.history.len()
+                    ))
+                })?
+                .iter()
+                .map(|text| Ok(serde_json::from_str(text)?))
+                .collect()
+        };
+        let short = || invalid(format!("record {id} places more messages than it holds"));
+        let request = record
+            .pointer_mut("/kind/request")
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| invalid(format!("record {id} continues a request but has none")))?;
+        let mut held = match request.shift_remove("chat_history") {
+            Some(Value::Array(held)) => held,
+            _ => Vec::new(),
+        }
+        .into_iter();
+        let mut history = messages(0, keep)?;
+        if then.is_empty() {
+            history.extend(held.by_ref());
+        }
+        for piece in then {
+            match piece {
+                Piece::Base(from, to) => history.extend(messages(from, to)?),
+                Piece::New(count) => {
+                    for _ in 0..count {
+                        history.push(held.next().ok_or_else(short)?);
+                    }
+                }
+                Piece::Reply(of) => {
+                    let reply = self
+                        .head(of)
+                        .and_then(|head| head.reply.as_ref())
+                        .ok_or_else(|| {
+                            invalid(format!(
+                                "record {id} repeats the reply of completion {of}, which is not a recent request with a reply"
+                            ))
+                        })?;
+                    history.push(reply.restore(held.next().ok_or_else(short)?)?);
+                }
+                Piece::Results(ids) => {
+                    history.push(self.restore_results(held.next().ok_or_else(short)?, ids)?);
+                }
+            }
+        }
+        if held.next().is_some() {
+            return Err(invalid(format!(
+                "record {id} holds messages its pieces do not place"
+            )));
+        }
+        request.insert("chat_history".to_owned(), Value::Array(history));
+        if same_tools {
+            let tools = base.tools.as_ref().ok_or_else(|| {
+                invalid(format!(
+                    "record {id} reuses the tools of completion {after}, which has none"
+                ))
+            })?;
+            request.insert("tools".to_owned(), serde_json::from_str(tools)?);
+        }
+        if let Some(fields) = record.as_object_mut() {
+            fields.insert("id".to_owned(), serde_json::to_value(id)?);
+        }
+        Ok(record)
+    }
+}
+
+/// How a completion request is written against a base request.
+struct Plan {
+    after: EffectId,
+    /// How many of the base's first messages it starts with.
+    keep: usize,
+    /// Where its later messages come from; empty when all are written.
+    then: Vec<Piece>,
+    /// The messages written in the record.
+    written: Vec<Value>,
+    same_tools: bool,
+    /// About the bytes written: what the choice of base minimizes.
+    cost: usize,
+}
+
+impl Plan {
+    /// How `history` (as `texts`) and `tools` are written against `base`,
+    /// or `None` when they share nothing with it.
+    fn of(
+        base: &Head,
+        history: &[Value],
+        texts: &[String],
+        tools: Option<&str>,
+        known: &Known,
+    ) -> Option<Self> {
+        let keep = base
+            .history
+            .iter()
+            .zip(texts)
+            .take_while(|(kept, sent)| ***kept == ***sent)
+            .count();
+        let mut starts: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (at, text) in base.history.iter().enumerate() {
+            starts.entry(&**text).or_default().push(at);
+        }
+        let mut reused = keep > 0;
+        let mut then = Vec::new();
+        let mut written = Vec::new();
+        let mut cost = 0;
+        let mut at = keep;
+        while let (Some(text), Some(message)) = (texts.get(at), history.get(at)) {
+            let run = starts.get(text.as_str()).and_then(|starts| {
+                starts
+                    .iter()
+                    .map(|&from| {
+                        let kept = base.history.get(from..).unwrap_or_default();
+                        let sent = texts.get(at..).unwrap_or_default();
+                        let len = kept
+                            .iter()
+                            .zip(sent)
+                            .take_while(|(kept, sent)| ***kept == ***sent)
+                            .count();
+                        (from, len)
+                    })
+                    .max_by_key(|&(_, len)| len)
+            });
+            if let Some((from, len)) = run.filter(|&(_, len)| len > 0) {
+                match then.last_mut() {
+                    Some(Piece::Base(_, to)) if *to == from => *to += len,
+                    _ => then.push(Piece::Base(from, from + len)),
+                }
+                reused = true;
+                at += len;
+                continue;
+            }
+            let repeated = known
+                .reply_in(message)
+                .map(|(id, rest)| (Piece::Reply(id), rest))
+                .or_else(|| {
+                    known
+                        .results_in(message)
+                        .map(|(ids, rest)| (Piece::Results(ids), rest))
+                });
+            match repeated {
+                Some((piece, rest)) => {
+                    cost += rest.to_string().len();
+                    then.push(piece);
+                    written.push(rest);
+                    reused = true;
+                }
+                None => {
+                    cost += text.len();
+                    match then.last_mut() {
+                        Some(Piece::New(count)) => *count += 1,
+                        _ => then.push(Piece::New(1)),
+                    }
+                    written.push(message.clone());
+                }
+            }
+            at += 1;
+        }
+        if !reused {
+            return None;
+        }
+        let same_tools = tools.is_some() && base.tools.as_deref() == tools;
+        if !same_tools {
+            cost += tools.map_or(0, str::len);
+        }
+        if then.iter().all(|piece| matches!(piece, Piece::New(_))) {
+            then.clear();
+        }
+        // About the bytes of a piece.
+        cost += then.len() * 16;
+        Some(Self {
+            after: base.id,
+            keep,
+            then,
+            written,
+            same_tools,
+            cost,
+        })
     }
 }
 
@@ -200,7 +730,6 @@ const RAW_ECHOES: [(&str, &str); 3] = [
 ];
 
 /// The chain a serialized record belongs to: its handler key and scope.
-/// Completion requests on one chain continue one another.
 fn chain_of(record: &Value) -> String {
     let field = |name: &str| record.get(name).map(Value::to_string).unwrap_or_default();
     format!("{}\u{0}{}", field("key"), field("scope"))
@@ -212,100 +741,20 @@ fn chain_of(record: &Value) -> String {
 /// identities, stream errors and deliveries accumulate; the hook stack,
 /// run spec and serving policy are the latest stated. A continued
 /// completion request is restored whole. A line that is neither a header
-/// nor a record, or a continuation of a request that is not its chain's
-/// latest, is an error.
+/// nor a record, or a continuation that refers to a request that is not
+/// recent or places messages it does not have, is an error.
 pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
-    let mut log = EffectLog::default();
-    let mut heads: HashMap<String, ReadHead> = HashMap::new();
+    let mut known = Known::default();
+    let mut records = Vec::new();
     for line in BufReader::new(File::open(path)?).lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
+        if let Some(record) = known.line(&line?)? {
+            records.push(serde_json::from_value(record)?);
         }
-        let value: Value = serde_json::from_str(&line)?;
-        if value.get("header").is_some() {
-            let HeaderLine { header } = serde_json::from_value::<HeaderLine<LogHeader>>(value)?;
-            merge(&mut log.header, header);
-            continue;
-        }
-        let value = if value.get("after").is_some() {
-            restore(serde_json::from_value(value)?, &heads)?
-        } else {
-            value
-        };
-        if value.pointer("/kind/effect").and_then(Value::as_str) == Some("completion") {
-            let request = value.pointer("/kind/request");
-            let field = |name: &str| request.and_then(|request| request.get(name)).cloned();
-            heads.insert(
-                chain_of(&value),
-                ReadHead {
-                    id: serde_json::from_value(value.get("id").cloned().unwrap_or_default())?,
-                    history: match field("chat_history") {
-                        Some(Value::Array(messages)) => messages,
-                        _ => Vec::new(),
-                    },
-                    tools: field("tools"),
-                },
-            );
-        }
-        log.records.push(serde_json::from_value(value)?);
     }
-    Ok(log)
-}
-
-/// A chain's latest completion request as read back.
-struct ReadHead {
-    id: EffectId,
-    history: Vec<Value>,
-    tools: Option<Value>,
-}
-
-/// The record a continuation line stands for, its request made whole
-/// from its chain's latest one.
-fn restore(line: DeltaLine<Value>, heads: &HashMap<String, ReadHead>) -> io::Result<Value> {
-    let invalid = |what: String| io::Error::new(io::ErrorKind::InvalidData, what);
-    let DeltaLine {
-        id,
-        after,
-        keep,
-        same_tools,
-        mut record,
-    } = line;
-    let base = heads
-        .get(&chain_of(&record))
-        .filter(|base| base.id == after)
-        .ok_or_else(|| {
-            invalid(format!(
-                "record {id} continues completion {after}, which is not the latest on its handler and scope"
-            ))
-        })?;
-    let kept = base.history.get(..keep).ok_or_else(|| {
-        invalid(format!(
-            "record {id} keeps {keep} messages of completion {after}, which has {}",
-            base.history.len()
-        ))
-    })?;
-    let request = record
-        .pointer_mut("/kind/request")
-        .and_then(Value::as_object_mut)
-        .ok_or_else(|| invalid(format!("record {id} continues a request but has none")))?;
-    let mut history = kept.to_vec();
-    if let Some(Value::Array(appended)) = request.shift_remove("chat_history") {
-        history.extend(appended);
-    }
-    request.insert("chat_history".to_owned(), Value::Array(history));
-    if same_tools {
-        let tools = base.tools.clone().ok_or_else(|| {
-            invalid(format!(
-                "record {id} reuses the tools of completion {after}, which has none"
-            ))
-        })?;
-        request.insert("tools".to_owned(), tools);
-    }
-    if let Some(fields) = record.as_object_mut() {
-        fields.insert("id".to_owned(), serde_json::to_value(id)?);
-    }
-    Ok(record)
+    Ok(EffectLog {
+        header: known.header,
+        records,
+    })
 }
 
 /// How many of the log's last lines [`last_id`] reads.
@@ -433,6 +882,56 @@ fn merge(into: &mut LogHeader, header: LogHeader) {
     into.bus = header.bus.or(into.bus.take());
 }
 
+/// What a header line must state for a reader that merged `merged` to
+/// merge `header`: the parts of `header` that [`merge`] would change.
+/// Deliveries accumulate, so they are stated as they are.
+fn delta(merged: &LogHeader, header: &LogHeader) -> LogHeader {
+    let unknown = |row: &EffectRow, known: &EffectRow| -> EffectRow {
+        row.iter()
+            .filter(|(key, _)| !known.contains_key(key))
+            .map(|(key, family)| (key.clone(), *family))
+            .collect()
+    };
+    LogHeader {
+        deliveries: header.deliveries.clone(),
+        delivery_limitations: header
+            .delivery_limitations
+            .iter()
+            .filter(|limitation| !merged.delivery_limitations.contains(limitation))
+            .cloned()
+            .collect(),
+        stream_errors: header
+            .stream_errors
+            .iter()
+            .filter(|(id, errors)| merged.stream_errors.get(*id) != Some(*errors))
+            .map(|(id, errors)| (*id, errors.clone()))
+            .collect(),
+        run_spec: header
+            .run_spec
+            .filter(|spec| merged.run_spec != Some(*spec)),
+        handlers: header
+            .handlers
+            .iter()
+            .filter(|handler| !merged.handlers.contains(handler))
+            .cloned()
+            .collect(),
+        signature: unknown(&header.signature, &merged.signature),
+        hooks: if header.hooks == merged.hooks {
+            Vec::new()
+        } else {
+            header.hooks.clone()
+        },
+        required: unknown(&header.required, &merged.required),
+        bus: header.bus.filter(|bus| merged.bus != Some(*bus)),
+        programs: header
+            .programs
+            .iter()
+            .filter(|(scope, identity)| merged.programs.get(*scope) != Some(*identity))
+            .map(|(scope, identity)| (scope.clone(), identity.clone()))
+            .collect(),
+    }
+}
+
 /// A header line, `{"header": …}`; record lines are bare records.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -440,19 +939,41 @@ struct HeaderLine<H> {
     header: H,
 }
 
-/// A completion record written as a continuation of its chain's latest
-/// request: `record` holds the messages after the first `keep` of request
-/// `after`, no tools when `same_tools`, and no id.
+/// A completion record written as a continuation of request `after`:
+/// `record` holds the messages no piece finds elsewhere, no tools when
+/// `same_tools`, and no id. Its history is the first `keep` messages of
+/// `after`, then `then`'s pieces, or without them every held message.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct DeltaLine<R> {
     id: EffectId,
     after: EffectId,
     keep: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    then: Vec<Piece>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     same_tools: bool,
     record: R,
 }
+
+/// Where a continued request's next messages come from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Piece {
+    /// The base request's messages `from..to`.
+    Base(usize, usize),
+    /// The record's next `n` held messages.
+    New(usize),
+    /// The record's next held message, with the content and origin of the
+    /// reply of completion `id`.
+    Reply(EffectId),
+    /// The record's next held message, whose tool results without content
+    /// take, in order, the results of tool calls `ids`.
+    Results(Vec<EffectId>),
+}
+
+/// The `type` of a tool result in a message's content.
+const TOOL_RESULT: &str = "toolresult";
 
 #[cfg(test)]
 mod tests;
