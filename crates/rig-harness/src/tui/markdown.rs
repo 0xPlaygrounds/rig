@@ -3,7 +3,7 @@
 //! tables. Parsing is pulldown-cmark's, with the options codex's terminal
 //! view turns on (`references/codex/codex-rs/tui/src/markdown_render.rs:400-403`).
 
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
@@ -195,16 +195,11 @@ impl Writer {
                 self.block();
                 self.quotes += 1;
             }
-            Tag::CodeBlock(kind) => {
+            // The fence's info string (the language) is not content: the
+            // block's colour already marks it as code.
+            Tag::CodeBlock(_) => {
                 self.block();
                 self.code = true;
-                if let CodeBlockKind::Fenced(language) = kind
-                    && !language.is_empty()
-                {
-                    let mut spans = self.prefix();
-                    spans.push(Span::from(format!("  {language}")).dim().italic());
-                    self.lines.push(Line::from(spans));
-                }
             }
             Tag::List(start) => {
                 if self.lists.is_empty() {
@@ -388,3 +383,6 @@ impl Writer {
         self.lines
     }
 }
+
+#[cfg(test)]
+mod tests;
