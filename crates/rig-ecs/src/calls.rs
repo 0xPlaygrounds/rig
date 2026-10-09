@@ -70,7 +70,7 @@ impl Default for Wake {
     }
 }
 
-/// Runs [`SETTLE_FRAMES`] more frames after a frame some [`Wake`] woke,
+/// Runs four more frames after a frame some [`Wake`] woke,
 /// in `Last`, by asking the loop for each without counting it as a wake.
 pub fn settle(wake: Res<Wake>, mut left: Local<u32>) {
     if wake.woken.swap(false, Ordering::AcqRel) {

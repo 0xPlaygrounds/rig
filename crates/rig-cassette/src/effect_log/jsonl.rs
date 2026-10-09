@@ -129,7 +129,7 @@ impl Writer {
         let mut value = serde_json::to_value(record)?;
         for (parent, key) in RAW_ECHOES {
             if let Some(parent) = value.pointer_mut(parent).and_then(Value::as_object_mut) {
-                parent.remove(key);
+                parent.shift_remove(key);
             }
         }
         let chain = chain_of(&value);
@@ -168,10 +168,10 @@ impl Writer {
                     history.drain(..keep.min(history.len()));
                 }
                 if same_tools {
-                    request.remove("tools");
+                    request.shift_remove("tools");
                 }
                 if let Some(fields) = value.as_object_mut() {
-                    fields.remove("id");
+                    fields.shift_remove("id");
                 }
                 serde_json::to_writer(
                     &mut *out,
@@ -290,7 +290,7 @@ fn restore(line: DeltaLine<Value>, heads: &HashMap<String, ReadHead>) -> io::Res
         .and_then(Value::as_object_mut)
         .ok_or_else(|| invalid(format!("record {id} continues a request but has none")))?;
     let mut history = kept.to_vec();
-    if let Some(Value::Array(appended)) = request.remove("chat_history") {
+    if let Some(Value::Array(appended)) = request.shift_remove("chat_history") {
         history.extend(appended);
     }
     request.insert("chat_history".to_owned(), Value::Array(history));
