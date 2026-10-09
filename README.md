@@ -355,7 +355,7 @@ plugin = "rig_harness::builtin::BuiltinToolsPlugin"
 plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
 
 [[plugin]]
-plugin = "rig_harness::rig_ecs::subagents::SubagentsPlugin"
+plugin = "rig_harness::builtin::SubagentsPlugin"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"

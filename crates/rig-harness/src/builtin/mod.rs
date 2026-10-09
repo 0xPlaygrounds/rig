@@ -8,4 +8,5 @@ pub mod tools;
 
 pub use commands::BuiltinCommandsPlugin;
 pub use login::LoginPlugin;
+pub use rig_ecs::subagents::SubagentsPlugin;
 pub use tools::BuiltinToolsPlugin;
