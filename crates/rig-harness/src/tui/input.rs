@@ -255,8 +255,8 @@ fn input_key(
                 commands.trigger(Interrupt { entity });
             }
         }
-        KeyCode::Up if shift => view.scroll += 1,
-        KeyCode::Down if shift => view.scroll = view.scroll.saturating_sub(1),
+        KeyCode::Up if shift => view.scroll.up(1),
+        KeyCode::Down if shift => view.scroll.down(1),
         KeyCode::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),
             None => view.editor.up(),
@@ -265,8 +265,8 @@ fn input_key(
             Some(completion) => completion.select(1),
             None => view.editor.down(),
         },
-        KeyCode::PageUp => view.scroll += PAGE,
-        KeyCode::PageDown => view.scroll = view.scroll.saturating_sub(PAGE),
+        KeyCode::PageUp => view.scroll.up(PAGE),
+        KeyCode::PageDown => view.scroll.down(PAGE),
         _ => {}
     }
 }
@@ -283,7 +283,7 @@ fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     }
     let text = view.editor.take();
     view.editor.remember(&text);
-    view.scroll = 0;
+    view.scroll.follow();
     let mode = if queue {
         DeliveryMode::Queue
     } else {

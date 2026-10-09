@@ -1,7 +1,12 @@
 //! Draws the focused agent: transcript, status line, input editor with its
 //! completion list, and the overlays.
 
+use std::time::{Duration, Instant};
+
 use bevy_ecs::prelude::*;
+use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
+use crossterm::{execute, queue};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -14,7 +19,7 @@ use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::renderers::ToolRenderer;
 use super::terminal::Tui;
-use super::transcript::{Part, Renderers, Transcript, plain_lines};
+use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::host::reload::{ReloadBuild, ReloadQueued};
@@ -24,6 +29,7 @@ use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
     Spawned, SpawnedBy,
 };
+use rig_ecs::calls::Wake;
 use rig_ecs::commands::SlashCommand;
 use rig_ecs::compaction::Compacted;
 use rig_ecs::inbox::Inbox;
@@ -40,12 +46,27 @@ const SUMMARY_LINES: usize = 12;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
 
+/// The shortest time between two frames drawn only for a streaming
+/// reply's new text: the loop's own limit of 60 frames a second would lay
+/// the whole reply out again for every few tokens.
+const STREAM_FRAME: Duration = Duration::from_millis(33);
+
+/// When [`needs_redraw`] last drew, whether streamed text waits to be
+/// drawn, and until when a wake for it is pending.
+#[derive(Default)]
+pub(crate) struct Paced {
+    drawn: Option<Instant>,
+    waiting: bool,
+    armed: Option<Instant>,
+}
+
 /// Whether anything drawn changed since the last frame: the view state (a
 /// key, a notice, a resize), an agent's drawn components (its
 /// [`Activity`] too, which counts a retry's wait down), a turn's calls, a
 /// streaming reply, a panel, or a plugin's [`RequestRedraw`]. A turn's end
 /// changes its conversation or comes with a notice. The rebuild's progress
-/// is checked separately.
+/// is checked separately. A streaming reply alone draws at most every
+/// [`STREAM_FRAME`], with a wake for the text that waits.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -67,18 +88,34 @@ pub(crate) fn needs_redraw(
     mut requests: MessageReader<RequestRedraw>,
     panels: Query<(), Changed<TuiPanel>>,
     mut removed_panels: RemovedComponents<TuiPanel>,
+    (wake, mut paced): (Res<Wake>, Local<Paced>),
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
     let removed = removed_panels.read().count() > 0;
-    requested
+    let changed = requested
         || removed
         || view.is_changed()
         || name.is_changed()
         || !agents.is_empty()
         || !turns.is_empty()
-        || !partials.is_empty()
-        || !panels.is_empty()
+        || !panels.is_empty();
+    paced.waiting |= !partials.is_empty();
+    let now = Instant::now();
+    let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
+    if changed || (paced.waiting && next.is_none_or(|next| now >= next)) {
+        paced.drawn = Some(now);
+        paced.waiting = false;
+        return true;
+    }
+    if paced.waiting
+        && let Some(next) = next
+        && paced.armed.is_none_or(|armed| armed <= now)
+    {
+        wake.after(next.saturating_duration_since(now)).detach();
+        paced.armed = Some(next);
+    }
+    false
 }
 
 /// The frame [`layout`] laid out for [`render`]; `due` while one is to be
@@ -299,7 +336,7 @@ pub(crate) fn render(
     let Some(input_rows) = frame_layout.input_rows else {
         return Ok(());
     };
-    // Clamping the scroll is drawing's own bookkeeping, not a change to
+    // Placing the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
     let view = view.bypass_change_detection();
     let shown = view
@@ -329,108 +366,147 @@ pub(crate) fn render(
     // loaded.
     let loaded = |name: &str| slash.iter().any(|command| command.name == name);
     let agents_hint = if loaded("agents") { " (/agents)" } else { "" };
-    tui.terminal.draw(|frame| {
-        // A resize since the layout leaves nothing outside the screen.
-        let screen = frame.area();
-        let transcript_area = frame_layout.transcript.intersection(screen);
-        let status_area = frame_layout.status.intersection(screen);
-        let input = frame_layout.input.intersection(screen);
-        let layout = input_rows;
-        // The input box scrolls to keep the cursor in sight.
-        let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-        if let Some((agent, (conversation, ..))) = shown {
-            transcript.update(
-                agent,
-                conversation,
-                changed.contains(agent),
-                &by_tool,
-                transcript_area.width,
-            );
-        }
-        let parts = transcript_parts(
-            view,
-            shown.map(|(_, (conversation, compacted, .., inbox))| (conversation, compacted, inbox)),
-            partial,
-            usize::from(transcript_area.width.max(1)),
-        );
-        let rows = transcript.visible(
-            &parts,
-            usize::from(transcript_area.height),
-            &mut view.scroll,
-        );
-        frame.render_widget(Paragraph::new(rows), transcript_area);
-        let shown = shown.map(|(_, shown)| shown);
-        let mut left = Vec::new();
-        if let Some(name) = &name.0 {
-            left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
-        }
-        left.extend(spawned_title(view.agent, &everyone));
-        left.extend(status_pieces(
-            shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
-            loaded("model"),
-        ));
-        agent_pieces(&mut left, view.agent, &everyone, agents_hint);
-        if let Some((_, spent)) = turn
-            && spent.0.calls > 0
-        {
-            let used = spent.0.cost_or_tokens();
-            left.push(Piece::new(
-                keep::TURN,
-                Span::from(format!("this turn {used}")).dim(),
-            ));
-        }
-        if let Some(build) = &build {
-            left.push(Piece::new(keep::RELOAD, reload_span(build)));
-        } else if queued.is_some() {
-            left.push(Piece::new(
-                keep::RELOAD,
-                Span::from("Reload queued: once no turn runs (/reload cancel)").cyan(),
-            ));
-        }
-        let mut right = shown
-            .map(|(.., spent, connection, _)| usage_pieces(spent, connection))
-            .unwrap_or_default();
-        fit(&mut left, &mut right, usize::from(status_area.width));
-        let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
-        let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
-        let [status, meter] =
-            Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
-                .areas(status_area);
-        frame.render_widget(line, status);
-        frame.render_widget(usage, meter);
-        let hint = input_hint(turn.is_some(), view.editor.is_empty());
-        frame.render_widget(
-            Paragraph::new(layout.rows)
-                .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
-                .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
-            input,
-        );
-        // The panels at the sides, then the boxes over the screen.
-        let over = |panel: &TuiPanel| matches!(panel.placement, Placement::Over { .. });
-        for top in [false, true] {
-            for (_, panel, canvas) in &panels {
-                if over(panel) == top {
-                    canvas.copy_to(frame.buffer_mut());
-                }
+    // The frame is written in one synchronized update with the cursor
+    // hidden, so the cursor never shows travelling across the screen; it
+    // is shown at the input once the frame is out, when the input has the
+    // keys.
+    let mut cursor = None;
+    queue!(tui.terminal.backend_mut(), BeginSynchronizedUpdate, Hide)?;
+    let drawn = tui
+        .terminal
+        .draw(|frame| {
+            // A resize since the layout leaves nothing outside the screen.
+            let screen = frame.area();
+            let transcript_area = frame_layout.transcript.intersection(screen);
+            let status_area = frame_layout.status.intersection(screen);
+            let input = frame_layout.input.intersection(screen);
+            let layout = input_rows;
+            // The input box scrolls to keep the cursor in sight.
+            let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
+            if let Some((agent, (conversation, ..))) = shown {
+                transcript.update(
+                    agent,
+                    conversation,
+                    changed.contains(agent),
+                    &by_tool,
+                    transcript_area.width,
+                );
             }
-        }
-        match &view.overlay {
-            Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
-            Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
-            None => {
-                if let Some(completion) = &view.completion {
-                    draw_completion(frame, completion, input);
-                }
-                let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
-                let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
-                frame.set_cursor_position((
-                    input.x.saturating_add(1).saturating_add(column),
-                    input.y.saturating_add(1).saturating_add(row),
+            let parts = transcript_parts(
+                view,
+                shown.map(|(_, (conversation, compacted, .., inbox))| {
+                    (conversation, compacted, inbox)
+                }),
+                partial,
+                usize::from(transcript_area.width.max(1)),
+            );
+            let (rows, below) = transcript.visible(
+                &parts,
+                (transcript_area.width, usize::from(transcript_area.height)),
+                &mut view.scroll,
+            );
+            frame.render_widget(Paragraph::new(rows), transcript_area);
+            draw_below(frame, below, transcript_area);
+            let shown = shown.map(|(_, shown)| shown);
+            let mut left = Vec::new();
+            if let Some(name) = &name.0 {
+                left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
+            }
+            left.extend(spawned_title(view.agent, &everyone));
+            left.extend(status_pieces(
+                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
+                loaded("model"),
+            ));
+            agent_pieces(&mut left, view.agent, &everyone, agents_hint);
+            if let Some((_, spent)) = turn
+                && spent.0.calls > 0
+            {
+                let used = spent.0.cost_or_tokens();
+                left.push(Piece::new(
+                    keep::TURN,
+                    Span::from(format!("this turn {used}")).dim(),
                 ));
             }
-        }
-    })?;
+            if let Some(build) = &build {
+                left.push(Piece::new(keep::RELOAD, reload_span(build)));
+            } else if queued.is_some() {
+                left.push(Piece::new(
+                    keep::RELOAD,
+                    Span::from("Reload queued: once no turn runs (/reload cancel)").cyan(),
+                ));
+            }
+            let mut right = shown
+                .map(|(.., spent, connection, _)| usage_pieces(spent, connection))
+                .unwrap_or_default();
+            fit(&mut left, &mut right, usize::from(status_area.width));
+            let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
+            let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
+            let [status, meter] =
+                Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
+                    .areas(status_area);
+            frame.render_widget(line, status);
+            frame.render_widget(usage, meter);
+            let hint = input_hint(turn.is_some(), view.editor.is_empty());
+            frame.render_widget(
+                Paragraph::new(layout.rows)
+                    .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
+                    .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
+                input,
+            );
+            // The panels at the sides, then the boxes over the screen.
+            let over = |panel: &TuiPanel| matches!(panel.placement, Placement::Over { .. });
+            for top in [false, true] {
+                for (_, panel, canvas) in &panels {
+                    if over(panel) == top {
+                        canvas.copy_to(frame.buffer_mut());
+                    }
+                }
+            }
+            match &view.overlay {
+                Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
+                Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
+                None => {
+                    if let Some(completion) = &view.completion {
+                        draw_completion(frame, completion, input);
+                    }
+                    let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
+                    let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
+                    cursor = Some(MoveTo(
+                        input.x.saturating_add(1).saturating_add(column),
+                        input.y.saturating_add(1).saturating_add(row),
+                    ));
+                }
+            }
+        })
+        .map(|_| ());
+    let backend = tui.terminal.backend_mut();
+    if drawn.is_ok()
+        && let Some(cursor) = cursor
+    {
+        queue!(backend, cursor, Show)?;
+    }
+    // Ended even after a failed draw, so the terminal shows the screen
+    // again.
+    execute!(backend, EndSynchronizedUpdate)?;
+    drawn?;
     Ok(())
+}
+
+/// A marker at the bottom right of a transcript scrolled up: what is below
+/// and how to get there.
+fn draw_below(frame: &mut Frame, below: Below, area: Rect) {
+    let text = match below {
+        Below::Nothing => return,
+        Below::More => " ↓ more below (PgDn) ",
+        Below::New => " ↓ new output (PgDn) ",
+    };
+    let width = u16::try_from(Span::from(text).width()).unwrap_or(u16::MAX);
+    if area.height == 0 || area.width < width {
+        return;
+    }
+    let marker = Rect::new(area.right() - width, area.bottom() - 1, width, 1);
+    frame.render_widget(Clear, marker);
+    frame.render_widget(Line::from(text).cyan().reversed(), marker);
 }
 
 /// The completion list, just above the input box.

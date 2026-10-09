@@ -7,6 +7,7 @@ use bevy_ecs::prelude::*;
 use super::complete::Completion;
 use super::editor::Editor;
 use super::panel::Focused;
+use super::transcript::Scroll;
 use crate::host::reload::ReloadFailed;
 use crate::view::{Focus, PickItem, PickRequest};
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
@@ -26,8 +27,8 @@ pub(crate) struct TuiView {
     pub(crate) completion: Option<Completion>,
     /// Where the token starts whose completion was closed with Esc.
     pub(crate) dismissed: Option<usize>,
-    /// Lines scrolled up from the bottom of the transcript.
-    pub(crate) scroll: usize,
+    /// Where the transcript is scrolled.
+    pub(crate) scroll: Scroll,
     /// What is shown over the transcript and takes the keys.
     pub(crate) overlay: Option<Overlay>,
     /// Recent notices, oldest first.
@@ -137,7 +138,7 @@ pub(crate) fn on_focus(
         return;
     }
     view.agent = Some(focus.entity);
-    view.scroll = 0;
+    view.scroll.follow();
     view.completion = None;
 }
 

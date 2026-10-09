@@ -2,7 +2,7 @@
 //! output off the screen.
 
 use std::fs::File;
-use std::io;
+use std::io::{self, BufWriter};
 use std::path::Path;
 
 use bevy_app::AppExit;
@@ -26,12 +26,17 @@ use rig_ecs::calls::Wake;
 
 use crate::host::session::SessionPaths;
 
-/// The terminal, drawn to through a private copy of stdout. Dropping it
-/// restores the terminal, keeping the alternate screen for a reload so the
-/// next build draws over the same screen.
+/// Bytes buffered before a write to the terminal: a full frame of a large
+/// screen.
+const FRAME_BUFFER: usize = 1 << 16;
+
+/// The terminal, drawn to through a buffered private copy of stdout, so a
+/// frame goes out in a few writes. Dropping it restores the terminal,
+/// keeping the alternate screen for a reload so the next build draws over
+/// the same screen.
 #[derive(Resource)]
 pub(crate) struct Tui {
-    pub(super) terminal: Terminal<CrosstermBackend<File>>,
+    pub(super) terminal: Terminal<CrosstermBackend<BufWriter<File>>>,
     keep_screen: bool,
 }
 
@@ -45,7 +50,7 @@ impl Tui {
             redirect_output(log)?;
         }
         enable_raw_mode()?;
-        let mut backend = CrosstermBackend::new(screen);
+        let mut backend = CrosstermBackend::new(BufWriter::with_capacity(FRAME_BUFFER, screen));
         // After a reload the alternate screen still shows the previous
         // build's frame.
         execute!(

@@ -108,50 +108,149 @@ impl Transcript {
         self.entries.clear();
     }
 
-    /// The rows of `parts` that fit `height` rows, `scroll` rows up from
-    /// the bottom. `scroll` is clamped to the top.
+    /// A part's rows.
+    fn rows<'a>(&'a self, part: &'a Part) -> &'a [Line<'static>] {
+        match part {
+            Part::Message(index) => self
+                .entries
+                .get(*index)
+                .map(|entry| entry.rows.as_slice())
+                .unwrap_or_default(),
+            Part::Rows(rows) => rows.as_slice(),
+        }
+    }
+
+    /// The rows of `parts` that fit `height` rows at `width`, where
+    /// `scroll` places them, and what is below them.
     pub(crate) fn visible(
         &self,
         parts: &[Part],
-        height: usize,
-        scroll: &mut usize,
-    ) -> Vec<Line<'static>> {
-        let rows_of = |part: &Part| -> usize {
-            match part {
-                Part::Message(index) => {
-                    self.entries.get(*index).map_or(0, |entry| entry.rows.len())
-                }
-                Part::Rows(rows) => rows.len(),
-            }
-        };
-        let total: usize = parts.iter().map(rows_of).sum();
-        let bottom = total.saturating_sub(height);
-        *scroll = (*scroll).min(bottom);
-        let top = bottom - *scroll;
+        (width, height): (u16, usize),
+        scroll: &mut Scroll,
+    ) -> (Vec<Line<'static>>, Below) {
+        let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
+        let (top, below) = scroll.place(&counts, height, width);
         let mut shown = Vec::with_capacity(height);
         let mut start = 0;
-        for part in parts {
-            let count = rows_of(part);
+        for (part, count) in parts.iter().zip(&counts) {
             let end = start + count;
             if end > top && start < top + height {
-                let rows = match part {
-                    Part::Message(index) => self
-                        .entries
-                        .get(*index)
-                        .map(|entry| entry.rows.as_slice())
-                        .unwrap_or_default(),
-                    Part::Rows(rows) => rows.as_slice(),
-                };
                 let from = top.saturating_sub(start);
-                let to = (top + height - start).min(count);
-                shown.extend(rows.get(from..to).unwrap_or_default().iter().cloned());
+                let to = (top + height - start).min(*count);
+                shown.extend(
+                    self.rows(part)
+                        .get(from..to)
+                        .unwrap_or_default()
+                        .iter()
+                        .cloned(),
+                );
             }
             start = end;
             if start >= top + height {
                 break;
             }
         }
-        shown
+        (shown, below)
+    }
+}
+
+/// Where the transcript is scrolled: following its bottom, or held at the
+/// row the user scrolled to, which then stays put as rows arrive below.
+#[derive(Default)]
+pub(crate) struct Scroll {
+    /// The row held at the top of the screen; `None` follows the bottom.
+    held: Option<Held>,
+    /// Rows the keys moved the view since the last frame, up positive.
+    moved: isize,
+}
+
+/// The top row of a view scrolled up.
+struct Held {
+    /// Its index in the whole transcript.
+    top: usize,
+    /// The part it is in, its row there and that part's rows, to find it
+    /// again after a resize re-wraps everything above it.
+    part: usize,
+    row: usize,
+    rows: usize,
+    /// The transcript's width and rows at the last frame.
+    width: u16,
+    total: usize,
+    /// Whether rows arrived below since the view was held.
+    grew: bool,
+}
+
+/// What is below a view scrolled up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Below {
+    /// Nothing: the view follows the bottom.
+    Nothing,
+    /// Rows that were there when the view was scrolled up.
+    More,
+    /// Rows that arrived since.
+    New,
+}
+
+impl Scroll {
+    /// Moves the view `rows` up.
+    pub(crate) fn up(&mut self, rows: usize) {
+        self.moved = self
+            .moved
+            .saturating_add(isize::try_from(rows).unwrap_or(isize::MAX));
+    }
+
+    /// Moves the view `rows` down; reaching the bottom follows it again.
+    pub(crate) fn down(&mut self, rows: usize) {
+        self.moved = self
+            .moved
+            .saturating_sub(isize::try_from(rows).unwrap_or(isize::MAX));
+    }
+
+    /// Follows the bottom again.
+    pub(crate) fn follow(&mut self) {
+        *self = Self::default();
+    }
+
+    /// The top row of a view `height` rows high over parts of `counts`
+    /// rows at `width`, after the keys' moves; holds it while it is above
+    /// the bottom.
+    fn place(&mut self, counts: &[usize], height: usize, width: u16) -> (usize, Below) {
+        let total: usize = counts.iter().sum();
+        let bottom = total.saturating_sub(height);
+        let moved = std::mem::take(&mut self.moved);
+        let (top, grew) = match &self.held {
+            None => (bottom, false),
+            Some(held) if held.width == width => (held.top, held.grew || total > held.total),
+            Some(held) => {
+                let start: usize = counts.iter().take(held.part).sum();
+                let rows = counts.get(held.part).copied().unwrap_or(0);
+                let row = (held.row * rows / held.rows.max(1)).min(rows.saturating_sub(1));
+                (start + row, held.grew)
+            }
+        };
+        let top = top.saturating_add_signed(moved.saturating_neg());
+        if top >= bottom {
+            self.held = None;
+            return (bottom, Below::Nothing);
+        }
+        let (mut part, mut start) = (0, 0);
+        for (index, count) in counts.iter().enumerate() {
+            part = index;
+            if start + count > top {
+                break;
+            }
+            start += count;
+        }
+        self.held = Some(Held {
+            top,
+            part,
+            row: top - start,
+            rows: counts.get(part).copied().unwrap_or(0),
+            width,
+            total,
+            grew,
+        });
+        (top, if grew { Below::New } else { Below::More })
     }
 }
 
@@ -331,3 +430,6 @@ pub(crate) fn plain_lines(text: &str, style: Style) -> Vec<Line<'static>> {
         .map(|line| Line::styled(line.replace('\t', "    "), style))
         .collect()
 }
+
+#[cfg(test)]
+mod tests;
