@@ -31,8 +31,8 @@
 //! [`Peers`] too, and its own report goes to the sibling that asked. Every
 //! agent's open requests, whoever sent them, are its [`Owes`]. A `message`
 //! to an agent it owes, its parent or a peer that asked, is the report on
-//! that agent's oldest open request, and the turn's end reports only on
-//! the requests still open. A new request to an agent that waits on the
+//! that agent's oldest request it has read, and the turn's end reports only
+//! on the requests still open. A new request to an agent that waits on the
 //! sender's own report is refused, so no two agents wait on each other.
 //!
 //! A child's model calls are recorded under the call that gave it its work
@@ -56,7 +56,7 @@ use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
     SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome, answer_text,
 };
-use crate::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::journal::AppSaveExt;
 use crate::models::{self, ModelConnector};
 use crate::restore::Restored;
@@ -101,7 +101,7 @@ const MESSAGE_DESCRIPTION: &str = "Send a follow-up to one of your own subagents
     can be reached, and, when you were started with `peers`, your sibling subagents started \
     with `peers`; any other agent is refused, and the refusal lists the ones you can reach. \
     A message to an agent that asked you something, such as the agent that started you, asks \
-    nothing: it answers that agent's oldest open request, and your final answer goes only to \
+    nothing: it answers that agent's oldest request you have read, and your final answer goes only to \
     the requests still open.";
 
 const RULES: &[&str] = &[
@@ -743,7 +743,7 @@ enum Target {
     /// A sibling, both having [`Peers`], sent a new request.
     Peer,
     /// An agent the caller owes a report: the text is the report on its
-    /// oldest open request.
+    /// oldest request the caller has read.
     Asker(RequestId),
 }
 
@@ -774,13 +774,13 @@ impl Reachable<'_> {
 
 /// Sends a `message` call's text to an agent the caller can reach, and
 /// answers the call. To an agent the caller owes a report, the text is
-/// that report, on the agent's oldest open request. To one of the caller's
+/// that report, on the agent's oldest request it has read. To one of the caller's
 /// own subagents, or to a sibling when both have [`Peers`], it is a new
 /// request, refused when that agent waits on the caller's own report.
 fn on_message(
     called: On<ToolCalled>,
     calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
-    callers: Query<(Option<&Spawned>, Option<&SpawnedBy>, Has<Peers>)>,
+    callers: Query<(Option<&Spawned>, Option<&SpawnedBy>, Has<Peers>, &Inbox)>,
     targets: Query<(&AgentId, Option<&Subtask>, Has<ActiveTurn>, Has<Peers>)>,
     mut ledgers: Ledgers,
 ) {
@@ -796,12 +796,17 @@ fn on_message(
     ) {
         (Err(_), _, _) | (_, Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
         (_, _, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
-        (Ok((spawned, parent, is_peer)), Ok((id, subtask, ..)), Ok(args)) => {
+        (Ok((spawned, parent, is_peer, inbox)), Ok((id, subtask, ..)), Ok(args)) => {
             let wanted = args.agent.trim();
             let text = args.text.trim();
-            // The agents the caller owes first: a message to one answers it.
+            // The agents the caller owes first: a message to one answers its
+            // oldest request the caller has read, one no longer in its inbox.
+            let unread = inbox.steering.iter().chain(&inbox.queued);
+            let unread: Vec<_> = unread.flat_map(|sent| &sent.origin.request).collect();
+            let read = |owed: &&Owed| !unread.contains(&&owed.request);
             let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
-            let askers = owes.into_iter().flat_map(Owes::open).filter_map(|owed| {
+            let requests = owes.into_iter().flat_map(Owes::open);
+            let askers = requests.filter(read).filter_map(|owed| {
                 let asker = ledgers.find(&owed.asker)?;
                 Some((asker, Target::Asker(owed.request.clone())))
             });

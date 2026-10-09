@@ -9,7 +9,7 @@ use crate::AgentPlugin;
 use crate::agent::{
     ActiveTurn, Agent, AgentId, Ending, ModelChoice, Spawned, ToolCallRun, TurnOutcome,
 };
-use crate::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::tools::{Footprint, ToolCalled, ToolDef, ToolOutput};
 
 /// The request of each message delivered, marked when it is a note, with
@@ -87,6 +87,13 @@ impl Session {
         self.call(from, MESSAGE, id, args)
     }
 
+    /// `agent`'s model reads what was sent to it.
+    fn read(&mut self, agent: Entity) {
+        if let Some(mut inbox) = self.0.world_mut().get_mut::<Inbox>(agent) {
+            inbox.steering.clear();
+        }
+    }
+
     /// Ends `agent`'s turn with an answer.
     fn end(&mut self, agent: Entity) {
         let world = self.0.world_mut();
@@ -131,14 +138,18 @@ fn peers_answer_each_other_and_each_request_gets_one_report() {
         sent.iter().all(|sent| sent.contains("Sent to peer")),
         "{sent:?}"
     );
-    // `a` waits on `c` through `b`, so `c` cannot ask it.
-    let refused = session.message(c, a, "m3");
-    assert!(refused.contains("is waiting for your report"), "{refused}");
-    // Answers by message, but `m6`, which `b` answers as its turn ends.
+    // `b` has not read `m1`, so it can neither answer nor ask `a`; `a`
+    // waits on `c` through `b`, so `c` cannot ask it either.
+    let refused = [session.message(b, a, "m3"), session.message(c, a, "m4")];
+    let waits = |sent: &String| sent.contains("is waiting for your report");
+    assert!(refused.iter().all(waits), "{refused:?}");
+    session.read(b);
+    session.read(c);
+    // Answers by message, but `m7`, which `b` answers as its turn ends.
     let answered = [
-        session.message(c, b, "m4"),
-        session.message(b, a, "m5"),
-        session.message(a, b, "m6"),
+        session.message(c, b, "m5"),
+        session.message(b, a, "m6"),
+        session.message(a, b, "m7"),
     ];
     let said = answered
         .each_ref()
@@ -146,8 +157,8 @@ fn peers_answer_each_other_and_each_request_gets_one_report() {
     assert_eq!(said, [true, true, false], "{answered:?}");
     session.end(b);
     session.end(c);
-    assert_eq!(session.to(a), ["ta", "m1", "m6"]);
-    assert_eq!(session.to(b), ["tb", "m1", "m2", "m6"]);
+    assert_eq!(session.to(a), ["ta", "m1", "m7"]);
+    assert_eq!(session.to(b), ["tb", "m1", "m2", "m7"]);
     assert!(session.to(session.1).is_empty());
     session.end(a);
     assert_eq!(session.to(session.1), ["ta", "tb", "tc"]);
