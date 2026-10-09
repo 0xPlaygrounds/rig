@@ -263,11 +263,19 @@ base64 = "0.22"
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
 # git; the tooling check verifies Bevy sources and requirements.
+# `bevy` itself only for `MinimalPlugins` (in `bevy_internal`, no feature
+# needed); default features off keeps render, window and audio out.
+# `bevy_remote` without `http`, `bevy_asset` or `bevy_render`: in-process
+# BRP only, never a server. `reflect_documentation` puts doc comments in
+# the type registry.
+bevy = { version = "=0.20.0", default-features = false }
 bevy_app = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
 bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
 bevy_log = "=0.20.0"
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory", "reflect_documentation"] }
+bevy_remote = { version = "=0.20.0", default-features = false }
 bevy_tasks = { version = "=0.20.0", default-features = false, features = ["multi_threaded"] }
+bevy_time = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"
