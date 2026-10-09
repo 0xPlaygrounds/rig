@@ -4,7 +4,7 @@ use rig_core::completion::{AssistantContent, CompletionResponse, Message, Usage}
 use rig_core::message::Origin;
 
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, CallOf, Conversation, TurnOf};
+use crate::agent::{Agent, AgentId, CallOf, Conversation, ToolAccess, TurnOf};
 use crate::calls::Done;
 use crate::compaction::{CompactReason, Summarizing, Summary};
 use crate::journal::{JournalPlugin, SessionLog};
@@ -83,4 +83,27 @@ fn a_restored_agent_keeps_the_context_its_compaction_left() {
     assert!(left.is_some_and(|left| left < 150_000), "{left:?}");
     let mut second = app(&store);
     assert_eq!(context(&mut second), left);
+}
+
+#[test]
+fn a_restored_agent_keeps_the_tools_a_plugin_narrowed_it_to() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut first, agent, Message::user("hello"));
+    first
+        .world_mut()
+        .entity_mut(agent)
+        .insert(ToolAccess::Only(vec!["read".to_owned()]));
+    first.update();
+    let mut second = app(&store);
+    let tools = first_agent(&mut second)
+        .and_then(|agent| second.world().get::<ToolAccess>(agent))
+        .and_then(|access| match access {
+            ToolAccess::All => None,
+            ToolAccess::Only(names) => Some(names.clone()),
+        });
+    assert_eq!(tools, Some(vec!["read".to_owned()]));
 }
