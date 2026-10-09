@@ -11,7 +11,8 @@
 //! it stopped, unless another launcher still runs it. The agent's `/new`
 //! and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
-//! then runs that session instead, in its own directory.
+//! then runs that session instead, in its own directory. A session left
+//! without a message, by a clean quit or a switch, leaves no directory.
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
 //! headless run (`--print`) never becomes the session its directory
@@ -126,6 +127,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         if !rejected && (status.success() || headless) {
             if status.success() {
                 claimed.forget()?;
+                claimed.discard_if_unsaved(home);
             }
             return Ok(exit_code(status));
         }
@@ -190,6 +192,7 @@ fn switch(
     match claim(home, target, here.as_deref(), mark) {
         Ok((next, notice)) => {
             current.forget()?;
+            current.discard_if_unsaved(home);
             match fs::rename(home.staged_for(&current.id), home.staged_for(&next.id)) {
                 Err(failure) if failure.kind() != ErrorKind::NotFound => {
                     return Err(failure.into());
@@ -222,6 +225,20 @@ impl Claimed {
         match &self.marker {
             Some(marker) if names(marker, &self.id) => remove_if_present(marker),
             _ => Ok(()),
+        }
+    }
+}
+
+impl Claimed {
+    /// Removes the session's directory when no agent logged a message in
+    /// it, such as a `/new` session left at once: a session with nothing
+    /// to resume leaves nothing behind. Call it once the agent exited
+    /// cleanly or switched away. Best effort: a directory left behind has
+    /// no agent log, so neither `/resume` nor the launcher resumes it.
+    fn discard_if_unsaved(&self, home: &Home) {
+        let session = home.session(&self.id);
+        if !session.is_saved() {
+            fs::remove_dir_all(session.path()).ok();
         }
     }
 }

@@ -87,12 +87,30 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
 }
 
 #[test]
+fn a_log_without_records_writes_no_file() {
+    let dir = assert_fs::TempDir::new().expect("scratch directory");
+    let path = dir.path().join("effects.jsonl");
+    let mut writer = Writer::new(&path);
+    let described = EffectLog::from_records(vec![record(1, "model")]);
+    writer
+        .append(&EffectLog {
+            header: described.header.clone(),
+            records: Vec::new(),
+        })
+        .expect("header only");
+    assert!(!path.exists(), "a header alone is not written");
+    // The first record brings the header it waited with.
+    writer.append(&described).expect("first record");
+    let text = std::fs::read_to_string(&path).expect("log text");
+    assert_eq!(text.lines().count(), 2, "header and record: {text}");
+    assert!(text.starts_with("{\"header\""));
+}
+
+#[test]
 fn a_log_without_records_has_no_last_id() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
-    Writer::new(&path)
-        .append(&EffectLog::default())
-        .expect("header only");
+    std::fs::write(&path, "{\"header\":{}}\n").expect("header only");
     assert_eq!(last_id(&path).expect("tail"), None);
 }
 

@@ -99,15 +99,17 @@ impl Writer {
 
     /// Appends `log`'s records, after a header line with what its header
     /// adds to the file's when it differs from the last one appended.
-    /// Writes nothing when there is neither.
+    /// Writes nothing when it has no records: a header alone waits for the
+    /// first record it describes, so a session that never made one leaves
+    /// no file.
     pub fn append(&mut self, log: &EffectLog) -> io::Result<()> {
+        if log.records.is_empty() {
+            return Ok(());
+        }
         if !self.resumed {
             self.resume();
         }
         let header_due = self.given.as_ref() != Some(&log.header);
-        if log.records.is_empty() && !header_due {
-            return Ok(());
-        }
         let mut lines = Vec::new();
         let mut header = None;
         if header_due {
