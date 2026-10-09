@@ -828,3 +828,6 @@ fn write_logs(
         ));
     }
 }
+
+#[cfg(test)]
+mod tests;

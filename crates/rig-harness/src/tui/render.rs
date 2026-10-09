@@ -565,15 +565,16 @@ impl Piece {
 }
 
 /// How long each [`Piece`] of the status line stays as it narrows: the
-/// usage meter on the right shrinks first, cache, then cost, then tokens,
-/// then context; then the left's extras. The model and the status always
-/// stay.
+/// cache reads go first, then the session's name (which the user chose and
+/// `/resume` lists, so a long one must not hide what the session spends),
+/// then cost, tokens and context; then the left's extras. The model and
+/// the status always stay.
 mod keep {
     pub(super) const CACHE: u8 = 1;
-    pub(super) const COST: u8 = 2;
-    pub(super) const TOKENS: u8 = 3;
-    pub(super) const CONTEXT: u8 = 4;
-    pub(super) const SESSION: u8 = 10;
+    pub(super) const SESSION: u8 = 2;
+    pub(super) const COST: u8 = 3;
+    pub(super) const TOKENS: u8 = 4;
+    pub(super) const CONTEXT: u8 = 5;
     pub(super) const TURN: u8 = 11;
     pub(super) const REASONING: u8 = 12;
     pub(super) const OTHERS: u8 = 13;
