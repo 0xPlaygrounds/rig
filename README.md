@@ -278,7 +278,10 @@ of its own. Nothing waits for them, so you can keep talking to the main
 agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
 subagents. `/agents` lists every agent with its model, state and cost, and
 shows the one picked: its transcript, and what you type then goes to it. A
-subagent can start subagents of its own, one level deep.
+subagent can start subagents of its own, one level deep. Subagents started
+with `peers` can also send each other requests with `message`, answered the
+same way, to the one that asked; one never asks a peer that waits on its own
+report.
 In the effect log, a subagent's model calls name the call that gave it its
 work as their parent.
 
