@@ -491,11 +491,32 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
-    // rig-ecs on the web: the runtime without its native features
-    // (`fs-journal`, `runner`), and with subagents.
+    // rig-ecs on the web with its default features (subagents); the
+    // kernel alone is `kernel-only`'s.
     checks.push(check(
         "wasm-rig-ecs",
+        vec![cargo(&[
+            "check",
+            "--locked",
+            "--package",
+            "rig-ecs",
+            "--target",
+            "wasm32-unknown-unknown",
+        ])],
+    ));
+    // The kernel alone: rig-ecs without its features builds natively and
+    // for the web, and a headless app of only the kernel and Bevy's task
+    // pools runs a turn with a tool call on a scripted model.
+    checks.push(check(
+        "kernel-only",
         vec![
+            cargo(&[
+                "check",
+                "--locked",
+                "--package",
+                "rig-ecs",
+                "--no-default-features",
+            ]),
             cargo(&[
                 "check",
                 "--locked",
@@ -506,15 +527,13 @@ pub(super) fn all() -> Vec<Check> {
                 "wasm32-unknown-unknown",
             ]),
             cargo(&[
-                "check",
+                "test",
                 "--locked",
                 "--package",
                 "rig-ecs",
                 "--no-default-features",
-                "--features",
-                "subagents",
-                "--target",
-                "wasm32-unknown-unknown",
+                "--test",
+                "kernel_only",
             ]),
         ],
     ));

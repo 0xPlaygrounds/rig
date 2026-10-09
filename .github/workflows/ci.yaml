@@ -249,6 +249,21 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check clippy
 
+  # The kernel on its own: rig-ecs without features, native and for the
+  # browser, and its kernel-only turn test. Builds no rig-harness.
+  kernel-only:
+    name: stable / kernel-only rig-ecs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          target: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check kernel-only
+
   # Each package checked on its own for the browser target (cargo unifies
   # features across packages built together, which hides a manifest that
   # forgot a feature), plus the two crates that must fail on wasm with
