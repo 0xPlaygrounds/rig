@@ -107,39 +107,52 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
     let raw = read_text(path)?;
     let file = Decoded::new(&raw);
     let text = file.text.as_str();
-    let many = args.edits.len() > 1;
+    let count = args.edits.len();
+    let many = count > 1;
     let mut splices = Vec::new();
     let mut notes = Vec::new();
+    // Every edit is checked, so one reply names all that need fixing.
+    let mut failed: Vec<(usize, String)> = Vec::new();
     for (index, replacement) in args.edits.iter().enumerate() {
         let label = Label { index, many };
         let old = lf(&replacement.old_text);
         let new = lf(&replacement.new_text);
         if old.is_empty() {
-            return Err(refused(
-                path,
+            failed.push((
+                index,
                 format!(
                     "{label}`old_text` is empty; to add text, replace a nearby line with itself plus the new text"
                 ),
             ));
+            continue;
         }
         if old == new {
-            return Err(refused(
-                path,
+            failed.push((
+                index,
                 format!(
                     "{label}`old_text` and `new_text` are the same, so it changes nothing; drop it or fix `new_text`"
                 ),
             ));
+            continue;
         }
-        let found = locate(text, &old, replacement.replace_all)
-            .map_err(|miss| refused(path, format!("{label}{}", miss.explain(&old))))?;
-        if let Some(note) = found.note {
-            notes.push(format!("{label}{note}"));
+        match locate(text, &old, replacement.replace_all) {
+            Err(miss) => failed.push((index, format!("{label}{}", miss.explain(&old)))),
+            Ok(found) => {
+                if let Some(note) = found.note {
+                    notes.push(format!("{label}{note}"));
+                }
+                splices.extend(found.spans.into_iter().map(|span| Splice {
+                    index,
+                    range: span,
+                    text: new.clone(),
+                }));
+            }
         }
-        splices.extend(found.spans.into_iter().map(|span| Splice {
-            index,
-            range: span,
-            text: new.clone(),
-        }));
+    }
+    if !failed.is_empty() {
+        return Err(ToolExecutionError::invalid_args(batch_failure(
+            path, count, &failed,
+        )));
     }
     splices.sort_by_key(|splice| splice.range.start);
     for pair in splices.windows(2) {
@@ -247,6 +260,44 @@ fn refused(path: &str, why: String) -> ToolExecutionError {
     ToolExecutionError::invalid_args(format!(
         "{why}. {path} was not changed; fix the call and send all of its edits again."
     ))
+}
+
+/// The refusal for edits that failed: each one's reason, and, in a batch,
+/// that the edits that matched were not applied either and must be sent
+/// again with the fixed ones.
+fn batch_failure(path: &str, count: usize, failed: &[(usize, String)]) -> String {
+    let [(_, why)] = failed else {
+        let reasons: Vec<&str> = failed.iter().map(|(_, why)| why.as_str()).collect();
+        return format!(
+            "{} of the {count} edits failed:\n{}.\nNo edit was applied, so {path} was not \
+             changed. Send all {count} edits again, with these fixed{}.",
+            failed.len(),
+            reasons.join(".\n"),
+            matched(count, failed)
+        );
+    };
+    if count == 1 {
+        return format!("{why}. {path} was not changed; fix the edit and send it again.");
+    }
+    format!(
+        "{why}. No edit was applied, so {path} was not changed. Send all {count} edits again, \
+         with this one fixed{}.",
+        matched(count, failed)
+    )
+}
+
+/// `; edits[0], edits[2] matched and stay as they are`, for the edits of a
+/// batch of `count` that did not fail.
+fn matched(count: usize, failed: &[(usize, String)]) -> String {
+    let matched: Vec<String> = (0..count)
+        .filter(|index| !failed.iter().any(|(failed, _)| failed == index))
+        .map(|index| format!("edits[{index}]"))
+        .collect();
+    match matched.as_slice() {
+        [] => String::new(),
+        [one] => format!("; {one} matched and can be sent as it was"),
+        many => format!("; {} matched and can be sent as they were", many.join(", ")),
+    }
 }
 
 /// One replacement of a byte range of the original text.
@@ -523,3 +574,6 @@ fn diff(path: &str, old: &str, new: &str) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests;
