@@ -62,16 +62,10 @@ struct Folded {
     log: AgentLog,
 }
 
-/// A restored agent, for the reconcile pass.
-struct RestoredAgent {
-    entity: Entity,
-    parent: Option<String>,
-    depth: usize,
-}
-
-/// The agents [`restore_session`] spawned, until [`reconcile`] took them.
+/// The agents [`restore_session`] spawned, each with its depth, until
+/// [`reconcile`] took them.
 #[derive(Resource)]
-pub(crate) struct RestoredAgents(Vec<RestoredAgent>);
+pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
 /// An agent was restored: its conversation with its origins, its settings,
 /// its saved components and the agent that spawned it are back, and the
@@ -124,6 +118,8 @@ pub(crate) fn restore_session(world: &mut World) {
         .map(|saved| saved.0.clone())
         .unwrap_or_default();
     let mut restored = Vec::new();
+    let mut entities = HashMap::new();
+    let mut links = Vec::new();
     let mut logs = Vec::new();
     for agent in folded {
         let Folded {
@@ -171,26 +167,16 @@ pub(crate) fn restore_session(world: &mut World) {
             ));
         }
         log.depth = depth(&header.agent, &parents);
-        restored.push(RestoredAgent {
-            entity,
-            parent: header.parent.clone(),
-            depth: log.depth,
-        });
+        restored.push((log.depth, entity));
+        entities.insert(id.0.clone(), entity);
+        links.push((entity, header.parent));
         logs.push((id.0, log));
     }
-    let entities: HashMap<String, Entity> = logs
-        .iter()
-        .zip(&restored)
-        .map(|((id, _), agent)| (id.clone(), agent.entity))
-        .collect();
-    for agent in &restored {
-        if let Some(parent) = agent
-            .parent
-            .as_ref()
-            .and_then(|parent| entities.get(parent))
-            && let Ok(mut child) = world.get_entity_mut(agent.entity)
+    for (child, parent) in links {
+        if let Some(&parent) = parent.and_then(|parent| entities.get(&parent))
+            && let Ok(mut child) = world.get_entity_mut(child)
         {
-            child.insert(SpawnedBy(*parent));
+            child.insert(SpawnedBy(parent));
         }
     }
     // What restoring set off, such as connecting each model, is not logged.
@@ -372,14 +358,14 @@ pub(crate) fn reconcile(world: &mut World) {
     let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
         return;
     };
-    agents.sort_by_key(|agent| agent.depth);
-    for agent in agents {
+    agents.sort_by_key(|&(depth, _)| depth);
+    for (_, agent) in agents {
         let mut restored = Restored {
-            entity: agent.entity,
+            entity: agent,
             resume: true,
         };
         world.trigger_ref(&mut restored);
-        let carry = (agent.entity, restored.resume);
+        let carry = (agent, restored.resume);
         if let Err(error) = world.run_system_cached_with(settle, carry) {
             warn!("could not reconcile a restored agent: {error}");
         }
