@@ -23,7 +23,6 @@ use std::process::{Child, ChildStderr, Command, Stdio};
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::error;
 use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
@@ -485,7 +484,8 @@ fn drain_reload(
         notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
     } else {
         let output = build.errors(ERROR_LINES);
-        error!("the rebuild failed ({status}):\n{output}");
+        // The notice is the one log line: the whole output is in the
+        // build log it names.
         let first = first_errors(build.output.iter().map(String::as_str), 1)
             .first()
             .map(|line| format!(": {}", line.trim()))
