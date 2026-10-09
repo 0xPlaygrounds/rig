@@ -159,8 +159,8 @@ impl Conversation {
 
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, and each insert rebuilds the
-/// agent's [`Connection`] and logs the agent's settings.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
+/// agent's [`Connection`]. Saved with the session.
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[reflect(Component, Clone)]
 pub struct ModelChoice(pub String);
@@ -178,8 +178,7 @@ pub struct Connection {
 }
 
 /// The reasoning setting sent with each request, or `None` for the
-/// provider's default. It never changes in place: each insert logs the
-/// agent's settings.
+/// provider's default. It never changes in place. Saved with the session.
 #[derive(
     Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
 )]
@@ -190,10 +189,25 @@ pub struct Effort(pub Option<Reasoning>);
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the rules of the tools the agent is offered
 /// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
-/// the project's instructions and the environment.
+/// the project's instructions and the environment. Saved with the
+/// session, as `null` when it is the default, so a restored agent gets the
+/// default of the build that restores it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+#[serde(from = "Option<String>", into = "Option<String>")]
 pub struct SystemPrompt(pub String);
+
+impl From<SystemPrompt> for Option<String> {
+    fn from(prompt: SystemPrompt) -> Self {
+        (prompt.0 != SystemPrompt::default().0).then_some(prompt.0)
+    }
+}
+
+impl From<Option<String>> for SystemPrompt {
+    fn from(prompt: Option<String>) -> Self {
+        prompt.map_or_else(Self::default, Self)
+    }
+}
 
 impl Default for SystemPrompt {
     fn default() -> Self {
@@ -220,7 +234,7 @@ impl Default for SystemPrompt {
     }
 }
 
-/// Which registered tools the agent may call.
+/// Which registered tools the agent may call. Saved with the session.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub enum ToolAccess {

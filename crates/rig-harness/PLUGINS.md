@@ -262,7 +262,9 @@ fn recent(
   is the agent's own.
 - `app.save_component::<T>()` keeps an agent component (`Serialize +
   Deserialize`) with the session; `Restored` is triggered on each agent
-  after a restart, where a plugin re-arms what it owes.
+  after a restart, where a plugin re-arms what it owes. The core saves
+  `ModelChoice`, `Effort`, `SystemPrompt`, `ToolAccess` and `Spending` the
+  same way, so a plugin that changes them has nothing to log.
 - A `PromptSection` entity adds to every agent's system prompt.
 - `.run_if(every(Duration))` runs a system once per interval and keeps the
   loop awake for it; `Wake::after(Duration)` wakes the loop once. Neither
