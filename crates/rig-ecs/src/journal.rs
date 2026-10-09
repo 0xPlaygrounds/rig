@@ -408,14 +408,10 @@ impl SessionLog {
 
     /// Takes the last message out of the conversation of `agent`, and logs
     /// that.
-    pub(crate) fn retract(
-        &self,
-        agent: &AgentId,
-        conversation: &mut Conversation,
-    ) -> Option<Message> {
-        let message = conversation.retract()?;
-        self.book().record(&agent.0, Record::Retract);
-        Some(message)
+    pub(crate) fn retract(&self, agent: &AgentId, conversation: &mut Conversation) {
+        if conversation.retract().is_some() {
+            self.book().record(&agent.0, Record::Retract);
+        }
     }
 
     /// Halts the conversation of `agent` for `reason` when the model owes
