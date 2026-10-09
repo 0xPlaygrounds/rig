@@ -29,9 +29,11 @@
 //! Subagents can also work together. A `task` with `peers` set gives the
 //! child [`Peers`]: it may send a `message` to its siblings that have
 //! [`Peers`] too, and its own report goes to the sibling that asked. Every
-//! agent's open requests, whoever sent them, are its [`Owes`]. A request
-//! to an agent that waits on the sender's own report is refused, so no two
-//! agents wait on each other.
+//! agent's open requests, whoever sent them, are its [`Owes`]. A `message`
+//! to an agent it owes, its parent or a peer that asked, is the report on
+//! that agent's oldest open request, and the turn's end reports only on
+//! the requests still open. A new request to an agent that waits on the
+//! sender's own report is refused, so no two agents wait on each other.
 //!
 //! A child's model calls are recorded under the call that gave it its work
 //! ([`EffectParent`]), so the effect log nests a subagent's work under the
@@ -99,7 +101,10 @@ const MESSAGE_DESCRIPTION: &str = "Send a follow-up to one of your own subagents
     returns at once with the request's id; exactly one report for it arrives later as a \
     message headed with the subagent's id and task title. Only subagents you started \
     can be reached, and, when you were started with `peers`, your sibling subagents started \
-    with `peers`; any other agent is refused, and the refusal lists the ones you can reach.";
+    with `peers`; any other agent is refused, and the refusal lists the ones you can reach. \
+    A message to an agent that asked you something, such as the agent that started you, asks \
+    nothing: it answers that agent's oldest open request, and your final answer goes only to \
+    the requests still open.";
 
 const RULES: &[&str] = &[
     "Use `task` for work that would fill your context or can run on its own: a broad search \
@@ -130,9 +135,10 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
 const PEER_ROLE: &str = "\n\nOther subagents of that agent may work beside you. With \
     `message` you can send one of them that was started with `peers` a request by its id; \
     its report comes back to you as a message. A request one of them sends you is answered \
-    by your last message, like your task. A `message` to an id you cannot reach lists the \
-    ones you can. Ask only for what you need, and never ask an agent that is waiting for \
-    your own report: answer it instead.";
+    by your last message, like your task, or sooner by a `message` back to it: messaging an \
+    agent that asked you answers its request, and your final answer goes to the requests \
+    still open. A `message` to an id you cannot reach lists the ones you can. Ask only for \
+    what you need.";
 
 /// Adds the `task` and `message` tools and the reports that answer their
 /// requests.
@@ -739,12 +745,15 @@ fn reaches<T: Copy + PartialEq>(edges: &[(T, T)], from: T, to: T) -> bool {
 }
 
 /// How a `message` call reaches an agent.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
     /// One of the caller's own subagents, sent a new request.
     Child,
     /// A sibling, both having [`Peers`], sent a new request.
     Peer,
+    /// An agent the caller owes a report: the text is the report on its
+    /// oldest open request.
+    Asker(RequestId),
 }
 
 /// An agent a `message` call can reach.
@@ -756,10 +765,27 @@ struct Reachable<'a> {
     target: Target,
 }
 
-/// Sends a `message` call's text as a request to one of the caller's own
-/// subagents, or to a sibling when both have [`Peers`], and answers the
-/// call with the request's id. Refuses any other target, and an agent that
-/// waits on the caller's own report.
+impl Reachable<'_> {
+    /// How it is reached, its short id and its task title, such as
+    /// peer `1a2b3c4d` ("Fix the parser").
+    fn named(&self) -> String {
+        let kind = match self.target {
+            Target::Child => "subagent",
+            Target::Peer => "peer",
+            Target::Asker(_) => "the agent waiting for your report",
+        };
+        match self.subtask {
+            Some(subtask) => format!("{kind} `{}` (\"{}\")", self.id.short(), subtask.title),
+            None => format!("{kind} `{}`", self.id.short()),
+        }
+    }
+}
+
+/// Sends a `message` call's text to an agent the caller can reach, and
+/// answers the call. To an agent the caller owes a report, the text is
+/// that report, on the agent's oldest open request. To one of the caller's
+/// own subagents, or to a sibling when both have [`Peers`], it is a new
+/// request, refused when that agent waits on the caller's own report.
 fn on_message(
     called: On<ToolCalled>,
     calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
@@ -779,9 +805,16 @@ fn on_message(
     ) {
         (Err(_), _, _) | (_, Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
         (_, _, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
-        (Ok((spawned, parent, is_peer)), Ok((id, ..)), Ok(args)) => {
+        (Ok((spawned, parent, is_peer)), Ok((id, subtask, ..)), Ok(args)) => {
             let wanted = args.agent.trim();
             let text = args.text.trim();
+            // The agents the caller owes first: a message to one answers it.
+            let agents = ledgers.by_id();
+            let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
+            let askers = owes.into_iter().flat_map(Owes::open).filter_map(|owed| {
+                let asker = agents.get(&owed.asker)?;
+                Some((*asker, Target::Asker(owed.request.clone())))
+            });
             let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
             let siblings = parent
                 .filter(|_| is_peer)
@@ -790,8 +823,8 @@ fn on_message(
                 .flat_map(|siblings| siblings.iter())
                 .filter(|&sibling| sibling != caller);
             let mut reach: Vec<Reachable<'_>> = Vec::new();
-            for (entity, target) in children
-                .map(|child| (child, Target::Child))
+            for (entity, target) in askers
+                .chain(children.map(|child| (child, Target::Child)))
                 .chain(siblings.map(|sibling| (sibling, Target::Peer)))
             {
                 if let Ok((id, subtask, busy, has_peers)) = targets.get(entity)
@@ -817,6 +850,28 @@ fn on_message(
                 )),
                 Some(_) if text.is_empty() => {
                     Err("`text` must not be empty. Nothing was sent.".to_owned())
+                }
+                Some(
+                    asker @ Reachable {
+                        target: Target::Asker(request),
+                        ..
+                    },
+                ) => {
+                    let owes = ledgers
+                        .agents
+                        .get_mut(caller)
+                        .ok()
+                        .and_then(|(.., owes)| owes);
+                    let owed = owes.and_then(|mut owes| owes.close(request));
+                    let from = titled(Origin::agent(id.clone(), None), subtask);
+                    let agents = (caller, parent.map(|parent| parent.0));
+                    ledgers.report(agents, &from, owed.into_iter().collect(), text);
+                    let said = format!(
+                        "Sent to {} as your report on its request. Your final answer goes only \
+                         to the requests still open.",
+                        asker.named()
+                    );
+                    Ok((asker, request.clone(), "answered", said))
                 }
                 Some(target) if reaches(&ledgers.waits(), target.entity, caller) => Err(format!(
                     "`{}` is waiting for your report, so it cannot be asked, and nothing was \
@@ -854,15 +909,10 @@ fn on_message(
                     } else {
                         ("started", "It works on it in the background.")
                     };
-                    let kind = match target.target {
-                        Target::Child => "subagent",
-                        Target::Peer => "peer",
-                    };
                     let said = format!(
-                        "Sent to {kind} `{}`. {when} Its report for request {} will arrive as a \
-                         message.",
-                        target.id.short(),
-                        request.0
+                        "Sent to {}. {when} Its report will arrive as a message headed with its \
+                         id.",
+                        target.named()
                     );
                     Ok((target, request, status, said))
                 }
@@ -889,25 +939,11 @@ fn on_message(
 
 /// The agents a `message` call can reach, for a refusal.
 fn listing(reach: &[Reachable<'_>]) -> String {
-    let named = |wanted: Target| {
-        let named = reach.iter().filter(|target| target.target == wanted);
-        let named = named.map(|target| match target.subtask {
-            Some(subtask) => format!("`{}` (\"{}\")", target.id.short(), subtask.title),
-            None => format!("`{}`", target.id.short()),
-        });
-        named.collect::<Vec<String>>()
-    };
-    let (mine, peers) = (named(Target::Child), named(Target::Peer));
-    let mine = if mine.is_empty() {
-        "You have no subagents; start one with `task`.".to_owned()
-    } else {
-        format!("Your subagents are: {}.", mine.join(", "))
-    };
-    if peers.is_empty() {
-        mine
-    } else {
-        format!("{mine} Your peers are: {}.", peers.join(", "))
+    if reach.is_empty() {
+        return "You have no subagents; start one with `task`.".to_owned();
     }
+    let named = reach.iter().map(|reachable| reachable.named());
+    format!("You can reach: {}.", named.collect::<Vec<_>>().join(", "))
 }
 
 /// Names a subagent by its task's title, when it is spawned or restored.

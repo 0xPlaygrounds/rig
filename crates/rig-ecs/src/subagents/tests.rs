@@ -123,16 +123,46 @@ fn report_header_names_the_subagent_and_task_not_the_request() {
 }
 
 #[test]
-fn a_batch_reports_together_and_each_request_once() {
+fn peers_answer_each_other_and_each_request_gets_one_report() {
     let mut session = Session::new();
-    let (a, b) = (session.task("ta"), session.task("tb"));
-    let sent = session.message(a, b, "m1");
-    assert!(sent.contains("Sent to peer"), "{sent}");
+    let (a, b, c) = (session.task("ta"), session.task("tb"), session.task("tc"));
+    let sent = [session.message(a, b, "m1"), session.message(b, c, "m2")];
+    assert!(
+        sent.iter().all(|sent| sent.contains("Sent to peer")),
+        "{sent:?}"
+    );
+    // `a` waits on `c` through `b`, so `c` cannot ask it.
+    let refused = session.message(c, a, "m3");
+    assert!(refused.contains("is waiting for your report"), "{refused}");
+    // Answers by message, but `m6`, which `b` answers as its turn ends.
+    let answered = [
+        session.message(c, b, "m4"),
+        session.message(b, a, "m5"),
+        session.message(a, b, "m6"),
+    ];
+    let said = answered
+        .each_ref()
+        .map(|sent| sent.contains("as your report"));
+    assert_eq!(said, [true, true, false], "{answered:?}");
     session.end(b);
-    assert_eq!(session.to(a), ["ta", "m1"]);
+    session.end(c);
+    assert_eq!(session.to(a), ["ta", "m1", "m6"]);
+    assert_eq!(session.to(b), ["tb", "m1", "m2", "m6"]);
+    assert!(session.to(session.1).is_empty());
+    session.end(a);
+    assert_eq!(session.to(session.1), ["ta", "tb", "tc"]);
+}
+
+#[test]
+fn a_message_to_the_parent_is_the_task_report_and_held_for_its_batch() {
+    let mut session = Session::new();
+    let (c, d) = (session.task("tc"), session.task("td"));
+    let sent = session.message(c, session.1, "m1");
+    assert!(sent.contains("as your report"), "{sent}");
+    session.end(c);
     assert!(session.to(session.1).is_empty());
     // A follow-up and the task, answered together by one turn.
-    session.message(session.1, a, "f1");
-    session.end(a);
-    assert_eq!(session.to(session.1), ["ta (note)", "f1", "tb"]);
+    session.message(session.1, d, "f1");
+    session.end(d);
+    assert_eq!(session.to(session.1), ["tc", "td (note)", "f1"]);
 }
