@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::blocking;
 use crate::fs::{io_error, write_atomic};
@@ -13,9 +13,12 @@ use crate::fs::{io_error, write_atomic};
 pub struct Write;
 
 /// Arguments of [`Write`].
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WriteArgs {
+    /// The file to write.
     path: String,
+    /// The whole new content.
     content: String,
 }
 
@@ -38,14 +41,7 @@ impl PortableTool for Write {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "The file to write."},
-                "content": {"type": "string", "description": "The whole new content."}
-            },
-            "required": ["path", "content"]
-        })
+        args_schema::<WriteArgs>()
     }
 
     async fn call(&self, args: WriteArgs) -> Result<String, ToolExecutionError> {

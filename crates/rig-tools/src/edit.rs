@@ -10,9 +10,9 @@ use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::Path;
 
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 use similar::TextDiff;
 
 use crate::fs::{io_error, read_text, write_atomic};
@@ -27,18 +27,25 @@ const MAX_LISTED: usize = 8;
 pub struct Edit;
 
 /// Arguments of [`Edit`].
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EditArgs {
+    /// The file to edit.
     path: String,
+    /// The replacements, matched against the original file.
+    #[schemars(length(min = 1))]
     edits: Vec<Replacement>,
 }
 
-/// One replacement of an [`Edit`] call.
-#[derive(Deserialize)]
+// One replacement of an `edit` call; not a doc comment, which the model would see.
+#[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct Replacement {
+    /// The exact text to replace, copied from the file without line numbers.
     old_text: String,
+    /// The replacement.
     new_text: String,
+    /// Replace every match instead of exactly one.
     #[serde(default)]
     replace_all: bool,
 }
@@ -69,27 +76,7 @@ impl PortableTool for Edit {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "The file to edit."},
-                "edits": {
-                    "type": "array",
-                    "description": "The replacements, matched against the original file.",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "old_text": {"type": "string", "description": "The exact text to replace, copied from the file without line numbers."},
-                            "new_text": {"type": "string", "description": "The replacement."},
-                            "replace_all": {"type": "boolean", "description": "Replace every match instead of exactly one."}
-                        },
-                        "required": ["old_text", "new_text"]
-                    }
-                }
-            },
-            "required": ["path", "edits"]
-        })
+        args_schema::<EditArgs>()
     }
 
     async fn call(&self, args: EditArgs) -> Result<String, ToolExecutionError> {

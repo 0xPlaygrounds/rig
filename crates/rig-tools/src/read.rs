@@ -1,8 +1,8 @@
 //! The `read` tool.
 
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::fs::read_text;
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
@@ -14,10 +14,14 @@ const MAX_LINE_CHARS: usize = 2000;
 pub struct Read;
 
 /// Arguments of [`Read`].
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ReadArgs {
+    /// The file to read.
     path: String,
+    /// The first line to read, from 1.
     offset: Option<usize>,
+    /// How many lines to read.
     limit: Option<usize>,
 }
 
@@ -45,15 +49,7 @@ impl PortableTool for Read {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {"type": "string", "description": "The file to read."},
-                "offset": {"type": "integer", "description": "The first line to read, from 1."},
-                "limit": {"type": "integer", "description": "How many lines to read."}
-            },
-            "required": ["path"]
-        })
+        args_schema::<ReadArgs>()
     }
 
     async fn call(&self, args: ReadArgs) -> Result<String, ToolExecutionError> {

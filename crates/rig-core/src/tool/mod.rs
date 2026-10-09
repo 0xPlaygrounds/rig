@@ -16,6 +16,7 @@ pub mod managed;
 mod output;
 pub mod portable;
 mod result;
+pub mod schema;
 pub use context::{
     ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
 };
@@ -26,3 +27,4 @@ pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};
 pub use result::{ToolErrorKind, ToolExecutionError, ToolResult};
+pub use schema::args_schema;

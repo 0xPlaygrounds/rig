@@ -18,6 +18,8 @@ futures = { workspace = true }
 ignore = { workspace = true }
 regex = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+# Each tool's parameters, derived from its arguments type.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The unified diff `edit` returns.

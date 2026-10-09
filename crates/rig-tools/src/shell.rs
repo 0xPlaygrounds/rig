@@ -9,9 +9,9 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::process::{detach, kill_group};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
@@ -37,9 +37,12 @@ pub struct Shell {
 }
 
 /// Arguments of [`Shell`].
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ShellArgs {
+    /// The command line.
     command: String,
+    /// Seconds before the command is killed.
     timeout_secs: Option<u64>,
 }
 
@@ -72,14 +75,7 @@ impl PortableTool for Shell {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": {"type": "string", "description": "The command line."},
-                "timeout_secs": {"type": "integer", "description": "Seconds before the command is killed."}
-            },
-            "required": ["command"]
-        })
+        args_schema::<ShellArgs>()
     }
 
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {

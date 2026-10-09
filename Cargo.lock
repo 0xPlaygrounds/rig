@@ -11504,6 +11504,7 @@ dependencies = [
  "libc",
  "regex",
  "rig-core",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
  "similar",
