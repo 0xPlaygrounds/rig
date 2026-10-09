@@ -17,7 +17,10 @@ default = ["tui"]
 tui = [
     "dep:ratatui",
     "dep:crossterm",
+    "dep:ignore",
+    "dep:libc",
     "dep:pulldown-cmark",
+    "dep:similar",
     "dep:unicode-width",
 ]
 
@@ -37,8 +40,6 @@ ctrlc = { workspace = true, features = ["termination"] }
 futures = { workspace = true }
 # The wait before a retried model call.
 futures-timer = { workspace = true }
-ignore = { workspace = true }
-regex = { workspace = true }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
 rig = { path = "../..", version = "0.44.0", default-features = false }
 rig-cassette = { workspace = true, features = ["jsonl"] }
@@ -48,18 +49,23 @@ rig-core = { workspace = true, features = ["reqwest"] }
 rig-reqwest = { workspace = true }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
+# The built-in tools and the instruction files and process helpers.
+rig-tools = { path = "../rig-tools", version = "0.44.0" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The names of the images the session logs store.
 sha2 = { workspace = true }
-# The unified diff `edit` returns, and the diffs the terminal view draws.
-similar = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 ratatui = { workspace = true, optional = true }
 crossterm = { workspace = true, optional = true }
 # Markdown in replies and the width of wrapped text, for the terminal view.
 pulldown-cmark = { workspace = true, optional = true }
 unicode-width = { workspace = true, optional = true }
+# Path completion in the input, as git ignores it.
+ignore = { workspace = true, optional = true }
+# The diffs the terminal view draws.
+similar = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
-libc = { workspace = true }
+# The terminal view sends stray stdout and stderr to the session log.
+libc = { workspace = true, optional = true }

@@ -9,8 +9,7 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{MAX_FILE_BYTES, clip};
-use crate::core::blocking::blocking;
+use crate::{MAX_FILE_BYTES, blocking, clip};
 
 const MAX_MATCHES: usize = 200;
 const MAX_LINE: usize = 300;
@@ -25,6 +24,12 @@ pub struct SearchArgs {
     pattern: String,
     path: Option<String>,
     glob: Option<String>,
+}
+
+impl Search {
+    /// When to pick this tool, for the system prompt.
+    pub const RULES: &'static [&'static str] =
+        &["Use `search` to find code, not `grep` or `rg` in `shell`."];
 }
 
 impl PortableTool for Search {

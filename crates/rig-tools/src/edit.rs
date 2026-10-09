@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde_json::json;
 use similar::TextDiff;
 
-use super::{MAX_BYTES, MAX_LINES, io_error, read_text, write_atomic};
-use crate::core::blocking::blocking;
+use crate::fs::{io_error, read_text, write_atomic};
+use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Lines of unchanged context around each hunk of the returned diff.
 const CONTEXT: usize = 3;
@@ -40,6 +40,17 @@ struct Replacement {
     new_text: String,
     #[serde(default)]
     replace_all: bool,
+}
+
+impl Edit {
+    /// When to pick this tool, for the system prompt.
+    pub const RULES: &'static [&'static str] = &[
+        "Use `edit` to change part of a file. Copy each `old_text` from what `read` \
+         returned, without the line numbers, with just enough lines around the \
+         change to match once. Make all changes to one file in one `edit` call, \
+         one entry of `edits` per change; each matches the file as it was before \
+         the call.",
+    ];
 }
 
 impl PortableTool for Edit {

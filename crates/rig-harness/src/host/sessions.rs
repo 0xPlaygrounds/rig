@@ -19,10 +19,11 @@ use bevy_reflect::prelude::*;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, SessionDir, SessionId};
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
+use rig_tools::fs::write_atomic;
+use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 use super::launcher;
-use crate::builtin::tools::{shorten, write_atomic};
 use crate::core::agent::{
     Agent, AgentId, Conversation, Notice, PickItem, PickRequest, SpawnedBy, TurnEnded, TurnOf,
     primary_order,

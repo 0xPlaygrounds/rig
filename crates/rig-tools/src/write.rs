@@ -6,8 +6,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{io_error, write_atomic};
-use crate::core::blocking::blocking;
+use crate::blocking;
+use crate::fs::{io_error, write_atomic};
 
 /// Writes a whole file, creating its parent directories.
 pub struct Write;
@@ -17,6 +17,12 @@ pub struct Write;
 pub struct WriteArgs {
     path: String,
     content: String,
+}
+
+impl Write {
+    /// When to pick this tool, for the system prompt.
+    pub const RULES: &'static [&'static str] =
+        &["Use `write` for new files and complete rewrites only."];
 }
 
 impl PortableTool for Write {

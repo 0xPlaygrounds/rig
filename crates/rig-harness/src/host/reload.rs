@@ -23,9 +23,9 @@ use bevy_reflect::prelude::*;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, first_errors};
+use rig_tools::process::{detach, kill_group};
 
 use super::launcher;
-use super::process::{detach, kill_group};
 use crate::core::agent::{Notice, TurnOf};
 use crate::core::calls::Wake;
 use crate::core::commands::{AppCommandsExt, CommandArgs};

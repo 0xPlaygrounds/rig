@@ -10,9 +10,9 @@ use bevy_ecs::prelude::*;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::message::{ToolCall, ToolResult};
+use rig_tools::shorten;
 
 use super::diff;
-use crate::builtin::tools::shorten;
 
 /// Characters of a call's arguments shown on its header line.
 const ARGUMENT_CHARS: usize = 160;

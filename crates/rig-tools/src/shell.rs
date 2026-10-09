@@ -13,9 +13,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{MAX_BYTES, MAX_LINES};
-use crate::core::blocking::blocking;
-use crate::host::process::{detach, kill_group};
+use crate::process::{detach, kill_group};
+use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
@@ -30,13 +29,29 @@ const POLL: Duration = Duration::from_millis(20);
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group.
-pub struct Shell;
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Shell {
+    /// Environment variables the command does not inherit, such as those
+    /// that make a program act as the agent running it.
+    pub unset_env: &'static [&'static str],
+}
 
 /// Arguments of [`Shell`].
 #[derive(Deserialize)]
 pub struct ShellArgs {
     command: String,
     timeout_secs: Option<u64>,
+}
+
+impl Shell {
+    /// When to pick this tool, for the system prompt.
+    pub const RULES: &'static [&'static str] = &[
+        "Use `shell` to build, test, run programs and use git. Each call starts a \
+         fresh `sh` in the working directory: a `cd` or a variable does not carry \
+         over to the next call.",
+        "Do not start programs that wait for input or never end, such as editors, \
+         pagers or servers in the foreground.",
+    ];
 }
 
 impl PortableTool for Shell {
@@ -70,7 +85,8 @@ impl PortableTool for Shell {
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
         let stop = StopOnDrop(Arc::default());
         let running = Arc::clone(&stop.0);
-        blocking(move || run(args, &running.stopped, &running.leader)).await
+        let unset = self.unset_env;
+        blocking(move || run(args, unset, &running.stopped, &running.leader)).await
     }
 }
 
@@ -95,7 +111,7 @@ impl Drop for StopOnDrop {
         let leader = self.0.leader.swap(0, Ordering::SeqCst);
         #[cfg(unix)]
         if leader != 0 {
-            crate::host::process::kill_group_of(leader);
+            crate::process::kill_group_of(leader);
         }
         #[cfg(not(unix))]
         let _ = leader;
@@ -104,6 +120,7 @@ impl Drop for StopOnDrop {
 
 fn run(
     args: ShellArgs,
+    unset_env: &[&str],
     stopped: &AtomicBool,
     leader: &AtomicU32,
 ) -> Result<String, ToolExecutionError> {
@@ -125,9 +142,7 @@ fn run(
         .stdin(Stdio::null())
         .stdout(writer)
         .stderr(error_writer);
-    // A command, such as a nested agent run while working on rig-harness
-    // itself, must not act as this agent.
-    for name in rig::harness_protocol::env::AGENT_ONLY {
+    for name in unset_env {
         command.env_remove(name);
     }
     detach(&mut command);

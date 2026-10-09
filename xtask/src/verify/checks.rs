@@ -106,14 +106,16 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-harness and its rig-steel plugin crate are not default
-                // members, and the agent core must also build without the
-                // terminal view.
+                // rig-harness, its rig-tools and its rig-steel plugin crate
+                // are not default members, and the agent core must also
+                // build without the terminal view.
                 cargo(&[
                     "clippy",
                     "--locked",
                     "-p",
                     "rig-harness",
+                    "-p",
+                    "rig-tools",
                     "-p",
                     "rig-steel",
                     "--all-targets",
@@ -162,14 +164,16 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-harness and rig-steel are not default members, so the run
-                // above never reaches their tests.
+                // rig-harness, rig-tools and rig-steel are not default members,
+                // so the run above never reaches their tests.
                 cargo(&[
                     "nextest",
                     "run",
                     "--locked",
                     "-p",
                     "rig-harness",
+                    "-p",
+                    "rig-tools",
                     "-p",
                     "rig-steel",
                 ]),

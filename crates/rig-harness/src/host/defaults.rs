@@ -10,9 +10,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig::harness_protocol::Home;
+use rig_tools::fs::write_atomic;
 use serde::{Deserialize, Serialize};
 
-use crate::builtin::tools::write_atomic;
 use crate::core::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
 
 /// Remembers the last chosen model and reasoning setting and gives them to

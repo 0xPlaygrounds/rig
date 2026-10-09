@@ -1,5 +1,5 @@
-//! Child processes the agent starts in a session of their own: shell
-//! commands and the `/reload` build.
+//! Child processes started in a session of their own, such as `shell`
+//! commands, so they never read the terminal and are killed as a group.
 
 use std::process::{Child, Command};
 

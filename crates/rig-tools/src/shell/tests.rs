@@ -14,6 +14,7 @@ fn returns_when_a_process_outside_the_group_holds_the_pipe() {
             command: "setsid sleep 5 & echo started".to_owned(),
             timeout_secs: None,
         },
+        &[],
         &AtomicBool::new(false),
         &AtomicU32::new(0),
     );

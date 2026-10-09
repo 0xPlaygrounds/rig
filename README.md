@@ -169,7 +169,9 @@ dependency guarantees and migration paths.
 
 `cargo install rig` also installs `rig`, a terminal coding agent. The agent is
 the [`rig-harness`](crates/rig-harness) crate, a Bevy app, and `rig` is its launcher:
-it generates a small Cargo project for the agent, builds it, and runs it.
+it generates a small Cargo project for the agent, builds it, and runs it. Its
+coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
+[`rig-tools`](crates/rig-tools) crate, usable by any rig agent.
 
 ```bash
 cargo install rig

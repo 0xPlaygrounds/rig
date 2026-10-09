@@ -4,8 +4,8 @@ use rig_core::tool::{PortableTool, ToolExecutionError};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, clip, read_text};
-use crate::core::blocking::blocking;
+use crate::fs::read_text;
+use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
@@ -19,6 +19,14 @@ pub struct ReadArgs {
     path: String,
     offset: Option<usize>,
     limit: Option<usize>,
+}
+
+impl Read {
+    /// When to pick this tool, for the system prompt.
+    pub const RULES: &'static [&'static str] = &[
+        "Use `read` to look at a file, not `cat`, `head` or `sed` in `shell`.",
+        "Read several files at once by calling `read` several times in one reply.",
+    ];
 }
 
 impl PortableTool for Read {

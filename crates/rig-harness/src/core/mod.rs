@@ -6,7 +6,6 @@
 
 pub mod agent;
 pub mod attach;
-pub mod blocking;
 pub mod calls;
 pub mod commands;
 pub mod compaction;

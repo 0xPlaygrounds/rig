@@ -91,7 +91,7 @@ fn model_pool() -> &'static IoTaskPool {
 }
 
 /// Tool calls run on the async compute pool; their blocking work runs on
-/// threads of its own (see [`blocking`](super::blocking::blocking)).
+/// threads of its own (see `rig_tools::blocking`).
 fn tool_pool() -> &'static AsyncComputeTaskPool {
     AsyncComputeTaskPool::get_or_init(TaskPool::default)
 }

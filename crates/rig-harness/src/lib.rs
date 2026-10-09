@@ -68,7 +68,6 @@ pub mod prelude {
         SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
         TurnOf, TurnOutcome, TurnRequest,
     };
-    pub use crate::core::blocking::blocking;
     pub use crate::core::calls::Wake;
     pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand, send_input};
     pub use crate::core::compaction::Compacted;
@@ -87,6 +86,7 @@ pub mod prelude {
     pub use crate::host::sessions::{SessionName, SwitchSession};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
+    pub use rig_tools::blocking;
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)

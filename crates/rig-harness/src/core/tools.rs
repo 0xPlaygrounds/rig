@@ -135,8 +135,8 @@ pub trait AppToolsExt {
     /// Tool futures run on Bevy's async compute pool, a few threads that
     /// every agent's tool calls share. A tool that blocks, such as one
     /// using `std::fs`, `std::process::Command` or a long computation,
-    /// wraps that work in [`blocking`](crate::core::blocking::blocking),
-    /// which is in the prelude, so it runs on a thread of its own:
+    /// wraps that work in `rig_tools::blocking`, which is in the prelude,
+    /// so it runs on a thread of its own:
     ///
     /// ```ignore
     /// async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {

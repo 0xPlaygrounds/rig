@@ -11142,12 +11142,12 @@ dependencies = [
  "libc",
  "pulldown-cmark",
  "ratatui",
- "regex",
  "rig",
  "rig-cassette",
  "rig-core",
  "rig-memory",
  "rig-reqwest",
+ "rig-tools",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -11474,6 +11474,20 @@ dependencies = [
  "syn 2.0.117",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "rig-tools"
+version = "0.44.0"
+dependencies = [
+ "futures",
+ "ignore",
+ "libc",
+ "regex",
+ "rig-core",
+ "serde",
+ "serde_json",
+ "similar",
 ]
 
 [[package]]
