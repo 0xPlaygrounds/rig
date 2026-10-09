@@ -45,12 +45,13 @@ use super::turn::{CallModel, ToolStarter, tool_name};
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
 /// The first fields of a line, read from every line to find the newest
-/// compaction.
+/// compaction and the newest record of each saved component.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
     #[serde(rename = "type")]
     kind: String,
+    component: Option<String>,
 }
 
 /// An agent log folded into the agent's state.
@@ -321,7 +322,21 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         }
         None => (1, 1),
     };
+    // Only the newest record of a saved component is read.
+    let newest: HashMap<&str, usize> = envelopes
+        .iter()
+        .enumerate()
+        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
+        .collect();
     for (index, line) in lines.iter().enumerate().skip(from_messages) {
+        if let Some(Some(Envelope {
+            component: Some(component),
+            ..
+        })) = envelopes.get(index)
+            && newest.get(component.as_str()) != Some(&index)
+        {
+            continue;
+        }
         // Unknown record types are skipped and left on disk.
         let Ok(line) = serde_json::from_slice::<Line>(line) else {
             continue;
